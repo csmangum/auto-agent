@@ -1,15 +1,39 @@
 {
+  "_meta": {
+    "mock_data_version": "2025.01",
+    "description": "Reference policies, vehicle values, and seed claims; claim search uses SQLite."
+  },
   "policies": {
-    "POL-001": {
-      "coverage": "comprehensive",
-      "deductible": 500,
-      "status": "active"
-    },
-    "POL-002": {
-      "coverage": "liability",
-      "deductible": 250,
-      "status": "active"
-    }
+    "POL-001": { "coverage": "comprehensive", "deductible": 500, "status": "active" },
+    "POL-002": { "coverage": "liability", "deductible": 250, "status": "active" },
+    "POL-003": { "coverage": "full_coverage", "deductible": 1000, "status": "active" },
+    "POL-004": { "coverage": "collision", "deductible": 500, "status": "active" },
+    "POL-005": { "coverage": "comprehensive", "deductible": 250, "status": "active" },
+    "POL-006": { "coverage": "uninsured_motorist", "deductible": 500, "status": "active" },
+    "POL-007": { "coverage": "full_coverage", "deductible": 1500, "status": "active" },
+    "POL-008": { "coverage": "liability", "deductible": 500, "status": "active" },
+    "POL-009": { "coverage": "comprehensive", "deductible": 1000, "status": "active" },
+    "POL-010": { "coverage": "collision", "deductible": 250, "status": "active" },
+    "POL-011": { "coverage": "full_coverage", "deductible": 500, "status": "active" },
+    "POL-012": { "coverage": "comprehensive", "deductible": 2000, "status": "active" },
+    "POL-013": { "coverage": "liability", "deductible": 1000, "status": "active" },
+    "POL-014": { "coverage": "uninsured_motorist", "deductible": 250, "status": "active" },
+    "POL-015": { "coverage": "collision", "deductible": 1000, "status": "active" },
+    "POL-016": { "coverage": "full_coverage", "deductible": 250, "status": "active" },
+    "POL-017": { "coverage": "comprehensive", "deductible": 1500, "status": "active" },
+    "POL-018": { "coverage": "liability", "deductible": 1500, "status": "active" },
+    "POL-019": { "coverage": "collision", "deductible": 1500, "status": "active" },
+    "POL-020": { "coverage": "full_coverage", "deductible": 2000, "status": "active" },
+    "POL-021": { "coverage": "comprehensive", "deductible": 500, "status": "inactive" },
+    "POL-022": { "coverage": "liability", "deductible": 500, "status": "inactive" },
+    "POL-023": { "coverage": "collision", "deductible": 1000, "status": "expired" },
+    "POL-024": { "coverage": "full_coverage", "deductible": 500, "status": "expired" },
+    "POL-025": { "coverage": "comprehensive", "deductible": 1000, "status": "cancelled" },
+    "POL-026": { "coverage": "liability", "deductible": 250, "status": "cancelled" },
+    "POL-027": { "coverage": "collision", "deductible": 500, "status": "cancelled" },
+    "POL-028": { "coverage": "full_coverage", "deductible": 1000, "status": "suspended" },
+    "POL-029": { "coverage": "comprehensive", "deductible": 500, "status": "suspended" },
+    "POL-030": { "coverage": "liability", "deductible": 1000, "status": "suspended" }
   },
   "claims": [
     {
@@ -17,16 +41,304 @@
       "vin": "1HGBH41JXMN109186",
       "incident_date": "2025-01-15",
       "incident_description": "Rear-ended at stoplight. Damage to rear bumper and trunk."
+    },
+    {
+      "claim_id": "CLM-STD001",
+      "vin": "1HGBH41JXMN109186",
+      "incident_date": "2024-11-02",
+      "incident_description": "Minor fender bender in parking lot. Front bumper scratch.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD002",
+      "vin": "5YJSA1E26HF123456",
+      "incident_date": "2024-11-10",
+      "incident_description": "Scraped side panel while backing out of driveway.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD003",
+      "vin": "2HGFG3B54CH501234",
+      "incident_date": "2024-11-18",
+      "incident_description": "Low-speed collision at intersection. Front bumper damage.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD004",
+      "vin": "1C4RJFAG5FC612345",
+      "incident_date": "2024-12-01",
+      "incident_description": "Hit and run in parking garage. Driver door dent.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD005",
+      "vin": "3VWDP7AJ5HM012345",
+      "incident_date": "2024-12-08",
+      "incident_description": "Rear bumper damaged when another driver backed into vehicle.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD006",
+      "vin": "1G1YY22G965112345",
+      "incident_date": "2024-12-15",
+      "incident_description": "Side mirror knocked off by passing vehicle on highway.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD007",
+      "vin": "JM1BL1S58A1234567",
+      "incident_date": "2024-12-22",
+      "incident_description": "Hood dent from falling branch during storm.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD008",
+      "vin": "1FA6P8TH2L5123456",
+      "incident_date": "2025-01-02",
+      "incident_description": "Minor front-end damage from sliding on ice.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD009",
+      "vin": "4T1BF1FK5EU123456",
+      "incident_date": "2025-01-08",
+      "incident_description": "Scratch along passenger side from shopping cart.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-STD010",
+      "vin": "5FNRL6H76MB012345",
+      "incident_date": "2025-01-12",
+      "incident_description": "Rear quarter panel damage in parking lot collision.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-TL001",
+      "vin": "1HGBH41JXMN109187",
+      "incident_date": "2024-10-20",
+      "incident_description": "Vehicle totaled in flood. Water damage throughout. Engine and interior destroyed.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-TL002",
+      "vin": "WBA3B1C50EK123456",
+      "incident_date": "2024-11-05",
+      "incident_description": "Total loss. Fire spread from garage. Vehicle destroyed.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-TL003",
+      "vin": "1G1ZD5ST0LF123456",
+      "incident_date": "2024-11-25",
+      "incident_description": "Major collision on highway. Frame damage. Vehicle declared total loss.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-TL004",
+      "vin": "2T1BURHE5KC123456",
+      "incident_date": "2024-12-10",
+      "incident_description": "Theft recovery. Vehicle found stripped. Not economically repairable.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-TL005",
+      "vin": "5YJ3E1EA1NF123456",
+      "incident_date": "2024-12-28",
+      "incident_description": "Head-on collision. Airbags deployed. Total loss.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-TL006",
+      "vin": "1C6RR7GT8MS123456",
+      "incident_date": "2025-01-05",
+      "incident_description": "Rollover accident. Roof crushed. Vehicle totaled.",
+      "status": "closed"
+    },
+    {
+      "claim_id": "CLM-DISP01",
+      "vin": "1HGBH41JXMN109188",
+      "incident_date": "2025-01-08",
+      "incident_description": "Rear-end collision. Claimant disputes liability determination. States other driver brake-checked.",
+      "status": "disputed",
+      "dispute_reason": "liability_determination"
+    },
+    {
+      "claim_id": "CLM-DISP02",
+      "vin": "5YJSA1E26HF123457",
+      "incident_date": "2024-12-20",
+      "incident_description": "Claimant disputes ACV valuation. Believes comparable vehicles used were not accurate.",
+      "status": "disputed",
+      "dispute_reason": "valuation_disagreement"
+    },
+    {
+      "claim_id": "CLM-DISP03",
+      "vin": "2HGFG3B54CH501235",
+      "incident_date": "2025-01-03",
+      "incident_description": "Left-turn accident. Both parties claim green light. Liability disputed.",
+      "status": "disputed",
+      "dispute_reason": "liability_determination"
+    },
+    {
+      "claim_id": "CLM-DISP04",
+      "vin": "1C4RJFAG5FC612346",
+      "incident_date": "2024-11-28",
+      "incident_description": "Repair estimate disputed. Claimant insists OEM parts required per policy.",
+      "status": "disputed",
+      "dispute_reason": "repair_estimate"
+    },
+    {
+      "claim_id": "CLM-DISP05",
+      "vin": "3VWDP7AJ5HM012346",
+      "incident_date": "2025-01-10",
+      "incident_description": "Deductible application disputed. Claimant states prior damage was documented.",
+      "status": "disputed",
+      "dispute_reason": "deductible_application"
+    },
+    {
+      "claim_id": "CLM-FRAUD01",
+      "vin": "1G1YY22G965112346",
+      "incident_date": "2025-01-05",
+      "incident_description": "Claimed theft from locked garage. No signs of forced entry. Multiple prior theft claims on record.",
+      "status": "fraud_suspected",
+      "flags": ["prior_claims", "inconsistent_statements"]
+    },
+    {
+      "claim_id": "CLM-FRAUD02",
+      "vin": "JM1BL1S58A1234568",
+      "incident_date": "2024-12-12",
+      "incident_description": "Staged accident indicators: identical damage pattern to prior claim, witnesses left scene.",
+      "status": "fraud_suspected",
+      "flags": ["staged_accident", "witness_inconsistency"]
+    },
+    {
+      "claim_id": "CLM-FRAUD03",
+      "vin": "1FA6P8TH2L5123457",
+      "incident_date": "2024-11-30",
+      "incident_description": "Inflated repair estimate. Shop photos show pre-existing damage. SIU referral.",
+      "status": "fraud_confirmed",
+      "flags": ["inflated_damage", "pre_existing"]
+    },
+    {
+      "claim_id": "CLM-FRAUD04",
+      "vin": "4T1BF1FK5EU123457",
+      "incident_date": "2025-01-01",
+      "incident_description": "False injury claim. Medical records contradict reported injuries. Under investigation.",
+      "status": "fraud_suspected",
+      "flags": ["injury_fraud", "medical_inconsistency"]
+    },
+    {
+      "claim_id": "CLM-PART01",
+      "vin": "5FNRL6H76MB012346",
+      "incident_date": "2024-11-15",
+      "incident_description": "Hail damage to hood and roof. Repaired but diminished value claim submitted.",
+      "status": "partial_loss"
+    },
+    {
+      "claim_id": "CLM-PART02",
+      "vin": "WBA3B1C50EK123457",
+      "incident_date": "2024-12-05",
+      "incident_description": "Significant front-end damage. Repaired; vehicle retained. Diminished value applicable.",
+      "status": "partial_loss"
+    },
+    {
+      "claim_id": "CLM-PART03",
+      "vin": "1G1ZD5ST0LF123457",
+      "incident_date": "2024-12-18",
+      "incident_description": "Water intrusion from storm. Interior and electronics damaged. Not total loss; repair authorized.",
+      "status": "partial_loss"
+    },
+    {
+      "claim_id": "CLM-PART04",
+      "vin": "2T1BURHE5KC123457",
+      "incident_date": "2025-01-06",
+      "incident_description": "Side impact. Structural repair completed. Customer retained vehicle with diminished value.",
+      "status": "partial_loss"
+    },
+    {
+      "claim_id": "CLM-INV01",
+      "vin": "5YJ3E1EA1NF123457",
+      "incident_date": "2025-01-14",
+      "incident_description": "Hit and run. Police report pending. Inconsistent statements from claimant.",
+      "status": "under_investigation"
+    },
+    {
+      "claim_id": "CLM-INV02",
+      "vin": "1C6RR7GT8MS123457",
+      "incident_date": "2024-12-30",
+      "incident_description": "Single-vehicle accident. Cause unclear. Waiting for additional documentation.",
+      "status": "under_investigation"
+    },
+    {
+      "claim_id": "CLM-INV03",
+      "vin": "1HGBH41JXMN109189",
+      "incident_date": "2025-01-11",
+      "incident_description": "Loss date conflicts with policy effective date. Verification in progress.",
+      "status": "under_investigation"
+    },
+    {
+      "claim_id": "CLM-DENY01",
+      "vin": "WBA3B1C50EK123458",
+      "incident_date": "2024-11-20",
+      "incident_description": "Claim filed for damage that occurred prior to policy effective date.",
+      "status": "denied"
+    },
+    {
+      "claim_id": "CLM-DENY02",
+      "vin": "1G1ZD5ST0LF123458",
+      "incident_date": "2024-12-25",
+      "incident_description": "Racing exclusion. Damage occurred during timed event. Policy excludes competitive use.",
+      "status": "denied"
+    },
+    {
+      "claim_id": "CLM-DENY03",
+      "vin": "2T1BURHE5KC123458",
+      "incident_date": "2025-01-07",
+      "incident_description": "Policy lapsed at time of loss. No payment received for 45 days prior to incident.",
+      "status": "denied"
     }
   ],
   "vehicle_values": {
-    "1HGBH41JXMN109186": {
-      "value": 12000,
-      "condition": "good"
-    },
-    "2020_Toyota_Camry": {
-      "value": 18000,
-      "condition": "excellent"
-    }
+    "1HGBH41JXMN109186": { "value": 12000, "condition": "good" },
+    "1HGBH41JXMN109187": { "value": 11500, "condition": "fair" },
+    "1HGBH41JXMN109188": { "value": 11800, "condition": "good" },
+    "1HGBH41JXMN109189": { "value": 12200, "condition": "excellent" },
+    "5YJSA1E26HF123456": { "value": 32000, "condition": "excellent" },
+    "5YJSA1E26HF123457": { "value": 28500, "condition": "good" },
+    "2HGFG3B54CH501234": { "value": 8500, "condition": "good" },
+    "2HGFG3B54CH501235": { "value": 8200, "condition": "fair" },
+    "1C4RJFAG5FC612345": { "value": 42000, "condition": "good" },
+    "1C4RJFAG5FC612346": { "value": 40500, "condition": "good" },
+    "3VWDP7AJ5HM012345": { "value": 18500, "condition": "excellent" },
+    "3VWDP7AJ5HM012346": { "value": 17200, "condition": "good" },
+    "1G1YY22G965112345": { "value": 28000, "condition": "good" },
+    "1G1YY22G965112346": { "value": 26500, "condition": "fair" },
+    "JM1BL1S58A1234567": { "value": 24000, "condition": "excellent" },
+    "JM1BL1S58A1234568": { "value": 22800, "condition": "good" },
+    "1FA6P8TH2L5123456": { "value": 35000, "condition": "good" },
+    "1FA6P8TH2L5123457": { "value": 33500, "condition": "good" },
+    "4T1BF1FK5EU123456": { "value": 9500, "condition": "good" },
+    "4T1BF1FK5EU123457": { "value": 9100, "condition": "fair" },
+    "5FNRL6H76MB012345": { "value": 38000, "condition": "excellent" },
+    "5FNRL6H76MB012346": { "value": 36200, "condition": "good" },
+    "WBA3B1C50EK123456": { "value": 18500, "condition": "good" },
+    "WBA3B1C50EK123457": { "value": 17800, "condition": "fair" },
+    "WBA3B1C50EK123458": { "value": 19200, "condition": "excellent" },
+    "1G1ZD5ST0LF123456": { "value": 22000, "condition": "good" },
+    "1G1ZD5ST0LF123457": { "value": 20800, "condition": "fair" },
+    "1G1ZD5ST0LF123458": { "value": 23500, "condition": "excellent" },
+    "2T1BURHE5KC123456": { "value": 6500, "condition": "fair" },
+    "2T1BURHE5KC123457": { "value": 6200, "condition": "fair" },
+    "2T1BURHE5KC123458": { "value": 6800, "condition": "good" },
+    "5YJ3E1EA1NF123456": { "value": 72000, "condition": "excellent" },
+    "5YJ3E1EA1NF123457": { "value": 68500, "condition": "good" },
+    "1C6RR7GT8MS123456": { "value": 45000, "condition": "good" },
+    "1C6RR7GT8MS123457": { "value": 42800, "condition": "fair" },
+    "2020_Toyota_Camry": { "value": 18000, "condition": "excellent" },
+    "2021_Honda_Accord": { "value": 19500, "condition": "good" },
+    "2022_Tesla_Model_3": { "value": 32000, "condition": "excellent" },
+    "2023_Ford_F150": { "value": 42000, "condition": "good" },
+    "2019_Chevrolet_Equinox": { "value": 16500, "condition": "fair" },
+    "2020_BMW_330i": { "value": 28500, "condition": "good" },
+    "2018_Nissan_Altima": { "value": 11500, "condition": "fair" }
   }
 }
