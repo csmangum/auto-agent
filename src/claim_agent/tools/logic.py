@@ -7,7 +7,6 @@ from datetime import datetime
 from claim_agent.tools.data_loader import load_mock_db
 
 # Vehicle valuation defaults (mock KBB)
-CURRENT_YEAR = datetime.now().year
 DEFAULT_BASE_VALUE = 12000
 DEPRECIATION_PER_YEAR = 500
 MIN_VEHICLE_VALUE = 2000
@@ -83,9 +82,10 @@ def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
             "condition": v.get("condition", "good"),
             "source": "mock_kbb",
         })
+    current_year = datetime.now().year
     default_value = max(
         MIN_VEHICLE_VALUE,
-        DEFAULT_BASE_VALUE + (CURRENT_YEAR - year_int) * -DEPRECIATION_PER_YEAR,
+        DEFAULT_BASE_VALUE + (current_year - year_int) * -DEPRECIATION_PER_YEAR,
     )
     return json.dumps({
         "value": default_value,

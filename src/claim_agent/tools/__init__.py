@@ -12,15 +12,6 @@ __all__ = [
     "generate_claim_id",
 ]
 
-# Stub names for __all__; real objects are set by __getattr__ on first access.
-query_policy_db = None  # type: ignore[assignment]
-search_claims_db = None  # type: ignore[assignment]
-compute_similarity = None  # type: ignore[assignment]
-fetch_vehicle_value = None  # type: ignore[assignment]
-evaluate_damage = None  # type: ignore[assignment]
-generate_report = None  # type: ignore[assignment]
-generate_claim_id = None  # type: ignore[assignment]
-
 
 def __getattr__(name: str):
     mod = sys.modules[__name__]

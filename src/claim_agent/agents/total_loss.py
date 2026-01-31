@@ -6,6 +6,7 @@ from claim_agent.tools import (
     fetch_vehicle_value,
     evaluate_damage,
     generate_report,
+    generate_claim_id,
 )
 
 
@@ -50,7 +51,7 @@ def create_settlement_agent(llm=None):
         role="Settlement Specialist",
         goal="Generate the settlement report and close the claim. Use generate_report tool with claim_id, claim_type, status, summary, and payout_amount.",
         backstory="Ensures proper documentation and claim closure. You produce the final settlement report.",
-        tools=[generate_report],
+        tools=[generate_report, generate_claim_id],
         verbose=True,
         llm=llm,
     )
