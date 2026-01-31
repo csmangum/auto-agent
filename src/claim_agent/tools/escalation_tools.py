@@ -37,12 +37,14 @@ def evaluate_escalation(
         try:
             sim = float(similarity_score)
         except (ValueError, TypeError):
+            # Invalid similarity score; leave sim as None and treat as no similarity provided.
             pass
     payout = None
     if payout_amount and str(payout_amount).strip():
         try:
             payout = float(payout_amount)
         except (ValueError, TypeError):
+            # Invalid payout amount; leave payout as None and treat as no payout provided.
             pass
     return evaluate_escalation_impl(data, router_output or "", sim, payout)
 

@@ -221,7 +221,7 @@ def search_california_compliance_impl(query: str) -> str:
 
 
 def _parse_router_confidence(router_output: str) -> float:
-    """Derive routing confidence 0.0-1.0 from router output language."""
+    """Derive routing confidence from router output language, in the range 0.3-1.0."""
     if not router_output or not isinstance(router_output, str):
         return 0.5
     low_confidence_patterns = ["possibly", "might be", "unclear", "unsure", "could be", "uncertain"]
@@ -295,6 +295,7 @@ def detect_fraud_indicators_impl(claim_data: dict) -> str:
                     if estimated_damage >= ESCALATION_CONFIG["fraud_damage_vs_value_ratio"] * vehicle_value:
                         indicators.append("damage_near_or_above_vehicle_value")
             except (json.JSONDecodeError, TypeError):
+                # Best-effort: if vehicle value cannot be parsed, skip this specific fraud indicator.
                 pass
 
     # Inconsistent descriptions: very low word overlap between incident and damage
@@ -358,7 +359,7 @@ def evaluate_escalation_impl(
     if isinstance(value_to_check, (int, float)) and value_to_check >= high_value_threshold:
         reasons.append("high_value")
 
-    if similarity_score is not None and low_sim <= similarity_score < high_sim:
+    if similarity_score is not None and low_sim <= similarity_score <= high_sim:
         reasons.append("ambiguous_similarity")
 
     fraud_json = detect_fraud_indicators_impl(claim_data or {})

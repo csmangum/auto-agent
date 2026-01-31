@@ -2,7 +2,6 @@
 
 import json
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -12,6 +11,19 @@ os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent
 
 # Skip full workflow integration test if no LLM (OPENAI_API_KEY)
 SKIP_WORKFLOW = not os.environ.get("OPENAI_API_KEY")
+
+
+@pytest.fixture(autouse=True)
+def _temp_claims_db(tmp_path, monkeypatch):
+    """
+    Ensure tests use a temporary SQLite DB for claims instead of data/claims.db.
+    This keeps tests hermetic and avoids writing to the repository filesystem.
+    """
+    from claim_agent.db.database import init_db
+
+    db_path = tmp_path / "claims.db"
+    monkeypatch.setenv("CLAIMS_DB_PATH", str(db_path))
+    init_db(str(db_path))
 
 
 def test_escalation_high_value_triggers():
@@ -227,31 +239,22 @@ def test_escalation_output_model_validate_from_main_crew_dict():
 
 
 @pytest.mark.skipif(SKIP_WORKFLOW, reason="OPENAI_API_KEY not set; skip run_claim_workflow integration test")
-def test_run_claim_workflow_escalation_high_value():
+def test_run_claim_workflow_escalation_high_value(_temp_claims_db):
     """Integration: run_claim_workflow with high-value claim escalates and returns NEEDS_REVIEW."""
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.constants import STATUS_NEEDS_REVIEW
-    from claim_agent.db.database import init_db
 
-    fd, db_path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    try:
-        init_db(db_path)
-        os.environ["CLAIMS_DB_PATH"] = db_path
-        claim_data = {
-            "policy_number": "POL-001",
-            "vin": "5YJSA1E26HF123456",
-            "vehicle_year": 2022,
-            "vehicle_make": "Tesla",
-            "vehicle_model": "Model 3",
-            "incident_date": "2025-01-20",
-            "incident_description": "Front bumper scratch.",
-            "damage_description": "Scratches on bumper.",
-            "estimated_damage": 15000.0,
-        }
-        result = run_claim_workflow(claim_data)
-        assert result["status"] == STATUS_NEEDS_REVIEW
-        assert "high_value" in result["escalation_reasons"]
-    finally:
-        os.unlink(db_path)
-        os.environ.pop("CLAIMS_DB_PATH", None)
+    claim_data = {
+        "policy_number": "POL-001",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Front bumper scratch.",
+        "damage_description": "Scratches on bumper.",
+        "estimated_damage": 15000.0,
+    }
+    result = run_claim_workflow(claim_data)
+    assert result["status"] == STATUS_NEEDS_REVIEW
+    assert "high_value" in result["escalation_reasons"]

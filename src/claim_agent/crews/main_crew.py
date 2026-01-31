@@ -145,7 +145,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 "fraud_indicators": fraud_indicators,
             })
             repo.save_workflow_result(claim_id, claim_type, raw_output, details)
-            repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, details=details)
+            repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details)
             logger.info(
                 "Escalation: claim_id=%s reasons=%s priority=%s",
                 claim_id,
@@ -159,7 +159,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 "router_output": raw_output,
                 "workflow_output": details,
                 "summary": f"Escalated for review: {', '.join(reasons)}",
-                "escalation_priority": priority,
             }
 
         # Step 2: Run the appropriate crew
