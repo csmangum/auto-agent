@@ -1,6 +1,10 @@
 """Tools for claim processing. Tools are lazy-loaded to avoid pulling crewai until needed."""
 
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from claim_agent.tools.valuation_tools import calculate_payout
 
 __all__ = [
     "query_policy_db",

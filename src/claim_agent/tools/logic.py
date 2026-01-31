@@ -279,6 +279,8 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
     }
     
     return json.dumps(result)
+
+
 # --- Escalation (HITL) ---
 
 
