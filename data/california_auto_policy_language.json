@@ -99,7 +99,7 @@
         },
         {
           "id": "LA-EX-005",
-          "title": "Workers' Compensation Vehicle",
+          "title": "Public or Livery Conveyance",
           "language": "For that insured's liability arising out of the ownership or operation of a vehicle while it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
         },
         {
@@ -168,7 +168,7 @@
         },
         {
           "id": "MP-EX-003",
-          "title": "During Course of Employment",
+          "title": "Vehicle Used as Residence",
           "language": "Sustained while occupying any vehicle located for use as a residence or premises."
         },
         {
@@ -219,17 +219,17 @@
       "exclusion_list": [
         {
           "id": "UM-EX-001",
-          "title": "No Reasonable Belief of Permission",
+          "title": "Owned Vehicle Not Insured",
           "language": "By any insured while occupying any motor vehicle owned by that insured which is not insured for this coverage under this policy."
         },
         {
           "id": "UM-EX-002",
-          "title": "Self-Insured Vehicle",
+          "title": "Settlement Without Consent",
           "language": "By any insured if that insured or the legal representative of that insured settles the bodily injury claim without our consent."
         },
         {
           "id": "UM-EX-003",
-          "title": "Owned Vehicle Not Insured",
+          "title": "Public or Livery Conveyance",
           "language": "While occupying your covered auto when it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
         },
         {
