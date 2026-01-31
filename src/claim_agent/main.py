@@ -161,7 +161,7 @@ def main() -> None:
         return
 
     # Legacy: single argument is a file path (process)
-    path = Path(first)
+    path = Path(argv[0])
     if path.suffix and path.exists():
         cmd_process(path)
         return
