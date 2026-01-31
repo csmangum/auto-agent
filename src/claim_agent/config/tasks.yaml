@@ -42,3 +42,7 @@ calculate_payout:
 close_claim:
   description: Generate settlement report and close the claim
   expected_output: Settlement report summary and claim closed confirmation
+
+evaluate_escalation:
+  description: Evaluate claim for human review (low confidence, high value, fraud indicators)
+  expected_output: Escalation report with needs_review, reasons, priority, recommended_action

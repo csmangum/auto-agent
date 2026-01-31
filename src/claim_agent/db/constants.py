@@ -18,6 +18,7 @@ STATUS_PARTIAL_LOSS = "partial_loss"
 STATUS_UNDER_INVESTIGATION = "under_investigation"
 STATUS_DENIED = "denied"
 STATUS_SETTLED = "settled"
+STATUS_NEEDS_REVIEW = "needs_review"
 
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
@@ -34,4 +35,5 @@ CLAIM_STATUSES = (
     STATUS_UNDER_INVESTIGATION,
     STATUS_DENIED,
     STATUS_SETTLED,
+    STATUS_NEEDS_REVIEW,
 )

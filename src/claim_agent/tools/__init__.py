@@ -12,6 +12,9 @@ __all__ = [
     "generate_report",
     "generate_claim_id",
     "search_california_compliance",
+    "evaluate_escalation",
+    "detect_fraud_indicators",
+    "generate_escalation_report",
 ]
 
 
@@ -53,4 +56,16 @@ def __getattr__(name: str):
         from claim_agent.tools.compliance_tools import search_california_compliance
         setattr(mod, "search_california_compliance", search_california_compliance)
         return search_california_compliance
+    if name == "evaluate_escalation":
+        from claim_agent.tools.escalation_tools import evaluate_escalation
+        setattr(mod, "evaluate_escalation", evaluate_escalation)
+        return evaluate_escalation
+    if name == "detect_fraud_indicators":
+        from claim_agent.tools.escalation_tools import detect_fraud_indicators
+        setattr(mod, "detect_fraud_indicators", detect_fraud_indicators)
+        return detect_fraud_indicators
+    if name == "generate_escalation_report":
+        from claim_agent.tools.escalation_tools import generate_escalation_report
+        setattr(mod, "generate_escalation_report", generate_escalation_report)
+        return generate_escalation_report
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
