@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
+CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
+CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """
 
 

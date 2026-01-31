@@ -73,8 +73,12 @@ def cmd_process(claim_path: Path) -> None:
         print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
         sys.exit(1)
     from claim_agent.crews.main_crew import run_claim_workflow
-    result = run_claim_workflow(claim_data)
-    print(json.dumps(result, indent=2))
+    try:
+        result = run_claim_workflow(claim_data)
+        print(json.dumps(result, indent=2))
+    except Exception as e:
+        print(f"Error: Claim processing failed: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_status(claim_id: str) -> None:

@@ -1,9 +1,7 @@
 """Tests for database and ClaimRepository."""
 
-import json
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -24,6 +22,7 @@ def temp_db():
         try:
             os.unlink(path)
         except OSError:
+            # Best-effort cleanup: ignore errors if the file was already removed
             pass
 
 

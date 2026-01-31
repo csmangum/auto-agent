@@ -3,12 +3,7 @@
 import uuid
 from typing import Any
 
-from claim_agent.db.constants import (
-    STATUS_FAILED,
-    STATUS_OPEN,
-    STATUS_PENDING,
-    STATUS_PROCESSING,
-)
+from claim_agent.db.constants import STATUS_PENDING
 from claim_agent.db.database import get_connection
 from claim_agent.models.claim import ClaimInput
 

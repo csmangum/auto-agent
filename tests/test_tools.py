@@ -65,12 +65,21 @@ def test_search_claims_db():
 
 
 def test_search_claims_db_empty():
-    """Search with no matches returns [] (SQLite may be empty or no match)."""
+    """Search with no matches returns [] using a temp DB to avoid test pollution."""
+    from claim_agent.db.database import init_db
     from claim_agent.tools.logic import search_claims_db_impl
 
-    result = search_claims_db_impl("UNKNOWN_VIN_XYZ", "2020-01-01")
-    claims = json.loads(result)
-    assert claims == []
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        init_db(path)
+        os.environ["CLAIMS_DB_PATH"] = path
+        result = search_claims_db_impl("UNKNOWN_VIN_XYZ", "2020-01-01")
+        claims = json.loads(result)
+        assert claims == []
+    finally:
+        os.unlink(path)
+        os.environ.pop("CLAIMS_DB_PATH", None)
 
 
 def test_compute_similarity_high():
@@ -216,7 +225,6 @@ def test_search_california_compliance_ccr_reference():
 
 
 def test_search_california_compliance_missing_file_returns_error():
-    import os
     from claim_agent.tools.logic import search_california_compliance_impl
 
     os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/california_auto_compliance.json"

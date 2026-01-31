@@ -6,7 +6,6 @@ from datetime import datetime
 
 from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.tools.data_loader import load_mock_db
 
 # Vehicle valuation defaults (mock KBB)
 DEFAULT_BASE_VALUE = 12000
