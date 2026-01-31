@@ -41,15 +41,24 @@ CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """
 
-# Active policy numbers for synthetic policy_number (mock claims don't include it)
-_SEED_POLICY_NUMBERS = [f"POL-{i:03d}" for i in range(1, 21)]
-
 
 def _get_mock_db_path() -> Path:
     path = os.environ.get("MOCK_DB_PATH")
     if path:
-        return Path(path)
+        p = Path(path)
+        if not p.is_absolute():
+            p = _ROOT / p
+        return p
     return _ROOT / "data" / "mock_db.json"
+
+
+def _active_policy_numbers(db: dict) -> list[str]:
+    """Policy numbers with status 'active' from mock_db, for synthetic policy_number on seed claims."""
+    policies = db.get("policies") or {}
+    active = [k for k, v in policies.items() if isinstance(v, dict) and v.get("status") == "active"]
+    if not active:
+        active = list(policies.keys())  # fallback if none active
+    return sorted(active)
 
 
 def _get_db_path() -> str:
@@ -73,6 +82,11 @@ def main() -> None:
         print("No claims in mock_db.json; nothing to seed.")
         return
 
+    policy_numbers = _active_policy_numbers(db)
+    if not policy_numbers:
+        print("No policies in mock_db.json; cannot assign policy_number to claims.")
+        return
+
     db_path = _get_db_path()
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -89,7 +103,7 @@ def main() -> None:
             vin = c.get("vin", "")
             incident_date = c.get("incident_date", "")
             incident_description = c.get("incident_description", "")
-            policy_number = _SEED_POLICY_NUMBERS[i % len(_SEED_POLICY_NUMBERS)]
+            policy_number = policy_numbers[i % len(policy_numbers)]
             damage_description = c.get("damage_description") or incident_description or ""
             status = c.get("status", "closed")
 

@@ -130,7 +130,7 @@ Output is JSON with `claim_type`, `router_output`, `workflow_output`, and `summa
 ### Sample claims
 
 - `tests/sample_claims/new_claim.json` – standard new claim
-- `tests/sample_claims/duplicate_claim.json` – possible duplicate (same VIN/date as in mock DB)
+- `tests/sample_claims/duplicate_claim.json` – possible duplicate (same VIN/date as a claim in mock DB). **Duplicate detection will only find it after you run the seed script** so that the historical claim exists in SQLite.
 - `tests/sample_claims/total_loss_claim.json` – flood total loss
 
 ### Data
