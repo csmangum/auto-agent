@@ -1,11 +1,15 @@
 """Shared logic for claim tools (used by both CrewAI tools and MCP server)."""
 
 import json
+import logging
 import uuid
 from datetime import datetime
 
 from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
 from claim_agent.db.repository import ClaimRepository
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Vehicle valuation defaults (mock KBB)
 DEFAULT_BASE_VALUE = 12000
@@ -14,6 +18,7 @@ MIN_VEHICLE_VALUE = 2000
 
 # Payout calculation defaults
 DEFAULT_DEDUCTIBLE = 500
+MIN_PAYOUT_VEHICLE_VALUE = 100  # Minimum vehicle value for payout calculation
 
 
 def query_policy_db_impl(policy_number: str) -> str:
@@ -217,13 +222,13 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
     Returns:
         JSON string with payout_amount (float), vehicle_value (float), deductible (float), and calculation (str).
     """
-    if not isinstance(vehicle_value, (int, float)) or vehicle_value <= 0:
+    if not isinstance(vehicle_value, (int, float)) or vehicle_value < MIN_PAYOUT_VEHICLE_VALUE:
         return json.dumps({
-            "error": "Invalid vehicle value",
+            "error": f"Invalid vehicle value (minimum: ${MIN_PAYOUT_VEHICLE_VALUE})",
             "payout_amount": 0.0,
             "vehicle_value": vehicle_value,
             "deductible": 0,
-            "calculation": "Error: Invalid vehicle value"
+            "calculation": f"Error: Vehicle value must be at least ${MIN_PAYOUT_VEHICLE_VALUE}"
         })
     
     # Round vehicle value for currency consistency
@@ -243,8 +248,8 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
             })
         deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
     except (json.JSONDecodeError, KeyError) as e:
-        # Unexpected error in policy lookup - this shouldn't happen in normal operation
-        # Return error rather than silently using default
+        # Unexpected error in policy lookup - log for monitoring
+        logger.error(f"Unexpected policy lookup error for policy {policy_number}: {e}")
         return json.dumps({
             "error": f"Policy lookup error: {str(e)}",
             "payout_amount": 0.0,
