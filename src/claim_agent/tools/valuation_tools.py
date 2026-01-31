@@ -2,7 +2,7 @@
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import fetch_vehicle_value_impl, evaluate_damage_impl
+from claim_agent.tools.logic import fetch_vehicle_value_impl, evaluate_damage_impl, calculate_payout_impl
 
 
 @tool("Fetch Vehicle Value")
@@ -30,3 +30,15 @@ def evaluate_damage(damage_description: str, estimated_repair_cost: float | None
         JSON string with severity (str), estimated_repair_cost (float), total_loss_candidate (bool).
     """
     return evaluate_damage_impl(damage_description, estimated_repair_cost)
+
+
+@tool("Calculate Payout")
+def calculate_payout(vehicle_value: float, policy_number: str) -> str:
+    """Calculate total loss payout by subtracting policy deductible from vehicle value.
+    Args:
+        vehicle_value: Current market value of the vehicle in dollars.
+        policy_number: Policy number to look up deductible amount.
+    Returns:
+        JSON string with payout_amount (float), vehicle_value (float), deductible (float), and calculation (str).
+    """
+    return calculate_payout_impl(vehicle_value, policy_number)

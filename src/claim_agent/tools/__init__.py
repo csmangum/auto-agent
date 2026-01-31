@@ -1,6 +1,10 @@
 """Tools for claim processing. Tools are lazy-loaded to avoid pulling crewai until needed."""
 
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from claim_agent.tools.valuation_tools import calculate_payout
 
 __all__ = [
     "query_policy_db",
@@ -8,6 +12,7 @@ __all__ = [
     "compute_similarity",
     "fetch_vehicle_value",
     "evaluate_damage",
+    "calculate_payout",
     "generate_report",
     "generate_claim_id",
     "search_california_compliance",
@@ -39,6 +44,10 @@ def __getattr__(name: str):
         from claim_agent.tools.valuation_tools import evaluate_damage
         setattr(mod, "evaluate_damage", evaluate_damage)
         return evaluate_damage
+    if name == "calculate_payout":
+        from claim_agent.tools.valuation_tools import calculate_payout
+        setattr(mod, "calculate_payout", calculate_payout)
+        return calculate_payout
     if name == "generate_report":
         from claim_agent.tools.document_tools import generate_report
         setattr(mod, "generate_report", generate_report)

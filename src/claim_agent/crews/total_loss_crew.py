@@ -35,9 +35,10 @@ Use vin, vehicle_year, vehicle_make, vehicle_model from the claim_data.""",
     )
 
     payout_task = Task(
-        description="""If total loss: calculate payout (e.g. vehicle value minus deductible).
-Use the vehicle value from the valuation step and assume a deductible (e.g. 500) if not in claim data.
-Output the payout amount and brief calculation.""",
+        description="""If total loss: calculate payout using the calculate_payout tool.
+Pass vehicle value from the valuation step and the policy_number from claim_data.
+The tool will look up the deductible and compute payout (vehicle value minus deductible).
+Output the payout amount and calculation details.""",
         expected_output="Payout amount in dollars and one-line calculation (e.g. value - deductible).",
         agent=payout_agent,
         context=[assess_task, valuation_task],
