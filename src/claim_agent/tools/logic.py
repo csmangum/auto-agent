@@ -2,23 +2,43 @@
 
 import json
 import uuid
+from datetime import datetime
 
 from claim_agent.tools.data_loader import load_mock_db
 
+# Vehicle valuation defaults (mock KBB)
+CURRENT_YEAR = datetime.now().year
+DEFAULT_BASE_VALUE = 12000
+DEPRECIATION_PER_YEAR = 500
+MIN_VEHICLE_VALUE = 2000
+
 
 def query_policy_db_impl(policy_number: str) -> str:
+    if not policy_number or not isinstance(policy_number, str):
+        return json.dumps({"valid": False, "message": "Invalid policy number"})
+    policy_number = policy_number.strip()
+    if not policy_number:
+        return json.dumps({"valid": False, "message": "Empty policy number"})
     db = load_mock_db()
     policies = db.get("policies", {})
     if policy_number in policies:
         p = policies[policy_number]
-        return (
-            f'{{"valid": true, "coverage": "{p.get("coverage", "comprehensive")}", '
-            f'"deductible": {p.get("deductible", 500)}, "status": "active"}}'
-        )
-    return '{"valid": false, "message": "Policy not found or inactive"}'
+        return json.dumps({
+            "valid": True,
+            "coverage": p.get("coverage", "comprehensive"),
+            "deductible": p.get("deductible", 500),
+            "status": "active",
+        })
+    return json.dumps({"valid": False, "message": "Policy not found or inactive"})
 
 
 def search_claims_db_impl(vin: str, incident_date: str) -> str:
+    if not vin or not isinstance(vin, str) or not vin.strip():
+        return json.dumps([])
+    if not incident_date or not isinstance(incident_date, str) or not incident_date.strip():
+        return json.dumps([])
+    vin = vin.strip()
+    incident_date = incident_date.strip()
     db = load_mock_db()
     claims = db.get("claims", [])
     matches = [c for c in claims if c.get("vin") == vin and c.get("incident_date") == incident_date]
@@ -32,16 +52,21 @@ def compute_similarity_impl(description_a: str, description_b: str) -> str:
         return json.dumps({"similarity_score": 0.0, "is_duplicate": False})
     words_a = set(a.split())
     words_b = set(b.split())
-    if not words_a:
+    if not words_a or not words_b:
         return json.dumps({"similarity_score": 0.0, "is_duplicate": False})
-    overlap = len(words_a & words_b) / len(words_a)
-    score = min(100.0, overlap * 100.0)
+    intersection = len(words_a & words_b)
+    union = len(words_a | words_b)
+    score = (intersection / union) * 100.0
     return json.dumps({"similarity_score": round(score, 2), "is_duplicate": score > 80.0})
 
 
 def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
+    vin = vin.strip() if isinstance(vin, str) else ""
+    make = make.strip() if isinstance(make, str) else ""
+    model = model.strip() if isinstance(model, str) else ""
+    year_int = int(year) if isinstance(year, (int, float)) and year > 0 else 2020
     db = load_mock_db()
-    key = vin or f"{year}_{make}_{model}"
+    key = vin or f"{year_int}_{make}_{model}"
     values = db.get("vehicle_values", {})
     if key in values:
         v = values[key]
@@ -50,7 +75,11 @@ def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
             "condition": v.get("condition", "good"),
             "source": "mock_kbb",
         })
-    default_value = max(2000, 12000 + (2025 - year) * -500)
+    year_int = int(year)
+    default_value = max(
+        MIN_VEHICLE_VALUE,
+        DEFAULT_BASE_VALUE + (CURRENT_YEAR - year_int) * -DEPRECIATION_PER_YEAR,
+    )
     return json.dumps({
         "value": default_value,
         "condition": "good",
@@ -59,7 +88,13 @@ def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
 
 
 def evaluate_damage_impl(damage_description: str, estimated_repair_cost: float | None) -> str:
-    desc_lower = damage_description.lower()
+    if not damage_description or not isinstance(damage_description, str):
+        return json.dumps({
+            "severity": "unknown",
+            "estimated_repair_cost": estimated_repair_cost if estimated_repair_cost is not None else 0.0,
+            "total_loss_candidate": False,
+        })
+    desc_lower = damage_description.strip().lower()
     total_loss_keywords = ["totaled", "total loss", "destroyed", "flood", "fire", "frame"]
     is_total_loss_candidate = any(k in desc_lower for k in total_loss_keywords)
     cost = estimated_repair_cost if estimated_repair_cost is not None else 0.0

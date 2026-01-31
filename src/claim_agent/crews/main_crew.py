@@ -33,7 +33,7 @@ Reply with exactly one word: new, duplicate, or total_loss. Then on the next lin
     return Crew(
         agents=[router],
         tasks=[classify_task],
-        verbose=2,
+        verbose=True,
     )
 
 
@@ -42,7 +42,25 @@ def create_main_crew(llm=None):
     return create_router_crew(llm)
 
 
-def run_claim_workflow(claim_data: dict, llm=None):
+def _parse_claim_type(raw_output: str) -> str:
+    """Parse claim type from router output with strict matching."""
+    lines = raw_output.strip().split("\n")
+    for line in lines:
+        normalized = line.strip().lower().replace("_", " ").replace("-", " ")
+        # Exact matches first
+        if normalized in ("new", "duplicate", "total loss", "total_loss"):
+            return "total_loss" if normalized in ("total loss", "total_loss") else normalized
+        # Then line starts with type (check total_loss before duplicate/new)
+        if normalized.startswith("total loss") or normalized.startswith("total_loss"):
+            return "total_loss"
+        if normalized.startswith("duplicate"):
+            return "duplicate"
+        if normalized.startswith("new"):
+            return "new"
+    return "new"
+
+
+def run_claim_workflow(claim_data: dict, llm=None) -> dict:
     """
     Run the full claim workflow: classify with router crew, then run the appropriate workflow crew.
     claim_data: dict with policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description, estimated_damage (optional).
@@ -56,22 +74,7 @@ def run_claim_workflow(claim_data: dict, llm=None):
     result = router_crew.kickoff(inputs=inputs)
     raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
     raw_output = str(raw_output)
-    lines = raw_output.strip().split("\n")
-    claim_type = "new"
-    for line in lines:
-        line = line.strip().lower()
-        if line in ("new", "duplicate", "total_loss"):
-            claim_type = line
-            break
-        if line.startswith("new ") or line == "new":
-            claim_type = "new"
-            break
-        if line.startswith("duplicate") or "duplicate" in line and "total_loss" not in line:
-            claim_type = "duplicate"
-            break
-        if line.startswith("total_loss") or "total loss" in line or "total_loss" in line:
-            claim_type = "total_loss"
-            break
+    claim_type = _parse_claim_type(raw_output)
 
     # Step 2: Run the appropriate crew
     if claim_type == "new":

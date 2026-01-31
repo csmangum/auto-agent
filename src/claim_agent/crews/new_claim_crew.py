@@ -46,5 +46,5 @@ Generate a brief claim report using generate_report with claim_id, claim_type='n
     return Crew(
         agents=[intake, policy, assignment],
         tasks=[validate_task, check_policy_task, assign_task],
-        verbose=2,
+        verbose=True,
     )

@@ -2,11 +2,7 @@
 
 import json
 import os
-import sys
 from pathlib import Path
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 # Point to project data for mock_db
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
@@ -106,3 +102,56 @@ def test_generate_report():
     assert data["status"] == "open"
     assert data["summary"] == "Claim validated and assigned."
     assert "report_id" in data
+
+
+def test_compute_similarity_symmetric():
+    """Jaccard similarity is symmetric: sim(a, b) == sim(b, a)."""
+    from claim_agent.tools.logic import compute_similarity_impl
+
+    a = "Rear-ended at stoplight. Damage to rear bumper."
+    b = "Damage to rear bumper and trunk. Rear-ended."
+    result_ab = json.loads(compute_similarity_impl(a, b))
+    result_ba = json.loads(compute_similarity_impl(b, a))
+    assert result_ab["similarity_score"] == result_ba["similarity_score"]
+    assert result_ab["is_duplicate"] == result_ba["is_duplicate"]
+
+
+def test_compute_similarity_empty_strings():
+    from claim_agent.tools.logic import compute_similarity_impl
+
+    result = json.loads(compute_similarity_impl("", "something"))
+    assert result["similarity_score"] == 0.0
+    assert result["is_duplicate"] is False
+
+    result2 = json.loads(compute_similarity_impl("  ", "other"))
+    assert result2["similarity_score"] == 0.0
+
+
+def test_query_policy_db_invalid_input():
+    from claim_agent.tools.logic import query_policy_db_impl
+
+    result = json.loads(query_policy_db_impl(""))
+    assert result["valid"] is False
+    assert "message" in result
+
+    result2 = json.loads(query_policy_db_impl("   "))
+    assert result2["valid"] is False
+
+
+def test_search_claims_db_empty_vin_returns_empty():
+    from claim_agent.tools.logic import search_claims_db_impl
+
+    result = search_claims_db_impl("", "2025-01-15")
+    assert json.loads(result) == []
+
+    result2 = search_claims_db_impl("VIN123", "")
+    assert json.loads(result2) == []
+
+
+def test_evaluate_damage_empty_description():
+    from claim_agent.tools.logic import evaluate_damage_impl
+
+    result = json.loads(evaluate_damage_impl("", 1000))
+    assert result["severity"] == "unknown"
+    assert result["total_loss_candidate"] is False
+    assert result["estimated_repair_cost"] == 1000

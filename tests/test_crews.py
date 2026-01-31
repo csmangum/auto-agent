@@ -2,13 +2,9 @@
 
 import json
 import os
-import sys
 from pathlib import Path
 
 import pytest
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
 
@@ -76,3 +72,39 @@ def test_run_claim_workflow_classification_only():
     assert result["claim_type"] in ("new", "duplicate", "total_loss")
     assert "workflow_output" in result
     assert "summary" in result
+
+
+def test_parse_claim_type_exact():
+    """Claim type parsing: exact matches."""
+    from claim_agent.crews.main_crew import _parse_claim_type
+
+    assert _parse_claim_type("new") == "new"
+    assert _parse_claim_type("duplicate") == "duplicate"
+    assert _parse_claim_type("total_loss") == "total_loss"
+    assert _parse_claim_type("total loss") == "total_loss"
+
+
+def test_parse_claim_type_with_reasoning():
+    """Claim type parsing: type on first line, reasoning on second."""
+    from claim_agent.crews.main_crew import _parse_claim_type
+
+    assert _parse_claim_type("new\nReason: first-time submission.") == "new"
+    assert _parse_claim_type("duplicate\nSame VIN and date as existing claim.") == "duplicate"
+    assert _parse_claim_type("total_loss\nVehicle flooded.") == "total_loss"
+
+
+def test_parse_claim_type_starts_with():
+    """Claim type parsing: line starts with type."""
+    from claim_agent.crews.main_crew import _parse_claim_type
+
+    assert _parse_claim_type("new claim submission") == "new"
+    assert _parse_claim_type("Duplicate of CLM-EXIST01") == "duplicate"
+    assert _parse_claim_type("total loss - flood damage") == "total_loss"
+
+
+def test_parse_claim_type_default():
+    """Claim type parsing: unknown output defaults to new."""
+    from claim_agent.crews.main_crew import _parse_claim_type
+
+    assert _parse_claim_type("") == "new"
+    assert _parse_claim_type("Unable to classify.") == "new"

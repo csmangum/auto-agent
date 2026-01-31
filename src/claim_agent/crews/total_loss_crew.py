@@ -54,5 +54,5 @@ Use generate_report with claim_id (generate one with generate_claim_id if not se
     return Crew(
         agents=[damage_agent, valuation_agent, payout_agent, settlement_agent],
         tasks=[assess_task, valuation_task, payout_task, settlement_task],
-        verbose=2,
+        verbose=True,
     )

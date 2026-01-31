@@ -46,5 +46,5 @@ Provide a clear resolution decision and one-line summary for the output.""",
     return Crew(
         agents=[search_agent, similarity_agent, resolution_agent],
         tasks=[search_task, similarity_task, resolve_task],
-        verbose=2,
+        verbose=True,
     )
