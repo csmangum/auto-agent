@@ -78,7 +78,7 @@ Running the agent on a claim file (e.g. `python -m claim_agent.main process test
    - **New claim crew**  
      - **Intake Specialist**: Validates required fields (policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description; optional: estimated_damage) and data types.  
      - **Policy Verification Specialist**: Uses `query_policy_db` to verify the policy is active and has valid coverage.  
-     - **Claim Assignment Specialist**: Uses `generate_claim_id` (prefix `CLM`), sets status to `open`, then uses `generate_claim_report` to produce the final report.  
+     - **Claim Assignment Specialist**: Uses `generate_claim_id` (prefix `CLM`), sets status to `open`, then uses `generate_report` to produce the final report.  
    - **Duplicate crew**: Searches existing claims, computes similarity, resolves (merge/reject).  
    - **Total loss crew**: Damage assessment, vehicle valuation (mock KBB), payout calculation, settlement.  
    - **Partial loss crew**: Damage assessment (repairable scope), repair estimate (parts/labor), repair shop assignment, parts ordering, repair authorization.
@@ -97,6 +97,7 @@ Example output for a **new** (non-escalated) claim:
 
 ```json
 {
+  "claim_id": "CLM-11EEF959",
   "claim_type": "new",
   "router_output": "new\nThis claim appears to be a first-time submission with no indications of previous reports or total loss status.",
   "workflow_output": "Claim ID: CLM-11EEF959, Status: open, Summary: Claim has been initiated successfully with a unique ID.",
