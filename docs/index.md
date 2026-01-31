@@ -4,16 +4,13 @@ Welcome to the documentation for the Agentic Claim Representative POC - an AI-po
 
 ## Overview
 
-This system uses multi-agent AI architecture to automate auto insurance claim processing. A router agent classifies incoming claims and delegates them to specialized workflow crews that handle different claim types.
+This system uses multi-agent AI architecture to automate auto insurance claim processing. A router agent classifies incoming claims and delegates them to specialized workflow crews.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                              │
-│    Claim JSON ──▶ Router ──▶ Escalation Check ──▶ Workflow Crew ──▶ Output  │
-│                                                                              │
-│    Claim Types: new | duplicate | total_loss | fraud | partial_loss         │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    A[Claim JSON] --> B[Router] --> C{Escalation?}
+    C -->|Yes| D[Human Review]
+    C -->|No| E[Workflow Crew] --> F[Output]
 ```
 
 ## Documentation
@@ -24,17 +21,17 @@ This system uses multi-agent AI architecture to automate auto insurance claim pr
 
 ### Core Concepts
 
-- **[Architecture](architecture.md)** - System architecture, components, and design decisions
-- **[Crews](crews.md)** - Detailed documentation of each workflow crew
-- **[Claim Types](claim-types.md)** - The five claim types and their processing workflows
-- **[Agent Flow](agent-flow.md)** - Execution flow from input to output
+- **[Architecture](architecture.md)** - System design, components, and patterns
+- **[Agent Flow](agent-flow.md)** - Execution flow and state management
+- **[Crews](crews.md)** - Workflow crew details and agent composition
+- **[Claim Types](claim-types.md)** - Classification criteria and examples
 
 ### Reference
 
-- **[Tools](tools.md)** - Complete reference for all available tools
-- **[Database](database.md)** - Database schema, repository operations, and status constants
-- **[Configuration](configuration.md)** - Environment variables and configuration options
-- **[MCP Server](mcp-server.md)** - Optional MCP server for external tool access
+- **[Tools](tools.md)** - Complete tool reference
+- **[Database](database.md)** - Schema and repository operations
+- **[Configuration](configuration.md)** - Environment and LLM setup
+- **[MCP Server](mcp-server.md)** - Optional external tool access
 
 ## Quick Reference
 
@@ -47,63 +44,23 @@ claim-agent history <claim_id>     # Get claim audit log
 claim-agent reprocess <claim_id>   # Re-run workflow
 ```
 
-### Claim Types
+### Claim Types at a Glance
 
-| Type | Description | Final Status |
-|------|-------------|--------------|
-| `new` | First-time claim | `open` |
-| `duplicate` | Duplicate of existing | `duplicate` |
-| `total_loss` | Vehicle destroyed | `closed` |
-| `fraud` | Suspected fraud | `fraud_suspected` |
-| `partial_loss` | Repairable damage | `partial_loss` |
+| Type | Crew | Description |
+|------|------|-------------|
+| `new` | [New Claim](crews.md#new-claim-crew) | First-time claim → validates, assigns ID |
+| `duplicate` | [Duplicate](crews.md#duplicate-crew) | Matches existing → merge or reject |
+| `total_loss` | [Total Loss](crews.md#total-loss-crew) | Unrepairable → value and settle |
+| `fraud` | [Fraud](crews.md#fraud-detection-crew) | Suspicious → investigate and assess |
+| `partial_loss` | [Partial Loss](crews.md#partial-loss-crew) | Repairable → estimate, shop, authorize |
 
-### Workflow Crews
-
-| Crew | Agents | Purpose |
-|------|--------|---------|
-| Router | 1 | Classify claims |
-| New Claim | 3 | Validate, verify, assign |
-| Duplicate | 3 | Search, compare, resolve |
-| Total Loss | 4 | Assess, value, payout, settle |
-| Fraud | 3 | Pattern, cross-ref, assess |
-| Partial Loss | 5 | Assess, estimate, shop, parts, authorize |
-
-## Project Structure
-
-```
-auto-agent/
-├── src/claim_agent/
-│   ├── main.py           # CLI entry point
-│   ├── config/           # LLM and YAML configs
-│   ├── agents/           # Agent factory functions
-│   ├── crews/            # Crew definitions
-│   ├── tools/            # CrewAI tools
-│   ├── db/               # Database layer
-│   ├── models/           # Pydantic models
-│   └── mcp_server/       # MCP server
-├── data/                 # Mock data and database
-├── tests/                # Test suite
-├── docs/                 # This documentation
-└── scripts/              # Utility scripts
-```
+See [Claim Types](claim-types.md) for classification criteria and examples.
 
 ## Key Features
 
-- **Multi-Agent Architecture**: Specialized agents for each task
-- **Router-Based Classification**: Intelligent claim routing
-- **Human-in-the-Loop (HITL)**: Escalation for high-risk claims
-- **Persistent State**: SQLite with full audit trail
-- **Extensible Tools**: Easy to add new capabilities
-- **MCP Integration**: Optional external tool access
-
-## Technology Stack
-
-- **CrewAI** - Multi-agent orchestration
-- **LiteLLM** - LLM abstraction (OpenRouter/OpenAI)
-- **Pydantic** - Data validation
-- **SQLite** - Persistent storage
-- **FastMCP** - MCP server (optional)
-
-## License
-
-MIT License
+- **Multi-Agent Architecture** - Specialized agents collaborate on tasks
+- **Router-Based Classification** - Intelligent claim routing ([Architecture](architecture.md#router-delegator-pattern))
+- **Human-in-the-Loop** - Escalation for high-risk claims ([Agent Flow](agent-flow.md#escalation-check-hitl))
+- **Persistent State** - SQLite with full audit trail ([Database](database.md))
+- **Extensible Tools** - Easy to add capabilities ([Tools](tools.md))
+- **MCP Integration** - Optional external access ([MCP Server](mcp-server.md))

@@ -2,6 +2,8 @@
 
 This document describes all configuration options for the Agentic Claim Representative system.
 
+For database configuration, see [Database](database.md). For getting started, see [Getting Started](getting-started.md).
+
 ## Environment Variables
 
 All configuration is done through environment variables. Copy `.env.example` to `.env` and customize:

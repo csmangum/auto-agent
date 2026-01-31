@@ -1,16 +1,37 @@
 # Claim Types
 
-The system supports five distinct claim types, each handled by a specialized workflow crew. This document describes each claim type, its classification criteria, and processing workflow.
+The system supports five distinct claim types, each handled by a specialized workflow crew.
+
+For crew details and agent composition, see [Crews](crews.md).
 
 ## Overview
 
-| Claim Type | Description | Final Status |
-|------------|-------------|--------------|
-| `new` | First-time claim submission | `open` |
-| `duplicate` | Likely duplicate of existing claim | `duplicate` |
-| `total_loss` | Vehicle is total loss (unrepairable) | `closed` |
-| `fraud` | Suspected fraudulent claim | `fraud_suspected` |
-| `partial_loss` | Repairable vehicle damage | `partial_loss` |
+| Type | Description | Final Status | Crew |
+|------|-------------|--------------|------|
+| `new` | First-time submission | `open` | [New Claim](crews.md#new-claim-crew) |
+| `duplicate` | Duplicate of existing | `duplicate` | [Duplicate](crews.md#duplicate-crew) |
+| `total_loss` | Unrepairable vehicle | `closed` | [Total Loss](crews.md#total-loss-crew) |
+| `fraud` | Suspected fraud | `fraud_suspected` | [Fraud](crews.md#fraud-detection-crew) |
+| `partial_loss` | Repairable damage | `partial_loss` | [Partial Loss](crews.md#partial-loss-crew) |
+
+---
+
+## Classification Decision Tree
+
+```mermaid
+flowchart TD
+    A[New Claim] --> B{Fraud indicators?}
+    B -->|Yes| C[FRAUD]
+    B -->|No| D{Same VIN/date exists?}
+    D -->|Yes| E[DUPLICATE]
+    D -->|No| F{Total loss keywords?}
+    F -->|Yes| G[TOTAL_LOSS]
+    F -->|No| H{Repair > 75% value?}
+    H -->|Yes| G
+    H -->|No| I{Repairable damage?}
+    I -->|Yes| J[PARTIAL_LOSS]
+    I -->|No| K[NEW]
+```
 
 ---
 
@@ -21,25 +42,9 @@ Standard first-time claim submissions with no red flags.
 ### Classification Criteria
 
 - First-time submission for this incident
-- No duplicate indicators (different VIN or date from existing claims)
+- No duplicate indicators (different VIN or date)
 - No fraud indicators in description
-- Damage is not clearly total loss or partial loss
-
-### Processing Workflow
-
-1. **Intake Validation**
-   - Verify all required fields present
-   - Validate data types and formats
-
-2. **Policy Verification**
-   - Query policy database
-   - Confirm policy is active
-   - Verify coverage applies
-
-3. **Claim Assignment**
-   - Generate unique claim ID (format: `CLM-XXXXXXXX`)
-   - Set status to `open`
-   - Generate claim report
+- Damage not clearly total or partial loss
 
 ### Required Fields
 
@@ -53,7 +58,7 @@ Standard first-time claim submissions with no red flags.
 | `incident_date` | string | Date of incident (YYYY-MM-DD) |
 | `incident_description` | string | Description of the incident |
 | `damage_description` | string | Description of vehicle damage |
-| `estimated_damage` | float (optional) | Estimated repair cost in dollars |
+| `estimated_damage` | float | Estimated repair cost (optional) |
 
 ### Example
 
@@ -75,38 +80,20 @@ Standard first-time claim submissions with no red flags.
 
 ## Duplicate Claim
 
-Claims that appear to be duplicates of existing claims in the system.
+Claims matching existing claims in the system.
 
 ### Classification Criteria
 
 - Same VIN as an existing claim
 - Same or similar incident date
 - Similar incident description
-- Already reported by the same policyholder
-
-### Processing Workflow
-
-1. **Claims Search**
-   - Search by VIN and incident date
-   - Find matching or similar claims
-
-2. **Similarity Analysis**
-   - Compare incident descriptions
-   - Compute similarity score (0-100)
-   - Flag if score > 80%
-
-3. **Resolution**
-   - **Merge**: If confirmed duplicate, merge with existing claim
-   - **Reject**: If duplicate with conflicting data, reject
 
 ### Similarity Scoring
 
-The system uses a text similarity algorithm to compare incident descriptions:
-
-| Score Range | Interpretation | Action |
-|-------------|----------------|--------|
-| 0-50 | Low similarity | Process as new claim |
-| 51-79 | Moderate similarity | Review recommended |
+| Score | Interpretation | Action |
+|-------|----------------|--------|
+| 0-50 | Low similarity | Process as new |
+| 51-79 | Moderate | Review recommended |
 | 80-100 | High similarity | Likely duplicate |
 
 ### Example
@@ -115,64 +102,30 @@ The system uses a text similarity algorithm to compare incident descriptions:
 {
   "policy_number": "POL-001",
   "vin": "1HGBH41JXMN109186",
-  "vehicle_year": 2021,
-  "vehicle_make": "Honda",
-  "vehicle_model": "Accord",
   "incident_date": "2025-01-10",
   "incident_description": "Rear-ended at intersection on Main St",
   "damage_description": "Bumper and taillight damage"
 }
 ```
-*If a claim with same VIN and date already exists, this will be classified as duplicate.*
 
 ---
 
 ## Total Loss
 
-Claims where the vehicle is considered a total loss (unrepairable or repair cost exceeds value).
+Vehicle is unrepairable or repair cost exceeds value.
 
 ### Classification Criteria
 
-**Keyword-based:**
-- totaled, total loss
-- flood, submerged
-- fire, burned
-- destroyed, demolished
-- frame damage
-- rollover
+**Keywords:** totaled, flood, submerged, fire, burned, destroyed, frame damage, rollover
 
-**Cost-based:**
-- Repair cost > 75% of vehicle value
-- Damage severity indicates unrepairable
-
-### Processing Workflow
-
-1. **Damage Assessment**
-   - Evaluate damage description
-   - Estimate repair cost
-   - Confirm total loss status
-
-2. **Vehicle Valuation**
-   - Fetch market value (mock KBB API)
-   - Determine condition and source
-
-3. **Payout Calculation**
-   - Get policy deductible
-   - Calculate: `Payout = Value - Deductible`
-
-4. **Settlement**
-   - Generate settlement report
-   - Close claim with payout amount
+**Cost-based:** Repair cost > 75% of vehicle value
 
 ### Payout Formula
 
 ```
-Payout Amount = Vehicle Market Value - Policy Deductible
+Payout = Vehicle Market Value - Policy Deductible
 
-Example:
-- Vehicle Value: $25,000
-- Deductible: $1,000
-- Payout: $24,000
+Example: $25,000 value - $1,000 deductible = $24,000 payout
 ```
 
 ### Example
@@ -186,7 +139,7 @@ Example:
   "vehicle_model": "Model 3",
   "incident_date": "2025-01-20",
   "incident_description": "Flash flood while parked in underground garage",
-  "damage_description": "Vehicle submerged in water for 3 hours. Electrical systems damaged.",
+  "damage_description": "Vehicle submerged for 3 hours. Electrical systems damaged.",
   "estimated_damage": 45000
 }
 ```
@@ -208,39 +161,20 @@ Claims with indicators suggesting fraudulent activity.
 **Financial Red Flags:**
 - Inflated damage estimates
 - Prior fraud history on VIN/policy
-- Suspiciously high repair costs
 - Damage estimate >> vehicle value
 
 **Pattern Anomalies:**
 - Multiple claims within 90 days
-- New policy with quick claim filing
-- Claim frequency anomalies
-
-### Processing Workflow
-
-1. **Pattern Analysis**
-   - Check claim history on VIN
-   - Analyze timing patterns
-   - Detect staged accident indicators
-
-2. **Cross-Reference**
-   - Search fraud keyword database
-   - Check prior fraud flags
-   - Compare damage to value
-
-3. **Fraud Assessment**
-   - Combine pattern and cross-reference scores
-   - Determine fraud likelihood level
-   - Recommend action (SIU referral, block)
+- New policy with quick filing
 
 ### Fraud Likelihood Levels
 
-| Level | Score | Indicators | Action |
-|-------|-------|------------|--------|
-| Low | 0-25 | No significant indicators | Process normally |
-| Medium | 26-50 | Some flags present | Flag for human review |
-| High | 51-75 | Multiple strong indicators | Refer to SIU |
-| Critical | 76-100 | Confirmed fraud patterns | Block claim |
+| Level | Score | Action |
+|-------|-------|--------|
+| Low | 0-25 | Process normally |
+| Medium | 26-50 | Flag for review |
+| High | 51-75 | Refer to SIU |
+| Critical | 76-100 | Block claim |
 
 ### Example
 
@@ -252,8 +186,8 @@ Claims with indicators suggesting fraudulent activity.
   "vehicle_make": "Volkswagen",
   "vehicle_model": "Jetta",
   "incident_date": "2025-01-22",
-  "incident_description": "Staged accident with other vehicle. Multiple occupants complained of whiplash.",
-  "damage_description": "Front bumper completely destroyed. Engine damage. Transmission damage. Frame bent.",
+  "incident_description": "Staged accident. Multiple occupants complained of whiplash.",
+  "damage_description": "Front bumper destroyed. Engine, transmission, frame damage.",
   "estimated_damage": 35000
 }
 ```
@@ -262,76 +196,37 @@ Claims with indicators suggesting fraudulent activity.
 
 ## Partial Loss
 
-Claims for repairable vehicle damage.
+Repairable vehicle damage.
 
 ### Classification Criteria
 
-**Damage Keywords:**
-- Bumper, fender, door
-- Mirror, light, windshield
-- Dent, scratch, crack
-- Minor collision, parking lot incident
+**Keywords:** bumper, fender, door, mirror, light, windshield, dent, scratch, crack
 
-**Cost Indicators:**
-- Estimated damage typically < $10,000
-- Repair cost < 75% of vehicle value
+**Cost:** Typically < $10,000, repair cost < 75% of vehicle value
 
-### Processing Workflow
+### Damage Severity
 
-1. **Damage Assessment**
-   - Evaluate damage severity
-   - List damaged components
-   - Confirm repairability
-
-2. **Repair Estimate**
-   - Get parts from catalog
-   - Calculate labor hours
-   - Compute total cost
-
-3. **Shop Assignment**
-   - Find available shops
-   - Select based on rating/availability
-   - Assign and schedule
-
-4. **Parts Ordering**
-   - Match parts to damage
-   - Create order (OEM/aftermarket)
-   - Track delivery
-
-5. **Repair Authorization**
-   - Generate authorization document
-   - Calculate customer vs. insurance responsibility
-   - Finalize claim
-
-### Damage Severity Levels
-
-| Severity | Examples | Est. Repair Days |
-|----------|----------|------------------|
-| Minor | Scratches, small dents, mirrors | 3 days |
-| Moderate | Bumper, fender, lights, windshield | 5 days |
-| Severe | Door, hood, multiple panels | 7 days |
+| Severity | Examples | Repair Days |
+|----------|----------|-------------|
+| Minor | Scratches, dents, mirrors | 3 days |
+| Moderate | Bumper, fender, lights | 5 days |
+| Severe | Door, hood, panels | 7 days |
 
 ### Cost Breakdown
 
 ```
-Total Estimate = Parts Cost + Labor Cost
-
-Insurance Calculation:
-- If Total > Deductible:
-  - Customer Pays: Deductible
-  - Insurance Pays: Total - Deductible
-- If Total <= Deductible:
-  - Customer Pays: Total
-  - Insurance Pays: $0
+Total = Parts Cost + Labor Cost
+Customer Pays = Deductible (or Total if Total < Deductible)
+Insurance Pays = Total - Customer Pays
 ```
 
-### Part Type Options
+### Part Types
 
 | Type | Description | Cost |
 |------|-------------|------|
-| OEM | Original equipment manufacturer | Higher |
-| Aftermarket | Third-party parts | Lower |
-| Refurbished | Reconditioned parts | Lowest |
+| OEM | Original manufacturer | Higher |
+| Aftermarket | Third-party | Lower |
+| Refurbished | Reconditioned | Lowest |
 
 ### Example
 
@@ -351,47 +246,18 @@ Insurance Calculation:
 
 ---
 
-## Claim Type Decision Tree
+## Sample Claims
 
-```
-                                    ┌──────────────┐
-                                    │  New Claim   │
-                                    └──────┬───────┘
-                                           │
-                                           ▼
-                              ┌────────────────────────┐
-                              │ Contains fraud         │
-                              │ keywords/indicators?   │
-                              └───────┬────────────────┘
-                                      │
-                         ┌────────────┴────────────┐
-                         │ Yes                     │ No
-                         ▼                         ▼
-                    ┌─────────┐         ┌─────────────────────┐
-                    │  FRAUD  │         │ Same VIN/date as    │
-                    └─────────┘         │ existing claim?     │
-                                        └──────────┬──────────┘
-                                                   │
-                                      ┌────────────┴────────────┐
-                                      │ Yes                     │ No
-                                      ▼                         ▼
-                                 ┌───────────┐      ┌───────────────────────┐
-                                 │ DUPLICATE │      │ Total loss keywords   │
-                                 └───────────┘      │ or repair > 75% value?│
-                                                    └───────────┬───────────┘
-                                                                │
-                                                   ┌────────────┴────────────┐
-                                                   │ Yes                     │ No
-                                                   ▼                         ▼
-                                             ┌───────────┐         ┌─────────────────┐
-                                             │TOTAL_LOSS │         │ Repairable      │
-                                             └───────────┘         │ damage keywords?│
-                                                                   └────────┬────────┘
-                                                                            │
-                                                               ┌────────────┴────────────┐
-                                                               │ Yes                     │ No
-                                                               ▼                         ▼
-                                                        ┌──────────────┐          ┌─────────┐
-                                                        │ PARTIAL_LOSS │          │   NEW   │
-                                                        └──────────────┘          └─────────┘
-```
+The project includes sample claims for testing in `tests/sample_claims/`:
+
+| File | Type |
+|------|------|
+| `new_claim.json` | new |
+| `duplicate_claim.json` | duplicate |
+| `total_loss_claim.json` | total_loss |
+| `fraud_claim.json` | fraud |
+| `partial_loss_claim.json` | partial_loss |
+| `partial_loss_fender.json` | partial_loss |
+| `partial_loss_front_collision.json` | partial_loss |
+
+See [Getting Started](getting-started.md#sample-claims) for usage.

@@ -2,33 +2,27 @@
 
 The system includes an optional MCP (Model Context Protocol) server that exposes claim tools via stdio transport. This allows external AI agents to use the claim processing tools.
 
+For tool details, see [Tools](tools.md). For configuration, see [Configuration](configuration.md).
+
 ## Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           MCP SERVER ARCHITECTURE                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌───────────────────┐                    ┌───────────────────┐             │
-│  │  External Agent   │◀───── stdio ──────▶│   MCP Server      │             │
-│  │  (Claude, etc.)   │                    │   (FastMCP)       │             │
-│  └───────────────────┘                    └─────────┬─────────┘             │
-│                                                     │                        │
-│                                                     ▼                        │
-│                                           ┌───────────────────┐             │
-│                                           │   Tool Logic      │             │
-│                                           │   (logic.py)      │             │
-│                                           └─────────┬─────────┘             │
-│                                                     │                        │
-│                                           ┌─────────┴─────────┐             │
-│                                           │                   │             │
-│                                           ▼                   ▼             │
-│                                    ┌───────────┐       ┌───────────┐        │
-│                                    │  SQLite   │       │ mock_db   │        │
-│                                    │  Database │       │   JSON    │        │
-│                                    └───────────┘       └───────────┘        │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph External
+        A[External Agent<br/>Claude, etc.]
+    end
+    
+    subgraph MCP["MCP Server (FastMCP)"]
+        B[stdio transport]
+        C[Tool Logic<br/>logic.py]
+    end
+    
+    subgraph Data
+        D[(SQLite)]
+        E[(mock_db.json)]
+    end
+    
+    A <-->|stdio| B --> C --> Data
 ```
 
 ## What is MCP?

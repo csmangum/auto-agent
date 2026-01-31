@@ -2,6 +2,8 @@
 
 The system uses SQLite for persistent storage of claims, audit logs, and workflow results.
 
+For configuration options, see [Configuration](configuration.md).
+
 ## Configuration
 
 | Environment Variable | Default | Description |
@@ -10,35 +12,47 @@ The system uses SQLite for persistent storage of claims, audit logs, and workflo
 
 ## Schema Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           DATABASE SCHEMA                                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────────────┐         ┌─────────────────────┐                    │
-│  │       claims        │◀────────│   claim_audit_log   │                    │
-│  ├─────────────────────┤         ├─────────────────────┤                    │
-│  │ id (PK)             │         │ id (PK)             │                    │
-│  │ policy_number       │         │ claim_id (FK)       │                    │
-│  │ vin                 │         │ action              │                    │
-│  │ vehicle_*           │         │ old_status          │                    │
-│  │ incident_*          │         │ new_status          │                    │
-│  │ damage_description  │         │ details             │                    │
-│  │ claim_type          │         │ created_at          │                    │
-│  │ status              │         └─────────────────────┘                    │
-│  │ payout_amount       │                                                    │
-│  │ created_at          │         ┌─────────────────────┐                    │
-│  │ updated_at          │◀────────│   workflow_runs     │                    │
-│  └─────────────────────┘         ├─────────────────────┤                    │
-│                                  │ id (PK)             │                    │
-│                                  │ claim_id (FK)       │                    │
-│                                  │ claim_type          │                    │
-│                                  │ router_output       │                    │
-│                                  │ workflow_output     │                    │
-│                                  │ created_at          │                    │
-│                                  └─────────────────────┘                    │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+erDiagram
+    claims ||--o{ claim_audit_log : "has"
+    claims ||--o{ workflow_runs : "has"
+    
+    claims {
+        text id PK
+        text policy_number
+        text vin
+        int vehicle_year
+        text vehicle_make
+        text vehicle_model
+        text incident_date
+        text incident_description
+        text damage_description
+        real estimated_damage
+        text claim_type
+        text status
+        real payout_amount
+        text created_at
+        text updated_at
+    }
+    
+    claim_audit_log {
+        int id PK
+        text claim_id FK
+        text action
+        text old_status
+        text new_status
+        text details
+        text created_at
+    }
+    
+    workflow_runs {
+        int id PK
+        text claim_id FK
+        text claim_type
+        text router_output
+        text workflow_output
+        text created_at
+    }
 ```
 
 ## Tables

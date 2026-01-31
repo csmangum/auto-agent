@@ -1,17 +1,19 @@
 # Crews
 
-Crews are collections of agents that work together to accomplish a specific workflow. Each crew is designed to handle a particular type of claim processing. This document details all crews in the system.
+Crews are collections of agents that work together to accomplish a specific workflow. Each crew handles a particular type of claim processing.
+
+For classification criteria and claim examples, see [Claim Types](claim-types.md).
 
 ## Overview
 
-| Crew | Purpose | Agents | Tasks |
-|------|---------|--------|-------|
-| Router Crew | Classify incoming claims | 1 | 1 |
-| New Claim Crew | Process first-time claims | 3 | 3 |
-| Duplicate Crew | Handle potential duplicates | 3 | 3 |
-| Total Loss Crew | Process total loss claims | 4 | 4 |
-| Fraud Detection Crew | Analyze suspicious claims | 3 | 3 |
-| Partial Loss Crew | Handle repairable damage | 5 | 5 |
+| Crew | Agents | Purpose |
+|------|--------|---------|
+| [Router](#router-crew) | 1 | Classify incoming claims |
+| [New Claim](#new-claim-crew) | 3 | Process first-time claims |
+| [Duplicate](#duplicate-crew) | 3 | Handle potential duplicates |
+| [Total Loss](#total-loss-crew) | 4 | Process total loss claims |
+| [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
+| [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
 
 ---
 
@@ -19,7 +21,7 @@ Crews are collections of agents that work together to accomplish a specific work
 
 **Location**: `src/claim_agent/crews/main_crew.py`
 
-The Router Crew is the entry point for all claim processing. It contains a single agent that classifies claims.
+The Router Crew is the entry point for all claim processing. It contains a single agent that classifies claims into one of five types.
 
 ### Agent
 
@@ -27,27 +29,19 @@ The Router Crew is the entry point for all claim processing. It contains a singl
 |-------|------|------|
 | Claim Router Supervisor | Classify claims | Route to appropriate workflow |
 
-### Task Flow
+### Flow
 
+```mermaid
+flowchart LR
+    A[Claim Data] --> B[Analyze] --> C{Classify}
+    C --> D[new]
+    C --> E[duplicate]
+    C --> F[total_loss]
+    C --> G[fraud]
+    C --> H[partial_loss]
 ```
-┌──────────────────────────────────────┐
-│         Classify Claim Task          │
-│  - Analyze claim data                │
-│  - Determine: new, duplicate,        │
-│    total_loss, fraud, partial_loss   │
-│  - Provide reasoning                 │
-└──────────────────────────────────────┘
-```
 
-### Classification Criteria
-
-| Type | Indicators |
-|------|------------|
-| `new` | First-time submission, no red flags |
-| `duplicate` | Same VIN/date as existing claim |
-| `total_loss` | Totaled, flood, fire, destroyed, frame damage |
-| `fraud` | Staged accident, inflated estimates, suspicious patterns |
-| `partial_loss` | Bumper, fender, door, dents, scratches, repairable |
+For classification criteria, see [Claim Types](claim-types.md).
 
 ---
 
@@ -59,35 +53,27 @@ Handles first-time claim submissions through validation, policy verification, an
 
 ### Agents
 
-| Agent | Role | Goal | Tools Used |
-|-------|------|------|------------|
-| Intake Specialist | Validate data | Ensure required fields present | - |
-| Policy Verification Specialist | Check policy | Verify active coverage | `query_policy_db` |
-| Claim Assignment Specialist | Assign claim | Generate ID and report | `generate_claim_id`, `generate_report` |
+| Agent | Tools Used |
+|-------|------------|
+| Intake Specialist | - |
+| Policy Verification Specialist | [`query_policy_db`](tools.md#query_policy_db) |
+| Claim Assignment Specialist | [`generate_claim_id`](tools.md#generate_claim_id), [`generate_report`](tools.md#generate_report) |
 
-### Task Flow
+### Flow
 
+```mermaid
+flowchart LR
+    A[Validate] --> B[Check Policy] --> C[Assign ID]
+    
+    A -.- A1[Required fields]
+    A -.- A2[Data types]
+    
+    B -.- B1[Query policy DB]
+    B -.- B2[Verify coverage]
+    
+    C -.- C1[Generate CLM-ID]
+    C -.- C2[Set status: open]
 ```
-┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
-│  Validate Claim     │────▶│  Check Policy       │────▶│  Assign Claim       │
-│                     │     │                     │     │                     │
-│ - Required fields   │     │ - Query policy DB   │     │ - Generate claim ID │
-│ - Data types        │     │ - Verify active     │     │ - Set status: open  │
-│ - Formats           │     │ - Check coverage    │     │ - Generate report   │
-└─────────────────────┘     └─────────────────────┘     └─────────────────────┘
-```
-
-### Required Fields
-
-- `policy_number`
-- `vin`
-- `vehicle_year`
-- `vehicle_make`
-- `vehicle_model`
-- `incident_date`
-- `incident_description`
-- `damage_description`
-- `estimated_damage` (optional)
 
 ---
 
@@ -99,22 +85,22 @@ Identifies and resolves potential duplicate claims.
 
 ### Agents
 
-| Agent | Role | Goal | Tools Used |
-|-------|------|------|------------|
-| Claims Search Specialist | Find matches | Search existing claims | `search_claims_db` |
-| Similarity Analyst | Compare claims | Compute similarity score | `compute_similarity` |
-| Duplicate Resolution Specialist | Resolve | Decide merge/reject | - |
+| Agent | Tools Used |
+|-------|------------|
+| Claims Search Specialist | [`search_claims_db`](tools.md#search_claims_db) |
+| Similarity Analyst | [`compute_similarity`](tools.md#compute_similarity) |
+| Duplicate Resolution Specialist | - |
 
-### Task Flow
+### Flow
 
-```
-┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
-│  Search Claims      │────▶│  Compute Similarity │────▶│  Resolve Duplicate  │
-│                     │     │                     │     │                     │
-│ - Match VIN         │     │ - Compare desc.     │     │ - If >80%: merge    │
-│ - Match date        │     │ - Score 0-100       │     │ - Else: reject      │
-│ - Find candidates   │     │ - Flag if >80%      │     │ - Provide reasoning │
-└─────────────────────┘     └─────────────────────┘     └─────────────────────┘
+```mermaid
+flowchart LR
+    A[Search] --> B[Compare] --> C{Score?}
+    C -->|>80%| D[Merge/Reject]
+    C -->|<80%| E[Not Duplicate]
+    
+    A -.- A1[Match VIN/date]
+    B -.- B1[Similarity 0-100]
 ```
 
 ### Similarity Threshold
@@ -128,33 +114,28 @@ Identifies and resolves potential duplicate claims.
 
 **Location**: `src/claim_agent/crews/total_loss_crew.py`
 
-Processes claims where the vehicle is a total loss (unrepairable or repair cost exceeds value).
+Processes claims where the vehicle is a total loss.
 
 ### Agents
 
-| Agent | Role | Goal | Tools Used |
-|-------|------|------|------------|
-| Damage Assessor | Assess damage | Evaluate severity | `evaluate_damage` |
-| Vehicle Valuation Specialist | Get value | Fetch market value | `fetch_vehicle_value` |
-| Payout Calculator | Calculate | Compute settlement | `calculate_payout` |
-| Settlement Specialist | Close claim | Generate report | `generate_claim_id`, `generate_report` |
+| Agent | Tools Used |
+|-------|------------|
+| Damage Assessor | [`evaluate_damage`](tools.md#evaluate_damage) |
+| Vehicle Valuation Specialist | [`fetch_vehicle_value`](tools.md#fetch_vehicle_value) |
+| Payout Calculator | [`calculate_payout`](tools.md#calculate_payout) |
+| Settlement Specialist | [`generate_claim_id`](tools.md#generate_claim_id), [`generate_report`](tools.md#generate_report) |
 
-### Task Flow
+### Flow
 
+```mermaid
+flowchart LR
+    A[Assess Damage] --> B[Get Value] --> C[Calculate Payout] --> D[Settle]
+    
+    A -.- A1[Severity]
+    B -.- B1[Market value]
+    C -.- C1[Value - Deductible]
+    D -.- D1[Close claim]
 ```
-┌───────────────┐     ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-│ Assess Damage │────▶│ Get Valuation │────▶│ Calculate     │────▶│ Settlement    │
-│               │     │               │     │ Payout        │     │               │
-│ - Severity    │     │ - Market val  │     │ - Value       │     │ - Report      │
-│ - Total loss? │     │ - Condition   │     │ - Deductible  │     │ - Close claim │
-│ - Est. cost   │     │ - Source      │     │ - Net payout  │     │ - Payout amt  │
-└───────────────┘     └───────────────┘     └───────────────┘     └───────────────┘
-```
-
-### Total Loss Indicators
-
-- Keywords: totaled, flood, fire, destroyed, frame damage, rollover, submerged
-- Repair cost > 75% of vehicle value
 
 ### Payout Calculation
 
@@ -168,41 +149,31 @@ Payout = Vehicle Market Value - Policy Deductible
 
 **Location**: `src/claim_agent/crews/fraud_detection_crew.py`
 
-Analyzes claims flagged for potential fraud. This crew runs directly without escalation check.
+Analyzes claims flagged for potential fraud. This crew runs **directly without escalation check** (it performs its own assessment).
 
 ### Agents
 
-| Agent | Role | Goal | Tools Used |
-|-------|------|------|------------|
-| Fraud Pattern Analysis Specialist | Find patterns | Detect suspicious patterns | `analyze_claim_patterns` |
-| Fraud Cross-Reference Specialist | Match indicators | Check fraud database | `cross_reference_fraud_indicators`, `detect_fraud_indicators` |
-| Fraud Assessment Specialist | Assess risk | Determine fraud likelihood | `perform_fraud_assessment`, `generate_fraud_report` |
+| Agent | Tools Used |
+|-------|------------|
+| Pattern Analysis Specialist | [`analyze_claim_patterns`](tools.md#analyze_claim_patterns) |
+| Cross-Reference Specialist | [`cross_reference_fraud_indicators`](tools.md#cross_reference_fraud_indicators), [`detect_fraud_indicators`](tools.md#detect_fraud_indicators) |
+| Fraud Assessment Specialist | [`perform_fraud_assessment`](tools.md#perform_fraud_assessment), [`generate_fraud_report`](tools.md#generate_fraud_report) |
 
-### Task Flow
+### Flow
 
+```mermaid
+flowchart LR
+    A[Pattern Analysis] --> B[Cross-Reference] --> C[Assessment]
+    
+    A -.- A1[Multiple claims?]
+    A -.- A2[Timing anomalies?]
+    
+    B -.- B1[Fraud keywords?]
+    B -.- B2[Prior flags?]
+    
+    C -.- C1[Fraud score]
+    C -.- C2[SIU referral?]
 ```
-┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
-│  Pattern Analysis   │────▶│  Cross-Reference    │────▶│  Fraud Assessment   │
-│                     │     │                     │     │                     │
-│ - Multiple claims   │     │ - Fraud keywords    │     │ - Overall score     │
-│ - Timing anomalies  │     │ - Database matches  │     │ - Likelihood level  │
-│ - Staged indicators │     │ - Prior flags       │     │ - SIU referral      │
-│ - Risk factors      │     │ - Risk level        │     │ - Block decision    │
-└─────────────────────┘     └─────────────────────┘     └─────────────────────┘
-```
-
-### Fraud Indicators Detected
-
-**Pattern Analysis:**
-- Multiple claims on same VIN within 90 days
-- Suspicious timing (new policy, quick filing)
-- Staged accident indicators (multiple occupants, witnesses left)
-- Claim frequency anomalies
-
-**Cross-Reference:**
-- Keywords: staged, inflated, pre-existing, phantom
-- Damage estimate vs. vehicle value mismatch
-- Prior fraud flags on VIN or policy
 
 ### Fraud Likelihood Levels
 
@@ -223,25 +194,25 @@ Handles claims for repairable vehicle damage.
 
 ### Agents
 
-| Agent | Role | Goal | Tools Used |
-|-------|------|------|------------|
-| Partial Loss Damage Assessor | Assess | Confirm repairability | `evaluate_damage`, `fetch_vehicle_value` |
-| Repair Estimator | Estimate | Calculate repair costs | `calculate_repair_estimate`, `get_parts_catalog` |
-| Repair Shop Coordinator | Assign shop | Find and assign shop | `get_available_repair_shops`, `assign_repair_shop` |
-| Parts Ordering Specialist | Order parts | Create parts order | `get_parts_catalog`, `create_parts_order` |
-| Repair Authorization Specialist | Authorize | Generate authorization | `generate_repair_authorization`, `generate_report` |
+| Agent | Tools Used |
+|-------|------------|
+| Damage Assessor | [`evaluate_damage`](tools.md#evaluate_damage), [`fetch_vehicle_value`](tools.md#fetch_vehicle_value) |
+| Repair Estimator | [`calculate_repair_estimate`](tools.md#calculate_repair_estimate), [`get_parts_catalog`](tools.md#get_parts_catalog) |
+| Repair Shop Coordinator | [`get_available_repair_shops`](tools.md#get_available_repair_shops), [`assign_repair_shop`](tools.md#assign_repair_shop) |
+| Parts Ordering Specialist | [`get_parts_catalog`](tools.md#get_parts_catalog), [`create_parts_order`](tools.md#create_parts_order) |
+| Repair Authorization Specialist | [`generate_repair_authorization`](tools.md#generate_repair_authorization), [`generate_report`](tools.md#generate_report) |
 
-### Task Flow
+### Flow
 
-```
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│   Assess    │──▶│  Estimate   │──▶│   Assign    │──▶│   Order     │──▶│  Authorize  │
-│   Damage    │   │   Repair    │   │    Shop     │   │   Parts     │   │   Repair    │
-│             │   │             │   │             │   │             │   │             │
-│ - Severity  │   │ - Parts $   │   │ - Find shop │   │ - Catalog   │   │ - Auth doc  │
-│ - Parts     │   │ - Labor $   │   │ - Best fit  │   │ - Order     │   │ - Finalize  │
-│ - Value     │   │ - Total     │   │ - Schedule  │   │ - Delivery  │   │ - Report    │
-└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+```mermaid
+flowchart LR
+    A[Assess] --> B[Estimate] --> C[Assign Shop] --> D[Order Parts] --> E[Authorize]
+    
+    A -.- A1[Severity/parts]
+    B -.- B1[Parts + labor]
+    C -.- C1[Best fit shop]
+    D -.- D1[Create order]
+    E -.- E1[Auth document]
 ```
 
 ### Damage Severity Levels
@@ -250,62 +221,15 @@ Handles claims for repairable vehicle damage.
 |----------|-------------|----------|
 | Minor | 3 days | Scratches, dents, mirrors |
 | Moderate | 5 days | Bumper, fender, lights |
-| Severe | 7 days | Door, hood, frame work |
-
-### Repair Estimate Breakdown
-
-```
-Total Estimate = Parts Cost + Labor Cost
-Customer Pays  = Deductible (or Total if < Deductible)
-Insurance Pays = Total Estimate - Customer Pays
-```
+| Severe | 7 days | Door, hood, multiple panels |
 
 ---
 
 ## Creating a Custom Crew
 
-To add a new claim type workflow:
+To add a new claim type workflow, see [Architecture](architecture.md) for the overall pattern, then:
 
-1. **Create agents** in `src/claim_agent/agents/your_type.py`:
-```python
-from crewai import Agent
-
-def create_your_agent(llm=None):
-    return Agent(
-        role="Your Role",
-        goal="Your goal description",
-        backstory="Agent backstory",
-        llm=llm,
-    )
-```
-
-2. **Create crew** in `src/claim_agent/crews/your_type_crew.py`:
-```python
-from crewai import Crew, Task
-from claim_agent.config.llm import get_llm
-
-def create_your_crew(llm=None):
-    llm = llm or get_llm()
-    agent = create_your_agent(llm)
-    
-    task = Task(
-        description="Task description",
-        expected_output="Expected output",
-        agent=agent,
-    )
-    
-    return Crew(
-        agents=[agent],
-        tasks=[task],
-        verbose=True,
-    )
-```
-
-3. **Register in main_crew.py**:
-```python
-# Add to run_claim_workflow()
-elif claim_type == "your_type":
-    crew = create_your_crew(llm)
-```
-
-4. **Update router classification** to recognize the new type.
+1. **Create agents** in `src/claim_agent/agents/your_type.py`
+2. **Create crew** in `src/claim_agent/crews/your_type_crew.py`
+3. **Register** in `main_crew.py` `run_claim_workflow()`
+4. **Update router** to recognize the new type

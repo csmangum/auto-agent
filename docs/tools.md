@@ -2,24 +2,31 @@
 
 Tools are the capabilities available to agents for accomplishing their tasks. Each tool wraps an implementation function and is decorated with CrewAI's `@tool` decorator.
 
+For which agents use which tools, see [Crews](crews.md).
+
 ## Tool Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           TOOL ARCHITECTURE                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌───────────────────┐     ┌───────────────────┐     ┌──────────────────┐   │
-│  │   CrewAI Tool     │────▶│  Implementation   │────▶│   Data Source    │   │
-│  │   (@tool)         │     │  (*_impl)         │     │                  │   │
-│  │                   │     │                   │     │  - SQLite        │   │
-│  │  policy_tools.py  │     │  logic.py         │     │  - mock_db.json  │   │
-│  │  claims_tools.py  │     │                   │     │  - compliance    │   │
-│  │  valuation_tools  │     │                   │     │                  │   │
-│  │  ...              │     │                   │     │                  │   │
-│  └───────────────────┘     └───────────────────┘     └──────────────────┘   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Tools["Tool Files"]
+        A[policy_tools.py]
+        B[claims_tools.py]
+        C[valuation_tools.py]
+        D[fraud_tools.py]
+        E[partial_loss_tools.py]
+    end
+    
+    subgraph Logic["Implementation"]
+        F[logic.py]
+    end
+    
+    subgraph Data["Data Sources"]
+        G[(SQLite)]
+        H[(mock_db.json)]
+        I[(compliance.json)]
+    end
+    
+    Tools --> Logic --> Data
 ```
 
 ## Tool Categories
@@ -58,9 +65,7 @@ Query the policy database to validate policy and retrieve coverage details.
 }
 ```
 
-**Usage by Agents:**
-- Policy Verification Specialist (New Claim Crew)
-- Payout Calculator (Total Loss Crew)
+**Used by:** [New Claim Crew](crews.md#new-claim-crew), [Total Loss Crew](crews.md#total-loss-crew)
 
 ---
 
@@ -88,8 +93,7 @@ Search existing claims by VIN and incident date for potential duplicates.
 ]
 ```
 
-**Usage by Agents:**
-- Claims Search Specialist (Duplicate Crew)
+**Used by:** [Duplicate Crew](crews.md#duplicate-crew)
 
 ---
 
