@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime
 
 from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
+from claim_agent.db.repository import ClaimRepository
+from claim_agent.tools.data_loader import load_mock_db
 
 # Vehicle valuation defaults (mock KBB)
 DEFAULT_BASE_VALUE = 12000
@@ -44,12 +46,19 @@ def search_claims_db_impl(vin: str, incident_date: str) -> str:
         return json.dumps([])
     if not incident_date or not isinstance(incident_date, str) or not incident_date.strip():
         return json.dumps([])
-    vin = vin.strip()
-    incident_date = incident_date.strip()
-    db = load_mock_db()
-    claims = db.get("claims", [])
-    matches = [c for c in claims if c.get("vin") == vin and c.get("incident_date") == incident_date]
-    return json.dumps(matches)
+    repo = ClaimRepository()
+    matches = repo.search_claims(vin=vin.strip(), incident_date=incident_date.strip())
+    # Return shape expected by tools: claim_id, vin, incident_date, incident_description
+    out = [
+        {
+            "claim_id": c.get("id"),
+            "vin": c.get("vin"),
+            "incident_date": c.get("incident_date"),
+            "incident_description": c.get("incident_description", ""),
+        }
+        for c in matches
+    ]
+    return json.dumps(out)
 
 
 def compute_similarity_impl(description_a: str, description_b: str) -> str:
