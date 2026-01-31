@@ -214,6 +214,7 @@ Output is JSON: `claim_type`, `router_output`, `workflow_output`, `summary`; whe
 - **mock_db.json** (env: `MOCK_DB_PATH`): Used by tools for **policies** (policy validation) and **vehicle_values** (valuation). The **claims** array is reference/seed data only—it is not used for claim search or duplicate detection.
 - **SQLite** (env: `CLAIMS_DB_PATH`, default `data/claims.db`): Persists claims created by the app (CLI/workflows). Claim search and duplicate detection use this database only. To make mock "historical" claims searchable, run the seed script (see below).
 - **California compliance**: Reference data for CA auto claims rules, deadlines, and disclosures lives in `data/california_auto_compliance.json`. Agents can search it via the `search_california_compliance` tool. Override path with `CA_COMPLIANCE_PATH`.
+- **State policy language**: Reference policy language samples live in `data/` as `california_auto_policy_language.json`, `florida_auto_policy_language.json`, `new_york_auto_policy_language.json`, and `texas_auto_policy_language.json`. These are for reference; tools currently use only `mock_db.json` and `california_auto_compliance.json`.
 
 To load the mock historical claims into SQLite (so they appear in claim search), run:
 
@@ -266,7 +267,11 @@ auto-agent/
 │   └── models/           # ClaimType, ClaimInput, ClaimOutput, EscalationOutput, WorkflowState
 ├── data/
 │   ├── mock_db.json
-│   └── california_auto_compliance.json   # CA claims rules, deadlines, disclosures (searchable via tool)
+│   ├── california_auto_compliance.json   # CA claims rules, deadlines, disclosures (searchable via tool)
+│   ├── california_auto_policy_language.json
+│   ├── florida_auto_policy_language.json
+│   ├── new_york_auto_policy_language.json
+│   └── texas_auto_policy_language.json
 ├── scripts/
 │   └── seed_claims_from_mock_db.py   # Load mock_db.claims into SQLite for claim search
 ├── tests/
