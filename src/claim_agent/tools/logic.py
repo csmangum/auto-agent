@@ -321,12 +321,11 @@ def detect_fraud_indicators_impl(claim_data: dict) -> str:
         except ValueError:
             estimated_damage = None
 
-    # Staged/fraud keywords from California compliance (multiple occupants, witnesses leave, prior claims, suspicious damage)
-    fraud_keywords = [
-        "staged", "multiple occupants", "witnesses left", "witness left",
-        "prior claims", "suspicious damage", "inflated", "pre-existing",
-        "inconsistent", "material misrepresentation",
-    ]
+    # Staged/fraud keywords from KNOWN_FRAUD_PATTERNS
+    fraud_keywords = (
+        KNOWN_FRAUD_PATTERNS["staged_accident_keywords"]
+        + KNOWN_FRAUD_PATTERNS["suspicious_claim_keywords"]
+    )
     combined = f"{incident} {damage}"
     for kw in fraud_keywords:
         if kw in combined:
@@ -502,8 +501,11 @@ KNOWN_FRAUD_PATTERNS = {
         "pre-existing",
         "inconsistent",
         "misrepresentation",
+        "material misrepresentation",
         "exaggerated",
         "fabricated",
+        "prior claims",
+        "suspicious damage",
     ],
     "timing_red_flags": [
         "new policy",

@@ -139,9 +139,9 @@ class TestFraudAssessment:
         }
         result = json.loads(perform_fraud_assessment_impl(claim_data))
         # With many indicators, should be critical
-        if result["fraud_likelihood"] == "critical":
-            assert result["should_block"] is True
-            assert result["siu_referral"] is True
+        assert result["fraud_likelihood"] == "critical"
+        assert result["should_block"] is True
+        assert result["siu_referral"] is True
 
 
 class TestFraudConfig:
