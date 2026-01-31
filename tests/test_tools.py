@@ -2,6 +2,7 @@
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 # Point to project data for mock_db
@@ -27,19 +28,47 @@ def test_query_policy_db_not_found():
 
 
 def test_search_claims_db():
+    """Search uses SQLite; seed a claim in a temp DB then search."""
+    from claim_agent.db.database import init_db
+    from claim_agent.db.repository import ClaimRepository
+    from claim_agent.models.claim import ClaimInput
     from claim_agent.tools.logic import search_claims_db_impl
 
-    result = search_claims_db_impl("1HGBH41JXMN109186", "2025-01-15")
-    claims = json.loads(result)
-    assert isinstance(claims, list)
-    assert len(claims) >= 1
-    assert claims[0]["vin"] == "1HGBH41JXMN109186"
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        init_db(path)
+        os.environ["CLAIMS_DB_PATH"] = path
+        repo = ClaimRepository(db_path=path)
+        repo.create_claim(
+            ClaimInput(
+                policy_number="POL-001",
+                vin="1HGBH41JXMN109186",
+                vehicle_year=2021,
+                vehicle_make="Honda",
+                vehicle_model="Accord",
+                incident_date="2025-01-15",
+                incident_description="Rear-ended at stoplight. Damage to rear bumper and trunk.",
+                damage_description="Rear bumper and trunk.",
+            )
+        )
+        result = search_claims_db_impl("1HGBH41JXMN109186", "2025-01-15")
+        claims = json.loads(result)
+        assert isinstance(claims, list)
+        assert len(claims) >= 1
+        assert claims[0]["vin"] == "1HGBH41JXMN109186"
+        assert claims[0]["claim_id"]
+        assert claims[0]["incident_date"] == "2025-01-15"
+    finally:
+        os.unlink(path)
+        os.environ.pop("CLAIMS_DB_PATH", None)
 
 
 def test_search_claims_db_empty():
+    """Search with no matches returns [] (SQLite may be empty or no match)."""
     from claim_agent.tools.logic import search_claims_db_impl
 
-    result = search_claims_db_impl("UNKNOWN_VIN", "2020-01-01")
+    result = search_claims_db_impl("UNKNOWN_VIN_XYZ", "2020-01-01")
     claims = json.loads(result)
     assert claims == []
 
