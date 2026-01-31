@@ -5,7 +5,7 @@ description = "Agentic Claim Representative POC using CrewAI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "crewai>=0.121.0",
+    "crewai[litellm]>=0.121.0",
     "crewai-tools>=0.40.0",
     "mcp>=1.9.0",
     "pydantic>=2.0.0",

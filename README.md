@@ -13,44 +13,71 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph input[" "]
-        A[Claim JSON]
+flowchart TB
+    A[Claim JSON] --> B[Claim Router Supervisor]
+    B --> C{claim_type?}
+
+    subgraph New["New Claim Crew"]
+        D1[Intake Specialist]
+        D2[Policy Verification Specialist]
+        D3[Claim Assignment Specialist]
+        D1 --> D2 --> D3
     end
 
-    subgraph routing[" "]
-        B[Router Agent]
+    subgraph Dup["Duplicate Crew"]
+        E1[Claims Search Specialist]
+        E2[Similarity Analyst]
+        E3[Duplicate Resolution Specialist]
+        E1 --> E2 --> E3
     end
 
-    subgraph workflows[" "]
-        C[New Claim Crew]
-        D[Duplicate Crew]
-        E[Total Loss Crew]
+    subgraph Total["Total Loss Crew"]
+        F1[Damage Assessor]
+        F2[Vehicle Valuation Specialist]
+        F3[Payout Calculator]
+        F4[Settlement Specialist]
+        F1 --> F2 --> F3 --> F4
     end
 
-    subgraph output[" "]
-        F[Processed Response]
-    end
-
-    A --> B
-    B -->|new| C
-    B -->|duplicate| D
-    B -->|total_loss| E
-    C --> F
-    D --> F
-    E --> F
+    C -->|new| D1
+    C -->|duplicate| E1
+    C -->|total_loss| F1
+    D3 --> G[Processed Response]
+    E3 --> G
+    F4 --> G
 ```
 
-```mermaid
-flowchart TB
-    A[Claim JSON] --> B[Router Agent]
-    B --> C{claim_type?}
-    C -->|new| D[New Claim Crew]
-    C -->|duplicate| E[Duplicate Crew]
-    C -->|total_loss| F[Total Loss Crew]
-    D --> G[Processed Response]
-    E --> G
-    F --> G
+## Execution flow
+
+Running the agent on a claim file (e.g. `python -m claim_agent.main tests/sample_claims/new_claim.json`) runs this flow:
+
+1. **Router crew**  
+   A single agent (Claim Router Supervisor) receives the claim JSON and classifies it as exactly one of: `new`, `duplicate`, or `total_loss`. It returns one word plus a one-sentence reasoning.
+
+2. **Workflow crew** (depends on classification)  
+   - **New claim crew**  
+     - **Intake Specialist**: Validates required fields (policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description) and data types.  
+     - **Policy Verification Specialist**: Uses `query_policy_db` to verify the policy is active and has valid coverage.  
+     - **Claim Assignment Specialist**: Uses `generate_claim_id` (prefix `CLM`), sets status to `open`, then uses `generate_claim_report` to produce the final report.  
+   - **Duplicate crew**: Searches existing claims, computes similarity, resolves (merge/reject).  
+   - **Total loss crew**: Damage assessment, vehicle valuation (mock KBB), payout calculation, settlement.
+
+3. **Output**  
+   JSON written to stdout with:
+   - `claim_type`: `new` | `duplicate` | `total_loss`
+   - `router_output`: Classification + reasoning from the router
+   - `workflow_output`: Summary from the workflow crew (e.g. claim ID, status, summary)
+   - `summary`: Same as `workflow_output` for convenience
+
+Example output for a **new** claim:
+
+```json
+{
+  "claim_type": "new",
+  "router_output": "new\nThis claim appears to be a first-time submission with no indications of previous reports or total loss status.",
+  "workflow_output": "Claim ID: CLM-11EEF959, Status: open, Summary: Claim has been initiated successfully with a unique ID.",
+  "summary": "Claim ID: CLM-11EEF959, Status: open, Summary: Claim has been initiated successfully with a unique ID."
+}
 ```
 
 ## Requirements
@@ -66,12 +93,12 @@ flowchart TB
    cd auto-agent
    ```
 
-2. Create a virtual environment and install dependencies:
+2. Create a virtual environment and install dependencies (includes `litellm` for OpenRouter/custom LLM endpoints):
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate   # Windows: .venv\Scripts\activate
-   pip install -e .
+   pip install -e ".[dev]"
    ```
 
 3. Copy environment template and set your API key:
