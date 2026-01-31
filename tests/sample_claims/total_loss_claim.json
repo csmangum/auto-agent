@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-002",
+  "vin": "1HGBH41JXMN109186",
+  "vehicle_year": 2021,
+  "vehicle_make": "Honda",
+  "vehicle_model": "Accord",
+  "incident_date": "2025-01-10",
+  "incident_description": "Vehicle totaled in flood. Water damage throughout.",
+  "damage_description": "Total loss. Flood damage. Vehicle submerged. Engine and interior destroyed.",
+  "estimated_damage": 15000
+}
