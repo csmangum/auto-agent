@@ -8,6 +8,7 @@ from claim_agent.tools.logic import (
     compute_similarity_impl,
     fetch_vehicle_value_impl,
     evaluate_damage_impl,
+    calculate_payout_impl,
     generate_report_impl,
     generate_claim_id_impl,
     search_california_compliance_impl,
@@ -44,6 +45,12 @@ def fetch_vehicle_value(vin: str, year: int, make: str, model: str) -> str:
 def evaluate_damage(damage_description: str, estimated_repair_cost: float | None = None) -> str:
     """Evaluate damage description and optional repair cost to assess severity."""
     return evaluate_damage_impl(damage_description, estimated_repair_cost)
+
+
+@mcp.tool()
+def calculate_payout(vehicle_value: float, policy_number: str) -> str:
+    """Calculate total loss payout by subtracting policy deductible from vehicle value."""
+    return calculate_payout_impl(vehicle_value, policy_number)
 
 
 @mcp.tool()
