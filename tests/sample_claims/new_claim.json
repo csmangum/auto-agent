@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-001",
+  "vin": "5YJSA1E26HF123456",
+  "vehicle_year": 2022,
+  "vehicle_make": "Tesla",
+  "vehicle_model": "Model 3",
+  "incident_date": "2025-01-20",
+  "incident_description": "Minor fender bender in parking lot. Front bumper scratch.",
+  "damage_description": "Scratches and small dent on front bumper. No structural damage.",
+  "estimated_damage": 1200
+}

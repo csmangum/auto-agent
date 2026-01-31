@@ -1,0 +1,32 @@
+{
+  "policies": {
+    "POL-001": {
+      "coverage": "comprehensive",
+      "deductible": 500,
+      "status": "active"
+    },
+    "POL-002": {
+      "coverage": "liability",
+      "deductible": 250,
+      "status": "active"
+    }
+  },
+  "claims": [
+    {
+      "claim_id": "CLM-EXIST01",
+      "vin": "1HGBH41JXMN109186",
+      "incident_date": "2025-01-15",
+      "incident_description": "Rear-ended at stoplight. Damage to rear bumper and trunk."
+    }
+  ],
+  "vehicle_values": {
+    "1HGBH41JXMN109186": {
+      "value": 12000,
+      "condition": "good"
+    },
+    "2020_Toyota_Camry": {
+      "value": 18000,
+      "condition": "excellent"
+    }
+  }
+}

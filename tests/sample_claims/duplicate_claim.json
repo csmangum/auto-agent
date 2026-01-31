@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-001",
+  "vin": "1HGBH41JXMN109186",
+  "vehicle_year": 2021,
+  "vehicle_make": "Honda",
+  "vehicle_model": "Accord",
+  "incident_date": "2025-01-15",
+  "incident_description": "Rear-ended at stoplight. Damage to rear bumper and trunk.",
+  "damage_description": "Rear bumper and trunk damaged. Rear-ended at stoplight.",
+  "estimated_damage": 3500
+}

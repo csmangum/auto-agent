@@ -1,0 +1,44 @@
+# Task definitions (reference; tasks are defined in crew modules)
+classify:
+  description: Classify the claim as new, duplicate, or total_loss based on the claim data
+  expected_output: One of new, duplicate, or total_loss with brief reasoning
+
+validate_new_claim:
+  description: Step 1 - Validate that all required fields are present. Step 2 - Check data types.
+  expected_output: Validation result with any missing or invalid fields
+
+check_policy:
+  description: Query the policy database and verify the policy is active with valid coverage
+  expected_output: Policy validity and coverage details
+
+assign_claim:
+  description: Generate a unique claim ID and set initial status to open
+  expected_output: Claim ID and status confirmation
+
+search_claims:
+  description: Search existing claims by VIN and incident date for potential duplicates
+  expected_output: List of matching or similar claims
+
+compute_similarity:
+  description: Compare incident descriptions; if similarity > 80% flag as duplicate
+  expected_output: Similarity score and duplicate recommendation
+
+resolve_duplicate:
+  description: Decide merge or reject based on similarity; prompt for confirmation if needed
+  expected_output: Resolution decision with reasoning
+
+assess_damage:
+  description: Evaluate damage description; estimate if repair cost exceeds 75% of value
+  expected_output: Damage severity and total loss recommendation
+
+get_valuation:
+  description: Fetch vehicle value from valuation service (mock KBB)
+  expected_output: Vehicle market value
+
+calculate_payout:
+  description: If total loss, calculate payout (value minus deductible)
+  expected_output: Payout amount and calculation breakdown
+
+close_claim:
+  description: Generate settlement report and close the claim
+  expected_output: Settlement report summary and claim closed confirmation
