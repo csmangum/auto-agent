@@ -481,6 +481,8 @@ FRAUD_CONFIG = {
     "damage_mismatch_score": 20,  # Points for damage/description mismatch
     "high_risk_threshold": 50,  # Score threshold for high risk
     "medium_risk_threshold": 30,  # Score threshold for medium risk
+    "critical_risk_threshold": 75,  # Score threshold for critical (block claim)
+    "critical_indicator_count": 5,  # Indicator count for critical (block claim)
 }
 
 # Known fraud patterns and indicators database
@@ -820,7 +822,7 @@ def perform_fraud_assessment_impl(
     total_score = result["fraud_score"]
     indicator_count = len(result["fraud_indicators"])
     
-    if total_score >= 75 or indicator_count >= 5:
+    if total_score >= FRAUD_CONFIG["critical_risk_threshold"] or indicator_count >= FRAUD_CONFIG["critical_indicator_count"]:
         result["fraud_likelihood"] = "critical"
         result["should_block"] = True
         result["siu_referral"] = True

@@ -150,12 +150,16 @@ class TestFraudConfig:
     def test_fraud_config_exists(self):
         """Fraud configuration has expected keys."""
         expected_keys = [
-            "suspicious_timing_hours",
             "multiple_claims_days",
             "multiple_claims_threshold",
-            "high_damage_threshold",
+            "fraud_keyword_score",
+            "multiple_claims_score",
+            "timing_anomaly_score",
+            "damage_mismatch_score",
             "high_risk_threshold",
             "medium_risk_threshold",
+            "critical_risk_threshold",
+            "critical_indicator_count",
         ]
         for key in expected_keys:
             assert key in FRAUD_CONFIG
