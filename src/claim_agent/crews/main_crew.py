@@ -9,6 +9,15 @@ from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.config.llm import get_llm
+from claim_agent.db.constants import (
+    STATUS_CLOSED,
+    STATUS_DUPLICATE,
+    STATUS_FAILED,
+    STATUS_OPEN,
+    STATUS_PROCESSING,
+)
+from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.claim import ClaimInput
 
 
 def create_router_crew(llm=None):
@@ -60,37 +69,77 @@ def _parse_claim_type(raw_output: str) -> str:
     return "new"
 
 
-def run_claim_workflow(claim_data: dict, llm=None) -> dict:
+def _final_status(claim_type: str) -> str:
+    """Map claim_type to final claim status."""
+    if claim_type == "new":
+        return STATUS_OPEN
+    if claim_type == "duplicate":
+        return STATUS_DUPLICATE
+    return STATUS_CLOSED
+
+
+def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None = None) -> dict:
     """
     Run the full claim workflow: classify with router crew, then run the appropriate workflow crew.
+    Persists claim to SQLite, logs state changes, and saves workflow result.
     claim_data: dict with policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description, estimated_damage (optional).
-    Returns a dict with claim_type, summary, and raw_output from the workflow crew.
+    existing_claim_id: if set, re-run workflow for this claim (no new claim created).
+    Returns a dict with claim_id, claim_type, summary, and raw_output from the workflow crew.
     """
     llm = llm or get_llm()
-    router_crew = create_router_crew(llm)
-    inputs = {"claim_data": json.dumps(claim_data) if isinstance(claim_data, dict) else claim_data}
-
-    # Step 1: Classify
-    result = router_crew.kickoff(inputs=inputs)
-    raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
-    raw_output = str(raw_output)
-    claim_type = _parse_claim_type(raw_output)
-
-    # Step 2: Run the appropriate crew
-    if claim_type == "new":
-        crew = create_new_claim_crew(llm)
-    elif claim_type == "duplicate":
-        crew = create_duplicate_crew(llm)
+    repo = ClaimRepository()
+    if existing_claim_id:
+        claim_id = existing_claim_id
+        if repo.get_claim(claim_id) is None:
+            raise ValueError(f"Claim not found: {claim_id}")
     else:
-        crew = create_total_loss_crew(llm)
+        claim_input = ClaimInput(**claim_data)
+        claim_id = repo.create_claim(claim_input)
+    repo.update_claim_status(claim_id, STATUS_PROCESSING)
 
-    workflow_result = crew.kickoff(inputs=inputs)
-    workflow_output = getattr(workflow_result, "raw", None) or getattr(workflow_result, "output", None) or str(workflow_result)
-    workflow_output = str(workflow_output)
+    try:
+        # Inject claim_id so workflow crews use the same ID (e.g. new claim assignment)
+        claim_data_with_id = {**claim_data, "claim_id": claim_id}
+        inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
 
-    return {
-        "claim_type": claim_type,
-        "router_output": raw_output,
-        "workflow_output": workflow_output,
-        "summary": workflow_output[:500] + "..." if len(workflow_output) > 500 else workflow_output,
-    }
+        # Step 1: Classify
+        router_crew = create_router_crew(llm)
+        result = router_crew.kickoff(inputs=inputs)
+        raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
+        raw_output = str(raw_output)
+        claim_type = _parse_claim_type(raw_output)
+
+        # Step 2: Run the appropriate crew
+        if claim_type == "new":
+            crew = create_new_claim_crew(llm)
+        elif claim_type == "duplicate":
+            crew = create_duplicate_crew(llm)
+        else:
+            crew = create_total_loss_crew(llm)
+
+        workflow_result = crew.kickoff(inputs=inputs)
+        workflow_output = getattr(workflow_result, "raw", None) or getattr(workflow_result, "output", None) or str(workflow_result)
+        workflow_output = str(workflow_output)
+
+        final_status = _final_status(claim_type)
+        repo.save_workflow_result(claim_id, claim_type, raw_output, workflow_output)
+        repo.update_claim_status(
+            claim_id,
+            final_status,
+            details=workflow_output[:500] if len(workflow_output) > 500 else workflow_output,
+            claim_type=claim_type,
+        )
+
+        return {
+            "claim_id": claim_id,
+            "claim_type": claim_type,
+            "router_output": raw_output,
+            "workflow_output": workflow_output,
+            "summary": workflow_output[:500] + "..." if len(workflow_output) > 500 else workflow_output,
+        }
+    except Exception as e:
+        details = str(e)
+        if len(details) > 500:
+            details = details[:500] + "..."
+        repo.update_claim_status(claim_id, STATUS_FAILED, details=details)
+        raise

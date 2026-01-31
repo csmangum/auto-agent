@@ -4,7 +4,8 @@ import json
 import uuid
 from datetime import datetime
 
-from claim_agent.tools.data_loader import load_mock_db
+from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
+from claim_agent.db.repository import ClaimRepository
 
 # Vehicle valuation defaults (mock KBB)
 DEFAULT_BASE_VALUE = 12000
@@ -44,12 +45,19 @@ def search_claims_db_impl(vin: str, incident_date: str) -> str:
         return json.dumps([])
     if not incident_date or not isinstance(incident_date, str) or not incident_date.strip():
         return json.dumps([])
-    vin = vin.strip()
-    incident_date = incident_date.strip()
-    db = load_mock_db()
-    claims = db.get("claims", [])
-    matches = [c for c in claims if c.get("vin") == vin and c.get("incident_date") == incident_date]
-    return json.dumps(matches)
+    repo = ClaimRepository()
+    matches = repo.search_claims(vin=vin.strip(), incident_date=incident_date.strip())
+    # Return shape expected by tools: claim_id, vin, incident_date, incident_description
+    out = [
+        {
+            "claim_id": c.get("id"),
+            "vin": c.get("vin"),
+            "incident_date": c.get("incident_date"),
+            "incident_description": c.get("incident_description", ""),
+        }
+        for c in matches
+    ]
+    return json.dumps(out)
 
 
 def compute_similarity_impl(description_a: str, description_b: str) -> str:
@@ -138,3 +146,61 @@ def generate_report_impl(
 
 def generate_claim_id_impl(prefix: str = "CLM") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
+
+
+def _json_contains_query(obj: object, query: str) -> bool:
+    """Return True if any string value in obj (recursively) contains query (case-insensitive)."""
+    q = query.strip().lower()
+    if not q:
+        return False
+    if isinstance(obj, str):
+        return q in obj.lower()
+    if isinstance(obj, dict):
+        return any(_json_contains_query(v, query) for v in obj.values())
+    if isinstance(obj, list):
+        return any(_json_contains_query(v, query) for v in obj)
+    return False
+
+
+def _gather_matches(data: dict, query: str, section_key: str, matches: list) -> None:
+    """Recursively gather dicts/lists that contain the query; treat known list keys as item boundaries."""
+    if not _json_contains_query(data, query):
+        return
+    # Known keys whose values are lists of provisions/deadlines/disclosures etc.
+    list_keys = {"provisions", "deadlines", "disclosures", "prohibited_practices", "key_provisions", "requirements", "limitations", "scenarios", "remedies", "penalties", "consumer_services", "tolling_provisions", "proof_methods"}
+    for key, value in data.items():
+        if key == "metadata":
+            continue
+        if key in list_keys and isinstance(value, list):
+            for i, item in enumerate(value):
+                if isinstance(item, dict) and _json_contains_query(item, query):
+                    matches.append({"section": section_key, "subsection": key, "item": item})
+        elif isinstance(value, dict):
+            _gather_matches(value, query, section_key or key, matches)
+        elif isinstance(value, list) and value and isinstance(value[0], dict):
+            for item in value:
+                if _json_contains_query(item, query):
+                    matches.append({"section": section_key, "item": item})
+
+
+def search_california_compliance_impl(query: str) -> str:
+    """Search California auto compliance data by keyword. Empty query returns section summary."""
+    data = load_california_compliance()
+    if not data:
+        return json.dumps({"error": "California compliance data not available", "matches": []})
+    query = (query or "").strip()
+    if not query:
+        summary = {
+            "metadata": data.get("metadata", {}),
+            "sections": [k for k in data.keys() if k != "metadata"],
+        }
+        return json.dumps(summary)
+    matches: list = []
+    for section_key, section_value in data.items():
+        if section_key == "metadata":
+            continue
+        if isinstance(section_value, dict):
+            _gather_matches(section_value, query, section_key, matches)
+        elif _json_contains_query(section_value, query):
+            matches.append({"section": section_key, "content": section_value})
+    return json.dumps({"query": query, "match_count": len(matches), "matches": matches})

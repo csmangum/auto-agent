@@ -35,7 +35,7 @@ Use the query_policy_db tool.""",
     )
 
     assign_task = Task(
-        description="""Generate a unique claim ID using the generate_claim_id tool (prefix CLM).
+        description="""Use the claim_id from claim_data if provided; otherwise generate one with the generate_claim_id tool (prefix CLM).
 Set initial status to 'open'.
 Generate a brief claim report using generate_report with claim_id, claim_type='new', status='open', and a short summary of actions taken.""",
         expected_output="Claim ID (e.g. CLM-XXXXXXXX), status confirmation, and a one-line summary.",
