@@ -19,6 +19,12 @@ MIN_VEHICLE_VALUE = 2000
 # Payout calculation defaults
 DEFAULT_DEDUCTIBLE = 500
 MIN_PAYOUT_VEHICLE_VALUE = 100  # Minimum vehicle value for payout calculation
+
+# Partial/total loss configuration
+PARTIAL_LOSS_THRESHOLD = 0.75  # Threshold for total loss: if repair cost >= 75% of vehicle value, classify as total loss
+LABOR_HOURS_RNI_PER_PART = 1.5
+LABOR_HOURS_PAINT_BODY = 2.0
+LABOR_HOURS_MIN = 2.0
 # Escalation thresholds (HITL)
 ESCALATION_CONFIG = {
     "confidence_threshold": 0.7,
@@ -461,3 +467,466 @@ def evaluate_escalation_impl(
         "fraud_indicators": fraud_indicators,
         "recommended_action": recommended.strip(),
     })
+
+
+# --- Partial Loss Tools ---
+
+
+def _get_shop_labor_rate(db: dict, shop_id: str | None, default: float = 75.0) -> float:
+    """Return labor rate for shop_id from db, or default if not found."""
+    if not shop_id:
+        return default
+    shops = db.get("repair_shops", {})
+    if shop_id not in shops:
+        return default
+    return shops[shop_id].get("labor_rate_per_hour", default)
+
+
+def get_available_repair_shops_impl(
+    location: str | None = None,
+    vehicle_make: str | None = None,
+    network_type: str | None = None,
+) -> str:
+    """Get list of available repair shops, optionally filtered by location, vehicle make, or network type.
+    
+    Args:
+        location: Optional location filter (city/state).
+        vehicle_make: Optional vehicle make to find shops with certifications for that make.
+        network_type: Optional network type filter (preferred, premium, standard).
+    
+    Returns:
+        JSON string with list of available repair shops.
+    """
+    db = load_mock_db()
+    shops = db.get("repair_shops", {})
+    
+    available_shops = []
+    for shop_id, shop_data in shops.items():
+        # Filter by availability
+        if not shop_data.get("capacity_available", False):
+            continue
+        
+        # Filter by network type if specified
+        if network_type and shop_data.get("network", "").lower() != network_type.lower():
+            continue
+        
+        # Filter by location if specified (simple substring match)
+        if location:
+            shop_address = shop_data.get("address", "").lower()
+            if location.lower() not in shop_address:
+                continue
+        
+        # Check for EV/specialty certifications if Tesla
+        if vehicle_make and vehicle_make.lower() == "tesla":
+            certifications = shop_data.get("certifications", [])
+            specialties = shop_data.get("specialties", [])
+            has_ev_cert = (any("tesla" in c.lower() for c in certifications) or 
+                          any("electric" in s.lower() for s in specialties))
+            # Prefer shops with EV capability but don't exclude others
+            shop_data = {**shop_data, "ev_certified": has_ev_cert}
+        
+        available_shops.append({
+            "shop_id": shop_id,
+            **shop_data,
+        })
+    
+    # Sort by rating (highest first), then by wait time (lowest first)
+    available_shops.sort(key=lambda x: (-x.get("rating", 0), x.get("average_wait_days", 999)))
+    
+    return json.dumps({
+        "shop_count": len(available_shops),
+        "shops": available_shops,
+    })
+
+
+def assign_repair_shop_impl(
+    claim_id: str,
+    shop_id: str,
+    estimated_repair_days: int | None = None,
+) -> str:
+    """Assign a repair shop to a partial loss claim.
+    
+    Args:
+        claim_id: The claim ID to assign the shop to.
+        shop_id: The repair shop ID to assign.
+        estimated_repair_days: Optional estimated days to complete repair.
+    
+    Returns:
+        JSON string with assignment confirmation and details.
+    """
+    db = load_mock_db()
+    shops = db.get("repair_shops", {})
+    
+    if shop_id not in shops:
+        return json.dumps({
+            "success": False,
+            "error": f"Repair shop {shop_id} not found",
+        })
+    
+    shop = shops[shop_id]
+    
+    if not shop.get("capacity_available", False):
+        return json.dumps({
+            "success": False,
+            "error": f"Repair shop {shop['name']} does not have available capacity",
+        })
+    
+    # Calculate estimated dates
+    wait_days = shop.get("average_wait_days", 3)
+    repair_days = estimated_repair_days or 5  # Default 5 days for repair
+    
+    start_date = datetime.now() + timedelta(days=wait_days)
+    completion_date = start_date + timedelta(days=repair_days)
+    
+    assignment = {
+        "success": True,
+        "claim_id": claim_id,
+        "shop_id": shop_id,
+        "shop_name": shop.get("name", ""),
+        "address": shop.get("address", ""),
+        "phone": shop.get("phone", ""),
+        "labor_rate_per_hour": _get_shop_labor_rate(db, shop_id, 75.0),
+        "network": shop.get("network", "standard"),
+        "estimated_start_date": start_date.strftime("%Y-%m-%d"),
+        "estimated_completion_date": completion_date.strftime("%Y-%m-%d"),
+        "confirmation_number": f"RSA-{uuid.uuid4().hex[:8].upper()}",
+    }
+    
+    return json.dumps(assignment)
+
+
+def get_parts_catalog_impl(
+    damage_description: str,
+    vehicle_make: str,
+    part_type_preference: str = "aftermarket",
+) -> str:
+    """Get recommended parts from catalog based on damage description.
+    
+    Args:
+        damage_description: Description of the damage to identify needed parts.
+        vehicle_make: Vehicle manufacturer to check part compatibility.
+        part_type_preference: Preferred part type (oem, aftermarket, refurbished).
+    
+    Returns:
+        JSON string with list of recommended parts and pricing.
+    """
+    db = load_mock_db()
+    parts_catalog = db.get("parts_catalog", {})
+    
+    # Keyword mapping to parts
+    damage_to_parts = {
+        "bumper": ["PART-BUMPER-FRONT", "PART-BUMPER-REAR"],
+        "front bumper": ["PART-BUMPER-FRONT"],
+        "rear bumper": ["PART-BUMPER-REAR"],
+        "fender": ["PART-FENDER-FRONT"],
+        "hood": ["PART-HOOD"],
+        "door": ["PART-DOOR-FRONT", "PART-DOOR-REAR"],
+        "front door": ["PART-DOOR-FRONT"],
+        "rear door": ["PART-DOOR-REAR"],
+        "headlight": ["PART-HEADLIGHT"],
+        "taillight": ["PART-TAILLIGHT"],
+        "mirror": ["PART-MIRROR-SIDE"],
+        "side mirror": ["PART-MIRROR-SIDE"],
+        "windshield": ["PART-WINDSHIELD"],
+        "quarter panel": ["PART-QUARTER-PANEL"],
+        "radiator": ["PART-RADIATOR"],
+        "airbag": ["PART-AIRBAG-DRIVER", "PART-AIRBAG-PASSENGER"],
+        "grille": ["PART-GRILLE"],
+        "trunk": ["PART-TRUNK-LID"],
+    }
+    
+    damage_lower = damage_description.lower()
+    recommended_parts = []
+    seen_part_ids = set()
+    
+    for keyword, part_ids in damage_to_parts.items():
+        if keyword in damage_lower:
+            for part_id in part_ids:
+                if part_id in seen_part_ids:
+                    continue
+                seen_part_ids.add(part_id)
+                
+                if part_id in parts_catalog:
+                    part = parts_catalog[part_id]
+                    
+                    # Check vehicle make compatibility
+                    compatible_makes = part.get("compatible_makes", [])
+                    is_compatible = not compatible_makes or vehicle_make in compatible_makes
+                    
+                    # Get price based on preference
+                    selected_type = part_type_preference
+                    if part_type_preference == "oem":
+                        price = part.get("oem_price")
+                    elif part_type_preference == "refurbished":
+                        price = part.get("refurbished_price") or part.get("aftermarket_price")
+                    else:
+                        price = part.get("aftermarket_price") or part.get("oem_price")
+                    
+                    if price is None:
+                        price = part.get("oem_price", 0)
+                        selected_type = "oem"  # Fall back to OEM if no alternative
+                    
+                    recommended_parts.append({
+                        "part_id": part_id,
+                        "part_name": part.get("name", ""),
+                        "category": part.get("category", ""),
+                        "selected_type": selected_type,
+                        "price": price,
+                        "oem_price": part.get("oem_price"),
+                        "aftermarket_price": part.get("aftermarket_price"),
+                        "refurbished_price": part.get("refurbished_price"),
+                        "availability": part.get("availability", "unknown"),
+                        "lead_time_days": part.get("lead_time_days", 3),
+                        "is_compatible": is_compatible,
+                    })
+    
+    total_cost = sum(p["price"] for p in recommended_parts if p["price"])
+    
+    return json.dumps({
+        "damage_description": damage_description,
+        "vehicle_make": vehicle_make,
+        "part_type_preference": part_type_preference,
+        "parts_count": len(recommended_parts),
+        "parts": recommended_parts,
+        "total_parts_cost": round(total_cost, 2),
+    })
+
+
+def create_parts_order_impl(
+    claim_id: str,
+    parts: list[dict],
+    shop_id: str | None = None,
+) -> str:
+    """Create a parts order for a partial loss claim.
+    
+    Args:
+        claim_id: The claim ID for the order.
+        parts: List of parts to order (each with part_id, quantity, part_type).
+        shop_id: Optional shop ID for delivery.
+    
+    Returns:
+        JSON string with order confirmation and details.
+    """
+    if not parts or not isinstance(parts, list):
+        return json.dumps({
+            "success": False,
+            "error": "No parts specified for order",
+        })
+    
+    db = load_mock_db()
+    parts_catalog = db.get("parts_catalog", {})
+    
+    order_items = []
+    total_cost = 0.0
+    max_lead_time = 0
+    
+    for part_request in parts:
+        part_id = part_request.get("part_id", "")
+        quantity = part_request.get("quantity", 1)
+        part_type = part_request.get("part_type", "aftermarket")
+        
+        if part_id not in parts_catalog:
+            continue
+        
+        part = parts_catalog[part_id]
+        
+        # Get price based on type preference
+        if part_type == "oem":
+            unit_price = part.get("oem_price")
+        elif part_type == "refurbished":
+            unit_price = part.get("refurbished_price") or part.get("aftermarket_price")
+        else:
+            unit_price = part.get("aftermarket_price") or part.get("oem_price")
+        
+        if unit_price is None:
+            unit_price = part.get("oem_price", 0)
+        
+        item_total = unit_price * quantity
+        lead_time = part.get("lead_time_days", 3)
+        max_lead_time = max(max_lead_time, lead_time)
+        
+        order_items.append({
+            "part_id": part_id,
+            "part_name": part.get("name", ""),
+            "quantity": quantity,
+            "part_type": part_type,
+            "unit_price": unit_price,
+            "total_price": round(item_total, 2),
+            "availability": part.get("availability", "unknown"),
+            "lead_time_days": lead_time,
+        })
+        
+        total_cost += item_total
+    
+    if not order_items:
+        return json.dumps({
+            "success": False,
+            "error": "No valid parts found in catalog",
+        })
+    
+    delivery_date = datetime.now() + timedelta(days=max_lead_time + 1)
+    
+    order = {
+        "success": True,
+        "order_id": f"PO-{uuid.uuid4().hex[:8].upper()}",
+        "claim_id": claim_id,
+        "shop_id": shop_id,
+        "items": order_items,
+        "items_count": len(order_items),
+        "total_parts_cost": round(total_cost, 2),
+        "order_status": "ordered",
+        "estimated_delivery_date": delivery_date.strftime("%Y-%m-%d"),
+        "order_placed_at": datetime.now().isoformat(),
+    }
+    
+    return json.dumps(order)
+
+
+def calculate_repair_estimate_impl(
+    damage_description: str,
+    vehicle_make: str,
+    vehicle_year: int,
+    policy_number: str,
+    shop_id: str | None = None,
+    part_type_preference: str = "aftermarket",
+) -> str:
+    """Calculate a complete repair estimate for a partial loss claim.
+    
+    Args:
+        damage_description: Description of the damage.
+        vehicle_make: Vehicle manufacturer.
+        vehicle_year: Vehicle year.
+        policy_number: Policy number to look up deductible.
+        shop_id: Optional shop ID to use shop's labor rate.
+        part_type_preference: Preferred part type (oem, aftermarket, refurbished).
+    
+    Returns:
+        JSON string with complete repair estimate breakdown.
+    """
+    db = load_mock_db()
+
+    # Get parts cost
+    parts_result = get_parts_catalog_impl(damage_description, vehicle_make, part_type_preference)
+    parts_data = json.loads(parts_result)
+    parts_cost = parts_data.get("total_parts_cost", 0.0)
+    parts_list = parts_data.get("parts", [])
+
+    labor_rate = _get_shop_labor_rate(db, shop_id, 75.0)
+
+    # Estimate labor hours based on damage and parts
+    labor_operations = db.get("labor_operations", {})
+    base_labor_hours = 0.0
+    damage_lower = damage_description.lower()
+    
+    # Add labor for each part (R&I + paint typically)
+    for part in parts_list:
+        base_labor_hours += LABOR_HOURS_RNI_PER_PART
+        if part.get("category") == "body":
+            base_labor_hours += LABOR_HOURS_PAINT_BODY
+
+    # Add specific labor operations based on damage
+    if "paint" in damage_lower or "scratch" in damage_lower:
+        base_labor_hours += labor_operations.get("LABOR-BLEND-PAINT", {}).get("base_hours", LABOR_HOURS_PAINT_BODY)
+    if "dent" in damage_lower and "minor" in damage_lower:
+        base_labor_hours += labor_operations.get("LABOR-PDR", {}).get("base_hours", 1.0)
+    if "frame" in damage_lower:
+        base_labor_hours += labor_operations.get("LABOR-FRAME-PULL", {}).get("base_hours", 3.0)
+    if "alignment" in damage_lower or "wheel" in damage_lower:
+        base_labor_hours += labor_operations.get("LABOR-ALIGNMENT", {}).get("base_hours", 1.0)
+    if "sensor" in damage_lower or "camera" in damage_lower or "adas" in damage_lower:
+        base_labor_hours += labor_operations.get("LABOR-CALIBRATION", {}).get("base_hours", LABOR_HOURS_PAINT_BODY)
+
+    if base_labor_hours < LABOR_HOURS_MIN:
+        base_labor_hours = LABOR_HOURS_MIN
+    
+    labor_cost = round(base_labor_hours * labor_rate, 2)
+    total_estimate = round(parts_cost + labor_cost, 2)
+    
+    # Get deductible from policy
+    policy_result = query_policy_db_impl(policy_number)
+    policy_data = json.loads(policy_result)
+    deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE) if policy_data.get("valid") else DEFAULT_DEDUCTIBLE
+    
+    customer_pays = min(deductible, total_estimate)
+    insurance_pays = max(0, total_estimate - deductible)
+    
+    # Check if this is actually a total loss
+    vin = ""  # We don't have VIN in this function, use year/make/model
+    vehicle_value_result = fetch_vehicle_value_impl(vin, vehicle_year, vehicle_make, "")
+    vehicle_value_data = json.loads(vehicle_value_result)
+    vehicle_value = vehicle_value_data.get("value", 15000)
+    
+    is_total_loss = total_estimate >= (PARTIAL_LOSS_THRESHOLD * vehicle_value)
+    
+    estimate = {
+        "damage_description": damage_description,
+        "vehicle_make": vehicle_make,
+        "vehicle_year": vehicle_year,
+        "parts": parts_list,
+        "parts_cost": parts_cost,
+        "labor_hours": round(base_labor_hours, 1),
+        "labor_rate": labor_rate,
+        "labor_cost": labor_cost,
+        "total_estimate": total_estimate,
+        "deductible": deductible,
+        "customer_pays": customer_pays,
+        "insurance_pays": insurance_pays,
+        "vehicle_value": vehicle_value,
+        "repair_to_value_ratio": round(total_estimate / vehicle_value, 2) if vehicle_value > 0 else 0,
+        "is_total_loss": is_total_loss,
+        "total_loss_threshold": PARTIAL_LOSS_THRESHOLD,
+        "part_type_preference": part_type_preference,
+        "shop_id": shop_id,
+    }
+    
+    return json.dumps(estimate)
+
+
+def generate_repair_authorization_impl(
+    claim_id: str,
+    shop_id: str,
+    repair_estimate: dict,
+    customer_approved: bool = True,
+) -> str:
+    """Generate a repair authorization document for a partial loss claim.
+    
+    Args:
+        claim_id: The claim ID.
+        shop_id: The assigned repair shop ID.
+        repair_estimate: The repair estimate details.
+        customer_approved: Whether customer has approved the repair.
+    
+    Returns:
+        JSON string with repair authorization details.
+    """
+    db = load_mock_db()
+    shops = db.get("repair_shops", {})
+    
+    shop = shops.get(shop_id, {})
+    
+    authorization = {
+        "authorization_id": f"RA-{uuid.uuid4().hex[:8].upper()}",
+        "claim_id": claim_id,
+        "shop_id": shop_id,
+        "shop_name": shop.get("name", "Unknown Shop"),
+        "shop_address": shop.get("address", ""),
+        "shop_phone": shop.get("phone", ""),
+        "authorized_amount": repair_estimate.get("total_estimate", 0),
+        "parts_authorized": repair_estimate.get("parts_cost", 0),
+        "labor_authorized": repair_estimate.get("labor_cost", 0),
+        "deductible": repair_estimate.get("deductible", 0),
+        "customer_responsibility": repair_estimate.get("customer_pays", 0),
+        "insurance_responsibility": repair_estimate.get("insurance_pays", 0),
+        "customer_approved": customer_approved,
+        "authorization_status": "approved" if customer_approved else "pending_approval",
+        "authorization_date": datetime.now().strftime("%Y-%m-%d"),
+        "valid_until": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
+        "terms": [
+            "Repair must be completed within 30 days of authorization",
+            "Any additional damage found must be reported before repair",
+            "Supplemental authorization required for additional costs over 10%",
+            "Original damaged parts must be retained for inspection if requested",
+        ],
+    }
+    
+    return json.dumps(authorization)

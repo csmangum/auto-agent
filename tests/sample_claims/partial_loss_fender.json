@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-005",
+  "vin": "2HGFG3B54CH501234",
+  "vehicle_year": 2020,
+  "vehicle_make": "Honda",
+  "vehicle_model": "Civic",
+  "incident_date": "2025-01-25",
+  "incident_description": "Sideswiped while parallel parking. Other driver misjudged distance.",
+  "damage_description": "Front fender scratched and dented. Side mirror broken. Minor paint damage on front door.",
+  "estimated_damage": 1800
+}

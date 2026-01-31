@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-011",
+  "vin": "4T1BF1FK5EU123456",
+  "vehicle_year": 2022,
+  "vehicle_make": "Toyota",
+  "vehicle_model": "Camry",
+  "incident_date": "2025-01-20",
+  "incident_description": "Low-speed collision at parking lot. Vehicle in front stopped suddenly.",
+  "damage_description": "Front bumper cracked. Headlight assembly on driver side broken. Hood has minor dent. Grille damaged.",
+  "estimated_damage": 4200
+}

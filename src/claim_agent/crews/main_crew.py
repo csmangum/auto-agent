@@ -9,6 +9,7 @@ from claim_agent.agents.router import create_router_agent
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
+from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 from claim_agent.config.llm import get_llm
 from claim_agent.db.constants import (
     STATUS_CLOSED,
@@ -33,14 +34,20 @@ def create_router_crew(llm=None):
     classify_task = Task(
         description="""You are given claim_data (JSON) with: policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description, and optionally estimated_damage.
 
-Classify this claim as exactly one of: new, duplicate, or total_loss.
+Classify this claim as exactly one of: new, duplicate, total_loss, or partial_loss.
 
-- new: First-time claim submission, standard intake.
+- new: First-time claim submission, standard intake (no damage details or unclear).
 - duplicate: Likely a duplicate of an existing claim (e.g. same incident reported again).
-- total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, severe damage, or estimated repair very high).
+- total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, destroyed, frame damage, or repair would exceed 75% of vehicle value).
+- partial_loss: Vehicle has repairable damage (e.g. bumper damage, fender damage, door damage, dents, scratches, broken lights). The vehicle is NOT totaled and can be repaired.
 
-Reply with exactly one word: new, duplicate, or total_loss. Then on the next line give one sentence reasoning.""",
-        expected_output="One line: exactly 'new', 'duplicate', or 'total_loss'. Second line: brief reasoning.",
+Guidelines for partial_loss vs total_loss:
+- If damage mentions: bumper, fender, door, mirror, dent, scratch, light, windshield, minor collision -> partial_loss
+- If damage mentions: totaled, flood, fire, destroyed, frame damage, rollover, submerged, total loss -> total_loss
+- If estimated_damage is provided and seems moderate (under $10,000 typically), consider partial_loss
+
+Reply with exactly one word: new, duplicate, total_loss, or partial_loss. Then on the next line give one sentence reasoning.""",
+        expected_output="One line: exactly 'new', 'duplicate', 'total_loss', or 'partial_loss'. Second line: brief reasoning.",
         agent=router,
     )
 
@@ -62,9 +69,15 @@ def _parse_claim_type(raw_output: str) -> str:
     for line in lines:
         normalized = line.strip().lower().replace("_", " ").replace("-", " ")
         # Exact matches first
-        if normalized in ("new", "duplicate", "total loss", "total_loss"):
-            return "total_loss" if normalized in ("total loss", "total_loss") else normalized
-        # Then line starts with type (check total_loss before duplicate/new)
+        if normalized in ("new", "duplicate", "total loss", "total_loss", "partial loss", "partial_loss"):
+            if normalized in ("total loss", "total_loss"):
+                return "total_loss"
+            if normalized in ("partial loss", "partial_loss"):
+                return "partial_loss"
+            return normalized
+        # Then line starts with type (check partial_loss and total_loss before duplicate/new)
+        if normalized.startswith("partial loss") or normalized.startswith("partial_loss"):
+            return "partial_loss"
         if normalized.startswith("total loss") or normalized.startswith("total_loss"):
             return "total_loss"
         if normalized.startswith("duplicate"):
@@ -166,6 +179,8 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             crew = create_new_claim_crew(llm)
         elif claim_type == "duplicate":
             crew = create_duplicate_crew(llm)
+        elif claim_type == "partial_loss":
+            crew = create_partial_loss_crew(llm)
         else:
             crew = create_total_loss_crew(llm)
 
