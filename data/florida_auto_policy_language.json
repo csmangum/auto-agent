@@ -135,22 +135,22 @@
       "preamble": "We do not provide Property Damage Liability Coverage for:",
       "exclusion_list": [
         {
-          "id": "FL-PD-EX-001",
+          "id": "FL-PDL-EX-001",
           "title": "Intentional Damage",
           "language": "Property damage which is expected or intended from the standpoint of the insured."
         },
         {
-          "id": "FL-PD-EX-002",
+          "id": "FL-PDL-EX-002",
           "title": "Property Owned",
           "language": "Property damage to property owned or being transported by that insured."
         },
         {
-          "id": "FL-PD-EX-003",
+          "id": "FL-PDL-EX-003",
           "title": "Property Rented or In Care Of",
           "language": "Property damage to property rented to, used by, or in the care of that insured."
         },
         {
-          "id": "FL-PD-EX-004",
+          "id": "FL-PDL-EX-004",
           "title": "Racing",
           "language": "Property damage arising from the use of the vehicle in racing or speed contests."
         }
@@ -260,17 +260,17 @@
       "title": "Exclusions",
       "exclusion_list": [
         {
-          "id": "FL-PD-EX-001",
+          "id": "FL-PHD-EX-001",
           "title": "Wear and Tear",
           "language": "Loss due to wear and tear, freezing, mechanical or electrical breakdown, or road damage to tires."
         },
         {
-          "id": "FL-PD-EX-002",
+          "id": "FL-PHD-EX-002",
           "title": "Custom Equipment",
           "language": "Loss to custom furnishings or equipment in pickups or vans."
         },
         {
-          "id": "FL-PD-EX-003",
+          "id": "FL-PHD-EX-003",
           "title": "Racing",
           "language": "Loss while the vehicle is being used for racing or speed contests."
         }
