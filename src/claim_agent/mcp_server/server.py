@@ -10,6 +10,7 @@ from claim_agent.tools.logic import (
     evaluate_damage_impl,
     generate_report_impl,
     generate_claim_id_impl,
+    search_california_compliance_impl,
 )
 
 mcp = FastMCP("claim-tools", json_response=True)
@@ -61,6 +62,12 @@ def generate_report(
 def generate_claim_id(prefix: str = "CLM") -> str:
     """Generate a unique claim ID."""
     return generate_claim_id_impl(prefix)
+
+
+@mcp.tool()
+def search_california_compliance(query: str = "") -> str:
+    """Search California auto insurance compliance/regulatory reference data by keyword."""
+    return search_california_compliance_impl(query)
 
 
 def main() -> None:

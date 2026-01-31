@@ -155,3 +155,46 @@ def test_evaluate_damage_empty_description():
     assert result["severity"] == "unknown"
     assert result["total_loss_candidate"] is False
     assert result["estimated_repair_cost"] == 1000
+
+
+def test_search_california_compliance_empty_returns_summary():
+    from claim_agent.tools.logic import search_california_compliance_impl
+
+    result = search_california_compliance_impl("")
+    data = json.loads(result)
+    assert "sections" in data
+    assert "metadata" in data
+    assert "fair_claims_settlement_practices" in data["sections"]
+
+
+def test_search_california_compliance_query_returns_matches():
+    from claim_agent.tools.logic import search_california_compliance_impl
+
+    result = search_california_compliance_impl("total loss")
+    data = json.loads(result)
+    assert "matches" in data
+    assert data["match_count"] >= 1
+    assert data["query"] == "total loss"
+
+
+def test_search_california_compliance_ccr_reference():
+    from claim_agent.tools.logic import search_california_compliance_impl
+
+    result = search_california_compliance_impl("2695.5")
+    data = json.loads(result)
+    assert "matches" in data
+    assert data["match_count"] >= 1
+
+
+def test_search_california_compliance_missing_file_returns_error():
+    import os
+    from claim_agent.tools.logic import search_california_compliance_impl
+
+    os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/california_auto_compliance.json"
+    try:
+        result = search_california_compliance_impl("deadline")
+        data = json.loads(result)
+        assert "error" in data
+        assert data["matches"] == []
+    finally:
+        os.environ.pop("CA_COMPLIANCE_PATH", None)

@@ -10,6 +10,7 @@ __all__ = [
     "evaluate_damage",
     "generate_report",
     "generate_claim_id",
+    "search_california_compliance",
 ]
 
 
@@ -43,4 +44,8 @@ def __getattr__(name: str):
         from claim_agent.tools.document_tools import generate_claim_id
         setattr(mod, "generate_claim_id", generate_claim_id)
         return generate_claim_id
+    if name == "search_california_compliance":
+        from claim_agent.tools.compliance_tools import search_california_compliance
+        setattr(mod, "search_california_compliance", search_california_compliance)
+        return search_california_compliance
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

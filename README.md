@@ -8,7 +8,7 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 - **New claim workflow**: Intake validation, policy check, and claim ID assignment.
 - **Duplicate claim workflow**: Search existing claims, compute similarity, and resolve (merge/reject).
 - **Total loss workflow**: Damage assessment, vehicle valuation (mock KBB), payout calculation, and settlement.
-- **Tools**: Policy DB query, claims search, similarity, vehicle value, report generation—exposed as CrewAI tools and optionally via a local MCP server.
+- **Tools**: Policy DB query, claims search, similarity, vehicle value, report generation, and California compliance lookup—exposed as CrewAI tools and optionally via a local MCP server.
 
 ## Architecture
 
@@ -133,12 +133,14 @@ Output is JSON with `claim_type`, `router_output`, `workflow_output`, and `summa
 - `tests/sample_claims/duplicate_claim.json` – possible duplicate (same VIN/date as in mock DB)
 - `tests/sample_claims/total_loss_claim.json` – flood total loss
 
-### Mock data
+### Mock data and compliance reference
 
-Mock policy and claims data live in `data/mock_db.json`. Override path with:
+- **Mock DB**: Policy and claims data live in `data/mock_db.json`. Override with `MOCK_DB_PATH`.
+- **California compliance**: Reference data for CA auto claims rules, deadlines, and disclosures lives in `data/california_auto_compliance.json`. Agents can search it via the `search_california_compliance` tool. Override path with `CA_COMPLIANCE_PATH`.
 
 ```bash
 export MOCK_DB_PATH=/path/to/your/mock_db.json
+export CA_COMPLIANCE_PATH=/path/to/california_auto_compliance.json  # optional
 ```
 
 ## MCP server (optional)
@@ -175,7 +177,9 @@ auto-agent/
 │   ├── tools/            # Policy, claims, valuation, document tools + logic
 │   ├── mcp_server/       # MCP server (stdio)
 │   └── models/           # ClaimType, ClaimInput, ClaimOutput, WorkflowState
-├── data/mock_db.json
+├── data/
+│   ├── mock_db.json
+│   └── california_auto_compliance.json   # CA claims rules, deadlines, disclosures (searchable via tool)
 ├── tests/
 │   ├── test_tools.py
 │   ├── test_crews.py

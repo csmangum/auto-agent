@@ -79,7 +79,7 @@
   },
   "total_loss_regulations": {
     "regulation_reference": "CCR Title 10, Section 2695.8(b)",
-    "california_insurance_code": "CIC Section 2695.8",
+    "california_code_of_regulations_section": "CCR Section 2695.8",
     "description": "Specific requirements for handling total loss vehicle claims in California.",
     "provisions": [
       {
@@ -136,56 +136,56 @@
     "description": "Critical time limits for California auto insurance claims processing.",
     "deadlines": [
       {
-        "id": "TL-ACK-001",
+        "id": "CLM-ACK-001",
         "action": "Acknowledge claim receipt",
         "time_limit": "15 calendar days",
         "days": 15,
-        "reference": "CCR 2695.5(e)(1)"
+        "reference": "CCR 2695.4; see also CCR 2695.5(e)(1)"
       },
       {
-        "id": "TL-INV-001",
+        "id": "CLM-INV-001",
         "action": "Complete investigation",
         "time_limit": "40 calendar days from proof of claim",
         "days": 40,
         "reference": "CCR 2695.5(b)"
       },
       {
-        "id": "TL-DEC-001",
+        "id": "CLM-DEC-001",
         "action": "Accept or deny claim in writing",
         "time_limit": "40 calendar days from proof of claim",
         "days": 40,
         "reference": "CCR 2695.5(e)(3)"
       },
       {
-        "id": "TL-PAY-001",
+        "id": "CLM-PAY-001",
         "action": "Issue payment after acceptance",
         "time_limit": "30 calendar days",
         "days": 30,
         "reference": "CCR 2695.7(b)"
       },
       {
-        "id": "TL-UPD-001",
+        "id": "CLM-UPD-001",
         "action": "Provide status update if investigation continues",
         "time_limit": "Every 30 calendar days",
         "days": 30,
         "reference": "CCR 2695.5(e)(4)"
       },
       {
-        "id": "TL-POC-001",
+        "id": "CLM-POC-001",
         "action": "Provide proof of claim forms if required",
         "time_limit": "15 calendar days from claim notice",
         "days": 15,
         "reference": "CCR 2695.8(b)"
       },
       {
-        "id": "TL-REQ-001",
+        "id": "CLM-REQ-001",
         "action": "Request additional information",
         "time_limit": "40 calendar days from initial proof of claim",
         "days": 40,
         "reference": "CCR 2695.9"
       },
       {
-        "id": "TL-SOL-001",
+        "id": "CLM-SOL-001",
         "action": "Statute of limitations for filing lawsuit",
         "time_limit": "2 years from date of loss (breach of contract: 4 years)",
         "reference": "California Code of Civil Procedure 339, 337"
