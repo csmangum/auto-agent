@@ -1,0 +1,372 @@
+{
+  "metadata": {
+    "state": "Florida",
+    "jurisdiction": "FL",
+    "data_type": "auto_insurance_policy_language",
+    "version": "2025.1",
+    "last_updated": "2025-01-31",
+    "policy_form": "FL-PP-001 (01/25)",
+    "description": "Sample auto insurance policy language for Florida personal auto policies"
+  },
+  "declarations": {
+    "description": "The declarations page summarizes key policy information.",
+    "sample_language": {
+      "named_insured": "The Named Insured shown in the Declarations is the policyholder and spouse if a resident of the same household.",
+      "policy_period": "This policy applies only to accidents and losses which occur during the policy period shown in the Declarations.",
+      "florida_specific": "This policy is issued in compliance with the Florida Motor Vehicle No-Fault Law and Florida Statutes."
+    }
+  },
+  "definitions": {
+    "section_title": "DEFINITIONS",
+    "preamble": "Throughout this policy, 'you' and 'your' refer to the 'named insured' shown in the Declarations and the spouse if a resident of the same household. 'We', 'us', and 'our' refer to the Company providing this insurance.",
+    "terms": [
+      {
+        "term": "Bodily Injury",
+        "definition": "Bodily injury means bodily harm, sickness, or disease, including death that results from bodily harm, sickness, or disease."
+      },
+      {
+        "term": "Covered Auto",
+        "definition": "Covered auto means any vehicle shown in the Declarations, a newly acquired auto, any trailer you own, or any auto or trailer used as a temporary substitute."
+      },
+      {
+        "term": "Family Member",
+        "definition": "Family member means a person related to you by blood, marriage, or adoption who is a resident of your household."
+      },
+      {
+        "term": "Motor Vehicle",
+        "florida_specific": true,
+        "definition": "Motor vehicle means any self-propelled vehicle with four or more wheels, not operated upon rails or guideway, required to be registered under Florida law."
+      },
+      {
+        "term": "Owner",
+        "florida_specific": true,
+        "definition": "Owner means a person or organization who holds legal title to a motor vehicle, or in the event a motor vehicle is subject to a security agreement with an immediate right of possession vested in the debtor, the debtor."
+      }
+    ]
+  },
+  "pip_coverage": {
+    "section_title": "PART A - PERSONAL INJURY PROTECTION (NO-FAULT) COVERAGE",
+    "florida_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay, in accordance with the Florida Motor Vehicle No-Fault Law (Florida Statutes Section 627.730-627.7405), personal injury protection benefits for: (a) 80% of all reasonable expenses for medically necessary medical, surgical, X-ray, dental, and rehabilitative services, including prosthetic devices and medically necessary ambulance, hospital, and nursing services; and (b) 60% of any loss of gross income and loss of earning capacity from inability to work, subject to a combined limit of $10,000. These benefits are payable regardless of fault."
+    },
+    "emergency_medical_condition": {
+      "title": "Emergency Medical Condition",
+      "florida_specific": true,
+      "language": "Under Florida law, if the insured has not been diagnosed with an emergency medical condition, benefits are limited to $2,500. An emergency medical condition means a medical condition manifesting itself by acute symptoms of sufficient severity, which may include severe pain, such that the absence of immediate medical attention could reasonably be expected to result in: (a) Serious jeopardy to patient health; (b) Serious impairment to bodily functions; or (c) Serious dysfunction of any bodily organ or part."
+    },
+    "medical_provider_requirements": {
+      "title": "Medical Provider Requirements",
+      "florida_specific": true,
+      "language": "Benefits are payable only for treatment, care, or services provided by: (a) A licensed physician, osteopath, chiropractor, podiatrist, or dentist; (b) A hospital or ambulatory surgical center; (c) A licensed advanced registered nurse practitioner; (d) A licensed physician assistant; (e) Physical therapists, speech therapists, or occupational therapists (upon referral); (f) Licensed acupuncturists (upon referral). The provider must be licensed under Florida law and authorized to provide treatment."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member. 2. Any other person while occupying your covered auto with your consent. 3. Any person while occupying a motor vehicle operated by you."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide PIP Coverage for:",
+      "exclusion_list": [
+        {
+          "id": "FL-PIP-EX-001",
+          "title": "Intentional Injury",
+          "language": "Bodily injury intentionally caused by the insured."
+        },
+        {
+          "id": "FL-PIP-EX-002",
+          "title": "Own Vehicle Not Covered",
+          "language": "Bodily injury sustained by the named insured or family member while occupying a motor vehicle owned by such person which is not insured under this policy."
+        },
+        {
+          "id": "FL-PIP-EX-003",
+          "title": "DUI",
+          "florida_specific": true,
+          "language": "Bodily injury sustained while operating a motor vehicle if the operator is subsequently convicted of DUI in connection with the accident and is not a named insured or family member. Named insureds and family members remain eligible for PIP benefits even if convicted of DUI."
+        },
+        {
+          "id": "FL-PIP-EX-004",
+          "title": "Racing",
+          "language": "Bodily injury sustained while the motor vehicle is being used in any prearranged or organized racing or speed contest."
+        },
+        {
+          "id": "FL-PIP-EX-005",
+          "title": "Massage Therapy",
+          "florida_specific": true,
+          "language": "Expenses for massage therapy, regardless of the licensure of the massage therapist."
+        },
+        {
+          "id": "FL-PIP-EX-006",
+          "title": "Acupuncture Without Referral",
+          "florida_specific": true,
+          "language": "Acupuncture services unless provided upon referral by a licensed physician, osteopath, chiropractor, podiatrist, or dentist."
+        }
+      ]
+    },
+    "fee_schedules": {
+      "title": "Reimbursement Limitations",
+      "florida_specific": true,
+      "language": "In accordance with Florida Statutes Section 627.736(5), reimbursement for medical services shall not exceed: (a) For emergency services and care: 75% of the Medicare Part A reimbursement rate and 200% of the participating physicians fee schedule of Medicare Part B; (b) For non-emergency services: 80% of Medicare Part A reimbursement rate and 200% of the participating physicians fee schedule of Medicare Part B; (c) For durable medical equipment: 80% of Medicare fee schedule."
+    },
+    "work_loss_benefits": {
+      "title": "Disability Benefits",
+      "language": "We will pay 60% of any loss of gross income and loss of earning capacity per individual from inability to work proximately caused by the injury, subject to a monthly maximum of $2,000 per month. This benefit is included in the overall PIP limit and does not increase the maximum benefits payable."
+    },
+    "death_benefit": {
+      "title": "Death Benefit",
+      "language": "We will pay $5,000 as a death benefit for death resulting from bodily injury. This death benefit is in addition to the PIP limits shown in the Declarations."
+    },
+    "coordination_of_benefits": {
+      "title": "Coordination with Other Coverage",
+      "florida_specific": true,
+      "language": "If elected on the application, PIP benefits may be secondary to any other health insurance, disability insurance, or similar medical payment coverage available to the insured. If you elected the coordination of benefits option shown in the Declarations, we will pay only after other applicable coverage has been exhausted."
+    }
+  },
+  "property_damage_liability": {
+    "section_title": "PART B - PROPERTY DAMAGE LIABILITY COVERAGE",
+    "florida_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay damages for property damage for which any insured becomes legally responsible because of an auto accident. We will settle or defend, as we consider appropriate, any claim or suit asking for these damages. Florida requires minimum property damage liability coverage of $10,000."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide Property Damage Liability Coverage for:",
+      "exclusion_list": [
+        {
+          "id": "FL-PD-EX-001",
+          "title": "Intentional Damage",
+          "language": "Property damage which is expected or intended from the standpoint of the insured."
+        },
+        {
+          "id": "FL-PD-EX-002",
+          "title": "Property Owned",
+          "language": "Property damage to property owned or being transported by that insured."
+        },
+        {
+          "id": "FL-PD-EX-003",
+          "title": "Property Rented or In Care Of",
+          "language": "Property damage to property rented to, used by, or in the care of that insured."
+        },
+        {
+          "id": "FL-PD-EX-004",
+          "title": "Racing",
+          "language": "Property damage arising from the use of the vehicle in racing or speed contests."
+        }
+      ]
+    }
+  },
+  "bodily_injury_liability": {
+    "section_title": "PART C - BODILY INJURY LIABILITY COVERAGE (OPTIONAL)",
+    "florida_specific": true,
+    "note": "Bodily injury liability coverage is not required in Florida but is highly recommended.",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay damages for bodily injury for which any insured becomes legally responsible because of an auto accident. Damages include prejudgment interest awarded against the insured. We will settle or defend, as we consider appropriate, any claim or suit asking for these damages."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member for the ownership, maintenance, or use of any auto or trailer. 2. Any person using your covered auto with your permission. 3. For your covered auto, any person or organization legally responsible for acts of a covered person."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "exclusion_list": [
+        {
+          "id": "FL-BI-EX-001",
+          "title": "Intentional Acts",
+          "language": "Bodily injury which is expected or intended from the standpoint of the insured."
+        },
+        {
+          "id": "FL-BI-EX-002",
+          "title": "Employee Injury",
+          "language": "Bodily injury to an employee of that insured during the course of employment."
+        },
+        {
+          "id": "FL-BI-EX-003",
+          "title": "Vehicle Furnished for Regular Use",
+          "language": "Bodily injury arising from the use of a vehicle other than your covered auto which is owned by or available for the regular use of you or any family member."
+        },
+        {
+          "id": "FL-BI-EX-004",
+          "title": "Public or Livery",
+          "language": "Bodily injury arising from the operation of a vehicle as a public or livery conveyance."
+        }
+      ]
+    }
+  },
+  "uninsured_motorist_coverage": {
+    "section_title": "PART D - UNINSURED MOTORIST COVERAGE",
+    "florida_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay compensatory damages which an insured is legally entitled to recover from the owner or operator of an uninsured motor vehicle because of bodily injury sustained by the insured and caused by an accident. Under Florida law, uninsured motorist coverage is optional but must be offered."
+    },
+    "stacking": {
+      "title": "Stacking Election",
+      "florida_specific": true,
+      "language": "Florida law permits you to elect stacked or non-stacked uninsured motorist coverage. If you elect stacked coverage, the limits of liability are increased by the number of vehicles shown in the Declarations. If you elect non-stacked coverage, only the limits shown for one vehicle apply, regardless of the number of vehicles insured. Non-stacked coverage has a lower premium. Your stacking election is shown in the Declarations."
+    },
+    "uninsured_vehicle_defined": {
+      "title": "Uninsured Motor Vehicle",
+      "language": "Uninsured motor vehicle means a land motor vehicle or trailer: (1) To which no bodily injury liability insurance applies; (2) With limits less than Florida's financial responsibility limits; (3) Which is a hit-and-run vehicle; (4) To which insurance applies but the insurer denies coverage or becomes insolvent."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "exclusion_list": [
+        {
+          "id": "FL-UM-EX-001",
+          "title": "Owned Vehicle Not Insured",
+          "language": "Bodily injury sustained while occupying a motor vehicle owned by you or family member if not insured for UM coverage."
+        },
+        {
+          "id": "FL-UM-EX-002",
+          "title": "Settlement Without Consent",
+          "language": "Bodily injury if the insured settles the claim without our consent."
+        },
+        {
+          "id": "FL-UM-EX-003",
+          "title": "Punitive Damages",
+          "language": "Punitive or exemplary damages."
+        }
+      ]
+    },
+    "rejection": {
+      "title": "Rejection of UM Coverage",
+      "florida_specific": true,
+      "language": "You may reject uninsured motorist coverage. The rejection must be made on a form approved by the Florida Office of Insurance Regulation. If you reject UM coverage, it will not apply to your policy unless you later request it in writing."
+    }
+  },
+  "physical_damage_coverage": {
+    "section_title": "PART E - COVERAGE FOR DAMAGE TO YOUR AUTO",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay for direct and accidental loss to your covered auto or any non-owned auto, including their equipment, minus any applicable deductible shown in the Declarations."
+    },
+    "collision_defined": {
+      "title": "Collision",
+      "language": "Collision means the upset of your covered auto or its impact with another vehicle or object."
+    },
+    "comprehensive_defined": {
+      "title": "Other Than Collision (Comprehensive)",
+      "language": "Other Than Collision means loss caused by: missiles or falling objects; fire; theft; explosion or earthquake; windstorm; hail, water, or flood; malicious mischief or vandalism; riot; contact with bird or animal; or breakage of glass."
+    },
+    "hurricane_deductible": {
+      "title": "Hurricane Deductible",
+      "florida_specific": true,
+      "language": "A separate hurricane deductible may apply to comprehensive losses caused by a hurricane. The hurricane deductible applies to loss caused by a hurricane as defined by the National Weather Service. The hurricane deductible is shown separately in the Declarations and may be stated as a percentage of the actual cash value or policy limits. The hurricane deductible applies per hurricane, not per claim."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "exclusion_list": [
+        {
+          "id": "FL-PD-EX-001",
+          "title": "Wear and Tear",
+          "language": "Loss due to wear and tear, freezing, mechanical or electrical breakdown, or road damage to tires."
+        },
+        {
+          "id": "FL-PD-EX-002",
+          "title": "Custom Equipment",
+          "language": "Loss to custom furnishings or equipment in pickups or vans."
+        },
+        {
+          "id": "FL-PD-EX-003",
+          "title": "Racing",
+          "language": "Loss while the vehicle is being used for racing or speed contests."
+        }
+      ]
+    }
+  },
+  "general_provisions": {
+    "section_title": "GENERAL PROVISIONS",
+    "provisions": [
+      {
+        "title": "Florida Financial Responsibility Requirements",
+        "florida_specific": true,
+        "language": "Florida law requires that every owner or registrant of a motor vehicle maintain: (1) Personal Injury Protection coverage with a minimum limit of $10,000; and (2) Property Damage Liability coverage with a minimum limit of $10,000. Bodily Injury Liability coverage is not required but may be required if you are involved in an accident or have certain violations."
+      },
+      {
+        "title": "Cancellation",
+        "florida_specific": true,
+        "language": "You may cancel this policy at any time by mailing or delivering to us advance written notice of the date cancellation is to take effect. We may cancel by mailing notice: (a) At least 10 days before the effective date if cancellation is for nonpayment of premium; (b) At least 45 days before the effective date for any other reason. After this policy has been in effect for 90 days (or from inception if a renewal policy), we may cancel only for: nonpayment of premium; fraud or material misrepresentation; a substantial change in the risk; or failure to comply with underwriting requirements."
+      },
+      {
+        "title": "Nonrenewal",
+        "florida_specific": true,
+        "language": "If we decide not to renew this policy, we will mail notice to the named insured at the address shown in this policy at least 45 days before the policy expiration date. This notice requirement does not apply if we have manifested our willingness to renew."
+      },
+      {
+        "title": "Suit Limitations",
+        "florida_specific": true,
+        "language": "Under Florida law, no action shall be brought against us after the expiration of 5 years after the date of the accident from which the loss arises."
+      },
+      {
+        "title": "Right to Sue",
+        "florida_specific": true,
+        "language": "An injured party may not bring suit against a tortfeasor for pain and suffering unless the injury consists of: (a) Significant and permanent loss of an important bodily function; (b) Permanent injury within a reasonable degree of medical probability; (c) Significant and permanent scarring or disfigurement; or (d) Death. This 'tort threshold' applies to claims against at-fault drivers."
+      },
+      {
+        "title": "Mediation",
+        "florida_specific": true,
+        "language": "Any claim for PIP benefits may be submitted to mediation pursuant to Florida Statutes Section 627.745. The mediator shall be selected by the parties. If the parties cannot agree on a mediator, the court or the Florida Department of Financial Services may appoint one."
+      }
+    ]
+  },
+  "florida_endorsements": {
+    "description": "Florida-specific endorsements required or commonly used.",
+    "endorsements": [
+      {
+        "id": "FL-END-001",
+        "form_number": "FL 01 01",
+        "title": "Florida Personal Injury Protection Coverage",
+        "description": "No-fault PIP coverage as required by Florida Statutes",
+        "language": "This endorsement provides Personal Injury Protection coverage as required by the Florida Motor Vehicle No-Fault Law. Benefits are payable regardless of fault up to the limits shown in the Declarations. If you have an emergency medical condition, benefits are limited to $10,000. If you do not have an emergency medical condition, benefits are limited to $2,500."
+      },
+      {
+        "id": "FL-END-002",
+        "form_number": "FL 01 05",
+        "title": "Florida Extended Personal Injury Protection",
+        "description": "Additional PIP coverage above minimum requirements",
+        "language": "This endorsement provides Extended Personal Injury Protection coverage in excess of the minimum required by Florida law. Extended PIP provides additional coverage for medical expenses and lost wages. The extended limits are shown in the Declarations."
+      },
+      {
+        "id": "FL-END-003",
+        "form_number": "FL 02 01",
+        "title": "Florida Uninsured Motorist Coverage - Stacked",
+        "description": "Stacked UM coverage election",
+        "language": "This endorsement provides Stacked Uninsured Motorist Coverage. The limit of liability for each vehicle is multiplied by the number of vehicles insured under this policy. The stacked limit is the combined total of all vehicle limits."
+      },
+      {
+        "id": "FL-END-004",
+        "form_number": "FL 02 02",
+        "title": "Florida Uninsured Motorist Coverage - Non-Stacked",
+        "description": "Non-stacked UM coverage election",
+        "language": "This endorsement provides Non-Stacked Uninsured Motorist Coverage. The limit of liability for this coverage is the single limit shown in the Declarations regardless of the number of vehicles insured."
+      },
+      {
+        "id": "FL-END-005",
+        "form_number": "FL 03 01",
+        "title": "Florida Hurricane Deductible",
+        "description": "Separate deductible for hurricane losses",
+        "language": "This endorsement establishes a separate deductible applicable to comprehensive losses caused by a hurricane. The hurricane deductible applies when the National Weather Service declares a hurricane and the loss occurs during or as a result of that hurricane. The hurricane deductible is shown in the Declarations."
+      },
+      {
+        "id": "FL-END-006",
+        "form_number": "FL 04 01",
+        "title": "Medical Payments Coverage",
+        "description": "Optional MedPay coverage",
+        "language": "This endorsement provides Medical Payments coverage for reasonable expenses for medical and funeral services because of bodily injury caused by an accident. MedPay is payable regardless of fault and is in addition to PIP benefits."
+      }
+    ]
+  },
+  "fraud_statement": {
+    "florida_specific": true,
+    "title": "Florida Fraud Warning",
+    "language": "Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony of the third degree."
+  },
+  "pip_fee_schedule_notice": {
+    "florida_specific": true,
+    "title": "PIP Fee Schedule Notice",
+    "language": "Under Florida law, reimbursement for services and treatment rendered by hospitals, physicians, and other medical providers is subject to fee schedule limitations set forth in Florida Statutes Section 627.736. Reimbursement shall not exceed: 200% of the allowable amount under Medicare Part B for physician services; 75% of Medicare Part A for inpatient hospital services; and 80% for services at ambulatory surgical centers, clinical laboratory services, and all other medical services."
+  }
+}

@@ -1,0 +1,439 @@
+{
+  "metadata": {
+    "state": "New York",
+    "jurisdiction": "NY",
+    "data_type": "auto_insurance_policy_language",
+    "version": "2025.1",
+    "last_updated": "2025-01-31",
+    "policy_form": "NY-PP-001 (01/25)",
+    "description": "Sample auto insurance policy language for New York personal auto policies"
+  },
+  "declarations": {
+    "description": "The declarations page summarizes key policy information.",
+    "sample_language": {
+      "named_insured": "The Named Insured shown in the Declarations is the policyholder and spouse if a resident of the same household.",
+      "policy_period": "This policy applies only to accidents and losses which occur during the policy period shown in the Declarations.",
+      "new_york_specific": "This policy is issued in compliance with the New York Comprehensive Motor Vehicle Insurance Reparations Act (No-Fault Law) and New York Insurance Law."
+    }
+  },
+  "definitions": {
+    "section_title": "DEFINITIONS",
+    "preamble": "Throughout this policy, 'you' and 'your' refer to the 'named insured' shown in the Declarations and the spouse if a resident of the same household. 'We', 'us', and 'our' refer to the Company providing this insurance.",
+    "terms": [
+      {
+        "term": "Basic Economic Loss",
+        "new_york_specific": true,
+        "definition": "Basic economic loss means up to $50,000 per person for: (a) All necessary medical expenses; (b) Lost earnings up to $2,000 per month for up to three years; (c) All other reasonable and necessary expenses up to $25 per day for up to one year; and (d) A death benefit of $2,000."
+      },
+      {
+        "term": "Bodily Injury",
+        "definition": "Bodily injury means bodily harm, sickness, or disease, including death that results from bodily harm, sickness, or disease."
+      },
+      {
+        "term": "Covered Auto",
+        "definition": "Covered auto means any vehicle shown in the Declarations, a newly acquired auto, any trailer you own, or any auto used as a temporary substitute."
+      },
+      {
+        "term": "Eligible Injured Person",
+        "new_york_specific": true,
+        "definition": "Eligible injured person means: (a) The named insured and any relative; (b) Any other person injured while occupying a covered auto; (c) Any pedestrian struck by the covered auto."
+      },
+      {
+        "term": "Family Member",
+        "definition": "Family member means a person related to you by blood, marriage, or adoption who is a resident of your household."
+      },
+      {
+        "term": "Serious Injury",
+        "new_york_specific": true,
+        "definition": "Serious injury means a personal injury which results in: death; dismemberment; significant disfigurement; a fracture; loss of a fetus; permanent loss of use of a body organ, member, function or system; permanent consequential limitation of use of a body organ or member; significant limitation of use of a body function or system; or a medically determined injury or impairment of a non-permanent nature which prevents the injured person from performing substantially all of the material acts which constitute such person's usual and customary daily activities for not less than ninety days during the one hundred eighty days immediately following the occurrence."
+      }
+    ]
+  },
+  "no_fault_coverage": {
+    "section_title": "PART A - NO-FAULT (PERSONAL INJURY PROTECTION) COVERAGE",
+    "new_york_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay first-party benefits to reimburse an eligible injured person for basic economic loss sustained as a result of bodily injury caused by a motor vehicle accident, without regard to fault. Benefits are payable in accordance with the New York Comprehensive Motor Vehicle Insurance Reparations Act (Insurance Law Article 51)."
+    },
+    "benefits": {
+      "title": "First-Party Benefits",
+      "benefits_list": [
+        {
+          "id": "NY-NFB-001",
+          "benefit": "Medical Expenses",
+          "language": "We will pay all necessary expenses for medical, hospital, surgical, nursing, dental, ambulance, x-ray, prescription drug, prosthetic, and rehabilitation services. Medical expenses are subject to the No-Fault fee schedule established by the New York Department of Financial Services."
+        },
+        {
+          "id": "NY-NFB-002",
+          "benefit": "Lost Earnings",
+          "language": "We will pay lost earnings from work which the eligible injured person would have performed had he or she not been injured, up to $2,000 per month for not more than three years from the date of the accident. Lost earnings are subject to a three-day waiting period."
+        },
+        {
+          "id": "NY-NFB-003",
+          "benefit": "Other Expenses",
+          "language": "We will pay all other reasonable and necessary expenses incurred, up to $25 per day for not more than one year from the date of the accident. Other expenses include the cost of obtaining services in lieu of those the eligible injured person would have performed for income."
+        },
+        {
+          "id": "NY-NFB-004",
+          "benefit": "Death Benefit",
+          "language": "We will pay a death benefit of $2,000 for the death of any eligible injured person. This amount is in addition to any other first-party benefits."
+        }
+      ]
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "The limit of first-party benefits available is $50,000 per eligible injured person (basic economic loss). This includes all medical expenses, lost earnings, other reasonable and necessary expenses, but is exclusive of the $2,000 death benefit."
+    },
+    "additional_pip": {
+      "title": "Additional Personal Injury Protection (APIP)",
+      "new_york_specific": true,
+      "language": "Additional Personal Injury Protection provides benefits in excess of basic economic loss ($50,000). If APIP coverage is shown in the Declarations, we will pay additional benefits up to the APIP limits shown for: (a) Extended medical coverage; (b) Additional lost earnings; (c) Increased death benefit. APIP limits are subject to the same conditions as basic first-party benefits."
+    },
+    "insured_defined": {
+      "title": "Eligible Injured Person",
+      "language": "An eligible injured person means: (1) The named insured or any family member while occupying a motor vehicle or when struck by a motor vehicle; (2) Any other person occupying the covered auto at the time of the accident; (3) Any pedestrian struck by the covered auto. Coverage is provided regardless of fault."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "First-party benefits shall not be payable for:",
+      "exclusion_list": [
+        {
+          "id": "NY-NF-EX-001",
+          "title": "Intentional Injury",
+          "language": "Injury which was intentionally caused by the eligible injured person."
+        },
+        {
+          "id": "NY-NF-EX-002",
+          "title": "While Committing Felony",
+          "language": "Injury sustained by a person while he or she was committing a felony or while seeking to avoid lawful apprehension or arrest."
+        },
+        {
+          "id": "NY-NF-EX-003",
+          "title": "Racing",
+          "language": "Injury sustained while operating or occupying a motor vehicle while participating in a race or speed test."
+        },
+        {
+          "id": "NY-NF-EX-004",
+          "title": "Operating Without Consent",
+          "language": "Injury sustained while operating a motor vehicle without the consent of the owner."
+        },
+        {
+          "id": "NY-NF-EX-005",
+          "title": "Other Vehicle Owned",
+          "language": "Injury to the named insured or family member while occupying a motor vehicle owned by such person other than the covered auto, unless No-Fault coverage applies to such other vehicle."
+        },
+        {
+          "id": "NY-NF-EX-006",
+          "title": "Motorcycle Injury",
+          "new_york_specific": true,
+          "language": "Injury sustained while operating or occupying a motorcycle. Motorcycles are not covered under the No-Fault Law in New York."
+        },
+        {
+          "id": "NY-NF-EX-007",
+          "title": "Workers' Compensation",
+          "language": "To the extent benefits are payable under workers' compensation law."
+        }
+      ]
+    },
+    "claim_procedures": {
+      "title": "Claim Procedures",
+      "new_york_specific": true,
+      "language": "An application for first-party benefits must be submitted to us as follows: (a) Written notice of the accident must be given within 30 days, or as soon as reasonably practicable; (b) A completed application for benefits (NYS Form NF-2) must be submitted within 90 days after the accident; (c) Medical bills must be submitted to us within 45 days of the date the service was rendered. We must pay or deny a claim within 30 days after receipt of proof of claim."
+    },
+    "peer_review": {
+      "title": "Independent Medical Examination and Peer Review",
+      "new_york_specific": true,
+      "language": "We have the right to have an eligible injured person examined by a physician selected by us as often as may be reasonably required during the pendency of a claim. We also have the right to have medical bills reviewed by a peer reviewer. If the injured person fails to appear for an independent medical examination after proper notice, we may deny benefits."
+    },
+    "arbitration": {
+      "title": "Arbitration",
+      "new_york_specific": true,
+      "language": "If we and an eligible injured person or a health service provider do not agree on the amount or entitlement to first-party benefits, either party may request arbitration under the American Arbitration Association's Expedited Procedures. An arbitration may be commenced within one year of the claim accrual. The arbitrator's decision is binding on us. The eligible injured person or provider may reject the arbitration award and commence a court action within 30 days."
+    }
+  },
+  "liability_coverage": {
+    "section_title": "PART B - LIABILITY COVERAGE",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay damages for bodily injury or property damage for which any insured becomes legally responsible because of an auto accident. We will settle or defend, as we consider appropriate, any claim or suit. Our duty to settle or defend ends when our limit of liability has been exhausted."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member for the ownership, maintenance, or use of any auto or trailer. 2. Any person using your covered auto with your permission. 3. Any organization legally responsible for acts of a covered person."
+    },
+    "minimum_limits": {
+      "title": "New York Minimum Limits",
+      "new_york_specific": true,
+      "language": "New York law requires minimum liability coverage of: $25,000 per person for bodily injury; $50,000 per accident for bodily injury; and $10,000 per accident for property damage (commonly shown as 25/50/10). These minimums are mandated by New York Insurance Law Section 3420 and Vehicle and Traffic Law Section 311."
+    },
+    "supplementary_payments": {
+      "title": "Supplementary Payments",
+      "language": "In addition to our limit of liability, we will pay: (1) Up to $250 for cost of bail bonds; (2) Premiums on appeal bonds; (3) Interest accruing after judgment; (4) Up to $200 per day for loss of earnings due to attendance at hearings or trials at our request; (5) Other reasonable expenses incurred at our request."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "exclusion_list": [
+        {
+          "id": "NY-LB-EX-001",
+          "title": "Intentional Acts",
+          "language": "Bodily injury or property damage which is expected or intended from the standpoint of the insured."
+        },
+        {
+          "id": "NY-LB-EX-002",
+          "title": "Property Owned or Transported",
+          "language": "Property damage to property owned or being transported by that insured."
+        },
+        {
+          "id": "NY-LB-EX-003",
+          "title": "Employee Injury",
+          "language": "Bodily injury to an employee of that insured during the course of employment."
+        },
+        {
+          "id": "NY-LB-EX-004",
+          "title": "Public or Livery",
+          "language": "Liability arising from operation of a vehicle as a public or livery conveyance."
+        },
+        {
+          "id": "NY-LB-EX-005",
+          "title": "Vehicle Furnished for Regular Use",
+          "language": "Use of a vehicle other than the covered auto which is owned by or available for the regular use of the insured."
+        },
+        {
+          "id": "NY-LB-EX-006",
+          "title": "Racing",
+          "language": "Liability arising from use of a vehicle in racing or speed contests."
+        }
+      ]
+    },
+    "serious_injury_threshold": {
+      "title": "Serious Injury Threshold",
+      "new_york_specific": true,
+      "language": "Under New York's No-Fault law, an injured party may not recover damages for non-economic loss (pain and suffering) in a lawsuit against the at-fault driver unless the injury constitutes a 'serious injury' as defined by Insurance Law Section 5102(d). The serious injury threshold includes: death; dismemberment; significant disfigurement; fracture; loss of a fetus; permanent loss of use of a body organ, member, function or system; permanent consequential limitation of use; significant limitation of use; or a non-permanent injury preventing substantially all daily activities for at least 90 days during the 180 days following the accident."
+    }
+  },
+  "uninsured_motorist_coverage": {
+    "section_title": "PART C - UNINSURED MOTORIST COVERAGE",
+    "new_york_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay compensatory damages which an insured is legally entitled to recover from the owner or operator of an uninsured motor vehicle because of bodily injury sustained by the insured caused by an accident. New York requires uninsured motorist coverage with minimum limits of $25,000/$50,000."
+    },
+    "uninsured_vehicle_defined": {
+      "title": "Uninsured Motor Vehicle",
+      "language": "Uninsured motor vehicle means a motor vehicle: (1) Without bodily injury liability insurance at the time of the accident; (2) With insurance limits less than New York's minimum requirements; (3) Which is a hit-and-run vehicle whose operator cannot be identified; (4) Insured by a company that is insolvent or denies coverage."
+    },
+    "supplementary_uninsured_motorist": {
+      "title": "Supplementary Uninsured Motorist (SUM) Coverage",
+      "new_york_specific": true,
+      "language": "Supplementary Uninsured/Underinsured Motorist coverage provides limits higher than the minimum required by New York. SUM coverage applies to both uninsured and underinsured vehicles. SUM limits may be purchased up to but not exceeding the bodily injury liability limits. If SUM coverage applies, benefits are payable only after the at-fault driver's liability limits have been exhausted."
+    },
+    "underinsured_motorist": {
+      "title": "Underinsured Motor Vehicle",
+      "new_york_specific": true,
+      "language": "An underinsured motor vehicle is a motor vehicle for which the sum of all bodily injury liability insurance and bonds applicable to the accident is less than the SUM limits purchased. This coverage applies only if SUM coverage is shown in the Declarations. SUM benefits are calculated as the difference between the SUM limits and the liability insurance recovered from the at-fault driver."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "exclusion_list": [
+        {
+          "id": "NY-UM-EX-001",
+          "title": "Owned Vehicle Not Insured",
+          "language": "Bodily injury sustained while occupying a motor vehicle owned by the insured if not insured for UM coverage."
+        },
+        {
+          "id": "NY-UM-EX-002",
+          "title": "Settlement Without Consent",
+          "language": "If the insured settles with the at-fault party without our written consent."
+        },
+        {
+          "id": "NY-UM-EX-003",
+          "title": "Workers' Compensation Vehicle",
+          "language": "Bodily injury to an employee entitled to workers' compensation benefits."
+        }
+      ]
+    },
+    "arbitration": {
+      "title": "Arbitration",
+      "new_york_specific": true,
+      "language": "If we and the insured disagree whether the insured is entitled to recover damages from the uninsured motorist or as to the amount of damages, either party may demand arbitration. Arbitration will be conducted in accordance with the rules of the American Arbitration Association. The arbitrator's decision on entitlement and amount is binding on both parties, subject to the policy limits."
+    }
+  },
+  "physical_damage_coverage": {
+    "section_title": "PART D - COVERAGE FOR DAMAGE TO YOUR AUTO",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay for direct and accidental loss to your covered auto, including their equipment, minus any applicable deductible. Coverage is provided for Collision and Other Than Collision (Comprehensive) as indicated in the Declarations."
+    },
+    "collision_defined": {
+      "title": "Collision",
+      "language": "Collision means the upset of your covered auto or its impact with another vehicle or object."
+    },
+    "comprehensive_defined": {
+      "title": "Other Than Collision (Comprehensive)",
+      "language": "Other Than Collision means loss caused by: missiles or falling objects; fire; theft; explosion; earthquake; windstorm; hail, water, or flood; malicious mischief or vandalism; riot; contact with bird or animal; or glass breakage."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "exclusion_list": [
+        {
+          "id": "NY-PD-EX-001",
+          "title": "Wear and Tear",
+          "language": "Loss due to wear and tear, freezing, mechanical breakdown, or road damage to tires."
+        },
+        {
+          "id": "NY-PD-EX-002",
+          "title": "Nuclear or War",
+          "language": "Loss due to radioactive contamination, nuclear weapon discharge, war, or insurrection."
+        },
+        {
+          "id": "NY-PD-EX-003",
+          "title": "Electronic Equipment",
+          "language": "Loss to electronic equipment not permanently installed."
+        },
+        {
+          "id": "NY-PD-EX-004",
+          "title": "Custom Equipment",
+          "language": "Loss to custom furnishings or equipment in pickups or vans."
+        }
+      ]
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "Our limit of liability is the lesser of: (1) Actual cash value of the stolen or damaged property; or (2) The amount necessary to repair or replace the property with property of like kind and quality."
+    },
+    "appraisal": {
+      "title": "Appraisal",
+      "language": "If we and you disagree on the amount of loss, either may demand an appraisal. Each party will select a competent appraiser, and the two appraisers will select an umpire. A decision agreed to by any two will be binding."
+    }
+  },
+  "obel_coverage": {
+    "section_title": "OPTIONAL BASIC ECONOMIC LOSS (OBEL) COVERAGE",
+    "new_york_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "Optional Basic Economic Loss coverage provides an additional $25,000 of No-Fault benefits for: (a) Psychiatric, physical, or occupational therapy and rehabilitation that is within the scope of practice of a licensed provider; (b) Prosthetic devices; (c) Home care services; or (d) Any combination of the above. OBEL coverage is optional and applies only if shown in the Declarations."
+    },
+    "conditions": {
+      "title": "Conditions",
+      "language": "OBEL benefits are payable only after basic economic loss ($50,000) has been exhausted. OBEL benefits are subject to the same conditions, exclusions, and claim procedures as basic first-party benefits."
+    }
+  },
+  "general_provisions": {
+    "section_title": "GENERAL PROVISIONS",
+    "provisions": [
+      {
+        "title": "New York Required Coverages",
+        "new_york_specific": true,
+        "language": "New York law requires all motor vehicle insurance policies to include: (1) No-Fault coverage (first-party benefits) with a minimum of $50,000 per person; (2) Bodily injury liability coverage with minimum limits of $25,000/$50,000; (3) Property damage liability coverage with a minimum of $10,000; (4) Uninsured motorist coverage with minimum limits of $25,000/$50,000."
+      },
+      {
+        "title": "Cancellation",
+        "new_york_specific": true,
+        "language": "You may cancel this policy at any time by mailing advance written notice to us or returning the policy. We may cancel: (a) During the first 60 days with at least 15 days written notice for any reason; (b) After 60 days, with at least 20 days notice only for: nonpayment of premium; suspension or revocation of the license of any insured; fraud or material misrepresentation; or violation of policy terms. We may not cancel or refuse to renew a policy solely because of the age, sex, residence, race, color, creed, national origin, ancestry, marital status, occupation, or disability of any person."
+      },
+      {
+        "title": "Nonrenewal",
+        "new_york_specific": true,
+        "language": "We will mail notice of nonrenewal at least 45 days before the end of the policy period. If we fail to give proper notice, the policy shall remain in effect until 45 days after notice is given, subject to payment of premium."
+      },
+      {
+        "title": "Midterm Requests for Liability Limits Increase",
+        "new_york_specific": true,
+        "language": "Under New York Insurance Law Section 3425(j), if you request an increase in your liability limits during the policy period, we must provide a quote within 30 days. If we deny the request, we must provide the reason in writing."
+      },
+      {
+        "title": "Death of Named Insured",
+        "new_york_specific": true,
+        "language": "If the named insured dies during the policy period, the policy will continue in effect for any surviving spouse who is a resident of the same household, and any person having proper custody of the covered auto until the end of the policy period."
+      },
+      {
+        "title": "Subrogation",
+        "language": "If we make payment under this policy and the person to whom payment was made has a right to recover from another, we shall be subrogated to that right. That person shall do whatever is necessary to enable us to exercise our rights."
+      }
+    ]
+  },
+  "new_york_endorsements": {
+    "description": "New York-specific endorsements required or commonly used.",
+    "endorsements": [
+      {
+        "id": "NY-END-001",
+        "form_number": "NY 01 01",
+        "title": "New York No-Fault (First-Party Benefits) Coverage",
+        "description": "No-fault coverage as required by Insurance Law Article 51",
+        "language": "This endorsement provides coverage for first-party benefits (basic economic loss) as required by the New York Comprehensive Motor Vehicle Insurance Reparations Act. Benefits are payable regardless of fault up to $50,000 per eligible injured person. Benefits include medical expenses, lost earnings, other reasonable expenses, and a death benefit."
+      },
+      {
+        "id": "NY-END-002",
+        "form_number": "NY 01 05",
+        "title": "Additional Personal Injury Protection (APIP)",
+        "description": "Extended No-Fault benefits above basic limits",
+        "language": "This endorsement provides additional first-party benefits above the $50,000 basic economic loss limit. APIP provides coverage for medical expenses, lost earnings, and death benefit in excess of basic limits, up to the amounts shown in the Declarations."
+      },
+      {
+        "id": "NY-END-003",
+        "form_number": "NY 01 10",
+        "title": "Optional Basic Economic Loss (OBEL)",
+        "description": "Additional $25,000 for specific services",
+        "language": "This endorsement provides an additional $25,000 of No-Fault benefits for psychiatric, physical, or occupational therapy and rehabilitation; prosthetic devices; and home care services. OBEL benefits apply after basic economic loss is exhausted."
+      },
+      {
+        "id": "NY-END-004",
+        "form_number": "NY 02 01",
+        "title": "Supplementary Uninsured/Underinsured Motorist (SUM) Coverage",
+        "description": "Enhanced UM/UIM coverage above minimums",
+        "language": "This endorsement provides Supplementary Uninsured/Underinsured Motorist coverage with limits higher than the minimum required by law. SUM coverage applies to bodily injury caused by: (a) An uninsured motor vehicle; (b) A hit-and-run vehicle; (c) An underinsured motor vehicle. SUM limits are shown in the Declarations."
+      },
+      {
+        "id": "NY-END-005",
+        "form_number": "NY 03 01",
+        "title": "New York Amendatory Endorsement",
+        "description": "Required modifications for New York compliance",
+        "language": "This endorsement modifies the policy to comply with New York law. All policy provisions that conflict with New York Insurance Law or the Comprehensive Motor Vehicle Insurance Reparations Act are amended to conform to such laws."
+      }
+    ]
+  },
+  "fraud_statement": {
+    "new_york_specific": true,
+    "title": "New York Fraud Warning",
+    "language": "Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information, or conceals for the purpose of misleading, information concerning any fact material thereto, commits a fraudulent insurance act, which is a crime, and shall also be subject to a civil penalty not to exceed five thousand dollars and the stated value of the claim for each such violation."
+  },
+  "no_fault_claim_forms": {
+    "new_york_specific": true,
+    "title": "Required No-Fault Forms",
+    "description": "New York Department of Financial Services prescribed forms",
+    "forms": [
+      {
+        "form_number": "NF-2",
+        "title": "Application for Motor Vehicle No-Fault Benefits",
+        "description": "Must be submitted within 90 days of accident"
+      },
+      {
+        "form_number": "NF-3",
+        "title": "Verification of Treatment by Attending Physician or Dentist",
+        "description": "Medical provider's confirmation of treatment"
+      },
+      {
+        "form_number": "NF-4",
+        "title": "Verification of Hospital Treatment",
+        "description": "Hospital's confirmation of treatment"
+      },
+      {
+        "form_number": "NF-5",
+        "title": "Hospital Facility Form",
+        "description": "Detailed hospital billing form"
+      },
+      {
+        "form_number": "NF-10",
+        "title": "Denial of Claim",
+        "description": "Insurer's notice of claim denial with reasons"
+      }
+    ]
+  },
+  "assigned_risk": {
+    "new_york_specific": true,
+    "title": "New York Automobile Insurance Plan (NYAIP)",
+    "description": "Assigned risk pool for drivers unable to obtain coverage",
+    "language": "If you are unable to obtain auto insurance in the voluntary market, you may apply for coverage through the New York Automobile Insurance Plan. The NYAIP provides basic minimum coverage required by law. Premium rates in the NYAIP may be higher than rates in the voluntary market. For information, contact the NYAIP at www.nyaip.org or your insurance agent."
+  }
+}
