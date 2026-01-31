@@ -613,22 +613,22 @@ def get_parts_catalog_impl(
     db = load_mock_db()
     parts_catalog = db.get("parts_catalog", {})
     
-    # Keyword mapping to parts
+    # Keyword mapping to parts (more specific keywords first to prevent incorrect matches)
     damage_to_parts = {
-        "bumper": ["PART-BUMPER-FRONT", "PART-BUMPER-REAR"],
         "front bumper": ["PART-BUMPER-FRONT"],
         "rear bumper": ["PART-BUMPER-REAR"],
+        "front door": ["PART-DOOR-FRONT"],
+        "rear door": ["PART-DOOR-REAR"],
+        "side mirror": ["PART-MIRROR-SIDE"],
+        "quarter panel": ["PART-QUARTER-PANEL"],
+        "bumper": ["PART-BUMPER-FRONT", "PART-BUMPER-REAR"],
         "fender": ["PART-FENDER-FRONT"],
         "hood": ["PART-HOOD"],
         "door": ["PART-DOOR-FRONT", "PART-DOOR-REAR"],
-        "front door": ["PART-DOOR-FRONT"],
-        "rear door": ["PART-DOOR-REAR"],
         "headlight": ["PART-HEADLIGHT"],
         "taillight": ["PART-TAILLIGHT"],
         "mirror": ["PART-MIRROR-SIDE"],
-        "side mirror": ["PART-MIRROR-SIDE"],
         "windshield": ["PART-WINDSHIELD"],
-        "quarter panel": ["PART-QUARTER-PANEL"],
         "radiator": ["PART-RADIATOR"],
         "airbag": ["PART-AIRBAG-DRIVER", "PART-AIRBAG-PASSENGER"],
         "grille": ["PART-GRILLE"],

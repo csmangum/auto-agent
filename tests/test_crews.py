@@ -93,7 +93,7 @@ def test_run_claim_workflow_classification_only():
         result = run_claim_workflow(claim_data)
         assert "claim_id" in result
         assert "claim_type" in result
-        assert result["claim_type"] in ("new", "duplicate", "total_loss")
+        assert result["claim_type"] in ("new", "duplicate", "total_loss", "partial_loss")
         assert "workflow_output" in result
         assert "summary" in result
     finally:
