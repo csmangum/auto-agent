@@ -22,6 +22,9 @@ MIN_PAYOUT_VEHICLE_VALUE = 100  # Minimum vehicle value for payout calculation
 
 # Partial/total loss configuration
 PARTIAL_LOSS_THRESHOLD = 0.75  # Threshold for total loss: if repair cost >= 75% of vehicle value, classify as total loss
+LABOR_HOURS_RNI_PER_PART = 1.5
+LABOR_HOURS_PAINT_BODY = 2.0
+LABOR_HOURS_MIN = 2.0
 # Escalation thresholds (HITL)
 ESCALATION_CONFIG = {
     "confidence_threshold": 0.7,
@@ -467,6 +470,16 @@ def evaluate_escalation_impl(
 # --- Partial Loss Tools ---
 
 
+def _get_shop_labor_rate(db: dict, shop_id: str | None, default: float = 75.0) -> float:
+    """Return labor rate for shop_id from db, or default if not found."""
+    if not shop_id:
+        return default
+    shops = db.get("repair_shops", {})
+    if shop_id not in shops:
+        return default
+    return shops[shop_id].get("labor_rate_per_hour", default)
+
+
 def get_available_repair_shops_impl(
     location: str | None = None,
     vehicle_make: str | None = None,
@@ -570,7 +583,7 @@ def assign_repair_shop_impl(
         "shop_name": shop.get("name", ""),
         "address": shop.get("address", ""),
         "phone": shop.get("phone", ""),
-        "labor_rate_per_hour": shop.get("labor_rate_per_hour", 75.0),
+        "labor_rate_per_hour": _get_shop_labor_rate(db, shop_id, 75.0),
         "network": shop.get("network", "standard"),
         "estimated_start_date": start_date.strftime("%Y-%m-%d"),
         "estimated_completion_date": completion_date.strftime("%Y-%m-%d"),
@@ -789,20 +802,15 @@ def calculate_repair_estimate_impl(
         JSON string with complete repair estimate breakdown.
     """
     db = load_mock_db()
-    
+
     # Get parts cost
     parts_result = get_parts_catalog_impl(damage_description, vehicle_make, part_type_preference)
     parts_data = json.loads(parts_result)
     parts_cost = parts_data.get("total_parts_cost", 0.0)
     parts_list = parts_data.get("parts", [])
-    
-    # Get labor rate from shop or use default
-    labor_rate = 75.0  # Default rate
-    if shop_id:
-        shops = db.get("repair_shops", {})
-        if shop_id in shops:
-            labor_rate = shops[shop_id].get("labor_rate_per_hour", 75.0)
-    
+
+    labor_rate = _get_shop_labor_rate(db, shop_id, 75.0)
+
     # Estimate labor hours based on damage and parts
     labor_operations = db.get("labor_operations", {})
     base_labor_hours = 0.0
@@ -810,13 +818,13 @@ def calculate_repair_estimate_impl(
     
     # Add labor for each part (R&I + paint typically)
     for part in parts_list:
-        base_labor_hours += 1.5  # R&I for each part
+        base_labor_hours += LABOR_HOURS_RNI_PER_PART
         if part.get("category") == "body":
-            base_labor_hours += 2.0  # Paint work for body parts
-    
+            base_labor_hours += LABOR_HOURS_PAINT_BODY
+
     # Add specific labor operations based on damage
     if "paint" in damage_lower or "scratch" in damage_lower:
-        base_labor_hours += labor_operations.get("LABOR-BLEND-PAINT", {}).get("base_hours", 2.0)
+        base_labor_hours += labor_operations.get("LABOR-BLEND-PAINT", {}).get("base_hours", LABOR_HOURS_PAINT_BODY)
     if "dent" in damage_lower and "minor" in damage_lower:
         base_labor_hours += labor_operations.get("LABOR-PDR", {}).get("base_hours", 1.0)
     if "frame" in damage_lower:
@@ -824,11 +832,10 @@ def calculate_repair_estimate_impl(
     if "alignment" in damage_lower or "wheel" in damage_lower:
         base_labor_hours += labor_operations.get("LABOR-ALIGNMENT", {}).get("base_hours", 1.0)
     if "sensor" in damage_lower or "camera" in damage_lower or "adas" in damage_lower:
-        base_labor_hours += labor_operations.get("LABOR-CALIBRATION", {}).get("base_hours", 2.0)
-    
-    # Minimum labor hours
-    if base_labor_hours < 2.0:
-        base_labor_hours = 2.0
+        base_labor_hours += labor_operations.get("LABOR-CALIBRATION", {}).get("base_hours", LABOR_HOURS_PAINT_BODY)
+
+    if base_labor_hours < LABOR_HOURS_MIN:
+        base_labor_hours = LABOR_HOURS_MIN
     
     labor_cost = round(base_labor_hours * labor_rate, 2)
     total_estimate = round(parts_cost + labor_cost, 2)

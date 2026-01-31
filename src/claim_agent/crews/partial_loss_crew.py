@@ -78,7 +78,7 @@ Use get_parts_catalog if you need more details on specific parts.""",
    - Shortest wait time
    - Appropriate certifications
 
-3. Use assign_repair_shop with claim_id and selected shop_id.
+3. Use assign_repair_shop with claim_id from claim_data and the selected shop_id.
    - Estimate repair days based on damage severity (minor: 3, moderate: 5, severe: 7)
 
 Output the shop assignment details including start and completion dates.""",

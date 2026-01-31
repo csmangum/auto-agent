@@ -1,5 +1,7 @@
 """Partial loss workflow tools for repair shop assignment and parts ordering."""
 
+from __future__ import annotations
+
 from crewai.tools import tool
 
 from claim_agent.tools.logic import (
@@ -14,24 +16,24 @@ from claim_agent.tools.logic import (
 
 @tool("Get Available Repair Shops")
 def get_available_repair_shops(
-    location: str = "",
-    vehicle_make: str = "",
-    network_type: str = "",
+    location: str | None = None,
+    vehicle_make: str | None = None,
+    network_type: str | None = None,
 ) -> str:
     """Get list of available repair shops, optionally filtered.
-    
+
     Args:
         location: Optional location filter (city/state).
         vehicle_make: Optional vehicle make for specialty matching.
         network_type: Optional network type (preferred, premium, standard).
-    
+
     Returns:
         JSON string with list of available repair shops sorted by rating.
     """
     return get_available_repair_shops_impl(
-        location=location if location else None,
-        vehicle_make=vehicle_make if vehicle_make else None,
-        network_type=network_type if network_type else None,
+        location=location,
+        vehicle_make=vehicle_make,
+        network_type=network_type,
     )
 
 
@@ -85,22 +87,22 @@ def get_parts_catalog(
 def create_parts_order(
     claim_id: str,
     parts: list,
-    shop_id: str = "",
+    shop_id: str | None = None,
 ) -> str:
     """Create a parts order for a partial loss repair claim.
-    
+
     Args:
         claim_id: The claim ID for the order.
         parts: List of dicts with part_id, quantity, and part_type for each part.
         shop_id: Optional shop ID for delivery address.
-    
+
     Returns:
         JSON string with order confirmation, tracking, and delivery estimate.
     """
     return create_parts_order_impl(
         claim_id=claim_id,
         parts=parts,
-        shop_id=shop_id if shop_id else None,
+        shop_id=shop_id,
     )
 
 
@@ -110,11 +112,11 @@ def calculate_repair_estimate(
     vehicle_make: str,
     vehicle_year: int,
     policy_number: str,
-    shop_id: str = "",
+    shop_id: str | None = None,
     part_type_preference: str = "aftermarket",
 ) -> str:
     """Calculate a complete repair estimate including parts and labor.
-    
+
     Args:
         damage_description: Description of the damage.
         vehicle_make: Vehicle manufacturer.
@@ -122,7 +124,7 @@ def calculate_repair_estimate(
         policy_number: Policy number for deductible lookup.
         shop_id: Optional shop ID for labor rate.
         part_type_preference: Preferred part type: oem, aftermarket, refurbished.
-    
+
     Returns:
         JSON string with full estimate breakdown: parts, labor, deductible, insurance pays.
     """
@@ -131,7 +133,7 @@ def calculate_repair_estimate(
         vehicle_make=vehicle_make,
         vehicle_year=vehicle_year,
         policy_number=policy_number,
-        shop_id=shop_id if shop_id else None,
+        shop_id=shop_id,
         part_type_preference=part_type_preference,
     )
 

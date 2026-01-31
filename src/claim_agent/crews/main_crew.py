@@ -17,7 +17,6 @@ from claim_agent.db.constants import (
     STATUS_FAILED,
     STATUS_NEEDS_REVIEW,
     STATUS_OPEN,
-    STATUS_PARTIAL_LOSS,
     STATUS_PROCESSING,
 )
 from claim_agent.tools.logic import evaluate_escalation_impl
@@ -94,8 +93,6 @@ def _final_status(claim_type: str) -> str:
         return STATUS_OPEN
     if claim_type == "duplicate":
         return STATUS_DUPLICATE
-    if claim_type == "partial_loss":
-        return STATUS_PARTIAL_LOSS
     return STATUS_CLOSED
 
 
