@@ -96,6 +96,7 @@ def get_llm():
 Contains mock data for:
 - **Policies**: Policy validation, coverage types, deductibles
 - **Vehicle values**: Mock KBB-style valuations
+- **claims**: Optional; reference/seed data only (often empty `[]`)
 
 ```json
 {
@@ -114,9 +115,7 @@ Contains mock data for:
       "condition": "good"
     }
   ],
-  "claims": [
-    // Reference/seed data only
-  ]
+  "claims": []
 }
 ```
 

@@ -60,7 +60,7 @@ See [Claim Types](claim-types.md) for classification criteria and examples.
 
 - **Multi-Agent Architecture** - Specialized agents collaborate on tasks
 - **Router-Based Classification** - Intelligent claim routing ([Architecture](architecture.md#router-delegator-pattern))
-- **Human-in-the-Loop** - Escalation for high-risk claims ([Agent Flow](agent-flow.md#escalation-check-hitl))
+- **Human-in-the-Loop** - Escalation for high-risk claims ([Agent Flow](agent-flow.md#4-escalation-check-hitl))
 - **Persistent State** - SQLite with full audit trail ([Database](database.md))
 - **Extensible Tools** - Easy to add capabilities ([Tools](tools.md))
 - **MCP Integration** - Optional external access ([MCP Server](mcp-server.md))

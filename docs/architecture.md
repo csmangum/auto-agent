@@ -60,7 +60,7 @@ After classification but before workflow execution:
 - Claims flagged for escalation are marked `needs_review` and bypass automated processing
 - Escalation criteria: fraud indicators, high-value payouts, low confidence scores
 
-See [Agent Flow - Escalation](agent-flow.md#escalation-check-hitl) for details.
+See [Agent Flow - Escalation](agent-flow.md#4-escalation-check-hitl) for details.
 
 ### Agent Composition
 
