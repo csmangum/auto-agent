@@ -12,6 +12,9 @@ DEFAULT_BASE_VALUE = 12000
 DEPRECIATION_PER_YEAR = 500
 MIN_VEHICLE_VALUE = 2000
 
+# Payout calculation defaults
+DEFAULT_DEDUCTIBLE = 500
+
 
 def query_policy_db_impl(policy_number: str) -> str:
     if not policy_number or not isinstance(policy_number, str):
@@ -225,6 +228,7 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
     
     # Query policy to get deductible
     policy_result = query_policy_db_impl(policy_number)
+    deductible_warning = None
     try:
         policy_data = json.loads(policy_result)
         if not policy_data.get("valid", False):
@@ -235,17 +239,23 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
                 "deductible": 0,
                 "calculation": "Error: Policy not found or inactive"
             })
-        deductible = policy_data.get("deductible", 500)
+        deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
     except (json.JSONDecodeError, KeyError):
         # Default deductible if policy lookup fails
-        deductible = 500
+        deductible = DEFAULT_DEDUCTIBLE
+        deductible_warning = f"Policy lookup failed, using default deductible of ${DEFAULT_DEDUCTIBLE}"
     
     # Calculate payout
     payout_amount = max(0.0, vehicle_value - deductible)
     
-    return json.dumps({
+    result = {
         "payout_amount": round(payout_amount, 2),
         "vehicle_value": vehicle_value,
         "deductible": deductible,
         "calculation": f"${vehicle_value:,.2f} (vehicle value) - ${deductible:,.2f} (deductible) = ${payout_amount:,.2f}"
-    })
+    }
+    
+    if deductible_warning:
+        result["warning"] = deductible_warning
+    
+    return json.dumps(result)
