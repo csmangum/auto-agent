@@ -23,11 +23,19 @@ def query_policy_db_impl(policy_number: str) -> str:
     policies = db.get("policies", {})
     if policy_number in policies:
         p = policies[policy_number]
+        status = p.get("status", "active")
+        is_active = isinstance(status, str) and status.lower() == "active"
+        if is_active:
+            return json.dumps({
+                "valid": True,
+                "coverage": p.get("coverage", "comprehensive"),
+                "deductible": p.get("deductible", 500),
+                "status": status,
+            })
         return json.dumps({
-            "valid": True,
-            "coverage": p.get("coverage", "comprehensive"),
-            "deductible": p.get("deductible", 500),
-            "status": "active",
+            "valid": False,
+            "status": status,
+            "message": "Policy not found or inactive",
         })
     return json.dumps({"valid": False, "message": "Policy not found or inactive"})
 
@@ -75,7 +83,6 @@ def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
             "condition": v.get("condition", "good"),
             "source": "mock_kbb",
         })
-    year_int = int(year)
     default_value = max(
         MIN_VEHICLE_VALUE,
         DEFAULT_BASE_VALUE + (CURRENT_YEAR - year_int) * -DEPRECIATION_PER_YEAR,
@@ -95,6 +102,12 @@ def evaluate_damage_impl(damage_description: str, estimated_repair_cost: float |
             "total_loss_candidate": False,
         })
     desc_lower = damage_description.strip().lower()
+    if not desc_lower:
+        return json.dumps({
+            "severity": "unknown",
+            "estimated_repair_cost": estimated_repair_cost if estimated_repair_cost is not None else 0.0,
+            "total_loss_candidate": False,
+        })
     total_loss_keywords = ["totaled", "total loss", "destroyed", "flood", "fire", "frame"]
     is_total_loss_candidate = any(k in desc_lower for k in total_loss_keywords)
     cost = estimated_repair_cost if estimated_repair_cost is not None else 0.0
