@@ -94,6 +94,8 @@ def test_parse_claim_type_exact():
     assert _parse_claim_type("duplicate") == "duplicate"
     assert _parse_claim_type("total_loss") == "total_loss"
     assert _parse_claim_type("total loss") == "total_loss"
+    assert _parse_claim_type("partial_loss") == "partial_loss"
+    assert _parse_claim_type("partial loss") == "partial_loss"
 
 
 def test_parse_claim_type_with_reasoning():
@@ -103,6 +105,7 @@ def test_parse_claim_type_with_reasoning():
     assert _parse_claim_type("new\nReason: first-time submission.") == "new"
     assert _parse_claim_type("duplicate\nSame VIN and date as existing claim.") == "duplicate"
     assert _parse_claim_type("total_loss\nVehicle flooded.") == "total_loss"
+    assert _parse_claim_type("partial_loss\nRepairable bumper damage.") == "partial_loss"
 
 
 def test_parse_claim_type_starts_with():
@@ -112,6 +115,8 @@ def test_parse_claim_type_starts_with():
     assert _parse_claim_type("new claim submission") == "new"
     assert _parse_claim_type("Duplicate of CLM-EXIST01") == "duplicate"
     assert _parse_claim_type("total loss - flood damage") == "total_loss"
+    assert _parse_claim_type("partial loss - bumper repair") == "partial_loss"
+    assert _parse_claim_type("partial_loss: fender damage repairable") == "partial_loss"
 
 
 def test_parse_claim_type_default():
@@ -136,10 +141,12 @@ def test_workflow_failure_sets_status_failed():
     try:
         init_db(path)
         os.environ["CLAIMS_DB_PATH"] = path
-        with patch("claim_agent.crews.main_crew.create_router_crew") as m:
-            m.return_value.kickoff.side_effect = RuntimeError("simulated failure")
-            with pytest.raises(RuntimeError, match="simulated failure"):
-                run_claim_workflow(claim_data)
+        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
+            mock_llm.return_value = None  # LLM not needed since we mock the crew
+            with patch("claim_agent.crews.main_crew.create_router_crew") as m:
+                m.return_value.kickoff.side_effect = RuntimeError("simulated failure")
+                with pytest.raises(RuntimeError, match="simulated failure"):
+                    run_claim_workflow(claim_data)
         repo = ClaimRepository(db_path=path)
         with get_connection(path) as conn:
             row = conn.execute("SELECT id FROM claims").fetchone()

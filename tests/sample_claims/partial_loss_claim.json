@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-003",
+  "vin": "5FNRL6H76MB012346",
+  "vehicle_year": 2021,
+  "vehicle_make": "Honda",
+  "vehicle_model": "Pilot",
+  "incident_date": "2025-01-28",
+  "incident_description": "Rear-ended at stoplight by distracted driver. Moderate impact to rear of vehicle.",
+  "damage_description": "Rear bumper cracked and dented. Taillight assembly broken. Trunk lid has minor dent. Exhaust pipe slightly bent.",
+  "estimated_damage": 3500
+}
