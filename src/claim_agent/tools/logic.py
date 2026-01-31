@@ -226,9 +226,11 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
             "calculation": "Error: Invalid vehicle value"
         })
     
+    # Round vehicle value for currency consistency
+    vehicle_value = round(vehicle_value, 2)
+    
     # Query policy to get deductible
     policy_result = query_policy_db_impl(policy_number)
-    deductible_warning = None
     try:
         policy_data = json.loads(policy_result)
         if not policy_data.get("valid", False):
@@ -240,10 +242,16 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
                 "calculation": "Error: Policy not found or inactive"
             })
         deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
-    except (json.JSONDecodeError, KeyError):
-        # Default deductible if policy lookup fails
-        deductible = DEFAULT_DEDUCTIBLE
-        deductible_warning = f"Policy lookup failed, using default deductible of ${DEFAULT_DEDUCTIBLE}"
+    except (json.JSONDecodeError, KeyError) as e:
+        # Unexpected error in policy lookup - this shouldn't happen in normal operation
+        # Return error rather than silently using default
+        return json.dumps({
+            "error": f"Policy lookup error: {str(e)}",
+            "payout_amount": 0.0,
+            "vehicle_value": vehicle_value,
+            "deductible": 0,
+            "calculation": "Error: Unable to retrieve policy information"
+        })
     
     # Calculate payout
     payout_amount = max(0.0, vehicle_value - deductible)
@@ -254,8 +262,5 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
         "deductible": deductible,
         "calculation": f"${vehicle_value:,.2f} (vehicle value) - ${deductible:,.2f} (deductible) = ${payout_amount:,.2f}"
     }
-    
-    if deductible_warning:
-        result["warning"] = deductible_warning
     
     return json.dumps(result)

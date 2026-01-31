@@ -286,7 +286,7 @@ def test_calculate_payout_high_deductible():
 
 
 def test_calculate_payout_invalid_policy():
-    """Test payout calculation with invalid policy defaults to 500 deductible."""
+    """Test payout calculation with invalid policy returns error."""
     from claim_agent.tools.logic import calculate_payout_impl
 
     result = calculate_payout_impl(12000, "POL-999")
