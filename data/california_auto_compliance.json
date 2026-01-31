@@ -1,0 +1,791 @@
+{
+  "metadata": {
+    "state": "California",
+    "jurisdiction": "CA",
+    "data_type": "auto_insurance_compliance",
+    "version": "2025.1",
+    "last_updated": "2025-01-31",
+    "sources": [
+      "California Insurance Code",
+      "California Code of Regulations Title 10",
+      "California Department of Insurance Guidelines"
+    ]
+  },
+  "fair_claims_settlement_practices": {
+    "regulation_reference": "CCR Title 10, Chapter 5, Subchapter 7.5, Article 1 (Sections 2695.1-2695.17)",
+    "description": "California Fair Claims Settlement Practices Regulations govern how insurers must handle claims fairly and in good faith.",
+    "provisions": [
+      {
+        "id": "FCSP-001",
+        "section": "CCR 2695.4",
+        "title": "Duty to Acknowledge Communications",
+        "requirement": "Every insurer shall acknowledge receipt of every communication regarding a claim within 15 calendar days.",
+        "time_limit_days": 15,
+        "penalty": "Administrative action, fines up to $10,000 per violation"
+      },
+      {
+        "id": "FCSP-002",
+        "section": "CCR 2695.5(b)",
+        "title": "Time for Investigation",
+        "requirement": "Every insurer shall conduct and complete investigation of a claim within 40 calendar days after receiving proof of claim.",
+        "time_limit_days": 40,
+        "penalty": "Administrative penalties and potential bad faith liability"
+      },
+      {
+        "id": "FCSP-003",
+        "section": "CCR 2695.5(e)",
+        "title": "Decision Communication",
+        "requirement": "Insurer must accept or deny the claim in writing within 40 calendar days. If more time is needed, written notice with reasons must be provided every 30 days.",
+        "time_limit_days": 40,
+        "extensions": "30-day written updates required if investigation continues"
+      },
+      {
+        "id": "FCSP-004",
+        "section": "CCR 2695.7(b)",
+        "title": "Payment Upon Acceptance",
+        "requirement": "Upon acceptance of a claim, payment shall be made within 30 calendar days.",
+        "time_limit_days": 30,
+        "penalty": "Interest penalties and potential bad faith claims"
+      },
+      {
+        "id": "FCSP-005",
+        "section": "CCR 2695.7(d)",
+        "title": "Undisputed Amounts",
+        "requirement": "If there is a dispute over the amount of a claim, the insurer must pay the undisputed portion within 30 days without requiring a release.",
+        "time_limit_days": 30
+      },
+      {
+        "id": "FCSP-006",
+        "section": "CCR 2695.7(g)",
+        "title": "Written Denial Requirements",
+        "requirement": "Every denial of a claim must be in writing, state all bases for denial, and reference specific policy provisions, conditions, or exclusions.",
+        "format": "Written notice required"
+      },
+      {
+        "id": "FCSP-007",
+        "section": "CCR 2695.8(b)",
+        "title": "Proof of Loss Forms",
+        "requirement": "If proof of claim forms are required, they must be provided within 15 days of receiving notice of claim.",
+        "time_limit_days": 15
+      },
+      {
+        "id": "FCSP-008",
+        "section": "CCR 2695.9",
+        "title": "Additional Information Requests",
+        "requirement": "Requests for additional information must be made within 40 days of receiving initial proof of claim. Insurer may not request information already in their possession.",
+        "time_limit_days": 40
+      }
+    ]
+  },
+  "total_loss_regulations": {
+    "regulation_reference": "CCR Title 10, Section 2695.8(b)",
+    "california_insurance_code": "CIC Section 2695.8",
+    "description": "Specific requirements for handling total loss vehicle claims in California.",
+    "provisions": [
+      {
+        "id": "TL-001",
+        "title": "Total Loss Threshold",
+        "requirement": "A vehicle is considered a total loss when the cost of repairs plus the salvage value exceeds the actual cash value (ACV) of the vehicle.",
+        "formula": "Total Loss if: Repair Cost + Salvage Value > ACV"
+      },
+      {
+        "id": "TL-002",
+        "section": "CCR 2695.8(b)(1)",
+        "title": "Comparable Vehicle Valuation",
+        "requirement": "When determining ACV using comparable vehicles, insurer must use at least two comparable vehicles from the local market area. Comparables must be of the same year, make, model, mileage, and condition.",
+        "minimum_comparables": 2,
+        "area": "Local market (within 100 miles when possible)"
+      },
+      {
+        "id": "TL-003",
+        "section": "CCR 2695.8(b)(2)",
+        "title": "Valuation Documentation",
+        "requirement": "Insurer must provide claimant with a written statement of the basis for the settlement offer, including all sources and documents used to determine ACV.",
+        "format": "Written statement required"
+      },
+      {
+        "id": "TL-004",
+        "section": "CCR 2695.8(b)(3)",
+        "title": "Deductions Disclosure",
+        "requirement": "Any deductions from ACV (such as for prior damage or salvage) must be itemized and explained in writing.",
+        "format": "Itemized written disclosure"
+      },
+      {
+        "id": "TL-005",
+        "section": "CIC 11580.26",
+        "title": "Sales Tax Reimbursement",
+        "requirement": "Total loss settlements must include applicable sales tax, transfer fees, and registration fees that the claimant would incur to replace the vehicle.",
+        "includes": ["Sales tax", "DMV transfer fees", "Registration fees"]
+      },
+      {
+        "id": "TL-006",
+        "title": "Salvage Title Requirement",
+        "requirement": "Vehicles declared a total loss must be reported to DMV. A salvage certificate is issued, and the vehicle cannot be operated until rebuilt and inspected.",
+        "agency": "California DMV"
+      },
+      {
+        "id": "TL-007",
+        "section": "CCR 2695.8(b)(4)",
+        "title": "Owner Retention Option",
+        "requirement": "If policyholder wishes to retain the salvage, insurer must inform them of the deduction amount and any applicable salvage title requirements.",
+        "disclosure": "Written notice of salvage deduction and title implications required"
+      }
+    ]
+  },
+  "time_limits_and_deadlines": {
+    "description": "Critical time limits for California auto insurance claims processing.",
+    "deadlines": [
+      {
+        "id": "TL-ACK-001",
+        "action": "Acknowledge claim receipt",
+        "time_limit": "15 calendar days",
+        "days": 15,
+        "reference": "CCR 2695.5(e)(1)"
+      },
+      {
+        "id": "TL-INV-001",
+        "action": "Complete investigation",
+        "time_limit": "40 calendar days from proof of claim",
+        "days": 40,
+        "reference": "CCR 2695.5(b)"
+      },
+      {
+        "id": "TL-DEC-001",
+        "action": "Accept or deny claim in writing",
+        "time_limit": "40 calendar days from proof of claim",
+        "days": 40,
+        "reference": "CCR 2695.5(e)(3)"
+      },
+      {
+        "id": "TL-PAY-001",
+        "action": "Issue payment after acceptance",
+        "time_limit": "30 calendar days",
+        "days": 30,
+        "reference": "CCR 2695.7(b)"
+      },
+      {
+        "id": "TL-UPD-001",
+        "action": "Provide status update if investigation continues",
+        "time_limit": "Every 30 calendar days",
+        "days": 30,
+        "reference": "CCR 2695.5(e)(4)"
+      },
+      {
+        "id": "TL-POC-001",
+        "action": "Provide proof of claim forms if required",
+        "time_limit": "15 calendar days from claim notice",
+        "days": 15,
+        "reference": "CCR 2695.8(b)"
+      },
+      {
+        "id": "TL-REQ-001",
+        "action": "Request additional information",
+        "time_limit": "40 calendar days from initial proof of claim",
+        "days": 40,
+        "reference": "CCR 2695.9"
+      },
+      {
+        "id": "TL-SOL-001",
+        "action": "Statute of limitations for filing lawsuit",
+        "time_limit": "2 years from date of loss (breach of contract: 4 years)",
+        "reference": "California Code of Civil Procedure 339, 337"
+      }
+    ]
+  },
+  "required_disclosures": {
+    "description": "Mandatory disclosures insurers must provide to California policyholders and claimants.",
+    "disclosures": [
+      {
+        "id": "DISC-001",
+        "title": "Claimant's Bill of Rights",
+        "requirement": "Insurers must provide a copy of the Claimant's Bill of Rights when requested or when a third-party claim is made.",
+        "content_includes": [
+          "Right to prompt and fair claim handling",
+          "Right to receive written explanation of claim decision",
+          "Right to dispute claim decision",
+          "Right to contact Department of Insurance"
+        ],
+        "reference": "CIC Section 790.03"
+      },
+      {
+        "id": "DISC-002",
+        "title": "Repair Shop Choice",
+        "requirement": "Insurer must inform claimant of their right to choose their own repair shop. Insurer cannot require use of a specific shop.",
+        "reference": "CIC Section 758.5"
+      },
+      {
+        "id": "DISC-003",
+        "title": "Parts Disclosure",
+        "requirement": "Written estimate must clearly identify whether replacement parts are original equipment manufacturer (OEM), aftermarket, or used/recycled parts.",
+        "reference": "CIC Section 9875"
+      },
+      {
+        "id": "DISC-004",
+        "title": "Aftermarket Parts Notice",
+        "requirement": "If aftermarket parts are specified, insurer must disclose this fact and that the parts are not made by the original manufacturer.",
+        "reference": "CIC Section 9875.1"
+      },
+      {
+        "id": "DISC-005",
+        "title": "Appraisal Rights",
+        "requirement": "If there is a dispute over the amount of loss, policyholder must be informed of their right to invoke the appraisal clause in their policy.",
+        "reference": "Standard policy provisions"
+      },
+      {
+        "id": "DISC-006",
+        "title": "Rental Car Coverage Disclosure",
+        "requirement": "Insurer must clearly explain rental car coverage limits and duration at time of loss.",
+        "reference": "CCR 2695.7(l)"
+      },
+      {
+        "id": "DISC-007",
+        "title": "Diminished Value Information",
+        "requirement": "For third-party claims, claimants may be entitled to diminished value compensation. Insurer should not discourage legitimate diminished value claims.",
+        "reference": "California Civil Code"
+      }
+    ]
+  },
+  "uninsured_underinsured_motorist": {
+    "regulation_reference": "CIC Sections 11580.2, 11580.26",
+    "description": "California requirements for uninsured and underinsured motorist coverage.",
+    "provisions": [
+      {
+        "id": "UM-001",
+        "title": "Mandatory Offer",
+        "requirement": "Every auto policy must offer uninsured motorist (UM) coverage. The coverage must equal bodily injury liability limits unless the insured signs a written waiver for lower limits.",
+        "reference": "CIC 11580.2(a)"
+      },
+      {
+        "id": "UM-002",
+        "title": "UM Coverage Minimum",
+        "requirement": "Minimum UM limits if elected: $15,000 per person / $30,000 per accident for bodily injury.",
+        "minimum_limits": {
+          "per_person": 15000,
+          "per_accident": 30000
+        },
+        "reference": "CIC 11580.2(m)"
+      },
+      {
+        "id": "UM-003",
+        "title": "Underinsured Motorist Coverage (UIM)",
+        "requirement": "UIM coverage is optional in California but must be offered. UIM covers the difference between the at-fault driver's limits and the insured's UIM limits.",
+        "reference": "CIC 11580.2(p)"
+      },
+      {
+        "id": "UM-004",
+        "title": "Arbitration Requirement",
+        "requirement": "Disputes over UM/UIM coverage and amounts are subject to binding arbitration if parties cannot agree.",
+        "reference": "CIC 11580.2(f)"
+      },
+      {
+        "id": "UM-005",
+        "title": "Hit and Run Coverage",
+        "requirement": "UM coverage applies to hit-and-run accidents. Claimant must report to police within 24 hours and to insurer within 30 days.",
+        "time_limits": {
+          "police_report": "24 hours",
+          "insurer_notice": "30 days"
+        },
+        "reference": "CIC 11580.2(b)"
+      }
+    ]
+  },
+  "anti_fraud_provisions": {
+    "regulation_reference": "CIC Sections 1871-1879.8",
+    "description": "California insurance fraud detection and reporting requirements.",
+    "provisions": [
+      {
+        "id": "AF-001",
+        "title": "Fraud Warning Statement",
+        "requirement": "All claim forms must contain a fraud warning statement: 'Any person who knowingly presents a false or fraudulent claim for the payment of a loss is guilty of a crime and may be subject to fines and confinement in state prison.'",
+        "reference": "CIC 1871.2"
+      },
+      {
+        "id": "AF-002",
+        "title": "Special Investigative Unit (SIU)",
+        "requirement": "Insurers must maintain a Special Investigative Unit for detecting and investigating suspected fraudulent claims.",
+        "reference": "CIC 1875.24"
+      },
+      {
+        "id": "AF-003",
+        "title": "Fraud Reporting",
+        "requirement": "Insurers must report suspected fraudulent claims to the California Department of Insurance Fraud Division within 60 days of determination.",
+        "time_limit_days": 60,
+        "reference": "CIC 1872.4"
+      },
+      {
+        "id": "AF-004",
+        "title": "Staged Accident Indicators",
+        "requirement": "Claims with indicators of staged accidents must be investigated, including: multiple occupants claiming injury, witnesses who leave scene, prior claims history, and suspicious damage patterns.",
+        "reference": "CDI Guidelines"
+      },
+      {
+        "id": "AF-005",
+        "title": "Material Misrepresentation",
+        "requirement": "Material misrepresentation on an application or claim may void coverage. Insurer must prove misrepresentation was material and made with intent to deceive.",
+        "reference": "CIC 331, 359"
+      }
+    ]
+  },
+  "repair_standards": {
+    "regulation_reference": "CIC Sections 758, 9875-9876.1",
+    "description": "California standards for auto repair in insurance claims.",
+    "provisions": [
+      {
+        "id": "REP-001",
+        "title": "Freedom to Choose Repair Shop",
+        "requirement": "Claimant has absolute right to choose their own repair facility. Insurer cannot require repairs at a specific shop.",
+        "reference": "CIC 758.5"
+      },
+      {
+        "id": "REP-002",
+        "title": "Direct Repair Programs",
+        "requirement": "Insurers may recommend Direct Repair Program (DRP) shops but cannot mandate their use. Must disclose any financial arrangements with DRP shops.",
+        "reference": "CIC 758.5"
+      },
+      {
+        "id": "REP-003",
+        "title": "Labor Rate Disputes",
+        "requirement": "If insurer's labor rate is lower than the chosen shop's rate, insurer must pay the prevailing competitive labor rate in the area.",
+        "reference": "CCR 2695.8(e)"
+      },
+      {
+        "id": "REP-004",
+        "title": "OEM Parts Requirement",
+        "requirement": "Aftermarket parts can only be used if they are of 'like kind and quality.' Policyholder can request OEM parts (may pay difference).",
+        "reference": "CIC 9875"
+      },
+      {
+        "id": "REP-005",
+        "title": "Supplemental Claims",
+        "requirement": "If additional damage is discovered during repairs, insurer must promptly inspect and authorize supplemental payment.",
+        "reference": "CCR 2695.8"
+      },
+      {
+        "id": "REP-006",
+        "title": "Repair Warranty",
+        "requirement": "DRP shops must provide a warranty on repairs. Insurer must disclose warranty terms.",
+        "reference": "CIC 758.5(c)"
+      }
+    ]
+  },
+  "good_faith_requirements": {
+    "regulation_reference": "CIC Sections 790.03, 790.06",
+    "description": "California requirements for good faith claims handling and prohibited practices.",
+    "prohibited_practices": [
+      {
+        "id": "GF-001",
+        "title": "Misrepresenting Coverage",
+        "description": "Misrepresenting pertinent facts or insurance policy provisions relating to coverages at issue.",
+        "reference": "CIC 790.03(h)(1)"
+      },
+      {
+        "id": "GF-002",
+        "title": "Failing to Acknowledge Communications",
+        "description": "Failing to acknowledge and act reasonably promptly upon communications with respect to claims.",
+        "reference": "CIC 790.03(h)(2)"
+      },
+      {
+        "id": "GF-003",
+        "title": "Failing to Adopt Standards",
+        "description": "Failing to adopt and implement reasonable standards for prompt investigation and processing of claims.",
+        "reference": "CIC 790.03(h)(3)"
+      },
+      {
+        "id": "GF-004",
+        "title": "Denying Claims Without Investigation",
+        "description": "Refusing to pay claims without conducting a reasonable investigation based upon available information.",
+        "reference": "CIC 790.03(h)(4)"
+      },
+      {
+        "id": "GF-005",
+        "title": "Failing to Affirm or Deny Coverage",
+        "description": "Failing to affirm or deny coverage of claims within a reasonable time after proof of loss requirements have been completed.",
+        "reference": "CIC 790.03(h)(5)"
+      },
+      {
+        "id": "GF-006",
+        "title": "Low Settlement Offers",
+        "description": "Not attempting in good faith to effectuate prompt, fair, and equitable settlements of claims in which liability has become reasonably clear.",
+        "reference": "CIC 790.03(h)(6)"
+      },
+      {
+        "id": "GF-007",
+        "title": "Compelling Litigation",
+        "description": "Compelling insureds to institute litigation to recover amounts due under an insurance policy by offering substantially less than the amounts ultimately recovered.",
+        "reference": "CIC 790.03(h)(7)"
+      },
+      {
+        "id": "GF-008",
+        "title": "Delay Tactics",
+        "description": "Attempting to settle a claim for less than the amount to which a reasonable person would have believed they were entitled by reference to advertising materials.",
+        "reference": "CIC 790.03(h)(8)"
+      },
+      {
+        "id": "GF-009",
+        "title": "Excessive Documentation",
+        "description": "Attempting to settle claims on the basis of an application altered without knowledge or consent of the insured.",
+        "reference": "CIC 790.03(h)(9)"
+      },
+      {
+        "id": "GF-010",
+        "title": "Misleading Appeal Rights",
+        "description": "Making known to insureds a policy of appealing from arbitration awards in favor of insureds or claimants for the purpose of compelling them to accept less.",
+        "reference": "CIC 790.03(h)(10)"
+      },
+      {
+        "id": "GF-011",
+        "title": "Unreasonable Delays",
+        "description": "Delaying the investigation or payment of claims by requiring unnecessary documents or creating unreasonable paperwork demands.",
+        "reference": "CIC 790.03(h)(11)"
+      },
+      {
+        "id": "GF-012",
+        "title": "Failing to Settle",
+        "description": "Failing to settle claims promptly where liability has become apparent under one portion of the policy to influence settlements under other portions.",
+        "reference": "CIC 790.03(h)(12)"
+      },
+      {
+        "id": "GF-013",
+        "title": "Failing to Provide Forms",
+        "description": "Failing to provide promptly a reasonable explanation of the basis in the insurance policy for denial of a claim or offer of a compromise settlement.",
+        "reference": "CIC 790.03(h)(13)"
+      },
+      {
+        "id": "GF-014",
+        "title": "Direct Repair Pressure",
+        "description": "Directly advising a claimant not to obtain the services of an attorney or adjustor.",
+        "reference": "CIC 790.03(h)(14)"
+      },
+      {
+        "id": "GF-015",
+        "title": "Misleading Statute of Limitations",
+        "description": "Misleading a claimant as to the applicable statute of limitations.",
+        "reference": "CIC 790.03(h)(15)"
+      }
+    ],
+    "bad_faith_remedies": {
+      "description": "Remedies available to policyholders for insurer bad faith in California.",
+      "remedies": [
+        {
+          "type": "Compensatory Damages",
+          "description": "Damages for economic loss caused by the insurer's breach"
+        },
+        {
+          "type": "Emotional Distress Damages",
+          "description": "Damages for emotional distress caused by bad faith conduct"
+        },
+        {
+          "type": "Punitive Damages",
+          "description": "Available when insurer's conduct is fraudulent, oppressive, or malicious"
+        },
+        {
+          "type": "Attorney's Fees",
+          "description": "May be recoverable under Brandt v. Superior Court"
+        }
+      ],
+      "reference": "Egan v. Mutual of Omaha, Gruenberg v. Aetna"
+    }
+  },
+  "minimum_coverage_requirements": {
+    "regulation_reference": "CIC Sections 11580.1b, 16020-16028",
+    "description": "California minimum auto insurance coverage requirements.",
+    "requirements": [
+      {
+        "id": "MIN-001",
+        "coverage_type": "Bodily Injury Liability",
+        "minimum_limit": "$15,000 per person / $30,000 per accident",
+        "limits": {
+          "per_person": 15000,
+          "per_accident": 30000
+        },
+        "description": "Covers injuries to others when policyholder is at fault"
+      },
+      {
+        "id": "MIN-002",
+        "coverage_type": "Property Damage Liability",
+        "minimum_limit": "$5,000 per accident",
+        "limits": {
+          "per_accident": 5000
+        },
+        "description": "Covers damage to others' property when policyholder is at fault"
+      },
+      {
+        "id": "MIN-003",
+        "coverage_type": "Uninsured Motorist Bodily Injury",
+        "minimum_limit": "$15,000 per person / $30,000 per accident (can be waived)",
+        "limits": {
+          "per_person": 15000,
+          "per_accident": 30000
+        },
+        "description": "Covers policyholder's injuries from uninsured driver"
+      }
+    ],
+    "financial_responsibility": {
+      "description": "California Vehicle Code requires proof of financial responsibility for all registered vehicles.",
+      "proof_methods": [
+        "Insurance policy meeting minimum requirements",
+        "Cash deposit of $35,000 with DMV",
+        "Surety bond of $35,000",
+        "Self-insurance certificate (for fleet operators)"
+      ],
+      "reference": "Vehicle Code Sections 16020-16028"
+    }
+  },
+  "rental_car_coverage": {
+    "description": "California regulations regarding rental car coverage during claims.",
+    "provisions": [
+      {
+        "id": "RCC-001",
+        "title": "Loss of Use Coverage",
+        "requirement": "When liable for damage to another's vehicle, insurer may owe loss of use (rental) costs even if the vehicle is not actually rented.",
+        "reference": "California Civil Code"
+      },
+      {
+        "id": "RCC-002",
+        "title": "Reasonable Rental Period",
+        "requirement": "Rental coverage should extend for reasonable repair period plus reasonable time to obtain replacement for total loss.",
+        "reference": "CCR 2695.8"
+      },
+      {
+        "id": "RCC-003",
+        "title": "First-Party Rental Reimbursement",
+        "requirement": "If policy includes rental reimbursement, insurer must clearly explain daily and aggregate limits.",
+        "reference": "Policy provisions, CCR 2695.7(l)"
+      },
+      {
+        "id": "RCC-004",
+        "title": "Class of Vehicle",
+        "requirement": "Rental should be comparable class to the damaged vehicle, not necessarily identical make/model.",
+        "reference": "Industry standard"
+      }
+    ]
+  },
+  "medical_payments_coverage": {
+    "description": "California regulations for medical payments (MedPay) coverage.",
+    "provisions": [
+      {
+        "id": "MPC-001",
+        "title": "Optional Coverage",
+        "requirement": "Medical payments coverage is optional in California. Must be offered but can be declined.",
+        "reference": "CIC 11580.06"
+      },
+      {
+        "id": "MPC-002",
+        "title": "No-Fault Coverage",
+        "requirement": "MedPay is no-fault coverage - pays regardless of who caused the accident.",
+        "reference": "Policy provisions"
+      },
+      {
+        "id": "MPC-003",
+        "title": "Coordination with Health Insurance",
+        "requirement": "MedPay typically pays secondary to health insurance. Cannot subrogate against insured's own coverage.",
+        "reference": "Policy provisions"
+      }
+    ]
+  },
+  "subrogation_rules": {
+    "description": "California rules governing subrogation in auto insurance claims.",
+    "provisions": [
+      {
+        "id": "SUB-001",
+        "title": "Right of Subrogation",
+        "requirement": "After paying a claim, insurer is subrogated to insured's rights against third parties to the extent of payment.",
+        "reference": "CIC 2847"
+      },
+      {
+        "id": "SUB-002",
+        "title": "Made Whole Doctrine",
+        "requirement": "California follows the 'made whole' doctrine - insurer cannot pursue subrogation until insured is fully compensated for losses.",
+        "reference": "Sapiano v. Williamsburg Nat'l Ins. Co."
+      },
+      {
+        "id": "SUB-003",
+        "title": "Common Fund Doctrine",
+        "requirement": "If insured recovers from third party, insurer's subrogation share may be reduced by proportionate share of attorney fees.",
+        "reference": "California case law"
+      },
+      {
+        "id": "SUB-004",
+        "title": "Anti-Subrogation Rule",
+        "requirement": "Insurer cannot subrogate against its own insured or additional insureds under the same policy.",
+        "reference": "State Farm v. Allstate"
+      }
+    ]
+  },
+  "department_of_insurance": {
+    "agency": "California Department of Insurance",
+    "commissioner": "Insurance Commissioner (Elected Official)",
+    "contact": {
+      "consumer_hotline": "1-800-927-4357",
+      "website": "https://www.insurance.ca.gov",
+      "complaint_filing": "https://www.insurance.ca.gov/01-consumers/101-help/",
+      "address": "300 Capitol Mall, Suite 1700, Sacramento, CA 95814"
+    },
+    "consumer_services": [
+      {
+        "service": "Claim Complaints",
+        "description": "Consumers can file complaints about claim handling practices"
+      },
+      {
+        "service": "Rate Inquiries",
+        "description": "Information about insurance rates and rate approval process"
+      },
+      {
+        "service": "License Verification",
+        "description": "Verify insurance agent, broker, and company licenses"
+      },
+      {
+        "service": "Market Conduct Investigations",
+        "description": "Investigation of insurer business practices"
+      }
+    ],
+    "enforcement_actions": {
+      "description": "The CDI can impose penalties for regulatory violations.",
+      "penalties": [
+        "Administrative fines up to $10,000 per violation",
+        "License suspension or revocation",
+        "Cease and desist orders",
+        "Restitution orders"
+      ]
+    }
+  },
+  "proposition_103": {
+    "description": "California's landmark insurance reform initiative passed in 1988.",
+    "key_provisions": [
+      {
+        "id": "P103-001",
+        "title": "Rate Approval",
+        "description": "All auto insurance rate changes must be approved by the Insurance Commissioner before taking effect.",
+        "reference": "CIC 1861.01"
+      },
+      {
+        "id": "P103-002",
+        "title": "Rating Factors",
+        "description": "Auto insurance rates must be based primarily on driving safety record, years of driving experience, and annual miles driven. Territory cannot be primary factor.",
+        "mandatory_factors": [
+          "Driving safety record",
+          "Years of driving experience",
+          "Annual miles driven"
+        ],
+        "reference": "CIC 1861.02"
+      },
+      {
+        "id": "P103-003",
+        "title": "Good Driver Discount",
+        "description": "Insurers must offer at least 20% discount to 'good drivers' - those with no more than one point on their record in past 3 years.",
+        "discount_minimum": "20%",
+        "reference": "CIC 1861.02(b)"
+      },
+      {
+        "id": "P103-004",
+        "title": "Anti-Discrimination",
+        "description": "Cannot refuse to insure or charge higher rates based on race, color, religion, national origin, or ancestry.",
+        "reference": "CIC 1861.03"
+      }
+    ]
+  },
+  "statute_of_limitations": {
+    "description": "Time limits for legal actions related to auto insurance claims in California.",
+    "limitations": [
+      {
+        "action": "Personal injury lawsuit",
+        "time_limit": "2 years from date of injury",
+        "reference": "CCP 335.1"
+      },
+      {
+        "action": "Property damage lawsuit",
+        "time_limit": "3 years from date of damage",
+        "reference": "CCP 338(c)"
+      },
+      {
+        "action": "Breach of insurance contract",
+        "time_limit": "4 years from breach",
+        "reference": "CCP 337"
+      },
+      {
+        "action": "Bad faith lawsuit",
+        "time_limit": "2 years from bad faith conduct",
+        "reference": "CCP 339"
+      },
+      {
+        "action": "Uninsured motorist arbitration demand",
+        "time_limit": "2 years from date of accident",
+        "reference": "CIC 11580.2"
+      }
+    ],
+    "tolling_provisions": [
+      "Minor claimants: Statute tolled until age 18",
+      "Incapacitated claimants: Statute tolled during incapacity",
+      "Defendant out of state: May toll statute"
+    ]
+  },
+  "common_claim_scenarios": {
+    "description": "Guidance for common California auto claim scenarios.",
+    "scenarios": [
+      {
+        "id": "SCEN-001",
+        "scenario": "Rear-End Collision",
+        "presumption": "Rear driver presumed at fault under California law",
+        "exceptions": "Sudden stop, cut-off, brake check may reduce liability",
+        "reference": "Vehicle Code 21703"
+      },
+      {
+        "id": "SCEN-002",
+        "scenario": "Left-Turn Accident",
+        "presumption": "Left-turning driver generally at fault",
+        "exceptions": "Through driver running red light, excessive speed",
+        "reference": "Vehicle Code 21801"
+      },
+      {
+        "id": "SCEN-003",
+        "scenario": "Comparative Fault",
+        "rule": "California follows pure comparative negligence - claimant can recover even if 99% at fault (reduced by their percentage)",
+        "reference": "Li v. Yellow Cab Co."
+      },
+      {
+        "id": "SCEN-004",
+        "scenario": "Uninsured Driver Accident",
+        "note": "Uninsured driver can still recover under comparative fault but may face penalties",
+        "penalties": "Vehicle impoundment, fines, license suspension",
+        "reference": "Vehicle Code 16020"
+      },
+      {
+        "id": "SCEN-005",
+        "scenario": "DUI-Related Accident",
+        "note": "Insurer generally must cover damages to third parties even if insured was DUI",
+        "exception": "Some policies exclude coverage for intentional acts or criminal conduct",
+        "reference": "CIC 533"
+      },
+      {
+        "id": "SCEN-006",
+        "scenario": "Permissive Use",
+        "rule": "Coverage generally extends to permissive users of insured vehicle",
+        "reference": "Standard policy provisions"
+      }
+    ]
+  },
+  "electronic_claims_requirements": {
+    "description": "California requirements for electronic claims handling.",
+    "provisions": [
+      {
+        "id": "ECR-001",
+        "title": "Electronic Communications",
+        "requirement": "Insurers may communicate electronically if claimant consents. Written disclosures must be provided regarding electronic delivery.",
+        "reference": "CIC 38.5"
+      },
+      {
+        "id": "ECR-002",
+        "title": "Electronic Signatures",
+        "requirement": "Electronic signatures are valid for insurance transactions under California UETA.",
+        "reference": "Civil Code 1633.1"
+      },
+      {
+        "id": "ECR-003",
+        "title": "Records Retention",
+        "requirement": "Claims records must be retained for at least 5 years.",
+        "retention_period_years": 5,
+        "reference": "CCR 2695.3"
+      }
+    ]
+  }
+}
