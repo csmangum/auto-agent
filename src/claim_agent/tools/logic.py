@@ -524,6 +524,17 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
     
     Returns JSON with pattern_analysis results.
     """
+    if not claim_data or not isinstance(claim_data, dict):
+        result = {
+            "vin": vin or "",
+            "patterns_detected": [],
+            "timing_flags": [],
+            "claim_history": [],
+            "risk_factors": [],
+            "pattern_score": 0,
+        }
+        return json.dumps(result)
+    
     result = {
         "vin": vin or claim_data.get("vin", ""),
         "patterns_detected": [],
@@ -532,9 +543,6 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
         "risk_factors": [],
         "pattern_score": 0,
     }
-    
-    if not claim_data or not isinstance(claim_data, dict):
-        return json.dumps(result)
     
     vin = vin or claim_data.get("vin", "").strip()
     incident_date = claim_data.get("incident_date", "").strip()
@@ -596,6 +604,7 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
             result["patterns_detected"].append("staged_accident_indicators")
             result["risk_factors"].append(f"Staged accident keyword: '{keyword}'")
             result["pattern_score"] += FRAUD_CONFIG["fraud_keyword_score"]
+            break
     
     return json.dumps(result)
 
@@ -724,6 +733,21 @@ def perform_fraud_assessment_impl(
     - should_block: Whether claim should be blocked
     - siu_referral: Whether to refer to SIU
     """
+    if not claim_data or not isinstance(claim_data, dict):
+        result = {
+            "claim_id": "",
+            "fraud_score": 0,
+            "fraud_likelihood": "low",
+            "fraud_indicators": [],
+            "pattern_flags": [],
+            "cross_reference_flags": [],
+            "recommended_action": "Invalid claim data - manual review required",
+            "should_block": False,
+            "siu_referral": False,
+            "assessment_details": {},
+        }
+        return json.dumps(result)
+    
     result = {
         "claim_id": claim_data.get("claim_id", ""),
         "fraud_score": 0,
@@ -736,10 +760,6 @@ def perform_fraud_assessment_impl(
         "siu_referral": False,
         "assessment_details": {},
     }
-    
-    if not claim_data or not isinstance(claim_data, dict):
-        result["recommended_action"] = "Invalid claim data - manual review required"
-        return json.dumps(result)
     
     # Get pattern analysis if not provided
     if pattern_analysis is None:

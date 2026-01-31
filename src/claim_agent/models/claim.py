@@ -68,34 +68,6 @@ class EscalationOutput(BaseModel):
     )
 
 
-class FraudAssessmentOutput(BaseModel):
-    """Output from fraud detection workflow."""
-
-    claim_id: str = Field(..., description="Claim ID")
-    fraud_score: int = Field(default=0, description="Combined fraud risk score")
-    fraud_likelihood: Literal["low", "medium", "high", "critical"] = Field(
-        default="low", description="Overall fraud likelihood"
-    )
-    fraud_indicators: list[str] = Field(
-        default_factory=list, description="Detected fraud indicators"
-    )
-    pattern_flags: list[str] = Field(
-        default_factory=list, description="Pattern analysis flags"
-    )
-    cross_reference_flags: list[str] = Field(
-        default_factory=list, description="Cross-reference database matches"
-    )
-    recommended_action: str = Field(
-        default="", description="Recommended action for adjusters"
-    )
-    should_block: bool = Field(
-        default=False, description="Whether claim should be blocked"
-    )
-    siu_referral: bool = Field(
-        default=False, description="Whether to refer to Special Investigations Unit"
-    )
-
-
 class WorkflowState(BaseModel):
     """Shared state passed between tasks in a workflow."""
 
