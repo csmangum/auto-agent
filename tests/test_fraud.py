@@ -1,7 +1,6 @@
 """Tests for fraud detection workflow."""
 
 import json
-import pytest
 
 from claim_agent.tools.logic import (
     analyze_claim_patterns_impl,

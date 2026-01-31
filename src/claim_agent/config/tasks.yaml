@@ -54,8 +54,8 @@ analyze_patterns:
 
 cross_reference_fraud:
   description: Cross-reference claim against known fraud indicators database
-  expected_output: Cross-reference results with fraud_keywords, database_matches, risk_level, recommendations
+  expected_output: Cross-reference results with fraud_keywords_found, database_matches, risk_level, recommendations
 
 fraud_assessment:
   description: Perform comprehensive fraud assessment combining pattern analysis and cross-reference results
-  expected_output: Fraud assessment report with fraud_likelihood, fraud_score, indicators, recommended_action, siu_referral
+  expected_output: Fraud assessment report with fraud_likelihood, fraud_score, fraud_indicators, recommended_action, siu_referral, should_block

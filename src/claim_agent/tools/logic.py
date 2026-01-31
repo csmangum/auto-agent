@@ -463,13 +463,10 @@ def evaluate_escalation_impl(
 
 # --- Fraud Detection ---
 
-# Fraud detection configuration
+# Fraud detection configuration (only keys used in analysis are included)
 FRAUD_CONFIG = {
-    "suspicious_timing_hours": 24,  # Claims filed within 24 hours of incident
     "multiple_claims_days": 90,  # Window to check for multiple claims
     "multiple_claims_threshold": 2,  # Number of claims to trigger flag
-    "high_damage_threshold": 15000,  # High damage estimate threshold
-    "new_policy_days": 30,  # Policy is "new" if less than 30 days old
     "fraud_keyword_score": 20,  # Points per fraud keyword found
     "multiple_claims_score": 25,  # Points for multiple claims same VIN
     "timing_anomaly_score": 15,  # Points for suspicious timing
@@ -581,10 +578,14 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
                             f"Found {len(claims_in_window)} claims on VIN within {window_days} days"
                         )
                         result["pattern_score"] += FRAUD_CONFIG["multiple_claims_score"]
-                except (ValueError, TypeError):
-                    pass
-        except Exception:
-            pass  # Best effort
+                except (ValueError, TypeError) as e:
+                    logger.debug(
+                        "Skipping VIN claim history window calculation due to invalid incident_date %r: %s",
+                        incident_date,
+                        e,
+                    )
+        except Exception as e:
+            logger.debug("Best-effort pattern analysis: could not search claims by VIN: %s", e)
     
     # Check for suspicious timing
     incident_desc = (claim_data.get("incident_description") or "").lower()
@@ -680,8 +681,8 @@ def cross_reference_fraud_indicators_impl(claim_data: dict) -> str:
                             "Damage estimate is near total vehicle value - verify accuracy"
                         )
                         result["cross_reference_score"] += FRAUD_CONFIG["damage_mismatch_score"] // 2
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.debug("Skipping damage vs value check due to valuation/type error: %s", e)
     
     # Check for prior fraud claims on same VIN
     vin = claim_data.get("vin", "").strip()
@@ -700,8 +701,8 @@ def cross_reference_fraud_indicators_impl(claim_data: dict) -> str:
                     f"VIN has {len(fraud_history)} prior fraud-flagged claim(s)"
                 )
                 result["cross_reference_score"] += FRAUD_CONFIG["multiple_claims_score"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Best-effort cross-reference: could not check prior fraud claims for VIN: %s", e)
     
     # Determine risk level
     score = result["cross_reference_score"]
@@ -782,14 +783,21 @@ def perform_fraud_assessment_impl(
     xref_score = cross_reference.get("cross_reference_score", 0)
     result["fraud_score"] = pattern_score + xref_score
     
-    # Collect all indicators
+    # Collect all indicators (ordered dedup for stable output)
     result["pattern_flags"] = pattern_analysis.get("patterns_detected", [])
     result["cross_reference_flags"] = cross_reference.get("database_matches", [])
-    result["fraud_indicators"] = list(set(
-        result["pattern_flags"] + 
-        result["cross_reference_flags"] +
-        cross_reference.get("fraud_keywords_found", [])
-    ))
+    combined_indicators = (
+        result["pattern_flags"]
+        + result["cross_reference_flags"]
+        + cross_reference.get("fraud_keywords_found", [])
+    )
+    seen_indicators = set()
+    ordered_indicators = []
+    for indicator in combined_indicators:
+        if indicator not in seen_indicators:
+            seen_indicators.add(indicator)
+            ordered_indicators.append(indicator)
+    result["fraud_indicators"] = ordered_indicators
     
     # Store details
     result["assessment_details"] = {
