@@ -1,7 +1,7 @@
 # Task definitions (reference; tasks are defined in crew modules)
 classify:
-  description: Classify the claim as new, duplicate, or total_loss based on the claim data
-  expected_output: One of new, duplicate, or total_loss with brief reasoning
+  description: Classify the claim as new, duplicate, total_loss, or partial_loss based on the claim data
+  expected_output: One of new, duplicate, total_loss, or partial_loss with brief reasoning
 
 validate_new_claim:
   description: Step 1 - Validate that all required fields are present. Step 2 - Check data types.
@@ -46,3 +46,24 @@ close_claim:
 evaluate_escalation:
   description: Evaluate claim for human review (low confidence, high value, fraud indicators)
   expected_output: Escalation report with needs_review, reasons, priority, recommended_action
+
+# Partial Loss Workflow Tasks
+assess_partial_damage:
+  description: Evaluate damage for partial loss claim; confirm repairability
+  expected_output: Damage assessment with severity, damaged parts list, and repair confirmation
+
+calculate_repair_estimate:
+  description: Calculate complete repair estimate with parts and labor costs
+  expected_output: Repair estimate with parts cost, labor hours, total cost, deductible breakdown
+
+assign_repair_shop:
+  description: Find and assign an available repair shop for the claim
+  expected_output: Shop assignment with name, address, confirmation number, and dates
+
+order_parts:
+  description: Order all required parts for the repair
+  expected_output: Parts order confirmation with order ID, items, and delivery date
+
+authorize_repair:
+  description: Generate repair authorization and finalize the claim
+  expected_output: Repair authorization document with authorization ID and terms
