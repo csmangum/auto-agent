@@ -340,5 +340,278 @@
     "2019_Chevrolet_Equinox": { "value": 16500, "condition": "fair" },
     "2020_BMW_330i": { "value": 28500, "condition": "good" },
     "2018_Nissan_Altima": { "value": 11500, "condition": "fair" }
+  },
+  "repair_shops": {
+    "SHOP-001": {
+      "name": "Premier Auto Body",
+      "address": "1234 Main St, Los Angeles, CA 90001",
+      "phone": "310-555-0101",
+      "rating": 4.8,
+      "certifications": ["OEM Certified", "I-CAR Gold", "ASE Certified"],
+      "specialties": ["Collision Repair", "Paint", "Frame Straightening"],
+      "average_wait_days": 3,
+      "labor_rate_per_hour": 85.00,
+      "network": "preferred",
+      "capacity_available": true
+    },
+    "SHOP-002": {
+      "name": "Quick Fix Collision Center",
+      "address": "5678 Oak Ave, San Diego, CA 92101",
+      "phone": "619-555-0202",
+      "rating": 4.5,
+      "certifications": ["ASE Certified", "I-CAR"],
+      "specialties": ["Collision Repair", "Dent Removal", "Glass Replacement"],
+      "average_wait_days": 2,
+      "labor_rate_per_hour": 75.00,
+      "network": "preferred",
+      "capacity_available": true
+    },
+    "SHOP-003": {
+      "name": "Elite Auto Restoration",
+      "address": "9012 Palm Blvd, San Francisco, CA 94102",
+      "phone": "415-555-0303",
+      "rating": 4.9,
+      "certifications": ["OEM Certified", "I-CAR Gold", "ASE Master"],
+      "specialties": ["Luxury Vehicles", "Exotic Cars", "Precision Paint"],
+      "average_wait_days": 5,
+      "labor_rate_per_hour": 125.00,
+      "network": "premium",
+      "capacity_available": true
+    },
+    "SHOP-004": {
+      "name": "Budget Auto Repair",
+      "address": "3456 Central Ave, Sacramento, CA 95814",
+      "phone": "916-555-0404",
+      "rating": 4.2,
+      "certifications": ["ASE Certified"],
+      "specialties": ["General Repair", "Basic Collision"],
+      "average_wait_days": 1,
+      "labor_rate_per_hour": 55.00,
+      "network": "standard",
+      "capacity_available": true
+    },
+    "SHOP-005": {
+      "name": "Precision Collision Experts",
+      "address": "7890 Harbor Dr, Long Beach, CA 90802",
+      "phone": "562-555-0505",
+      "rating": 4.7,
+      "certifications": ["I-CAR Gold", "ASE Certified", "Tesla Approved"],
+      "specialties": ["Electric Vehicles", "Aluminum Repair", "Advanced Materials"],
+      "average_wait_days": 4,
+      "labor_rate_per_hour": 110.00,
+      "network": "preferred",
+      "capacity_available": true
+    },
+    "SHOP-006": {
+      "name": "Family Auto Care",
+      "address": "2345 Valley Rd, Fresno, CA 93721",
+      "phone": "559-555-0606",
+      "rating": 4.4,
+      "certifications": ["ASE Certified", "I-CAR"],
+      "specialties": ["Family Vehicles", "SUVs", "Trucks"],
+      "average_wait_days": 2,
+      "labor_rate_per_hour": 65.00,
+      "network": "standard",
+      "capacity_available": false
+    }
+  },
+  "parts_catalog": {
+    "PART-BUMPER-FRONT": {
+      "name": "Front Bumper Cover",
+      "category": "body",
+      "oem_price": 450.00,
+      "aftermarket_price": 225.00,
+      "refurbished_price": 150.00,
+      "availability": "in_stock",
+      "lead_time_days": 1,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+    },
+    "PART-BUMPER-REAR": {
+      "name": "Rear Bumper Cover",
+      "category": "body",
+      "oem_price": 425.00,
+      "aftermarket_price": 200.00,
+      "refurbished_price": 135.00,
+      "availability": "in_stock",
+      "lead_time_days": 1,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+    },
+    "PART-FENDER-FRONT": {
+      "name": "Front Fender",
+      "category": "body",
+      "oem_price": 350.00,
+      "aftermarket_price": 175.00,
+      "refurbished_price": 100.00,
+      "availability": "in_stock",
+      "lead_time_days": 2,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan"]
+    },
+    "PART-HOOD": {
+      "name": "Hood",
+      "category": "body",
+      "oem_price": 650.00,
+      "aftermarket_price": 325.00,
+      "refurbished_price": 200.00,
+      "availability": "in_stock",
+      "lead_time_days": 3,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW"]
+    },
+    "PART-DOOR-FRONT": {
+      "name": "Front Door Shell",
+      "category": "body",
+      "oem_price": 850.00,
+      "aftermarket_price": 425.00,
+      "refurbished_price": 275.00,
+      "availability": "in_stock",
+      "lead_time_days": 3,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan"]
+    },
+    "PART-DOOR-REAR": {
+      "name": "Rear Door Shell",
+      "category": "body",
+      "oem_price": 800.00,
+      "aftermarket_price": 400.00,
+      "refurbished_price": 250.00,
+      "availability": "in_stock",
+      "lead_time_days": 3,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+    },
+    "PART-HEADLIGHT": {
+      "name": "Headlight Assembly",
+      "category": "lighting",
+      "oem_price": 550.00,
+      "aftermarket_price": 175.00,
+      "refurbished_price": 125.00,
+      "availability": "in_stock",
+      "lead_time_days": 2,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW", "Tesla"]
+    },
+    "PART-TAILLIGHT": {
+      "name": "Taillight Assembly",
+      "category": "lighting",
+      "oem_price": 350.00,
+      "aftermarket_price": 125.00,
+      "refurbished_price": 85.00,
+      "availability": "in_stock",
+      "lead_time_days": 2,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW"]
+    },
+    "PART-MIRROR-SIDE": {
+      "name": "Side Mirror Assembly",
+      "category": "body",
+      "oem_price": 275.00,
+      "aftermarket_price": 85.00,
+      "refurbished_price": 60.00,
+      "availability": "in_stock",
+      "lead_time_days": 1,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan", "BMW"]
+    },
+    "PART-WINDSHIELD": {
+      "name": "Windshield",
+      "category": "glass",
+      "oem_price": 450.00,
+      "aftermarket_price": 250.00,
+      "refurbished_price": null,
+      "availability": "in_stock",
+      "lead_time_days": 1,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan", "BMW", "Tesla"]
+    },
+    "PART-QUARTER-PANEL": {
+      "name": "Quarter Panel",
+      "category": "body",
+      "oem_price": 750.00,
+      "aftermarket_price": 375.00,
+      "refurbished_price": 225.00,
+      "availability": "limited",
+      "lead_time_days": 5,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+    },
+    "PART-RADIATOR": {
+      "name": "Radiator",
+      "category": "mechanical",
+      "oem_price": 425.00,
+      "aftermarket_price": 175.00,
+      "refurbished_price": 100.00,
+      "availability": "in_stock",
+      "lead_time_days": 2,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan"]
+    },
+    "PART-AIRBAG-DRIVER": {
+      "name": "Driver Airbag Module",
+      "category": "safety",
+      "oem_price": 1200.00,
+      "aftermarket_price": null,
+      "refurbished_price": null,
+      "availability": "special_order",
+      "lead_time_days": 7,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW", "Tesla"]
+    },
+    "PART-AIRBAG-PASSENGER": {
+      "name": "Passenger Airbag Module",
+      "category": "safety",
+      "oem_price": 950.00,
+      "aftermarket_price": null,
+      "refurbished_price": null,
+      "availability": "special_order",
+      "lead_time_days": 7,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW"]
+    },
+    "PART-GRILLE": {
+      "name": "Front Grille",
+      "category": "body",
+      "oem_price": 225.00,
+      "aftermarket_price": 75.00,
+      "refurbished_price": 50.00,
+      "availability": "in_stock",
+      "lead_time_days": 1,
+      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan", "BMW"]
+    },
+    "PART-TRUNK-LID": {
+      "name": "Trunk Lid",
+      "category": "body",
+      "oem_price": 575.00,
+      "aftermarket_price": 285.00,
+      "refurbished_price": 175.00,
+      "availability": "in_stock",
+      "lead_time_days": 3,
+      "compatible_makes": ["Honda", "Toyota", "Chevrolet", "BMW"]
+    }
+  },
+  "labor_operations": {
+    "LABOR-REMOVE-INSTALL": {
+      "name": "Remove and Install",
+      "description": "Standard R&I operation for body parts",
+      "base_hours": 1.5
+    },
+    "LABOR-BLEND-PAINT": {
+      "name": "Blend Paint",
+      "description": "Blend paint to adjacent panels",
+      "base_hours": 2.0
+    },
+    "LABOR-FULL-PAINT": {
+      "name": "Full Panel Paint",
+      "description": "Complete panel refinish",
+      "base_hours": 4.0
+    },
+    "LABOR-PDR": {
+      "name": "Paintless Dent Repair",
+      "description": "Minor dent removal without paint",
+      "base_hours": 1.0
+    },
+    "LABOR-FRAME-PULL": {
+      "name": "Frame Pull",
+      "description": "Minor frame alignment",
+      "base_hours": 3.0
+    },
+    "LABOR-ALIGNMENT": {
+      "name": "Wheel Alignment",
+      "description": "Four-wheel alignment after repair",
+      "base_hours": 1.0
+    },
+    "LABOR-CALIBRATION": {
+      "name": "ADAS Calibration",
+      "description": "Advanced driver assistance system calibration",
+      "base_hours": 2.0
+    }
   }
 }

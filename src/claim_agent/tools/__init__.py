@@ -1,6 +1,10 @@
 """Tools for claim processing. Tools are lazy-loaded to avoid pulling crewai until needed."""
 
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from claim_agent.tools.valuation_tools import calculate_payout
 
 __all__ = [
     "query_policy_db",
@@ -20,6 +24,13 @@ __all__ = [
     "cross_reference_fraud_indicators",
     "perform_fraud_assessment",
     "generate_fraud_report",
+    # Partial loss tools
+    "get_available_repair_shops",
+    "assign_repair_shop",
+    "get_parts_catalog",
+    "create_parts_order",
+    "calculate_repair_estimate",
+    "generate_repair_authorization",
 ]
 
 
@@ -90,4 +101,29 @@ def __getattr__(name: str):
         from claim_agent.tools.fraud_tools import generate_fraud_report
         setattr(mod, "generate_fraud_report", generate_fraud_report)
         return generate_fraud_report
+    # Partial loss tools
+    if name == "get_available_repair_shops":
+        from claim_agent.tools.partial_loss_tools import get_available_repair_shops
+        setattr(mod, "get_available_repair_shops", get_available_repair_shops)
+        return get_available_repair_shops
+    if name == "assign_repair_shop":
+        from claim_agent.tools.partial_loss_tools import assign_repair_shop
+        setattr(mod, "assign_repair_shop", assign_repair_shop)
+        return assign_repair_shop
+    if name == "get_parts_catalog":
+        from claim_agent.tools.partial_loss_tools import get_parts_catalog
+        setattr(mod, "get_parts_catalog", get_parts_catalog)
+        return get_parts_catalog
+    if name == "create_parts_order":
+        from claim_agent.tools.partial_loss_tools import create_parts_order
+        setattr(mod, "create_parts_order", create_parts_order)
+        return create_parts_order
+    if name == "calculate_repair_estimate":
+        from claim_agent.tools.partial_loss_tools import calculate_repair_estimate
+        setattr(mod, "calculate_repair_estimate", calculate_repair_estimate)
+        return calculate_repair_estimate
+    if name == "generate_repair_authorization":
+        from claim_agent.tools.partial_loss_tools import generate_repair_authorization
+        setattr(mod, "generate_repair_authorization", generate_repair_authorization)
+        return generate_repair_authorization
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

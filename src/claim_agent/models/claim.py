@@ -13,6 +13,7 @@ class ClaimType(str, Enum):
     DUPLICATE = "duplicate"
     TOTAL_LOSS = "total_loss"
     FRAUD = "fraud"
+    PARTIAL_LOSS = "partial_loss"
 
 
 class ClaimInput(BaseModel):
