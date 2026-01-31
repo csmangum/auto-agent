@@ -1,17 +1,24 @@
 """Shared logic for claim tools (used by both CrewAI tools and MCP server)."""
 
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta
 
 from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
 from claim_agent.db.repository import ClaimRepository
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 # Vehicle valuation defaults (mock KBB)
 DEFAULT_BASE_VALUE = 12000
 DEPRECIATION_PER_YEAR = 500
 MIN_VEHICLE_VALUE = 2000
 
+# Payout calculation defaults
+DEFAULT_DEDUCTIBLE = 500
+MIN_PAYOUT_VEHICLE_VALUE = 100  # Minimum vehicle value for payout calculation
 # Escalation thresholds (HITL)
 ESCALATION_CONFIG = {
     "confidence_threshold": 0.7,
@@ -217,6 +224,61 @@ def search_california_compliance_impl(query: str) -> str:
     return json.dumps({"query": query, "match_count": len(matches), "matches": matches})
 
 
+def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
+    """Calculate total loss payout by subtracting deductible from vehicle value.
+    Args:
+        vehicle_value: Current market value of the vehicle.
+        policy_number: Policy number to look up deductible.
+    Returns:
+        JSON string with payout_amount (float), vehicle_value (float), deductible (float), and calculation (str).
+    """
+    if not isinstance(vehicle_value, (int, float)) or vehicle_value < MIN_PAYOUT_VEHICLE_VALUE:
+        return json.dumps({
+            "error": f"Invalid vehicle value (minimum: ${MIN_PAYOUT_VEHICLE_VALUE})",
+            "payout_amount": 0.0,
+            "vehicle_value": vehicle_value,
+            "deductible": 0,
+            "calculation": f"Error: Vehicle value must be at least ${MIN_PAYOUT_VEHICLE_VALUE}"
+        })
+    
+    # Round vehicle value for currency consistency
+    vehicle_value = round(vehicle_value, 2)
+    
+    # Query policy to get deductible
+    policy_result = query_policy_db_impl(policy_number)
+    try:
+        policy_data = json.loads(policy_result)
+        if not policy_data.get("valid", False):
+            return json.dumps({
+                "error": "Invalid or inactive policy",
+                "payout_amount": 0.0,
+                "vehicle_value": vehicle_value,
+                "deductible": 0,
+                "calculation": "Error: Policy not found or inactive"
+            })
+        deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
+    except (json.JSONDecodeError, KeyError) as e:
+        # Unexpected error in policy lookup - log for monitoring
+        logger.error(f"Unexpected policy lookup error for policy {policy_number}: {e}")
+        return json.dumps({
+            "error": f"Policy lookup error: {str(e)}",
+            "payout_amount": 0.0,
+            "vehicle_value": vehicle_value,
+            "deductible": 0,
+            "calculation": "Error: Unable to retrieve policy information"
+        })
+    
+    # Calculate payout
+    payout_amount = max(0.0, vehicle_value - deductible)
+    
+    result = {
+        "payout_amount": round(payout_amount, 2),
+        "vehicle_value": vehicle_value,
+        "deductible": deductible,
+        "calculation": f"${vehicle_value:,.2f} (vehicle value) - ${deductible:,.2f} (deductible) = ${payout_amount:,.2f}"
+    }
+    
+    return json.dumps(result)
 # --- Escalation (HITL) ---
 
 

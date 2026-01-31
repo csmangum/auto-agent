@@ -5,6 +5,7 @@ from crewai import Agent
 from claim_agent.tools import (
     fetch_vehicle_value,
     evaluate_damage,
+    calculate_payout,
     generate_report,
     generate_claim_id,
 )
@@ -40,6 +41,7 @@ def create_payout_agent(llm=None):
         role="Payout Calculator",
         goal="Calculate total loss payout amount. If damage > 75% of vehicle value, compute payout (e.g., value minus deductible) and document the calculation.",
         backstory="Precise in payout calculations and settlement amounts. You ensure correct payout figures.",
+        tools=[calculate_payout],
         verbose=True,
         llm=llm,
     )
