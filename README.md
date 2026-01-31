@@ -130,16 +130,26 @@ Output is JSON with `claim_type`, `router_output`, `workflow_output`, and `summa
 ### Sample claims
 
 - `tests/sample_claims/new_claim.json` – standard new claim
-- `tests/sample_claims/duplicate_claim.json` – possible duplicate (same VIN/date as in mock DB)
+- `tests/sample_claims/duplicate_claim.json` – possible duplicate (same VIN/date as a claim in mock DB). **Duplicate detection will only find it after you run the seed script** so that the historical claim exists in SQLite.
 - `tests/sample_claims/total_loss_claim.json` – flood total loss
 
-### Mock data and compliance reference
+### Data
 
-- **Mock DB**: Policy and claims data live in `data/mock_db.json`. Override with `MOCK_DB_PATH`.
+- **mock_db.json** (env: `MOCK_DB_PATH`): Used by tools for **policies** (policy validation) and **vehicle_values** (valuation). The **claims** array is reference/seed data only—it is not used for claim search or duplicate detection.
+- **SQLite** (env: `CLAIMS_DB_PATH`, default `data/claims.db`): Persists claims created by the app (CLI/workflows). Claim search and duplicate detection use this database only. To make mock "historical" claims searchable, run the seed script (see below).
 - **California compliance**: Reference data for CA auto claims rules, deadlines, and disclosures lives in `data/california_auto_compliance.json`. Agents can search it via the `search_california_compliance` tool. Override path with `CA_COMPLIANCE_PATH`.
+
+To load the mock historical claims into SQLite (so they appear in claim search), run:
+
+```bash
+python scripts/seed_claims_from_mock_db.py
+```
+
+Use `CLAIMS_DB_PATH` to target a different SQLite file (default is `data/claims.db`).
 
 ```bash
 export MOCK_DB_PATH=/path/to/your/mock_db.json
+export CLAIMS_DB_PATH=data/claims.db
 export CA_COMPLIANCE_PATH=/path/to/california_auto_compliance.json  # optional
 ```
 
@@ -180,6 +190,8 @@ auto-agent/
 ├── data/
 │   ├── mock_db.json
 │   └── california_auto_compliance.json   # CA claims rules, deadlines, disclosures (searchable via tool)
+├── scripts/
+│   └── seed_claims_from_mock_db.py   # Load mock_db.claims into SQLite for claim search
 ├── tests/
 │   ├── test_tools.py
 │   ├── test_crews.py

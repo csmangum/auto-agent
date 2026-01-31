@@ -176,6 +176,31 @@ def test_query_policy_db_invalid_input():
     assert result2["valid"] is False
 
 
+def test_query_policy_db_inactive_returns_invalid():
+    """Inactive policy (e.g. POL-021) must return valid False."""
+    from claim_agent.tools.logic import query_policy_db_impl
+
+    result = query_policy_db_impl("POL-021")
+    data = json.loads(result)
+    assert data["valid"] is False
+    assert data.get("status") == "inactive"
+
+
+def test_mock_db_claim_vins_have_vehicle_values():
+    """Every claim VIN in mock_db must exist in vehicle_values (regression guard)."""
+    from claim_agent.tools.data_loader import load_mock_db
+
+    db = load_mock_db()
+    claims = db.get("claims", [])
+    vehicle_values = db.get("vehicle_values", {})
+    missing = []
+    for c in claims:
+        vin = c.get("vin")
+        if vin and vin not in vehicle_values:
+            missing.append(vin)
+    assert not missing, f"Claims reference VINs not in vehicle_values: {missing}"
+
+
 def test_search_claims_db_empty_vin_returns_empty():
     from claim_agent.tools.logic import search_claims_db_impl
 
