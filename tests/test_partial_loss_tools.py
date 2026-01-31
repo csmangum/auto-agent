@@ -105,8 +105,12 @@ def test_get_parts_catalog():
     data = json.loads(result)
     
     assert "parts_count" in data
-    assert data["parts_count"] >= 2  # Should find bumper and headlight
+    assert data["parts_count"] == 2  # Exactly front bumper and headlight (no rear bumper)
     assert "parts" in data
+    part_ids = [p["part_id"] for p in data["parts"]]
+    assert "PART-BUMPER-FRONT" in part_ids
+    assert "PART-HEADLIGHT" in part_ids
+    assert "PART-BUMPER-REAR" not in part_ids
     assert "total_parts_cost" in data
     assert data["total_parts_cost"] > 0
     
@@ -232,6 +236,15 @@ def test_calculate_repair_estimate_uses_shop_rate():
     assert data4["labor_rate"] == 55.0
     # Same labor hours but different costs due to rate
     assert data1["labor_cost"] > data4["labor_cost"]
+    # Same (and only expected) parts for "Front bumper"
+    assert "labor_hours" in data1
+    assert "labor_hours" in data4
+    assert data1["labor_hours"] == data4["labor_hours"]
+    assert "parts" in data1
+    assert "parts" in data4
+    assert len(data1["parts"]) == len(data4["parts"])
+    assert len(data1["parts"]) == 1
+    assert data1["parts"][0]["part_id"] == "PART-BUMPER-FRONT"
 
 
 def test_generate_repair_authorization():

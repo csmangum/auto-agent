@@ -638,47 +638,64 @@ def get_parts_catalog_impl(
     damage_lower = damage_description.lower()
     recommended_parts = []
     seen_part_ids = set()
-    
-    for keyword, part_ids in damage_to_parts.items():
-        if keyword in damage_lower:
-            for part_id in part_ids:
-                if part_id in seen_part_ids:
-                    continue
-                seen_part_ids.add(part_id)
-                
-                if part_id in parts_catalog:
-                    part = parts_catalog[part_id]
-                    
-                    # Check vehicle make compatibility
-                    compatible_makes = part.get("compatible_makes", [])
-                    is_compatible = not compatible_makes or vehicle_make in compatible_makes
-                    
-                    # Get price based on preference
-                    selected_type = part_type_preference
-                    if part_type_preference == "oem":
-                        price = part.get("oem_price")
-                    elif part_type_preference == "refurbished":
-                        price = part.get("refurbished_price") or part.get("aftermarket_price")
-                    else:
-                        price = part.get("aftermarket_price") or part.get("oem_price")
-                    
-                    if price is None:
-                        price = part.get("oem_price", 0)
-                        selected_type = "oem"  # Fall back to OEM if no alternative
-                    
-                    recommended_parts.append({
-                        "part_id": part_id,
-                        "part_name": part.get("name", ""),
-                        "category": part.get("category", ""),
-                        "selected_type": selected_type,
-                        "price": price,
-                        "oem_price": part.get("oem_price"),
-                        "aftermarket_price": part.get("aftermarket_price"),
-                        "refurbished_price": part.get("refurbished_price"),
-                        "availability": part.get("availability", "unknown"),
-                        "lead_time_days": part.get("lead_time_days", 3),
-                        "is_compatible": is_compatible,
-                    })
+    # Iterate by descending keyword length so more specific phrases (e.g. "front bumper")
+    # match before generic ones (e.g. "bumper"), avoiding over-broad matches.
+    for keyword, part_ids in sorted(damage_to_parts.items(), key=lambda kv: len(kv[0]), reverse=True):
+        if keyword not in damage_lower:
+            continue
+        # Skip generic keyword if a more specific phrase is present (e.g. "bumper" when "front bumper" is in text)
+        if keyword == "bumper" and ("front bumper" in damage_lower or "rear bumper" in damage_lower):
+            continue
+        if keyword == "door" and ("front door" in damage_lower or "rear door" in damage_lower):
+            continue
+        if keyword == "mirror" and "side mirror" in damage_lower:
+            continue
+        for part_id in part_ids:
+            if part_id in seen_part_ids:
+                continue
+            seen_part_ids.add(part_id)
+
+            if part_id in parts_catalog:
+                part = parts_catalog[part_id]
+
+                # Check vehicle make compatibility (case-insensitive)
+                compatible_makes = part.get("compatible_makes", [])
+                vehicle_make_norm = (
+                    vehicle_make.strip().lower() if isinstance(vehicle_make, str) else ""
+                )
+                compatible_norm = [
+                    m.strip().lower() for m in compatible_makes if isinstance(m, str)
+                ]
+                is_compatible = (
+                    not compatible_makes or vehicle_make_norm in compatible_norm
+                )
+
+                # Get price based on preference
+                selected_type = part_type_preference
+                if part_type_preference == "oem":
+                    price = part.get("oem_price")
+                elif part_type_preference == "refurbished":
+                    price = part.get("refurbished_price") or part.get("aftermarket_price")
+                else:
+                    price = part.get("aftermarket_price") or part.get("oem_price")
+
+                if price is None:
+                    price = part.get("oem_price", 0)
+                    selected_type = "oem"  # Fall back to OEM if no alternative
+
+                recommended_parts.append({
+                    "part_id": part_id,
+                    "part_name": part.get("name", ""),
+                    "category": part.get("category", ""),
+                    "selected_type": selected_type,
+                    "price": price,
+                    "oem_price": part.get("oem_price"),
+                    "aftermarket_price": part.get("aftermarket_price"),
+                    "refurbished_price": part.get("refurbished_price"),
+                    "availability": part.get("availability", "unknown"),
+                    "lead_time_days": part.get("lead_time_days", 3),
+                    "is_compatible": is_compatible,
+                })
     
     total_cost = sum(p["price"] for p in recommended_parts if p["price"])
     
@@ -819,13 +836,16 @@ def calculate_repair_estimate_impl(
     damage_lower = damage_description.lower()
     
     # Add labor for each part (R&I + paint typically)
+    has_body_part = False
     for part in parts_list:
         base_labor_hours += LABOR_HOURS_RNI_PER_PART
         if part.get("category") == "body":
             base_labor_hours += LABOR_HOURS_PAINT_BODY
+            has_body_part = True
 
-    # Add specific labor operations based on damage
-    if "paint" in damage_lower or "scratch" in damage_lower:
+    # Add specific labor operations based on damage (avoid double-counting paint:
+    # only add blend when paint/scratch mentioned but no body part already got paint labor)
+    if ("paint" in damage_lower or "scratch" in damage_lower) and not has_body_part:
         base_labor_hours += labor_operations.get("LABOR-BLEND-PAINT", {}).get("base_hours", LABOR_HOURS_PAINT_BODY)
     if "dent" in damage_lower and "minor" in damage_lower:
         base_labor_hours += labor_operations.get("LABOR-PDR", {}).get("base_hours", 1.0)
