@@ -5,10 +5,11 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 ## Features
 
 - **Workflow routing**: A router agent classifies incoming claims as `new`, `duplicate`, or `total_loss` and routes to the appropriate workflow.
+- **Escalation (HITL)**: After classification, an escalation check can flag claims for human review (e.g. fraud indicators, high payout). Escalated claims get status `needs_review` and skip the workflow crew until reviewed.
 - **New claim workflow**: Intake validation, policy check, and claim ID assignment.
 - **Duplicate claim workflow**: Search existing claims, compute similarity, and resolve (merge/reject).
 - **Total loss workflow**: Damage assessment, vehicle valuation (mock KBB), payout calculation, and settlement.
-- **Tools**: Policy DB query, claims search, similarity, vehicle value, report generation, and California compliance lookup—exposed as CrewAI tools and optionally via a local MCP server.
+- **Tools**: Policy DB query, claims search, similarity, vehicle value, report generation, California compliance lookup, and escalation evaluation—exposed as CrewAI tools and optionally via a local MCP server.
 
 ## Architecture
 
@@ -16,6 +17,10 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 flowchart TB
     A[Claim JSON] --> B[Claim Router Supervisor]
     B --> C{claim_type?}
+    C --> D[Escalation check]
+    D --> E{needs_review?}
+    E -->|yes| G[Processed Response]
+    E -->|no| H{claim_type?}
 
     subgraph New["New Claim Crew"]
         D1[Intake Specialist]
@@ -39,37 +44,42 @@ flowchart TB
         F1 --> F2 --> F3 --> F4
     end
 
-    C -->|new| D1
-    C -->|duplicate| E1
-    C -->|total_loss| F1
-    D3 --> G[Processed Response]
+    H -->|new| D1
+    H -->|duplicate| E1
+    H -->|total_loss| F1
+    D3 --> G
     E3 --> G
     F4 --> G
 ```
 
 ## Execution flow
 
-Running the agent on a claim file (e.g. `python -m claim_agent.main tests/sample_claims/new_claim.json`) runs this flow:
+Running the agent on a claim file (e.g. `python -m claim_agent.main process tests/sample_claims/new_claim.json`) runs this flow:
 
 1. **Router crew**  
    A single agent (Claim Router Supervisor) receives the claim JSON and classifies it as exactly one of: `new`, `duplicate`, or `total_loss`. It returns one word plus a one-sentence reasoning.
 
-2. **Workflow crew** (depends on classification)  
+2. **Escalation check (HITL)**  
+   Before running a workflow crew, the system evaluates whether the claim needs human review (e.g. fraud indicators, high-value payout). If `needs_review` is true, the claim status is set to `needs_review`, escalation reasons and priority are returned, and the flow stops—no workflow crew runs.
+
+3. **Workflow crew** (only if not escalated; depends on classification)  
    - **New claim crew**  
-     - **Intake Specialist**: Validates required fields (policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description) and data types.  
+     - **Intake Specialist**: Validates required fields (policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description; optional: estimated_damage) and data types.  
      - **Policy Verification Specialist**: Uses `query_policy_db` to verify the policy is active and has valid coverage.  
      - **Claim Assignment Specialist**: Uses `generate_claim_id` (prefix `CLM`), sets status to `open`, then uses `generate_claim_report` to produce the final report.  
    - **Duplicate crew**: Searches existing claims, computes similarity, resolves (merge/reject).  
    - **Total loss crew**: Damage assessment, vehicle valuation (mock KBB), payout calculation, settlement.
 
-3. **Output**  
-   JSON written to stdout with:
+4. **Output**  
+   JSON written to stdout. When **not escalated**:
    - `claim_type`: `new` | `duplicate` | `total_loss`
    - `router_output`: Classification + reasoning from the router
    - `workflow_output`: Summary from the workflow crew (e.g. claim ID, status, summary)
-   - `summary`: Same as `workflow_output` for convenience
+   - `summary`: Same as `workflow_output` for convenience  
 
-Example output for a **new** claim:
+   When **escalated** (`needs_review`), the response also includes: `status` (`needs_review`), `escalation_reasons`, `escalation_priority` (low/medium/high/critical), `recommended_action`, `fraud_indicators`, and `workflow_output` holds escalation details (JSON).
+
+Example output for a **new** (non-escalated) claim:
 
 ```json
 {
@@ -77,6 +87,24 @@ Example output for a **new** claim:
   "router_output": "new\nThis claim appears to be a first-time submission with no indications of previous reports or total loss status.",
   "workflow_output": "Claim ID: CLM-11EEF959, Status: open, Summary: Claim has been initiated successfully with a unique ID.",
   "summary": "Claim ID: CLM-11EEF959, Status: open, Summary: Claim has been initiated successfully with a unique ID."
+}
+```
+
+Example output when **escalated** (human review required):
+
+```json
+{
+  "claim_id": "CLM-11EEF959",
+  "claim_type": "new",
+  "status": "needs_review",
+  "router_output": "new\n...",
+  "workflow_output": "{\"escalation_reasons\": [...], \"priority\": \"high\", ...}",
+  "summary": "Escalated for review: High estimated damage, ...",
+  "escalation_reasons": ["High estimated damage", "..."],
+  "escalation_priority": "high",
+  "needs_review": true,
+  "recommended_action": "Verify repair estimates with shop.",
+  "fraud_indicators": []
 }
 ```
 
@@ -113,19 +141,35 @@ Example output for a **new** claim:
 
 ### CLI
 
-Run the agent on a claim JSON file:
+Subcommands (install the package first: `pip install -e .`):
+
+| Command | Description |
+|---------|-------------|
+| `claim-agent process <claim.json>` | Process a claim from a JSON file |
+| `claim-agent status <claim_id>` | Print claim status (from SQLite) |
+| `claim-agent history <claim_id>` | Print claim audit log |
+| `claim-agent reprocess <claim_id>` | Re-run workflow for an existing claim |
+
+Examples:
 
 ```bash
-python -m claim_agent.main tests/sample_claims/new_claim.json
-```
+# Process a claim (recommended)
+claim-agent process tests/sample_claims/new_claim.json
+# or
+python -m claim_agent.main process tests/sample_claims/new_claim.json
 
-Or after installing the package:
-
-```bash
+# Legacy: single file path still works
 claim-agent tests/sample_claims/new_claim.json
+
+# Status and history
+claim-agent status CLM-11EEF959
+claim-agent history CLM-11EEF959
+
+# Re-run workflow for an existing claim
+claim-agent reprocess CLM-11EEF959
 ```
 
-Output is JSON with `claim_type`, `router_output`, `workflow_output`, and `summary`.
+Output is JSON: `claim_type`, `router_output`, `workflow_output`, `summary`; when escalated, also `status`, `escalation_reasons`, `escalation_priority`, etc.
 
 ### Sample claims
 
@@ -180,13 +224,13 @@ Unit tests for tools run without an API key. Crew integration tests are skipped 
 ```
 auto-agent/
 ├── src/claim_agent/
-│   ├── main.py           # CLI entry
+│   ├── main.py           # CLI entry (process, status, history, reprocess)
 │   ├── config/           # LLM and config
-│   ├── agents/           # Router, intake, policy, duplicate, total loss
-│   ├── crews/            # Main, new claim, duplicate, total loss crews
-│   ├── tools/            # Policy, claims, valuation, document tools + logic
+│   ├── agents/           # Router, intake, policy, duplicate, total loss, escalation
+│   ├── crews/            # Main, new claim, duplicate, total loss, escalation crews
+│   ├── tools/            # Policy, claims, valuation, document, escalation tools + logic
 │   ├── mcp_server/       # MCP server (stdio)
-│   └── models/           # ClaimType, ClaimInput, ClaimOutput, WorkflowState
+│   └── models/           # ClaimType, ClaimInput, ClaimOutput, EscalationOutput, WorkflowState
 ├── data/
 │   ├── mock_db.json
 │   └── california_auto_compliance.json   # CA claims rules, deadlines, disclosures (searchable via tool)
@@ -195,6 +239,9 @@ auto-agent/
 ├── tests/
 │   ├── test_tools.py
 │   ├── test_crews.py
+│   ├── test_db.py
+│   ├── test_main.py
+│   ├── test_escalation.py
 │   └── sample_claims/
 └── pyproject.toml
 ```

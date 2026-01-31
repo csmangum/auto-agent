@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
 from claim_agent.db.repository import ClaimRepository
@@ -11,6 +11,17 @@ from claim_agent.db.repository import ClaimRepository
 DEFAULT_BASE_VALUE = 12000
 DEPRECIATION_PER_YEAR = 500
 MIN_VEHICLE_VALUE = 2000
+
+# Escalation thresholds (HITL)
+ESCALATION_CONFIG = {
+    "confidence_threshold": 0.7,
+    "high_value_threshold": 10000.0,
+    "similarity_ambiguous_range": (50, 80),
+    "fraud_damage_vs_value_ratio": 0.9,
+    "vin_claims_days": 90,
+    "confidence_decrement_per_pattern": 0.15,
+    "description_overlap_threshold": 0.1,
+}
 
 
 def query_policy_db_impl(policy_number: str) -> str:
@@ -204,3 +215,184 @@ def search_california_compliance_impl(query: str) -> str:
         elif _json_contains_query(section_value, query):
             matches.append({"section": section_key, "content": section_value})
     return json.dumps({"query": query, "match_count": len(matches), "matches": matches})
+
+
+# --- Escalation (HITL) ---
+
+
+def _parse_router_confidence(router_output: str) -> float:
+    """Derive routing confidence 0.0-1.0 from router output language."""
+    if not router_output or not isinstance(router_output, str):
+        return 0.5
+    low_confidence_patterns = ["possibly", "might be", "unclear", "unsure", "could be", "uncertain"]
+    confidence = 1.0
+    text = router_output.strip().lower()
+    decrement = ESCALATION_CONFIG["confidence_decrement_per_pattern"]
+    for pattern in low_confidence_patterns:
+        if pattern in text:
+            confidence -= decrement
+    return max(0.3, min(1.0, confidence))
+
+
+def detect_fraud_indicators_impl(claim_data: dict) -> str:
+    """Check claim for fraud indicators. Returns JSON list of indicator strings."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return json.dumps(indicators)
+
+    incident = (claim_data.get("incident_description") or "").strip().lower()
+    damage = (claim_data.get("damage_description") or "").strip().lower()
+    vin = (claim_data.get("vin") or "").strip()
+    incident_date = (claim_data.get("incident_date") or "").strip()
+    estimated_damage = claim_data.get("estimated_damage")
+    if isinstance(estimated_damage, str):
+        try:
+            estimated_damage = float(estimated_damage)
+        except ValueError:
+            estimated_damage = None
+
+    # Staged/fraud keywords from California compliance (multiple occupants, witnesses leave, prior claims, suspicious damage)
+    fraud_keywords = [
+        "staged", "multiple occupants", "witnesses left", "witness left",
+        "prior claims", "suspicious damage", "inflated", "pre-existing",
+        "inconsistent", "material misrepresentation",
+    ]
+    combined = f"{incident} {damage}"
+    for kw in fraud_keywords:
+        if kw in combined:
+            indicators.append(kw.replace(" ", "_"))
+
+    # Multiple claims on same VIN within 90 days
+    if vin and incident_date:
+        try:
+            repo = ClaimRepository()
+            from datetime import datetime as dt
+            dt_obj = dt.strptime(incident_date, "%Y-%m-%d")
+            start = (dt_obj - timedelta(days=ESCALATION_CONFIG["vin_claims_days"])).strftime("%Y-%m-%d")
+            end = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+            matches = repo.search_claims(vin=vin, incident_date=None)
+            same_vin = [m for m in matches if m.get("vin") == vin and m.get("incident_date") != incident_date]
+            same_vin_in_window = [
+                m for m in same_vin
+                if m.get("incident_date") is not None and start <= m.get("incident_date") <= end
+            ]
+            if len(same_vin_in_window) >= 1:
+                indicators.append("multiple_claims_same_vin")
+        except (ValueError, OSError):  # date parse, DB file missing
+            pass  # best-effort: skip multiple_claims check
+
+    # Damage estimate significantly higher than vehicle value (need vehicle value)
+    if estimated_damage is not None and isinstance(estimated_damage, (int, float)) and estimated_damage > 0:
+        year = claim_data.get("vehicle_year")
+        make = claim_data.get("make") or claim_data.get("vehicle_make") or ""
+        model = claim_data.get("model") or claim_data.get("vehicle_model") or ""
+        if year and make and model:
+            val_res = fetch_vehicle_value_impl(vin or "", year, make, model)
+            try:
+                val_data = json.loads(val_res)
+                vehicle_value = val_data.get("value")
+                if isinstance(vehicle_value, (int, float)) and vehicle_value > 0:
+                    if estimated_damage >= ESCALATION_CONFIG["fraud_damage_vs_value_ratio"] * vehicle_value:
+                        indicators.append("damage_near_or_above_vehicle_value")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # Inconsistent descriptions: very low word overlap between incident and damage
+    overlap_threshold = ESCALATION_CONFIG["description_overlap_threshold"]
+    if incident and damage:
+        words_i = set(incident.split())
+        words_d = set(damage.split())
+        if words_i and words_d:
+            overlap = len(words_i & words_d) / len(words_i | words_d) if (words_i | words_d) else 0
+            if overlap < overlap_threshold:
+                indicators.append("incident_damage_description_mismatch")
+
+    return json.dumps(indicators)
+
+
+def compute_escalation_priority_impl(reasons: list[str], fraud_indicators: list[str]) -> str:
+    """Compute escalation priority from reasons and fraud indicators. Returns JSON with 'priority' key."""
+    reason_count = len(reasons) if reasons else 0
+    fraud_count = len(fraud_indicators) if fraud_indicators else 0
+    has_fraud = "fraud_suspected" in (reasons or []) or fraud_count > 0
+
+    if fraud_count >= 2 or (has_fraud and reason_count >= 2):
+        priority = "critical"
+    elif reason_count >= 3 or has_fraud:
+        priority = "high"
+    elif reason_count == 2:
+        priority = "medium"
+    elif reason_count == 1:
+        priority = "low"
+    else:
+        priority = "low"
+    return json.dumps({"priority": priority})
+
+
+def evaluate_escalation_impl(
+    claim_data: dict,
+    router_output: str,
+    similarity_score: float | None = None,
+    payout_amount: float | None = None,
+) -> str:
+    """
+    Evaluate claim for escalation. Returns JSON with needs_review, escalation_reasons,
+    priority, fraud_indicators, recommended_action.
+    """
+    reasons: list[str] = []
+    conf_threshold = ESCALATION_CONFIG["confidence_threshold"]
+    high_value_threshold = ESCALATION_CONFIG["high_value_threshold"]
+    low_sim, high_sim = ESCALATION_CONFIG["similarity_ambiguous_range"]
+
+    confidence = _parse_router_confidence(router_output or "")
+    if confidence < conf_threshold:
+        reasons.append("low_confidence")
+
+    estimated = claim_data.get("estimated_damage") if isinstance(claim_data, dict) else None
+    if isinstance(estimated, str):
+        try:
+            estimated = float(estimated)
+        except ValueError:
+            estimated = None
+    value_to_check = payout_amount if payout_amount is not None else estimated
+    if isinstance(value_to_check, (int, float)) and value_to_check >= high_value_threshold:
+        reasons.append("high_value")
+
+    if similarity_score is not None and low_sim <= similarity_score < high_sim:
+        reasons.append("ambiguous_similarity")
+
+    fraud_json = detect_fraud_indicators_impl(claim_data or {})
+    try:
+        fraud_indicators = json.loads(fraud_json)
+    except (json.JSONDecodeError, TypeError):
+        fraud_indicators = []
+    if fraud_indicators:
+        reasons.append("fraud_suspected")
+
+    priority_json = compute_escalation_priority_impl(reasons, fraud_indicators)
+    try:
+        priority = json.loads(priority_json).get("priority", "low")
+    except (json.JSONDecodeError, TypeError):
+        priority = "low"
+
+    needs_review = len(reasons) > 0
+    if needs_review:
+        recommended = "Review claim manually. "
+        if "fraud_suspected" in reasons:
+            recommended += "Refer to SIU if fraud indicators are confirmed. "
+        if "high_value" in reasons:
+            recommended += "Verify valuation and damage estimate. "
+        if "low_confidence" in reasons:
+            recommended += "Confirm routing classification. "
+        if "ambiguous_similarity" in reasons:
+            recommended += "Confirm duplicate vs new claim."
+    else:
+        recommended = "No escalation needed."
+
+    return json.dumps({
+        "needs_review": needs_review,
+        "escalation_reasons": reasons,
+        "priority": priority,
+        "fraud_indicators": fraud_indicators,
+        "recommended_action": recommended.strip(),
+    })

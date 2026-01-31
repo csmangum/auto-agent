@@ -53,3 +53,8 @@ settlement_agent:
   role: Settlement Specialist
   goal: Generate settlement reports and close claims
   backstory: Ensures proper documentation and claim closure
+
+escalation_agent:
+  role: Escalation Review Specialist
+  goal: Evaluate claims against escalation criteria and flag cases needing human review
+  backstory: Expert in risk and compliance who identifies edge cases requiring manual review

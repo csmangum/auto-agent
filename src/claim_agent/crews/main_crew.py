@@ -1,6 +1,7 @@
 """Main crew: router classifies claim, then we run the appropriate workflow crew."""
 
 import json
+import logging
 
 from crewai import Crew, Task
 
@@ -13,11 +14,15 @@ from claim_agent.db.constants import (
     STATUS_CLOSED,
     STATUS_DUPLICATE,
     STATUS_FAILED,
+    STATUS_NEEDS_REVIEW,
     STATUS_OPEN,
     STATUS_PROCESSING,
 )
+from claim_agent.tools.logic import evaluate_escalation_impl
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.models.claim import ClaimInput
+from claim_agent.models.claim import ClaimInput, EscalationOutput
+
+logger = logging.getLogger(__name__)
 
 
 def create_router_crew(llm=None):
@@ -84,7 +89,10 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
     Persists claim to SQLite, logs state changes, and saves workflow result.
     claim_data: dict with policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description, estimated_damage (optional).
     existing_claim_id: if set, re-run workflow for this claim (no new claim created).
-    Returns a dict with claim_id, claim_type, summary, and raw_output from the workflow crew.
+    Returns a dict with claim_id, claim_type, summary, and workflow_output. When the claim is
+    escalated (needs_review), the dict also includes status (STATUS_NEEDS_REVIEW), escalation_reasons,
+    escalation_priority, and workflow_output holds escalation details (JSON). When not escalated,
+    the dict has claim_id, claim_type, router_output, workflow_output (crew output), summary.
     """
     llm = llm or get_llm()
     repo = ClaimRepository()
@@ -108,6 +116,51 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
         raw_output = str(raw_output)
         claim_type = _parse_claim_type(raw_output)
+
+        # Step 1b: Escalation check (HITL)
+        escalation_json = evaluate_escalation_impl(
+            claim_data,
+            raw_output,
+            similarity_score=None,
+            payout_amount=None,
+        )
+        escalation_result = json.loads(escalation_json)
+        if escalation_result.get("needs_review"):
+            reasons = escalation_result.get("escalation_reasons", [])
+            priority = escalation_result.get("priority", "low")
+            recommended_action = escalation_result.get("recommended_action", "")
+            fraud_indicators = escalation_result.get("fraud_indicators", [])
+            escalation_output = EscalationOutput(
+                claim_id=claim_id,
+                needs_review=True,
+                escalation_reasons=reasons,
+                priority=priority,
+                recommended_action=recommended_action,
+                fraud_indicators=fraud_indicators,
+            )
+            details = json.dumps({
+                "escalation_reasons": reasons,
+                "priority": priority,
+                "recommended_action": recommended_action,
+                "fraud_indicators": fraud_indicators,
+            })
+            repo.save_workflow_result(claim_id, claim_type, raw_output, details)
+            repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, details=details)
+            logger.info(
+                "Escalation: claim_id=%s reasons=%s priority=%s",
+                claim_id,
+                reasons,
+                priority,
+            )
+            return {
+                **escalation_output.model_dump(),
+                "claim_type": claim_type,
+                "status": STATUS_NEEDS_REVIEW,
+                "router_output": raw_output,
+                "workflow_output": details,
+                "summary": f"Escalated for review: {', '.join(reasons)}",
+                "escalation_priority": priority,
+            }
 
         # Step 2: Run the appropriate crew
         if claim_type == "new":
