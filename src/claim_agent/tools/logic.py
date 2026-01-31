@@ -204,3 +204,48 @@ def search_california_compliance_impl(query: str) -> str:
         elif _json_contains_query(section_value, query):
             matches.append({"section": section_key, "content": section_value})
     return json.dumps({"query": query, "match_count": len(matches), "matches": matches})
+
+
+def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
+    """Calculate total loss payout by subtracting deductible from vehicle value.
+    Args:
+        vehicle_value: Current market value of the vehicle.
+        policy_number: Policy number to look up deductible.
+    Returns:
+        JSON string with payout_amount (float), vehicle_value (float), deductible (float), and calculation (str).
+    """
+    if not isinstance(vehicle_value, (int, float)) or vehicle_value <= 0:
+        return json.dumps({
+            "error": "Invalid vehicle value",
+            "payout_amount": 0.0,
+            "vehicle_value": vehicle_value,
+            "deductible": 0,
+            "calculation": "Error: Invalid vehicle value"
+        })
+    
+    # Query policy to get deductible
+    policy_result = query_policy_db_impl(policy_number)
+    try:
+        policy_data = json.loads(policy_result)
+        if not policy_data.get("valid", False):
+            return json.dumps({
+                "error": "Invalid or inactive policy",
+                "payout_amount": 0.0,
+                "vehicle_value": vehicle_value,
+                "deductible": 0,
+                "calculation": "Error: Policy not found or inactive"
+            })
+        deductible = policy_data.get("deductible", 500)
+    except (json.JSONDecodeError, KeyError):
+        # Default deductible if policy lookup fails
+        deductible = 500
+    
+    # Calculate payout
+    payout_amount = max(0.0, vehicle_value - deductible)
+    
+    return json.dumps({
+        "payout_amount": round(payout_amount, 2),
+        "vehicle_value": vehicle_value,
+        "deductible": deductible,
+        "calculation": f"${vehicle_value:,.2f} (vehicle value) - ${deductible:,.2f} (deductible) = ${payout_amount:,.2f}"
+    })

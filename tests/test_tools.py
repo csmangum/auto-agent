@@ -260,3 +260,67 @@ def test_search_california_compliance_missing_file_returns_error():
         assert data["matches"] == []
     finally:
         os.environ.pop("CA_COMPLIANCE_PATH", None)
+
+
+def test_calculate_payout_valid_policy():
+    """Test payout calculation with valid policy."""
+    from claim_agent.tools.logic import calculate_payout_impl
+
+    result = calculate_payout_impl(12000, "POL-001")
+    data = json.loads(result)
+    assert "payout_amount" in data
+    assert data["payout_amount"] == 11500.0  # 12000 - 500 (POL-001 deductible)
+    assert data["vehicle_value"] == 12000
+    assert data["deductible"] == 500
+    assert "calculation" in data
+
+
+def test_calculate_payout_high_deductible():
+    """Test payout calculation with high deductible policy."""
+    from claim_agent.tools.logic import calculate_payout_impl
+
+    result = calculate_payout_impl(12000, "POL-012")
+    data = json.loads(result)
+    assert data["payout_amount"] == 10000.0  # 12000 - 2000 (POL-012 deductible)
+    assert data["deductible"] == 2000
+
+
+def test_calculate_payout_invalid_policy():
+    """Test payout calculation with invalid policy defaults to 500 deductible."""
+    from claim_agent.tools.logic import calculate_payout_impl
+
+    result = calculate_payout_impl(12000, "POL-999")
+    data = json.loads(result)
+    assert "error" in data
+    assert data["payout_amount"] == 0.0
+
+
+def test_calculate_payout_zero_vehicle_value():
+    """Test payout calculation with zero vehicle value."""
+    from claim_agent.tools.logic import calculate_payout_impl
+
+    result = calculate_payout_impl(0, "POL-001")
+    data = json.loads(result)
+    assert "error" in data
+    assert data["payout_amount"] == 0.0
+
+
+def test_calculate_payout_negative_vehicle_value():
+    """Test payout calculation with negative vehicle value."""
+    from claim_agent.tools.logic import calculate_payout_impl
+
+    result = calculate_payout_impl(-1000, "POL-001")
+    data = json.loads(result)
+    assert "error" in data
+    assert data["payout_amount"] == 0.0
+
+
+def test_calculate_payout_deductible_exceeds_value():
+    """Test payout calculation where deductible exceeds vehicle value."""
+    from claim_agent.tools.logic import calculate_payout_impl
+
+    result = calculate_payout_impl(1000, "POL-012")
+    data = json.loads(result)
+    # POL-012 has 2000 deductible, vehicle value 1000, payout should be 0
+    assert data["payout_amount"] == 0.0
+    assert data["deductible"] == 2000
