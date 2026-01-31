@@ -101,3 +101,14 @@ def __getattr__(name: str):
         setattr(mod, "generate_repair_authorization", generate_repair_authorization)
         return generate_repair_authorization
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# Eager-load partial loss tools so they are defined (satisfies __all__); other tools remain lazy via __getattr__
+from claim_agent.tools.partial_loss_tools import (
+    get_available_repair_shops,
+    assign_repair_shop,
+    get_parts_catalog,
+    create_parts_order,
+    calculate_repair_estimate,
+    generate_repair_authorization,
+)

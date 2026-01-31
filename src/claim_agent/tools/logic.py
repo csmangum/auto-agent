@@ -20,8 +20,8 @@ MIN_VEHICLE_VALUE = 2000
 DEFAULT_DEDUCTIBLE = 500
 MIN_PAYOUT_VEHICLE_VALUE = 100  # Minimum vehicle value for payout calculation
 
-# Partial loss configuration
-PARTIAL_LOSS_THRESHOLD = 0.75  # If repair cost < 75% of vehicle value, it's partial loss
+# Partial/total loss configuration
+PARTIAL_LOSS_THRESHOLD = 0.75  # Threshold for total loss: if repair cost >= 75% of vehicle value, classify as total loss
 # Escalation thresholds (HITL)
 ESCALATION_CONFIG = {
     "confidence_threshold": 0.7,
