@@ -4,13 +4,14 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 
 ## Features
 
-- **Workflow routing**: A router agent classifies incoming claims as `new`, `duplicate`, `total_loss`, or `partial_loss` and routes to the appropriate workflow.
+- **Workflow routing**: A router agent classifies incoming claims as `new`, `duplicate`, `total_loss`, `fraud`, or `partial_loss` and routes to the appropriate workflow.
 - **Escalation (HITL)**: After classification, an escalation check can flag claims for human review (e.g. fraud indicators, high payout). Escalated claims get status `needs_review` and skip the workflow crew until reviewed.
 - **New claim workflow**: Intake validation, policy check, and claim ID assignment.
 - **Duplicate claim workflow**: Search existing claims, compute similarity, and resolve (merge/reject).
 - **Total loss workflow**: Damage assessment, vehicle valuation (mock KBB), payout calculation, and settlement.
+- **Fraud detection workflow**: Pattern analysis (multiple claims, suspicious timing), cross-reference with fraud indicators, and fraud assessment with likelihood score and SIU referral recommendation.
 - **Partial loss workflow**: Damage assessment, repair estimate (parts/labor), repair shop assignment, parts ordering, and repair authorization for repairable damage.
-- **Tools**: Policy DB query, claims search, similarity, vehicle value, report generation, California compliance lookup, escalation evaluation, and partial-loss tools (damage evaluation, repair estimate, repair shops, parts catalog)—exposed as CrewAI tools and optionally via a local MCP server.
+- **Tools**: Policy DB query, claims search, similarity, vehicle value, report generation, California compliance lookup, escalation evaluation, fraud tools (pattern analysis, cross-reference, assessment, fraud report), and partial-loss tools (damage evaluation, repair estimate, repair shops, parts catalog)—exposed as CrewAI tools and optionally via a local MCP server.
 
 ## Architecture
 
@@ -45,6 +46,13 @@ flowchart TB
         F1 --> F2 --> F3 --> F4
     end
 
+    subgraph Fraud["Fraud Detection Crew"]
+        FR1[Pattern Analysis]
+        FR2[Cross-Reference]
+        FR3[Fraud Assessment]
+        FR1 --> FR2 --> FR3
+    end
+
     subgraph Partial["Partial Loss Crew"]
         P1[Damage Assessor]
         P2[Repair Estimator]
@@ -57,22 +65,26 @@ flowchart TB
     H -->|new| D1
     H -->|duplicate| E1
     H -->|total_loss| F1
+    H -->|fraud| FR1
     H -->|partial_loss| P1
     D3 --> G
     E3 --> G
     F4 --> G
+    FR3 --> G
     P5 --> G
 ```
+
+*For claims classified as **fraud**, the escalation check is skipped and the fraud detection crew runs directly.*
 
 ## Execution flow
 
 Running the agent on a claim file (e.g. `python -m claim_agent.main process tests/sample_claims/new_claim.json`) runs this flow:
 
 1. **Router crew**  
-   A single agent (Claim Router Supervisor) receives the claim JSON and classifies it as exactly one of: `new`, `duplicate`, `total_loss`, or `partial_loss`. It returns one word plus a one-sentence reasoning.
+   A single agent (Claim Router Supervisor) receives the claim JSON and classifies it as exactly one of: `new`, `duplicate`, `total_loss`, `fraud`, or `partial_loss`. It returns one word plus a one-sentence reasoning.
 
 2. **Escalation check (HITL)**  
-   Before running a workflow crew, the system evaluates whether the claim needs human review (e.g. fraud indicators, high-value payout). If `needs_review` is true, the claim status is set to `needs_review`, escalation reasons and priority are returned, and the flow stops—no workflow crew runs.
+   Before running a workflow crew, the system evaluates whether the claim needs human review (e.g. fraud indicators, high-value payout). If `needs_review` is true, the claim status is set to `needs_review`, escalation reasons and priority are returned, and the flow stops—no workflow crew runs. **Exception:** For claims classified as **fraud**, the escalation check is skipped and the fraud detection crew runs directly (it performs its own fraud assessment and SIU referral).
 
 3. **Workflow crew** (only if not escalated; depends on classification)  
    - **New claim crew**  
@@ -81,12 +93,13 @@ Running the agent on a claim file (e.g. `python -m claim_agent.main process test
      - **Claim Assignment Specialist**: Uses `generate_claim_id` (prefix `CLM`), sets status to `open`, then uses `generate_report` to produce the final report.  
    - **Duplicate crew**: Searches existing claims, computes similarity, resolves (merge/reject).  
    - **Total loss crew**: Damage assessment, vehicle valuation (mock KBB), payout calculation, settlement.  
+   - **Fraud detection crew**: Pattern analysis (multiple claims, suspicious timing), cross-reference with fraud indicators, fraud assessment with likelihood score and SIU referral.  
    - **Partial loss crew**: Damage assessment (repairable scope), repair estimate (parts/labor), repair shop assignment, parts ordering, repair authorization.
 
 4. **Output**  
    JSON written to stdout. When **not escalated**:
    - `claim_id`: Assigned or existing claim ID
-   - `claim_type`: `new` | `duplicate` | `total_loss` | `partial_loss`
+   - `claim_type`: `new` | `duplicate` | `total_loss` | `fraud` | `partial_loss`
    - `router_output`: Classification + reasoning from the router
    - `workflow_output`: Summary from the workflow crew (e.g. claim ID, status, summary)
    - `summary`: Same as `workflow_output` for convenience  
@@ -191,6 +204,7 @@ Output is JSON: `claim_type`, `router_output`, `workflow_output`, `summary`; whe
 - `tests/sample_claims/new_claim.json` – standard new claim
 - `tests/sample_claims/duplicate_claim.json` – possible duplicate (same VIN/date as a claim in mock DB). **Duplicate detection will only find it after you run the seed script** so that the historical claim exists in SQLite.
 - `tests/sample_claims/total_loss_claim.json` – flood total loss
+- `tests/sample_claims/fraud_claim.json` – claim with fraud indicators (staged accident, inflated estimates)
 - `tests/sample_claims/partial_loss_claim.json` – repairable damage (generic)
 - `tests/sample_claims/partial_loss_fender.json` – fender damage
 - `tests/sample_claims/partial_loss_front_collision.json` – front collision
@@ -244,10 +258,10 @@ auto-agent/
 ├── src/claim_agent/
 │   ├── main.py           # CLI entry (process, status, history, reprocess)
 │   ├── config/           # LLM and agent/task config
-│   ├── agents/           # Router, new claim, duplicate, total loss, partial loss, escalation
-│   ├── crews/            # Main, new claim, duplicate, total loss, partial loss, escalation crews
+│   ├── agents/           # Router, new claim, duplicate, total loss, fraud, partial loss, escalation
+│   ├── crews/            # Main, new claim, duplicate, total loss, fraud detection, partial loss, escalation crews
 │   ├── db/               # SQLite database, repository, constants
-│   ├── tools/            # Policy, claims, valuation, document, escalation, partial_loss tools + logic
+│   ├── tools/            # Policy, claims, valuation, document, escalation, fraud, partial_loss tools + logic
 │   ├── mcp_server/       # MCP server (stdio)
 │   └── models/           # ClaimType, ClaimInput, ClaimOutput, EscalationOutput, WorkflowState
 ├── data/
@@ -261,6 +275,7 @@ auto-agent/
 │   ├── test_db.py
 │   ├── test_main.py
 │   ├── test_escalation.py
+│   ├── test_fraud.py
 │   ├── test_partial_loss_tools.py
 │   └── sample_claims/
 └── pyproject.toml

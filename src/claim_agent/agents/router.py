@@ -7,8 +7,18 @@ def create_router_agent(llm=None):
     """Create the Claim Router Supervisor agent (manager in hierarchical process)."""
     return Agent(
         role="Claim Router Supervisor",
-        goal="Classify the claim as 'new', 'duplicate', 'total_loss', or 'partial_loss' based on the claim description and data. If unclear, ask for more info. Then delegate to the appropriate workflow.",
-        backstory="Senior claims manager with expertise in routing and prioritization. You analyze claim data and direct each claim to the right specialized team. You distinguish between total loss (vehicle destroyed/unrepairable) and partial loss (repairable damage).",
+        goal=(
+            "Classify the claim as 'new', 'duplicate', 'total_loss', 'fraud', or 'partial_loss' based on "
+            "the claim description and data. If unclear, ask for more info. "
+            "Then delegate to the appropriate workflow."
+        ),
+        backstory=(
+            "Senior claims manager with expertise in routing and prioritization. "
+            "You analyze claim data and direct each claim to the right specialized team. "
+            "You distinguish between total loss (vehicle destroyed/unrepairable) and partial loss (repairable damage). "
+            "You are trained to identify potential fraud indicators such as staged accidents, "
+            "inflated damage claims, prior fraud history, and suspicious patterns."
+        ),
         allow_delegation=True,
         verbose=True,
         llm=llm,

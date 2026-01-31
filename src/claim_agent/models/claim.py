@@ -12,6 +12,7 @@ class ClaimType(str, Enum):
     NEW = "new"
     DUPLICATE = "duplicate"
     TOTAL_LOSS = "total_loss"
+    FRAUD = "fraud"
     PARTIAL_LOSS = "partial_loss"
 
 
@@ -93,4 +94,17 @@ class WorkflowState(BaseModel):
     needs_review: bool = Field(default=False, description="Claim needs human review")
     escalation_priority: Optional[str] = Field(
         default=None, description="Escalation priority: low, medium, high, critical"
+    )
+    # Fraud detection fields
+    fraud_score: Optional[int] = Field(
+        default=None, description="Fraud risk score from fraud detection workflow"
+    )
+    fraud_likelihood: Optional[str] = Field(
+        default=None, description="Fraud likelihood: low, medium, high, critical"
+    )
+    fraud_indicators: list[str] = Field(
+        default_factory=list, description="Detected fraud indicators"
+    )
+    siu_referral: bool = Field(
+        default=False, description="Whether referred to Special Investigations Unit"
     )

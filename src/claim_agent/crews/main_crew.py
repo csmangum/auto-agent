@@ -9,12 +9,14 @@ from claim_agent.agents.router import create_router_agent
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
+from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 from claim_agent.config.llm import get_llm
 from claim_agent.db.constants import (
     STATUS_CLOSED,
     STATUS_DUPLICATE,
     STATUS_FAILED,
+    STATUS_FRAUD_SUSPECTED,
     STATUS_NEEDS_REVIEW,
     STATUS_OPEN,
     STATUS_PARTIAL_LOSS,
@@ -35,20 +37,21 @@ def create_router_crew(llm=None):
     classify_task = Task(
         description="""You are given claim_data (JSON) with: policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description, and optionally estimated_damage.
 
-Classify this claim as exactly one of: new, duplicate, total_loss, or partial_loss.
+Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or partial_loss.
 
-- new: First-time claim submission, standard intake (no damage details or unclear).
+- new: First-time claim submission, standard intake with no red flags.
 - duplicate: Likely a duplicate of an existing claim (e.g. same incident reported again).
 - total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, destroyed, frame damage, or repair would exceed 75% of vehicle value).
-- partial_loss: Vehicle has repairable damage (e.g. bumper damage, fender damage, door damage, dents, scratches, broken lights). The vehicle is NOT totaled and can be repaired.
+- fraud: Claim shows fraud indicators such as staged accident language, inflated damage claims, prior fraud history, inconsistent details, or suspiciously high estimates.
+- partial_loss: Vehicle has repairable damage (e.g. bumper, fender, door, dents, scratches, broken lights). The vehicle is NOT totaled and can be repaired.
 
 Guidelines for partial_loss vs total_loss:
 - If damage mentions: bumper, fender, door, mirror, dent, scratch, light, windshield, minor collision -> partial_loss
 - If damage mentions: totaled, flood, fire, destroyed, frame damage, rollover, submerged, total loss -> total_loss
-- If estimated_damage is provided and seems moderate (under $10,000 typically), consider partial_loss
+- If estimated_damage is moderate (under $10,000 typically), consider partial_loss.
 
-Reply with exactly one word: new, duplicate, total_loss, or partial_loss. Then on the next line give one sentence reasoning.""",
-        expected_output="One line: exactly 'new', 'duplicate', 'total_loss', or 'partial_loss'. Second line: brief reasoning.",
+Reply with exactly one word: new, duplicate, total_loss, fraud, or partial_loss. Then on the next line give one sentence reasoning.""",
+        expected_output="One line: exactly 'new', 'duplicate', 'total_loss', 'fraud', or 'partial_loss'. Second line: brief reasoning.",
         agent=router,
     )
 
@@ -70,13 +73,15 @@ def _parse_claim_type(raw_output: str) -> str:
     for line in lines:
         normalized = line.strip().lower().replace("_", " ").replace("-", " ")
         # Exact matches first
-        if normalized in ("new", "duplicate", "total loss", "total_loss", "partial loss", "partial_loss"):
+        if normalized in ("new", "duplicate", "total loss", "total_loss", "partial loss", "partial_loss", "fraud"):
             if normalized in ("total loss", "total_loss"):
                 return "total_loss"
             if normalized in ("partial loss", "partial_loss"):
                 return "partial_loss"
             return normalized
-        # Then line starts with type (check partial_loss and total_loss before duplicate/new)
+        # Then line starts with type (check fraud, partial_loss, total_loss before duplicate/new)
+        if normalized.startswith("fraud"):
+            return "fraud"
         if normalized.startswith("partial loss") or normalized.startswith("partial_loss"):
             return "partial_loss"
         if normalized.startswith("total loss") or normalized.startswith("total_loss"):
@@ -94,6 +99,8 @@ def _final_status(claim_type: str) -> str:
         return STATUS_OPEN
     if claim_type == "duplicate":
         return STATUS_DUPLICATE
+    if claim_type == "fraud":
+        return STATUS_FRAUD_SUSPECTED
     if claim_type == "partial_loss":
         return STATUS_PARTIAL_LOSS
     return STATUS_CLOSED
@@ -133,55 +140,58 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         raw_output = str(raw_output)
         claim_type = _parse_claim_type(raw_output)
 
-        # Step 1b: Escalation check (HITL)
-        escalation_json = evaluate_escalation_impl(
-            claim_data,
-            raw_output,
-            similarity_score=None,
-            payout_amount=None,
-        )
-        escalation_result = json.loads(escalation_json)
-        if escalation_result.get("needs_review"):
-            reasons = escalation_result.get("escalation_reasons", [])
-            priority = escalation_result.get("priority", "low")
-            recommended_action = escalation_result.get("recommended_action", "")
-            fraud_indicators = escalation_result.get("fraud_indicators", [])
-            escalation_output = EscalationOutput(
-                claim_id=claim_id,
-                needs_review=True,
-                escalation_reasons=reasons,
-                priority=priority,
-                recommended_action=recommended_action,
-                fraud_indicators=fraud_indicators,
+        # Step 1b: Escalation check (HITL) — skip for fraud so the fraud crew runs and performs its own assessment
+        if claim_type != "fraud":
+            escalation_json = evaluate_escalation_impl(
+                claim_data,
+                raw_output,
+                similarity_score=None,
+                payout_amount=None,
             )
-            details = json.dumps({
-                "escalation_reasons": reasons,
-                "priority": priority,
-                "recommended_action": recommended_action,
-                "fraud_indicators": fraud_indicators,
-            })
-            repo.save_workflow_result(claim_id, claim_type, raw_output, details)
-            repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details)
-            logger.info(
-                "Escalation: claim_id=%s reasons=%s priority=%s",
-                claim_id,
-                reasons,
-                priority,
-            )
-            return {
-                **escalation_output.model_dump(),
-                "claim_type": claim_type,
-                "status": STATUS_NEEDS_REVIEW,
-                "router_output": raw_output,
-                "workflow_output": details,
-                "summary": f"Escalated for review: {', '.join(reasons)}",
-            }
+            escalation_result = json.loads(escalation_json)
+            if escalation_result.get("needs_review"):
+                reasons = escalation_result.get("escalation_reasons", [])
+                priority = escalation_result.get("priority", "low")
+                recommended_action = escalation_result.get("recommended_action", "")
+                fraud_indicators = escalation_result.get("fraud_indicators", [])
+                escalation_output = EscalationOutput(
+                    claim_id=claim_id,
+                    needs_review=True,
+                    escalation_reasons=reasons,
+                    priority=priority,
+                    recommended_action=recommended_action,
+                    fraud_indicators=fraud_indicators,
+                )
+                details = json.dumps({
+                    "escalation_reasons": reasons,
+                    "priority": priority,
+                    "recommended_action": recommended_action,
+                    "fraud_indicators": fraud_indicators,
+                })
+                repo.save_workflow_result(claim_id, claim_type, raw_output, details)
+                repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details)
+                logger.info(
+                    "Escalation: claim_id=%s reasons=%s priority=%s",
+                    claim_id,
+                    reasons,
+                    priority,
+                )
+                return {
+                    **escalation_output.model_dump(),
+                    "claim_type": claim_type,
+                    "status": STATUS_NEEDS_REVIEW,
+                    "router_output": raw_output,
+                    "workflow_output": details,
+                    "summary": f"Escalated for review: {', '.join(reasons)}",
+                }
 
         # Step 2: Run the appropriate crew
         if claim_type == "new":
             crew = create_new_claim_crew(llm)
         elif claim_type == "duplicate":
             crew = create_duplicate_crew(llm)
+        elif claim_type == "fraud":
+            crew = create_fraud_detection_crew(llm)
         elif claim_type == "partial_loss":
             crew = create_partial_loss_crew(llm)
         else:

@@ -1,8 +1,8 @@
 # Agent role definitions (reference; agents are defined in code)
 router:
   role: Claim Router Supervisor
-  goal: Classify claims as new, duplicate, total_loss, or partial_loss and delegate to appropriate workflow
-  backstory: Senior claims manager with expertise in routing and prioritization who distinguishes between total and partial loss claims
+  goal: Classify claims as new, duplicate, total_loss, fraud, or partial_loss and delegate to appropriate workflow
+  backstory: Senior claims manager with expertise in routing and prioritization; distinguishes total vs partial loss and identifies fraud indicators
 
 intake:
   role: Intake Specialist
@@ -58,6 +58,22 @@ escalation_agent:
   role: Escalation Review Specialist
   goal: Evaluate claims against escalation criteria and flag cases needing human review
   backstory: Expert in risk and compliance who identifies edge cases requiring manual review
+
+# Fraud detection agents
+pattern_analysis_agent:
+  role: Fraud Pattern Analysis Specialist
+  goal: Analyze claims for suspicious patterns including multiple claims, timing anomalies, and staged accident indicators
+  backstory: Experienced fraud analyst specializing in pattern recognition and identifying organized fraud rings
+
+cross_reference_agent:
+  role: Fraud Cross-Reference Specialist
+  goal: Cross-reference claim details against known fraud indicators database
+  backstory: Database analyst with expertise in fraud indicator matching and known fraud profiles
+
+fraud_assessment_agent:
+  role: Fraud Assessment Specialist
+  goal: Perform comprehensive fraud assessment and determine fraud likelihood with recommendations
+  backstory: Senior fraud investigator with authority to make fraud determinations and SIU referrals
 
 # Partial Loss Workflow Agents
 partial_loss_damage_assessor:
