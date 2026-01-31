@@ -78,52 +78,52 @@
       "preamble": "We do not provide Liability Coverage for any insured:",
       "exclusion_list": [
         {
-          "id": "LA-EX-001",
+          "id": "CA-LA-EX-001",
           "title": "Intentional Acts",
           "language": "For bodily injury or property damage which is expected or intended from the standpoint of the insured."
         },
         {
-          "id": "LA-EX-002",
+          "id": "CA-LA-EX-002",
           "title": "Property Owned or Transported",
           "language": "For property damage to property owned or being transported by that insured."
         },
         {
-          "id": "LA-EX-003",
+          "id": "CA-LA-EX-003",
           "title": "Property Rented or In Charge Of",
           "language": "For property damage to property rented to, used by, or in the care of that insured. This Exclusion does not apply to property damage to a residence or private garage."
         },
         {
-          "id": "LA-EX-004",
+          "id": "CA-LA-EX-004",
           "title": "Bodily Injury to Employee",
           "language": "For bodily injury to an employee of that insured during the course of employment. This Exclusion does not apply to bodily injury to a domestic employee unless workers' compensation benefits are required or available for that domestic employee."
         },
         {
-          "id": "LA-EX-005",
+          "id": "CA-LA-EX-005",
           "title": "Public or Livery Conveyance",
           "language": "For that insured's liability arising out of the ownership or operation of a vehicle while it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
         },
         {
-          "id": "LA-EX-006",
+          "id": "CA-LA-EX-006",
           "title": "Vehicle Furnished for Regular Use",
           "language": "For any insured using a vehicle, other than your covered auto, which is owned by or furnished or available for the regular use of you or any family member."
         },
         {
-          "id": "LA-EX-007",
+          "id": "CA-LA-EX-007",
           "title": "Vehicle Used in Business",
           "language": "For bodily injury or property damage arising out of the ownership or operation of a vehicle while it is being used to carry persons or property for a fee. This Exclusion does not apply to a share-the-expense car pool."
         },
         {
-          "id": "LA-EX-008",
+          "id": "CA-LA-EX-008",
           "title": "Without Permission",
           "language": "For any person who uses a vehicle without a reasonable belief that that person is entitled to do so. This Exclusion does not apply to a family member using your covered auto."
         },
         {
-          "id": "LA-EX-009",
+          "id": "CA-LA-EX-009",
           "title": "Nuclear Hazard",
           "language": "For bodily injury or property damage arising out of the ownership, maintenance or use of any vehicle by any person while employed or otherwise engaged in any nuclear facility by any person or organization."
         },
         {
-          "id": "LA-EX-010",
+          "id": "CA-LA-EX-010",
           "title": "Racing",
           "language": "For bodily injury or property damage arising out of the ownership, maintenance, or use of any vehicle while it is being prepared for or used in any prearranged or organized racing, speed, stunting, or demolition contest or activity, or in practice or preparation for any such contest or activity."
         }
@@ -157,32 +157,32 @@
       "preamble": "We do not provide Medical Payments Coverage for any insured for bodily injury:",
       "exclusion_list": [
         {
-          "id": "MP-EX-001",
+          "id": "CA-MP-EX-001",
           "title": "Motorized Vehicle with Fewer Than Four Wheels",
           "language": "Sustained while occupying any motorized vehicle having fewer than four wheels."
         },
         {
-          "id": "MP-EX-002",
+          "id": "CA-MP-EX-002",
           "title": "Public or Livery",
           "language": "Sustained while occupying your covered auto when it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
         },
         {
-          "id": "MP-EX-003",
+          "id": "CA-MP-EX-003",
           "title": "Vehicle Used as Residence",
           "language": "Sustained while occupying any vehicle located for use as a residence or premises."
         },
         {
-          "id": "MP-EX-004",
+          "id": "CA-MP-EX-004",
           "title": "Workers' Compensation",
           "language": "Occurring during the course of employment if workers' compensation benefits are required or available for the bodily injury."
         },
         {
-          "id": "MP-EX-005",
+          "id": "CA-MP-EX-005",
           "title": "Vehicle Furnished for Regular Use",
           "language": "Sustained while occupying, or when struck by, any vehicle (other than your covered auto) which is owned by or furnished or available for the regular use of you or any family member."
         },
         {
-          "id": "MP-EX-006",
+          "id": "CA-MP-EX-006",
           "title": "Racing",
           "language": "Sustained while occupying or when struck by any vehicle while located inside a facility designed for racing, for the purpose of racing, or practicing or preparing for any such contest or activity."
         }
@@ -218,22 +218,22 @@
       "preamble": "We do not provide Uninsured Motorists Coverage for bodily injury sustained:",
       "exclusion_list": [
         {
-          "id": "UM-EX-001",
+          "id": "CA-UM-EX-001",
           "title": "Owned Vehicle Not Insured",
           "language": "By any insured while occupying any motor vehicle owned by that insured which is not insured for this coverage under this policy."
         },
         {
-          "id": "UM-EX-002",
+          "id": "CA-UM-EX-002",
           "title": "Settlement Without Consent",
           "language": "By any insured if that insured or the legal representative of that insured settles the bodily injury claim without our consent."
         },
         {
-          "id": "UM-EX-003",
+          "id": "CA-UM-EX-003",
           "title": "Public or Livery Conveyance",
           "language": "While occupying your covered auto when it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
         },
         {
-          "id": "UM-EX-004",
+          "id": "CA-UM-EX-004",
           "title": "Punitive Damages",
           "language": "For punitive or exemplary damages."
         }
@@ -288,47 +288,47 @@
       "preamble": "We will not pay for:",
       "exclusion_list": [
         {
-          "id": "PD-EX-001",
+          "id": "CA-PD-EX-001",
           "title": "Wear and Tear",
           "language": "Loss to your covered auto or any non-owned auto which occurs due to or as a consequence of: (a) Wear and tear; (b) Freezing; (c) Mechanical or electrical breakdown or failure; or (d) Road damage to tires. This Exclusion does not apply if the damage results from the total theft of your covered auto or any non-owned auto."
         },
         {
-          "id": "PD-EX-002",
+          "id": "CA-PD-EX-002",
           "title": "Radioactive Contamination",
           "language": "Loss due to or as a consequence of: (a) Radioactive contamination; (b) Discharge of any nuclear weapon (even if accidental); (c) War (declared or undeclared); (d) Civil war; (e) Insurrection; or (f) Rebellion or revolution."
         },
         {
-          "id": "PD-EX-003",
+          "id": "CA-PD-EX-003",
           "title": "Equipment",
           "language": "Loss to any of the following: (a) Equipment designed for the reproduction of sound, unless permanently installed in your covered auto or non-owned auto; (b) Tapes, records, or discs; (c) Any other audio, visual, or data electronic equipment designed for use with sound reproducing equipment; (d) Any other electronic equipment that receives or transmits audio, visual, or data signals unless such equipment is permanently installed in the opening of the dash or console of the motor vehicle normally used by the manufacturer for the installation of a radio."
         },
         {
-          "id": "PD-EX-004",
+          "id": "CA-PD-EX-004",
           "title": "Radar and Laser Detection Equipment",
           "language": "Loss to radar or laser detection equipment, citizens band radios, two-way mobile radios, or telephones or their accessories."
         },
         {
-          "id": "PD-EX-005",
+          "id": "CA-PD-EX-005",
           "title": "Custom Equipment",
           "language": "Loss to any custom furnishings or equipment in or upon any pickup or van. Custom furnishings or equipment includes but is not limited to: (a) Special carpeting and insulation, furniture, bars, or television receivers; (b) Facilities for cooking and sleeping; (c) Height extending roofs; or (d) Custom murals, paintings, or other decals or graphics."
         },
         {
-          "id": "PD-EX-006",
+          "id": "CA-PD-EX-006",
           "title": "Camper Bodies",
           "language": "Loss to any camper body or trailer not shown in the Declarations."
         },
         {
-          "id": "PD-EX-007",
+          "id": "CA-PD-EX-007",
           "title": "Non-Owned Auto Used Without Permission",
           "language": "Loss to any non-owned auto when used by you or any family member without a reasonable belief that you or that family member is entitled to do so."
         },
         {
-          "id": "PD-EX-008",
+          "id": "CA-PD-EX-008",
           "title": "Racing",
           "language": "Loss to your covered auto or any non-owned auto while it is being used in, or prepared for, any prearranged or organized racing, speed, stunting, or demolition contest or activity, or in practice or preparation for any such contest or activity."
         },
         {
-          "id": "PD-EX-009",
+          "id": "CA-PD-EX-009",
           "title": "Rental Vehicle Use",
           "language": "Loss to, or loss of use of, a non-owned auto rented by you or any family member under a rental agreement if: (a) There is a physical damage policy or coverage provided by the rental company, or (b) There is other physical damage coverage available for the same loss."
         }
