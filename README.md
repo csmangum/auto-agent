@@ -12,17 +12,45 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    subgraph input[" "]
+        A[Claim JSON]
+    end
+
+    subgraph routing[" "]
+        B[Router Agent]
+    end
+
+    subgraph workflows[" "]
+        C[New Claim Crew]
+        D[Duplicate Crew]
+        E[Total Loss Crew]
+    end
+
+    subgraph output[" "]
+        F[Processed Response]
+    end
+
+    A --> B
+    B -->|new| C
+    B -->|duplicate| D
+    B -->|total_loss| E
+    C --> F
+    D --> F
+    E --> F
 ```
-[Claim JSON] --> [Router Agent] --> new | duplicate | total_loss
-                      |
-        +-------------+-------------+
-        |             |             |
-   New Claim     Duplicate     Total Loss
-      Crew         Crew           Crew
-        |             |             |
-        +-------------+-------------+
-                      |
-              [Processed Response]
+
+```mermaid
+flowchart TB
+    A[Claim JSON] --> B[Router Agent]
+    B --> C{claim_type?}
+    C -->|new| D[New Claim Crew]
+    C -->|duplicate| E[Duplicate Crew]
+    C -->|total_loss| F[Total Loss Crew]
+    D --> G[Processed Response]
+    E --> G
+    F --> G
 ```
 
 ## Requirements
@@ -32,7 +60,7 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 
 ## Setup
 
-1. Clone and enter the project:
+1. Clone the repo (or navigate to it) and enter the project directory:
 
    ```bash
    cd auto-agent
@@ -50,9 +78,8 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 
    ```bash
    cp .env.example .env
-   # Edit .env and set OPENAI_API_KEY (use your OpenRouter key)
-   # Optional: OPENAI_API_BASE=https://openrouter.ai/api/v1
-   # Optional: OPENAI_MODEL_NAME=openrouter/openai/gpt-4o-mini
+   # Edit .env: set OPENAI_API_KEY to your OpenRouter key.
+   # OPENAI_API_BASE and OPENAI_MODEL_NAME are pre-filled for OpenRouter.
    ```
 
 ## Usage
@@ -120,7 +147,7 @@ auto-agent/
 │   ├── crews/            # Main, new claim, duplicate, total loss crews
 │   ├── tools/            # Policy, claims, valuation, document tools + logic
 │   ├── mcp_server/       # MCP server (stdio)
-│   └── models/           # ClaimInput, ClaimOutput, WorkflowState
+│   └── models/           # ClaimType, ClaimInput, ClaimOutput, WorkflowState
 ├── data/mock_db.json
 ├── tests/
 │   ├── test_tools.py
