@@ -1,7 +1,12 @@
 """Tests for fraud detection workflow."""
 
 import json
+import os
+import tempfile
 
+import pytest
+
+from claim_agent.db.database import init_db
 from claim_agent.tools.logic import (
     analyze_claim_patterns_impl,
     cross_reference_fraud_indicators_impl,
@@ -9,6 +14,27 @@ from claim_agent.tools.logic import (
     FRAUD_CONFIG,
     KNOWN_FRAUD_PATTERNS,
 )
+
+
+@pytest.fixture(autouse=True)
+def temp_db():
+    """Use a temporary SQLite DB for fraud tests so results do not depend on local data/claims.db."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    init_db(path)
+    prev = os.environ.get("CLAIMS_DB_PATH")
+    os.environ["CLAIMS_DB_PATH"] = path
+    try:
+        yield path
+    finally:
+        if prev is None:
+            os.environ.pop("CLAIMS_DB_PATH", None)
+        else:
+            os.environ["CLAIMS_DB_PATH"] = prev
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 class TestFraudPatternAnalysis:
@@ -122,8 +148,7 @@ class TestFraudAssessment:
         assert result["siu_referral"] is True
 
     def test_critical_risk_triggers_block(self):
-        """Critical risk claims should be blocked."""
-        # Create a claim with many fraud indicators
+        """Critical risk claims should be blocked; input is designed to exceed critical_risk_threshold and critical_indicator_count."""
         claim_data = {
             "vin": "BLOCK123",
             "incident_date": "2026-01-15",
@@ -138,7 +163,6 @@ class TestFraudAssessment:
             "estimated_damage": 100000,
         }
         result = json.loads(perform_fraud_assessment_impl(claim_data))
-        # With many indicators, should be critical
         assert result["fraud_likelihood"] == "critical"
         assert result["should_block"] is True
         assert result["siu_referral"] is True

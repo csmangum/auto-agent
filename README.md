@@ -74,6 +74,8 @@ flowchart TB
     P5 --> G
 ```
 
+*For claims classified as **fraud**, the escalation check is skipped and the fraud detection crew runs directly.*
+
 ## Execution flow
 
 Running the agent on a claim file (e.g. `python -m claim_agent.main process tests/sample_claims/new_claim.json`) runs this flow:
@@ -82,7 +84,7 @@ Running the agent on a claim file (e.g. `python -m claim_agent.main process test
    A single agent (Claim Router Supervisor) receives the claim JSON and classifies it as exactly one of: `new`, `duplicate`, `total_loss`, `fraud`, or `partial_loss`. It returns one word plus a one-sentence reasoning.
 
 2. **Escalation check (HITL)**  
-   Before running a workflow crew, the system evaluates whether the claim needs human review (e.g. fraud indicators, high-value payout). If `needs_review` is true, the claim status is set to `needs_review`, escalation reasons and priority are returned, and the flow stops—no workflow crew runs.
+   Before running a workflow crew, the system evaluates whether the claim needs human review (e.g. fraud indicators, high-value payout). If `needs_review` is true, the claim status is set to `needs_review`, escalation reasons and priority are returned, and the flow stops—no workflow crew runs. **Exception:** For claims classified as **fraud**, the escalation check is skipped and the fraud detection crew runs directly (it performs its own fraud assessment and SIU referral).
 
 3. **Workflow crew** (only if not escalated; depends on classification)  
    - **New claim crew**  

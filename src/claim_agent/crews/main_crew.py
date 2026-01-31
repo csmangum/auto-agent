@@ -140,49 +140,50 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         raw_output = str(raw_output)
         claim_type = _parse_claim_type(raw_output)
 
-        # Step 1b: Escalation check (HITL)
-        escalation_json = evaluate_escalation_impl(
-            claim_data,
-            raw_output,
-            similarity_score=None,
-            payout_amount=None,
-        )
-        escalation_result = json.loads(escalation_json)
-        if escalation_result.get("needs_review"):
-            reasons = escalation_result.get("escalation_reasons", [])
-            priority = escalation_result.get("priority", "low")
-            recommended_action = escalation_result.get("recommended_action", "")
-            fraud_indicators = escalation_result.get("fraud_indicators", [])
-            escalation_output = EscalationOutput(
-                claim_id=claim_id,
-                needs_review=True,
-                escalation_reasons=reasons,
-                priority=priority,
-                recommended_action=recommended_action,
-                fraud_indicators=fraud_indicators,
+        # Step 1b: Escalation check (HITL) — skip for fraud so the fraud crew runs and performs its own assessment
+        if claim_type != "fraud":
+            escalation_json = evaluate_escalation_impl(
+                claim_data,
+                raw_output,
+                similarity_score=None,
+                payout_amount=None,
             )
-            details = json.dumps({
-                "escalation_reasons": reasons,
-                "priority": priority,
-                "recommended_action": recommended_action,
-                "fraud_indicators": fraud_indicators,
-            })
-            repo.save_workflow_result(claim_id, claim_type, raw_output, details)
-            repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details)
-            logger.info(
-                "Escalation: claim_id=%s reasons=%s priority=%s",
-                claim_id,
-                reasons,
-                priority,
-            )
-            return {
-                **escalation_output.model_dump(),
-                "claim_type": claim_type,
-                "status": STATUS_NEEDS_REVIEW,
-                "router_output": raw_output,
-                "workflow_output": details,
-                "summary": f"Escalated for review: {', '.join(reasons)}",
-            }
+            escalation_result = json.loads(escalation_json)
+            if escalation_result.get("needs_review"):
+                reasons = escalation_result.get("escalation_reasons", [])
+                priority = escalation_result.get("priority", "low")
+                recommended_action = escalation_result.get("recommended_action", "")
+                fraud_indicators = escalation_result.get("fraud_indicators", [])
+                escalation_output = EscalationOutput(
+                    claim_id=claim_id,
+                    needs_review=True,
+                    escalation_reasons=reasons,
+                    priority=priority,
+                    recommended_action=recommended_action,
+                    fraud_indicators=fraud_indicators,
+                )
+                details = json.dumps({
+                    "escalation_reasons": reasons,
+                    "priority": priority,
+                    "recommended_action": recommended_action,
+                    "fraud_indicators": fraud_indicators,
+                })
+                repo.save_workflow_result(claim_id, claim_type, raw_output, details)
+                repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details)
+                logger.info(
+                    "Escalation: claim_id=%s reasons=%s priority=%s",
+                    claim_id,
+                    reasons,
+                    priority,
+                )
+                return {
+                    **escalation_output.model_dump(),
+                    "claim_type": claim_type,
+                    "status": STATUS_NEEDS_REVIEW,
+                    "router_output": raw_output,
+                    "workflow_output": details,
+                    "summary": f"Escalated for review: {', '.join(reasons)}",
+                }
 
         # Step 2: Run the appropriate crew
         if claim_type == "new":
