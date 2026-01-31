@@ -505,8 +505,8 @@ def get_available_repair_shops_impl(
         if vehicle_make and vehicle_make.lower() == "tesla":
             certifications = shop_data.get("certifications", [])
             specialties = shop_data.get("specialties", [])
-            has_ev_cert = any("tesla" in c.lower() or "electric" in s.lower() 
-                           for c in certifications for s in specialties)
+            has_ev_cert = (any("tesla" in c.lower() for c in certifications) or 
+                          any("electric" in s.lower() for s in specialties))
             # Prefer shops with EV capability but don't exclude others
             shop_data = {**shop_data, "ev_certified": has_ev_cert}
         
@@ -639,6 +639,7 @@ def get_parts_catalog_impl(
                     is_compatible = not compatible_makes or vehicle_make in compatible_makes
                     
                     # Get price based on preference
+                    selected_type = part_type_preference
                     if part_type_preference == "oem":
                         price = part.get("oem_price")
                     elif part_type_preference == "refurbished":
@@ -648,13 +649,13 @@ def get_parts_catalog_impl(
                     
                     if price is None:
                         price = part.get("oem_price", 0)
-                        part_type_preference = "oem"  # Fall back to OEM if no alternative
+                        selected_type = "oem"  # Fall back to OEM if no alternative
                     
                     recommended_parts.append({
                         "part_id": part_id,
                         "part_name": part.get("name", ""),
                         "category": part.get("category", ""),
-                        "selected_type": part_type_preference,
+                        "selected_type": selected_type,
                         "price": price,
                         "oem_price": part.get("oem_price"),
                         "aftermarket_price": part.get("aftermarket_price"),
