@@ -1,0 +1,490 @@
+{
+  "metadata": {
+    "state": "California",
+    "jurisdiction": "CA",
+    "data_type": "auto_insurance_policy_language",
+    "version": "2025.1",
+    "last_updated": "2025-01-31",
+    "policy_form": "CA-PP-001 (01/25)",
+    "description": "Sample auto insurance policy language for California personal auto policies"
+  },
+  "declarations": {
+    "description": "The declarations page summarizes key policy information.",
+    "sample_language": {
+      "named_insured": "The Named Insured shown in the Declarations is the policyholder and spouse if a resident of the same household.",
+      "policy_period": "This policy applies only to accidents and losses which occur during the policy period shown in the Declarations.",
+      "territory": "This policy applies only to accidents and losses which occur within the United States of America, its territories or possessions, or Canada, or while a covered auto is being transported between ports thereof.",
+      "premium_basis": "The premium for this policy is based on information we received from you and other sources. You agree that the statements in the application are accurate. We may adjust your premium during the policy period if this information is incorrect or incomplete."
+    }
+  },
+  "definitions": {
+    "section_title": "DEFINITIONS",
+    "preamble": "Throughout this policy, 'you' and 'your' refer to the 'named insured' shown in the Declarations and the spouse if a resident of the same household. 'We', 'us', and 'our' refer to the Company providing this insurance.",
+    "terms": [
+      {
+        "term": "Bodily Injury",
+        "definition": "Bodily injury means bodily harm, sickness, or disease, including death that results from bodily harm, sickness, or disease."
+      },
+      {
+        "term": "Business",
+        "definition": "Business means a trade, profession, or occupation."
+      },
+      {
+        "term": "Covered Auto",
+        "definition": "Covered auto means: (1) Any vehicle shown in the Declarations; (2) A newly acquired auto; (3) Any trailer you own; (4) Any auto or trailer you do not own while used as a temporary substitute for any other vehicle described in this definition which is out of normal use because of its breakdown, repair, servicing, loss, or destruction."
+      },
+      {
+        "term": "Family Member",
+        "definition": "Family member means a person related to you by blood, marriage, or adoption who is a resident of your household. This includes a ward or foster child."
+      },
+      {
+        "term": "Occupying",
+        "definition": "Occupying means in, upon, getting in, on, out, or off."
+      },
+      {
+        "term": "Property Damage",
+        "definition": "Property damage means physical injury to, destruction of, or loss of use of tangible property."
+      },
+      {
+        "term": "Trailer",
+        "definition": "Trailer means a vehicle designed to be pulled by a private passenger auto or pickup truck. It also means a farm wagon or farm implement while towed by a vehicle listed in the definition of covered auto."
+      },
+      {
+        "term": "Your Covered Auto",
+        "definition": "Your covered auto means: (1) Any vehicle shown in the Declarations; (2) A newly acquired auto; (3) Any trailer you own; (4) Any auto or trailer you do not own while used as a temporary substitute for any other vehicle described in this definition which is out of normal use because of its breakdown, repair, servicing, loss, or destruction. A newly acquired auto is any private passenger auto, pickup, or van you become the owner of during the policy period, provided you ask us to insure it within 30 days after you become the owner."
+      },
+      {
+        "term": "Actual Cash Value",
+        "definition": "Actual cash value means the fair market value of the property at the time of loss, determined by the cost to replace the property with property of like kind and quality, less depreciation based on the age and condition of the property."
+      }
+    ]
+  },
+  "liability_coverage": {
+    "section_title": "PART A - LIABILITY COVERAGE",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay damages for bodily injury or property damage for which any insured becomes legally responsible because of an auto accident. Damages include prejudgment interest awarded against the insured. We will settle or defend, as we consider appropriate, any claim or suit asking for these damages. In addition to our limit of liability, we will pay all defense costs we incur. Our duty to settle or defend ends when our limit of liability for this coverage has been exhausted by payment of judgments or settlements. We have no duty to defend any suit or settle any claim for bodily injury or property damage not covered under this policy."
+    },
+    "supplementary_payments": {
+      "title": "Supplementary Payments",
+      "language": "In addition to our limit of liability, we will pay on behalf of an insured: (1) Up to $250 for the cost of bail bonds required because of an accident, including related traffic law violations. The accident must result in bodily injury or property damage covered under this policy. (2) Premiums on appeal bonds and bonds to release attachments in any suit we defend. (3) Interest accruing after a judgment is entered in any suit we defend. Our duty to pay interest ends when we offer to pay that part of the judgment which does not exceed our limit of liability for this coverage. (4) Up to $200 a day for loss of earnings, but not other income, because of attendance at hearings or trials at our request. (5) Other reasonable expenses incurred at our request."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member for the ownership, maintenance, or use of any auto or trailer. 2. Any person using your covered auto. 3. For your covered auto, any person or organization but only with respect to legal responsibility for acts or omissions of a person for whom coverage is afforded under this Part. 4. For any auto or trailer, other than your covered auto, any other person or organization but only with respect to legal responsibility for acts or omissions of you or any family member for whom coverage is afforded under this Part. This provision applies only if the person or organization does not own or hire the auto or trailer."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide Liability Coverage for any insured:",
+      "exclusion_list": [
+        {
+          "id": "LA-EX-001",
+          "title": "Intentional Acts",
+          "language": "For bodily injury or property damage which is expected or intended from the standpoint of the insured."
+        },
+        {
+          "id": "LA-EX-002",
+          "title": "Property Owned or Transported",
+          "language": "For property damage to property owned or being transported by that insured."
+        },
+        {
+          "id": "LA-EX-003",
+          "title": "Property Rented or In Charge Of",
+          "language": "For property damage to property rented to, used by, or in the care of that insured. This Exclusion does not apply to property damage to a residence or private garage."
+        },
+        {
+          "id": "LA-EX-004",
+          "title": "Bodily Injury to Employee",
+          "language": "For bodily injury to an employee of that insured during the course of employment. This Exclusion does not apply to bodily injury to a domestic employee unless workers' compensation benefits are required or available for that domestic employee."
+        },
+        {
+          "id": "LA-EX-005",
+          "title": "Public or Livery Conveyance",
+          "language": "For that insured's liability arising out of the ownership or operation of a vehicle while it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
+        },
+        {
+          "id": "LA-EX-006",
+          "title": "Vehicle Furnished for Regular Use",
+          "language": "For any insured using a vehicle, other than your covered auto, which is owned by or furnished or available for the regular use of you or any family member."
+        },
+        {
+          "id": "LA-EX-007",
+          "title": "Vehicle Used in Business",
+          "language": "For bodily injury or property damage arising out of the ownership or operation of a vehicle while it is being used to carry persons or property for a fee. This Exclusion does not apply to a share-the-expense car pool."
+        },
+        {
+          "id": "LA-EX-008",
+          "title": "Without Permission",
+          "language": "For any person who uses a vehicle without a reasonable belief that that person is entitled to do so. This Exclusion does not apply to a family member using your covered auto."
+        },
+        {
+          "id": "LA-EX-009",
+          "title": "Nuclear Hazard",
+          "language": "For bodily injury or property damage arising out of the ownership, maintenance or use of any vehicle by any person while employed or otherwise engaged in any nuclear facility by any person or organization."
+        },
+        {
+          "id": "LA-EX-010",
+          "title": "Racing",
+          "language": "For bodily injury or property damage arising out of the ownership, maintenance, or use of any vehicle while it is being prepared for or used in any prearranged or organized racing, speed, stunting, or demolition contest or activity, or in practice or preparation for any such contest or activity."
+        }
+      ]
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "The limit of liability shown in the Declarations for each person for Bodily Injury Liability is our maximum limit of liability for all damages, including damages for care, loss of services, or death, arising out of bodily injury sustained by any one person in any one auto accident. Subject to this limit for each person, the limit of liability shown in the Declarations for each accident for Bodily Injury Liability is our maximum limit of liability for all damages for bodily injury resulting from any one auto accident. The limit of liability shown in the Declarations for each accident for Property Damage Liability is our maximum limit of liability for all property damage resulting from any one auto accident. This is the most we will pay regardless of the number of: (1) Insureds; (2) Claims made; (3) Vehicles or premiums shown in the Declarations; or (4) Vehicles involved in the auto accident."
+    },
+    "out_of_state_coverage": {
+      "title": "Out of State Coverage",
+      "language": "If an auto accident to which this policy applies occurs in any state or province other than the one in which your covered auto is principally garaged, we will interpret your policy for that accident as follows: (1) If the state or province has a financial responsibility or similar law specifying limits of liability for bodily injury or property damage higher than the limit shown in the Declarations, your policy will provide the higher specified limit. (2) If the state or province has a compulsory insurance or similar law requiring a nonresident to maintain insurance whenever the nonresident uses a vehicle in that state or province, your policy will provide at least the required minimum amounts and types of coverage."
+    },
+    "other_insurance": {
+      "title": "Other Insurance",
+      "language": "If there is other applicable liability insurance, we will pay only our share of the loss. Our share is the proportion that our limit of liability bears to the total of all applicable limits. However, any insurance we provide for a vehicle you do not own, including any vehicle while used as a temporary substitute for your covered auto, shall be excess over any other collectible insurance."
+    }
+  },
+  "medical_payments_coverage": {
+    "section_title": "PART B - MEDICAL PAYMENTS COVERAGE",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay reasonable expenses incurred for necessary medical and funeral services because of bodily injury caused by accident and sustained by an insured. We will pay only those expenses incurred for services rendered within 3 years from the date of the accident."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member while occupying a motor vehicle designed for use mainly on public roads or a trailer. 2. Any person while occupying your covered auto."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide Medical Payments Coverage for any insured for bodily injury:",
+      "exclusion_list": [
+        {
+          "id": "MP-EX-001",
+          "title": "Motorized Vehicle with Fewer Than Four Wheels",
+          "language": "Sustained while occupying any motorized vehicle having fewer than four wheels."
+        },
+        {
+          "id": "MP-EX-002",
+          "title": "Public or Livery",
+          "language": "Sustained while occupying your covered auto when it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
+        },
+        {
+          "id": "MP-EX-003",
+          "title": "Vehicle Used as Residence",
+          "language": "Sustained while occupying any vehicle located for use as a residence or premises."
+        },
+        {
+          "id": "MP-EX-004",
+          "title": "Workers' Compensation",
+          "language": "Occurring during the course of employment if workers' compensation benefits are required or available for the bodily injury."
+        },
+        {
+          "id": "MP-EX-005",
+          "title": "Vehicle Furnished for Regular Use",
+          "language": "Sustained while occupying, or when struck by, any vehicle (other than your covered auto) which is owned by or furnished or available for the regular use of you or any family member."
+        },
+        {
+          "id": "MP-EX-006",
+          "title": "Racing",
+          "language": "Sustained while occupying or when struck by any vehicle while located inside a facility designed for racing, for the purpose of racing, or practicing or preparing for any such contest or activity."
+        }
+      ]
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "The limit of liability shown in the Declarations for this coverage is our maximum limit of liability for each person injured in any one accident. This is the most we will pay regardless of the number of: (1) Insureds; (2) Claims made; (3) Vehicles or premiums shown in the Declarations; or (4) Vehicles involved in the accident."
+    }
+  },
+  "uninsured_motorist_coverage": {
+    "section_title": "PART C - UNINSURED MOTORISTS COVERAGE",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "california_specific": true,
+      "language": "We will pay compensatory damages which an insured is legally entitled to recover from the owner or operator of an uninsured motor vehicle because of bodily injury sustained by the insured and caused by an accident. The owner's or operator's liability for these damages must arise out of the ownership, maintenance, or use of the uninsured motor vehicle. We will pay under this coverage only after the limits of liability under any applicable bodily injury liability bonds or policies have been exhausted by payment of judgments or settlements."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member. 2. Any other person occupying your covered auto. 3. Any person for damages that person is entitled to recover because of bodily injury to which this coverage applies sustained by a person described in 1. or 2. above."
+    },
+    "uninsured_motor_vehicle_defined": {
+      "title": "Uninsured Motor Vehicle",
+      "language": "Uninsured motor vehicle means a land motor vehicle or trailer of any type: (1) To which no bodily injury liability bond or policy applies at the time of the accident. (2) To which a bodily injury liability bond or policy applies at the time of the accident, but the limit for bodily injury liability is less than the minimum limit for bodily injury liability specified by the financial responsibility law of California. (3) Which is a hit-and-run vehicle whose operator or owner cannot be identified and which causes bodily injury to an insured. (4) To which a bodily injury liability bond or policy applies at the time of the accident but the bonding or insuring company denies coverage or is or becomes insolvent."
+    },
+    "hit_and_run": {
+      "title": "Hit-and-Run Provisions",
+      "california_specific": true,
+      "language": "For coverage to apply to a hit-and-run accident: (1) The accident must have been reported to the police or proper governmental authority within 24 hours. (2) The insured or someone on the insured's behalf must have filed with us within 30 days a statement under oath that the insured or the legal representative of the insured has a cause of action arising out of the accident for damages against a person or persons whose identity is unascertainable, and setting forth the facts in support thereof. (3) At our request, the insured or the legal representative of the insured must make available for inspection the motor vehicle the insured was occupying at the time of the accident."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide Uninsured Motorists Coverage for bodily injury sustained:",
+      "exclusion_list": [
+        {
+          "id": "UM-EX-001",
+          "title": "Owned Vehicle Not Insured",
+          "language": "By any insured while occupying any motor vehicle owned by that insured which is not insured for this coverage under this policy."
+        },
+        {
+          "id": "UM-EX-002",
+          "title": "Settlement Without Consent",
+          "language": "By any insured if that insured or the legal representative of that insured settles the bodily injury claim without our consent."
+        },
+        {
+          "id": "UM-EX-003",
+          "title": "Public or Livery Conveyance",
+          "language": "While occupying your covered auto when it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
+        },
+        {
+          "id": "UM-EX-004",
+          "title": "Punitive Damages",
+          "language": "For punitive or exemplary damages."
+        }
+      ]
+    },
+    "arbitration": {
+      "title": "Arbitration",
+      "california_specific": true,
+      "language": "If we and an insured do not agree: (1) Whether that insured is legally entitled to recover damages; or (2) As to the amount of damages; either party may make a written demand for arbitration. In this event, each party will select an arbitrator. The two arbitrators will select a third. If they cannot agree within 30 days, either may request that selection be made by a judge of a court having jurisdiction. Each party will pay the expenses it incurs and bear the expenses of the third arbitrator equally. Unless both parties agree otherwise, arbitration will take place in the county in which the insured lives. Local rules of law as to procedure and evidence will apply. A decision agreed to by two of the arbitrators will be binding as to: (1) Whether the insured is legally entitled to recover damages; and (2) The amount of damages. The arbitrators shall have no authority to award an amount in excess of the limit of liability."
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "The limit of liability shown in the Declarations for each person for Uninsured Motorists Coverage is our maximum limit of liability for all damages, including damages for care, loss of services, or death, arising out of bodily injury sustained by any one person in any one accident. Subject to this limit for each person, the limit of liability shown in the Declarations for each accident for Uninsured Motorists Coverage is our maximum limit of liability for all damages for bodily injury resulting from any one accident. This is the most we will pay regardless of the number of: (1) Insureds; (2) Claims made; (3) Vehicles or premiums shown in the Declarations; or (4) Vehicles involved in the accident."
+    }
+  },
+  "underinsured_motorist_coverage": {
+    "section_title": "PART C-1 - UNDERINSURED MOTORIST COVERAGE (OPTIONAL)",
+    "california_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay compensatory damages which an insured is legally entitled to recover from the owner or operator of an underinsured motor vehicle because of bodily injury sustained by the insured and caused by an accident. The owner's or operator's liability for these damages must arise out of the ownership, maintenance, or use of the underinsured motor vehicle. We will pay under this coverage only after the limits of liability under all applicable bodily injury liability bonds or policies have been exhausted by payment of judgments or settlements."
+    },
+    "underinsured_vehicle_defined": {
+      "title": "Underinsured Motor Vehicle",
+      "language": "An underinsured motor vehicle is a land motor vehicle or trailer of any type to which a bodily injury liability bond or policy applies at the time of the accident but its limit for bodily injury liability is less than the limit of liability for this coverage. However, an underinsured motor vehicle does not include any vehicle or equipment: (1) Owned by or furnished or available for the regular use of you or any family member; (2) Owned by a governmental unit or agency; (3) Operated on rails or crawler treads; (4) Designed mainly for use off public roads while not on public roads; (5) Located for use as a residence or premises."
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "The limit of liability for Underinsured Motorist Coverage is the amount by which the limit of liability for this coverage exceeds the amount recovered from the owner or operator of the underinsured motor vehicle. However, the amount we pay shall not exceed the actual damages sustained."
+    }
+  },
+  "physical_damage_coverage": {
+    "section_title": "PART D - COVERAGE FOR DAMAGE TO YOUR AUTO",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay for direct and accidental loss to your covered auto or any non-owned auto, including their equipment, minus any applicable deductible shown in the Declarations. If loss to more than one your covered auto or non-owned auto results from the same Collision, only the highest applicable deductible will apply. We will pay for loss to your covered auto caused by: (1) Collision only if the Declarations indicate that Collision Coverage is provided for that auto. (2) Other than Collision only if the Declarations indicate that Other Than Collision Coverage is provided for that auto."
+    },
+    "collision_defined": {
+      "title": "Collision",
+      "language": "Collision means the upset of your covered auto or a non-owned auto or their impact with another vehicle or object."
+    },
+    "other_than_collision_losses": {
+      "title": "Other Than Collision",
+      "language": "Other Than Collision means loss caused by: missiles or falling objects; fire; theft or larceny; explosion or earthquake; windstorm; hail, water, or flood; malicious mischief or vandalism; riot or civil commotion; contact with bird or animal; or breakage of glass. If breakage of glass is caused by a Collision, you may elect to have it considered a loss caused by Collision. Loss caused by any of the following is also considered Other Than Collision: (1) Total or partial theft of your covered auto; (2) A covered auto hitting or being hit by a bird or animal."
+    },
+    "transportation_expenses": {
+      "title": "Transportation Expenses",
+      "language": "In addition, we will pay, without application of a deductible, up to the limit shown in the Declarations for transportation expenses incurred by you in the event of a loss to your covered auto. We will pay only transportation expenses incurred during the period beginning 24 hours after the theft and ending when your covered auto is returned to use or we pay for its loss. Subject to the above limit and the limit shown in the Declarations per day, we will pay for rental reimbursement expenses incurred by you for the rental of a substitute vehicle from a car rental agency or garage. This coverage applies only if the loss is covered under this Part D."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We will not pay for:",
+      "exclusion_list": [
+        {
+          "id": "PD-EX-001",
+          "title": "Wear and Tear",
+          "language": "Loss to your covered auto or any non-owned auto which occurs due to or as a consequence of: (a) Wear and tear; (b) Freezing; (c) Mechanical or electrical breakdown or failure; or (d) Road damage to tires. This Exclusion does not apply if the damage results from the total theft of your covered auto or any non-owned auto."
+        },
+        {
+          "id": "PD-EX-002",
+          "title": "Radioactive Contamination",
+          "language": "Loss due to or as a consequence of: (a) Radioactive contamination; (b) Discharge of any nuclear weapon (even if accidental); (c) War (declared or undeclared); (d) Civil war; (e) Insurrection; or (f) Rebellion or revolution."
+        },
+        {
+          "id": "PD-EX-003",
+          "title": "Equipment",
+          "language": "Loss to any of the following: (a) Equipment designed for the reproduction of sound, unless permanently installed in your covered auto or non-owned auto; (b) Tapes, records, or discs; (c) Any other audio, visual, or data electronic equipment designed for use with sound reproducing equipment; (d) Any other electronic equipment that receives or transmits audio, visual, or data signals unless such equipment is permanently installed in the opening of the dash or console of the motor vehicle normally used by the manufacturer for the installation of a radio."
+        },
+        {
+          "id": "PD-EX-004",
+          "title": "Radar and Laser Detection Equipment",
+          "language": "Loss to radar or laser detection equipment, citizens band radios, two-way mobile radios, or telephones or their accessories."
+        },
+        {
+          "id": "PD-EX-005",
+          "title": "Custom Equipment",
+          "language": "Loss to any custom furnishings or equipment in or upon any pickup or van. Custom furnishings or equipment includes but is not limited to: (a) Special carpeting and insulation, furniture, bars, or television receivers; (b) Facilities for cooking and sleeping; (c) Height extending roofs; or (d) Custom murals, paintings, or other decals or graphics."
+        },
+        {
+          "id": "PD-EX-006",
+          "title": "Camper Bodies",
+          "language": "Loss to any camper body or trailer not shown in the Declarations."
+        },
+        {
+          "id": "PD-EX-007",
+          "title": "Non-Owned Auto Used Without Permission",
+          "language": "Loss to any non-owned auto when used by you or any family member without a reasonable belief that you or that family member is entitled to do so."
+        },
+        {
+          "id": "PD-EX-008",
+          "title": "Racing",
+          "language": "Loss to your covered auto or any non-owned auto while it is being used in, or prepared for, any prearranged or organized racing, speed, stunting, or demolition contest or activity, or in practice or preparation for any such contest or activity."
+        },
+        {
+          "id": "PD-EX-009",
+          "title": "Rental Vehicle Use",
+          "language": "Loss to, or loss of use of, a non-owned auto rented by you or any family member under a rental agreement if: (a) There is a physical damage policy or coverage provided by the rental company, or (b) There is other physical damage coverage available for the same loss."
+        }
+      ]
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "Our limit of liability for loss will be the lesser of the: (1) Actual cash value of the stolen or damaged property; or (2) Amount necessary to repair or replace the property with other property of like kind and quality. An adjustment for depreciation and physical condition will be made in determining actual cash value at the time of loss. If a repair or replacement results in better than like kind or quality, we will not pay for the amount of the betterment."
+    },
+    "payment_of_loss": {
+      "title": "Payment of Loss",
+      "language": "We may pay for loss in money or repair or replace the damaged or stolen property. We may, at any time before the loss is paid or the property is replaced, return any stolen property either to you or to the address shown in the Declarations, with payment for any resulting damage. We may keep all or part of the property at an agreed or appraised value. If we pay for loss in money, our payment will include the applicable sales tax for the damaged or stolen property."
+    },
+    "appraisal": {
+      "title": "Appraisal",
+      "language": "If we and you do not agree on the amount of loss, either may demand an appraisal of the loss. In this event, each party will select a competent appraiser. The two appraisers will select an umpire. The appraisers will state separately the actual cash value and the amount of loss. If they fail to agree, they will submit their differences to the umpire. A decision agreed to by any two will be binding. Each party will: (a) Pay its chosen appraiser; and (b) Bear the expenses of the appraisal and umpire equally. We do not waive any of our rights under this policy by agreeing to an appraisal."
+    },
+    "no_benefit_to_bailee": {
+      "title": "No Benefit to Bailee",
+      "language": "This insurance shall not directly or indirectly benefit any carrier or other bailee for hire."
+    }
+  },
+  "duties_after_loss": {
+    "section_title": "PART E - DUTIES AFTER AN ACCIDENT OR LOSS",
+    "general_duties": {
+      "title": "General Duties",
+      "language": "We have no duty to provide coverage under this policy if the failure to comply with the following duties is prejudicial to us: (a) We must be notified promptly of how, when, and where the accident or loss happened. Notice should also include the names and addresses of any injured persons and of any witnesses. (b) A person seeking any coverage must: (1) Cooperate with us in the investigation, settlement, or defense of any claim or suit. (2) Promptly send us copies of any notices or legal papers received in connection with the accident or loss. (3) Submit, as often as we reasonably require, to physical exams by physicians we select. We will pay for these exams. (4) Authorize us to obtain medical reports and other pertinent records. (5) Submit a proof of loss when required by us."
+    },
+    "duties_for_uninsured_motorist": {
+      "title": "Additional Duties for Uninsured Motorist Coverage",
+      "language": "A person seeking Uninsured Motorists Coverage must also: (a) Promptly notify the police if a hit-and-run driver is involved. (b) Promptly send us copies of the legal papers if a suit is brought."
+    },
+    "duties_for_physical_damage": {
+      "title": "Additional Duties for Coverage For Damage to Your Auto",
+      "language": "A person seeking Coverage For Damage to Your Auto must also: (a) Take reasonable steps after loss to protect your covered auto or any non-owned auto and their equipment from further loss. We will pay reasonable expenses incurred to do this. (b) Promptly notify the police if your covered auto or any non-owned auto is stolen. (c) Permit us to inspect and appraise the damaged property before its repair or disposal."
+    }
+  },
+  "general_provisions": {
+    "section_title": "PART F - GENERAL PROVISIONS",
+    "provisions": [
+      {
+        "title": "Bankruptcy",
+        "language": "Bankruptcy or insolvency of the insured shall not relieve us of any obligations under this policy."
+      },
+      {
+        "title": "Changes",
+        "language": "This policy contains all the agreements between you and us. Its terms may not be changed or waived except by endorsement issued by us. If there is a change to the information used to develop the policy premium, we may adjust your premium. Changes during the policy term that may result in a premium increase or decrease include, but are not limited to, changes in: (1) The number, type, or use classification of insured vehicles; (2) Operators using insured vehicles; (3) The place of principal garaging of insured vehicles; or (4) Coverage, deductible, or limits."
+      },
+      {
+        "title": "Fraud",
+        "language": "We do not provide coverage for any insured who has made fraudulent statements or engaged in fraudulent conduct in connection with any accident or loss for which coverage is sought under this policy."
+      },
+      {
+        "title": "Legal Action Against Us",
+        "language": "No legal action may be brought against us until there has been full compliance with all the terms of this policy. In addition, under Part A, no legal action may be brought against us until: (a) We agree in writing that the insured has an obligation to pay; or (b) The amount of that obligation has been finally determined by judgment after trial. No person or organization has any right under this policy to bring us into any action to determine the liability of an insured."
+      },
+      {
+        "title": "Our Right to Recover Payment",
+        "language": "If we make a payment under this policy and the person to or for whom payment was made has a right to recover damages from another, we shall be subrogated to that right. That person shall do: (a) Whatever is necessary to enable us to exercise our rights; and (b) Nothing after loss to prejudice them. If we make a payment under this policy and the person to or for whom payment is made recovers damages from another, that person shall: (a) Hold in trust for us the proceeds of the recovery; and (b) Reimburse us to the extent of our payment."
+      },
+      {
+        "title": "Policy Period and Territory",
+        "language": "This policy applies only to accidents and losses which occur: (a) During the policy period as shown in the Declarations; and (b) Within the policy territory."
+      },
+      {
+        "title": "Policy Territory",
+        "language": "Policy territory means: (a) The United States of America, its territories or possessions; (b) Puerto Rico; or (c) Canada. This policy also applies to loss to, or accidents involving, your covered auto while being transported between their ports."
+      },
+      {
+        "title": "Termination",
+        "california_specific": true,
+        "language": "Cancellation. You may cancel this policy by returning it to us or by giving us advance written notice of the date cancellation is to take effect. We may cancel by mailing to the named insured shown in the Declarations at the address shown in this policy: (a) At least 10 days notice if cancellation is for nonpayment of premium; or (b) At least 20 days notice if cancellation is for any other reason except as provided in (c). (c) At least 60 days notice if cancellation is during the first 60 days this policy is in effect and this is not a renewal or continuation policy. After this policy is in effect for 60 days, or if this is a renewal or continuation policy, we will not cancel unless: (1) The premium has not been paid when due; (2) You or any operator who either resides in your household or customarily operates your covered auto has had their driver's license suspended or revoked; (3) The policy was obtained through material misrepresentation, fraud, or concealment; (4) The insured violated any of the terms and conditions of the policy; (5) The insured or any insured operator who either resides in the named insured's household or customarily operates your covered auto has, while operating a motor vehicle, been convicted of, or forfeited bail for: (a) Operating a vehicle while intoxicated, or (b) Operating a vehicle while under the influence of drugs, or (c) A felony; (6) The insured or any insured operator was involved in an accident while operating a motor vehicle, which occurred during the current policy period and which has caused the policy to be ineligible for renewal; or (7) The insured failed to disclose in full the number of motor vehicles and operators in the household."
+      },
+      {
+        "title": "Nonrenewal",
+        "california_specific": true,
+        "language": "If we decide not to renew or continue this policy, we will mail notice of nonrenewal to the named insured at the address shown in this policy. Notice will be mailed at least 30 days before the end of the policy period. Subject to this notice requirement, if the policy period is other than one year, we will have the right not to continue it on each anniversary of its original effective date. If we offer to renew or continue the policy but on less favorable terms or at higher rates, we will mail notice of such renewal offer to the named insured at the address shown in this policy. Notice will be mailed at least 30 days before the end of the policy period."
+      },
+      {
+        "title": "Transfer of Your Interest in This Policy",
+        "language": "Your rights and duties under this policy may not be assigned without our written consent. However, if a named insured shown in the Declarations dies, coverage will be provided for: (a) The surviving spouse if a resident in the same household at the time of death. Coverage applies to the spouse as if a named insured shown in the Declarations; and (b) The legal representative of the deceased person while acting within the scope of the duties of a legal representative. Coverage applies to the legal representative as if a named insured shown in the Declarations. Coverage applies to the spouse and legal representative only for the policy period shown in the Declarations or until the policy is cancelled, whichever occurs first."
+      },
+      {
+        "title": "Two or More Auto Policies",
+        "language": "If this policy and any other auto insurance policy issued to you by us apply to the same accident, the maximum limit of our liability under all the policies shall not exceed the highest applicable limit of liability under any one policy."
+      }
+    ]
+  },
+  "california_endorsements": {
+    "description": "California-specific endorsements required or commonly used.",
+    "endorsements": [
+      {
+        "id": "CA-END-001",
+        "form_number": "CA 22 01",
+        "title": "California Uninsured Motorist Coverage",
+        "description": "Mandatory endorsement providing UM coverage as required by California Insurance Code Section 11580.2",
+        "language": "This endorsement modifies insurance provided under Part C - Uninsured Motorists Coverage. Coverage is provided for bodily injury an insured is legally entitled to recover from the owner or operator of an uninsured motor vehicle. An uninsured motor vehicle includes a hit-and-run vehicle whose operator or owner cannot be identified. For hit-and-run coverage, the accident must be reported to police within 24 hours, and a statement under oath filed with us within 30 days."
+      },
+      {
+        "id": "CA-END-002",
+        "form_number": "CA 22 02",
+        "title": "California Underinsured Motorist Coverage",
+        "description": "Optional endorsement providing UIM coverage",
+        "language": "This endorsement provides coverage for bodily injury an insured is entitled to recover from the owner or operator of an underinsured motor vehicle. An underinsured motor vehicle is one where the limits of liability under all applicable bodily injury liability bonds or policies are less than the applicable limits of Underinsured Motorist Coverage."
+      },
+      {
+        "id": "CA-END-003",
+        "form_number": "CA 23 01",
+        "title": "Good Driver Discount",
+        "description": "Required discount under Proposition 103 for qualifying good drivers",
+        "language": "A discount of at least 20% applies to your premium if each principal driver of the covered auto is a 'good driver' as defined by California Insurance Code Section 1861.025. A 'good driver' is a person who has been licensed to drive for the preceding three years and has not had more than one point on their driving record during that period."
+      },
+      {
+        "id": "CA-END-004",
+        "form_number": "CA 23 05",
+        "title": "Notice of Repair Rights",
+        "description": "Required disclosure regarding repair shop choice",
+        "language": "If your covered auto is damaged and you make a claim under this policy: (1) You have the right to choose the repair shop to make repairs to your covered auto. We will not require you to use a specific shop for repairs. (2) If we recommend a repair shop, we will provide you with a written list of the shops we recommend in your area. (3) We will pay for repairs at your chosen shop based on a reasonable market price for such repairs. (4) If you choose a shop that charges more than our written estimate, you may be responsible for the difference. (5) Any replacement parts may be new, used, or reconditioned parts. The estimate will specify whether the parts to be used are original equipment manufacturer (OEM), aftermarket, or used/recycled parts."
+      },
+      {
+        "id": "CA-END-005",
+        "form_number": "CA 23 10",
+        "title": "Disclosure of Aftermarket Parts",
+        "description": "Required disclosure when aftermarket parts may be used",
+        "language": "This policy authorizes the use of aftermarket crash parts in repairing your vehicle. Aftermarket crash parts are replacement parts that are not made by the original manufacturer of your vehicle. Aftermarket parts are required to be at least equal in quality to the original parts. If aftermarket parts are used in the repair of your vehicle, the repair estimate will clearly identify them. You have the right to request original equipment manufacturer (OEM) parts, but you may be responsible for any additional cost."
+      }
+    ]
+  },
+  "fraud_statement": {
+    "california_specific": true,
+    "title": "California Fraud Warning",
+    "language": "For your protection, California law requires the following to appear on this form: Any person who knowingly presents a false or fraudulent claim for the payment of a loss is guilty of a crime and may be subject to fines and confinement in state prison."
+  },
+  "policy_forms_list": {
+    "description": "Standard forms that comprise a California personal auto policy",
+    "forms": [
+      {
+        "form_number": "PP 00 01",
+        "title": "Personal Auto Policy",
+        "description": "Basic policy form"
+      },
+      {
+        "form_number": "CA 22 01",
+        "title": "California Uninsured Motorist Coverage - Bodily Injury",
+        "description": "Mandatory UM endorsement"
+      },
+      {
+        "form_number": "IL 00 17",
+        "title": "Common Policy Conditions",
+        "description": "Standard conditions"
+      },
+      {
+        "form_number": "IL 00 21",
+        "title": "Nuclear Energy Liability Exclusion Endorsement",
+        "description": "Standard nuclear exclusion"
+      }
+    ]
+  }
+}

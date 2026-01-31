@@ -1,0 +1,340 @@
+{
+  "metadata": {
+    "state": "Texas",
+    "jurisdiction": "TX",
+    "data_type": "auto_insurance_policy_language",
+    "version": "2025.1",
+    "last_updated": "2025-01-31",
+    "policy_form": "TX-PP-001 (01/25)",
+    "description": "Sample auto insurance policy language for Texas personal auto policies"
+  },
+  "declarations": {
+    "description": "The declarations page summarizes key policy information.",
+    "sample_language": {
+      "named_insured": "The Named Insured shown in the Declarations is the policyholder and spouse if a resident of the same household.",
+      "policy_period": "This policy applies only to accidents and losses which occur during the policy period shown in the Declarations.",
+      "territory": "This policy applies only to accidents and losses which occur within the United States of America, its territories or possessions, or Canada, or while a covered auto is being transported between ports thereof.",
+      "texas_specific": "This policy is issued in compliance with the Texas Insurance Code and Texas Department of Insurance regulations."
+    }
+  },
+  "definitions": {
+    "section_title": "DEFINITIONS",
+    "preamble": "Throughout this policy, 'you' and 'your' refer to the 'named insured' shown in the Declarations and the spouse if a resident of the same household. 'We', 'us', and 'our' refer to the Company providing this insurance.",
+    "terms": [
+      {
+        "term": "Bodily Injury",
+        "definition": "Bodily injury means bodily harm, sickness, or disease, including death that results from bodily harm, sickness, or disease."
+      },
+      {
+        "term": "Covered Auto",
+        "definition": "Covered auto means: (1) Any vehicle shown in the Declarations; (2) A newly acquired auto; (3) Any trailer you own; (4) Any auto or trailer you do not own while used as a temporary substitute for any other vehicle described in this definition which is out of normal use because of its breakdown, repair, servicing, loss, or destruction."
+      },
+      {
+        "term": "Family Member",
+        "definition": "Family member means a person related to you by blood, marriage, or adoption who is a resident of your household. This includes a ward or foster child."
+      },
+      {
+        "term": "Occupying",
+        "definition": "Occupying means in, upon, getting in, on, out, or off."
+      },
+      {
+        "term": "Property Damage",
+        "definition": "Property damage means physical injury to, destruction of, or loss of use of tangible property."
+      },
+      {
+        "term": "Your Covered Auto",
+        "definition": "Your covered auto means: (1) Any vehicle shown in the Declarations; (2) A newly acquired auto, which is any private passenger auto, pickup, or van you become the owner of during the policy period, provided you ask us to insure it within 30 days after you become the owner; (3) Any trailer you own; (4) Any auto or trailer you do not own while used as a temporary substitute vehicle."
+      },
+      {
+        "term": "Actual Cash Value",
+        "definition": "Actual cash value means the fair market value of the property at the time of loss, determined by the cost to replace the property with property of like kind and quality, less depreciation and physical condition."
+      }
+    ]
+  },
+  "liability_coverage": {
+    "section_title": "PART A - LIABILITY COVERAGE",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay damages for bodily injury or property damage for which any insured becomes legally responsible because of an auto accident. Damages include prejudgment interest awarded against the insured. We will settle or defend, as we consider appropriate, any claim or suit asking for these damages. In addition to our limit of liability, we will pay all defense costs we incur. Our duty to settle or defend ends when our limit of liability for this coverage has been exhausted by payment of judgments or settlements."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member for the ownership, maintenance, or use of any auto or trailer. 2. Any person using your covered auto. 3. For your covered auto, any person or organization but only with respect to legal responsibility for acts or omissions of a person for whom coverage is afforded under this Part."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide Liability Coverage for any insured:",
+      "exclusion_list": [
+        {
+          "id": "TX-LA-EX-001",
+          "title": "Intentional Acts",
+          "language": "For bodily injury or property damage which is expected or intended from the standpoint of the insured."
+        },
+        {
+          "id": "TX-LA-EX-002",
+          "title": "Property Owned or Transported",
+          "language": "For property damage to property owned or being transported by that insured."
+        },
+        {
+          "id": "TX-LA-EX-003",
+          "title": "Bodily Injury to Employee",
+          "language": "For bodily injury to an employee of that insured during the course of employment. This Exclusion does not apply to bodily injury to a domestic employee unless workers' compensation benefits are required or available."
+        },
+        {
+          "id": "TX-LA-EX-004",
+          "title": "Public or Livery Conveyance",
+          "language": "For that insured's liability arising out of the ownership or operation of a vehicle while it is being used as a public or livery conveyance. This Exclusion does not apply to a share-the-expense car pool."
+        },
+        {
+          "id": "TX-LA-EX-005",
+          "title": "Racing",
+          "language": "For bodily injury or property damage arising out of the ownership, maintenance, or use of any vehicle while it is being prepared for or used in any prearranged or organized racing, speed, stunting, or demolition contest or activity."
+        }
+      ]
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "The limit of liability shown in the Declarations for each person for Bodily Injury Liability is our maximum limit of liability for all damages arising out of bodily injury sustained by any one person in any one auto accident. Subject to this limit for each person, the limit of liability shown in the Declarations for each accident for Bodily Injury Liability is our maximum limit of liability for all damages for bodily injury resulting from any one auto accident. The limit of liability shown in the Declarations for each accident for Property Damage Liability is our maximum limit of liability for all property damage resulting from any one auto accident."
+    },
+    "texas_minimum_limits": {
+      "title": "Texas Minimum Limits",
+      "texas_specific": true,
+      "language": "Texas law requires minimum liability coverage of $30,000 per person for bodily injury, $60,000 per accident for bodily injury, and $25,000 per accident for property damage (commonly shown as 30/60/25). These minimum limits took effect for policies issued or renewed on or after January 1, 2024, and are the minimum limits required under Texas law as of the effective date of this policy form."
+    }
+  },
+  "personal_injury_protection": {
+    "section_title": "PART B - PERSONAL INJURY PROTECTION (PIP)",
+    "texas_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay Personal Injury Protection (PIP) benefits for bodily injury sustained by an insured caused by an accident arising out of the ownership, maintenance, or use of a motor vehicle. PIP benefits are payable without regard to fault. Texas requires that PIP coverage be offered, but you may reject this coverage in writing."
+    },
+    "benefits": {
+      "title": "PIP Benefits",
+      "language": "PIP benefits include: (1) Medical expenses - all reasonable expenses for necessary medical, surgical, x-ray examination, dental, prosthetic, ambulance, hospital, professional nursing, and funeral services, incurred within three years from the date of the accident. (2) Income loss - 80% of any income lost by an insured because of total disability caused by an accident, subject to a weekly maximum shown in the Declarations. (3) Essential services expenses - reasonable expenses incurred for services that would have been performed by the injured person for the care of the household."
+    },
+    "insured_defined": {
+      "title": "Insured As Used In This Part Means",
+      "language": "1. You or any family member while occupying a motor vehicle or when struck by a motor vehicle. 2. Any other person while occupying your covered auto."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide PIP Coverage for:",
+      "exclusion_list": [
+        {
+          "id": "TX-PIP-EX-001",
+          "title": "Intentional Self-Injury",
+          "language": "Bodily injury intentionally caused by or at the direction of the insured."
+        },
+        {
+          "id": "TX-PIP-EX-002",
+          "title": "Vehicle Not Covered",
+          "language": "Bodily injury sustained by the named insured or any family member while occupying a motor vehicle owned by you or furnished for your regular use if not insured for PIP under this policy."
+        },
+        {
+          "id": "TX-PIP-EX-003",
+          "title": "Workers' Compensation",
+          "language": "Bodily injury to the extent that benefits are payable under any workers' compensation law."
+        },
+        {
+          "id": "TX-PIP-EX-004",
+          "title": "Racing",
+          "language": "Bodily injury sustained while the motor vehicle is used in any professional or organized racing or speed contest."
+        }
+      ]
+    },
+    "rejection_of_coverage": {
+      "title": "Rejection of PIP Coverage",
+      "texas_specific": true,
+      "language": "Texas law permits you to reject Personal Injury Protection coverage in writing. If you do not reject this coverage, PIP coverage will be provided with minimum limits of $2,500 per person. The rejection of this coverage is not effective unless made in writing on a form prescribed by the Texas Department of Insurance."
+    }
+  },
+  "uninsured_underinsured_motorist": {
+    "section_title": "PART C - UNINSURED/UNDERINSURED MOTORIST COVERAGE",
+    "texas_specific": true,
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay compensatory damages which an insured is legally entitled to recover from the owner or operator of an uninsured motor vehicle or underinsured motor vehicle because of bodily injury sustained by the insured and caused by an accident. The owner's or operator's liability for these damages must arise out of the ownership, maintenance, or use of the uninsured motor vehicle or underinsured motor vehicle."
+    },
+    "uninsured_vehicle_defined": {
+      "title": "Uninsured Motor Vehicle",
+      "language": "Uninsured motor vehicle means a land motor vehicle or trailer of any type: (1) To which no bodily injury liability bond or policy applies at the time of the accident; (2) To which a bodily injury liability bond or policy applies but the limits are less than the amounts required by Texas law; (3) Which is a hit-and-run vehicle whose operator or owner cannot be identified and which causes bodily injury to an insured; (4) To which a bodily injury liability bond or policy applies but the bonding or insuring company is or becomes insolvent."
+    },
+    "underinsured_vehicle_defined": {
+      "title": "Underinsured Motor Vehicle",
+      "texas_specific": true,
+      "language": "An underinsured motor vehicle is a motor vehicle to which a bodily injury liability bond or policy applies at the time of the accident, but the total limits of liability of all applicable bonds and policies for bodily injury are less than the total of all damages the insured is legally entitled to recover. Under Texas law, UM/UIM coverage is offered on a single limit basis for combined UM and UIM coverage unless you elect split UM/UIM coverage in writing."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We do not provide UM/UIM Coverage for bodily injury sustained:",
+      "exclusion_list": [
+        {
+          "id": "TX-UM-EX-001",
+          "title": "Owned Vehicle Not Insured",
+          "language": "While occupying a motor vehicle owned by you or any family member which is not insured for UM/UIM Coverage under this policy."
+        },
+        {
+          "id": "TX-UM-EX-002",
+          "title": "Settlement Without Consent",
+          "language": "If the insured or the legal representative of the insured settles a bodily injury claim without our consent."
+        },
+        {
+          "id": "TX-UM-EX-003",
+          "title": "Public or Livery",
+          "language": "While occupying your covered auto when it is being used as a public or livery conveyance."
+        },
+        {
+          "id": "TX-UM-EX-004",
+          "title": "Punitive Damages",
+          "language": "For punitive or exemplary damages."
+        }
+      ]
+    },
+    "mandatory_offer": {
+      "title": "UM/UIM Coverage Requirement",
+      "texas_specific": true,
+      "language": "Texas law requires that we offer UM/UIM coverage. You may reject this coverage only by signing a written rejection form prescribed by the Texas Department of Insurance. If you do not reject UM/UIM coverage, coverage will be provided in an amount equal to your bodily injury liability limits."
+    },
+    "stacking": {
+      "title": "Stacking Prohibition",
+      "texas_specific": true,
+      "language": "Texas permits insurers to include anti-stacking provisions. The limits of liability for UM/UIM Coverage may not be added to or stacked upon the limits for similar coverage applying to other vehicles or policies."
+    }
+  },
+  "physical_damage_coverage": {
+    "section_title": "PART D - COVERAGE FOR DAMAGE TO YOUR AUTO",
+    "insuring_agreement": {
+      "title": "Insuring Agreement",
+      "language": "We will pay for direct and accidental loss to your covered auto or any non-owned auto, including their equipment, minus any applicable deductible shown in the Declarations. We will pay for loss to your covered auto caused by: (1) Collision only if the Declarations indicate that Collision Coverage is provided for that auto. (2) Other than Collision (Comprehensive) only if the Declarations indicate that Other Than Collision Coverage is provided for that auto."
+    },
+    "collision_defined": {
+      "title": "Collision",
+      "language": "Collision means the upset of your covered auto or a non-owned auto or their impact with another vehicle or object."
+    },
+    "other_than_collision": {
+      "title": "Other Than Collision (Comprehensive)",
+      "language": "Other Than Collision means loss caused by: missiles or falling objects; fire; theft or larceny; explosion or earthquake; windstorm; hail, water, or flood; malicious mischief or vandalism; riot or civil commotion; contact with bird or animal; or breakage of glass."
+    },
+    "exclusions": {
+      "title": "Exclusions",
+      "preamble": "We will not pay for:",
+      "exclusion_list": [
+        {
+          "id": "TX-PD-EX-001",
+          "title": "Wear and Tear",
+          "language": "Loss due to wear and tear, freezing, mechanical or electrical breakdown or failure, or road damage to tires, unless the damage results from the total theft of your covered auto."
+        },
+        {
+          "id": "TX-PD-EX-002",
+          "title": "Nuclear or War",
+          "language": "Loss due to radioactive contamination, discharge of any nuclear weapon, war, civil war, insurrection, or rebellion."
+        },
+        {
+          "id": "TX-PD-EX-003",
+          "title": "Racing",
+          "language": "Loss to your covered auto while being used in any prearranged or organized racing, speed, or demolition contest."
+        },
+        {
+          "id": "TX-PD-EX-004",
+          "title": "Custom Equipment",
+          "language": "Loss to custom furnishings or equipment in or upon any pickup or van, including special carpeting, insulation, furniture, or television receivers."
+        }
+      ]
+    },
+    "limit_of_liability": {
+      "title": "Limit of Liability",
+      "language": "Our limit of liability for loss will be the lesser of the: (1) Actual cash value of the stolen or damaged property; or (2) Amount necessary to repair or replace the property with other property of like kind and quality."
+    },
+    "appraisal": {
+      "title": "Appraisal",
+      "language": "If we and you do not agree on the amount of loss, either may demand an appraisal. Each party will select a competent appraiser. The two appraisers will select an umpire. The appraisers will state separately the actual cash value and the amount of loss. If they fail to agree, they will submit their differences to the umpire. A decision agreed to by any two will be binding."
+    }
+  },
+  "duties_after_loss": {
+    "section_title": "PART E - DUTIES AFTER AN ACCIDENT OR LOSS",
+    "general_duties": {
+      "title": "General Duties",
+      "language": "We have no duty to provide coverage under this policy if the failure to comply with the following duties is prejudicial to us: (a) We must be notified promptly of how, when, and where the accident or loss happened. (b) A person seeking any coverage must cooperate with us in the investigation, settlement, or defense of any claim or suit. (c) Promptly send us copies of any notices or legal papers received. (d) Submit, as often as we reasonably require, to physical exams by physicians we select. (e) Authorize us to obtain medical reports and other pertinent records. (f) Submit a proof of loss when required by us."
+    }
+  },
+  "general_provisions": {
+    "section_title": "PART F - GENERAL PROVISIONS",
+    "provisions": [
+      {
+        "title": "Cancellation",
+        "texas_specific": true,
+        "language": "You may cancel this policy by returning it to us or by giving us advance written notice of the date cancellation is to take effect. We may cancel by mailing notice to the named insured at the last known address: (a) At least 10 days notice if cancellation is for nonpayment of premium; (b) At least 30 days notice for any other reason. After this policy has been in effect for 60 days, or if this is a renewal policy, we may not cancel except for: (1) Nonpayment of premium; (2) Fraud or material misrepresentation affecting the policy or a claim; (3) Changes in conditions that substantially increase the hazard; (4) Suspension of the driver's license of the named insured or any operator who resides in the same household; (5) Failure to comply with terms and conditions."
+      },
+      {
+        "title": "Nonrenewal",
+        "texas_specific": true,
+        "language": "If we decide not to renew this policy, we will mail notice to the named insured at the last known address at least 30 days before the end of the policy period. If notice is mailed, proof of mailing will be sufficient proof of notice. We are not required to give a reason for nonrenewal."
+      },
+      {
+        "title": "Subrogation",
+        "language": "If we make a payment under this policy and the person to or for whom payment was made has a right to recover damages from another, we shall be subrogated to that right. That person shall do whatever is necessary to enable us to exercise our rights and shall do nothing after loss to prejudice them."
+      },
+      {
+        "title": "Legal Action Against Us",
+        "language": "No legal action may be brought against us until there has been full compliance with all the terms of this policy. Under Part A, no legal action may be brought against us until we agree in writing that the insured has an obligation to pay, or the amount of that obligation has been finally determined by judgment after trial."
+      },
+      {
+        "title": "Choice of Law",
+        "texas_specific": true,
+        "language": "This policy shall be interpreted and enforced according to the laws of the State of Texas. Any disputes concerning coverage shall be governed by Texas law."
+      }
+    ]
+  },
+  "texas_endorsements": {
+    "description": "Texas-specific endorsements required or commonly used.",
+    "endorsements": [
+      {
+        "id": "TX-END-001",
+        "form_number": "TX 23 01",
+        "title": "Texas Personal Injury Protection",
+        "description": "PIP coverage endorsement as required by Texas Insurance Code",
+        "language": "Personal Injury Protection coverage is provided under this policy for bodily injury sustained by an insured caused by an accident arising out of the ownership, maintenance, or use of a motor vehicle. Benefits are payable regardless of fault. The limit of liability for PIP is shown in the Declarations. If no limit is shown and the named insured has not rejected PIP coverage in writing, the limit is $2,500 per person."
+      },
+      {
+        "id": "TX-END-002",
+        "form_number": "TX 23 05",
+        "title": "Texas Uninsured/Underinsured Motorist Coverage",
+        "description": "UM/UIM coverage as required by Texas Insurance Code Chapter 1952",
+        "language": "This endorsement provides coverage for bodily injury an insured is legally entitled to recover from the owner or operator of an uninsured or underinsured motor vehicle. Texas law requires that this coverage be offered. The named insured may reject this coverage only by written rejection on a form prescribed by the Texas Department of Insurance."
+      },
+      {
+        "id": "TX-END-003",
+        "form_number": "TX 23 10",
+        "title": "Rejection of Personal Injury Protection",
+        "description": "Form for written rejection of PIP coverage",
+        "language": "The named insured named below hereby rejects Personal Injury Protection coverage under the policy number indicated. By signing this form, you acknowledge that you understand the benefits provided by Personal Injury Protection coverage and that you are voluntarily rejecting this coverage."
+      },
+      {
+        "id": "TX-END-004",
+        "form_number": "TX 23 15",
+        "title": "Rejection of Uninsured/Underinsured Motorist Coverage",
+        "description": "Form for written rejection of UM/UIM coverage",
+        "language": "The named insured named below hereby rejects Uninsured/Underinsured Motorist Coverage under the policy number indicated. By signing this form, you acknowledge that you understand: (1) The coverage you are rejecting; (2) You may be financially responsible for damages caused by an uninsured or underinsured driver; (3) Your rejection applies to all persons insured under this policy."
+      },
+      {
+        "id": "TX-END-005",
+        "form_number": "TX 24 01",
+        "title": "Texas Amendatory Endorsement",
+        "description": "Standard amendments required for Texas policies",
+        "language": "This endorsement modifies the policy to comply with Texas law. Where the policy provisions conflict with Texas law, the requirements of Texas law shall control. This endorsement is part of your policy and is subject to all its terms."
+      }
+    ]
+  },
+  "fraud_statement": {
+    "texas_specific": true,
+    "title": "Texas Fraud Warning",
+    "language": "Any person who knowingly presents a false or fraudulent claim for the payment of a loss is guilty of a felony and may be subject to fines and confinement in state prison."
+  },
+  "comparative_fault": {
+    "texas_specific": true,
+    "title": "Texas Proportionate Responsibility",
+    "description": "Texas follows modified comparative fault (proportionate responsibility)",
+    "language": "Texas follows the doctrine of proportionate responsibility. A claimant may recover damages only if the claimant's percentage of responsibility is not greater than 50 percent. The amount of damages recoverable shall be diminished in proportion to the claimant's percentage of responsibility."
+  }
+}
