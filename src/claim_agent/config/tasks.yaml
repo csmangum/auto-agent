@@ -1,7 +1,7 @@
 # Task definitions (reference; tasks are defined in crew modules)
 classify:
-  description: Classify the claim as new, duplicate, or total_loss based on the claim data
-  expected_output: One of new, duplicate, or total_loss with brief reasoning
+  description: Classify the claim as new, duplicate, total_loss, or fraud based on the claim data
+  expected_output: One of new, duplicate, total_loss, or fraud with brief reasoning
 
 validate_new_claim:
   description: Step 1 - Validate that all required fields are present. Step 2 - Check data types.
@@ -46,3 +46,16 @@ close_claim:
 evaluate_escalation:
   description: Evaluate claim for human review (low confidence, high value, fraud indicators)
   expected_output: Escalation report with needs_review, reasons, priority, recommended_action
+
+# Fraud detection tasks
+analyze_patterns:
+  description: Analyze claim for suspicious patterns including multiple claims, timing anomalies, staged accidents
+  expected_output: Pattern analysis with patterns_detected, timing_flags, risk_factors, pattern_score
+
+cross_reference_fraud:
+  description: Cross-reference claim against known fraud indicators database
+  expected_output: Cross-reference results with fraud_keywords, database_matches, risk_level, recommendations
+
+fraud_assessment:
+  description: Perform comprehensive fraud assessment combining pattern analysis and cross-reference results
+  expected_output: Fraud assessment report with fraud_likelihood, fraud_score, indicators, recommended_action, siu_referral

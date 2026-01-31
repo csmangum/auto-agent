@@ -15,6 +15,11 @@ __all__ = [
     "evaluate_escalation",
     "detect_fraud_indicators",
     "generate_escalation_report",
+    # Fraud detection tools
+    "analyze_claim_patterns",
+    "cross_reference_fraud_indicators",
+    "perform_fraud_assessment",
+    "generate_fraud_report",
 ]
 
 
@@ -68,4 +73,21 @@ def __getattr__(name: str):
         from claim_agent.tools.escalation_tools import generate_escalation_report
         setattr(mod, "generate_escalation_report", generate_escalation_report)
         return generate_escalation_report
+    # Fraud detection tools
+    if name == "analyze_claim_patterns":
+        from claim_agent.tools.fraud_tools import analyze_claim_patterns
+        setattr(mod, "analyze_claim_patterns", analyze_claim_patterns)
+        return analyze_claim_patterns
+    if name == "cross_reference_fraud_indicators":
+        from claim_agent.tools.fraud_tools import cross_reference_fraud_indicators
+        setattr(mod, "cross_reference_fraud_indicators", cross_reference_fraud_indicators)
+        return cross_reference_fraud_indicators
+    if name == "perform_fraud_assessment":
+        from claim_agent.tools.fraud_tools import perform_fraud_assessment
+        setattr(mod, "perform_fraud_assessment", perform_fraud_assessment)
+        return perform_fraud_assessment
+    if name == "generate_fraud_report":
+        from claim_agent.tools.fraud_tools import generate_fraud_report
+        setattr(mod, "generate_fraud_report", generate_fraud_report)
+        return generate_fraud_report
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

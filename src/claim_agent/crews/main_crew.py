@@ -9,11 +9,13 @@ from claim_agent.agents.router import create_router_agent
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
+from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.config.llm import get_llm
 from claim_agent.db.constants import (
     STATUS_CLOSED,
     STATUS_DUPLICATE,
     STATUS_FAILED,
+    STATUS_FRAUD_SUSPECTED,
     STATUS_NEEDS_REVIEW,
     STATUS_OPEN,
     STATUS_PROCESSING,
@@ -33,14 +35,21 @@ def create_router_crew(llm=None):
     classify_task = Task(
         description="""You are given claim_data (JSON) with: policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description, and optionally estimated_damage.
 
-Classify this claim as exactly one of: new, duplicate, or total_loss.
+Classify this claim as exactly one of: new, duplicate, total_loss, or fraud.
 
-- new: First-time claim submission, standard intake.
+- new: First-time claim submission, standard intake with no red flags.
 - duplicate: Likely a duplicate of an existing claim (e.g. same incident reported again).
 - total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, severe damage, or estimated repair very high).
+- fraud: Claim shows fraud indicators such as:
+  * Staged accident language (multiple occupants injured, witnesses left, brake checked)
+  * Inflated or suspicious damage claims
+  * Prior fraud history mentioned
+  * Inconsistent or fabricated details
+  * Pre-existing damage claims
+  * Suspiciously high damage estimates relative to incident
 
-Reply with exactly one word: new, duplicate, or total_loss. Then on the next line give one sentence reasoning.""",
-        expected_output="One line: exactly 'new', 'duplicate', or 'total_loss'. Second line: brief reasoning.",
+Reply with exactly one word: new, duplicate, total_loss, or fraud. Then on the next line give one sentence reasoning.""",
+        expected_output="One line: exactly 'new', 'duplicate', 'total_loss', or 'fraud'. Second line: brief reasoning.",
         agent=router,
     )
 
@@ -62,9 +71,13 @@ def _parse_claim_type(raw_output: str) -> str:
     for line in lines:
         normalized = line.strip().lower().replace("_", " ").replace("-", " ")
         # Exact matches first
-        if normalized in ("new", "duplicate", "total loss", "total_loss"):
-            return "total_loss" if normalized in ("total loss", "total_loss") else normalized
-        # Then line starts with type (check total_loss before duplicate/new)
+        if normalized in ("new", "duplicate", "total loss", "total_loss", "fraud"):
+            if normalized in ("total loss", "total_loss"):
+                return "total_loss"
+            return normalized
+        # Then line starts with type (check fraud and total_loss before duplicate/new)
+        if normalized.startswith("fraud"):
+            return "fraud"
         if normalized.startswith("total loss") or normalized.startswith("total_loss"):
             return "total_loss"
         if normalized.startswith("duplicate"):
@@ -80,6 +93,8 @@ def _final_status(claim_type: str) -> str:
         return STATUS_OPEN
     if claim_type == "duplicate":
         return STATUS_DUPLICATE
+    if claim_type == "fraud":
+        return STATUS_FRAUD_SUSPECTED
     return STATUS_CLOSED
 
 
@@ -166,6 +181,8 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             crew = create_new_claim_crew(llm)
         elif claim_type == "duplicate":
             crew = create_duplicate_crew(llm)
+        elif claim_type == "fraud":
+            crew = create_fraud_detection_crew(llm)
         else:
             crew = create_total_loss_crew(llm)
 

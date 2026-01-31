@@ -60,6 +60,23 @@ def test_total_loss_crew_kickoff():
     assert output
 
 
+@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+def test_fraud_detection_crew_kickoff():
+    """Run fraud detection crew on sample input (requires LLM)."""
+    from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
+
+    with open(Path(__file__).parent / "sample_claims" / "fraud_claim.json") as f:
+        claim_data = json.load(f)
+
+    crew = create_fraud_detection_crew()
+    inputs = {"claim_data": json.dumps(claim_data)}
+    result = crew.kickoff(inputs=inputs)
+    output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
+    assert output
+    # Fraud detection should produce fraud-related output
+    assert "fraud" in str(output).lower() or "risk" in str(output).lower()
+
+
 def test_run_claim_workflow_classification_only():
     """Test that run_claim_workflow returns expected keys and persists to DB."""
     from claim_agent.crews.main_crew import run_claim_workflow
@@ -78,7 +95,7 @@ def test_run_claim_workflow_classification_only():
         result = run_claim_workflow(claim_data)
         assert "claim_id" in result
         assert "claim_type" in result
-        assert result["claim_type"] in ("new", "duplicate", "total_loss")
+        assert result["claim_type"] in ("new", "duplicate", "total_loss", "fraud")
         assert "workflow_output" in result
         assert "summary" in result
     finally:
@@ -94,6 +111,7 @@ def test_parse_claim_type_exact():
     assert _parse_claim_type("duplicate") == "duplicate"
     assert _parse_claim_type("total_loss") == "total_loss"
     assert _parse_claim_type("total loss") == "total_loss"
+    assert _parse_claim_type("fraud") == "fraud"
 
 
 def test_parse_claim_type_with_reasoning():
@@ -103,6 +121,7 @@ def test_parse_claim_type_with_reasoning():
     assert _parse_claim_type("new\nReason: first-time submission.") == "new"
     assert _parse_claim_type("duplicate\nSame VIN and date as existing claim.") == "duplicate"
     assert _parse_claim_type("total_loss\nVehicle flooded.") == "total_loss"
+    assert _parse_claim_type("fraud\nMultiple fraud indicators detected.") == "fraud"
 
 
 def test_parse_claim_type_starts_with():
@@ -112,6 +131,7 @@ def test_parse_claim_type_starts_with():
     assert _parse_claim_type("new claim submission") == "new"
     assert _parse_claim_type("Duplicate of CLM-EXIST01") == "duplicate"
     assert _parse_claim_type("total loss - flood damage") == "total_loss"
+    assert _parse_claim_type("fraud - suspicious indicators") == "fraud"
 
 
 def test_parse_claim_type_default():
@@ -136,7 +156,9 @@ def test_workflow_failure_sets_status_failed():
     try:
         init_db(path)
         os.environ["CLAIMS_DB_PATH"] = path
-        with patch("claim_agent.crews.main_crew.create_router_crew") as m:
+        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm, \
+             patch("claim_agent.crews.main_crew.create_router_crew") as m:
+            mock_llm.return_value = None
             m.return_value.kickoff.side_effect = RuntimeError("simulated failure")
             with pytest.raises(RuntimeError, match="simulated failure"):
                 run_claim_workflow(claim_data)

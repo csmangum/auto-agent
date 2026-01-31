@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-001",
+  "vin": "JM1BL1S58A1234568",
+  "vehicle_year": 2020,
+  "vehicle_make": "Mazda",
+  "vehicle_model": "3",
+  "incident_date": "2026-01-25",
+  "incident_description": "Staged accident at intersection. Multiple occupants all reported injuries. Witnesses left scene before police arrived. The other driver brake checked me suddenly.",
+  "damage_description": "Inflated damage claim with pre-existing dents. Front bumper, hood, and both headlights claimed damaged. Repair shop estimate seems exaggerated and inconsistent with incident description.",
+  "estimated_damage": 25000
+}
