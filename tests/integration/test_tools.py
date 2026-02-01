@@ -462,9 +462,9 @@ class TestEscalationTools:
         data = json.loads(result)
         
         # High value should trigger escalation
-        if data.get("needs_review"):
-            assert "high_value" in str(data.get("escalation_reasons", [])).lower() or \
-                   "amount" in str(data.get("escalation_reasons", [])).lower()
+        assert data.get("needs_review") is True
+        assert "high_value" in str(data.get("escalation_reasons", [])).lower() or \
+               "amount" in str(data.get("escalation_reasons", [])).lower()
     
     @pytest.mark.integration
     def test_detect_fraud_indicators(self):

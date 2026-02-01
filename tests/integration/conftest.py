@@ -9,7 +9,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -42,9 +42,9 @@ def integration_db() -> Generator[str, None, None]:
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     
+    prev = os.environ.get("CLAIMS_DB_PATH")
     try:
         init_db(path)
-        prev = os.environ.get("CLAIMS_DB_PATH")
         os.environ["CLAIMS_DB_PATH"] = path
         yield path
     finally:
@@ -142,53 +142,9 @@ def sample_total_loss_claim() -> dict:
         return json.load(f)
 
 
-@pytest.fixture
-def sample_partial_loss_claim() -> dict:
-    """Load sample partial loss claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "partial_loss_claim.json") as f:
-        return json.load(f)
-
-
-@pytest.fixture
-def sample_duplicate_claim() -> dict:
-    """Load sample duplicate claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "duplicate_claim.json") as f:
-        return json.load(f)
-
-
-@pytest.fixture
-def all_sample_claims(
-    sample_new_claim,
-    sample_fraud_claim,
-    sample_total_loss_claim,
-    sample_partial_loss_claim,
-    sample_duplicate_claim,
-) -> dict:
-    """All sample claims by type."""
-    return {
-        "new": sample_new_claim,
-        "fraud": sample_fraud_claim,
-        "total_loss": sample_total_loss_claim,
-        "partial_loss": sample_partial_loss_claim,
-        "duplicate": sample_duplicate_claim,
-    }
-
-
 # ============================================================================
 # Mock LLM Fixtures
 # ============================================================================
-
-
-@pytest.fixture
-def mock_llm():
-    """Create a mock LLM that returns configurable responses.
-    
-    This fixture is useful for testing workflow logic without making actual
-    LLM API calls. The mock can be configured with specific responses.
-    """
-    mock = MagicMock()
-    mock.invoke.return_value = MagicMock(content="new\nStandard claim submission.")
-    return mock
 
 
 @pytest.fixture
@@ -229,94 +185,3 @@ def rag_cache_dir() -> Generator[Path, None, None]:
         yield Path(tmpdir)
 
 
-@pytest.fixture
-def policy_retriever(rag_cache_dir: Path):
-    """Create a PolicyRetriever instance with temporary cache.
-    
-    This fixture is marked slow because it may need to load embedding models.
-    """
-    pytest.importorskip("sentence_transformers")
-    
-    from claim_agent.rag.retriever import PolicyRetriever
-    
-    return PolicyRetriever(
-        data_dir=DATA_DIR,
-        cache_dir=rag_cache_dir,
-        auto_load=True,
-    )
-
-
-# ============================================================================
-# Environment Control Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def skip_if_no_api_key():
-    """Skip test if OPENAI_API_KEY is not set."""
-    if not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY not set; skipping LLM-dependent test")
-
-
-@pytest.fixture
-def clean_environment():
-    """Ensure a clean environment for testing.
-    
-    Saves and restores environment variables that might affect tests.
-    """
-    saved_env = {}
-    env_vars_to_save = [
-        "CLAIMS_DB_PATH",
-        "MOCK_DB_PATH",
-        "CLAIM_AGENT_CACHE_DIR",
-        "OPENAI_API_KEY",
-        "OPENAI_API_BASE",
-        "OPENAI_MODEL_NAME",
-    ]
-    
-    for var in env_vars_to_save:
-        saved_env[var] = os.environ.get(var)
-    
-    yield
-    
-    for var, value in saved_env.items():
-        if value is None:
-            os.environ.pop(var, None)
-        else:
-            os.environ[var] = value
-
-
-# ============================================================================
-# Utility Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def assert_claim_in_db(integration_db: str):
-    """Factory fixture to assert a claim exists in the database."""
-    from claim_agent.db.repository import ClaimRepository
-    
-    def _assert(claim_id: str, expected_status: str = None):
-        repo = ClaimRepository(db_path=integration_db)
-        claim = repo.get_claim(claim_id)
-        assert claim is not None, f"Claim {claim_id} not found in database"
-        if expected_status:
-            assert claim["status"] == expected_status, \
-                f"Expected status {expected_status}, got {claim['status']}"
-        return claim
-    
-    return _assert
-
-
-@pytest.fixture
-def create_test_claim(integration_db: str):
-    """Factory fixture to create test claims in the database."""
-    from claim_agent.db.repository import ClaimRepository
-    from claim_agent.models.claim import ClaimInput
-    
-    def _create(claim_data: dict) -> str:
-        repo = ClaimRepository(db_path=integration_db)
-        claim_input = ClaimInput(**claim_data)
-        return repo.create_claim(claim_input)
-    
-    return _create

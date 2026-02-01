@@ -23,7 +23,7 @@
 set -e
 
 # Default values
-PYTEST_ARGS=""
+PYTEST_ARGS=()
 COVERAGE=""
 VERBOSE=""
 
@@ -31,35 +31,35 @@ VERBOSE=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --all)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/"
+            PYTEST_ARGS+=("tests/integration/")
             shift
             ;;
         --fast)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/ -m 'integration and not slow and not llm'"
+            PYTEST_ARGS+=("tests/integration/" "-m" "integration and not slow and not llm")
             shift
             ;;
         --llm)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/ -m 'llm'"
+            PYTEST_ARGS+=("tests/integration/" "-m" "llm")
             shift
             ;;
         --rag)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/test_rag.py"
+            PYTEST_ARGS+=("tests/integration/test_rag.py")
             shift
             ;;
         --db)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/test_database.py"
+            PYTEST_ARGS+=("tests/integration/test_database.py")
             shift
             ;;
         --tools)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/test_tools.py"
+            PYTEST_ARGS+=("tests/integration/test_tools.py")
             shift
             ;;
         --mcp)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/test_mcp.py"
+            PYTEST_ARGS+=("tests/integration/test_mcp.py")
             shift
             ;;
         --workflow)
-            PYTEST_ARGS="$PYTEST_ARGS tests/integration/test_workflow.py"
+            PYTEST_ARGS+=("tests/integration/test_workflow.py")
             shift
             ;;
         --coverage)
@@ -82,8 +82,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Default to all integration tests if no specific tests selected
-if [ -z "$PYTEST_ARGS" ]; then
-    PYTEST_ARGS="tests/integration/ -m 'integration'"
+if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
+    PYTEST_ARGS=("tests/integration/" "-m" "integration")
 fi
 
 # Change to project root
@@ -121,9 +121,9 @@ echo "  MOCK_DB_PATH: ${MOCK_DB_PATH:-data/mock_db.json}"
 echo ""
 
 # Run tests
-echo "Running: pytest $PYTEST_ARGS $COVERAGE $VERBOSE"
+echo "Running: pytest ${PYTEST_ARGS[*]} $COVERAGE $VERBOSE"
 echo "=========================================="
-python -m pytest $PYTEST_ARGS $COVERAGE $VERBOSE
+python -m pytest "${PYTEST_ARGS[@]}" $COVERAGE $VERBOSE
 
 echo ""
 echo "=========================================="

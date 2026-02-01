@@ -245,9 +245,9 @@ class TestEscalation:
                 result = run_claim_workflow(high_value_claim)
         
         # Should be escalated due to high value
-        if result.get("needs_review"):
-            assert result["status"] == STATUS_NEEDS_REVIEW
-            assert "escalation_reasons" in result
+        assert result.get("needs_review") is True
+        assert result["status"] == STATUS_NEEDS_REVIEW
+        assert "escalation_reasons" in result
     
     @pytest.mark.integration
     def test_fraud_claim_runs_fraud_crew_instead_of_escalation(
