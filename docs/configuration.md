@@ -147,33 +147,57 @@ Reference policy language for different states:
 
 ## Agent Configuration
 
-Agent roles are defined in code, with reference YAML files:
+Agent roles, goals, and backstories are defined in **skill files** - markdown documents in the `skills/` folder. This allows easy customization of agent behavior without modifying code.
 
-### agents.yaml
+See [Skills](skills.md) for complete documentation.
+
+### Skills Directory
+
+```
+src/claim_agent/skills/
+├── router.md           # Claim Router Supervisor
+├── intake.md           # Intake Specialist
+├── policy_checker.md   # Policy Verification Specialist
+└── ...                 # 20 skill files total
+```
+
+### Skill File Format
+
+```markdown
+# Router Agent Skill
+
+## Role
+Claim Router Supervisor
+
+## Goal
+Classify claims and delegate to appropriate workflow
+
+## Backstory
+Senior claims manager with expertise in routing
+```
+
+### Reference YAML Files
+
+The `config/` folder also contains reference YAML files for agent and task definitions:
+
+#### agents.yaml
 
 ```yaml
 router:
   role: Claim Router Supervisor
   goal: Classify claims and delegate to appropriate workflow
   backstory: Senior claims manager with expertise in routing
-
-intake:
-  role: Intake Specialist
-  goal: Validate claim data and ensure required fields
-  backstory: Detail-oriented intake specialist
 ```
 
-### tasks.yaml
+#### tasks.yaml
 
 ```yaml
 classify:
   description: Classify the claim as new, duplicate, total_loss, fraud, or partial_loss
   expected_output: One classification with brief reasoning
-
-validate_new_claim:
-  description: Validate required fields and data types
-  expected_output: Validation result with missing/invalid fields
 ```
+
+Note: Agents now load their configuration from skill files, which provide more detailed prompts and context than the YAML reference files.
 
 ## Directory Structure
 
@@ -187,10 +211,13 @@ project/
 │   ├── california_auto_compliance.json
 │   └── *_auto_policy_language.json
 └── src/claim_agent/
-    └── config/
-        ├── llm.py          # LLM configuration
-        ├── agents.yaml     # Agent reference
-        └── tasks.yaml      # Task reference
+    ├── config/
+    │   ├── llm.py          # LLM configuration
+    │   ├── agents.yaml     # Agent reference
+    │   └── tasks.yaml      # Task reference
+    └── skills/
+        ├── __init__.py     # Skill loading utilities
+        └── *.md            # Agent skill definitions
 ```
 
 ## Logging

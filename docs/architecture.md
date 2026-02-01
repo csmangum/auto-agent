@@ -65,9 +65,11 @@ See [Agent Flow - Escalation](agent-flow.md#4-escalation-check-hitl) for details
 ### Agent Composition
 
 Each crew consists of multiple **specialized agents** that:
-- Have specific roles, goals, and backstories
+- Have specific roles, goals, and backstories defined in **skill files**
 - Use dedicated tools to accomplish tasks
 - Pass context between sequential tasks
+
+See [Skills](skills.md) for agent prompt definitions.
 
 ### Persistent State
 
@@ -130,6 +132,9 @@ src/claim_agent/
 │   └── llm.py           # LLM configuration
 ├── agents/              # Agent factory functions
 ├── crews/               # Crew definitions
+├── skills/              # Agent prompt definitions (markdown)
+│   ├── __init__.py      # Skill loading utilities
+│   └── *.md             # Individual agent skills
 ├── tools/               # CrewAI tools
 │   ├── logic.py         # Core implementation
 │   └── *_tools.py       # Tool wrappers
@@ -147,6 +152,7 @@ src/claim_agent/
 | Component | Technology | Documentation |
 |-----------|------------|---------------|
 | Agent Framework | CrewAI | [Crews](crews.md) |
+| Agent Prompts | Markdown Skills | [Skills](skills.md) |
 | LLM Provider | OpenRouter / OpenAI | [Configuration](configuration.md) |
 | Database | SQLite | [Database](database.md) |
 | Data Validation | Pydantic | [Claim Types](claim-types.md#required-fields) |
