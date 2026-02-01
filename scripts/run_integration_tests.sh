@@ -96,7 +96,7 @@ fi
 cd "$(dirname "$0")/.."
 
 # Check for virtual environment
-if [ -z "$VIRTUAL_ENV" ]; then
+if [ -z "${VIRTUAL_ENV:-}" ]; then
     if [ -d "venv" ]; then
         echo "Activating virtual environment..."
         source venv/bin/activate

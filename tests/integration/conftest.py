@@ -23,14 +23,6 @@ SAMPLE_CLAIMS_DIR = Path(__file__).parent.parent / "sample_claims"
 os.environ.setdefault("MOCK_DB_PATH", str(DATA_DIR / "mock_db.json"))
 
 
-def parse_tool_result(result: str) -> dict:
-    """Parse JSON tool result with helpful error on failure."""
-    try:
-        return json.loads(result)
-    except json.JSONDecodeError as e:
-        pytest.fail(f"Tool returned invalid JSON: {result[:100]}... Error: {e}")
-
-
 @pytest.fixture(autouse=True)
 def temp_db():
     """Override root autouse temp_db - integration tests use integration_db explicitly."""
