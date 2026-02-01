@@ -4,8 +4,6 @@ These tests verify that the Retrieval-Augmented Generation system works correctl
 for providing policy and compliance context to claim processing agents.
 """
 
-import json
-import tempfile
 from pathlib import Path
 
 import pytest
