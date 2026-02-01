@@ -7,6 +7,7 @@ This module provides:
 """
 
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -132,6 +133,7 @@ class TracingCallback:
         self.metrics_collector = metrics_collector
         self._traces: dict[str, LLMCallTrace] = {}
         self._trace_counter = 0
+        self._trace_counter_lock = threading.Lock()
         self._logger = logging.getLogger(__name__)
 
     def set_claim_id(self, claim_id: str) -> None:
@@ -139,10 +141,12 @@ class TracingCallback:
         self.claim_id = claim_id
 
     def _generate_trace_id(self) -> str:
-        """Generate a unique trace ID."""
-        self._trace_counter += 1
+        """Generate a unique trace ID (thread-safe)."""
+        with self._trace_counter_lock:
+            self._trace_counter += 1
+            counter = self._trace_counter
         timestamp = int(time.time() * 1000)
-        return f"trace-{timestamp}-{self._trace_counter}"
+        return f"trace-{timestamp}-{counter}"
 
     def log_pre_api_call(
         self,
@@ -186,7 +190,22 @@ class TracingCallback:
     ) -> LLMCallTrace | None:
         """Log after an LLM API call completes."""
         trace = self._traces.get(trace_id)
-        if not trace or trace.status != "pending":
+        if not trace:
+            self._logger.warning(
+                "log_post_api_call called with unknown trace_id=%s (claim_id=%s); "
+                "no matching pending trace found",
+                trace_id,
+                self.claim_id,
+            )
+            return None
+        if trace.status != "pending":
+            self._logger.debug(
+                "log_post_api_call skipped for trace_id=%s (claim_id=%s); "
+                "trace already in status=%s",
+                trace_id,
+                self.claim_id,
+                trace.status,
+            )
             return None
 
         trace.complete(
@@ -318,6 +337,7 @@ class LiteLLMTracingCallback:
         self.claim_id = claim_id
         self.metrics_collector = metrics_collector
         self._pending_calls: dict[str, dict[str, Any]] = {}
+        self._pending_calls_lock = threading.Lock()
         self._logger = logging.getLogger(__name__)
 
     def set_claim_id(self, claim_id: str) -> None:
@@ -332,11 +352,12 @@ class LiteLLMTracingCallback:
     ) -> None:
         """Called before the LLM API call."""
         call_id = kwargs.get("litellm_call_id", str(time.time()))
-        self._pending_calls[call_id] = {
-            "model": model,
-            "start_time": time.time(),
-            "claim_id": self.claim_id,
-        }
+        with self._pending_calls_lock:
+            self._pending_calls[call_id] = {
+                "model": model,
+                "start_time": time.time(),
+                "claim_id": self.claim_id,
+            }
         self._logger.info(
             "[litellm_call_start] call_id=%s, claim_id=%s, model=%s",
             call_id,
@@ -353,14 +374,18 @@ class LiteLLMTracingCallback:
     ) -> None:
         """Called after successful LLM API call."""
         call_id = kwargs.get("litellm_call_id", "")
-        call_info = self._pending_calls.pop(call_id, {})
+        with self._pending_calls_lock:
+            call_info = self._pending_calls.pop(call_id, {})
 
         # Extract usage info from response
-        usage = getattr(response_obj, "usage", None) or {}
-        if hasattr(usage, "model_dump"):
+        usage = getattr(response_obj, "usage", None)
+        if usage is None:
+            usage = {}
+        elif hasattr(usage, "model_dump"):
             usage = usage.model_dump()
         elif hasattr(usage, "__dict__"):
             usage = usage.__dict__
+        # else: assume it's already dict-like
 
         input_tokens = usage.get("prompt_tokens", 0)
         output_tokens = usage.get("completion_tokens", 0)
@@ -402,7 +427,8 @@ class LiteLLMTracingCallback:
     ) -> None:
         """Called after failed LLM API call."""
         call_id = kwargs.get("litellm_call_id", "")
-        call_info = self._pending_calls.pop(call_id, {})
+        with self._pending_calls_lock:
+            call_info = self._pending_calls.pop(call_id, {})
 
         latency_ms = (end_time - start_time) * 1000
 

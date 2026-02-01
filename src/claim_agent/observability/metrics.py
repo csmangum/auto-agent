@@ -225,11 +225,11 @@ class ClaimMetrics:
             task=task,
         )
 
-        # Ensure claim exists before acquiring metrics lock to avoid nested locking
-        if claim_id not in self._claims:
-            self.start_claim(claim_id)
-
+        # Ensure claim exists and append metric atomically under the metrics lock
         with self._lock:
+            if claim_id not in self._claims:
+                # Since we're using RLock, we can safely call start_claim from within the lock
+                self.start_claim(claim_id)
             self._claims[claim_id]["llm_calls"].append(metric)
 
         # Log the metric
