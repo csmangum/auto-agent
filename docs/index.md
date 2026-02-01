@@ -33,6 +33,7 @@ flowchart LR
 - **[RAG](rag.md)** - Retrieval-Augmented Generation for policy and compliance
 - **[Database](database.md)** - Schema and repository operations
 - **[Configuration](configuration.md)** - Environment and LLM setup
+- **[Observability](observability.md)** - Logging, tracing, and metrics
 - **[MCP Server](mcp-server.md)** - Optional external tool access
 
 ## Quick Reference
@@ -44,6 +45,7 @@ claim-agent process <claim.json>   # Process a new claim
 claim-agent status <claim_id>      # Get claim status
 claim-agent history <claim_id>     # Get claim audit log
 claim-agent reprocess <claim_id>   # Re-run workflow
+claim-agent metrics [claim_id]     # Show metrics (optional claim ID)
 ```
 
 ### Claim Types at a Glance
@@ -66,5 +68,6 @@ See [Claim Types](claim-types.md) for classification criteria and examples.
 - **Human-in-the-Loop** - Escalation for high-risk claims ([Agent Flow](agent-flow.md#4-escalation-check-hitl))
 - **Persistent State** - SQLite with full audit trail ([Database](database.md))
 - **Extensible Tools** - Easy to add capabilities ([Tools](tools.md))
+- **Observability** - Structured logging, LangSmith/LiteLLM tracing, cost and latency metrics ([Observability](observability.md))
 - **RAG for Policy/Compliance** - Semantic search over regulations ([RAG](rag.md))
 - **MCP Integration** - Optional external access ([MCP Server](mcp-server.md))
