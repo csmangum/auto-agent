@@ -10,6 +10,7 @@ import json
 import logging
 import threading
 import time
+from datetime import date
 from typing import Any
 
 import litellm
@@ -192,7 +193,14 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
     Returns list of potential duplicate claims (excluding the current claim if provided).
     """
     vin = claim_data.get("vin", "").strip()
-    incident_date = claim_data.get("incident_date", "").strip()
+    incident_date_raw = claim_data.get("incident_date")
+    # Handle both date objects and strings
+    if isinstance(incident_date_raw, date):
+        incident_date = incident_date_raw.isoformat()
+    elif isinstance(incident_date_raw, str):
+        incident_date = incident_date_raw.strip()
+    else:
+        incident_date = ""
     
     if not vin:
         return []
@@ -207,7 +215,7 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
     
     # If we have an incident date, prioritize claims with matching/close dates
     if incident_date and matches:
-        from datetime import datetime, timedelta
+        from datetime import datetime
         try:
             target_date = datetime.fromisoformat(incident_date)
             for match in matches:
