@@ -180,7 +180,7 @@ class TracingCallback:
         trace_id: str,
         input_tokens: int = 0,
         output_tokens: int = 0,
-        cost_usd: float = 0.0,
+        cost_usd: float | None = None,
         response: Any = None,
         error: str | None = None,
     ) -> LLMCallTrace | None:

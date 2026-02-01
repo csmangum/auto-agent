@@ -229,28 +229,3 @@ def claim_context(
         yield
     finally:
         _set_claim_context(old_context)
-
-
-def log_claim_event(
-    logger: logging.Logger | ClaimLogger,
-    event: str,
-    claim_id: str | None = None,
-    level: int = logging.INFO,
-    **data: Any,
-) -> None:
-    """Log a claim event with structured data.
-
-    Args:
-        logger: Logger instance
-        event: Event name (e.g., "claim_created", "workflow_started")
-        claim_id: Claim ID (optional if using claim_context)
-        level: Log level
-        **data: Additional event data
-    """
-    message = f"[{event}]"
-    if data:
-        details = ", ".join(f"{k}={v}" for k, v in data.items())
-        message = f"{message} {details}"
-    
-    extra = {"claim_id": claim_id, "extra_data": {"event": event, **data}}
-    logger.log(level, message, extra=extra)

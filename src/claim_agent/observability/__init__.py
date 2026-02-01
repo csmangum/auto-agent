@@ -10,7 +10,6 @@ from claim_agent.observability.logger import (
     ClaimLogger,
     get_logger,
     claim_context,
-    log_claim_event,
 )
 from claim_agent.observability.tracing import (
     TracingConfig,
@@ -21,8 +20,6 @@ from claim_agent.observability.tracing import (
 from claim_agent.observability.metrics import (
     ClaimMetrics,
     get_metrics,
-    track_llm_call,
-    get_claim_summary,
 )
 
 __all__ = [
@@ -30,7 +27,6 @@ __all__ = [
     "ClaimLogger",
     "get_logger",
     "claim_context",
-    "log_claim_event",
     # Tracing
     "TracingConfig",
     "get_tracing_callback",
@@ -39,6 +35,4 @@ __all__ = [
     # Metrics
     "ClaimMetrics",
     "get_metrics",
-    "track_llm_call",
-    "get_claim_summary",
 ]

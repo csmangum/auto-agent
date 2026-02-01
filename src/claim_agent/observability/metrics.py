@@ -407,31 +407,3 @@ def reset_metrics() -> None:
     global _global_metrics
     with _metrics_lock:
         _global_metrics = None
-
-
-def track_llm_call(
-    claim_id: str,
-    model: str,
-    input_tokens: int,
-    output_tokens: int,
-    cost_usd: float | None = None,
-    latency_ms: float = 0.0,
-    status: str = "success",
-    error: str | None = None,
-) -> None:
-    """Convenience function to track an LLM call on the global metrics instance."""
-    get_metrics().record_llm_call(
-        claim_id=claim_id,
-        model=model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost_usd,
-        latency_ms=latency_ms,
-        status=status,
-        error=error,
-    )
-
-
-def get_claim_summary(claim_id: str) -> ClaimMetricsSummary | None:
-    """Convenience function to get claim summary from global metrics."""
-    return get_metrics().get_claim_summary(claim_id)

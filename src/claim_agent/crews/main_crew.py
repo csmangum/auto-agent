@@ -37,7 +37,6 @@ from claim_agent.observability import (
     get_logger,
     claim_context,
     get_metrics,
-    get_tracing_callback,
 )
 from claim_agent.observability.tracing import LiteLLMTracingCallback
 
@@ -182,18 +181,14 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         repo.update_claim_status(claim_id, STATUS_PROCESSING)
         logger.log_event("workflow_started", status=STATUS_PROCESSING)
 
-        # Get tracing callback for LLM calls
-        tracing_callback = get_tracing_callback(
-            claim_id=claim_id,
-            metrics_collector=metrics,
-        )
         # Register LiteLLM callback so all LLM calls (via CrewAI) are traced with real token/cost data
         litellm_callback = LiteLLMTracingCallback(
             claim_id=claim_id,
             metrics_collector=metrics,
         )
+        # Append to existing callbacks instead of replacing to avoid race conditions
         prev_litellm_callbacks = getattr(litellm, "callbacks", None) or []
-        litellm.callbacks = [litellm_callback]
+        litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
 
         try:
             # Inject claim_id so workflow crews use the same ID (e.g. new claim assignment)
@@ -204,13 +199,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             logger.log_event("router_started", step="classification")
             router_start = time.time()
 
-            # Track router LLM call
-            trace_id = tracing_callback.log_pre_api_call(
-                model=get_model_name(),
-                agent="router",
-                task="classification",
-            )
-
             router_crew = create_router_crew(llm)
             result = router_crew.kickoff(inputs=inputs)
 
@@ -218,17 +206,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
             raw_output = str(raw_output)
             claim_type = _parse_claim_type(raw_output)
-
-            # Log router completion
-            # NOTE: Token counts are rough estimates (char_count / 4) since CrewAI doesn't
-            # expose actual token counts. These should NOT be relied upon for accurate cost
-            # tracking. For production use, consider integrating a tokenizer library like
-            # tiktoken for OpenAI models or extracting actual counts from response objects.
-            tracing_callback.log_post_api_call(
-                trace_id=trace_id,
-                input_tokens=len(inputs.get("claim_data", "")) // 4,  # Rough estimate
-                output_tokens=len(raw_output) // 4,  # Rough estimate
-            )
 
             logger.set_claim_type(claim_type)
             logger.log_event(
@@ -293,13 +270,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             logger.log_event("crew_started", crew=claim_type)
             crew_start = time.time()
 
-            # Track crew LLM call
-            crew_trace_id = tracing_callback.log_pre_api_call(
-                model=get_model_name(),
-                agent=f"{claim_type}_crew",
-                task="processing",
-            )
-
             if claim_type == "new":
                 crew = create_new_claim_crew(llm)
             elif claim_type == "duplicate":
@@ -316,17 +286,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
 
             workflow_output = getattr(workflow_result, "raw", None) or getattr(workflow_result, "output", None) or str(workflow_result)
             workflow_output = str(workflow_output)
-
-            # Log crew completion
-            # NOTE: Token counts are rough estimates (char_count / 4) since CrewAI doesn't
-            # expose actual token counts. These should NOT be relied upon for accurate cost
-            # tracking. For production use, consider integrating a tokenizer library like
-            # tiktoken for OpenAI models or extracting actual counts from response objects.
-            tracing_callback.log_post_api_call(
-                trace_id=crew_trace_id,
-                input_tokens=len(inputs.get("claim_data", "")) // 4,
-                output_tokens=len(workflow_output) // 4,
-            )
 
             logger.log_event(
                 "crew_completed",
@@ -375,24 +334,12 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 level=logging.ERROR,
             )
 
-            # Complete any pending traces with error
-            # Check if trace_id exists (from router) and complete it
-            if 'trace_id' in locals():
-                tracing_callback.log_post_api_call(
-                    trace_id=trace_id,
-                    error=str(e),
-                )
-            # Check if crew_trace_id exists (from crew) and complete it
-            if 'crew_trace_id' in locals():
-                tracing_callback.log_post_api_call(
-                    trace_id=crew_trace_id,
-                    error=str(e),
-                )
-
             # End metrics tracking with error status
             metrics.end_claim(claim_id, status="error")
             metrics.log_claim_summary(claim_id)
 
             raise
         finally:
-            litellm.callbacks = prev_litellm_callbacks
+            # Remove only our callback from the list to avoid affecting other workflows
+            current_callbacks = getattr(litellm, "callbacks", None) or []
+            litellm.callbacks = [cb for cb in current_callbacks if cb is not litellm_callback]

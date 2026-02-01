@@ -51,24 +51,6 @@ class TestStructuredLogging:
         # After context
         assert _get_claim_context() == {}
 
-    def test_log_claim_event(self, caplog):
-        """log_claim_event should log structured events."""
-        from claim_agent.observability.logger import log_claim_event, get_logger
-
-        logger = get_logger("test_event_logger")
-        # Enable propagation for test capture (disabled by default to prevent duplicates)
-        logger.logger.propagate = True
-        with caplog.at_level(logging.INFO):
-            log_claim_event(
-                logger,
-                event="claim_created",
-                claim_id="CLM-456",
-                policy_number="POL-123",
-            )
-
-        assert len(caplog.records) >= 1
-        assert "claim_created" in caplog.text
-
     def test_structured_formatter_json_output(self):
         """StructuredFormatter should output valid JSON."""
         from claim_agent.observability.logger import StructuredFormatter
@@ -349,29 +331,6 @@ class TestGlobalHelpers:
         m1 = get_metrics()
         m2 = get_metrics()
         assert m1 is m2
-
-    def test_track_llm_call_helper(self):
-        """track_llm_call should use global metrics."""
-        from claim_agent.observability.metrics import (
-            track_llm_call,
-            get_metrics,
-        )
-
-        # Use a unique claim ID to avoid interference
-        claim_id = f"CLM-HELPER-{time.time()}"
-        
-        track_llm_call(
-            claim_id=claim_id,
-            model="gpt-4o-mini",
-            input_tokens=100,
-            output_tokens=50,
-            latency_ms=100.0,
-        )
-
-        summary = get_metrics().get_claim_summary(claim_id)
-        assert summary is not None
-        assert summary.total_llm_calls == 1
-
 
 class TestLiteLLMCallback:
     """Tests for LiteLLM callback integration."""
