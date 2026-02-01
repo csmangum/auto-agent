@@ -94,14 +94,14 @@ class TestClaimDataFromRow:
 class TestCmdStatus:
     """Tests for cmd_status function."""
 
-    def test_cmd_status_found(self):
+    def test_cmd_status_found(self, monkeypatch):
         """Test cmd_status with existing claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -131,18 +131,16 @@ class TestCmdStatus:
             else:
                 os.environ["CLAIMS_DB_PATH"] = prev
 
-    def test_cmd_status_not_found(self):
+    def test_cmd_status_not_found(self, monkeypatch):
         """Test cmd_status with non-existent claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
-            
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             with pytest.raises(SystemExit) as exc_info:
                 cmd_status("CLM-NONEXISTENT")
-            
             assert exc_info.value.code == 1
         finally:
             os.unlink(db_path)
@@ -155,14 +153,14 @@ class TestCmdStatus:
 class TestCmdHistory:
     """Tests for cmd_history function."""
 
-    def test_cmd_history_found(self):
+    def test_cmd_history_found(self, monkeypatch):
         """Test cmd_history with existing claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -192,18 +190,16 @@ class TestCmdHistory:
             else:
                 os.environ["CLAIMS_DB_PATH"] = prev
 
-    def test_cmd_history_not_found(self):
+    def test_cmd_history_not_found(self, monkeypatch):
         """Test cmd_history with non-existent claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
-            
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             with pytest.raises(SystemExit) as exc_info:
                 cmd_history("CLM-NONEXISTENT")
-            
             assert exc_info.value.code == 1
         finally:
             os.unlink(db_path)
@@ -255,18 +251,16 @@ class TestCmdProcess:
 class TestCmdReprocess:
     """Tests for cmd_reprocess function."""
 
-    def test_cmd_reprocess_not_found(self):
+    def test_cmd_reprocess_not_found(self, monkeypatch):
         """Test cmd_reprocess with non-existent claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
-            
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             with pytest.raises(SystemExit) as exc_info:
                 cmd_reprocess("CLM-NONEXISTENT")
-            
             assert exc_info.value.code == 1
         finally:
             os.unlink(db_path)
@@ -327,14 +321,14 @@ class TestMain:
             
             assert exc_info.value.code == 1
 
-    def test_main_status_with_claim_id(self):
+    def test_main_status_with_claim_id(self, monkeypatch):
         """Test main status command with claim_id."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -363,14 +357,14 @@ class TestMain:
             else:
                 os.environ["CLAIMS_DB_PATH"] = prev
 
-    def test_main_history_with_claim_id(self):
+    def test_main_history_with_claim_id(self, monkeypatch):
         """Test main history command with claim_id."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -399,7 +393,7 @@ class TestMain:
             else:
                 os.environ["CLAIMS_DB_PATH"] = prev
 
-    def test_main_legacy_file_path(self):
+    def test_main_legacy_file_path(self, monkeypatch):
         """Test main with legacy file path argument."""
         # Create a valid claim file
         fd, db_path = tempfile.mkstemp(suffix=".db")
@@ -423,8 +417,7 @@ class TestMain:
         
         try:
             init_db(db_path)
-            os.environ["CLAIMS_DB_PATH"] = db_path
-            
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             with patch("sys.argv", ["claim-agent", claim_path]):
                 with patch("claim_agent.crews.main_crew.run_claim_workflow") as mock_workflow:
                     mock_workflow.return_value = {"claim_id": "CLM-TEST", "status": "open"}

@@ -5,8 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
-# Point to project data for mock_db
-os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
+import pytest
 
 from claim_agent.mcp_server.server import (
     query_policy_db,
@@ -19,6 +18,13 @@ from claim_agent.mcp_server.server import (
     generate_claim_id,
     search_california_compliance,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_db_env(monkeypatch):
+    """Ensure MOCK_DB_PATH points to the project mock_db.json for all tests."""
+    mock_db_path = Path(__file__).resolve().parent.parent / "data" / "mock_db.json"
+    monkeypatch.setenv("MOCK_DB_PATH", str(mock_db_path))
 
 
 class TestMcpServerTools:
@@ -38,7 +44,7 @@ class TestMcpServerTools:
         data = json.loads(result)
         assert data["valid"] is False
 
-    def test_search_claims_db_empty(self):
+    def test_search_claims_db_empty(self, monkeypatch):
         """Test search_claims_db with no matches."""
         from claim_agent.db.database import init_db
 
@@ -47,7 +53,7 @@ class TestMcpServerTools:
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(path)
-            os.environ["CLAIMS_DB_PATH"] = path
+            monkeypatch.setenv("CLAIMS_DB_PATH", path)
             result = search_claims_db("UNKNOWN_VIN", "2020-01-01")
             claims = json.loads(result)
             assert claims == []
@@ -58,7 +64,7 @@ class TestMcpServerTools:
             else:
                 os.environ["CLAIMS_DB_PATH"] = prev
 
-    def test_search_claims_db_with_match(self):
+    def test_search_claims_db_with_match(self, monkeypatch):
         """Test search_claims_db with a matching claim."""
         from claim_agent.db.database import init_db
         from claim_agent.db.repository import ClaimRepository
@@ -69,7 +75,7 @@ class TestMcpServerTools:
         prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(path)
-            os.environ["CLAIMS_DB_PATH"] = path
+            monkeypatch.setenv("CLAIMS_DB_PATH", path)
             repo = ClaimRepository(db_path=path)
             repo.create_claim(
                 ClaimInput(
