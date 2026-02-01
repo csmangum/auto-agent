@@ -1,4 +1,9 @@
-"""MCP server exposing claim tools via stdio transport."""
+"""MCP server exposing claim tools via stdio transport.
+
+This server includes observability endpoints for metrics and tracing.
+"""
+
+import json
 
 from mcp.server.fastmcp import FastMCP
 
@@ -13,6 +18,7 @@ from claim_agent.tools.logic import (
     generate_claim_id_impl,
     search_california_compliance_impl,
 )
+from claim_agent.observability import get_metrics
 
 mcp = FastMCP("claim-tools", json_response=True)
 
@@ -75,6 +81,62 @@ def generate_claim_id(prefix: str = "CLM") -> str:
 def search_california_compliance(query: str = "") -> str:
     """Search California auto insurance compliance/regulatory reference data by keyword."""
     return search_california_compliance_impl(query)
+
+
+# ============================================================================
+# OBSERVABILITY TOOLS
+# ============================================================================
+
+
+@mcp.tool()
+def get_claim_metrics(claim_id: str | None = None) -> str:
+    """Get metrics for claim processing.
+
+    Args:
+        claim_id: Optional claim ID. If provided, returns metrics for that claim.
+                 If not provided, returns global metrics summary.
+
+    Returns:
+        JSON string with metrics data including:
+        - total_llm_calls: Number of LLM API calls made
+        - total_tokens: Total tokens used
+        - total_cost_usd: Estimated cost in USD
+        - total_latency_ms: Total processing time
+        - avg_latency_ms: Average latency per call
+        - status: Current claim status
+    """
+    metrics = get_metrics()
+
+    if claim_id:
+        summary = metrics.get_claim_summary(claim_id)
+        if summary is None:
+            return json.dumps({"error": f"No metrics found for claim: {claim_id}"})
+        return json.dumps(summary.to_dict(), default=str)
+    else:
+        return json.dumps({
+            "global_stats": metrics.get_global_stats(),
+            "claims": [s.to_dict() for s in metrics.get_all_summaries()],
+        }, default=str)
+
+
+@mcp.tool()
+def get_observability_config() -> str:
+    """Get current observability configuration.
+
+    Returns:
+        JSON string with current tracing and logging configuration.
+    """
+    from claim_agent.observability.tracing import TracingConfig
+
+    config = TracingConfig.from_env()
+    return json.dumps({
+        "langsmith_enabled": config.langsmith_enabled,
+        "langsmith_project": config.langsmith_project,
+        "trace_llm_calls": config.trace_llm_calls,
+        "trace_tool_calls": config.trace_tool_calls,
+        "log_prompts": config.log_prompts,
+        "log_responses": config.log_responses,
+    })
 
 
 def main() -> None:

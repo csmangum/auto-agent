@@ -16,6 +16,9 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
 ]
+observability = [
+    "langsmith>=0.1.0",
+]
 
 [project.scripts]
 claim-agent = "claim_agent.main:main"
