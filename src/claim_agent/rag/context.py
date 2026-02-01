@@ -42,7 +42,16 @@ class _LRUCache(OrderedDict):
         """Override equality to compare both dict contents and maxsize."""
         if not isinstance(other, _LRUCache):
             return NotImplemented
-        return super().__eq__(other) and self.maxsize == other.maxsize
+        # Compare maxsize first, then dict contents
+        if self.maxsize != other.maxsize:
+            return False
+        # Compare as dicts (content and order)
+        if len(self) != len(other):
+            return False
+        for (k1, v1), (k2, v2) in zip(self.items(), other.items()):
+            if k1 != k2 or v1 != v2:
+                return False
+        return True
     
     def __hash__(self):
         """Make unhashable since we override __eq__."""
