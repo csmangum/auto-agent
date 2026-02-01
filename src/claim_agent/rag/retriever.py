@@ -5,6 +5,7 @@ for claim processing agents.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -99,7 +100,6 @@ class PolicyRetriever:
                 return
             except (json.JSONDecodeError, FileNotFoundError, KeyError, ValueError) as e:
                 # Cache is corrupted or incompatible, rebuild
-                import logging
                 logging.warning(f"Failed to load cache from {self.cache_dir}: {e}. Rebuilding index.")
         
         self._build_index()
@@ -107,8 +107,6 @@ class PolicyRetriever:
     
     def _build_index(self) -> None:
         """Build the vector store index from documents."""
-        import logging
-        
         # Validate data directory exists
         if not self.data_dir.exists():
             logging.warning(f"Data directory {self.data_dir} does not exist. Creating empty index.")
