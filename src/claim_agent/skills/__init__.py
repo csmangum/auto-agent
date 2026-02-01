@@ -1,11 +1,20 @@
-"""Skills module for loading agent skill definitions from markdown files."""
+"""Skills module for loading agent skill definitions from markdown files.
+
+Skills can be enriched with RAG context for policy and compliance information.
+"""
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from claim_agent.rag.context import RAGContextProvider
 
 
 SKILLS_DIR = Path(__file__).parent
+
+# Global RAG context provider (lazy-loaded)
+_rag_provider: Optional["RAGContextProvider"] = None
 
 
 def get_skill_path(skill_name: str) -> Path:
@@ -79,6 +88,64 @@ def load_skill(skill_name: str) -> dict:
         "tools": parse_skill_section(content, "Tools"),
         "full_content": content,
     }
+
+
+def load_skill_with_context(
+    skill_name: str,
+    state: str = "California",
+    claim_type: Optional[str] = None,
+    use_rag: bool = True,
+) -> dict:
+    """Load a skill file and enrich it with RAG context.
+    
+    This adds relevant policy and compliance information to the agent's
+    backstory based on the skill type and state jurisdiction.
+    
+    Args:
+        skill_name: Name of the skill (without .md extension)
+        state: State jurisdiction for the claim (e.g., "California", "Texas")
+        claim_type: Optional claim type for additional context
+        use_rag: Whether to enrich with RAG context
+        
+    Returns:
+        Dictionary with parsed skill components, enriched with context
+    """
+    skill = load_skill(skill_name)
+    
+    if not use_rag:
+        return skill
+    
+    try:
+        global _rag_provider
+        if _rag_provider is None:
+            from claim_agent.rag.context import RAGContextProvider
+            _rag_provider = RAGContextProvider(default_state=state)
+        
+        return _rag_provider.enrich_skill(
+            skill_dict=skill,
+            skill_name=skill_name,
+            state=state,
+            claim_type=claim_type,
+        )
+    except Exception:
+        # If RAG fails, return the base skill
+        return skill
+
+
+def get_rag_provider(state: str = "California") -> "RAGContextProvider":
+    """Get the global RAG context provider.
+    
+    Args:
+        state: Default state jurisdiction
+        
+    Returns:
+        RAGContextProvider instance
+    """
+    global _rag_provider
+    if _rag_provider is None:
+        from claim_agent.rag.context import RAGContextProvider
+        _rag_provider = RAGContextProvider(default_state=state)
+    return _rag_provider
 
 
 def list_skills() -> list[str]:
