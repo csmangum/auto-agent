@@ -4,8 +4,6 @@ Agents can be enriched with RAG context by providing state and claim_type
 parameters to include relevant policy and compliance regulations in prompts.
 """
 
-from typing import Optional
-
 from crewai import Agent
 
 from claim_agent.tools import (

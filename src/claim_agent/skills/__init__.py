@@ -127,8 +127,10 @@ def load_skill_with_context(
             state=state,
             claim_type=claim_type,
         )
-    except Exception:
+    except (ImportError, FileNotFoundError, AttributeError, KeyError) as e:
         # If RAG fails, return the base skill
+        import logging
+        logging.warning(f"Failed to enrich skill {skill_name} with RAG context: {e}")
         return skill
 
 

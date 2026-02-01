@@ -1,6 +1,5 @@
 """Tests for the RAG (Retrieval-Augmented Generation) module."""
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -23,17 +22,19 @@ class TestDocumentChunker:
         
         # Test with California policy file
         policy_file = DATA_DIR / "california_auto_policy_language.json"
-        if policy_file.exists():
-            chunks = chunker.chunk_json_document(policy_file)
+        if not policy_file.exists():
+            pytest.skip(f"Test data file not found: {policy_file}")
             
-            assert len(chunks) > 0
-            
-            # Check chunk structure
-            for chunk in chunks:
-                assert chunk.content
-                assert chunk.chunk_id
-                assert chunk.metadata.state == "California"
-                assert "policy_language" in chunk.metadata.data_type
+        chunks = chunker.chunk_json_document(policy_file)
+        
+        assert len(chunks) > 0
+        
+        # Check chunk structure
+        for chunk in chunks:
+            assert chunk.content
+            assert chunk.chunk_id
+            assert chunk.metadata.state == "California"
+            assert "policy_language" in chunk.metadata.data_type
     
     def test_chunk_compliance_document(self):
         """Test chunking a compliance document."""
@@ -43,17 +44,19 @@ class TestDocumentChunker:
         
         # Test with California compliance file
         compliance_file = DATA_DIR / "california_auto_compliance.json"
-        if compliance_file.exists():
-            chunks = chunker.chunk_json_document(compliance_file)
+        if not compliance_file.exists():
+            pytest.skip(f"Test data file not found: {compliance_file}")
             
-            assert len(chunks) > 0
-            
-            # Check for compliance-specific chunks
-            compliance_chunks = [
-                c for c in chunks 
-                if "compliance" in c.metadata.data_type.lower()
-            ]
-            assert len(compliance_chunks) > 0
+        chunks = chunker.chunk_json_document(compliance_file)
+        
+        assert len(chunks) > 0
+        
+        # Check for compliance-specific chunks
+        compliance_chunks = [
+            c for c in chunks 
+            if "compliance" in c.metadata.data_type.lower()
+        ]
+        assert len(compliance_chunks) > 0
     
     def test_chunk_metadata(self):
         """Test chunk metadata extraction."""
@@ -82,23 +85,27 @@ class TestDocumentChunker:
         """Test the chunk_policy_data convenience function."""
         from claim_agent.rag.chunker import chunk_policy_data
         
-        if DATA_DIR.exists():
-            chunks = chunk_policy_data(DATA_DIR)
+        if not DATA_DIR.exists():
+            pytest.skip(f"Test data directory not found: {DATA_DIR}")
             
-            # Should have chunks from multiple states
-            states = set(c.metadata.state for c in chunks)
-            assert len(states) >= 1
+        chunks = chunk_policy_data(DATA_DIR)
+        
+        # Should have chunks from multiple states
+        states = set(c.metadata.state for c in chunks)
+        assert len(states) >= 1
     
     def test_chunk_compliance_data_function(self):
         """Test the chunk_compliance_data convenience function."""
         from claim_agent.rag.chunker import chunk_compliance_data
         
-        if DATA_DIR.exists():
-            chunks = chunk_compliance_data(DATA_DIR)
+        if not DATA_DIR.exists():
+            pytest.skip(f"Test data directory not found: {DATA_DIR}")
             
-            # All should be compliance type
-            for chunk in chunks:
-                assert "compliance" in chunk.metadata.data_type.lower()
+        chunks = chunk_compliance_data(DATA_DIR)
+        
+        # All should be compliance type
+        for chunk in chunks:
+            assert "compliance" in chunk.metadata.data_type.lower()
     
     def test_chunk_to_dict_roundtrip(self):
         """Test chunk serialization/deserialization."""
@@ -541,7 +548,7 @@ class TestRAGTools:
         
         # The tool function has wrapper from crewai
         # Test the underlying implementation
-        result = search_policy_compliance._run(
+        result = search_policy_compliance.run(
             query="total loss valuation",
             state="California",
         )
@@ -554,7 +561,7 @@ class TestRAGTools:
         """Test the compliance deadlines tool."""
         from claim_agent.tools.rag_tools import get_compliance_deadlines
         
-        result = get_compliance_deadlines._run(state="California")
+        result = get_compliance_deadlines.run(state="California")
         
         assert isinstance(result, str)
     
@@ -563,6 +570,6 @@ class TestRAGTools:
         """Test the total loss requirements tool."""
         from claim_agent.tools.rag_tools import get_total_loss_requirements
         
-        result = get_total_loss_requirements._run(state="California")
+        result = get_total_loss_requirements.run(state="California")
         
         assert isinstance(result, str)
