@@ -324,19 +324,19 @@ class TestClaimSearch:
         assert results[0]["vin"] == "1HGBH41JXMN109186"
     
     @pytest.mark.integration
-    def test_search_by_incident_date(self, seeded_db):
+    def test_search_by_incident_date(self, seeded_db, seeded_db_base_date):
         """Test searching claims by incident date."""
         from claim_agent.db.repository import ClaimRepository
         
         repo = ClaimRepository(db_path=seeded_db)
         
-        results = repo.search_claims(incident_date="2025-01-15")
+        results = repo.search_claims(incident_date=seeded_db_base_date)
         
         assert len(results) >= 1
-        assert all(r["incident_date"] == "2025-01-15" for r in results)
+        assert all(r["incident_date"] == seeded_db_base_date for r in results)
     
     @pytest.mark.integration
-    def test_search_by_vin_and_date(self, seeded_db):
+    def test_search_by_vin_and_date(self, seeded_db, seeded_db_base_date):
         """Test searching claims by VIN and date."""
         from claim_agent.db.repository import ClaimRepository
         
@@ -344,12 +344,12 @@ class TestClaimSearch:
         
         results = repo.search_claims(
             vin="1HGBH41JXMN109186",
-            incident_date="2025-01-15"
+            incident_date=seeded_db_base_date
         )
         
         assert len(results) == 1
         assert results[0]["vin"] == "1HGBH41JXMN109186"
-        assert results[0]["incident_date"] == "2025-01-15"
+        assert results[0]["incident_date"] == seeded_db_base_date
     
     @pytest.mark.integration
     def test_search_with_no_matches(self, seeded_db):

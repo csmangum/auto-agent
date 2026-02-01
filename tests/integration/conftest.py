@@ -7,6 +7,7 @@ including database setup, mock LLM configurations, and test data loading.
 import json
 import os
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Generator
 from unittest.mock import MagicMock
@@ -20,6 +21,20 @@ SAMPLE_CLAIMS_DIR = Path(__file__).parent.parent / "sample_claims"
 
 # Set MOCK_DB_PATH for all tests
 os.environ.setdefault("MOCK_DB_PATH", str(DATA_DIR / "mock_db.json"))
+
+
+def parse_tool_result(result: str) -> dict:
+    """Parse JSON tool result with helpful error on failure."""
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as e:
+        pytest.fail(f"Tool returned invalid JSON: {result[:100]}... Error: {e}")
+
+
+@pytest.fixture(autouse=True)
+def temp_db():
+    """Override root autouse temp_db - integration tests use integration_db explicitly."""
+    yield None
 
 
 # ============================================================================
@@ -59,6 +74,16 @@ def integration_db() -> Generator[str, None, None]:
             pass
 
 
+# Base date for seeded_db claims (shared so tests can search by it)
+_SEEDED_BASE_DATE = date.today() - timedelta(days=30)
+
+
+@pytest.fixture
+def seeded_db_base_date() -> str:
+    """Base incident date used for first claim in seeded_db (for tests that search by date)."""
+    return _SEEDED_BASE_DATE.isoformat()
+
+
 @pytest.fixture
 def seeded_db(integration_db: str) -> Generator[str, None, None]:
     """Create a database pre-seeded with sample claims.
@@ -71,10 +96,11 @@ def seeded_db(integration_db: str) -> Generator[str, None, None]:
     """
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
-    
+
     repo = ClaimRepository(db_path=integration_db)
-    
-    # Seed with sample claims
+    base_date = _SEEDED_BASE_DATE
+
+    # Seed with sample claims (relative dates for stability)
     sample_claims = [
         {
             "policy_number": "POL-001",
@@ -82,7 +108,7 @@ def seeded_db(integration_db: str) -> Generator[str, None, None]:
             "vehicle_year": 2021,
             "vehicle_make": "Honda",
             "vehicle_model": "Accord",
-            "incident_date": "2025-01-15",
+            "incident_date": base_date.isoformat(),
             "incident_description": "Rear-ended at stoplight.",
             "damage_description": "Rear bumper and trunk damaged.",
             "estimated_damage": 3500,
@@ -93,7 +119,7 @@ def seeded_db(integration_db: str) -> Generator[str, None, None]:
             "vehicle_year": 2022,
             "vehicle_make": "Tesla",
             "vehicle_model": "Model 3",
-            "incident_date": "2025-01-20",
+            "incident_date": (base_date + timedelta(days=5)).isoformat(),
             "incident_description": "Minor fender bender in parking lot.",
             "damage_description": "Front bumper scratch.",
             "estimated_damage": 1200,
@@ -104,7 +130,7 @@ def seeded_db(integration_db: str) -> Generator[str, None, None]:
             "vehicle_year": 2020,
             "vehicle_make": "Mazda",
             "vehicle_model": "3",
-            "incident_date": "2025-01-25",
+            "incident_date": (base_date + timedelta(days=10)).isoformat(),
             "incident_description": "Vehicle totaled in flood.",
             "damage_description": "Total loss - flood damage.",
             "estimated_damage": 15000,

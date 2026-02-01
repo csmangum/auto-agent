@@ -20,7 +20,13 @@
 #   -v, --verbose  Verbose output
 #   -h, --help     Show this help message
 
-set -e
+set -euo pipefail
+
+# Verify bash is available (for CI environments)
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "Error: This script requires bash"
+    exit 1
+fi
 
 # Default values
 PYTEST_ARGS=()
