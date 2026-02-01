@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 from claim_agent.rag.constants import DEFAULT_STATE
 
 
+logger = logging.getLogger(__name__)
+
 SKILLS_DIR = Path(__file__).parent
 
 # Global RAG context provider (lazy-loaded), protected by lock
@@ -138,11 +140,11 @@ def load_skill_with_context(
         # If RAG fails, return the base skill
         error_type = type(e).__name__
         if isinstance(e, FileNotFoundError):
-            logging.warning(f"Failed to enrich skill {skill_name}: RAG data files not found ({e})")
+            logger.warning(f"Failed to enrich skill {skill_name}: RAG data files not found ({e})")
         elif isinstance(e, ImportError):
-            logging.warning(f"Failed to enrich skill {skill_name}: RAG module could not be loaded ({e})")
+            logger.warning(f"Failed to enrich skill {skill_name}: RAG module could not be loaded ({e})")
         else:
-            logging.warning(f"Failed to enrich skill {skill_name} with RAG context ({error_type}: {e})")
+            logger.warning(f"Failed to enrich skill {skill_name} with RAG context ({error_type}: {e})")
         return skill
 
 

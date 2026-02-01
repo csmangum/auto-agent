@@ -48,6 +48,10 @@ def search_policy_compliance(
     Returns:
         Relevant policy and compliance excerpts with source information
     """
+    # Validate query
+    if not query or not query.strip():
+        return "Search query cannot be empty."
+    
     try:
         state = normalize_state(state)
     except ValueError:

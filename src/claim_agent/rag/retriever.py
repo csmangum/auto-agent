@@ -16,9 +16,11 @@ from claim_agent.rag.chunker import (
     chunk_policy_data,
     chunk_compliance_data,
 )
-from claim_agent.rag.constants import SUPPORTED_STATES
 from claim_agent.rag.embeddings import EmbeddingProvider, get_embedding_provider
 from claim_agent.rag.vector_store import VectorStore
+
+
+logger = logging.getLogger(__name__)
 
 
 def _get_default_cache_dir() -> Path:
@@ -102,7 +104,7 @@ class PolicyRetriever:
                 return
             except (json.JSONDecodeError, FileNotFoundError, KeyError, ValueError) as e:
                 # Cache is corrupted or incompatible, rebuild
-                logging.warning(f"Failed to load cache from {self.cache_dir} ({type(e).__name__}: {e}). Rebuilding index.")
+                logger.warning(f"Failed to load cache from {self.cache_dir} ({type(e).__name__}: {e}). Rebuilding index.")
         
         self._build_index()
         self._loaded = True
@@ -111,7 +113,7 @@ class PolicyRetriever:
         """Build the vector store index from documents."""
         # Validate data directory exists
         if not self.data_dir.exists():
-            logging.warning(f"Data directory {self.data_dir} does not exist. Skipping index creation.")
+            logger.warning(f"Data directory {self.data_dir} does not exist. Skipping index creation.")
             return
         
         # Chunk all documents
@@ -127,10 +129,10 @@ class PolicyRetriever:
         
         # Warn if no chunks found
         if not all_chunks:
-            logging.warning(
+            logger.warning(
                 f"No policy or compliance documents found in {self.data_dir}. "
                 "Expected JSON files matching patterns: "
-                "*_auto_policy_language.json, *_auto_compliance.json"
+                "*_policy_language.json, *_compliance.json"
             )
             return
         

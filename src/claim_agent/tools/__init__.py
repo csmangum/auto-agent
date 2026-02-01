@@ -5,6 +5,15 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from claim_agent.tools.valuation_tools import calculate_payout
+    from claim_agent.tools.rag_tools import (
+        search_policy_compliance,
+        get_compliance_deadlines,
+        get_required_disclosures,
+        get_coverage_exclusions,
+        get_total_loss_requirements,
+        get_fraud_detection_guidance,
+        get_repair_standards,
+    )
 
 __all__ = [
     "query_policy_db",
