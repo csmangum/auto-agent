@@ -385,7 +385,12 @@ class LiteLLMTracingCallback:
             usage = usage.model_dump()
         elif hasattr(usage, "__dict__"):
             usage = usage.__dict__
-        # else: assume it's already a dict or has dict-like interface for .get()
+        elif not isinstance(usage, dict):
+            # If usage is not dict-like, log a warning and use empty dict
+            self._logger.warning(
+                "Unexpected usage type: %s, using default values", type(usage)
+            )
+            usage = {}
 
         input_tokens = usage.get("prompt_tokens", 0)
         output_tokens = usage.get("completion_tokens", 0)
