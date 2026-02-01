@@ -1,12 +1,7 @@
 """Tests for fraud detection workflow."""
 
 import json
-import os
-import tempfile
 
-import pytest
-
-from claim_agent.db.database import init_db
 from claim_agent.tools.logic import (
     analyze_claim_patterns_impl,
     cross_reference_fraud_indicators_impl,
@@ -14,27 +9,6 @@ from claim_agent.tools.logic import (
     FRAUD_CONFIG,
     KNOWN_FRAUD_PATTERNS,
 )
-
-
-@pytest.fixture(autouse=True)
-def temp_db():
-    """Use a temporary SQLite DB for fraud tests so results do not depend on local data/claims.db."""
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    init_db(path)
-    prev = os.environ.get("CLAIMS_DB_PATH")
-    os.environ["CLAIMS_DB_PATH"] = path
-    try:
-        yield path
-    finally:
-        if prev is None:
-            os.environ.pop("CLAIMS_DB_PATH", None)
-        else:
-            os.environ["CLAIMS_DB_PATH"] = prev
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
 
 
 class TestFraudPatternAnalysis:
