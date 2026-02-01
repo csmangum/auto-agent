@@ -516,8 +516,8 @@ class TestMainMetrics:
             main()
         
         captured = capsys.readouterr()
-        # Should either show "No claims" or global stats
-        assert "claims" in captured.out.lower() or "No claims" in captured.out
+        # With reset metrics, this should always show the no-claims message
+        assert "No claims have been processed" in captured.out
 
     def test_main_metrics_with_claim_id(self, capsys):
         """Test main metrics command with claim_id."""

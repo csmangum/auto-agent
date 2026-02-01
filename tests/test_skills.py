@@ -1,10 +1,5 @@
 """Tests for the skills module."""
 
-import os
-import tempfile
-from pathlib import Path
-from unittest import mock
-
 import pytest
 
 
@@ -114,6 +109,7 @@ class TestLoadSkill:
         assert "goal" in skill
         assert "backstory" in skill
         assert "full_content" in skill
+        assert "tools" in skill
 
     def test_load_skill_role_is_string(self):
         """Test that role is a non-empty string."""
