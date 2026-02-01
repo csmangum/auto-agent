@@ -7,14 +7,16 @@ from claim_agent.tools import (
     detect_fraud_indicators,
     generate_escalation_report,
 )
+from claim_agent.skills import load_skill, ESCALATION
 
 
 def create_escalation_agent(llm=None):
     """Create the Escalation Review Specialist agent that flags cases needing human review."""
+    skill = load_skill(ESCALATION)
     return Agent(
-        role="Escalation Review Specialist",
-        goal="Evaluate claims against escalation criteria (low-confidence routing, high-value threshold, fraud suspicion) and flag cases needing human review. Output clear escalation reasons and recommended actions.",
-        backstory="Expert in risk and compliance who identifies edge cases requiring manual review. You use evaluate_escalation, detect_fraud_indicators, and generate_escalation_report to produce consistent escalation decisions.",
+        role=skill["role"],
+        goal=skill["goal"],
+        backstory=skill["backstory"],
         tools=[evaluate_escalation, detect_fraud_indicators, generate_escalation_report],
         verbose=True,
         llm=llm,
