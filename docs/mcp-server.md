@@ -55,6 +55,7 @@ The MCP server exposes these tools:
 | `search_california_compliance` | Search CA compliance data |
 | `get_claim_metrics` | Get metrics for claim processing (optional claim ID) |
 | `get_observability_config` | Get current tracing and logging configuration |
+| `health_check` | Health check for monitoring (returns status and version info) |
 
 ## Observability tools
 
@@ -64,6 +65,18 @@ When the observability module is available, the server exposes:
 - **`get_observability_config()`** – Returns JSON with current config: `langsmith_enabled`, `trace_llm_calls`, `trace_tool_calls`. Sensitive fields like `langsmith_project`, `log_prompts`, and `log_responses` are redacted.
 
 See [Observability](observability.md) for full details.
+
+### health_check
+
+```python
+@mcp.tool()
+def health_check() -> str:
+    """Health check for monitoring. Returns status and version info."""
+```
+
+**Parameters:** None.
+
+**Returns:** JSON with `status`, `version`, and optional details. Use for liveness/readiness probes.
 
 ## Tool Definitions
 

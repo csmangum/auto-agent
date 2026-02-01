@@ -34,7 +34,7 @@ flowchart LR
 
 All logging within a claim run can carry claim context so you can filter or search by `claim_id` and `claim_type`.
 
-- **`claim_context(claim_id, claim_type=..., policy_number=..., **extra)`** – Context manager. While active, any log record from the observability logger includes this context.
+- **`claim_context(claim_id, claim_type=..., policy_number=..., correlation_id=..., **extra)`** – Context manager. While active, any log record from the observability logger includes this context. A **`correlation_id`** (UUID) is generated automatically if not provided, so all log lines for a run can be correlated.
 - **`get_logger(name, claim_id=..., structured=...)`** – Returns a `ClaimLogger` that adds claim fields to every log. You can also set `claim_id` / `claim_type` / context on the logger instance.
 - **`log_claim_event(logger, event, claim_id=..., level=..., **data)`** – Log a named event (e.g. `claim_created`, `workflow_started`) with optional extra key-value data.
 
@@ -47,7 +47,7 @@ Controlled by `CLAIM_AGENT_LOG_FORMAT`:
 | Value   | Description |
 |--------|-------------|
 | `human` | Human-readable lines with timestamp, level, optional `[claim=ID, type=TYPE]`, logger name, and message. |
-| `json`  | One JSON object per line with `level`, `logger`, `message`, `timestamp`, `claim_id`, `claim_type`, `source` (file/line/function), and optional `data` / `exception`. |
+| `json`  | One JSON object per line with `level`, `logger`, `message`, `timestamp`, `claim_id`, `claim_type`, `correlation_id`, `source` (file/line/function), and optional `data` / `exception`. |
 
 CLI option `--json` overrides to JSON format for the run. `--debug` sets log level to DEBUG.
 
@@ -75,7 +75,7 @@ CrewAI uses LiteLLM under the hood. For each claim run, the workflow registers a
 - Records each call into the global **ClaimMetrics** (see below) for the current claim.
 - Logs success/failure and latency.
 
-So you get accurate token and cost tracking per claim when the underlying provider supplies usage. The callback is scoped to a single workflow run and does not affect other code using `litellm.callbacks`.
+So you get accurate token and cost tracking per claim when the underlying provider supplies usage. The callback is scoped to a single workflow run and does not affect other code using `litellm.callbacks`. Callback registration and removal are **thread-safe** (protected by a lock) so concurrent claim processing does not race on the global callback list.
 
 ### TracingConfig
 

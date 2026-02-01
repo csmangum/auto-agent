@@ -209,6 +209,8 @@ Defined in `src/claim_agent/db/constants.py`:
 
 The `ClaimRepository` class (`src/claim_agent/db/repository.py`) provides:
 
+- All updates use **parameterized queries** (no string interpolation of user input) to avoid SQL injection.
+
 ### create_claim
 
 ```python
@@ -288,13 +290,13 @@ def search_claims(
 
 ## Initialization
 
-Database is automatically initialized on first use:
+Database is automatically initialized on first use. The schema is applied **once per database path** per process; repeated `get_connection()` calls do not re-run the schema script.
 
 ```python
 from claim_agent.db.database import get_connection
 
 with get_connection() as conn:
-    # Schema is created automatically
+    # Schema is created automatically (idempotent)
     # Connection is returned ready to use
     pass
 ```

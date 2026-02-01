@@ -55,7 +55,7 @@ Standard first-time claim submissions with no red flags.
 | `vehicle_year` | integer | Year of vehicle |
 | `vehicle_make` | string | Vehicle manufacturer |
 | `vehicle_model` | string | Vehicle model |
-| `incident_date` | string | Date of incident (YYYY-MM-DD) |
+| `incident_date` | string (YYYY-MM-DD) | Date of incident; validated as date by Pydantic |
 | `incident_description` | string | Description of the incident |
 | `damage_description` | string | Description of vehicle damage |
 | `estimated_damage` | float | Estimated repair cost (optional) |
@@ -252,6 +252,7 @@ The project includes sample claims for testing in `tests/sample_claims/`:
 
 | File | Type |
 |------|------|
+| `new_claim.json` | new |
 | `partial_loss_parking.json` | partial_loss |
 | `duplicate_claim.json` | duplicate |
 | `total_loss_claim.json` | total_loss |
