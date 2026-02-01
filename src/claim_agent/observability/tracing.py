@@ -385,7 +385,7 @@ class LiteLLMTracingCallback:
             usage = usage.model_dump()
         elif hasattr(usage, "__dict__"):
             usage = usage.__dict__
-        # else: assume it's already dict-like
+        # else: assume it's already a dict or has dict-like interface for .get()
 
         input_tokens = usage.get("prompt_tokens", 0)
         output_tokens = usage.get("completion_tokens", 0)

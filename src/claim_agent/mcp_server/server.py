@@ -124,7 +124,7 @@ def get_observability_config() -> str:
     """Get current observability configuration.
 
     Returns:
-        JSON string with high-level tracing configuration (sensitive fields redacted).
+        JSON string with high-level tracing configuration (sensitive fields redacted: langsmith_project, log_prompts, log_responses).
     """
     from claim_agent.observability.tracing import TracingConfig
 
