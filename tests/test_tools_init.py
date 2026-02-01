@@ -1,38 +1,8 @@
 """Unit tests for tools/__init__.py lazy loading."""
 
 import json
-import os
-import tempfile
-from pathlib import Path
 
 import pytest
-
-# Point to project data for mock_db
-os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
-
-from claim_agent.db.database import init_db
-
-
-@pytest.fixture(autouse=True)
-def temp_db():
-    """Use a temporary SQLite DB for tests."""
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    init_db(path)
-    prev = os.environ.get("CLAIMS_DB_PATH")
-    os.environ["CLAIMS_DB_PATH"] = path
-    try:
-        yield path
-    finally:
-        if prev is None:
-            os.environ.pop("CLAIMS_DB_PATH", None)
-        else:
-            os.environ["CLAIMS_DB_PATH"] = prev
-        try:
-            os.unlink(path)
-        except OSError:
-            # Best-effort cleanup: ignore errors if the temporary DB file was already removed
-            pass
 
 
 class TestToolsLazyLoading:

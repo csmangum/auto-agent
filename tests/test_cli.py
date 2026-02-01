@@ -98,6 +98,7 @@ class TestCmdStatus:
         """Test cmd_status with existing claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
             os.environ["CLAIMS_DB_PATH"] = db_path
@@ -125,12 +126,16 @@ class TestCmdStatus:
             assert data["policy_number"] == "POL-001"
         finally:
             os.unlink(db_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
     def test_cmd_status_not_found(self):
         """Test cmd_status with non-existent claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
             os.environ["CLAIMS_DB_PATH"] = db_path
@@ -141,7 +146,10 @@ class TestCmdStatus:
             assert exc_info.value.code == 1
         finally:
             os.unlink(db_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
 
 class TestCmdHistory:
@@ -151,6 +159,7 @@ class TestCmdHistory:
         """Test cmd_history with existing claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
             os.environ["CLAIMS_DB_PATH"] = db_path
@@ -178,12 +187,16 @@ class TestCmdHistory:
             assert history[0]["action"] == "created"
         finally:
             os.unlink(db_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
     def test_cmd_history_not_found(self):
         """Test cmd_history with non-existent claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
             os.environ["CLAIMS_DB_PATH"] = db_path
@@ -194,7 +207,10 @@ class TestCmdHistory:
             assert exc_info.value.code == 1
         finally:
             os.unlink(db_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
 
 class TestCmdProcess:
@@ -243,6 +259,7 @@ class TestCmdReprocess:
         """Test cmd_reprocess with non-existent claim."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
             os.environ["CLAIMS_DB_PATH"] = db_path
@@ -253,7 +270,10 @@ class TestCmdReprocess:
             assert exc_info.value.code == 1
         finally:
             os.unlink(db_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
 
 class TestMain:
@@ -311,6 +331,7 @@ class TestMain:
         """Test main status command with claim_id."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
             os.environ["CLAIMS_DB_PATH"] = db_path
@@ -337,12 +358,16 @@ class TestMain:
             assert data["id"] == claim_id
         finally:
             os.unlink(db_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
     def test_main_history_with_claim_id(self):
         """Test main history command with claim_id."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(db_path)
             os.environ["CLAIMS_DB_PATH"] = db_path
@@ -369,13 +394,17 @@ class TestMain:
             assert len(history) >= 1
         finally:
             os.unlink(db_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
     def test_main_legacy_file_path(self):
         """Test main with legacy file path argument."""
         # Create a valid claim file
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         
         claim_data = {
             "policy_number": "POL-001",
@@ -406,4 +435,7 @@ class TestMain:
         finally:
             os.unlink(db_path)
             os.unlink(claim_path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev

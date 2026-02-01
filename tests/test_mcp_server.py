@@ -44,6 +44,7 @@ class TestMcpServerTools:
 
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(path)
             os.environ["CLAIMS_DB_PATH"] = path
@@ -52,7 +53,10 @@ class TestMcpServerTools:
             assert claims == []
         finally:
             os.unlink(path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
     def test_search_claims_db_with_match(self):
         """Test search_claims_db with a matching claim."""
@@ -62,6 +66,7 @@ class TestMcpServerTools:
 
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
         try:
             init_db(path)
             os.environ["CLAIMS_DB_PATH"] = path
@@ -84,7 +89,10 @@ class TestMcpServerTools:
             assert claims[0]["vin"] == "TEST_VIN_123"
         finally:
             os.unlink(path)
-            os.environ.pop("CLAIMS_DB_PATH", None)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
     def test_compute_similarity_high(self):
         """Test compute_similarity with identical descriptions."""
