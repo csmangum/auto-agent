@@ -202,7 +202,7 @@ class VectorStore:
         # Handle zero-norm query explicitly: no meaningful direction -> zero similarity
         query_norm_value = np.linalg.norm(query_vec)
         if query_norm_value < ZERO_NORM_THRESHOLD:
-            return np.zeros(embeddings.shape[0], dtype=float)
+            return np.zeros(embeddings.shape[0])
         
         # Normalize query vector
         query_norm = query_vec / query_norm_value
@@ -211,7 +211,7 @@ class VectorStore:
         emb_norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         
         # Initialize normalized embeddings as zeros; zero-norm embeddings stay zero
-        embeddings_norm = np.zeros_like(embeddings, dtype=float)
+        embeddings_norm = np.zeros_like(embeddings)
         
         # Identify embeddings with non-zero norm and normalize only those
         valid_mask = emb_norms.squeeze(-1) >= ZERO_NORM_THRESHOLD
