@@ -25,6 +25,8 @@ class TestStructuredLogging:
         from claim_agent.observability.logger import get_logger
 
         logger = get_logger("test_logger_with_id", claim_id="CLM-TEST123")
+        # Enable propagation for test capture (disabled by default to prevent duplicates)
+        logger.logger.propagate = True
         with caplog.at_level(logging.INFO):
             logger.info("Test message")
         
@@ -54,6 +56,8 @@ class TestStructuredLogging:
         from claim_agent.observability.logger import log_claim_event, get_logger
 
         logger = get_logger("test_event_logger")
+        # Enable propagation for test capture (disabled by default to prevent duplicates)
+        logger.logger.propagate = True
         with caplog.at_level(logging.INFO):
             log_claim_event(
                 logger,
@@ -422,3 +426,42 @@ class TestLiteLLMCallback:
             )
 
         assert "litellm_call_success" in caplog.text
+
+    def test_litellm_callback_log_failure(self, caplog):
+        """LiteLLMTracingCallback should log failed calls and track error metrics."""
+        from claim_agent.observability.tracing import LiteLLMTracingCallback
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        # Create a metrics collector to verify error tracking
+        metrics = ClaimMetrics()
+        callback = LiteLLMTracingCallback(claim_id="CLM-123", metrics_collector=metrics)
+        
+        # Start a call
+        callback.log_pre_api_call(
+            model="gpt-4o-mini",
+            messages=[],
+            kwargs={"litellm_call_id": "call-456"},
+        )
+
+        # Simulate a failure
+        test_exception = Exception("API rate limit exceeded")
+        with caplog.at_level(logging.ERROR):
+            callback.log_failure_event(
+                kwargs={"litellm_call_id": "call-456", "model": "gpt-4o-mini"},
+                exception=test_exception,
+                start_time=time.time() - 0.3,
+                end_time=time.time(),
+            )
+
+        # Verify error was logged
+        assert "litellm_call_failure" in caplog.text
+        assert "API rate limit exceeded" in caplog.text
+        
+        # Verify metrics were recorded with error status
+        metrics.start_claim("CLM-123")
+        summary = metrics.get_claim_summary("CLM-123")
+        assert summary is not None
+        assert summary.total_llm_calls == 1
+        # Verify the call has error status
+        assert summary.failed_calls == 1
+        assert summary.successful_calls == 0

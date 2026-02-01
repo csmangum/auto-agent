@@ -7,6 +7,7 @@ This module orchestrates the claim processing workflow with full observability:
 """
 
 import json
+import logging
 import time
 
 from crewai import Crew, Task
@@ -208,7 +209,11 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             raw_output = str(raw_output)
             claim_type = _parse_claim_type(raw_output)
 
-            # Log router completion (estimate tokens since CrewAI doesn't expose them directly)
+            # Log router completion
+            # NOTE: Token counts are rough estimates (char_count / 4) since CrewAI doesn't
+            # expose actual token counts. These should NOT be relied upon for accurate cost
+            # tracking. For production use, consider integrating a tokenizer library like
+            # tiktoken for OpenAI models or extracting actual counts from response objects.
             tracing_callback.log_post_api_call(
                 trace_id=trace_id,
                 input_tokens=len(inputs.get("claim_data", "")) // 4,  # Rough estimate
@@ -303,6 +308,10 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             workflow_output = str(workflow_output)
 
             # Log crew completion
+            # NOTE: Token counts are rough estimates (char_count / 4) since CrewAI doesn't
+            # expose actual token counts. These should NOT be relied upon for accurate cost
+            # tracking. For production use, consider integrating a tokenizer library like
+            # tiktoken for OpenAI models or extracting actual counts from response objects.
             tracing_callback.log_post_api_call(
                 trace_id=crew_trace_id,
                 input_tokens=len(inputs.get("claim_data", "")) // 4,
@@ -353,7 +362,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 "workflow_failed",
                 error=details,
                 duration_ms=workflow_duration,
-                level=40,  # ERROR level
+                level=logging.ERROR,
             )
 
             # Complete any pending traces with error

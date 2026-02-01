@@ -9,10 +9,8 @@ This module provides:
 
 import json
 import logging
-import os
 import threading
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -227,11 +225,11 @@ class ClaimMetrics:
             task=task,
         )
 
-        with self._lock:
-            # Ensure claim exists
-            if claim_id not in self._claims:
-                self.start_claim(claim_id)
+        # Ensure claim exists before acquiring metrics lock to avoid nested locking
+        if claim_id not in self._claims:
+            self.start_claim(claim_id)
 
+        with self._lock:
             self._claims[claim_id]["llm_calls"].append(metric)
 
         # Log the metric
@@ -396,6 +394,19 @@ def get_metrics() -> ClaimMetrics:
         if _global_metrics is None:
             _global_metrics = ClaimMetrics()
         return _global_metrics
+
+
+def reset_metrics() -> None:
+    """Reset the global ClaimMetrics instance.
+
+    This function is primarily intended for use in tests to avoid
+    interference between test cases that rely on the global metrics
+    singleton. It clears the existing instance so that the next call
+    to get_metrics() creates a fresh ClaimMetrics object.
+    """
+    global _global_metrics
+    with _metrics_lock:
+        _global_metrics = None
 
 
 def track_llm_call(
