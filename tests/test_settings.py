@@ -1,8 +1,7 @@
 """Tests for centralized configuration (settings)."""
 
 import os
-
-import pytest
+from unittest.mock import patch
 
 from claim_agent.config import settings
 
@@ -45,13 +44,9 @@ def test_get_crew_verbose_default():
     assert isinstance(result, bool)
 
 
-def test_get_crew_verbose_respects_env(monkeypatch):
+def test_get_crew_verbose_respects_env():
     """get_crew_verbose respects CREWAI_VERBOSE env."""
-    monkeypatch.setenv("CREWAI_VERBOSE", "false")
-    import importlib
-    import claim_agent.config.settings as s
-    importlib.reload(s)
-    assert s.get_crew_verbose() is False
-    monkeypatch.setenv("CREWAI_VERBOSE", "true")
-    importlib.reload(s)
-    assert s.get_crew_verbose() is True
+    with patch.dict(os.environ, {"CREWAI_VERBOSE": "false"}):
+        assert settings.get_crew_verbose() is False
+    with patch.dict(os.environ, {"CREWAI_VERBOSE": "true"}):
+        assert settings.get_crew_verbose() is True

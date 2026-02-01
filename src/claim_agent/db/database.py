@@ -63,13 +63,18 @@ def get_db_path() -> str:
     return path
 
 
-def init_db(path: str | None = None) -> None:
-    """Create tables if they do not exist."""
-    db_path = path or get_db_path()
+def _run_schema(db_path: str) -> None:
+    """Create tables if they do not exist. Caller must manage _schema_initialized."""
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
+
+
+def init_db(path: str | None = None) -> None:
+    """Create tables if they do not exist."""
+    db_path = path or get_db_path()
+    _run_schema(db_path)
     with _schema_lock:
         _schema_initialized.add(db_path)
 

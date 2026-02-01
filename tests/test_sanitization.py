@@ -1,7 +1,5 @@
 """Tests for claim input sanitization."""
 
-import pytest
-
 from claim_agent.utils.sanitization import sanitize_claim_data
 
 

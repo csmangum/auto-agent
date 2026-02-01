@@ -75,11 +75,9 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
             out[key] = _sanitize_text(value, MAX_VEHICLE_MAKE)
         elif key == "vehicle_model":
             out[key] = _sanitize_text(value, MAX_VEHICLE_MODEL)
-        elif key in ("vehicle_year", "estimated_damage", "claim_id"):
+        elif key in ("vehicle_year", "estimated_damage", "claim_id", "incident_date"):
             # Pass through; validated by Pydantic or business logic
             out[key] = value
-        elif key == "incident_date":
-            out[key] = _sanitize_text(value, 32) if value is not None else value
         else:
             out[key] = value
     return out
