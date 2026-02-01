@@ -31,6 +31,14 @@ __all__ = [
     "create_parts_order",
     "calculate_repair_estimate",
     "generate_repair_authorization",
+    # RAG tools
+    "search_policy_compliance",
+    "get_compliance_deadlines",
+    "get_required_disclosures",
+    "get_coverage_exclusions",
+    "get_total_loss_requirements",
+    "get_fraud_detection_guidance",
+    "get_repair_standards",
 ]
 
 
@@ -126,4 +134,33 @@ def __getattr__(name: str):
         from claim_agent.tools.partial_loss_tools import generate_repair_authorization
         setattr(mod, "generate_repair_authorization", generate_repair_authorization)
         return generate_repair_authorization
+    # RAG tools
+    if name == "search_policy_compliance":
+        from claim_agent.tools.rag_tools import search_policy_compliance
+        setattr(mod, "search_policy_compliance", search_policy_compliance)
+        return search_policy_compliance
+    if name == "get_compliance_deadlines":
+        from claim_agent.tools.rag_tools import get_compliance_deadlines
+        setattr(mod, "get_compliance_deadlines", get_compliance_deadlines)
+        return get_compliance_deadlines
+    if name == "get_required_disclosures":
+        from claim_agent.tools.rag_tools import get_required_disclosures
+        setattr(mod, "get_required_disclosures", get_required_disclosures)
+        return get_required_disclosures
+    if name == "get_coverage_exclusions":
+        from claim_agent.tools.rag_tools import get_coverage_exclusions
+        setattr(mod, "get_coverage_exclusions", get_coverage_exclusions)
+        return get_coverage_exclusions
+    if name == "get_total_loss_requirements":
+        from claim_agent.tools.rag_tools import get_total_loss_requirements
+        setattr(mod, "get_total_loss_requirements", get_total_loss_requirements)
+        return get_total_loss_requirements
+    if name == "get_fraud_detection_guidance":
+        from claim_agent.tools.rag_tools import get_fraud_detection_guidance
+        setattr(mod, "get_fraud_detection_guidance", get_fraud_detection_guidance)
+        return get_fraud_detection_guidance
+    if name == "get_repair_standards":
+        from claim_agent.tools.rag_tools import get_repair_standards
+        setattr(mod, "get_repair_standards", get_repair_standards)
+        return get_repair_standards
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
