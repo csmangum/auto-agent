@@ -41,10 +41,12 @@ def reset_global_metrics():
         from claim_agent.observability.metrics import reset_metrics
         reset_metrics()
     except ImportError:
+        # Metrics module is optional in some test environments; proceed without resetting.
         pass
     yield
     try:
         from claim_agent.observability.metrics import reset_metrics
         reset_metrics()
     except ImportError:
+        # Metrics module is optional in some test environments; proceed without resetting.
         pass

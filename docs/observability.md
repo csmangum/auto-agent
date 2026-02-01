@@ -97,7 +97,7 @@ So you get accurate token and cost tracking per claim when the underlying provid
 For each claim, the workflow:
 
 1. Calls **`metrics.start_claim(claim_id)`** at the start.
-2. Records every LLM call via the LiteLLM callback (and optionally the manual pre/post tracing) with **`record_llm_call(claim_id, model, input_tokens, output_tokens, cost_usd, latency_ms, status, ...)`**.
+2. Records every LLM call via the LiteLLM callback with **`record_llm_call(claim_id, model, input_tokens, output_tokens, cost_usd, latency_ms, status, ...)`**. The LiteLLM callback automatically captures all LLM calls and provides accurate token counts and costs from the provider.
 3. Calls **`metrics.end_claim(claim_id, status)`** and **`metrics.log_claim_summary(claim_id)`** on success, escalation, or error.
 
 Per-claim summaries include:

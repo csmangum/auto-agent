@@ -393,6 +393,7 @@ class TestLiteLLMCallback:
 
         # Create a metrics collector to verify error tracking
         metrics = ClaimMetrics()
+        metrics.start_claim("CLM-123")
         callback = LiteLLMTracingCallback(claim_id="CLM-123", metrics_collector=metrics)
         
         # Start a call
@@ -417,7 +418,6 @@ class TestLiteLLMCallback:
         assert "API rate limit exceeded" in caplog.text
         
         # Verify metrics were recorded with error status
-        metrics.start_claim("CLM-123")
         summary = metrics.get_claim_summary("CLM-123")
         assert summary is not None
         assert summary.total_llm_calls == 1

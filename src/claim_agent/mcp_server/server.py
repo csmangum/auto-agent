@@ -124,18 +124,15 @@ def get_observability_config() -> str:
     """Get current observability configuration.
 
     Returns:
-        JSON string with current tracing and logging configuration.
+        JSON string with high-level tracing configuration (sensitive fields redacted: langsmith_project, log_prompts, log_responses).
     """
     from claim_agent.observability.tracing import TracingConfig
 
     config = TracingConfig.from_env()
     return json.dumps({
         "langsmith_enabled": config.langsmith_enabled,
-        "langsmith_project": config.langsmith_project,
         "trace_llm_calls": config.trace_llm_calls,
         "trace_tool_calls": config.trace_tool_calls,
-        "log_prompts": config.log_prompts,
-        "log_responses": config.log_responses,
     })
 
 

@@ -41,11 +41,8 @@ def setup_observability() -> None:
     _langsmith_initialized = True
 
 
-def get_llm(callbacks: list | None = None):
+def get_llm():
     """Return the configured LLM for agents. Requires OPENAI_API_KEY.
-
-    Args:
-        callbacks: Optional list of callbacks for LiteLLM integration.
 
     Returns:
         Configured LLM instance.
@@ -70,15 +67,14 @@ def get_llm(callbacks: list | None = None):
 
     # Log LLM configuration
     logger.debug(
-        "Configuring LLM: model=%s, base_url=%s, callbacks=%s",
+        "Configuring LLM: model=%s, base_url=%s",
         model,
         base if base else "default",
-        len(callbacks) if callbacks else 0,
     )
 
     if base and "openrouter" in base.lower():
-        return LLM(model=model, base_url=base, api_key=api_key, callbacks=callbacks)
-    return LLM(model=model, api_key=api_key, callbacks=callbacks)
+        return LLM(model=model, base_url=base, api_key=api_key)
+    return LLM(model=model, api_key=api_key)
 
 
 def get_model_name() -> str:
