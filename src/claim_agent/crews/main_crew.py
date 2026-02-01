@@ -10,6 +10,7 @@ import json
 import logging
 import time
 
+import litellm
 from crewai import Crew, Task
 
 from claim_agent.agents.router import create_router_agent
@@ -38,6 +39,7 @@ from claim_agent.observability import (
     get_metrics,
     get_tracing_callback,
 )
+from claim_agent.observability.tracing import LiteLLMTracingCallback
 
 logger = get_logger(__name__)
 
@@ -176,6 +178,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         claim_id=claim_id,
         policy_number=claim_data.get("policy_number"),
     ):
+        # Both new and reprocessed claims set to PROCESSING for consistent workflow tracking
         repo.update_claim_status(claim_id, STATUS_PROCESSING)
         logger.log_event("workflow_started", status=STATUS_PROCESSING)
 
@@ -184,6 +187,13 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             claim_id=claim_id,
             metrics_collector=metrics,
         )
+        # Register LiteLLM callback so all LLM calls (via CrewAI) are traced with real token/cost data
+        litellm_callback = LiteLLMTracingCallback(
+            claim_id=claim_id,
+            metrics_collector=metrics,
+        )
+        prev_litellm_callbacks = getattr(litellm, "callbacks", None) or []
+        litellm.callbacks = [litellm_callback]
 
         try:
             # Inject claim_id so workflow crews use the same ID (e.g. new claim assignment)
@@ -384,3 +394,5 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             metrics.log_claim_summary(claim_id)
 
             raise
+        finally:
+            litellm.callbacks = prev_litellm_callbacks

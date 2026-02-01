@@ -32,3 +32,19 @@ def temp_db():
         except OSError:
             # Ignore errors when cleaning up the temporary DB file (e.g., if already removed).
             pass
+
+
+@pytest.fixture(autouse=True)
+def reset_global_metrics():
+    """Reset the global ClaimMetrics singleton before and after each test."""
+    try:
+        from claim_agent.observability.metrics import reset_metrics
+        reset_metrics()
+    except ImportError:
+        pass
+    yield
+    try:
+        from claim_agent.observability.metrics import reset_metrics
+        reset_metrics()
+    except ImportError:
+        pass

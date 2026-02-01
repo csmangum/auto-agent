@@ -186,7 +186,7 @@ class TracingCallback:
     ) -> LLMCallTrace | None:
         """Log after an LLM API call completes."""
         trace = self._traces.get(trace_id)
-        if not trace:
+        if not trace or trace.status != "pending":
             return None
 
         trace.complete(
