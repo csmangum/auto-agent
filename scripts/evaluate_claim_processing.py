@@ -48,6 +48,11 @@ from typing import Any, Literal
 # Ensure src is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from dotenv import load_dotenv
+
+# Load .env from project root so OPENAI_API_KEY / OPENROUTER_API_KEY are available
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 os.environ.setdefault(
     "MOCK_DB_PATH",
     str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"),
@@ -870,11 +875,39 @@ class ClaimEvaluator:
         init_db(self._db_path)
         os.environ["CLAIMS_DB_PATH"] = self._db_path
         
+        # Seed original claims for duplicate detection scenarios
+        self._seed_original_claims()
+        
         # Reset metrics
         reset_metrics()
         
         if self.verbose:
             print(f"[Setup] Using temporary database: {self._db_path}")
+    
+    def _seed_original_claims(self) -> None:
+        """Seed the database with original claims that duplicate scenarios should match against."""
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from datetime import date
+        
+        repo = ClaimRepository(self._db_path)
+        
+        # Original claim that duplicate scenarios reference (same VIN: 1HGBH41JXMN109186)
+        original_claim = ClaimInput(
+            policy_number="POL-001",
+            vin="1HGBH41JXMN109186",
+            vehicle_year=2021,
+            vehicle_make="Honda",
+            vehicle_model="Accord",
+            incident_date=date(2025, 1, 15),
+            incident_description="Rear-ended at stoplight. Damage to rear bumper and trunk.",
+            damage_description="Rear bumper and trunk damaged from rear-end collision.",
+            estimated_damage=3500,
+        )
+        repo.create_claim(original_claim)
+        
+        if self.verbose:
+            print("[Setup] Seeded original claims for duplicate detection")
     
     def teardown(self) -> None:
         """Clean up evaluation environment."""

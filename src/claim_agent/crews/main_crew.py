@@ -71,15 +71,23 @@ def create_router_crew(llm=None):
     router = create_router_agent(llm)
 
     classify_task = Task(
-        description="""You are given claim_data (JSON) with: policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description, and optionally estimated_damage.
+        description="""Classify the following claim based on its data.
+
+CLAIM DATA:
+{claim_data}
 
 Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or partial_loss.
 
-- new: First-time claim submission, standard intake with no red flags.
-- duplicate: Likely a duplicate of an existing claim (e.g. same incident reported again).
+- duplicate: If "existing_claims_for_vin" is present and contains claims with similar incident dates (days_difference <= 7) or similar incident descriptions, classify as duplicate. This takes priority over other classifications.
+- new: First-time claim submission, standard intake with no red flags. Only use if no existing claims match.
 - total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, destroyed, frame damage, or repair would exceed 75% of vehicle value).
 - fraud: Claim shows fraud indicators such as staged accident language, inflated damage claims, prior fraud history, inconsistent details, or suspiciously high estimates.
 - partial_loss: Vehicle has repairable damage (e.g. bumper, fender, door, dents, scratches, broken lights). The vehicle is NOT totaled and can be repaired.
+
+Guidelines for duplicate detection:
+- Check if "existing_claims_for_vin" field exists in the claim data
+- If it contains claims with days_difference of 0-7, this is likely a duplicate
+- If incident descriptions are similar to existing claims, this is likely a duplicate
 
 Guidelines for partial_loss vs total_loss:
 - If damage mentions: bumper, fender, door, mirror, dent, scratch, light, windshield, minor collision -> partial_loss
@@ -178,6 +186,46 @@ def _final_status(claim_type: str) -> str:
     return STATUS_CLOSED
 
 
+def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None) -> list[dict]:
+    """Search for existing claims with same VIN and similar incident date.
+    
+    Returns list of potential duplicate claims (excluding the current claim if provided).
+    """
+    vin = claim_data.get("vin", "").strip()
+    incident_date = claim_data.get("incident_date", "").strip()
+    
+    if not vin:
+        return []
+    
+    repo = ClaimRepository()
+    # Search by VIN to find all claims for this vehicle
+    matches = repo.search_claims(vin=vin, incident_date=None)
+    
+    # Filter out the current claim if provided
+    if current_claim_id:
+        matches = [m for m in matches if m.get("id") != current_claim_id]
+    
+    # If we have an incident date, prioritize claims with matching/close dates
+    if incident_date and matches:
+        from datetime import datetime, timedelta
+        try:
+            target_date = datetime.fromisoformat(incident_date)
+            for match in matches:
+                match_date_str = match.get("incident_date", "")
+                try:
+                    match_date = datetime.fromisoformat(match_date_str)
+                    days_diff = abs((target_date - match_date).days)
+                    match["days_difference"] = days_diff
+                except (ValueError, TypeError):
+                    match["days_difference"] = 999
+            # Sort by date proximity
+            matches.sort(key=lambda x: x.get("days_difference", 999))
+        except (ValueError, TypeError):
+            pass
+    
+    return matches
+
+
 def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None = None) -> dict:
     """
     Run the full claim workflow: classify with router crew, then run the appropriate workflow crew.
@@ -252,8 +300,22 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
 
         try:
-            # Inject claim_id so workflow crews use the same ID (e.g. new claim assignment)
+            # Pre-check: Search for potential duplicate claims by VIN
+            existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id)
+            
+            # Inject claim_id and duplicate info so router can detect duplicates
             claim_data_with_id = {**claim_data, "claim_id": claim_id}
+            if existing_claims:
+                # Include existing claims info for duplicate detection
+                claim_data_with_id["existing_claims_for_vin"] = [
+                    {
+                        "claim_id": c.get("id"),
+                        "incident_date": c.get("incident_date"),
+                        "incident_description": c.get("incident_description", "")[:200],
+                        "days_difference": c.get("days_difference"),
+                    }
+                    for c in existing_claims[:5]  # Limit to 5 most relevant
+                ]
             inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
 
             # Step 1: Classify
