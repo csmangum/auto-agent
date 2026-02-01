@@ -4,6 +4,7 @@ Provides functions to enrich agent skills with relevant policy and
 compliance context from the RAG system.
 """
 
+import threading
 from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
@@ -36,6 +37,16 @@ class _LRUCache(OrderedDict):
         if len(self) > self.maxsize:
             oldest = next(iter(self))
             del self[oldest]
+    
+    def __eq__(self, other):
+        """Override equality to compare both dict contents and maxsize."""
+        if not isinstance(other, _LRUCache):
+            return NotImplemented
+        return super().__eq__(other) and self.maxsize == other.maxsize
+    
+    def __hash__(self):
+        """Make unhashable since we override __eq__."""
+        raise TypeError("unhashable type: '_LRUCache'")
 
 
 # Mapping of skill names to relevant query context
@@ -271,6 +282,7 @@ class RAGContextProvider:
         self._retriever: Optional[PolicyRetriever] = None
         self._data_dir = data_dir
         self._context_cache: _LRUCache = _LRUCache(maxsize=CONTEXT_CACHE_MAXSIZE)
+        self._cache_lock = threading.Lock()
     
     @property
     def retriever(self) -> PolicyRetriever:
@@ -303,8 +315,11 @@ class RAGContextProvider:
         state = state or self.default_state
         cache_key = f"{skill_name}:{state}:{claim_type or ''}"
         
-        if use_cache and cache_key in self._context_cache:
-            return self._context_cache[cache_key]
+        # Check cache with lock
+        if use_cache:
+            with self._cache_lock:
+                if cache_key in self._context_cache:
+                    return self._context_cache[cache_key]
         
         context = get_rag_context(
             skill_name=skill_name,
@@ -313,8 +328,10 @@ class RAGContextProvider:
             retriever=self.retriever,
         )
         
+        # Update cache with lock
         if use_cache:
-            self._context_cache[cache_key] = context
+            with self._cache_lock:
+                self._context_cache[cache_key] = context
         
         return context
     
