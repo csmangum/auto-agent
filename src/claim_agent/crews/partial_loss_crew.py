@@ -10,6 +10,7 @@ from claim_agent.agents.partial_loss import (
     create_repair_authorization_agent,
 )
 from claim_agent.config.llm import get_llm
+from claim_agent.config.settings import get_crew_verbose
 
 
 def create_partial_loss_crew(llm=None):
@@ -143,5 +144,5 @@ Output the authorization details and claim summary.""",
             parts_order_task,
             authorization_task,
         ],
-        verbose=True,
+        verbose=get_crew_verbose(),
     )

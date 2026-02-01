@@ -8,7 +8,9 @@ This module orchestrates the claim processing workflow with full observability:
 
 import json
 import logging
+import threading
 import time
+from typing import Any
 
 import litellm
 from crewai import Crew, Task
@@ -20,6 +22,11 @@ from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 from claim_agent.config.llm import get_llm, get_model_name
+from claim_agent.config.settings import (
+    get_crew_verbose,
+    MAX_LLM_CALLS_PER_CLAIM,
+    MAX_TOKENS_PER_CLAIM,
+)
 from claim_agent.db.constants import (
     STATUS_CLOSED,
     STATUS_DUPLICATE,
@@ -32,15 +39,30 @@ from claim_agent.db.constants import (
 )
 from claim_agent.tools.logic import evaluate_escalation_impl
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.models.claim import ClaimInput, EscalationOutput
+from claim_agent.models.claim import ClaimInput, ClaimType, EscalationOutput
 from claim_agent.observability import (
     get_logger,
     claim_context,
     get_metrics,
 )
 from claim_agent.observability.tracing import LiteLLMTracingCallback
+from claim_agent.utils.retry import with_llm_retry
+from claim_agent.utils.sanitization import sanitize_claim_data
 
 logger = get_logger(__name__)
+
+# Thread-safe LiteLLM callback management for concurrent claim processing
+_callbacks_lock = threading.Lock()
+
+
+class TokenBudgetExceeded(Exception):
+    """Raised when a claim exceeds the configured token or LLM call budget."""
+
+    def __init__(self, claim_id: str, total_tokens: int, total_calls: int, message: str):
+        self.claim_id = claim_id
+        self.total_tokens = total_tokens
+        self.total_calls = total_calls
+        super().__init__(message)
 
 
 def create_router_crew(llm=None):
@@ -72,7 +94,7 @@ Reply with exactly one word: new, duplicate, total_loss, fraud, or partial_loss.
     return Crew(
         agents=[router],
         tasks=[classify_task],
-        verbose=True,
+        verbose=get_crew_verbose(),
     )
 
 
@@ -89,33 +111,69 @@ def _parse_claim_type(raw_output: str) -> str:
         # Exact matches first
         if normalized in ("new", "duplicate", "total loss", "total_loss", "partial loss", "partial_loss", "fraud"):
             if normalized in ("total loss", "total_loss"):
-                return "total_loss"
+                return ClaimType.TOTAL_LOSS.value
             if normalized in ("partial loss", "partial_loss"):
-                return "partial_loss"
+                return ClaimType.PARTIAL_LOSS.value
+            if normalized == "new":
+                return ClaimType.NEW.value
+            if normalized == "duplicate":
+                return ClaimType.DUPLICATE.value
+            if normalized == "fraud":
+                return ClaimType.FRAUD.value
             return normalized
         # Then line starts with type (check fraud, partial_loss, total_loss before duplicate/new)
         if normalized.startswith("fraud"):
-            return "fraud"
+            return ClaimType.FRAUD.value
         if normalized.startswith("partial loss") or normalized.startswith("partial_loss"):
-            return "partial_loss"
+            return ClaimType.PARTIAL_LOSS.value
         if normalized.startswith("total loss") or normalized.startswith("total_loss"):
-            return "total_loss"
+            return ClaimType.TOTAL_LOSS.value
         if normalized.startswith("duplicate"):
-            return "duplicate"
+            return ClaimType.DUPLICATE.value
         if normalized.startswith("new"):
-            return "new"
-    return "new"
+            return ClaimType.NEW.value
+    return ClaimType.NEW.value
+
+
+def _kickoff_with_retry(crew: Any, inputs: dict[str, Any]) -> Any:
+    """Run crew.kickoff with retry on transient failures."""
+    @with_llm_retry()
+    def _call() -> Any:
+        return crew.kickoff(inputs=inputs)
+
+    return _call()
+
+
+def _check_token_budget(claim_id: str, metrics: Any) -> None:
+    """Raise TokenBudgetExceeded if claim exceeds configured token or call budget."""
+    summary = metrics.get_claim_summary(claim_id)
+    if summary is None:
+        return
+    if summary.total_tokens > MAX_TOKENS_PER_CLAIM:
+        raise TokenBudgetExceeded(
+            claim_id,
+            summary.total_tokens,
+            summary.total_llm_calls,
+            f"Token budget exceeded: {summary.total_tokens} > {MAX_TOKENS_PER_CLAIM}",
+        )
+    if summary.total_llm_calls > MAX_LLM_CALLS_PER_CLAIM:
+        raise TokenBudgetExceeded(
+            claim_id,
+            summary.total_tokens,
+            summary.total_llm_calls,
+            f"LLM call budget exceeded: {summary.total_llm_calls} > {MAX_LLM_CALLS_PER_CLAIM}",
+        )
 
 
 def _final_status(claim_type: str) -> str:
     """Map claim_type to final claim status."""
-    if claim_type == "new":
+    if claim_type == ClaimType.NEW.value:
         return STATUS_OPEN
-    if claim_type == "duplicate":
+    if claim_type == ClaimType.DUPLICATE.value:
         return STATUS_DUPLICATE
-    if claim_type == "fraud":
+    if claim_type == ClaimType.FRAUD.value:
         return STATUS_FRAUD_SUSPECTED
-    if claim_type == "partial_loss":
+    if claim_type == ClaimType.PARTIAL_LOSS.value:
         return STATUS_PARTIAL_LOSS
     return STATUS_CLOSED
 
@@ -143,6 +201,9 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         the dict has claim_id, claim_type, router_output, workflow_output (crew output), summary.
     """
     workflow_start_time = time.time()
+
+    # Sanitize input to limit prompt injection and abuse
+    claim_data = sanitize_claim_data(claim_data)
 
     llm = llm or get_llm()
     repo = ClaimRepository()
@@ -186,9 +247,9 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             claim_id=claim_id,
             metrics_collector=metrics,
         )
-        # Append to existing callbacks instead of replacing to avoid race conditions
-        prev_litellm_callbacks = getattr(litellm, "callbacks", None) or []
-        litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
+        with _callbacks_lock:
+            prev_litellm_callbacks = list(getattr(litellm, "callbacks", None) or [])
+            litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
 
         try:
             # Inject claim_id so workflow crews use the same ID (e.g. new claim assignment)
@@ -200,7 +261,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             router_start = time.time()
 
             router_crew = create_router_crew(llm)
-            result = router_crew.kickoff(inputs=inputs)
+            result = _kickoff_with_retry(router_crew, inputs)
 
             router_latency = (time.time() - router_start) * 1000
             raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
@@ -214,8 +275,10 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 latency_ms=router_latency,
             )
 
+            _check_token_budget(claim_id, metrics)
+
             # Step 1b: Escalation check (HITL) — skip for fraud so the fraud crew runs and performs its own assessment
-            if claim_type != "fraud":
+            if claim_type != ClaimType.FRAUD.value:
                 escalation_json = evaluate_escalation_impl(
                     claim_data,
                     raw_output,
@@ -267,21 +330,23 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                     }
 
             # Step 2: Run the appropriate crew
+            _check_token_budget(claim_id, metrics)
             logger.log_event("crew_started", crew=claim_type)
             crew_start = time.time()
 
-            if claim_type == "new":
+            if claim_type == ClaimType.NEW.value:
                 crew = create_new_claim_crew(llm)
-            elif claim_type == "duplicate":
+            elif claim_type == ClaimType.DUPLICATE.value:
                 crew = create_duplicate_crew(llm)
-            elif claim_type == "fraud":
+            elif claim_type == ClaimType.FRAUD.value:
                 crew = create_fraud_detection_crew(llm)
-            elif claim_type == "partial_loss":
+            elif claim_type == ClaimType.PARTIAL_LOSS.value:
                 crew = create_partial_loss_crew(llm)
             else:
                 crew = create_total_loss_crew(llm)
 
-            workflow_result = crew.kickoff(inputs=inputs)
+            workflow_result = _kickoff_with_retry(crew, inputs)
+            _check_token_budget(claim_id, metrics)
             crew_latency = (time.time() - crew_start) * 1000
 
             workflow_output = getattr(workflow_result, "raw", None) or getattr(workflow_result, "output", None) or str(workflow_result)
@@ -340,6 +405,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
 
             raise
         finally:
-            # Remove only our callback from the list to avoid affecting other workflows
-            current_callbacks = getattr(litellm, "callbacks", None) or []
-            litellm.callbacks = [cb for cb in current_callbacks if cb is not litellm_callback]
+            with _callbacks_lock:
+                current_callbacks = list(getattr(litellm, "callbacks", None) or [])
+                litellm.callbacks = [cb for cb in current_callbacks if cb is not litellm_callback]

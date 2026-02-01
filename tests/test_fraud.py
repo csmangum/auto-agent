@@ -2,11 +2,11 @@
 
 import json
 
+from claim_agent.config.settings import get_fraud_config
 from claim_agent.tools.logic import (
     analyze_claim_patterns_impl,
     cross_reference_fraud_indicators_impl,
     perform_fraud_assessment_impl,
-    FRAUD_CONFIG,
     KNOWN_FRAUD_PATTERNS,
 )
 
@@ -160,7 +160,7 @@ class TestFraudConfig:
             "critical_indicator_count",
         ]
         for key in expected_keys:
-            assert key in FRAUD_CONFIG
+            assert key in get_fraud_config()
 
     def test_known_fraud_patterns_exist(self):
         """Known fraud patterns database has expected categories."""

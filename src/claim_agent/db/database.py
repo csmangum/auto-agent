@@ -2,8 +2,13 @@
 
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from pathlib import Path
+
+# Tracks which database paths have had schema applied (avoid running on every connection)
+_schema_initialized: set[str] = set()
+_schema_lock = threading.Lock()
 
 SCHEMA_SQL = """
 -- Claims table (main record)
@@ -65,19 +70,30 @@ def init_db(path: str | None = None) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
+    with _schema_lock:
+        _schema_initialized.add(db_path)
+
+
+def _ensure_schema(db_path: str) -> None:
+    """Run schema once per path. Thread-safe."""
+    with _schema_lock:
+        if db_path in _schema_initialized:
+            return
+    # Run init outside lock to avoid holding it during I/O
+    init_db(db_path)
 
 
 @contextmanager
 def get_connection(path: str | None = None):
-    """Context manager yielding a database connection. Ensures schema exists."""
+    """Context manager yielding a database connection. Ensures schema exists once per path."""
     db_path = path or get_db_path()
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_schema(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        conn.executescript(SCHEMA_SQL)
         yield conn
         conn.commit()
     finally:

@@ -47,6 +47,8 @@ class TestStructuredLogging:
             ctx = _get_claim_context()
             assert ctx["claim_id"] == "CLM-123"
             assert ctx["claim_type"] == "new"
+            assert "correlation_id" in ctx
+            assert len(ctx["correlation_id"]) == 36  # UUID format
 
         # After context
         assert _get_claim_context() == {}

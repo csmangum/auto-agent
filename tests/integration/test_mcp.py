@@ -117,6 +117,16 @@ class TestMCPServerTools:
         assert "deductible" in data
     
     @pytest.mark.integration
+    def test_health_check(self):
+        """Test MCP health_check tool for monitoring."""
+        from claim_agent.mcp_server.server import health_check
+
+        result = health_check()
+        data = json.loads(result)
+        assert data["status"] == "healthy"
+        assert "timestamp" in data
+
+    @pytest.mark.integration
     def test_generate_report(self):
         """Test MCP generate_report tool."""
         from claim_agent.mcp_server.server import generate_report

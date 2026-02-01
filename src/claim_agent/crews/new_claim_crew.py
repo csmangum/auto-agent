@@ -8,6 +8,7 @@ from claim_agent.agents.new_claim import (
     create_assignment_agent,
 )
 from claim_agent.config.llm import get_llm
+from claim_agent.config.settings import get_crew_verbose
 
 
 def create_new_claim_crew(llm=None):
@@ -46,5 +47,5 @@ Generate a brief claim report using generate_report with claim_id, claim_type='n
     return Crew(
         agents=[intake, policy, assignment],
         tasks=[validate_task, check_policy_task, assign_task],
-        verbose=True,
+        verbose=get_crew_verbose(),
     )

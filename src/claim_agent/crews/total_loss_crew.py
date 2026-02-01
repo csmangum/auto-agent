@@ -13,6 +13,7 @@ from claim_agent.agents.total_loss import (
     create_settlement_agent,
 )
 from claim_agent.config.llm import get_llm
+from claim_agent.config.settings import get_crew_verbose
 
 
 def create_total_loss_crew(
@@ -72,5 +73,5 @@ Use generate_report with claim_id (generate one with generate_claim_id if not se
     return Crew(
         agents=[damage_agent, valuation_agent, payout_agent, settlement_agent],
         tasks=[assess_task, valuation_task, payout_task, settlement_task],
-        verbose=True,
+        verbose=get_crew_verbose(),
     )

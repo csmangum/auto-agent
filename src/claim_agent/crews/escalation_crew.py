@@ -9,6 +9,7 @@ from crewai import Crew, Task
 
 from claim_agent.agents.escalation import create_escalation_agent
 from claim_agent.config.llm import get_llm
+from claim_agent.config.settings import get_crew_verbose
 
 
 def create_escalation_crew(llm=None):
@@ -32,5 +33,5 @@ Output: the escalation report (needs_review yes/no, reasons, priority, recommend
     return Crew(
         agents=[escalation_agent],
         tasks=[evaluate_task],
-        verbose=True,
+        verbose=get_crew_verbose(),
     )

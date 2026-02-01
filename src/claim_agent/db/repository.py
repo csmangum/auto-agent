@@ -38,7 +38,7 @@ class ClaimRepository:
                     claim_input.vehicle_year,
                     claim_input.vehicle_make,
                     claim_input.vehicle_model,
-                    claim_input.incident_date,
+                    claim_input.incident_date.isoformat(),
                     claim_input.incident_description,
                     claim_input.damage_description,
                     claim_input.estimated_damage,
@@ -81,19 +81,32 @@ class ClaimRepository:
             if row is None:
                 raise ValueError(f"Claim not found: {claim_id}")
             old_status = row["status"]
-            updates = ["status = ?", "updated_at = datetime('now')"]
-            params: list[Any] = [new_status]
-            if claim_type is not None:
-                updates.append("claim_type = ?")
-                params.append(claim_type)
-            if payout_amount is not None:
-                updates.append("payout_amount = ?")
-                params.append(payout_amount)
-            params.append(claim_id)
-            conn.execute(
-                f"UPDATE claims SET {', '.join(updates)} WHERE id = ?",
-                params,
-            )
+
+            # Explicit parameterized queries (no dynamic SQL)
+            if claim_type is not None and payout_amount is not None:
+                conn.execute(
+                    """UPDATE claims SET status = ?, claim_type = ?, payout_amount = ?,
+                       updated_at = datetime('now') WHERE id = ?""",
+                    (new_status, claim_type, payout_amount, claim_id),
+                )
+            elif claim_type is not None:
+                conn.execute(
+                    """UPDATE claims SET status = ?, claim_type = ?,
+                       updated_at = datetime('now') WHERE id = ?""",
+                    (new_status, claim_type, claim_id),
+                )
+            elif payout_amount is not None:
+                conn.execute(
+                    """UPDATE claims SET status = ?, payout_amount = ?,
+                       updated_at = datetime('now') WHERE id = ?""",
+                    (new_status, payout_amount, claim_id),
+                )
+            else:
+                conn.execute(
+                    """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
+                    (new_status, claim_id),
+                )
+
             conn.execute(
                 """
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details)

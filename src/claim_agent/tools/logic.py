@@ -4,37 +4,26 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from typing import Any, Optional
 
+from claim_agent.config.settings import (
+    DEFAULT_BASE_VALUE,
+    DEFAULT_DEDUCTIBLE,
+    DEPRECIATION_PER_YEAR,
+    LABOR_HOURS_MIN,
+    LABOR_HOURS_PAINT_BODY,
+    LABOR_HOURS_RNI_PER_PART,
+    MIN_PAYOUT_VEHICLE_VALUE,
+    MIN_VEHICLE_VALUE,
+    PARTIAL_LOSS_THRESHOLD,
+    get_escalation_config,
+    get_fraud_config,
+)
 from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
 from claim_agent.db.repository import ClaimRepository
 
 # Set up logger
 logger = logging.getLogger(__name__)
-
-# Vehicle valuation defaults (mock KBB)
-DEFAULT_BASE_VALUE = 12000
-DEPRECIATION_PER_YEAR = 500
-MIN_VEHICLE_VALUE = 2000
-
-# Payout calculation defaults
-DEFAULT_DEDUCTIBLE = 500
-MIN_PAYOUT_VEHICLE_VALUE = 100  # Minimum vehicle value for payout calculation
-
-# Partial/total loss configuration
-PARTIAL_LOSS_THRESHOLD = 0.75  # Threshold for total loss: if repair cost >= 75% of vehicle value, classify as total loss
-LABOR_HOURS_RNI_PER_PART = 1.5
-LABOR_HOURS_PAINT_BODY = 2.0
-LABOR_HOURS_MIN = 2.0
-# Escalation thresholds (HITL)
-ESCALATION_CONFIG = {
-    "confidence_threshold": 0.7,
-    "high_value_threshold": 10000.0,
-    "similarity_ambiguous_range": (50, 80),
-    "fraud_damage_vs_value_ratio": 0.9,
-    "vin_claims_days": 90,
-    "confidence_decrement_per_pattern": 0.15,
-    "description_overlap_threshold": 0.1,
-}
 
 
 def query_policy_db_impl(policy_number: str) -> str:
@@ -186,7 +175,9 @@ def _json_contains_query(obj: object, query: str) -> bool:
     return False
 
 
-def _gather_matches(data: dict, query: str, section_key: str, matches: list) -> None:
+def _gather_matches(
+    data: dict[str, Any], query: str, section_key: str, matches: list[dict[str, Any]]
+) -> None:
     """Recursively gather dicts/lists that contain the query; treat known list keys as item boundaries."""
     if not _json_contains_query(data, query):
         return
@@ -264,10 +255,9 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
             })
         deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
     except (json.JSONDecodeError, KeyError) as e:
-        # Unexpected error in policy lookup - log for monitoring
-        logger.error(f"Unexpected policy lookup error for policy {policy_number}: {e}")
+        logger.error("Policy lookup failed for policy %s: %s", policy_number, e, exc_info=True)
         return json.dumps({
-            "error": f"Policy lookup error: {str(e)}",
+            "error": "Policy lookup failed. Please try again.",
             "payout_amount": 0.0,
             "vehicle_value": vehicle_value,
             "deductible": 0,
@@ -297,14 +287,14 @@ def _parse_router_confidence(router_output: str) -> float:
     low_confidence_patterns = ["possibly", "might be", "unclear", "unsure", "could be", "uncertain"]
     confidence = 1.0
     text = router_output.strip().lower()
-    decrement = ESCALATION_CONFIG["confidence_decrement_per_pattern"]
+    decrement = get_escalation_config()["confidence_decrement_per_pattern"]
     for pattern in low_confidence_patterns:
         if pattern in text:
             confidence -= decrement
     return max(0.3, min(1.0, confidence))
 
 
-def detect_fraud_indicators_impl(claim_data: dict) -> str:
+def detect_fraud_indicators_impl(claim_data: dict[str, Any]) -> str:
     """Check claim for fraud indicators. Returns JSON list of indicator strings."""
     indicators: list[str] = []
     if not claim_data or not isinstance(claim_data, dict):
@@ -337,7 +327,7 @@ def detect_fraud_indicators_impl(claim_data: dict) -> str:
             repo = ClaimRepository()
             from datetime import datetime as dt
             dt_obj = dt.strptime(incident_date, "%Y-%m-%d")
-            start = (dt_obj - timedelta(days=ESCALATION_CONFIG["vin_claims_days"])).strftime("%Y-%m-%d")
+            start = (dt_obj - timedelta(days=get_escalation_config()["vin_claims_days"])).strftime("%Y-%m-%d")
             end = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
             matches = repo.search_claims(vin=vin, incident_date=None)
             same_vin = [m for m in matches if m.get("vin") == vin and m.get("incident_date") != incident_date]
@@ -361,14 +351,14 @@ def detect_fraud_indicators_impl(claim_data: dict) -> str:
                 val_data = json.loads(val_res)
                 vehicle_value = val_data.get("value")
                 if isinstance(vehicle_value, (int, float)) and vehicle_value > 0:
-                    if estimated_damage >= ESCALATION_CONFIG["fraud_damage_vs_value_ratio"] * vehicle_value:
+                    if estimated_damage >= get_escalation_config()["fraud_damage_vs_value_ratio"] * vehicle_value:
                         indicators.append("damage_near_or_above_vehicle_value")
             except (json.JSONDecodeError, TypeError):
                 # Best-effort: if vehicle value cannot be parsed, skip this specific fraud indicator.
                 pass
 
     # Inconsistent descriptions: very low word overlap between incident and damage
-    overlap_threshold = ESCALATION_CONFIG["description_overlap_threshold"]
+    overlap_threshold = get_escalation_config()["description_overlap_threshold"]
     if incident and damage:
         words_i = set(incident.split())
         words_d = set(damage.split())
@@ -400,7 +390,7 @@ def compute_escalation_priority_impl(reasons: list[str], fraud_indicators: list[
 
 
 def evaluate_escalation_impl(
-    claim_data: dict,
+    claim_data: dict[str, Any],
     router_output: str,
     similarity_score: float | None = None,
     payout_amount: float | None = None,
@@ -410,9 +400,10 @@ def evaluate_escalation_impl(
     priority, fraud_indicators, recommended_action.
     """
     reasons: list[str] = []
-    conf_threshold = ESCALATION_CONFIG["confidence_threshold"]
-    high_value_threshold = ESCALATION_CONFIG["high_value_threshold"]
-    low_sim, high_sim = ESCALATION_CONFIG["similarity_ambiguous_range"]
+    esc_config = get_escalation_config()
+    conf_threshold = esc_config["confidence_threshold"]
+    high_value_threshold = esc_config["high_value_threshold"]
+    low_sim, high_sim = esc_config["similarity_ambiguous_range"]
 
     confidence = _parse_router_confidence(router_output or "")
     if confidence < conf_threshold:
@@ -470,20 +461,6 @@ def evaluate_escalation_impl(
 
 # --- Fraud Detection ---
 
-# Fraud detection configuration (only keys used in analysis are included)
-FRAUD_CONFIG = {
-    "multiple_claims_days": 90,  # Window to check for multiple claims
-    "multiple_claims_threshold": 2,  # Number of claims to trigger flag
-    "fraud_keyword_score": 20,  # Points per fraud keyword found
-    "multiple_claims_score": 25,  # Points for multiple claims same VIN
-    "timing_anomaly_score": 15,  # Points for suspicious timing
-    "damage_mismatch_score": 20,  # Points for damage/description mismatch
-    "high_risk_threshold": 50,  # Score threshold for high risk
-    "medium_risk_threshold": 30,  # Score threshold for medium risk
-    "critical_risk_threshold": 75,  # Score threshold for critical (block claim)
-    "critical_indicator_count": 5,  # Indicator count for critical (block claim)
-}
-
 # Known fraud patterns and indicators database
 KNOWN_FRAUD_PATTERNS = {
     "staged_accident_keywords": [
@@ -524,7 +501,9 @@ KNOWN_FRAUD_PATTERNS = {
 }
 
 
-def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
+def analyze_claim_patterns_impl(
+    claim_data: dict[str, Any], vin: Optional[str] = None
+) -> str:
     """
     Analyze claim for suspicious patterns including:
     - Multiple claims on same VIN within time window
@@ -563,7 +542,7 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
             all_claims = repo.search_claims(vin=vin, incident_date=None)
             
             # Filter to claims within the time window
-            window_days = FRAUD_CONFIG["multiple_claims_days"]
+            window_days = get_fraud_config()["multiple_claims_days"]
             if incident_date:
                 try:
                     dt_obj = datetime.strptime(incident_date, "%Y-%m-%d")
@@ -584,12 +563,12 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
                         for c in claims_in_window
                     ]
                     
-                    if len(claims_in_window) >= FRAUD_CONFIG["multiple_claims_threshold"]:
+                    if len(claims_in_window) >= get_fraud_config()["multiple_claims_threshold"]:
                         result["patterns_detected"].append("multiple_claims_same_vin")
                         result["risk_factors"].append(
                             f"Found {len(claims_in_window)} claims on VIN within {window_days} days"
                         )
-                        result["pattern_score"] += FRAUD_CONFIG["multiple_claims_score"]
+                        result["pattern_score"] += get_fraud_config()["multiple_claims_score"]
                 except (ValueError, TypeError) as e:
                     logger.debug(
                         "Skipping VIN claim history window calculation due to invalid incident_date %r: %s",
@@ -608,7 +587,7 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
         if keyword in combined_text:
             result["timing_flags"].append(keyword)
             result["patterns_detected"].append("new_policy_timing")
-            result["pattern_score"] += FRAUD_CONFIG["timing_anomaly_score"]
+            result["pattern_score"] += get_fraud_config()["timing_anomaly_score"]
             break
     
     # Check for staged accident patterns
@@ -616,13 +595,13 @@ def analyze_claim_patterns_impl(claim_data: dict, vin: str = None) -> str:
         if keyword in combined_text:
             result["patterns_detected"].append("staged_accident_indicators")
             result["risk_factors"].append(f"Staged accident keyword: '{keyword}'")
-            result["pattern_score"] += FRAUD_CONFIG["fraud_keyword_score"]
+            result["pattern_score"] += get_fraud_config()["fraud_keyword_score"]
             break
     
     return json.dumps(result)
 
 
-def cross_reference_fraud_indicators_impl(claim_data: dict) -> str:
+def cross_reference_fraud_indicators_impl(claim_data: dict[str, Any]) -> str:
     """
     Cross-reference claim against known fraud indicators database:
     - Fraud keywords in descriptions
@@ -650,13 +629,13 @@ def cross_reference_fraud_indicators_impl(claim_data: dict) -> str:
     for keyword in KNOWN_FRAUD_PATTERNS["suspicious_claim_keywords"]:
         if keyword in combined_text:
             result["fraud_keywords_found"].append(keyword)
-            result["cross_reference_score"] += FRAUD_CONFIG["fraud_keyword_score"]
+            result["cross_reference_score"] += get_fraud_config()["fraud_keyword_score"]
     
     # Check for damage fraud keywords
     for keyword in KNOWN_FRAUD_PATTERNS["damage_fraud_keywords"]:
         if keyword in combined_text:
             result["fraud_keywords_found"].append(keyword)
-            result["cross_reference_score"] += FRAUD_CONFIG["fraud_keyword_score"]
+            result["cross_reference_score"] += get_fraud_config()["fraud_keyword_score"]
     
     # Check damage estimate vs vehicle value
     estimated_damage = claim_data.get("estimated_damage")
@@ -686,13 +665,13 @@ def cross_reference_fraud_indicators_impl(claim_data: dict) -> str:
                         result["recommendations"].append(
                             f"Damage estimate (${estimated_damage:,.0f}) exceeds vehicle value (${vehicle_value:,.0f})"
                         )
-                        result["cross_reference_score"] += FRAUD_CONFIG["damage_mismatch_score"]
+                        result["cross_reference_score"] += get_fraud_config()["damage_mismatch_score"]
                     elif damage_ratio > 0.9:
                         result["database_matches"].append("damage_near_vehicle_value")
                         result["recommendations"].append(
                             "Damage estimate is near total vehicle value - verify accuracy"
                         )
-                        result["cross_reference_score"] += FRAUD_CONFIG["damage_mismatch_score"] // 2
+                        result["cross_reference_score"] += get_fraud_config()["damage_mismatch_score"] // 2
             except (json.JSONDecodeError, TypeError) as e:
                 logger.debug("Skipping damage vs value check due to valuation/type error: %s", e)
     
@@ -712,16 +691,16 @@ def cross_reference_fraud_indicators_impl(claim_data: dict) -> str:
                 result["recommendations"].append(
                     f"VIN has {len(fraud_history)} prior fraud-flagged claim(s)"
                 )
-                result["cross_reference_score"] += FRAUD_CONFIG["multiple_claims_score"]
+                result["cross_reference_score"] += get_fraud_config()["multiple_claims_score"]
         except Exception as e:
             logger.debug("Best-effort cross-reference: could not check prior fraud claims for VIN: %s", e)
     
     # Determine risk level
     score = result["cross_reference_score"]
-    if score >= FRAUD_CONFIG["high_risk_threshold"]:
+    if score >= get_fraud_config()["high_risk_threshold"]:
         result["risk_level"] = "high"
         result["recommendations"].append("Refer to Special Investigations Unit (SIU)")
-    elif score >= FRAUD_CONFIG["medium_risk_threshold"]:
+    elif score >= get_fraud_config()["medium_risk_threshold"]:
         result["risk_level"] = "medium"
         result["recommendations"].append("Flag for manual review before processing")
     else:
@@ -731,9 +710,9 @@ def cross_reference_fraud_indicators_impl(claim_data: dict) -> str:
 
 
 def perform_fraud_assessment_impl(
-    claim_data: dict,
-    pattern_analysis: dict = None,
-    cross_reference: dict = None,
+    claim_data: dict[str, Any],
+    pattern_analysis: Optional[dict[str, Any]] = None,
+    cross_reference: Optional[dict[str, Any]] = None,
 ) -> str:
     """
     Perform comprehensive fraud assessment combining pattern analysis and cross-reference results.
@@ -824,7 +803,7 @@ def perform_fraud_assessment_impl(
     total_score = result["fraud_score"]
     indicator_count = len(result["fraud_indicators"])
     
-    if total_score >= FRAUD_CONFIG["critical_risk_threshold"] or indicator_count >= FRAUD_CONFIG["critical_indicator_count"]:
+    if total_score >= get_fraud_config()["critical_risk_threshold"] or indicator_count >= get_fraud_config()["critical_indicator_count"]:
         result["fraud_likelihood"] = "critical"
         result["should_block"] = True
         result["siu_referral"] = True
@@ -832,7 +811,7 @@ def perform_fraud_assessment_impl(
             "BLOCK CLAIM. Critical fraud risk detected. "
             "Immediate SIU referral required. Do not process payment."
         )
-    elif total_score >= FRAUD_CONFIG["high_risk_threshold"] or indicator_count >= 3:
+    elif total_score >= get_fraud_config()["high_risk_threshold"] or indicator_count >= 3:
         result["fraud_likelihood"] = "high"
         result["should_block"] = False
         result["siu_referral"] = True
@@ -840,7 +819,7 @@ def perform_fraud_assessment_impl(
             "High fraud risk. Refer to SIU before proceeding. "
             "Gather additional documentation. Conduct recorded statement."
         )
-    elif total_score >= FRAUD_CONFIG["medium_risk_threshold"] or indicator_count >= 2:
+    elif total_score >= get_fraud_config()["medium_risk_threshold"] or indicator_count >= 2:
         result["fraud_likelihood"] = "medium"
         result["should_block"] = False
         result["siu_referral"] = False
@@ -863,7 +842,9 @@ def perform_fraud_assessment_impl(
 # --- Partial Loss Tools ---
 
 
-def _get_shop_labor_rate(db: dict, shop_id: str | None, default: float = 75.0) -> float:
+def _get_shop_labor_rate(
+    db: dict[str, Any], shop_id: Optional[str], default: float = 75.0
+) -> float:
     """Return labor rate for shop_id from db, or default if not found."""
     if not shop_id:
         return default
@@ -874,9 +855,9 @@ def _get_shop_labor_rate(db: dict, shop_id: str | None, default: float = 75.0) -
 
 
 def get_available_repair_shops_impl(
-    location: str | None = None,
-    vehicle_make: str | None = None,
-    network_type: str | None = None,
+    location: Optional[str] = None,
+    vehicle_make: Optional[str] = None,
+    network_type: Optional[str] = None,
 ) -> str:
     """Get list of available repair shops, optionally filtered by location, vehicle make, or network type.
     
@@ -933,7 +914,7 @@ def get_available_repair_shops_impl(
 def assign_repair_shop_impl(
     claim_id: str,
     shop_id: str,
-    estimated_repair_days: int | None = None,
+    estimated_repair_days: Optional[int] = None,
 ) -> str:
     """Assign a repair shop to a partial loss claim.
     
@@ -1195,7 +1176,7 @@ def calculate_repair_estimate_impl(
     vehicle_make: str,
     vehicle_year: int,
     policy_number: str,
-    shop_id: str | None = None,
+    shop_id: Optional[str] = None,
     part_type_preference: str = "aftermarket",
 ) -> str:
     """Calculate a complete repair estimate for a partial loss claim.
@@ -1296,7 +1277,7 @@ def calculate_repair_estimate_impl(
 def generate_repair_authorization_impl(
     claim_id: str,
     shop_id: str,
-    repair_estimate: dict,
+    repair_estimate: dict[str, Any],
     customer_approved: bool = True,
 ) -> str:
     """Generate a repair authorization document for a partial loss claim.

@@ -4,6 +4,7 @@ This server includes observability endpoints for metrics and tracing.
 """
 
 import json
+from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
@@ -133,6 +134,19 @@ def get_observability_config() -> str:
         "langsmith_enabled": config.langsmith_enabled,
         "trace_llm_calls": config.trace_llm_calls,
         "trace_tool_calls": config.trace_tool_calls,
+    })
+
+
+@mcp.tool()
+def health_check() -> str:
+    """Health check for monitoring and container orchestration.
+
+    Returns:
+        JSON string with status and timestamp.
+    """
+    return json.dumps({
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 
