@@ -1,11 +1,27 @@
-"""Skills module for loading agent skill definitions from markdown files."""
+"""Skills module for loading agent skill definitions from markdown files.
 
+Skills can be enriched with RAG context for policy and compliance information.
+"""
+
+import logging
 import re
+import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from claim_agent.rag.context import RAGContextProvider
+
+from claim_agent.rag.constants import DEFAULT_STATE
+
+
+logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path(__file__).parent
+
+# Global RAG context provider (lazy-loaded), protected by lock
+_rag_provider: Optional["RAGContextProvider"] = None
+_rag_provider_lock = threading.Lock()
 
 
 def get_skill_path(skill_name: str) -> Path:
@@ -79,6 +95,74 @@ def load_skill(skill_name: str) -> dict:
         "tools": parse_skill_section(content, "Tools"),
         "full_content": content,
     }
+
+
+def load_skill_with_context(
+    skill_name: str,
+    state: str = DEFAULT_STATE,
+    claim_type: Optional[str] = None,
+    use_rag: bool = True,
+) -> dict:
+    """Load a skill file and enrich it with RAG context.
+    
+    This adds relevant policy and compliance information to the agent's
+    backstory based on the skill type and state jurisdiction.
+    
+    Args:
+        skill_name: Name of the skill (without .md extension)
+        state: State jurisdiction for the claim (e.g., California, Texas)
+        claim_type: Optional claim type for additional context
+        use_rag: Whether to enrich with RAG context
+        
+    Returns:
+        Dictionary with parsed skill components, enriched with context
+    """
+    skill = load_skill(skill_name)
+    
+    if not use_rag:
+        return skill
+    
+    try:
+        global _rag_provider
+        with _rag_provider_lock:
+            if _rag_provider is None:
+                from claim_agent.rag.context import RAGContextProvider
+                _rag_provider = RAGContextProvider(default_state=state)
+            provider = _rag_provider
+
+        return provider.enrich_skill(
+            skill_dict=skill,
+            skill_name=skill_name,
+            state=state,
+            claim_type=claim_type,
+        )
+    except (ImportError, FileNotFoundError, AttributeError, KeyError) as e:
+        # If RAG fails, return the base skill
+        error_type = type(e).__name__
+        if isinstance(e, FileNotFoundError):
+            logger.warning(f"Failed to enrich skill {skill_name}: RAG data files not found ({e})")
+        elif isinstance(e, ImportError):
+            logger.warning(f"Failed to enrich skill {skill_name}: RAG module could not be loaded ({e})")
+        else:
+            logger.warning(f"Failed to enrich skill {skill_name} with RAG context ({error_type}: {e})")
+        return skill
+
+
+def get_rag_provider(state: str = DEFAULT_STATE) -> "RAGContextProvider":
+    """Get the global RAG context provider.
+    
+    Args:
+        state: Default state jurisdiction
+        
+    Returns:
+        RAGContextProvider instance
+    """
+    global _rag_provider
+    with _rag_provider_lock:
+        if _rag_provider is None:
+            from claim_agent.rag.context import RAGContextProvider
+            _rag_provider = RAGContextProvider(default_state=state)
+        return _rag_provider
 
 
 def list_skills() -> list[str]:

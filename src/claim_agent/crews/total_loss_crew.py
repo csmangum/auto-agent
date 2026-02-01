@@ -1,4 +1,8 @@
-"""Total loss workflow crew."""
+"""Total loss workflow crew.
+
+This crew handles total loss claims with RAG-enriched agents that have
+access to relevant policy language and compliance regulations.
+"""
 
 from crewai import Crew, Task
 
@@ -11,13 +15,26 @@ from claim_agent.agents.total_loss import (
 from claim_agent.config.llm import get_llm
 
 
-def create_total_loss_crew(llm=None):
-    """Create the Total Loss Evaluator crew: assess damage -> valuation -> payout -> settlement."""
+def create_total_loss_crew(
+    llm=None,
+    state: str = "California",
+    use_rag: bool = True,
+):
+    """Create the Total Loss Evaluator crew: assess damage -> valuation -> payout -> settlement.
+    
+    Args:
+        llm: Language model to use (defaults to configured LLM)
+        state: State jurisdiction for policy/compliance context
+        use_rag: Whether to enrich agents with RAG context
+        
+    Returns:
+        Crew configured for total loss claim processing
+    """
     llm = llm or get_llm()
-    damage_agent = create_damage_assessor_agent(llm)
-    valuation_agent = create_valuation_agent(llm)
-    payout_agent = create_payout_agent(llm)
-    settlement_agent = create_settlement_agent(llm)
+    damage_agent = create_damage_assessor_agent(llm, state=state, use_rag=use_rag)
+    valuation_agent = create_valuation_agent(llm, state=state, use_rag=use_rag)
+    payout_agent = create_payout_agent(llm, state=state, use_rag=use_rag)
+    settlement_agent = create_settlement_agent(llm, state=state, use_rag=use_rag)
 
     assess_task = Task(
         description="""Evaluate the damage_description and optional estimated_damage from the claim_data.
