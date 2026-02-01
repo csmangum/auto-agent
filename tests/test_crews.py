@@ -161,6 +161,121 @@ def test_parse_claim_type_default():
     assert _parse_claim_type("Unable to classify.") == "new"
 
 
+def test_check_for_duplicates_empty_vin_returns_empty():
+    """_check_for_duplicates returns [] when VIN is missing or blank."""
+    from claim_agent.crews.main_crew import _check_for_duplicates
+
+    assert _check_for_duplicates({}) == []
+    assert _check_for_duplicates({"vin": ""}) == []
+    assert _check_for_duplicates({"vin": "   "}) == []
+
+
+def test_check_for_duplicates_vin_matching():
+    """_check_for_duplicates returns repo matches for same VIN."""
+    from claim_agent.crews.main_crew import _check_for_duplicates
+    from claim_agent.db.repository import ClaimRepository
+
+    with patch.object(
+        ClaimRepository,
+        "search_claims",
+        return_value=[
+            {"id": "CLM-A", "vin": "1HGBH41JXMN109186", "incident_date": "2024-01-15"},
+        ],
+    ):
+        result = _check_for_duplicates({"vin": "1HGBH41JXMN109186"})
+    assert len(result) == 1
+    assert result[0]["id"] == "CLM-A"
+    assert result[0]["vin"] == "1HGBH41JXMN109186"
+
+
+def test_check_for_duplicates_filters_current_claim_id():
+    """_check_for_duplicates excludes the claim with current_claim_id."""
+    from claim_agent.crews.main_crew import _check_for_duplicates
+    from claim_agent.db.repository import ClaimRepository
+
+    with patch.object(
+        ClaimRepository,
+        "search_claims",
+        return_value=[
+            {"id": "CLM-A", "vin": "1HGBH41JXMN109186", "incident_date": "2024-01-15"},
+            {"id": "CLM-B", "vin": "1HGBH41JXMN109186", "incident_date": "2024-01-20"},
+        ],
+    ):
+        result = _check_for_duplicates(
+            {"vin": "1HGBH41JXMN109186", "incident_date": "2024-01-15"},
+            current_claim_id="CLM-A",
+        )
+    assert len(result) == 1
+    assert result[0]["id"] == "CLM-B"
+
+
+def test_check_for_duplicates_sorts_by_date_proximity():
+    """_check_for_duplicates sets days_difference and sorts by proximity to incident_date."""
+    from claim_agent.crews.main_crew import _check_for_duplicates
+    from claim_agent.db.repository import ClaimRepository
+
+    with patch.object(
+        ClaimRepository,
+        "search_claims",
+        return_value=[
+            {"id": "CLM-Far", "vin": "VIN123", "incident_date": "2024-03-01"},
+            {"id": "CLM-Close", "vin": "VIN123", "incident_date": "2024-01-16"},
+            {"id": "CLM-Exact", "vin": "VIN123", "incident_date": "2024-01-15"},
+        ],
+    ):
+        result = _check_for_duplicates(
+            {"vin": "VIN123", "incident_date": "2024-01-15"},
+        )
+    assert [r["id"] for r in result] == ["CLM-Exact", "CLM-Close", "CLM-Far"]
+    assert result[0]["days_difference"] == 0
+    assert result[1]["days_difference"] == 1
+    assert result[2]["days_difference"] == 46
+
+
+def test_check_for_duplicates_invalid_incident_date_on_claim_no_sort():
+    """_check_for_duplicates does not sort when claim incident_date is invalid."""
+    from claim_agent.crews.main_crew import _check_for_duplicates
+    from claim_agent.db.repository import ClaimRepository
+
+    with patch.object(
+        ClaimRepository,
+        "search_claims",
+        return_value=[
+            {"id": "CLM-A", "vin": "VIN123", "incident_date": "2024-01-15"},
+            {"id": "CLM-B", "vin": "VIN123", "incident_date": "2024-01-20"},
+        ],
+    ):
+        result = _check_for_duplicates(
+            {"vin": "VIN123", "incident_date": "not-a-date"},
+        )
+    # Order unchanged (no days_difference); invalid target date skips proximity ranking
+    assert len(result) == 2
+    assert "days_difference" not in result[0]
+    assert "days_difference" not in result[1]
+
+
+def test_check_for_duplicates_invalid_incident_date_on_match_gets_999():
+    """_check_for_duplicates assigns days_difference 999 when a match has bad incident_date."""
+    from claim_agent.crews.main_crew import _check_for_duplicates
+    from claim_agent.db.repository import ClaimRepository
+
+    with patch.object(
+        ClaimRepository,
+        "search_claims",
+        return_value=[
+            {"id": "CLM-Bad", "vin": "VIN123", "incident_date": "bad"},
+            {"id": "CLM-Good", "vin": "VIN123", "incident_date": "2024-01-15"},
+        ],
+    ):
+        result = _check_for_duplicates(
+            {"vin": "VIN123", "incident_date": "2024-01-15"},
+        )
+    assert result[0]["id"] == "CLM-Good"
+    assert result[0]["days_difference"] == 0
+    assert result[1]["id"] == "CLM-Bad"
+    assert result[1]["days_difference"] == 999
+
+
 def test_workflow_failure_sets_status_failed():
     """When workflow raises, claim status is set to 'failed' and audit log updated."""
     from claim_agent.crews.main_crew import run_claim_workflow

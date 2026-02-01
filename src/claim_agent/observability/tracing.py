@@ -322,9 +322,20 @@ def get_tracing_callback(
 
 # LiteLLM callback functions for direct integration
 # These can be used with litellm.callbacks
-class LiteLLMTracingCallback:
+def _get_custom_logger_base():
+    """Return CustomLogger base class for LiteLLM callback; optional to avoid hard dependency on litellm layout."""
+    try:
+        from litellm.integrations.custom_logger import CustomLogger
+        return CustomLogger
+    except ImportError:
+        return object
+
+
+class LiteLLMTracingCallback(_get_custom_logger_base()):
     """LiteLLM-compatible callback class for tracing.
 
+    Inherits from litellm.integrations.custom_logger.CustomLogger when available
+    so LiteLLM dispatches log_pre_api_call, log_success_event, log_failure_event to this class.
     Usage with LiteLLM:
         import litellm
         from claim_agent.observability import LiteLLMTracingCallback
@@ -333,7 +344,10 @@ class LiteLLMTracingCallback:
         litellm.callbacks = [callback]
     """
 
-    def __init__(self, claim_id: str | None = None, metrics_collector: Any | None = None):
+    def __init__(self, claim_id: str | None = None, metrics_collector: Any | None = None, **kwargs: Any):
+        base = _get_custom_logger_base()
+        if base is not object:
+            super().__init__(**kwargs)
         self.claim_id = claim_id
         self.metrics_collector = metrics_collector
         self._pending_calls: dict[str, dict[str, Any]] = {}
@@ -396,8 +410,8 @@ class LiteLLMTracingCallback:
         output_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
 
-        # Calculate cost if available
-        cost = getattr(response_obj, "_hidden_params", {}).get("response_cost", 0.0)
+        # Cost from LiteLLM hidden params, or None so metrics layer calculates from tokens
+        cost = getattr(response_obj, "_hidden_params", {}).get("response_cost")
         latency_ms = (end_time - start_time) * 1000
 
         self._logger.info(
@@ -407,11 +421,11 @@ class LiteLLMTracingCallback:
             call_info.get("claim_id", self.claim_id),
             call_info.get("model", kwargs.get("model", "unknown")),
             total_tokens,
-            cost,
+            cost if cost is not None else 0.0,
             latency_ms,
         )
 
-        # Record metrics
+        # Record metrics (cost_usd=None lets metrics calculate from model + tokens)
         if self.metrics_collector:
             self.metrics_collector.record_llm_call(
                 claim_id=call_info.get("claim_id") or self.claim_id or "unknown",
@@ -426,16 +440,17 @@ class LiteLLMTracingCallback:
     def log_failure_event(
         self,
         kwargs: dict[str, Any],
-        exception: Exception,
+        response_obj: Any,
         start_time: float,
         end_time: float,
     ) -> None:
-        """Called after failed LLM API call."""
+        """Called after failed LLM API call (CustomLogger signature: response_obj may be exception)."""
         call_id = kwargs.get("litellm_call_id", "")
         with self._pending_calls_lock:
             call_info = self._pending_calls.pop(call_id, {})
 
         latency_ms = (end_time - start_time) * 1000
+        error_str = str(response_obj) if response_obj is not None else "unknown"
 
         self._logger.error(
             "[litellm_call_failure] call_id=%s, claim_id=%s, model=%s, "
@@ -443,7 +458,7 @@ class LiteLLMTracingCallback:
             call_id,
             call_info.get("claim_id", self.claim_id),
             call_info.get("model", kwargs.get("model", "unknown")),
-            str(exception),
+            error_str,
             latency_ms,
         )
 
@@ -457,5 +472,5 @@ class LiteLLMTracingCallback:
                 cost_usd=0.0,
                 latency_ms=latency_ms,
                 status="error",
-                error=str(exception),
+                error=error_str,
             )
