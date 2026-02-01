@@ -100,7 +100,7 @@ class PolicyRetriever:
                 return
             except (json.JSONDecodeError, FileNotFoundError, KeyError, ValueError) as e:
                 # Cache is corrupted or incompatible, rebuild
-                logging.warning(f"Failed to load cache from {self.cache_dir}: {e}. Rebuilding index.")
+                logging.warning(f"Failed to load cache from {self.cache_dir} ({type(e).__name__}: {e}). Rebuilding index.")
         
         self._build_index()
         self._loaded = True
@@ -109,7 +109,7 @@ class PolicyRetriever:
         """Build the vector store index from documents."""
         # Validate data directory exists
         if not self.data_dir.exists():
-            logging.warning(f"Data directory {self.data_dir} does not exist. Creating empty index.")
+            logging.warning(f"Data directory {self.data_dir} does not exist. Skipping index creation.")
             return
         
         # Chunk all documents

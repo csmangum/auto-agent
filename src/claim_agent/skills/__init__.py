@@ -130,7 +130,13 @@ def load_skill_with_context(
         )
     except (ImportError, FileNotFoundError, AttributeError, KeyError) as e:
         # If RAG fails, return the base skill
-        logging.warning(f"Failed to enrich skill {skill_name} with RAG context: {e}")
+        error_type = type(e).__name__
+        if isinstance(e, FileNotFoundError):
+            logging.warning(f"Failed to enrich skill {skill_name}: RAG data files not found ({e})")
+        elif isinstance(e, ImportError):
+            logging.warning(f"Failed to enrich skill {skill_name}: RAG module could not be loaded ({e})")
+        else:
+            logging.warning(f"Failed to enrich skill {skill_name} with RAG context ({error_type}: {e})")
         return skill
 
 
