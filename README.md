@@ -94,6 +94,7 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [Observability](docs/observability.md) | Logging, tracing, metrics |
 | [RAG](docs/rag.md) | Policy and compliance search |
 | [MCP Server](docs/mcp-server.md) | External tool access and health check |
+| [Evaluation](docs/evaluation-results.md) | Claim processing eval results and how to run |
 
 ## Project Layout
 
@@ -120,6 +121,18 @@ pytest tests/ -v
 
 # Integration tests (API key required)
 pytest tests/test_crews.py -v
+```
+
+## Evaluation
+
+Run the claim processing evaluation (requires API key). See [Evaluation](docs/evaluation-results.md) for results and assessment.
+
+```bash
+# Quick (one scenario per type)
+.venv/bin/python scripts/evaluate_claim_processing.py --quick --output evaluation_report.json
+
+# All scenarios
+.venv/bin/python scripts/evaluate_claim_processing.py --all --output evaluation_report.json
 ```
 
 ## Data Setup
