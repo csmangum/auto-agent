@@ -5,9 +5,6 @@ testing realistic scenarios where multiple tools are used in sequence.
 """
 
 import json
-import os
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -328,6 +325,7 @@ class TestFraudTools:
             claim_data=json.dumps(claim_data)
         )
         patterns_data = json.loads(patterns_result)
+        assert isinstance(patterns_data, dict)
         
         # Step 2: Perform assessment
         assessment_result = perform_fraud_assessment.run(

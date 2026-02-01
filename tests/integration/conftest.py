@@ -55,6 +55,7 @@ def integration_db() -> Generator[str, None, None]:
         try:
             os.unlink(path)
         except OSError:
+            # Ignore errors if the file doesn't exist or can't be deleted
             pass
 
 

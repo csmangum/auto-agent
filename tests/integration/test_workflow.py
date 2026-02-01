@@ -5,7 +5,6 @@ Tests are designed to run with mocked LLM responses for CI, but can also run
 against a real LLM when OPENAI_API_KEY is set.
 """
 
-import json
 import os
 from unittest.mock import MagicMock, patch
 

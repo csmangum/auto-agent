@@ -4,10 +4,6 @@ These tests verify that the database layer works correctly with the rest of
 the system, testing CRUD operations, audit logging, and search functionality.
 """
 
-import os
-import tempfile
-from datetime import datetime
-
 import pytest
 
 from claim_agent.db.constants import (
@@ -15,7 +11,6 @@ from claim_agent.db.constants import (
     STATUS_PROCESSING,
     STATUS_OPEN,
     STATUS_CLOSED,
-    STATUS_FAILED,
 )
 
 

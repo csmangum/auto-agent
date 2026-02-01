@@ -5,9 +5,6 @@ exposing claim processing functionality to external clients.
 """
 
 import json
-import os
-import tempfile
-from pathlib import Path
 
 import pytest
 
