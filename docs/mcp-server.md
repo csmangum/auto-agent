@@ -61,7 +61,7 @@ The MCP server exposes these tools:
 When the observability module is available, the server exposes:
 
 - **`get_claim_metrics(claim_id=None)`** – Returns JSON with per-claim metrics (if `claim_id` is given) or global stats plus all per-claim summaries (if omitted). Includes LLM call count, tokens, cost (USD), latency, and status.
-- **`get_observability_config()`** – Returns JSON with current config: `langsmith_enabled`, `langsmith_project`, `trace_llm_calls`, `trace_tool_calls`, `log_prompts`, `log_responses`.
+- **`get_observability_config()`** – Returns JSON with current config: `langsmith_enabled`, `trace_llm_calls`, `trace_tool_calls`. Sensitive fields like `langsmith_project`, `log_prompts`, and `log_responses` are redacted.
 
 See [Observability](observability.md) for full details.
 

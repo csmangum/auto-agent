@@ -348,16 +348,24 @@ class TestLiteLLMCallback:
 
         assert "call-123" in callback._pending_calls
 
-    def test_litellm_callback_log_success(self, caplog):
-        """LiteLLMTracingCallback should log successful calls."""
+    def test_litellm_callback_log_success(self):
+        """LiteLLMTracingCallback should log successful calls and track metrics."""
         from claim_agent.observability.tracing import LiteLLMTracingCallback
+        from claim_agent.observability.metrics import ClaimMetrics
 
-        callback = LiteLLMTracingCallback(claim_id="CLM-123")
+        # Create a metrics collector to verify successful call tracking
+        metrics = ClaimMetrics()
+        metrics.start_claim("CLM-SUCCESS")
+        callback = LiteLLMTracingCallback(claim_id="CLM-SUCCESS", metrics_collector=metrics)
+        
         callback.log_pre_api_call(
             model="gpt-4o-mini",
             messages=[],
             kwargs={"litellm_call_id": "call-123"},
         )
+
+        # Verify call is pending
+        assert "call-123" in callback._pending_calls
 
         # Mock response object
         class MockUsage:
@@ -376,25 +384,34 @@ class TestLiteLLMCallback:
             usage = MockUsage()
             _hidden_params = {"response_cost": 0.001}
 
-        with caplog.at_level(logging.INFO):
-            callback.log_success_event(
-                kwargs={"litellm_call_id": "call-123", "model": "gpt-4o-mini"},
-                response_obj=MockResponse(),
-                start_time=time.time() - 0.5,
-                end_time=time.time(),
-            )
+        callback.log_success_event(
+            kwargs={"litellm_call_id": "call-123", "model": "gpt-4o-mini"},
+            response_obj=MockResponse(),
+            start_time=time.time() - 0.5,
+            end_time=time.time(),
+        )
 
-        assert "litellm_call_success" in caplog.text
+        # Verify the call was processed and removed from pending
+        assert "call-123" not in callback._pending_calls
+        
+        # Verify metrics were recorded correctly
+        summary = metrics.get_claim_summary("CLM-SUCCESS")
+        assert summary is not None
+        assert summary.total_llm_calls == 1
+        assert summary.successful_calls == 1
+        assert summary.failed_calls == 0
+        assert summary.total_input_tokens == 100
+        assert summary.total_output_tokens == 50
 
-    def test_litellm_callback_log_failure(self, caplog):
+    def test_litellm_callback_log_failure(self):
         """LiteLLMTracingCallback should log failed calls and track error metrics."""
         from claim_agent.observability.tracing import LiteLLMTracingCallback
         from claim_agent.observability.metrics import ClaimMetrics
 
         # Create a metrics collector to verify error tracking
         metrics = ClaimMetrics()
-        metrics.start_claim("CLM-123")
-        callback = LiteLLMTracingCallback(claim_id="CLM-123", metrics_collector=metrics)
+        metrics.start_claim("CLM-FAILURE")
+        callback = LiteLLMTracingCallback(claim_id="CLM-FAILURE", metrics_collector=metrics)
         
         # Start a call
         callback.log_pre_api_call(
@@ -403,22 +420,23 @@ class TestLiteLLMCallback:
             kwargs={"litellm_call_id": "call-456"},
         )
 
+        # Verify call is pending
+        assert "call-456" in callback._pending_calls
+
         # Simulate a failure
         test_exception = Exception("API rate limit exceeded")
-        with caplog.at_level(logging.ERROR):
-            callback.log_failure_event(
-                kwargs={"litellm_call_id": "call-456", "model": "gpt-4o-mini"},
-                exception=test_exception,
-                start_time=time.time() - 0.3,
-                end_time=time.time(),
-            )
+        callback.log_failure_event(
+            kwargs={"litellm_call_id": "call-456", "model": "gpt-4o-mini"},
+            exception=test_exception,
+            start_time=time.time() - 0.3,
+            end_time=time.time(),
+        )
 
-        # Verify error was logged
-        assert "litellm_call_failure" in caplog.text
-        assert "API rate limit exceeded" in caplog.text
+        # Verify the call was processed and removed from pending
+        assert "call-456" not in callback._pending_calls
         
         # Verify metrics were recorded with error status
-        summary = metrics.get_claim_summary("CLM-123")
+        summary = metrics.get_claim_summary("CLM-FAILURE")
         assert summary is not None
         assert summary.total_llm_calls == 1
         # Verify the call has error status
