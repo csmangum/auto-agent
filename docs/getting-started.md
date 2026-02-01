@@ -49,7 +49,7 @@ See [Configuration](configuration.md) for all options.
 ### Process Your First Claim
 
 ```bash
-claim-agent process tests/sample_claims/new_claim.json
+claim-agent process tests/sample_claims/partial_loss_parking.json
 ```
 
 Output:
@@ -79,7 +79,7 @@ claim-agent history CLM-11EEF959
 
 | File | Type | Description |
 |------|------|-------------|
-| `new_claim.json` | new | Standard first-time claim |
+| `partial_loss_parking.json` | partial_loss | Parking lot fender bender |
 | `duplicate_claim.json` | duplicate | Potential duplicate |
 | `total_loss_claim.json` | total_loss | Flood damage |
 | `fraud_claim.json` | fraud | Suspicious indicators |
@@ -93,7 +93,7 @@ See [Claim Types](claim-types.md) for classification criteria.
 
 ```bash
 # New claim
-claim-agent process tests/sample_claims/new_claim.json
+claim-agent process tests/sample_claims/partial_loss_parking.json
 
 # Total loss
 claim-agent process tests/sample_claims/total_loss_claim.json

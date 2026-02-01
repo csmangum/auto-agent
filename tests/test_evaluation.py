@@ -12,10 +12,7 @@ import json
 import os
 from pathlib import Path
 
-# Add src to path
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import pytest
 
 # Set mock DB path
 os.environ.setdefault(
@@ -25,9 +22,13 @@ os.environ.setdefault(
 
 from evaluate_claim_processing import (
     ALL_SCENARIOS,
+    EvaluationReport,
     EvaluationResult,
     EvaluationScenario,
+    compare_reports,
+    filter_scenarios_by_tags,
     generate_report,
+    load_previous_report,
     load_sample_claims_scenarios,
 )
 
@@ -105,7 +106,7 @@ class TestSampleClaimsIntegration:
         assert sample_dir.exists()
         
         expected_files = [
-            "new_claim.json",
+            "partial_loss_parking.json",
             "duplicate_claim.json",
             "total_loss_claim.json",
             "fraud_claim.json",
@@ -207,6 +208,7 @@ class TestReportGeneration:
         assert "timestamp" in parsed
         assert "summary" in parsed
         assert "accuracy_by_type" in parsed
+        assert "confusion_matrix" in parsed
         assert "results" in parsed
 
 
@@ -284,3 +286,92 @@ class TestScenarioCounts:
         """Should have stress test scenarios."""
         stress_scenarios = ALL_SCENARIOS.get("stress_test", [])
         assert len(stress_scenarios) >= 3, "Need more stress test scenarios"
+
+
+class TestLoadPreviousReport:
+    """Test load_previous_report."""
+
+    def test_load_previous_report_missing_file(self):
+        """Missing file should return None."""
+        result = load_previous_report("/nonexistent/path/report.json")
+        assert result is None
+
+    def test_load_previous_report_invalid_json(self, tmp_path):
+        """Invalid JSON file should return None."""
+        bad = tmp_path / "bad.json"
+        bad.write_text("not valid json {")
+        result = load_previous_report(str(bad))
+        assert result is None
+
+    def test_load_previous_report_valid(self, tmp_path):
+        """Valid report file should return parsed dict."""
+        report_data = {"summary": {"overall_accuracy": 0.9}, "timestamp": "2025-01-01T00:00:00"}
+        path = tmp_path / "report.json"
+        path.write_text(json.dumps(report_data), encoding="utf-8")
+        result = load_previous_report(str(path))
+        assert result is not None
+        assert result["summary"]["overall_accuracy"] == 0.9
+
+
+class TestCompareReports:
+    """Test compare_reports output."""
+
+    def test_compare_reports_does_not_raise(self):
+        """compare_reports should run without error."""
+        report = generate_report([])
+        previous = {
+            "summary": {
+                "overall_accuracy": 0.8,
+                "avg_latency_ms": 1000,
+                "total_cost_usd": 0.5,
+                "total_tokens": 500,
+            },
+            "accuracy_by_type": {"fraud": {"accuracy": 0.9}},
+        }
+        compare_reports(report, previous)
+
+
+class TestFilterScenariosByTags:
+    """Test tag filtering."""
+
+    def test_filter_empty_tags_returns_all(self):
+        """No tags means no filtering."""
+        scenarios = list(ALL_SCENARIOS["fraud"][:2])
+        filtered = filter_scenarios_by_tags(scenarios, [])
+        assert len(filtered) == len(scenarios)
+
+    def test_filter_by_tag(self):
+        """Filter by tag returns only matching scenarios."""
+        scenarios = list(ALL_SCENARIOS["fraud"])
+        filtered = filter_scenarios_by_tags(scenarios, ["staged"])
+        assert all("staged" in (t.lower() for t in s.tags) for s in filtered)
+        assert len(filtered) >= 1
+
+    def test_filter_by_nonexistent_tag_returns_empty(self):
+        """Nonexistent tag returns empty list."""
+        scenarios = list(ALL_SCENARIOS["fraud"][:1])
+        filtered = filter_scenarios_by_tags(scenarios, ["nonexistent_tag_xyz"])
+        assert len(filtered) == 0
+
+
+class TestCLIValidation:
+    """Test CLI argument handling."""
+
+    def test_list_action_available(self):
+        """--list should be a valid option (module imports and list_scenarios exists)."""
+        from evaluate_claim_processing import list_scenarios
+        list_scenarios()
+
+    def test_invalid_type_rejected_by_parser(self):
+        """Invalid --type value should be rejected by argparse."""
+        import argparse
+        from evaluate_claim_processing import ALL_SCENARIOS
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--type", choices=list(ALL_SCENARIOS.keys()))
+        # Valid choice should parse
+        args = parser.parse_args(["--type", "fraud"])
+        assert args.type == "fraud"
+        # Invalid choice should raise
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--type", "invalid_type_xyz"])

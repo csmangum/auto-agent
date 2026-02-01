@@ -38,7 +38,7 @@ include = ["/src/claim_agent"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "scripts"]
 markers = [
     "slow: marks tests as slow (may take longer due to model loading or heavy computation)",
 ]

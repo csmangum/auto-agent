@@ -39,6 +39,7 @@ import os
 import sys
 import tempfile
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -117,6 +118,9 @@ class EvaluationResult:
 # ============================================================================
 # Scenario Definitions
 # ============================================================================
+
+# Claims exceeding this fraction of vehicle value are classified as total loss
+TOTAL_LOSS_THRESHOLD_PCT = 0.75
 
 # New Claim Scenarios
 NEW_CLAIM_SCENARIOS = [
@@ -302,7 +306,7 @@ TOTAL_LOSS_SCENARIOS = [
             "incident_date": "2025-01-26",
             "incident_description": "Struck deer on highway. Significant damage.",
             "damage_description": "Front end destroyed. Hood, bumper, headlights, radiator, fender all damaged.",
-            "estimated_damage": 8500,  # Exceeds 75% of $6,500 value
+            "estimated_damage": 8500,  # Exceeds TOTAL_LOSS_THRESHOLD_PCT of $6,500 value
         },
         expected_type="total_loss",
         tags=["cost_based", "economic_total"],
@@ -538,7 +542,7 @@ EDGE_CASE_SCENARIOS = [
     ),
     EvaluationScenario(
         name="edge_borderline_total_loss",
-        description="Edge case: damage near total loss threshold (75%)",
+        description=f"Edge case: damage near total loss threshold ({TOTAL_LOSS_THRESHOLD_PCT:.0%})",
         claim_data={
             "policy_number": "POL-005",
             "vin": "2HGFG3B54CH501234",  # Value: $8,500
@@ -849,8 +853,9 @@ ALL_SCENARIOS = {
 class ClaimEvaluator:
     """Engine for evaluating claim processing accuracy and performance."""
     
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, parallel: int = 1):
         self.verbose = verbose
+        self.parallel = parallel
         self.results: list[EvaluationResult] = []
         self._db_path: str | None = None
         
@@ -949,41 +954,79 @@ class ClaimEvaluator:
                 error=str(e)[:500],
                 latency_ms=latency_ms,
             )
-    
-    def run_scenarios(self, scenarios: list[EvaluationScenario]) -> list[EvaluationResult]:
-        """Run multiple evaluation scenarios."""
+
+
+def _run_scenario_worker(args: tuple[EvaluationScenario, bool]) -> EvaluationResult:
+    """Run a single scenario in a worker process (own DB and env). Used for parallel execution."""
+    scenario, verbose = args
+    evaluator = ClaimEvaluator(verbose=verbose)
+    try:
+        evaluator.setup()
+        return evaluator.run_scenario(scenario)
+    finally:
+        evaluator.teardown()
+
+
+def _claim_evaluator_run_scenarios(
+    self: "ClaimEvaluator",
+    scenarios: list[EvaluationScenario],
+    parallel: int = 1,
+) -> list[EvaluationResult]:
+    """Run multiple evaluation scenarios, optionally in parallel (N worker processes)."""
+    if parallel and parallel > 1:
         results = []
-        for scenario in scenarios:
-            result = self.run_scenario(scenario)
-            results.append(result)
-            self.results.append(result)
+        with ProcessPoolExecutor(max_workers=parallel) as executor:
+            futures = {
+                executor.submit(_run_scenario_worker, (s, self.verbose)): s
+                for s in scenarios
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+                self.results.append(result)
         return results
-    
-    def run_all(self) -> list[EvaluationResult]:
-        """Run all evaluation scenarios."""
-        all_scenarios = []
-        for group in ALL_SCENARIOS.values():
-            all_scenarios.extend(group)
-        return self.run_scenarios(all_scenarios)
-    
-    def run_type(self, claim_type: str) -> list[EvaluationResult]:
-        """Run scenarios for a specific claim type."""
-        scenarios = ALL_SCENARIOS.get(claim_type, [])
-        if not scenarios:
-            print(f"No scenarios found for type: {claim_type}")
-            print(f"Available types: {list(ALL_SCENARIOS.keys())}")
-            return []
-        return self.run_scenarios(scenarios)
-    
-    def run_quick(self) -> list[EvaluationResult]:
-        """Run a quick evaluation with one scenario per type."""
-        scenarios = []
-        for group in ALL_SCENARIOS.values():
-            if group:
-                # Pick the first "easy" scenario if available, otherwise first
-                easy = [s for s in group if s.difficulty == "easy"]
-                scenarios.append(easy[0] if easy else group[0])
-        return self.run_scenarios(scenarios)
+    results = []
+    for scenario in scenarios:
+        result = self.run_scenario(scenario)
+        results.append(result)
+        self.results.append(result)
+    return results
+
+
+ClaimEvaluator.run_scenarios = _claim_evaluator_run_scenarios
+
+
+def _run_all_impl(self: ClaimEvaluator) -> list[EvaluationResult]:
+    """Run all evaluation scenarios."""
+    all_scenarios = []
+    for group in ALL_SCENARIOS.values():
+        all_scenarios.extend(group)
+    return self.run_scenarios(all_scenarios, self.parallel)
+
+
+def _run_type_impl(self: ClaimEvaluator, claim_type: str) -> list[EvaluationResult]:
+    """Run scenarios for a specific claim type."""
+    scenarios = ALL_SCENARIOS.get(claim_type, [])
+    if not scenarios:
+        print(f"No scenarios found for type: {claim_type}")
+        print(f"Available types: {list(ALL_SCENARIOS.keys())}")
+        return []
+    return self.run_scenarios(scenarios, self.parallel)
+
+
+def _run_quick_impl(self: ClaimEvaluator) -> list[EvaluationResult]:
+    """Run a quick evaluation with one scenario per type."""
+    scenarios = []
+    for group in ALL_SCENARIOS.values():
+        if group:
+            easy = [s for s in group if s.difficulty == "easy"]
+            scenarios.append(easy[0] if easy else group[0])
+    return self.run_scenarios(scenarios, self.parallel)
+
+
+ClaimEvaluator.run_all = _run_all_impl
+ClaimEvaluator.run_type = _run_type_impl
+ClaimEvaluator.run_quick = _run_quick_impl
 
 
 # ============================================================================
@@ -993,7 +1036,7 @@ class ClaimEvaluator:
 @dataclass
 class EvaluationReport:
     """Comprehensive evaluation report."""
-    
+
     timestamp: str
     total_scenarios: int
     successful_runs: int
@@ -1004,7 +1047,8 @@ class EvaluationReport:
     total_tokens: int
     total_cost_usd: float
     results: list[dict[str, Any]]
-    
+    confusion_matrix: dict[str, dict[str, int]]
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp,
@@ -1018,6 +1062,7 @@ class EvaluationReport:
                 "total_cost_usd": self.total_cost_usd,
             },
             "accuracy_by_type": self.type_accuracy,
+            "confusion_matrix": self.confusion_matrix,
             "results": self.results,
         }
     
@@ -1043,7 +1088,25 @@ class EvaluationReport:
             accuracy = stats.get("accuracy", 0)
             print(f"  {type_name:15} {correct:3}/{total:3} ({accuracy:.1%})")
         print()
-        
+
+        print("CONFUSION MATRIX (expected -> actual):")
+        print("-" * 50)
+        all_actual = set()
+        for row in self.confusion_matrix.values():
+            all_actual.update(row.keys())
+        types_sorted = sorted(set(self.confusion_matrix.keys()) | all_actual)
+        # Header row
+        print("  " + "".join(f"{t:>12}" for t in types_sorted))
+        for expected in types_sorted:
+            row = self.confusion_matrix.get(expected, {})
+            print(
+                f"  {expected:12}"
+                + "".join(
+                    f"{row.get(actual, 0):>12}" for actual in types_sorted
+                )
+            )
+        print()
+
         print("PERFORMANCE METRICS:")
         print("-" * 50)
         print(f"  Total Latency:      {self.total_latency_ms:,.0f} ms")
@@ -1074,13 +1137,27 @@ class EvaluationReport:
         print("=" * 70)
 
 
+def compute_confusion_matrix(
+    results: list[EvaluationResult],
+) -> dict[str, dict[str, int]]:
+    """Compute confusion matrix: expected_type -> { actual_type -> count }."""
+    matrix: dict[str, dict[str, int]] = {}
+    for r in results:
+        expected = r.scenario.expected_type
+        actual = r.actual_type or "unknown"
+        if expected not in matrix:
+            matrix[expected] = {}
+        matrix[expected][actual] = matrix[expected].get(actual, 0) + 1
+    return matrix
+
+
 def generate_report(results: list[EvaluationResult]) -> EvaluationReport:
     """Generate evaluation report from results."""
     timestamp = datetime.now().isoformat()
-    
+
     total_scenarios = len(results)
     successful_runs = sum(1 for r in results if r.success)
-    
+
     # Calculate accuracy by expected type
     type_accuracy: dict[str, dict[str, Any]] = {}
     for r in results:
@@ -1090,25 +1167,31 @@ def generate_report(results: list[EvaluationResult]) -> EvaluationReport:
         type_accuracy[expected]["total"] += 1
         if r.actual_type == expected:
             type_accuracy[expected]["correct"] += 1
-    
+
     for stats in type_accuracy.values():
         stats["accuracy"] = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
-    
+
+    # Confusion matrix
+    confusion_matrix = compute_confusion_matrix(results)
+
     # Overall accuracy
-    correct_classifications = sum(1 for r in results if r.actual_type == r.scenario.expected_type)
+    correct_classifications = sum(
+        1 for r in results if r.actual_type == r.scenario.expected_type
+    )
     overall_accuracy = correct_classifications / total_scenarios if total_scenarios > 0 else 0
-    
+
     # Performance metrics
     total_latency = sum(r.latency_ms for r in results)
     avg_latency = total_latency / total_scenarios if total_scenarios > 0 else 0
     total_tokens = sum(r.total_tokens for r in results)
     total_cost = sum(r.cost_usd for r in results)
-    
+
     return EvaluationReport(
         timestamp=timestamp,
         total_scenarios=total_scenarios,
         successful_runs=successful_runs,
         type_accuracy=type_accuracy,
+        confusion_matrix=confusion_matrix,
         overall_accuracy=overall_accuracy,
         total_latency_ms=total_latency,
         avg_latency_ms=avg_latency,
@@ -1124,7 +1207,7 @@ def generate_report(results: list[EvaluationResult]) -> EvaluationReport:
 
 # Mapping of sample claim files to expected types
 SAMPLE_CLAIMS_MAPPING = {
-    "new_claim.json": "partial_loss",  # Legacy filename: this sample's damage description reflects a partial_loss scenario
+    "partial_loss_parking.json": "partial_loss",
     "duplicate_claim.json": "duplicate",
     "total_loss_claim.json": "total_loss",
     "fraud_claim.json": "fraud",
@@ -1142,9 +1225,13 @@ def load_sample_claims_scenarios() -> list[EvaluationScenario]:
     for filename, expected_type in SAMPLE_CLAIMS_MAPPING.items():
         filepath = sample_dir / filename
         if filepath.exists():
-            with open(filepath, encoding="utf-8") as f:
-                claim_data = json.load(f)
-            
+            try:
+                with open(filepath, encoding="utf-8") as f:
+                    claim_data = json.load(f)
+            except json.JSONDecodeError as e:
+                print(f"Warning: Skipping invalid JSON in {filename}: {e}", file=sys.stderr)
+                continue
+
             scenarios.append(EvaluationScenario(
                 name=f"sample_{filename.replace('.json', '')}",
                 description=f"Sample claim from {filename}",
@@ -1153,7 +1240,7 @@ def load_sample_claims_scenarios() -> list[EvaluationScenario]:
                 tags=["sample_claim", expected_type],
                 difficulty="easy",
             ))
-    
+
     return scenarios
 
 
@@ -1237,6 +1324,16 @@ def compare_reports(current: EvaluationReport, previous: dict) -> None:
 # CLI Interface
 # ============================================================================
 
+def filter_scenarios_by_tags(
+    scenarios: list[EvaluationScenario], tags: list[str]
+) -> list[EvaluationScenario]:
+    """Return scenarios that have at least one of the given tags (OR logic)."""
+    if not tags:
+        return scenarios
+    tag_set = {t.strip().lower() for t in tags if t}
+    return [s for s in scenarios if any(t.lower() in tag_set for t in s.tags)]
+
+
 def list_scenarios() -> None:
     """List all available scenarios."""
     print("\nAvailable Evaluation Scenarios:")
@@ -1275,7 +1372,20 @@ Examples:
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     parser.add_argument("--dry-run", action="store_true", help="Show scenarios without running")
     parser.add_argument("--list", action="store_true", help="List all available scenarios")
-    
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Run scenarios in parallel with N worker processes (default: 1)",
+    )
+    parser.add_argument(
+        "--tag",
+        action="append",
+        metavar="TAG",
+        help="Filter scenarios by tag; can be repeated (OR logic)",
+    )
+
     args = parser.parse_args()
     
     # Handle list command
@@ -1331,7 +1441,9 @@ Examples:
             scenarios = []
             for group in ALL_SCENARIOS.values():
                 scenarios.extend(group)
-        
+
+        scenarios = filter_scenarios_by_tags(scenarios, args.tag or [])
+
         print(f"\nDry Run - Would execute {len(scenarios)} scenarios:")
         for s in scenarios:
             print(f"  - {s.name} (expected: {s.expected_type})")
@@ -1350,7 +1462,7 @@ Examples:
         sys.exit(1)
     
     # Initialize evaluator
-    evaluator = ClaimEvaluator(verbose=args.verbose)
+    evaluator = ClaimEvaluator(verbose=args.verbose, parallel=args.parallel)
     
     try:
         evaluator.setup()
@@ -1376,20 +1488,39 @@ Examples:
                 print(f"Scenario not found: {args.scenario}")
                 print("Use --list to see available scenarios")
                 sys.exit(1)
-            results = evaluator.run_scenarios([found])
+            scenarios = filter_scenarios_by_tags([found], args.tag or [])
+            if not scenarios:
+                print("No scenarios match the given --tag filter.")
+                sys.exit(1)
+            results = evaluator.run_scenarios(scenarios, evaluator.parallel)
         elif args.sample_claims:
             print("\nEvaluating using sample claim files...")
-            scenarios = load_sample_claims_scenarios()
-            results = evaluator.run_scenarios(scenarios)
+            scenarios = filter_scenarios_by_tags(
+                load_sample_claims_scenarios(), args.tag or []
+            )
+            results = evaluator.run_scenarios(scenarios, evaluator.parallel)
         elif args.type:
             print(f"\nEvaluating {args.type} scenarios...")
-            results = evaluator.run_type(args.type)
+            scenarios = filter_scenarios_by_tags(
+                ALL_SCENARIOS.get(args.type, []), args.tag or []
+            )
+            results = evaluator.run_scenarios(scenarios, evaluator.parallel)
         elif args.quick:
             print("\nRunning quick evaluation (one per type)...")
-            results = evaluator.run_quick()
+            scenarios = []
+            for group in ALL_SCENARIOS.values():
+                if group:
+                    easy = [s for s in group if s.difficulty == "easy"]
+                    scenarios.append(easy[0] if easy else group[0])
+            scenarios = filter_scenarios_by_tags(scenarios, args.tag or [])
+            results = evaluator.run_scenarios(scenarios, evaluator.parallel)
         else:  # --all
             print("\nRunning comprehensive evaluation (all scenarios)...")
-            results = evaluator.run_all()
+            all_scenarios = []
+            for group in ALL_SCENARIOS.values():
+                all_scenarios.extend(group)
+            scenarios = filter_scenarios_by_tags(all_scenarios, args.tag or [])
+            results = evaluator.run_scenarios(scenarios, evaluator.parallel)
         
         # Generate and display report
         report = generate_report(results)
@@ -1402,7 +1533,8 @@ Examples:
                 compare_reports(report, previous)
         
         # Save to file
-        output_path = args.output or "evaluation_report.json"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = args.output or f"evaluation_report_{timestamp}.json"
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(report.to_json())
         print(f"\nDetailed report saved to: {output_path}")
