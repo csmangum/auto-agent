@@ -20,6 +20,9 @@ Options:
     --list               List all available scenarios
 
 Claim Types:
+    new, duplicate, total_loss, fraud, partial_loss
+
+Scenario Groups:
     new, duplicate, total_loss, fraud, partial_loss, edge_cases, escalation, stress_test
 
 Examples:
@@ -117,24 +120,6 @@ class EvaluationResult:
 
 # New Claim Scenarios
 NEW_CLAIM_SCENARIOS = [
-    EvaluationScenario(
-        name="new_basic_fender_bender",
-        description="Basic new claim: minor fender bender with low damage",
-        claim_data={
-            "policy_number": "POL-001",
-            "vin": "5YJSA1E26HF123456",
-            "vehicle_year": 2022,
-            "vehicle_make": "Tesla",
-            "vehicle_model": "Model 3",
-            "incident_date": "2025-01-20",
-            "incident_description": "Minor fender bender in parking lot. Front bumper scratch.",
-            "damage_description": "Scratches and small dent on front bumper. No structural damage.",
-            "estimated_damage": 1200,
-        },
-        expected_type="partial_loss",  # This is actually partial_loss due to repairable damage
-        tags=["basic", "low_damage"],
-        difficulty="easy",
-    ),
     EvaluationScenario(
         name="new_first_claim_unclear_damage",
         description="New claim with unclear damage description",
@@ -238,7 +223,7 @@ TOTAL_LOSS_SCENARIOS = [
         description="Total loss from flood damage",
         claim_data={
             "policy_number": "POL-002",
-            "vin": "1HGBH41JXMN109186",
+            "vin": "1HGBH41JXMN109199",
             "vehicle_year": 2021,
             "vehicle_make": "Honda",
             "vehicle_model": "Accord",
@@ -403,6 +388,24 @@ FRAUD_CLAIM_SCENARIOS = [
 
 # Partial Loss Claim Scenarios
 PARTIAL_LOSS_SCENARIOS = [
+    EvaluationScenario(
+        name="partial_loss_basic_fender_bender",
+        description="Partial loss: minor fender bender with repairable damage",
+        claim_data={
+            "policy_number": "POL-001",
+            "vin": "5YJSA1E26HF123456",
+            "vehicle_year": 2022,
+            "vehicle_make": "Tesla",
+            "vehicle_model": "Model 3",
+            "incident_date": "2025-01-20",
+            "incident_description": "Minor fender bender in parking lot. Front bumper scratch.",
+            "damage_description": "Scratches and small dent on front bumper. No structural damage.",
+            "estimated_damage": 1200,
+        },
+        expected_type="partial_loss",
+        tags=["basic", "low_damage"],
+        difficulty="easy",
+    ),
     EvaluationScenario(
         name="partial_loss_rear_bumper",
         description="Partial loss: rear bumper damage from rear-end collision",
@@ -873,8 +876,14 @@ class ClaimEvaluator:
         if self._db_path and os.path.exists(self._db_path):
             try:
                 os.unlink(self._db_path)
-            except OSError:
-                pass
+            except OSError as e:
+                # Ignore errors during cleanup since the database file is temporary,
+                # but log details when running in verbose mode to aid debugging.
+                if self.verbose:
+                    print(
+                        f"[Teardown] Failed to remove temporary database {self._db_path}: {e}",
+                        file=sys.stderr,
+                    )
         os.environ.pop("CLAIMS_DB_PATH", None)
         
         if self.verbose:
@@ -1115,7 +1124,7 @@ def generate_report(results: list[EvaluationResult]) -> EvaluationReport:
 
 # Mapping of sample claim files to expected types
 SAMPLE_CLAIMS_MAPPING = {
-    "new_claim.json": "partial_loss",  # Actually partial loss based on damage description
+    "new_claim.json": "partial_loss",  # Legacy filename: this sample's damage description reflects a partial_loss scenario
     "duplicate_claim.json": "duplicate",
     "total_loss_claim.json": "total_loss",
     "fraud_claim.json": "fraud",
