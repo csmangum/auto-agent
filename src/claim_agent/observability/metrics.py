@@ -162,7 +162,6 @@ class ClaimMetrics:
         # Use RLock (reentrant lock) to allow nested lock acquisition
         self._lock = threading.RLock()
         self._claims: dict[str, dict[str, Any]] = {}
-        self._global_metrics: list[LLMCallMetric] = []
 
     def start_claim(self, claim_id: str) -> None:
         """Mark the start of claim processing."""
@@ -234,7 +233,6 @@ class ClaimMetrics:
                 self.start_claim(claim_id)
 
             self._claims[claim_id]["llm_calls"].append(metric)
-            self._global_metrics.append(metric)
 
         # Log the metric
         logger.info(

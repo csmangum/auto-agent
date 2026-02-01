@@ -166,15 +166,6 @@ class TracingCallback:
         self._traces[trace_id] = trace
 
         if self.config.trace_llm_calls:
-            log_data = {
-                "event": "llm_call_start",
-                "trace_id": trace_id,
-                "claim_id": self.claim_id,
-                "model": model,
-            }
-            if self.config.log_prompts and messages:
-                log_data["messages"] = messages
-
             self._logger.info(
                 "[llm_call_start] trace_id=%s, claim_id=%s, model=%s",
                 trace_id,
@@ -206,23 +197,6 @@ class TracingCallback:
         )
 
         if self.config.trace_llm_calls:
-            log_data = {
-                "event": "llm_call_complete",
-                "trace_id": trace_id,
-                "claim_id": self.claim_id,
-                "model": trace.model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": trace.total_tokens,
-                "cost_usd": cost_usd,
-                "latency_ms": trace.latency_ms,
-                "status": trace.status,
-            }
-            if error:
-                log_data["error"] = error
-            if self.config.log_responses and response:
-                log_data["response"] = str(response)[:500]  # Truncate
-
             self._logger.info(
                 "[llm_call_complete] trace_id=%s, claim_id=%s, tokens=%d, cost=$%.4f, latency=%.0fms, status=%s",
                 trace_id,

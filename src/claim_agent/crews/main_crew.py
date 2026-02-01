@@ -356,6 +356,20 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 level=40,  # ERROR level
             )
 
+            # Complete any pending traces with error
+            # Check if trace_id exists (from router) and complete it
+            if 'trace_id' in locals():
+                tracing_callback.log_post_api_call(
+                    trace_id=trace_id,
+                    error=str(e),
+                )
+            # Check if crew_trace_id exists (from crew) and complete it
+            if 'crew_trace_id' in locals():
+                tracing_callback.log_post_api_call(
+                    trace_id=crew_trace_id,
+                    error=str(e),
+                )
+
             # End metrics tracking with error status
             metrics.end_claim(claim_id, status="error")
             metrics.log_claim_summary(claim_id)

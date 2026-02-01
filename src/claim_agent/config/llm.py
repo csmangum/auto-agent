@@ -77,8 +77,8 @@ def get_llm(callbacks: list | None = None):
     )
 
     if base and "openrouter" in base.lower():
-        return LLM(model=model, base_url=base, api_key=api_key)
-    return LLM(model=model, api_key=api_key)
+        return LLM(model=model, base_url=base, api_key=api_key, callbacks=callbacks)
+    return LLM(model=model, api_key=api_key, callbacks=callbacks)
 
 
 def get_model_name() -> str:

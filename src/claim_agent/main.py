@@ -48,7 +48,7 @@ def _setup_logging() -> None:
     from claim_agent.observability import get_logger
 
     # Initialize root logger with observability configuration
-    root_logger = get_logger("claim_agent")
+    get_logger("claim_agent")
     # Also configure the root to capture all claim_agent.* logs
     logging.getLogger("claim_agent").setLevel(
         logging.DEBUG if "--debug" in sys.argv else logging.INFO
