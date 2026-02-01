@@ -2,7 +2,7 @@
 
 Crews are collections of agents that work together to accomplish a specific workflow. Each crew handles a particular type of claim processing.
 
-For classification criteria and claim examples, see [Claim Types](claim-types.md).
+For classification criteria and claim examples, see [Claim Types](claim-types.md). For agent prompt definitions, see [Skills](skills.md).
 
 ## Overview
 
@@ -229,7 +229,8 @@ flowchart LR
 
 To add a new claim type workflow, see [Architecture](architecture.md) for the overall pattern, then:
 
-1. **Create agents** in `src/claim_agent/agents/your_type.py`
-2. **Create crew** in `src/claim_agent/crews/your_type_crew.py`
-3. **Register** in `main_crew.py` `run_claim_workflow()`
-4. **Update router** to recognize the new type
+1. **Create skill files** in `src/claim_agent/skills/` for each agent (see [Skills](skills.md))
+2. **Create agents** in `src/claim_agent/agents/your_type.py` that load skills
+3. **Create crew** in `src/claim_agent/crews/your_type_crew.py`
+4. **Register** in `main_crew.py` `run_claim_workflow()`
+5. **Update router** skill to recognize the new type
