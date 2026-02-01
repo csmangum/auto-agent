@@ -5,7 +5,6 @@ For production, consider using Chroma, Pinecone, or similar.
 """
 
 import json
-import pickle
 from pathlib import Path
 from typing import Optional
 

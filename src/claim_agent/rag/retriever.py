@@ -334,11 +334,11 @@ class PolicyRetriever:
                 content = chunk.content
             
             # Check length
-            if current_length + len(content) + 4 > max_length:  # +4 for separator
+            if current_length + len(content) + 5 > max_length:  # +5 for separator
                 break
             
             parts.append(content)
-            current_length += len(content) + 4
+            current_length += len(content) + 5
         
         return "\n---\n".join(parts)
     
