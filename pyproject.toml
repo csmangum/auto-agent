@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
 ]
 observability = [
     "langsmith>=0.1.0",
@@ -41,4 +42,9 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "slow: marks tests as slow (may take longer due to model loading or heavy computation)",
+    "integration: marks tests as integration tests (test component interactions)",
+    "llm: marks tests that require LLM API access (OPENAI_API_KEY must be set)",
+    "e2e: marks tests as end-to-end tests (full workflow tests)",
 ]
+# Default addopts to show test output and warnings
+addopts = "-v --tb=short"
