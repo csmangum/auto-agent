@@ -425,13 +425,13 @@ class TestLiteLLMCallback:
         # Verify call is pending
         assert "call-456" in callback._pending_calls
 
-        # Simulate a failure
+        # Simulate a failure (CustomLogger signature: response_obj is the exception)
         test_exception = Exception("API rate limit exceeded")
         callback.log_failure_event(
-            kwargs={"litellm_call_id": "call-456", "model": "gpt-4o-mini"},
-            exception=test_exception,
-            start_time=time.time() - 0.3,
-            end_time=time.time(),
+            {"litellm_call_id": "call-456", "model": "gpt-4o-mini"},
+            test_exception,
+            time.time() - 0.3,
+            time.time(),
         )
 
         # Verify the call was processed and removed from pending

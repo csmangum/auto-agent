@@ -38,7 +38,7 @@ from claim_agent.db.constants import (
     STATUS_PARTIAL_LOSS,
     STATUS_PROCESSING,
 )
-from claim_agent.tools.logic import evaluate_escalation_impl
+from claim_agent.tools.logic import evaluate_escalation_impl, detect_fraud_indicators_impl
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput, ClaimType, EscalationOutput
 from claim_agent.observability import (
@@ -79,16 +79,16 @@ CLAIM DATA:
 
 Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or partial_loss.
 
-- duplicate: If "existing_claims_for_vin" is present and contains claims with similar incident dates (days_difference <= 7) or similar incident descriptions, classify as duplicate. This takes priority over other classifications.
+- duplicate: ONLY if "existing_claims_for_vin" contains claims with BOTH days_difference <= 3 AND the incident descriptions are nearly identical (same type of incident, same damage pattern). Different types of damage (e.g., fender damage vs windshield) on the same vehicle are NOT duplicates. If no similarity is evident, do NOT classify as duplicate.
 - new: First-time claim submission, standard intake with no red flags. Only use if no existing claims match.
-- total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, destroyed, frame damage, or repair would exceed 75% of vehicle value).
-- fraud: Claim shows fraud indicators such as staged accident language, inflated damage claims, prior fraud history, inconsistent details, or suspiciously high estimates.
+- total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, destroyed, frame damage, or repair would exceed 75% of vehicle value). If "is_economic_total_loss" is true, classify as total_loss.
+- fraud: Claim shows fraud indicators. If "pre_routing_fraud_indicators" is present, strongly consider fraud. Inflated damage estimates that exceed vehicle value without catastrophic event (flood/fire/rollover) suggest fraud, not total_loss.
 - partial_loss: Vehicle has repairable damage (e.g. bumper, fender, door, dents, scratches, broken lights). The vehicle is NOT totaled and can be repaired.
 
 Guidelines for duplicate detection:
-- Check if "existing_claims_for_vin" field exists in the claim data
-- If it contains claims with days_difference of 0-7, this is likely a duplicate
-- If incident descriptions are similar to existing claims, this is likely a duplicate
+- Require BOTH days_difference <= 3 AND nearly identical incident/description (same incident type, same damage).
+- High-value claims ("high_value_claim": true) should NOT be classified as duplicate without strong evidence.
+- Different damage types (fender vs windshield, sideswipe vs road debris) on same VIN are NOT duplicates.
 
 Guidelines for partial_loss vs total_loss:
 - If damage mentions: bumper, fender, door, mirror, dent, scratch, light, windshield, minor collision -> partial_loss
@@ -228,10 +228,42 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
                     match["days_difference"] = 999
             # Sort by date proximity
             matches.sort(key=lambda x: x.get("days_difference", 999))
-        except (ValueError, TypeError):
-            pass
-    
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                "Skipping incident date proximity ranking due to invalid incident_date format: %s",
+                incident_date,
+                exc_info=exc,
+            )
+
     return matches
+
+
+def _check_economic_total_loss(claim_data: dict) -> dict:
+    """Check if repair cost exceeds 75% of vehicle value (economic total loss)."""
+    from claim_agent.tools.logic import fetch_vehicle_value_impl
+    from claim_agent.config.settings import PARTIAL_LOSS_THRESHOLD
+
+    estimated_damage = claim_data.get("estimated_damage")
+    if estimated_damage is None or not isinstance(estimated_damage, (int, float)) or estimated_damage <= 0:
+        return {"is_economic_total_loss": False}
+
+    vin = claim_data.get("vin", "") or ""
+    year = claim_data.get("vehicle_year", 2020)
+    make = claim_data.get("vehicle_make", "") or ""
+    model = claim_data.get("vehicle_model", "") or ""
+
+    value_result = json.loads(fetch_vehicle_value_impl(vin, year, make, model))
+    vehicle_value = value_result.get("value", 15000)
+
+    threshold = PARTIAL_LOSS_THRESHOLD * vehicle_value
+    is_total = estimated_damage >= threshold
+    ratio = round(estimated_damage / vehicle_value, 2) if vehicle_value > 0 else 0
+
+    return {
+        "is_economic_total_loss": is_total,
+        "vehicle_value": vehicle_value,
+        "damage_to_value_ratio": ratio,
+    }
 
 
 def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None = None) -> dict:
@@ -308,13 +340,34 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
 
         try:
+            # Pre-check: Economic total loss (75% rule)
+            economic_check = _check_economic_total_loss(claim_data)
+            claim_data_with_id = {**claim_data, "claim_id": claim_id}
+            claim_data_with_id["is_economic_total_loss"] = economic_check.get("is_economic_total_loss", False)
+            claim_data_with_id["vehicle_value"] = economic_check.get("vehicle_value")
+            claim_data_with_id["damage_to_value_ratio"] = economic_check.get("damage_to_value_ratio")
+
+            # Pre-routing fraud indicators for high damage-to-value claims
+            if (economic_check.get("damage_to_value_ratio") or 0) > 0.9:
+                fraud_result = detect_fraud_indicators_impl(claim_data)
+                fraud_data = json.loads(fraud_result)
+                indicators = fraud_data if isinstance(fraud_data, list) else (fraud_data.get("indicators", []) if isinstance(fraud_data, dict) else [])
+                if indicators:
+                    claim_data_with_id["pre_routing_fraud_indicators"] = indicators
+
+            # High-value claims: avoid duplicate classification without strong evidence
+            est_damage = claim_data.get("estimated_damage")
+            vehicle_value = economic_check.get("vehicle_value")
+            is_high_value = (
+                (est_damage is not None and est_damage > 25000)
+                or (vehicle_value is not None and vehicle_value > 50000)
+            )
+            if is_high_value:
+                claim_data_with_id["high_value_claim"] = True
+
             # Pre-check: Search for potential duplicate claims by VIN
             existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id)
-            
-            # Inject claim_id and duplicate info so router can detect duplicates
-            claim_data_with_id = {**claim_data, "claim_id": claim_id}
             if existing_claims:
-                # Include existing claims info for duplicate detection
                 claim_data_with_id["existing_claims_for_vin"] = [
                     {
                         "claim_id": c.get("id"),
@@ -322,7 +375,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                         "incident_description": c.get("incident_description", "")[:200],
                         "days_difference": c.get("days_difference"),
                     }
-                    for c in existing_claims[:5]  # Limit to 5 most relevant
+                    for c in existing_claims[:5]
                 ]
             inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
 

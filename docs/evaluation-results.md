@@ -1,129 +1,93 @@
 # Claim Processing Evaluation Results
 
-Review of the claim processing evaluation run.
+**Run:** 2026-02-01  
+**Report source:** `evaluation_report.json`  
+**Script:** `scripts/evaluate_claim_processing.py --all --verbose --output evaluation_report.json`
 
-## Run Summary
+---
+
+## Summary
 
 | Metric | Value |
 |--------|--------|
-| **Timestamp** | 2026-02-01T12:46:20 |
-| **Mode** | Quick (one scenario per type) |
-| **Total Scenarios** | 8 |
-| **Successful Runs** | 8 |
-| **Overall Classification Accuracy** | **100%** |
+| **Total scenarios** | 37 |
+| **Successful runs** | 37 |
+| **Overall classification accuracy** | **86.5%** |
+| **Total latency** | 212,545 ms (~3.5 min) |
+| **Average latency** | 5,744 ms per scenario |
+| **Total tokens** | 0 (metrics not wired in eval path) |
+| **Total cost** | $0.00 |
 
-## Accuracy by Claim Type
+All scenarios completed without runtime errors. Five scenarios were misclassified.
 
-| Expected Type | Correct | Total | Accuracy |
+---
+
+## Accuracy by Expected Type
+
+| Expected type | Correct | Total | Accuracy |
 |---------------|---------|-------|----------|
-| new | 1 | 1 | 100% |
-| duplicate | 1 | 1 | 100% |
-| total_loss | 2 | 2 | 100% |
-| fraud | 1 | 1 | 100% |
-| partial_loss | 3 | 3 | 100% |
+| **new** | 3 | 3 | **100%** |
+| **fraud** | 4 | 4 | **100%** |
+| **partial_loss** | 18 | 19 | 94.7% |
+| **duplicate** | 2 | 3 | 66.7% |
+| **total_loss** | 5 | 8 | 62.5% |
 
-All expected types were classified correctly; no misclassifications in this run.
+- **Strong:** `new` and `fraud` are perfect.
+- **Good:** `partial_loss` at 94.7%.
+- **Needs work:** `duplicate` (66.7%) and `total_loss` (62.5%).
 
-## Confusion Matrix
+---
 
-*(expected → actual)*
+## Confusion Matrix (Expected → Actual)
 
-|  | duplicate | fraud | new | partial_loss | total_loss |
-|--|-----------|-------|-----|--------------|------------|
-| **duplicate** | 1 | 0 | 0 | 0 | 0 |
-| **fraud** | 0 | 1 | 0 | 0 | 0 |
-| **new** | 0 | 0 | 1 | 0 | 0 |
-| **partial_loss** | 0 | 0 | 0 | 3 | 0 |
-| **total_loss** | 0 | 0 | 0 | 0 | 2 |
+| Expected \\ Actual | duplicate | fraud | new | partial_loss | total_loss |
+|--------------------|-----------|-------|-----|--------------|------------|
+| **duplicate** | 2 | 0 | 0 | 1 | 0 |
+| **fraud** | 0 | 4 | 0 | 0 | 0 |
+| **new** | 0 | 0 | 3 | 0 | 0 |
+| **partial_loss** | 0 | 0 | 0 | 18 | 1 |
+| **total_loss** | 0 | 3 | 0 | 0 | 5 |
 
-Diagonal-only matrix: every scenario matched its expected type.
+Observations:
 
-## Performance Metrics
+- **duplicate → partial_loss (1):** `duplicate_close_date` classified as partial_loss (tighter duplicate criteria may have excluded it).
+- **partial_loss → total_loss (1):** One partial-loss case routed to total_loss.
+- **total_loss → fraud (3):** Three total-loss scenarios (rollover, very old vehicle, conflicting signals) classified as fraud, likely due to pre-routing fraud indicators or high damage-to-value ratio.
 
-| Metric | Value |
-|--------|--------|
-| Total Latency | 33,151 ms (~33 s) |
-| Average Latency per Scenario | 4,144 ms (~4.1 s) |
-| Total Tokens | 0 * |
-| Total Cost | $0.00 * |
+---
 
-\* Token and cost are reported as 0 in this run; metrics may be aggregated per-claim elsewhere or not wired into the eval report.
+## Misclassifications (5)
 
-## Per-Scenario Results
+| Scenario | Expected | Actual | Notes |
+|----------|----------|--------|--------|
+| `duplicate_close_date` | duplicate | partial_loss | Close date match not treated as duplicate (days_difference &gt; 3 or description mismatch). |
+| `total_loss_rollover` | total_loss | fraud | Rollover case triggered fraud path (e.g. high damage-to-value). |
+| `edge_very_old_vehicle` | total_loss | fraud | 2005 Cavalier; economic total but also flagged as fraud. |
+| `escalation_disputed_liability` | partial_loss | total_loss | Disputed liability case routed to total_loss. |
+| `stress_conflicting_signals` | total_loss | fraud | Conflicting damage signals routed to fraud. |
 
-| Scenario | Expected | Actual | Match | Latency (ms) | Status |
-|----------|----------|--------|-------|--------------|--------|
-| new_first_claim_unclear_damage | new | new | ✓ | 1,311 | needs_review |
-| duplicate_same_vin_date | duplicate | duplicate | ✓ | 6,653 | — |
-| total_loss_flood | total_loss | total_loss | ✓ | 919 | needs_review |
-| fraud_staged_accident | fraud | fraud | ✓ | 20,015 | — |
-| partial_loss_basic_fender_bender | partial_loss | partial_loss | ✓ | 1,284 | needs_review |
-| edge_minimal_damage | partial_loss | partial_loss | ✓ | 870 | needs_review |
-| escalation_high_payout | total_loss | total_loss | ✓ | 974 | needs_review |
-| stress_very_long_description | partial_loss | partial_loss | ✓ | 1,125 | needs_review |
+---
 
-- **Slowest scenario:** `fraud_staged_accident` (~20 s), likely due to fraud-detection crew steps.
-- **Fastest:** `edge_minimal_damage` (~870 ms) and `total_loss_flood` (~919 ms).
+## Post-Implementation Notes
 
-## Notes for Review
+Recommendations from the previous run were implemented:
 
-1. **Quick run only** — This used `--quick` (one scenario per type). For full coverage run:
-   ```bash
-   .venv/bin/python scripts/evaluate_claim_processing.py --all --output evaluation_report_full.json
-   ```
+1. **Duplicate vs partial_loss:** Router now requires BOTH `days_difference <= 3` AND nearly identical incident/description; high_value_claim and different damage types reduce duplicate classification. One duplicate scenario now classifies as partial_loss.
+2. **Economic total loss:** Pre-routing `_check_economic_total_loss()` injects `is_economic_total_loss`; router uses it for total_loss. `total_loss_implied_by_cost` and similar cases now classify correctly.
+3. **Fraud vs total_loss:** Pre-routing fraud indicators for high damage-to-value; router stresses inflated estimate without catastrophic event as fraud. Some total-loss cases (rollover, old vehicle, conflicting signals) now route to fraud when indicators fire.
+4. **Escalation / high-value:** `high_value_claim` flag set for high damage/value; router advised not to classify as duplicate without strong evidence.
+5. **Observability:** `LiteLLMTracingCallback` inherits from LiteLLM `CustomLogger`. Token/cost still show 0 in this report—eval may use a path where callbacks are not invoked, or usage is not yet plumbed into the report.
 
-2. **Token/cost** — If your observability records tokens and cost per claim, consider wiring that into the eval report so the JSON and this doc can show non-zero totals.
-
-3. **Status** — Several scenarios ended in `needs_review`; that’s expected for new, total loss, high-payout, and some partial-loss flows that trigger escalation.
-
-4. **Report file** — Detailed JSON: `evaluation_report.json` (or the path you pass to `--output`).
+---
 
 ## How to Re-run
 
 ```bash
-# Quick (what was run here)
-.venv/bin/python scripts/evaluate_claim_processing.py --quick --verbose --output evaluation_report.json
+# Activate venv and run full evaluation
+.venv/bin/python scripts/evaluate_claim_processing.py --all --verbose --output evaluation_report.json
 
-# All scenarios
-.venv/bin/python scripts/evaluate_claim_processing.py --all --output evaluation_report.json
-
-# By type (e.g. fraud only)
-.venv/bin/python scripts/evaluate_claim_processing.py --type fraud --output evaluation_report_fraud.json
-
-# Compare to a previous report
-.venv/bin/python scripts/evaluate_claim_processing.py --quick --compare evaluation_report.json
+# Compare to this run
+.venv/bin/python scripts/evaluate_claim_processing.py --all --output evaluation_report_new.json --compare evaluation_report.json
 ```
 
-After re-running, regenerate this doc from the new JSON or update the tables above manually.
-
----
-
-## Assessment: Results and POC
-
-### Evaluation results
-
-- **Quick run is positive but narrow.** 100% accuracy on 8 scenarios (one per type plus a couple of edge/stress) shows the router and crews behave correctly on the chosen cases. It does **not** show how the system will perform on the full suite (40+ scenarios), hard edge cases, or adversarial inputs.
-- **Latency is variable.** ~870 ms to ~20 s per scenario. Duplicate and fraud flows are much slower (duplicate: DB + similarity; fraud: multi-step crew). For a POC this is acceptable; for production you’d want targets and optimization.
-- **Token/cost not in the report.** The eval JSON shows 0 tokens and $0 cost. If metrics are collected per claim but not passed into the evaluator, wire them through so you can track cost and token usage as you add scenarios and change prompts.
-
-**Verdict on the eval:** Good sanity check; expand to `--all` and add token/cost to the report before drawing stronger conclusions.
-
-### POC strengths
-
-- **Architecture is clear and scalable.** Router → classification → one of five workflow crews (new, duplicate, total_loss, fraud, partial_loss) is easy to reason about and extend. Escalation (HITL) before running the full workflow is the right place to gate risk.
-- **Production-minded touches.** SQLite persistence, correlation IDs, structured logging, retries, sanitization, parameterized DB access, and config-driven behavior (escalation, token budgets) show the POC was built with real operations in mind.
-- **Evaluability.** The eval script (scenarios, expected types, report JSON, confusion matrix) is a real asset. You can run `--all`, `--type X`, or `--compare` and track regressions over time.
-- **Ecosystem.** RAG for policy/compliance, MCP server, and skill-based agent definitions give you levers to improve behavior without rewriting core flow.
-
-### POC limitations / gaps
-
-- **No full eval baseline yet.** Until you run `--all` and possibly add more edge cases, you don’t know accuracy and latency under load or on ambiguous/hostile inputs.
-- **Cost and token visibility.** Without them in the report, you can’t tune for cost or set guardrails (e.g. max spend per claim).
-- **Confidence and escalation.** The eval doesn’t assert whether escalation is triggered when expected (e.g. high payout, fraud indicators). Several scenarios show `needs_review`; you could add expected escalation behavior to scenarios and score it.
-- **Determinism and robustness.** LLM-based classification can vary run-to-run. You may want multiple runs per scenario or stricter output parsing to catch flaky labels.
-- **Operational readiness.** For production you’d still need: auth, rate limits, idempotency, better observability (e.g. tracing), and likely a real DB and deployment story.
-
-### Bottom line
-
-- **Results:** The quick eval supports that the POC **correctly implements** the intended flow and classifies the chosen scenarios as expected. It’s a successful **sanity check**, not yet a full **accuracy/cost baseline**.
-- **POC:** The design (router, crews, tools, escalation, persistence, eval script) is **solid for a proof of concept** and shows the idea is viable. Next steps that would strengthen the story: run `--all`, add token/cost and optional escalation checks to the eval, then use the report (and this doc) to track progress and regressions.
+Full per-scenario details (latency, claim_id, status) are in `evaluation_report.json`.
