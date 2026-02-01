@@ -427,11 +427,7 @@ def get_retriever(
     # If a retriever already exists and a custom data_dir is provided, ensure it
     # matches the existing instance's data_dir to avoid confusing, silent misuse.
     if data_dir is not None:
-        try:
-            existing_dir = Path(getattr(_global_retriever, "data_dir", DEFAULT_DATA_DIR))
-        except TypeError:
-            # Fallback: if existing data_dir is not path-like, skip strict checking
-            existing_dir = getattr(_global_retriever, "data_dir", DEFAULT_DATA_DIR)
+        existing_dir = Path(_global_retriever.data_dir)
         requested_dir = Path(data_dir)
 
         if existing_dir != requested_dir:

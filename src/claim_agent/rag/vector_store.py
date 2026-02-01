@@ -14,6 +14,10 @@ from claim_agent.rag.chunker import Chunk, ChunkMetadata
 from claim_agent.rag.embeddings import EmbeddingProvider, get_embedding_provider
 
 
+# Threshold for considering a vector norm to be zero
+ZERO_NORM_THRESHOLD = 1e-8
+
+
 class VectorStore:
     """Simple in-memory vector store with numpy.
     
@@ -197,7 +201,7 @@ class VectorStore:
         """
         # Handle zero-norm query explicitly: no meaningful direction -> zero similarity
         query_norm_value = np.linalg.norm(query_vec)
-        if query_norm_value < 1e-8:
+        if query_norm_value < ZERO_NORM_THRESHOLD:
             return np.zeros(embeddings.shape[0], dtype=float)
         
         # Normalize query vector
@@ -210,7 +214,7 @@ class VectorStore:
         embeddings_norm = np.zeros_like(embeddings, dtype=float)
         
         # Identify embeddings with non-zero norm and normalize only those
-        valid_mask = emb_norms.squeeze(-1) >= 1e-8
+        valid_mask = emb_norms.squeeze(-1) >= ZERO_NORM_THRESHOLD
         if np.any(valid_mask):
             embeddings_norm[valid_mask] = embeddings[valid_mask] / emb_norms[valid_mask]
         
