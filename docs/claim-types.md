@@ -252,7 +252,7 @@ The project includes sample claims for testing in `tests/sample_claims/`:
 
 | File | Type |
 |------|------|
-| `new_claim.json` | new |
+| `partial_loss_parking.json` | partial_loss |
 | `duplicate_claim.json` | duplicate |
 | `total_loss_claim.json` | total_loss |
 | `fraud_claim.json` | fraud |

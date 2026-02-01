@@ -64,6 +64,10 @@ db.sqlite3-journal
 # Claim agent SQLite DB
 data/claims.db
 
+# Evaluation reports
+evaluation_report.json
+evaluation_report_*.json
+
 # Flask stuff:
 instance/
 .webassets-cache

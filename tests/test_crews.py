@@ -19,7 +19,7 @@ def test_new_claim_crew_kickoff():
     """Run new claim crew on sample input (requires LLM)."""
     from claim_agent.crews.new_claim_crew import create_new_claim_crew
 
-    with open(Path(__file__).parent / "sample_claims" / "new_claim.json") as f:
+    with open(Path(__file__).parent / "sample_claims" / "partial_loss_parking.json") as f:
         claim_data = json.load(f)
 
     crew = create_new_claim_crew()
@@ -96,7 +96,7 @@ def test_run_claim_workflow_classification_only():
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.database import init_db
 
-    with open(Path(__file__).parent / "sample_claims" / "new_claim.json") as f:
+    with open(Path(__file__).parent / "sample_claims" / "partial_loss_parking.json") as f:
         claim_data = json.load(f)
 
     if SKIP_CREW:
@@ -167,7 +167,7 @@ def test_workflow_failure_sets_status_failed():
     from claim_agent.db.database import get_connection, init_db
     from claim_agent.db.repository import ClaimRepository
 
-    with open(Path(__file__).parent / "sample_claims" / "new_claim.json") as f:
+    with open(Path(__file__).parent / "sample_claims" / "partial_loss_parking.json") as f:
         claim_data = json.load(f)
 
     fd, path = tempfile.mkstemp(suffix=".db")
