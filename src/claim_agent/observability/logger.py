@@ -197,6 +197,9 @@ def get_logger(
         # Set log level from environment
         log_level = os.environ.get("CLAIM_AGENT_LOG_LEVEL", "INFO").upper()
         logger.setLevel(getattr(logging, log_level, logging.INFO))
+        
+        # Prevent duplicate logs from propagating to parent handlers
+        logger.propagate = False
     
     return ClaimLogger(logger, claim_id)
 
