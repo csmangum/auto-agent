@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Tracks which database paths have had schema applied (avoid running on every connection)
 _schema_initialized: set[str] = set()
-_schema_lock = threading.Lock()
+_schema_lock = threading.RLock()
 
 SCHEMA_SQL = """
 -- Claims table (main record)
@@ -76,11 +76,14 @@ def init_db(path: str | None = None) -> None:
 
 def _ensure_schema(db_path: str) -> None:
     """Run schema once per path. Thread-safe."""
+    # Fast path: check without lock
+    if db_path in _schema_initialized:
+        return
+    # Slow path: acquire lock and check again (double-checked locking)
     with _schema_lock:
         if db_path in _schema_initialized:
             return
-    # Run init outside lock to avoid holding it during I/O
-    init_db(db_path)
+        init_db(db_path)
 
 
 @contextmanager
