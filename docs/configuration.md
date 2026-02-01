@@ -27,6 +27,11 @@ cp .env.example .env
 | `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database |
 | `MOCK_DB_PATH` | `data/mock_db.json` | Path to mock policy/vehicle data |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
+| `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
+| `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `100000` | Max tokens per claim before stopping |
+| `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
+
+Escalation, fraud detection, valuation, and partial-loss thresholds are also configurable via environment variables. See [Centralized Settings](#centralized-settings) and `.env.example` for the full list.
 
 ## LLM Configuration
 
@@ -67,6 +72,24 @@ OPENAI_API_KEY=your-api-key
 OPENAI_API_BASE=https://your-provider.com/v1
 OPENAI_MODEL_NAME=your-model-name
 ```
+
+## Centralized Settings
+
+The module `src/claim_agent/config/settings.py` centralizes configuration from environment variables with sensible defaults. Use it instead of reading env vars directly:
+
+| Function / Constant | Purpose |
+|---------------------|---------|
+| `get_escalation_config()` | Escalation thresholds (confidence, high value, similarity range, etc.) |
+| `get_fraud_config()` | Fraud detection scores and thresholds |
+| `get_crew_verbose()` | Whether CrewAI runs in verbose mode |
+| `MAX_TOKENS_PER_CLAIM`, `MAX_LLM_CALLS_PER_CLAIM` | Token and call budgets per claim |
+| `DEFAULT_BASE_VALUE`, `DEPRECIATION_PER_YEAR`, etc. | Valuation and partial-loss defaults |
+
+Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_THRESHOLD`, `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`, `ESCALATION_FRAUD_DAMAGE_VS_VALUE_RATIO`, `ESCALATION_VIN_CLAIMS_DAYS`, `ESCALATION_CONFIDENCE_DECREMENT_PER_PATTERN`, `ESCALATION_DESCRIPTION_OVERLAP_THRESHOLD`.
+
+Fraud variables: `FRAUD_MULTIPLE_CLAIMS_DAYS`, `FRAUD_MULTIPLE_CLAIMS_THRESHOLD`, `FRAUD_*_SCORE`, `FRAUD_*_THRESHOLD`, `FRAUD_CRITICAL_INDICATOR_COUNT`.
+
+Valuation/partial loss: `VALUATION_*`, `PARTIAL_LOSS_*`. See `.env.example` for all variable names and defaults.
 
 ## LLM Configuration Code
 
@@ -204,7 +227,7 @@ Note: Agents now load their configuration from skill files, which provide more d
 ```
 project/
 ├── .env                    # Your configuration (not in git)
-├── .env.example            # Template for .env
+├── .env.example            # Template for .env (all env vars documented)
 ├── data/
 │   ├── claims.db           # SQLite database (created automatically)
 │   ├── mock_db.json        # Policy and vehicle data
@@ -213,6 +236,7 @@ project/
 └── src/claim_agent/
     ├── config/
     │   ├── llm.py          # LLM configuration
+    │   ├── settings.py     # Centralized settings (escalation, fraud, valuation, token budgets)
     │   ├── agents.yaml     # Agent reference
     │   └── tasks.yaml      # Task reference
     └── skills/
@@ -220,9 +244,9 @@ project/
         └── *.md            # Agent skill definitions
 ```
 
-## Logging
+## Logging and Verbose Mode
 
-CrewAI logs are verbose by default. To reduce logging:
+CrewAI verbose mode is controlled by `CREWAI_VERBOSE` (default: `true`). Set to `false` to reduce crew output. For general Python logging:
 
 ```python
 import logging
@@ -280,6 +304,8 @@ llm = get_llm()  # Raises ValueError if key missing
 
 ## Example .env File
 
+See `.env.example` in the project root for the full list of variables. Minimal example:
+
 ```bash
 # LLM Configuration (Required)
 OPENAI_API_KEY=sk-or-v1-your-openrouter-key
@@ -292,4 +318,7 @@ OPENAI_MODEL_NAME=anthropic/claude-3-sonnet
 CLAIMS_DB_PATH=data/claims.db
 MOCK_DB_PATH=data/mock_db.json
 CA_COMPLIANCE_PATH=data/california_auto_compliance.json
+
+# Optional: Escalation, fraud, valuation, token budgets, CREWAI_VERBOSE
+# See .env.example for all options.
 ```

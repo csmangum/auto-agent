@@ -79,6 +79,7 @@ claim-agent history CLM-11EEF959
 
 | File | Type | Description |
 |------|------|-------------|
+| `new_claim.json` | new | First-time submission |
 | `partial_loss_parking.json` | partial_loss | Parking lot fender bender |
 | `duplicate_claim.json` | duplicate | Potential duplicate |
 | `total_loss_claim.json` | total_loss | Flood damage |
@@ -140,6 +141,7 @@ pytest tests/test_crews.py -v
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get audit log |
 | `claim-agent reprocess <id>` | Re-run workflow |
+| `claim-agent metrics [id]` | Show metrics (optional claim ID) |
 
 ## Creating a Custom Claim
 

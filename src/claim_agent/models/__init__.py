@@ -5,7 +5,6 @@ from claim_agent.models.claim import (
     ClaimOutput,
     ClaimType,
     EscalationOutput,
-    WorkflowState,
 )
 
 __all__ = [
@@ -13,5 +12,4 @@ __all__ = [
     "ClaimOutput",
     "ClaimType",
     "EscalationOutput",
-    "WorkflowState",
 ]

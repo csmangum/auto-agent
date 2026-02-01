@@ -5,10 +5,14 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 ## Features
 
 - **Workflow Routing** - Router agent classifies claims and delegates to specialized crews
-- **Human-in-the-Loop** - Escalation for fraud indicators, high-value, or low-confidence claims
+- **Human-in-the-Loop** - Escalation for fraud indicators, high-value, or low-confidence claims (configurable thresholds)
 - **Five Claim Types** - New, duplicate, total loss, fraud, and partial loss workflows
 - **Persistent State** - SQLite database with full audit trail
-- **MCP Server** - Optional external tool access via Model Context Protocol
+- **Observability** - Structured logging, correlation IDs, LLM tracing (LangSmith/LiteLLM), cost and latency metrics
+- **Configuration** - Centralized settings for escalation, fraud, valuation, token budgets (see `.env.example`)
+- **Security & Resilience** - Input sanitization, parameterized DB queries, retry for transient LLM failures
+- **MCP Server** - Optional external tool access and health check via Model Context Protocol
+- **RAG** - Semantic search over policy and compliance (see [RAG](docs/rag.md))
 
 ## Architecture
 
@@ -58,16 +62,20 @@ claim-agent status CLM-11EEF959
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get claim audit log |
 | `claim-agent reprocess <id>` | Re-run workflow |
+| `claim-agent metrics [id]` | Show metrics (optional claim ID) |
 
 ## Sample Claims
 
 | File | Type |
 |------|------|
+| `tests/sample_claims/new_claim.json` | New |
 | `tests/sample_claims/partial_loss_parking.json` | Partial loss (parking) |
 | `tests/sample_claims/duplicate_claim.json` | Duplicate |
 | `tests/sample_claims/total_loss_claim.json` | Total loss |
 | `tests/sample_claims/fraud_claim.json` | Fraud |
 | `tests/sample_claims/partial_loss_claim.json` | Partial loss |
+| `tests/sample_claims/partial_loss_fender.json` | Partial loss |
+| `tests/sample_claims/partial_loss_front_collision.json` | Partial loss |
 
 ## Documentation
 
@@ -82,21 +90,25 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [Agent Flow](docs/agent-flow.md) | Execution flow |
 | [Tools](docs/tools.md) | Tool reference |
 | [Database](docs/database.md) | Schema and operations |
-| [Configuration](docs/configuration.md) | Environment setup |
-| [MCP Server](docs/mcp-server.md) | External tool access |
+| [Configuration](docs/configuration.md) | Environment and centralized settings |
+| [Observability](docs/observability.md) | Logging, tracing, metrics |
+| [RAG](docs/rag.md) | Policy and compliance search |
+| [MCP Server](docs/mcp-server.md) | External tool access and health check |
 
 ## Project Layout
 
 ```
 src/claim_agent/
 ├── main.py           # CLI entry point
-├── config/           # LLM configuration
+├── config/           # LLM (llm.py) and centralized settings (settings.py)
 ├── agents/           # Agent definitions
 ├── crews/            # Crew definitions
 ├── tools/            # CrewAI tools
+├── utils/            # Sanitization, retry
 ├── db/               # SQLite database
-├── models/           # Pydantic models
-└── mcp_server/       # Optional MCP server
+├── models/           # Pydantic models (ClaimInput, ClaimType, etc.)
+├── observability/   # Logging, tracing, metrics
+└── mcp_server/      # Optional MCP server (includes health_check)
 ```
 
 ## Testing

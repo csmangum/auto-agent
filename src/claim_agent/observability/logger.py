@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -53,6 +54,8 @@ class StructuredFormatter(logging.Formatter):
             log_data["claim_id"] = claim_ctx.get("claim_id")
             log_data["claim_type"] = claim_ctx.get("claim_type")
             log_data["policy_number"] = claim_ctx.get("policy_number")
+            if claim_ctx.get("correlation_id"):
+                log_data["correlation_id"] = claim_ctx["correlation_id"]
 
         # Add extra fields from the record
         if hasattr(record, "claim_id") and record.claim_id:
@@ -94,6 +97,10 @@ class HumanReadableFormatter(logging.Formatter):
         claim_type = getattr(record, "claim_type", None) or claim_ctx.get("claim_type")
         if claim_type:
             ctx_parts.append(f"type={claim_type}")
+
+        correlation_id = claim_ctx.get("correlation_id")
+        if correlation_id:
+            ctx_parts.append(f"correlation_id={correlation_id}")
 
         ctx_str = f" [{', '.join(ctx_parts)}]" if ctx_parts else ""
         
@@ -209,19 +216,24 @@ def claim_context(
     claim_id: str,
     claim_type: str | None = None,
     policy_number: str | None = None,
+    correlation_id: str | None = None,
     **extra: Any,
 ):
     """Context manager for setting claim context on all logs within the block.
 
+    A correlation_id (UUID) is generated if not provided, so all log entries
+    within the block can be correlated across systems.
+
     Usage:
         with claim_context(claim_id="CLM-123", claim_type="new"):
-            logger.info("Processing claim")  # Will include claim_id in output
+            logger.info("Processing claim")  # Will include claim_id and correlation_id
     """
     old_context = _get_claim_context()
     new_context = {
         "claim_id": claim_id,
         "claim_type": claim_type,
         "policy_number": policy_number,
+        "correlation_id": correlation_id or str(uuid.uuid4()),
         **extra,
     }
     _set_claim_context(new_context)

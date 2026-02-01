@@ -8,6 +8,7 @@ from claim_agent.agents.duplicate import (
     create_resolution_agent,
 )
 from claim_agent.config.llm import get_llm
+from claim_agent.config.settings import get_crew_verbose
 
 
 def create_duplicate_crew(llm=None):
@@ -46,5 +47,5 @@ Provide a clear resolution decision and one-line summary for the output.""",
     return Crew(
         agents=[search_agent, similarity_agent, resolution_agent],
         tasks=[search_task, similarity_task, resolve_task],
-        verbose=True,
+        verbose=get_crew_verbose(),
     )

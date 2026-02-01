@@ -128,8 +128,11 @@ flowchart TB
 ```
 src/claim_agent/
 ├── main.py              # CLI entry point
-├── config/              # LLM and YAML configs
-│   └── llm.py           # LLM configuration
+├── config/              # LLM and configuration
+│   ├── llm.py           # LLM configuration
+│   ├── settings.py      # Centralized settings (escalation, fraud, valuation, token budgets)
+│   ├── agents.yaml      # Agent reference
+│   └── tasks.yaml       # Task reference
 ├── agents/              # Agent factory functions
 ├── crews/               # Crew definitions
 ├── skills/              # Agent prompt definitions (markdown)
@@ -138,12 +141,16 @@ src/claim_agent/
 ├── tools/               # CrewAI tools
 │   ├── logic.py         # Core implementation
 │   └── *_tools.py       # Tool wrappers
+├── utils/               # Shared utilities
+│   ├── sanitization.py  # Input sanitization for claim data
+│   └── retry.py         # LLM retry with exponential backoff
 ├── db/                  # Database layer
-│   ├── database.py      # SQLite connection
-│   ├── repository.py    # CRUD operations
+│   ├── database.py      # SQLite connection (schema init once per path)
+│   ├── repository.py    # CRUD operations (parameterized queries)
 │   └── constants.py     # Status constants
 ├── models/              # Pydantic models
-│   └── claim.py         # ClaimInput, ClaimOutput, etc.
+│   └── claim.py         # ClaimInput, ClaimOutput, ClaimType, etc.
+├── observability/       # Logging, tracing, metrics
 └── mcp_server/          # Optional MCP server
 ```
 
@@ -185,3 +192,11 @@ src/claim_agent/
 2. **Portability** - Single file, easy to backup/restore
 3. **Sufficient for POC** - Handles demonstration data volumes
 4. **Easy Migration** - Schema migrates easily to PostgreSQL
+
+### Security and Resilience
+
+- **Input sanitization** – Incoming claim data is sanitized (control characters, field length, prompt-injection patterns) before processing. See `claim_agent.utils.sanitization`.
+- **Parameterized queries** – The repository uses explicit parameterized queries; no dynamic SQL string building.
+- **Error messages** – Policy lookup and similar failures return generic messages to callers; detailed errors are logged internally.
+- **Token budgets** – Configurable max tokens and LLM calls per claim prevent runaway usage. See [Configuration](configuration.md#centralized-settings).
+- **Retry** – Transient LLM failures are retried with exponential backoff via `claim_agent.utils.retry`.

@@ -2,8 +2,13 @@
 
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from pathlib import Path
+
+# Tracks which database paths have had schema applied (avoid running on every connection)
+_schema_initialized: set[str] = set()
+_schema_lock = threading.RLock()
 
 SCHEMA_SQL = """
 -- Claims table (main record)
@@ -58,26 +63,45 @@ def get_db_path() -> str:
     return path
 
 
-def init_db(path: str | None = None) -> None:
-    """Create tables if they do not exist."""
-    db_path = path or get_db_path()
+def _run_schema(db_path: str) -> None:
+    """Create tables if they do not exist. Caller must manage _schema_initialized."""
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
 
 
+def init_db(path: str | None = None) -> None:
+    """Create tables if they do not exist."""
+    db_path = path or get_db_path()
+    _run_schema(db_path)
+    with _schema_lock:
+        _schema_initialized.add(db_path)
+
+
+def _ensure_schema(db_path: str) -> None:
+    """Run schema once per path. Thread-safe."""
+    # Fast path: check without lock
+    if db_path in _schema_initialized:
+        return
+    # Slow path: acquire lock and check again (double-checked locking)
+    with _schema_lock:
+        if db_path in _schema_initialized:
+            return
+        init_db(db_path)
+
+
 @contextmanager
 def get_connection(path: str | None = None):
-    """Context manager yielding a database connection. Ensures schema exists."""
+    """Context manager yielding a database connection. Ensures schema exists once per path."""
     db_path = path or get_db_path()
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_schema(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        conn.executescript(SCHEMA_SQL)
         yield conn
         conn.commit()
     finally:

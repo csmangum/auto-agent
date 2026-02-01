@@ -14,6 +14,7 @@ from claim_agent.agents.fraud import (
     create_fraud_assessment_agent,
 )
 from claim_agent.config.llm import get_llm
+from claim_agent.config.settings import get_crew_verbose
 
 
 def create_fraud_detection_crew(llm=None):
@@ -103,5 +104,5 @@ Output the final fraud assessment report.""",
     return Crew(
         agents=[pattern_agent, crossref_agent, assessment_agent],
         tasks=[pattern_task, crossref_task, assessment_task],
-        verbose=True,
+        verbose=get_crew_verbose(),
     )

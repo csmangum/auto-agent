@@ -50,7 +50,9 @@ flowchart TB
 
 ## Step-by-Step Execution
 
-### 1. Input Validation
+### 1. Input Sanitization and Validation
+
+Incoming claim data is **sanitized** (control characters, field length limits, prompt-injection pattern redaction) before validation. Then:
 
 ```python
 claim-agent process tests/sample_claims/partial_loss_parking.json
@@ -74,6 +76,8 @@ Creates audit log entries. See [Database](database.md) for schema.
 
 ### 3. Classification (Router Crew)
 
+Router and workflow crew kickoffs use **retry with exponential backoff** for transient LLM failures. **Token and call budgets** (configurable via `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` and `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM`) are enforced; processing stops if limits are exceeded.
+
 ```mermaid
 flowchart LR
     A[claim_data JSON] --> B[Router Agent]
@@ -85,7 +89,7 @@ Output: `"partial_loss\nBumper damage is repairable"`
 
 ### 4. Escalation Check (HITL)
 
-**Skipped for fraud claims** (fraud crew does its own assessment).
+**Skipped for fraud claims** (fraud crew does its own assessment). Thresholds (e.g. confidence, high value, similarity range) are **configurable** via environment variables; see [Configuration](configuration.md#centralized-settings).
 
 ```mermaid
 flowchart TD
