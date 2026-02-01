@@ -12,8 +12,6 @@ import json
 import os
 from pathlib import Path
 
-import pytest
-
 # Add src to path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -174,7 +172,7 @@ class TestReportGeneration:
         assert report.total_latency_ms == 2500
         assert report.avg_latency_ms == 1250
         assert report.total_tokens == 250
-        assert report.total_cost_usd == pytest.approx(0.03)
+        assert abs(report.total_cost_usd - 0.03) < 1e-9  # Floating-point comparison
 
     def test_report_calculates_type_accuracy(self):
         """Report should calculate accuracy per expected type."""
