@@ -53,6 +53,17 @@ The MCP server exposes these tools:
 | `generate_report` | Generate claim report document |
 | `generate_claim_id` | Generate unique claim ID |
 | `search_california_compliance` | Search CA compliance data |
+| `get_claim_metrics` | Get metrics for claim processing (optional claim ID) |
+| `get_observability_config` | Get current tracing and logging configuration |
+
+## Observability tools
+
+When the observability module is available, the server exposes:
+
+- **`get_claim_metrics(claim_id=None)`** – Returns JSON with per-claim metrics (if `claim_id` is given) or global stats plus all per-claim summaries (if omitted). Includes LLM call count, tokens, cost (USD), latency, and status.
+- **`get_observability_config()`** – Returns JSON with current config: `langsmith_enabled`, `langsmith_project`, `trace_llm_calls`, `trace_tool_calls`, `log_prompts`, `log_responses`.
+
+See [Observability](observability.md) for full details.
 
 ## Tool Definitions
 
