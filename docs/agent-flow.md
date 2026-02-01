@@ -53,7 +53,7 @@ flowchart TB
 ### 1. Input Validation
 
 ```python
-claim-agent process tests/sample_claims/new_claim.json
+claim-agent process tests/sample_claims/partial_loss_parking.json
 
 # Validates with Pydantic
 from claim_agent.models.claim import ClaimInput

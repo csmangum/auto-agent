@@ -44,7 +44,7 @@ cp .env.example .env
 # Edit .env with your OpenRouter/OpenAI API key
 
 # Process a claim
-claim-agent process tests/sample_claims/new_claim.json
+claim-agent process tests/sample_claims/partial_loss_parking.json
 
 # Check status
 claim-agent status CLM-11EEF959
@@ -63,7 +63,7 @@ claim-agent status CLM-11EEF959
 
 | File | Type |
 |------|------|
-| `tests/sample_claims/new_claim.json` | New claim |
+| `tests/sample_claims/partial_loss_parking.json` | Partial loss (parking) |
 | `tests/sample_claims/duplicate_claim.json` | Duplicate |
 | `tests/sample_claims/total_loss_claim.json` | Total loss |
 | `tests/sample_claims/fraud_claim.json` | Fraud |

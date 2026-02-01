@@ -33,7 +33,7 @@ def test_process_invalid_claim_exits_nonzero_no_claim_created():
     """Process with invalid claim JSON (missing required field) exits non-zero and creates no claim."""
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    invalid_json_path = _PROJECT_ROOT / "tests" / "sample_claims" / "new_claim.json"
+    invalid_json_path = _PROJECT_ROOT / "tests" / "sample_claims" / "partial_loss_parking.json"
     with open(invalid_json_path) as f:
         data = json.load(f)
     del data["vin"]
