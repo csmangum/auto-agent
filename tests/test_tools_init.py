@@ -2,7 +2,6 @@
 
 import json
 import os
-import sys
 import tempfile
 from pathlib import Path
 
@@ -32,6 +31,7 @@ def temp_db():
         try:
             os.unlink(path)
         except OSError:
+            # Best-effort cleanup: ignore errors if the temporary DB file was already removed
             pass
 
 

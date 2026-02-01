@@ -36,6 +36,7 @@ def temp_db():
         try:
             os.unlink(path)
         except OSError:
+            # Ignore errors when cleaning up the temporary DB file (e.g., if already removed).
             pass
 
 
