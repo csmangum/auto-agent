@@ -432,3 +432,105 @@ class TestMain:
                 os.environ.pop("CLAIMS_DB_PATH", None)
             else:
                 os.environ["CLAIMS_DB_PATH"] = prev
+
+
+class TestCmdMetrics:
+    """Tests for cmd_metrics function."""
+
+    def test_cmd_metrics_no_claims(self, capsys):
+        """Test metrics with no claims processed."""
+        from claim_agent.main import cmd_metrics
+        
+        cmd_metrics(claim_id=None)
+        
+        captured = capsys.readouterr()
+        assert "No claims have been processed" in captured.out
+
+    def test_cmd_metrics_claim_not_found(self, capsys):
+        """Test metrics with non-existent claim ID."""
+        from claim_agent.main import cmd_metrics
+        
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_metrics(claim_id="CLM-NONEXISTENT")
+        
+        assert exc_info.value.code == 1
+
+    def test_cmd_metrics_with_claim(self, capsys):
+        """Test metrics with a claim that has been tracked."""
+        from claim_agent.main import cmd_metrics
+        from claim_agent.observability import get_metrics
+        
+        metrics = get_metrics()
+        claim_id = "CLM-TEST-METRICS"
+        metrics.start_claim(claim_id)
+        metrics.record_llm_call(
+            claim_id=claim_id,
+            model="gpt-4o-mini",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.001,
+            latency_ms=500.0,
+            status="success",
+        )
+        metrics.end_claim(claim_id, status="completed")
+        
+        cmd_metrics(claim_id=claim_id)
+        
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+        assert parsed["claim_id"] == claim_id
+        assert parsed["total_llm_calls"] == 1
+
+    def test_cmd_metrics_global_with_claims(self, capsys):
+        """Test global metrics with processed claims."""
+        from claim_agent.main import cmd_metrics
+        from claim_agent.observability import get_metrics
+        
+        metrics = get_metrics()
+        claim_id = "CLM-GLOBAL-METRICS"
+        metrics.start_claim(claim_id)
+        metrics.record_llm_call(
+            claim_id=claim_id,
+            model="gpt-4o-mini",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.001,
+            latency_ms=500.0,
+            status="success",
+        )
+        metrics.end_claim(claim_id, status="completed")
+        
+        cmd_metrics(claim_id=None)
+        
+        captured = capsys.readouterr()
+        assert "Global Metrics Summary" in captured.out
+        assert "total_claims" in captured.out
+
+
+class TestMainMetrics:
+    """Tests for main function with metrics command."""
+
+    def test_main_metrics_no_claim_id(self, capsys):
+        """Test main metrics command without claim_id."""
+        with patch("sys.argv", ["claim-agent", "metrics"]):
+            main()
+        
+        captured = capsys.readouterr()
+        # Should either show "No claims" or global stats
+        assert "claims" in captured.out.lower() or "No claims" in captured.out
+
+    def test_main_metrics_with_claim_id(self, capsys):
+        """Test main metrics command with claim_id."""
+        from claim_agent.observability import get_metrics
+        
+        # Set up a claim with metrics
+        metrics = get_metrics()
+        claim_id = "CLM-MAIN-METRICS"
+        metrics.start_claim(claim_id)
+        metrics.end_claim(claim_id)
+        
+        with patch("sys.argv", ["claim-agent", "metrics", claim_id]):
+            main()
+        
+        captured = capsys.readouterr()
+        assert claim_id in captured.out
