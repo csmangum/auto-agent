@@ -4,8 +4,6 @@ These tools allow agents to dynamically search for relevant policy
 and compliance information during claim processing.
 """
 
-from typing import Optional
-
 from crewai.tools import tool
 
 
@@ -44,23 +42,26 @@ def search_policy_compliance(
     Returns:
         Relevant policy and compliance excerpts with source information
     """
-    retriever = _get_retriever()
-    
-    results = retriever.search(
-        query=query,
-        top_k=5,
-        state=state,
-        data_type=data_type if data_type else None,
-        min_score=0.2,
-    )
-    
-    if not results:
-        return f"No relevant information found for '{query}' in {state}."
-    
-    chunks = [chunk for chunk, _ in results]
-    context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
-    
-    return f"Found {len(results)} relevant items for '{query}' in {state}:\n\n{context}"
+    try:
+        retriever = _get_retriever()
+        
+        results = retriever.search(
+            query=query,
+            top_k=5,
+            state=state,
+            data_type=data_type if data_type else None,
+            min_score=0.2,
+        )
+        
+        if not results:
+            return f"No relevant information found for '{query}' in {state}."
+        
+        chunks = [chunk for chunk, _ in results]
+        context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
+        
+        return f"Found {len(results)} relevant items for '{query}' in {state}:\n\n{context}"
+    except Exception as e:
+        return f"Error searching policy compliance: {str(e)}"
 
 
 @tool("Get Compliance Deadlines")
@@ -79,16 +80,19 @@ def get_compliance_deadlines(state: str = "California") -> str:
     Returns:
         List of compliance deadlines with regulatory references
     """
-    retriever = _get_retriever()
-    
-    chunks = retriever.get_compliance_deadlines(state=state)
-    
-    if not chunks:
-        return f"No deadline information found for {state}."
-    
-    context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
-    
-    return f"Compliance deadlines for {state}:\n\n{context}"
+    try:
+        retriever = _get_retriever()
+        
+        chunks = retriever.get_compliance_deadlines(state=state)
+        
+        if not chunks:
+            return f"No deadline information found for {state}."
+        
+        context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
+        
+        return f"Compliance deadlines for {state}:\n\n{context}"
+    except Exception as e:
+        return f"Error retrieving compliance deadlines: {str(e)}"
 
 
 @tool("Get Required Disclosures")
@@ -107,16 +111,19 @@ def get_required_disclosures(state: str = "California") -> str:
     Returns:
         List of required disclosures with regulatory references
     """
-    retriever = _get_retriever()
-    
-    chunks = retriever.get_required_disclosures(state=state)
-    
-    if not chunks:
-        return f"No disclosure requirements found for {state}."
-    
-    context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
-    
-    return f"Required disclosures for {state}:\n\n{context}"
+    try:
+        retriever = _get_retriever()
+        
+        chunks = retriever.get_required_disclosures(state=state)
+        
+        if not chunks:
+            return f"No disclosure requirements found for {state}."
+        
+        context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
+        
+        return f"Required disclosures for {state}:\n\n{context}"
+    except Exception as e:
+        return f"Error retrieving required disclosures: {str(e)}"
 
 
 @tool("Get Coverage Exclusions")
@@ -136,19 +143,22 @@ def get_coverage_exclusions(
     Returns:
         List of exclusions with policy form references
     """
-    retriever = _get_retriever()
-    
-    chunks = retriever.get_exclusions(
-        coverage_type=coverage_type,
-        state=state,
-    )
-    
-    if not chunks:
-        return f"No exclusions found for {coverage_type} coverage in {state}."
-    
-    context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
-    
-    return f"Exclusions for {coverage_type} coverage in {state}:\n\n{context}"
+    try:
+        retriever = _get_retriever()
+        
+        chunks = retriever.get_exclusions(
+            coverage_type=coverage_type,
+            state=state,
+        )
+        
+        if not chunks:
+            return f"No exclusions found for {coverage_type} coverage in {state}."
+        
+        context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
+        
+        return f"Exclusions for {coverage_type} coverage in {state}:\n\n{context}"
+    except Exception as e:
+        return f"Error retrieving coverage exclusions: {str(e)}"
 
 
 @tool("Get Total Loss Requirements")
@@ -168,22 +178,25 @@ def get_total_loss_requirements(state: str = "California") -> str:
     Returns:
         Total loss requirements with regulatory references
     """
-    retriever = _get_retriever()
-    
-    results = retriever.search(
-        query="total loss threshold actual cash value ACV valuation salvage settlement",
-        top_k=8,
-        state=state,
-        min_score=0.2,
-    )
-    
-    if not results:
-        return f"No total loss requirements found for {state}."
-    
-    chunks = [chunk for chunk, _ in results]
-    context = retriever.format_context(chunks, include_metadata=True, max_length=3500)
-    
-    return f"Total loss requirements for {state}:\n\n{context}"
+    try:
+        retriever = _get_retriever()
+        
+        results = retriever.search(
+            query="total loss threshold actual cash value ACV valuation salvage settlement",
+            top_k=8,
+            state=state,
+            min_score=0.2,
+        )
+        
+        if not results:
+            return f"No total loss requirements found for {state}."
+        
+        chunks = [chunk for chunk, _ in results]
+        context = retriever.format_context(chunks, include_metadata=True, max_length=3500)
+        
+        return f"Total loss requirements for {state}:\n\n{context}"
+    except Exception as e:
+        return f"Error retrieving total loss requirements: {str(e)}"
 
 
 @tool("Get Fraud Detection Guidance")
@@ -203,23 +216,26 @@ def get_fraud_detection_guidance(state: str = "California") -> str:
     Returns:
         Fraud detection guidance with regulatory references
     """
-    retriever = _get_retriever()
-    
-    results = retriever.search(
-        query="fraud detection SIU reporting staged accident indicators investigation",
-        top_k=6,
-        state=state,
-        data_type="compliance",
-        min_score=0.2,
-    )
-    
-    if not results:
-        return f"No fraud guidance found for {state}."
-    
-    chunks = [chunk for chunk, _ in results]
-    context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
-    
-    return f"Fraud detection guidance for {state}:\n\n{context}"
+    try:
+        retriever = _get_retriever()
+        
+        results = retriever.search(
+            query="fraud detection SIU reporting staged accident indicators investigation",
+            top_k=6,
+            state=state,
+            data_type="compliance",
+            min_score=0.2,
+        )
+        
+        if not results:
+            return f"No fraud guidance found for {state}."
+        
+        chunks = [chunk for chunk, _ in results]
+        context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
+        
+        return f"Fraud detection guidance for {state}:\n\n{context}"
+    except Exception as e:
+        return f"Error retrieving fraud detection guidance: {str(e)}"
 
 
 @tool("Get Repair Standards")
@@ -239,19 +255,22 @@ def get_repair_standards(state: str = "California") -> str:
     Returns:
         Repair standards with regulatory references
     """
-    retriever = _get_retriever()
-    
-    results = retriever.search(
-        query="repair shop parts OEM aftermarket labor rate DRP direct repair",
-        top_k=6,
-        state=state,
-        min_score=0.2,
-    )
-    
-    if not results:
-        return f"No repair standards found for {state}."
-    
-    chunks = [chunk for chunk, _ in results]
-    context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
-    
-    return f"Repair standards for {state}:\n\n{context}"
+    try:
+        retriever = _get_retriever()
+        
+        results = retriever.search(
+            query="repair shop parts OEM aftermarket labor rate DRP direct repair",
+            top_k=6,
+            state=state,
+            min_score=0.2,
+        )
+        
+        if not results:
+            return f"No repair standards found for {state}."
+        
+        chunks = [chunk for chunk, _ in results]
+        context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
+        
+        return f"Repair standards for {state}:\n\n{context}"
+    except Exception as e:
+        return f"Error retrieving repair standards: {str(e)}"

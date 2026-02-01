@@ -8,7 +8,7 @@ import json
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 
 @dataclass
@@ -150,7 +150,6 @@ class DocumentChunker:
                            section_data.get("florida_specific", False)
         
         section_title = section_data.get("section_title", section_name)
-        description = section_data.get("description", "")
         
         # Process different content types within a section
         

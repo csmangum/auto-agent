@@ -4,12 +4,13 @@ High-level interface for retrieving relevant policy and compliance context
 for claim processing agents.
 """
 
+import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 
 from claim_agent.rag.chunker import (
-    DocumentChunker,
     Chunk,
     chunk_policy_data,
     chunk_compliance_data,
@@ -18,11 +19,35 @@ from claim_agent.rag.embeddings import EmbeddingProvider, get_embedding_provider
 from claim_agent.rag.vector_store import VectorStore
 
 
+def _get_default_cache_dir() -> Path:
+    """Return a suitable default cache directory for the vector store.
+
+    Preference order:
+    1. Environment variable CLAIM_AGENT_CACHE_DIR, if set.
+    2. A user-level cache directory based on the current platform.
+    """
+    env_dir = os.getenv("CLAIM_AGENT_CACHE_DIR")
+    if env_dir:
+        return Path(env_dir)
+
+    # Windows: use LOCALAPPDATA if available, otherwise fall back under the home directory
+    if os.name == "nt":
+        local_app_data = os.getenv("LOCALAPPDATA")
+        if local_app_data:
+            base = Path(local_app_data)
+        else:
+            base = Path.home() / "AppData" / "Local"
+        return base / "claim_agent" / "cache"
+
+    # POSIX and other: use XDG-style cache directory under the home directory
+    return Path.home() / ".cache" / "claim_agent"
+
+
 # Default data directory
 DEFAULT_DATA_DIR = Path(__file__).parent.parent.parent.parent / "data"
 
 # Default cache directory for persisted vector store
-DEFAULT_CACHE_DIR = Path(__file__).parent / ".cache"
+DEFAULT_CACHE_DIR = _get_default_cache_dir()
 
 
 class PolicyRetriever:
@@ -73,15 +98,20 @@ class PolicyRetriever:
                 self.vector_store.load(self.cache_dir)
                 self._loaded = True
                 return
-            except Exception:
-                # Cache is corrupted, rebuild
-                pass
+            except (json.JSONDecodeError, FileNotFoundError, KeyError, ValueError) as e:
+                # Cache is corrupted or incompatible, rebuild
+                logging.warning(f"Failed to load cache from {self.cache_dir} ({type(e).__name__}: {e}). Rebuilding index.")
         
         self._build_index()
         self._loaded = True
     
     def _build_index(self) -> None:
         """Build the vector store index from documents."""
+        # Validate data directory exists
+        if not self.data_dir.exists():
+            logging.warning(f"Data directory {self.data_dir} does not exist. Skipping index creation.")
+            return
+        
         # Chunk all documents
         all_chunks = []
         
@@ -93,13 +123,21 @@ class PolicyRetriever:
         compliance_chunks = chunk_compliance_data(self.data_dir)
         all_chunks.extend(compliance_chunks)
         
+        # Warn if no chunks found
+        if not all_chunks:
+            logging.warning(
+                f"No policy or compliance documents found in {self.data_dir}. "
+                "Expected JSON files matching patterns: "
+                "*_auto_policy_language.json, *_auto_compliance.json"
+            )
+            return
+        
         # Add to vector store
-        if all_chunks:
-            self.vector_store.add_chunks(all_chunks)
-            
-            # Save cache
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            self.vector_store.save(self.cache_dir)
+        self.vector_store.add_chunks(all_chunks)
+        
+        # Save cache
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.vector_store.save(self.cache_dir)
     
     def search(
         self,
@@ -372,13 +410,33 @@ def get_retriever(
         
     Returns:
         PolicyRetriever instance
+        
+    Raises:
+        ValueError: If data_dir differs from existing instance without force_new=True
     """
     global _global_retriever
     
+    # Create a new retriever if none exists yet or the caller explicitly requests one.
     if _global_retriever is None or force_new:
         _global_retriever = PolicyRetriever(
             data_dir=data_dir,
             auto_load=True,
         )
+        return _global_retriever
+
+    # If a retriever already exists and a custom data_dir is provided, ensure it
+    # matches the existing instance's data_dir to avoid confusing, silent misuse.
+    if data_dir is not None:
+        existing_dir = _global_retriever.data_dir
+        requested_dir = Path(data_dir)
+
+        if existing_dir != requested_dir:
+            raise ValueError(
+                f"Global PolicyRetriever already initialized with data_dir="
+                f"{existing_dir!r}, but get_retriever was called with a different "
+                f"data_dir={requested_dir!r}. Either call get_retriever with "
+                f"force_new=True to create a new instance, or reuse the existing "
+                f"data_dir."
+            )
     
     return _global_retriever

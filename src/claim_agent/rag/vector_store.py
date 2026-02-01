@@ -14,6 +14,10 @@ from claim_agent.rag.chunker import Chunk, ChunkMetadata
 from claim_agent.rag.embeddings import EmbeddingProvider, get_embedding_provider
 
 
+# Threshold for considering a vector norm to be zero
+ZERO_NORM_THRESHOLD = 1e-8
+
+
 class VectorStore:
     """Simple in-memory vector store with numpy.
     
@@ -195,9 +199,24 @@ class VectorStore:
         Returns:
             Array of similarity scores
         """
-        # Normalize vectors
-        query_norm = query_vec / (np.linalg.norm(query_vec) + 1e-8)
-        embeddings_norm = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
+        # Handle zero-norm query explicitly: no meaningful direction -> zero similarity
+        query_norm_value = np.linalg.norm(query_vec)
+        if query_norm_value < ZERO_NORM_THRESHOLD:
+            return np.zeros(embeddings.shape[0])
+        
+        # Normalize query vector
+        query_norm = query_vec / query_norm_value
+        
+        # Compute norms for each embedding vector
+        emb_norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        
+        # Initialize normalized embeddings as zeros; zero-norm embeddings stay zero
+        embeddings_norm = np.zeros_like(embeddings)
+        
+        # Identify embeddings with non-zero norm and normalize only those
+        valid_mask = emb_norms.squeeze(-1) >= ZERO_NORM_THRESHOLD
+        if np.any(valid_mask):
+            embeddings_norm[valid_mask] = embeddings[valid_mask] / emb_norms[valid_mask]
         
         # Dot product gives cosine similarity for normalized vectors
         return np.dot(embeddings_norm, query_norm)
