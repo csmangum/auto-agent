@@ -24,6 +24,7 @@ flowchart LR
 - **[Architecture](architecture.md)** - System design, components, and patterns
 - **[Agent Flow](agent-flow.md)** - Execution flow and state management
 - **[Crews](crews.md)** - Workflow crew details and agent composition
+- **[Skills](skills.md)** - Agent prompts and operational procedures
 - **[Claim Types](claim-types.md)** - Classification criteria and examples
 
 ### Reference
@@ -60,6 +61,7 @@ See [Claim Types](claim-types.md) for classification criteria and examples.
 
 - **Multi-Agent Architecture** - Specialized agents collaborate on tasks
 - **Router-Based Classification** - Intelligent claim routing ([Architecture](architecture.md#router-delegator-pattern))
+- **Skills-Based Prompts** - Agent prompts in readable markdown ([Skills](skills.md))
 - **Human-in-the-Loop** - Escalation for high-risk claims ([Agent Flow](agent-flow.md#4-escalation-check-hitl))
 - **Persistent State** - SQLite with full audit trail ([Database](database.md))
 - **Extensible Tools** - Easy to add capabilities ([Tools](tools.md))
