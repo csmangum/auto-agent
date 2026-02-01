@@ -7,6 +7,7 @@ for claim processing agents.
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,7 @@ from claim_agent.rag.chunker import (
     chunk_policy_data,
     chunk_compliance_data,
 )
+from claim_agent.rag.constants import SUPPORTED_STATES
 from claim_agent.rag.embeddings import EmbeddingProvider, get_embedding_provider
 from claim_agent.rag.vector_store import VectorStore
 
@@ -153,7 +155,7 @@ class PolicyRetriever:
         Args:
             query: Natural language search query
             top_k: Number of results to return
-            state: Filter by state (e.g., "California", "Texas")
+            state: Filter by state (e.g., one of SUPPORTED_STATES)
             data_type: Filter by type ("compliance" or "policy_language")
             section: Filter by section name
             min_score: Minimum similarity score
@@ -394,8 +396,9 @@ class PolicyRetriever:
         self._build_index()
 
 
-# Global retriever instance (lazy-loaded)
+# Global retriever instance (lazy-loaded), protected by lock
 _global_retriever: Optional[PolicyRetriever] = None
+_retriever_lock = threading.Lock()
 
 
 def get_retriever(
@@ -415,28 +418,29 @@ def get_retriever(
         ValueError: If data_dir differs from existing instance without force_new=True
     """
     global _global_retriever
-    
-    # Create a new retriever if none exists yet or the caller explicitly requests one.
-    if _global_retriever is None or force_new:
-        _global_retriever = PolicyRetriever(
-            data_dir=data_dir,
-            auto_load=True,
-        )
-        return _global_retriever
 
-    # If a retriever already exists and a custom data_dir is provided, ensure it
-    # matches the existing instance's data_dir to avoid confusing, silent misuse.
-    if data_dir is not None:
-        existing_dir = _global_retriever.data_dir
-        requested_dir = Path(data_dir)
-
-        if existing_dir != requested_dir:
-            raise ValueError(
-                f"Global PolicyRetriever already initialized with data_dir="
-                f"{existing_dir!r}, but get_retriever was called with a different "
-                f"data_dir={requested_dir!r}. Either call get_retriever with "
-                f"force_new=True to create a new instance, or reuse the existing "
-                f"data_dir."
+    with _retriever_lock:
+        # Create a new retriever if none exists yet or the caller explicitly requests one.
+        if _global_retriever is None or force_new:
+            _global_retriever = PolicyRetriever(
+                data_dir=data_dir,
+                auto_load=True,
             )
-    
-    return _global_retriever
+            return _global_retriever
+
+        # If a retriever already exists and a custom data_dir is provided, ensure it
+        # matches the existing instance's data_dir to avoid confusing, silent misuse.
+        if data_dir is not None:
+            existing_dir = _global_retriever.data_dir
+            requested_dir = Path(data_dir)
+
+            if existing_dir != requested_dir:
+                raise ValueError(
+                    f"Global PolicyRetriever already initialized with data_dir="
+                    f"{existing_dir!r}, but get_retriever was called with a different "
+                    f"data_dir={requested_dir!r}. Either call get_retriever with "
+                    f"force_new=True to create a new instance, or reuse the existing "
+                    f"data_dir."
+                )
+
+        return _global_retriever

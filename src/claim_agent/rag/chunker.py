@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from claim_agent.rag.constants import SUPPORTED_STATES
+
 
 @dataclass
 class ChunkMetadata:
@@ -53,7 +55,7 @@ class Chunk:
     def __post_init__(self):
         """Generate chunk ID from content hash if not provided."""
         if not self.chunk_id:
-            content_hash = hashlib.md5(self.content.encode()).hexdigest()[:12]
+            content_hash = hashlib.sha256(self.content.encode()).hexdigest()[:16]
             self.chunk_id = f"{self.metadata.state}-{self.metadata.section}-{content_hash}"
     
     def to_dict(self) -> dict:
@@ -83,7 +85,16 @@ class DocumentChunker:
     
     def __init__(self, max_chunk_size: int = MAX_CHUNK_SIZE):
         self.max_chunk_size = max_chunk_size
-    
+
+    @staticmethod
+    def _is_state_specific(data: dict, state: str) -> bool:
+        """Return True if data has any state-specific marker."""
+        if data.get(f"{state.lower()}_specific", False):
+            return True
+        return any(
+            data.get(f"{s.lower()}_specific", False) for s in SUPPORTED_STATES
+        )
+
     def chunk_json_document(self, file_path: Path) -> list[Chunk]:
         """Load and chunk a JSON document based on its type.
         
@@ -144,10 +155,7 @@ class DocumentChunker:
         chunks = []
         
         # Check for state-specific marker
-        is_state_specific = section_data.get(f"{state.lower()}_specific", False) or \
-                           section_data.get("california_specific", False) or \
-                           section_data.get("texas_specific", False) or \
-                           section_data.get("florida_specific", False)
+        is_state_specific = self._is_state_specific(section_data, state)
         
         section_title = section_data.get("section_title", section_name)
         
@@ -193,9 +201,7 @@ class DocumentChunker:
         if "terms" in section_data:
             for term_def in section_data["terms"]:
                 content = self._format_definition(term_def)
-                is_term_state_specific = term_def.get(f"{state.lower()}_specific", False) or \
-                                         term_def.get("florida_specific", False) or \
-                                         term_def.get("texas_specific", False)
+                is_term_state_specific = self._is_state_specific(term_def, state)
                 chunks.append(self._create_chunk(
                     content=content,
                     source_file=source_file,

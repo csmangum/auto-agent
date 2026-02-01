@@ -4,10 +4,16 @@ These tools allow agents to dynamically search for relevant policy
 and compliance information during claim processing.
 """
 
+import logging
+
 from crewai.tools import tool
 
+from claim_agent.rag.constants import SUPPORTED_STATES, normalize_state
 
-# Lazy-loaded retriever
+logger = logging.getLogger(__name__)
+
+
+# Lazy-loaded retriever (obtained via get_retriever() in retriever module)
 _retriever = None
 
 
@@ -23,7 +29,7 @@ def _get_retriever():
 @tool("Search Policy and Compliance")
 def search_policy_compliance(
     query: str,
-    state: str = "California",
+    state: str = "California",  # one of SUPPORTED_STATES
     data_type: str = "",
 ) -> str:
     """Search policy language and compliance regulations for relevant information.
@@ -43,6 +49,10 @@ def search_policy_compliance(
         Relevant policy and compliance excerpts with source information
     """
     try:
+        state = normalize_state(state)
+    except ValueError:
+        return f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}."
+    try:
         retriever = _get_retriever()
         
         results = retriever.search(
@@ -60,8 +70,15 @@ def search_policy_compliance(
         context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
         
         return f"Found {len(results)} relevant items for '{query}' in {state}:\n\n{context}"
+    except FileNotFoundError as e:
+        logger.warning("RAG data not found for search_policy_compliance: %s", e)
+        return f"Policy data not available: {e}"
+    except ValueError as e:
+        logger.warning("Invalid input for search_policy_compliance: %s", e)
+        return f"Search error: {e}"
     except Exception as e:
-        return f"Error searching policy compliance: {str(e)}"
+        logger.exception("Unexpected error in search_policy_compliance")
+        return f"Error searching policy compliance: {type(e).__name__}: {e}"
 
 
 @tool("Get Compliance Deadlines")
@@ -81,6 +98,10 @@ def get_compliance_deadlines(state: str = "California") -> str:
         List of compliance deadlines with regulatory references
     """
     try:
+        state = normalize_state(state)
+    except ValueError:
+        return f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}."
+    try:
         retriever = _get_retriever()
         
         chunks = retriever.get_compliance_deadlines(state=state)
@@ -91,8 +112,15 @@ def get_compliance_deadlines(state: str = "California") -> str:
         context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
         
         return f"Compliance deadlines for {state}:\n\n{context}"
+    except FileNotFoundError as e:
+        logger.warning("RAG data not found for get_compliance_deadlines: %s", e)
+        return f"Policy data not available: {e}"
+    except ValueError as e:
+        logger.warning("Invalid input for get_compliance_deadlines: %s", e)
+        return f"Error: {e}"
     except Exception as e:
-        return f"Error retrieving compliance deadlines: {str(e)}"
+        logger.exception("Unexpected error in get_compliance_deadlines")
+        return f"Error retrieving compliance deadlines: {type(e).__name__}: {e}"
 
 
 @tool("Get Required Disclosures")
@@ -112,6 +140,10 @@ def get_required_disclosures(state: str = "California") -> str:
         List of required disclosures with regulatory references
     """
     try:
+        state = normalize_state(state)
+    except ValueError:
+        return f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}."
+    try:
         retriever = _get_retriever()
         
         chunks = retriever.get_required_disclosures(state=state)
@@ -122,8 +154,15 @@ def get_required_disclosures(state: str = "California") -> str:
         context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
         
         return f"Required disclosures for {state}:\n\n{context}"
+    except FileNotFoundError as e:
+        logger.warning("RAG data not found for get_required_disclosures: %s", e)
+        return f"Policy data not available: {e}"
+    except ValueError as e:
+        logger.warning("Invalid input for get_required_disclosures: %s", e)
+        return f"Error: {e}"
     except Exception as e:
-        return f"Error retrieving required disclosures: {str(e)}"
+        logger.exception("Unexpected error in get_required_disclosures")
+        return f"Error retrieving required disclosures: {type(e).__name__}: {e}"
 
 
 @tool("Get Coverage Exclusions")
@@ -144,6 +183,10 @@ def get_coverage_exclusions(
         List of exclusions with policy form references
     """
     try:
+        state = normalize_state(state)
+    except ValueError:
+        return f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}."
+    try:
         retriever = _get_retriever()
         
         chunks = retriever.get_exclusions(
@@ -157,8 +200,15 @@ def get_coverage_exclusions(
         context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
         
         return f"Exclusions for {coverage_type} coverage in {state}:\n\n{context}"
+    except FileNotFoundError as e:
+        logger.warning("RAG data not found for get_coverage_exclusions: %s", e)
+        return f"Policy data not available: {e}"
+    except ValueError as e:
+        logger.warning("Invalid input for get_coverage_exclusions: %s", e)
+        return f"Error: {e}"
     except Exception as e:
-        return f"Error retrieving coverage exclusions: {str(e)}"
+        logger.exception("Unexpected error in get_coverage_exclusions")
+        return f"Error retrieving coverage exclusions: {type(e).__name__}: {e}"
 
 
 @tool("Get Total Loss Requirements")
@@ -179,6 +229,10 @@ def get_total_loss_requirements(state: str = "California") -> str:
         Total loss requirements with regulatory references
     """
     try:
+        state = normalize_state(state)
+    except ValueError:
+        return f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}."
+    try:
         retriever = _get_retriever()
         
         results = retriever.search(
@@ -195,8 +249,15 @@ def get_total_loss_requirements(state: str = "California") -> str:
         context = retriever.format_context(chunks, include_metadata=True, max_length=3500)
         
         return f"Total loss requirements for {state}:\n\n{context}"
+    except FileNotFoundError as e:
+        logger.warning("RAG data not found for get_total_loss_requirements: %s", e)
+        return f"Policy data not available: {e}"
+    except ValueError as e:
+        logger.warning("Invalid input for get_total_loss_requirements: %s", e)
+        return f"Error: {e}"
     except Exception as e:
-        return f"Error retrieving total loss requirements: {str(e)}"
+        logger.exception("Unexpected error in get_total_loss_requirements")
+        return f"Error retrieving total loss requirements: {type(e).__name__}: {e}"
 
 
 @tool("Get Fraud Detection Guidance")
@@ -217,6 +278,10 @@ def get_fraud_detection_guidance(state: str = "California") -> str:
         Fraud detection guidance with regulatory references
     """
     try:
+        state = normalize_state(state)
+    except ValueError:
+        return f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}."
+    try:
         retriever = _get_retriever()
         
         results = retriever.search(
@@ -234,8 +299,15 @@ def get_fraud_detection_guidance(state: str = "California") -> str:
         context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
         
         return f"Fraud detection guidance for {state}:\n\n{context}"
+    except FileNotFoundError as e:
+        logger.warning("RAG data not found for get_fraud_detection_guidance: %s", e)
+        return f"Policy data not available: {e}"
+    except ValueError as e:
+        logger.warning("Invalid input for get_fraud_detection_guidance: %s", e)
+        return f"Error: {e}"
     except Exception as e:
-        return f"Error retrieving fraud detection guidance: {str(e)}"
+        logger.exception("Unexpected error in get_fraud_detection_guidance")
+        return f"Error retrieving fraud detection guidance: {type(e).__name__}: {e}"
 
 
 @tool("Get Repair Standards")
@@ -256,6 +328,10 @@ def get_repair_standards(state: str = "California") -> str:
         Repair standards with regulatory references
     """
     try:
+        state = normalize_state(state)
+    except ValueError:
+        return f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}."
+    try:
         retriever = _get_retriever()
         
         results = retriever.search(
@@ -272,5 +348,12 @@ def get_repair_standards(state: str = "California") -> str:
         context = retriever.format_context(chunks, include_metadata=True, max_length=3000)
         
         return f"Repair standards for {state}:\n\n{context}"
+    except FileNotFoundError as e:
+        logger.warning("RAG data not found for get_repair_standards: %s", e)
+        return f"Policy data not available: {e}"
+    except ValueError as e:
+        logger.warning("Invalid input for get_repair_standards: %s", e)
+        return f"Error: {e}"
     except Exception as e:
-        return f"Error retrieving repair standards: {str(e)}"
+        logger.exception("Unexpected error in get_repair_standards")
+        return f"Error retrieving repair standards: {type(e).__name__}: {e}"

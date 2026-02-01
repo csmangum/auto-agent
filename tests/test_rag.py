@@ -133,6 +133,28 @@ class TestDocumentChunker:
         assert restored.chunk_id == chunk.chunk_id
         assert restored.metadata.state == "Texas"
 
+    def test_chunk_id_uses_sha256(self):
+        """Test chunk IDs use SHA-256 (16 hex chars) and different content yields different IDs."""
+        from claim_agent.rag.chunker import Chunk, ChunkMetadata
+
+        meta = ChunkMetadata(
+            source_file="test.json",
+            state="California",
+            jurisdiction="CA",
+            data_type="compliance",
+            section="test",
+        )
+        chunk_a = Chunk(content="Content A.", metadata=meta)
+        chunk_b = Chunk(content="Content B.", metadata=meta)
+        # IDs are state-section-hash; hash part is 16 hex chars (SHA-256 truncated)
+        assert chunk_a.chunk_id != chunk_b.chunk_id
+        # Format: California-test-<16 hex chars>
+        parts_a = chunk_a.chunk_id.rsplit("-", 1)
+        assert len(parts_a) == 2
+        hash_part = parts_a[1]
+        assert len(hash_part) == 16
+        assert all(c in "0123456789abcdef" for c in hash_part)
+
 
 class TestEmbeddings:
     """Tests for embedding providers."""
@@ -351,6 +373,147 @@ class TestVectorStore:
             results = loaded_store.search("test content")
             assert len(results) > 0
 
+    def test_vector_store_save_writes_meta_json(self):
+        """Test that save() writes meta.json with embedding_dimension."""
+        from claim_agent.rag.vector_store import VectorStore
+        from claim_agent.rag.chunker import Chunk, ChunkMetadata
+        from claim_agent.rag.embeddings import EmbeddingProvider
+        import json
+
+        class FixedDimProvider(EmbeddingProvider):
+            def __init__(self, dim: int = 64):
+                self._dim = dim
+
+            def embed(self, text: str):
+                return np.zeros(self._dim)
+
+            def embed_batch(self, texts: list):
+                return np.zeros((len(texts), self._dim))
+
+            @property
+            def dimension(self):
+                return self._dim
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "cache"
+            store = VectorStore(embedding_provider=FixedDimProvider(64))
+            chunks = [
+                Chunk(
+                    content="Test content.",
+                    metadata=ChunkMetadata(
+                        source_file="test.json",
+                        state="California",
+                        jurisdiction="CA",
+                        data_type="compliance",
+                        section="test",
+                    ),
+                ),
+            ]
+            store.add_chunks(chunks)
+            store.save(cache_path)
+            meta_path = cache_path / "meta.json"
+            assert meta_path.exists()
+            with open(meta_path) as f:
+                meta = json.load(f)
+            assert "embedding_dimension" in meta
+            assert meta["embedding_dimension"] == 64
+            assert meta.get("chunk_count") == 1
+
+    def test_vector_store_load_dimension_mismatch_raises(self):
+        """Test that load() raises ValueError when cache dimension != provider dimension."""
+        from claim_agent.rag.vector_store import VectorStore
+        from claim_agent.rag.chunker import Chunk, ChunkMetadata
+        from claim_agent.rag.embeddings import EmbeddingProvider
+        import json
+
+        class FixedDimProvider(EmbeddingProvider):
+            def __init__(self, dim: int):
+                self._dim = dim
+
+            def embed(self, text: str):
+                return np.zeros(self._dim)
+
+            def embed_batch(self, texts: list):
+                return np.zeros((len(texts), self._dim))
+
+            @property
+            def dimension(self):
+                return self._dim
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "cache"
+            # Build cache with mock provider dimension 384
+            provider_384 = FixedDimProvider(384)
+            store_orig = VectorStore(embedding_provider=provider_384)
+            chunks = [
+                Chunk(
+                    content="Test.",
+                    metadata=ChunkMetadata(
+                        source_file="t.json",
+                        state="California",
+                        jurisdiction="CA",
+                        data_type="compliance",
+                        section="s",
+                    ),
+                ),
+            ]
+            store_orig.add_chunks(chunks)
+            store_orig.save(cache_path)
+            # Overwrite meta to a different dimension so load will see mismatch
+            with open(cache_path / "meta.json") as f:
+                meta = json.load(f)
+            meta["embedding_dimension"] = 999
+            with open(cache_path / "meta.json", "w") as f:
+                json.dump(meta, f)
+            # Load with provider that has dimension 100
+            provider_100 = FixedDimProvider(100)
+            store_loaded = VectorStore(embedding_provider=provider_100)
+            with pytest.raises(ValueError, match="dimension=999.*dimension=100"):
+                store_loaded.load(cache_path)
+
+    def test_vector_store_load_same_dimension_succeeds(self):
+        """Test that load() succeeds when meta.json dimension matches provider."""
+        from claim_agent.rag.vector_store import VectorStore
+        from claim_agent.rag.chunker import Chunk, ChunkMetadata
+        from claim_agent.rag.embeddings import EmbeddingProvider
+
+        class FixedDimProvider(EmbeddingProvider):
+            def __init__(self, dim: int = 64):
+                self._dim = dim
+
+            def embed(self, text: str):
+                return np.zeros(self._dim)
+
+            def embed_batch(self, texts: list):
+                return np.zeros((len(texts), self._dim))
+
+            @property
+            def dimension(self):
+                return self._dim
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "cache"
+            provider = FixedDimProvider(64)
+            store = VectorStore(embedding_provider=provider)
+            chunks = [
+                Chunk(
+                    content="Same dimension test.",
+                    metadata=ChunkMetadata(
+                        source_file="t.json",
+                        state="California",
+                        jurisdiction="CA",
+                        data_type="compliance",
+                        section="s",
+                    ),
+                ),
+            ]
+            store.add_chunks(chunks)
+            store.save(cache_path)
+            loaded = VectorStore(embedding_provider=FixedDimProvider(64))
+            loaded.load(cache_path)
+            assert loaded.size == 1
+            assert loaded.dimension == store.dimension
+
 
 class TestPolicyRetriever:
     """Tests for the policy retriever."""
@@ -503,6 +666,33 @@ class TestRAGContext:
             
             assert len(context) >= 0  # May be empty if no matching content
 
+    @pytest.mark.slow
+    def test_rag_context_provider_cache_bounded(self):
+        """Test that RAGContextProvider context cache is bounded (LRU)."""
+        from claim_agent.rag.context import RAGContextProvider, CONTEXT_CACHE_MAXSIZE
+        from claim_agent.rag.retriever import PolicyRetriever
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            provider = RAGContextProvider(
+                data_dir=DATA_DIR,
+                default_state="California",
+            )
+            provider._data_dir = DATA_DIR
+            provider._retriever = PolicyRetriever(
+                data_dir=DATA_DIR,
+                cache_dir=Path(tmpdir),
+                auto_load=True,
+            )
+            # Request more than maxsize distinct keys
+            for i in range(CONTEXT_CACHE_MAXSIZE + 50):
+                provider.get_context(
+                    skill_name="damage_assessor",
+                    state="California",
+                    claim_type=f"claim_type_{i}",
+                    use_cache=True,
+                )
+            assert len(provider._context_cache) <= CONTEXT_CACHE_MAXSIZE
+
 
 class TestSkillsIntegration:
     """Tests for skills module RAG integration."""
@@ -573,3 +763,14 @@ class TestRAGTools:
         result = get_total_loss_requirements.run(state="California")
         
         assert isinstance(result, str)
+
+    def test_rag_tool_invalid_state_returns_friendly_message(self):
+        """Test that RAG tools return a friendly message for unsupported state."""
+        from claim_agent.rag.constants import SUPPORTED_STATES
+        from claim_agent.tools.rag_tools import get_compliance_deadlines
+
+        result = get_compliance_deadlines.run(state="InvalidStateName")
+        assert isinstance(result, str)
+        assert "Unsupported state" in result or "Supported" in result
+        for state in SUPPORTED_STATES:
+            assert state in result

@@ -6,10 +6,14 @@ Supports multiple embedding backends:
 """
 
 import os
+import time
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import List, Optional, Union
 
 import numpy as np
+
+# Max retries for transient OpenAI API failures
+OPENAI_EMBED_MAX_ATTEMPTS = 3
 
 
 class EmbeddingProvider(ABC):
@@ -153,35 +157,49 @@ class OpenAIEmbedding(EmbeddingProvider):
         """Return the embedding dimension."""
         return self._dimensions.get(self.model_name, 1536)
     
+    def _call_embeddings_api(self, input_text: Union[str, List[str]]):
+        """Call OpenAI embeddings API with retries for rate limits and transient errors."""
+        for attempt in range(OPENAI_EMBED_MAX_ATTEMPTS):
+            try:
+                return self.client.embeddings.create(
+                    model=self.model_name,
+                    input=input_text,
+                )
+            except Exception as e:
+                is_retryable = (
+                    "rate" in type(e).__name__.lower()
+                    or "connection" in type(e).__name__.lower()
+                    or "429" in str(e)
+                    or "503" in str(e)
+                    or "500" in str(e)
+                )
+                if not is_retryable or attempt == OPENAI_EMBED_MAX_ATTEMPTS - 1:
+                    raise
+                time.sleep(2**attempt)
+
     def embed(self, text: str) -> np.ndarray:
         """Generate embedding for a single text."""
-        response = self.client.embeddings.create(
-            model=self.model_name,
-            input=text,
-        )
+        response = self._call_embeddings_api(text)
         return np.array(response.data[0].embedding)
-    
+
     def embed_batch(self, texts: list[str], batch_size: int = 100) -> np.ndarray:
         """Generate embeddings for multiple texts.
-        
+
         Args:
             texts: List of texts to embed
             batch_size: Batch size for API calls
-            
+
         Returns:
             2D numpy array of embeddings
         """
         embeddings = []
-        
+
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            response = self.client.embeddings.create(
-                model=self.model_name,
-                input=batch,
-            )
+            batch = texts[i : i + batch_size]
+            response = self._call_embeddings_api(batch)
             batch_embeddings = [np.array(d.embedding) for d in response.data]
             embeddings.extend(batch_embeddings)
-        
+
         return np.array(embeddings)
 
 

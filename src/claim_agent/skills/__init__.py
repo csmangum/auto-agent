@@ -5,17 +5,21 @@ Skills can be enriched with RAG context for policy and compliance information.
 
 import logging
 import re
+import threading
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from claim_agent.rag.context import RAGContextProvider
 
+from claim_agent.rag.constants import DEFAULT_STATE
+
 
 SKILLS_DIR = Path(__file__).parent
 
-# Global RAG context provider (lazy-loaded)
+# Global RAG context provider (lazy-loaded), protected by lock
 _rag_provider: Optional["RAGContextProvider"] = None
+_rag_provider_lock = threading.Lock()
 
 
 def get_skill_path(skill_name: str) -> Path:
@@ -93,7 +97,7 @@ def load_skill(skill_name: str) -> dict:
 
 def load_skill_with_context(
     skill_name: str,
-    state: str = "California",
+    state: str = DEFAULT_STATE,
     claim_type: Optional[str] = None,
     use_rag: bool = True,
 ) -> dict:
@@ -104,7 +108,7 @@ def load_skill_with_context(
     
     Args:
         skill_name: Name of the skill (without .md extension)
-        state: State jurisdiction for the claim (e.g., "California", "Texas")
+        state: State jurisdiction for the claim (e.g., California, Texas)
         claim_type: Optional claim type for additional context
         use_rag: Whether to enrich with RAG context
         
@@ -118,11 +122,13 @@ def load_skill_with_context(
     
     try:
         global _rag_provider
-        if _rag_provider is None:
-            from claim_agent.rag.context import RAGContextProvider
-            _rag_provider = RAGContextProvider(default_state=state)
-        
-        return _rag_provider.enrich_skill(
+        with _rag_provider_lock:
+            if _rag_provider is None:
+                from claim_agent.rag.context import RAGContextProvider
+                _rag_provider = RAGContextProvider(default_state=state)
+            provider = _rag_provider
+
+        return provider.enrich_skill(
             skill_dict=skill,
             skill_name=skill_name,
             state=state,
@@ -140,7 +146,7 @@ def load_skill_with_context(
         return skill
 
 
-def get_rag_provider(state: str = "California") -> "RAGContextProvider":
+def get_rag_provider(state: str = DEFAULT_STATE) -> "RAGContextProvider":
     """Get the global RAG context provider.
     
     Args:
@@ -150,10 +156,11 @@ def get_rag_provider(state: str = "California") -> "RAGContextProvider":
         RAGContextProvider instance
     """
     global _rag_provider
-    if _rag_provider is None:
-        from claim_agent.rag.context import RAGContextProvider
-        _rag_provider = RAGContextProvider(default_state=state)
-    return _rag_provider
+    with _rag_provider_lock:
+        if _rag_provider is None:
+            from claim_agent.rag.context import RAGContextProvider
+            _rag_provider = RAGContextProvider(default_state=state)
+        return _rag_provider
 
 
 def list_skills() -> list[str]:

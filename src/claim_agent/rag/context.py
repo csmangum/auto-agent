@@ -4,11 +4,38 @@ Provides functions to enrich agent skills with relevant policy and
 compliance context from the RAG system.
 """
 
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
-from claim_agent.rag.retriever import PolicyRetriever, get_retriever
 from claim_agent.rag.chunker import Chunk
+from claim_agent.rag.constants import DEFAULT_STATE
+from claim_agent.rag.retriever import PolicyRetriever, get_retriever
+
+
+# Maximum number of context entries to cache per RAGContextProvider
+CONTEXT_CACHE_MAXSIZE = 100
+
+
+class _LRUCache(OrderedDict):
+    """Bounded LRU cache; evicts oldest when full."""
+
+    def __init__(self, maxsize: int = CONTEXT_CACHE_MAXSIZE, *args, **kwargs):
+        self.maxsize = maxsize
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if len(self) > self.maxsize:
+            oldest = next(iter(self))
+            del self[oldest]
 
 
 # Mapping of skill names to relevant query context
@@ -109,7 +136,7 @@ SKILL_CONTEXT_QUERIES = {
 
 def get_rag_context(
     skill_name: str,
-    state: str = "California",
+    state: str = DEFAULT_STATE,
     claim_type: Optional[str] = None,
     top_k: int = 5,
     retriever: Optional[PolicyRetriever] = None,
@@ -179,7 +206,7 @@ def get_rag_context(
 def enrich_skill_with_context(
     skill_dict: dict,
     skill_name: str,
-    state: str = "California",
+    state: str = DEFAULT_STATE,
     claim_type: Optional[str] = None,
     retriever: Optional[PolicyRetriever] = None,
 ) -> dict:
@@ -232,7 +259,7 @@ class RAGContextProvider:
     def __init__(
         self,
         data_dir: Optional[Path] = None,
-        default_state: str = "California",
+        default_state: str = DEFAULT_STATE,
     ):
         """Initialize the context provider.
         
@@ -243,7 +270,7 @@ class RAGContextProvider:
         self.default_state = default_state
         self._retriever: Optional[PolicyRetriever] = None
         self._data_dir = data_dir
-        self._context_cache: dict[str, str] = {}
+        self._context_cache: _LRUCache = _LRUCache(maxsize=CONTEXT_CACHE_MAXSIZE)
     
     @property
     def retriever(self) -> PolicyRetriever:

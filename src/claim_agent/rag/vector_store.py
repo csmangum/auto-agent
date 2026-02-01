@@ -5,10 +5,13 @@ For production, consider using Chroma, Pinecone, or similar.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from claim_agent.rag.chunker import Chunk, ChunkMetadata
 from claim_agent.rag.embeddings import EmbeddingProvider, get_embedding_provider
@@ -230,6 +233,17 @@ class VectorStore:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
         
+        # Save metadata (dimension, optional model info) for load validation
+        meta = {
+            "embedding_dimension": self.dimension,
+            "chunk_count": len(self._chunks),
+        }
+        model_name = getattr(self.embedding_provider, "model_name", None)
+        if model_name is not None:
+            meta["model_name"] = model_name
+        with open(path / "meta.json", "w") as f:
+            json.dump(meta, f, indent=2)
+
         # Save embeddings
         if self._embeddings is not None:
             np.save(path / "embeddings.npy", self._embeddings)
@@ -248,9 +262,33 @@ class VectorStore:
         
         Args:
             path: Directory path to load from
+
+        Raises:
+            ValueError: If meta.json exists and embedding_dimension does not match
+                the current embedding provider.
         """
         path = Path(path)
-        
+        meta_path = path / "meta.json"
+
+        if meta_path.exists():
+            with open(meta_path) as f:
+                meta = json.load(f)
+            cached_dim = meta.get("embedding_dimension")
+            current_dim = self.embedding_provider.dimension
+            if cached_dim is not None and cached_dim != current_dim:
+                raise ValueError(
+                    f"Cache was built with embedding_dimension={cached_dim}, "
+                    f"current provider has dimension={current_dim}. "
+                    "Rebuild with force_rebuild=True or clear the cache."
+                )
+
+        # Backward compatibility: if meta.json missing, load anyway and warn
+        elif (path / "chunks.json").exists():
+            logger.warning(
+                "Vector store cache has no meta.json; loading anyway. "
+                "If you change embedding models, use force_rebuild=True to rebuild."
+            )
+
         # Load embeddings
         embeddings_path = path / "embeddings.npy"
         if embeddings_path.exists():
