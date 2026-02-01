@@ -174,7 +174,7 @@ class TestReportGeneration:
         assert report.total_latency_ms == 2500
         assert report.avg_latency_ms == 1250
         assert report.total_tokens == 250
-        assert report.total_cost_usd == 0.03
+        assert report.total_cost_usd == pytest.approx(0.03)
 
     def test_report_calculates_type_accuracy(self):
         """Report should calculate accuracy per expected type."""

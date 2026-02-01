@@ -1286,7 +1286,29 @@ Examples:
     
     # Handle dry-run
     if args.dry_run:
-        if args.sample_claims:
+        if args.scenario:
+            # Find specific scenario
+            found = None
+            for group in ALL_SCENARIOS.values():
+                for s in group:
+                    if s.name == args.scenario:
+                        found = s
+                        break
+                if found:
+                    break
+            # Also check sample claims
+            if not found:
+                for s in load_sample_claims_scenarios():
+                    if s.name == args.scenario:
+                        found = s
+                        break
+            if found:
+                scenarios = [found]
+            else:
+                print(f"Scenario not found: {args.scenario}")
+                print("Use --list to see available scenarios")
+                return
+        elif args.sample_claims:
             scenarios = load_sample_claims_scenarios()
         elif args.type:
             scenarios = ALL_SCENARIOS.get(args.type, [])
@@ -1372,7 +1394,7 @@ Examples:
         
         # Save to file
         output_path = args.output or "evaluation_report.json"
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(report.to_json())
         print(f"\nDetailed report saved to: {output_path}")
         
