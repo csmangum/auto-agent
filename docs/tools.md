@@ -14,6 +14,7 @@ flowchart LR
         C[valuation_tools.py]
         D[fraud_tools.py]
         E[partial_loss_tools.py]
+        R[rag_tools.py]
     end
     
     subgraph Logic["Implementation"]
@@ -24,9 +25,11 @@ flowchart LR
         G[(SQLite)]
         H[(mock_db.json)]
         I[(compliance.json)]
+        J[(RAG / policy+compliance)]
     end
     
     Tools --> Logic --> Data
+    R --> J
 ```
 
 ## Tool Categories
@@ -41,6 +44,25 @@ flowchart LR
 | Fraud | `fraud_tools.py` | analyze_claim_patterns, cross_reference_fraud_indicators, perform_fraud_assessment, generate_fraud_report |
 | Partial Loss | `partial_loss_tools.py` | get_available_repair_shops, assign_repair_shop, get_parts_catalog, create_parts_order, calculate_repair_estimate, generate_repair_authorization |
 | Compliance | `compliance_tools.py` | search_california_compliance |
+| RAG | `rag_tools.py` | search_policy_compliance, get_compliance_deadlines, get_required_disclosures, get_coverage_exclusions, get_total_loss_requirements, get_fraud_detection_guidance, get_repair_standards |
+
+---
+
+## RAG Tools
+
+RAG tools provide semantic search over policy language and compliance regulations. All accept a state (California, Texas, Florida, or New York) and return formatted excerpts with source information. See [RAG](rag.md) for data sources, indexing, and integration.
+
+| Tool | Purpose |
+|------|--------|
+| **search_policy_compliance** | Natural language search (query, state, optional data_type) |
+| **get_compliance_deadlines** | Deadlines and time limits for a state |
+| **get_required_disclosures** | Required disclosures (e.g. repair shop choice, parts type) |
+| **get_coverage_exclusions** | Exclusions for a coverage type and state |
+| **get_total_loss_requirements** | Total loss threshold, ACV, valuation, salvage, disclosures |
+| **get_fraud_detection_guidance** | Fraud/SIU reporting and investigation guidance |
+| **get_repair_standards** | Repair shop choice, DRP, parts, labor, supplementals |
+
+**Used by:** [Total Loss Crew](crews.md#total-loss-crew) (when RAG is enabled), and other crews that adopt RAG enrichment.
 
 ---
 

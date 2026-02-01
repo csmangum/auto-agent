@@ -30,6 +30,7 @@ flowchart LR
 ### Reference
 
 - **[Tools](tools.md)** - Complete tool reference
+- **[RAG](rag.md)** - Retrieval-Augmented Generation for policy and compliance
 - **[Database](database.md)** - Schema and repository operations
 - **[Configuration](configuration.md)** - Environment and LLM setup
 - **[Observability](observability.md)** - Logging, tracing, and metrics
@@ -68,4 +69,5 @@ See [Claim Types](claim-types.md) for classification criteria and examples.
 - **Persistent State** - SQLite with full audit trail ([Database](database.md))
 - **Extensible Tools** - Easy to add capabilities ([Tools](tools.md))
 - **Observability** - Structured logging, LangSmith/LiteLLM tracing, cost and latency metrics ([Observability](observability.md))
+- **RAG for Policy/Compliance** - Semantic search over regulations ([RAG](rag.md))
 - **MCP Integration** - Optional external access ([MCP Server](mcp-server.md))
