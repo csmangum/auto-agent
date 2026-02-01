@@ -89,10 +89,10 @@ class DocumentChunker:
     @staticmethod
     def _is_state_specific(data: dict, state: str) -> bool:
         """Return True if data has any state-specific marker."""
-        if data.get(f"{state.lower()}_specific", False):
+        if data.get(f"{state.lower().replace(' ', '_')}_specific", False):
             return True
         return any(
-            data.get(f"{s.lower()}_specific", False) for s in SUPPORTED_STATES
+            data.get(f"{s.lower().replace(' ', '_')}_specific", False) for s in SUPPORTED_STATES
         )
 
     def chunk_json_document(self, file_path: Path) -> list[Chunk]:
@@ -174,7 +174,7 @@ class DocumentChunker:
                 section=section_name,
                 subsection="insuring_agreement",
                 title=f"{section_title} - Insuring Agreement",
-                is_state_specific=is_state_specific or agreement.get(f"{state.lower()}_specific", False),
+                is_state_specific=is_state_specific or agreement.get(f"{state.lower().replace(' ', '_')}_specific", False),
                 version=version,
             ))
         
@@ -193,7 +193,7 @@ class DocumentChunker:
                     subsection="exclusion",
                     provision_id=exclusion.get("id"),
                     title=exclusion.get("title"),
-                    is_state_specific=exclusion.get(f"{state.lower()}_specific", False),
+                    is_state_specific=exclusion.get(f"{state.lower().replace(' ', '_')}_specific", False),
                     version=version,
                 ))
         
@@ -228,7 +228,7 @@ class DocumentChunker:
                     section=section_name,
                     subsection="provision",
                     title=provision.get("title"),
-                    is_state_specific=provision.get(f"{state.lower()}_specific", False),
+                    is_state_specific=provision.get(f"{state.lower().replace(' ', '_')}_specific", False),
                     version=version,
                 ))
         
