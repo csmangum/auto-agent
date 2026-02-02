@@ -83,9 +83,9 @@ Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or par
 CLASSIFICATION RULES (in priority order):
 
 1. **duplicate**: ONLY if "existing_claims_for_vin" contains claims with:
-   - days_difference <= 3 (dates within 3 days) AND (description_similarity_score >= 40 OR incident descriptions clearly describe the same type of incident (e.g., both are rear-end collisions, both are parking lot incidents))
-   - High-value claims ("high_value_claim": true) require stronger evidence (description_similarity_score >= 60)
-   - Different damage types on same VIN are NOT duplicates
+   - For standard claims: description_similarity_score >= 40 AND days_difference <= 3 (incident dates within 3 days)
+   - For high-value claims ("high_value_claim": true): description_similarity_score >= 60 AND days_difference <= 3
+   - In all cases, different damage types on the same VIN are NOT duplicates, even if the above thresholds are met
 
 2. **total_loss**: Classify as total_loss if ANY of these are true:
    - "is_catastrophic_event": true (rollover, fire, flood, etc.)
@@ -309,12 +309,20 @@ def _has_repairable_damage_keywords(text: str) -> bool:
     return has_repairable and not has_catastrophic
 
 
+def _filter_weak_fraud_indicators(indicators: list) -> list:
+    """Remove weak fraud indicators that are expected in total-loss or high-damage scenarios.
+    Use whenever attaching pre_routing_fraud_indicators so filtering is consistent."""
+    weak = {"damage_near_or_above_vehicle_value", "incident_damage_description_mismatch"}
+    return [i for i in indicators if i not in weak]
+
+
 def _check_economic_total_loss(claim_data: dict) -> dict:
     """Check if repair cost exceeds 75% of vehicle value (economic total loss).
     
     Returns additional context:
-    - is_economic_total_loss: True only when cost >= 75% of value (strictly cost-based); high cost
-      with repairable-only damage may be set False when ratio < 100%.
+    - is_economic_total_loss: True when cost >= 75% of value, except when damage is repairable-only
+      and ratio < 100% (high cost to replace doors/panels etc. is partial_loss, not economic total).
+      At ratio >= 100%, is_economic_total_loss is always True (strict 75% rule with this exception).
     - is_catastrophic_event: True if incident or damage description contains catastrophic event
       keywords (flood, fire, rollover, etc.).
     - damage_indicates_total_loss: True if damage description explicitly mentions total loss or
@@ -465,16 +473,13 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             
             if (economic_check.get("damage_to_value_ratio") or 0) > 0.9 and not is_catastrophic and not damage_indicates_total:
                 fraud_result = detect_fraud_indicators_impl(claim_data)
-                fraud_data = json.loads(fraud_result)
+                try:
+                    fraud_data = json.loads(fraud_result)
+                except (json.JSONDecodeError, TypeError):
+                    fraud_data = {}
                 indicators = fraud_data if isinstance(fraud_data, list) else (fraud_data.get("indicators", []) if isinstance(fraud_data, dict) else [])
-                # Filter out indicators that don't apply to potential total loss scenarios
                 if indicators:
-                    # These indicators are not strong fraud signals by themselves:
-                    # - damage_near_or_above_vehicle_value: Expected for total loss
-                    # - incident_damage_description_mismatch: Often false positive for legitimate claims
-                    #   (just means different vocabulary used, not necessarily fraud)
-                    weak_indicators = {"damage_near_or_above_vehicle_value", "incident_damage_description_mismatch"}
-                    meaningful_indicators = [i for i in indicators if i not in weak_indicators]
+                    meaningful_indicators = _filter_weak_fraud_indicators(indicators)
                     if meaningful_indicators:
                         claim_data_with_id["pre_routing_fraud_indicators"] = meaningful_indicators
 
@@ -491,7 +496,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             # Pre-check: Search for potential duplicate claims by VIN
             existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id)
             if existing_claims:
-                from claim_agent.tools.logic import compute_similarity_impl
+                from claim_agent.tools.logic import compute_similarity_score_impl
                 current_incident = claim_data.get("incident_description", "") or ""
                 current_damage = claim_data.get("damage_description", "") or ""
                 current_combined = f"{current_incident} {current_damage}"
@@ -502,9 +507,15 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                     existing_damage = c.get("damage_description", "") or ""
                     existing_combined = f"{existing_incident} {existing_damage}"
                     
-                    # Compute similarity between current and existing claim descriptions
-                    sim_result = json.loads(compute_similarity_impl(current_combined, existing_combined))
-                    similarity_score = sim_result.get("similarity_score", 0)
+                    try:
+                        similarity_score = compute_similarity_score_impl(current_combined, existing_combined)
+                    except (TypeError, ZeroDivisionError) as e:
+                        logger.warning(
+                            "Similarity computation failed for claim %s: %s",
+                            claim_id,
+                            str(e),
+                        )
+                        similarity_score = 0
                     
                     enriched_claims.append({
                         "claim_id": c.get("id"),

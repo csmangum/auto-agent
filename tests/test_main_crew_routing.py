@@ -3,8 +3,6 @@
 import json
 from unittest.mock import patch
 
-import pytest
-
 
 # --- Catastrophic event keywords ---
 
@@ -32,6 +30,7 @@ def test_has_catastrophic_event_keywords_ignores_explicit_total_loss_only():
 def test_has_catastrophic_event_keywords_empty_or_none():
     from claim_agent.crews.main_crew import _has_catastrophic_event_keywords
 
+    assert _has_catastrophic_event_keywords(None) is False
     assert _has_catastrophic_event_keywords("") is False
     assert _has_catastrophic_event_keywords("  ") is False
 
