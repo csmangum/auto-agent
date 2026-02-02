@@ -19,9 +19,11 @@ def create_new_claim_crew(llm=None):
     assignment = create_assignment_agent(llm)
 
     validate_task = Task(
-        description="""Step 1: Ensure all required fields are present in the claim data (policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description).
-Step 2: Check data types and formats are valid.
-Use the claim_data from the crew inputs.""",
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Step 1: Ensure all required fields are present in the claim data (policy_number, vin, vehicle_year, vehicle_make, vehicle_model, incident_date, incident_description, damage_description).
+Step 2: Check data types and formats are valid.""",
         expected_output="Validation result: either 'valid' with no missing fields, or a list of missing/invalid fields.",
         agent=intake,
     )

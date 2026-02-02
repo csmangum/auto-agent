@@ -320,6 +320,107 @@ class TestReprocessing:
 
 
 # ============================================================================
+# Workflow crew claim_data injection and tool use
+# ============================================================================
+
+
+class TestWorkflowCrewClaimDataAndTools:
+    """Verify workflow crews receive claim_data in task prompts and agents can invoke tools."""
+
+    @pytest.mark.integration
+    def test_duplicate_crew_first_task_has_claim_data_placeholder(self):
+        """First task of duplicate crew must contain {claim_data} so kickoff(inputs=...) injects it."""
+        from claim_agent.crews.duplicate_crew import create_duplicate_crew
+
+        crew = create_duplicate_crew()
+        first_task = crew.tasks[0]
+        assert "claim_data" in first_task.description, (
+            "First task description should contain {claim_data} for crew input injection"
+        )
+
+    @pytest.mark.integration
+    def test_fraud_crew_first_task_has_claim_data_placeholder(self):
+        """First task of fraud crew must contain {claim_data} for input injection."""
+        from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
+
+        crew = create_fraud_detection_crew()
+        first_task = crew.tasks[0]
+        assert "claim_data" in first_task.description, (
+            "First task description should contain {claim_data} for crew input injection"
+        )
+
+    @pytest.mark.integration
+    def test_new_claim_crew_first_task_has_claim_data_placeholder(self):
+        """First task of new claim crew must contain {claim_data} for input injection."""
+        from claim_agent.crews.new_claim_crew import create_new_claim_crew
+
+        crew = create_new_claim_crew()
+        first_task = crew.tasks[0]
+        assert "claim_data" in first_task.description, (
+            "First task description should contain {claim_data} for crew input injection"
+        )
+
+    @pytest.mark.integration
+    def test_total_loss_crew_first_task_has_claim_data_placeholder(self):
+        """First task of total loss crew must contain {claim_data} for input injection."""
+        from claim_agent.crews.total_loss_crew import create_total_loss_crew
+
+        crew = create_total_loss_crew()
+        first_task = crew.tasks[0]
+        assert "claim_data" in first_task.description, (
+            "First task description should contain {claim_data} for crew input injection"
+        )
+
+    @pytest.mark.integration
+    def test_partial_loss_crew_first_task_has_claim_data_placeholder(self):
+        """First task of partial loss crew must contain {claim_data} for input injection."""
+        from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
+
+        crew = create_partial_loss_crew()
+        first_task = crew.tasks[0]
+        assert "claim_data" in first_task.description, (
+            "First task description should contain {claim_data} for crew input injection"
+        )
+
+    @pytest.mark.integration
+    @pytest.mark.llm
+    def test_duplicate_crew_invokes_search_tool_when_run(
+        self, seeded_db, seeded_db_base_date
+    ):
+        """Run duplicate crew with real LLM and assert search_claims_db was invoked.
+        Requires OPENAI_API_KEY. Seeds DB so search has something to find."""
+        if not os.environ.get("OPENAI_API_KEY"):
+            pytest.skip("OPENAI_API_KEY not set; skipping LLM tool-invocation test")
+
+        import json
+        from claim_agent.crews.duplicate_crew import create_duplicate_crew
+        from claim_agent.tools.logic import search_claims_db_impl
+
+        # Claim with same VIN as seeded_db first claim so search returns results
+        claim_data = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": seeded_db_base_date,
+            "incident_description": "Rear-ended at stoplight. Bumper damage.",
+            "damage_description": "Rear bumper and trunk damaged.",
+            "estimated_damage": 3500,
+        }
+        with patch("claim_agent.tools.logic.search_claims_db_impl", wraps=search_claims_db_impl) as mock_search:
+            crew = create_duplicate_crew()
+            result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+            output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
+            output = str(output)
+
+        assert mock_search.call_count >= 1, (
+            "Duplicate crew should invoke search_claims_db at least once when agent has claim_data"
+        )
+        assert len(output.strip()) > 0, "Crew should produce non-empty output"
+
+
+# ============================================================================
 # Live LLM Tests (require API key)
 # ============================================================================
 

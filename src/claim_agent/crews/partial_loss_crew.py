@@ -32,9 +32,12 @@ def create_partial_loss_crew(llm=None):
     parts_ordering = create_parts_ordering_agent(llm)
     authorization_agent = create_repair_authorization_agent(llm)
 
-    # Task 1: Assess damage
+    # Task 1: Assess damage (claim_data injected so agent can pass it to tools)
     assess_damage_task = Task(
-        description="""Evaluate the damage_description from claim_data to assess the repair scope.
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Evaluate the damage_description from claim_data above to assess the repair scope.
 Use the evaluate_damage tool with the damage_description.
 Also fetch the vehicle value using fetch_vehicle_value with vin, vehicle_year, vehicle_make, vehicle_model.
 
