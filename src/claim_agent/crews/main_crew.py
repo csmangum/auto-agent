@@ -303,8 +303,9 @@ def _check_economic_total_loss(claim_data: dict) -> dict:
     damage_desc = claim_data.get("damage_description", "") or ""
     incident_desc = claim_data.get("incident_description", "") or ""
     
-    # Check for catastrophic event keywords
-    is_catastrophic = _has_catastrophic_keywords(damage_desc)
+    # Check for catastrophic event keywords in both incident and damage descriptions
+    # Catastrophic events (rollover, fire, flood) are typically described in incident_description
+    is_catastrophic = _has_catastrophic_keywords(incident_desc) or _has_catastrophic_keywords(damage_desc)
     damage_indicates_total = _has_catastrophic_keywords(damage_desc)
     damage_is_repairable = _has_repairable_damage_keywords(damage_desc)
     
