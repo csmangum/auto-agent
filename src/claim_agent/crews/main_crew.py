@@ -448,8 +448,12 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 indicators = fraud_data if isinstance(fraud_data, list) else (fraud_data.get("indicators", []) if isinstance(fraud_data, dict) else [])
                 # Filter out indicators that don't apply to potential total loss scenarios
                 if indicators:
-                    # Only flag fraud if there are indicators beyond just damage_near_or_above_vehicle_value
-                    meaningful_indicators = [i for i in indicators if i != "damage_near_or_above_vehicle_value"]
+                    # These indicators are not strong fraud signals by themselves:
+                    # - damage_near_or_above_vehicle_value: Expected for total loss
+                    # - incident_damage_description_mismatch: Often false positive for legitimate claims
+                    #   (just means different vocabulary used, not necessarily fraud)
+                    weak_indicators = {"damage_near_or_above_vehicle_value", "incident_damage_description_mismatch"}
+                    meaningful_indicators = [i for i in indicators if i not in weak_indicators]
                     if meaningful_indicators:
                         claim_data_with_id["pre_routing_fraud_indicators"] = meaningful_indicators
 
