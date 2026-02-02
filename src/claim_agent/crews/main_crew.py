@@ -67,6 +67,18 @@ class TokenBudgetExceeded(Exception):
         super().__init__(message)
 
 
+def _normalize_claim_data(claim_data: dict) -> tuple[ClaimInput, dict]:
+    """Sanitize and validate claim data, returning model + JSON-safe dict.
+
+    This ensures numeric fields are coerced and extra fields are dropped before
+    we pass data to LLM prompts or business logic.
+    """
+    sanitized = sanitize_claim_data(claim_data)
+    claim_input = ClaimInput.model_validate(sanitized)
+    normalized = claim_input.model_dump(mode="json")
+    return claim_input, normalized
+
+
 def create_router_crew(llm=None):
     """Create a crew with only the router agent to classify the claim."""
     llm = llm or get_llm()
@@ -181,24 +193,55 @@ def _kickoff_with_retry(crew: Any, inputs: dict[str, Any]) -> Any:
     return _call()
 
 
-def _check_token_budget(claim_id: str, metrics: Any) -> None:
+def _get_llm_usage_snapshot(llm: Any) -> tuple[int, int, int] | None:
+    """Best-effort token usage snapshot from CrewAI LLM."""
+    get_usage = getattr(llm, "get_token_usage_summary", None)
+    if get_usage is None:
+        return None
+    try:
+        usage = get_usage()
+    except Exception as exc:
+        logger.debug(
+            "Failed to get LLM token usage summary: %s",
+            exc,
+            exc_info=True,
+        )
+        return None
+    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+    successful_requests = getattr(usage, "successful_requests", 0) or 0
+    if (prompt_tokens + completion_tokens) == 0 and successful_requests == 0:
+        return None
+    return prompt_tokens, completion_tokens, successful_requests
+
+
+def _check_token_budget(claim_id: str, metrics: Any, llm: Any | None = None) -> None:
     """Raise TokenBudgetExceeded if claim exceeds configured token or call budget."""
     summary = metrics.get_claim_summary(claim_id)
-    if summary is None:
-        return
-    if summary.total_tokens > MAX_TOKENS_PER_CLAIM:
+    total_tokens = summary.total_tokens if summary is not None else 0
+    total_calls = summary.total_llm_calls if summary is not None else 0
+
+    # If metrics have no calls yet, fall back to CrewAI LLM usage snapshot.
+    if total_tokens == 0 and total_calls == 0 and llm is not None:
+        usage = _get_llm_usage_snapshot(llm)
+        if usage is not None:
+            prompt_tokens, completion_tokens, successful_requests = usage
+            total_tokens = prompt_tokens + completion_tokens
+            total_calls = successful_requests or (1 if total_tokens > 0 else 0)
+
+    if total_tokens > MAX_TOKENS_PER_CLAIM:
         raise TokenBudgetExceeded(
             claim_id,
-            summary.total_tokens,
-            summary.total_llm_calls,
-            f"Token budget exceeded: {summary.total_tokens} > {MAX_TOKENS_PER_CLAIM}",
+            total_tokens,
+            total_calls,
+            f"Token budget exceeded: {total_tokens} > {MAX_TOKENS_PER_CLAIM}",
         )
-    if summary.total_llm_calls > MAX_LLM_CALLS_PER_CLAIM:
+    if total_calls > MAX_LLM_CALLS_PER_CLAIM:
         raise TokenBudgetExceeded(
             claim_id,
-            summary.total_tokens,
-            summary.total_llm_calls,
-            f"LLM call budget exceeded: {summary.total_llm_calls} > {MAX_LLM_CALLS_PER_CLAIM}",
+            total_tokens,
+            total_calls,
+            f"LLM call budget exceeded: {total_calls} > {MAX_LLM_CALLS_PER_CLAIM}",
         )
 
 
@@ -209,23 +252,10 @@ def _record_crew_llm_usage(claim_id: str, llm: Any, metrics: Any) -> None:
     are not invoked. The LLM instance accumulates usage via get_token_usage_summary().
     We record one aggregated call so evaluation and reporting get real token/cost data.
     """
-    get_usage = getattr(llm, "get_token_usage_summary", None)
-    if get_usage is None:
+    usage = _get_llm_usage_snapshot(llm)
+    if usage is None:
         return
-    try:
-        usage = get_usage()
-    except Exception as exc:
-        logger.debug(
-            "Failed to get LLM token usage summary for claim_id=%s: %s",
-            claim_id,
-            exc,
-            exc_info=True,
-        )
-        return
-    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
-    if (prompt_tokens + completion_tokens) == 0 and getattr(usage, "successful_requests", 0) == 0:
-        return
+    prompt_tokens, completion_tokens, _successful_requests = usage
     model = getattr(llm, "model", None) or get_model_name()
     metrics.record_llm_call(
         claim_id=claim_id,
@@ -313,6 +343,17 @@ _EXPLICIT_TOTAL_LOSS_KEYWORDS = [
     "unrepairable", "complete loss", "write-off", "write off",
     "frame bent", "frame damage",
 ]
+_DAMAGE_TYPE_TAGS: dict[str, list[str]] = {
+    "front": ["front bumper", "front end", "hood", "grille", "headlight", "radiator"],
+    "rear": ["rear bumper", "rear end", "trunk", "taillight", "tail light"],
+    "side": ["door", "side", "fender", "quarter panel", "mirror"],
+    "glass": ["windshield", "window", "glass"],
+    "roof": ["roof"],
+    "interior": ["interior", "seat", "dashboard", "airbag"],
+    "undercarriage": ["frame", "suspension", "axle"],
+    "engine": ["engine", "motor", "transmission"],
+    "catastrophic": ["flood", "fire", "rollover", "submerged", "totaled", "destroyed", "beyond repair", "unrepairable"],
+}
 
 
 def _has_catastrophic_event_keywords(text: str) -> bool:
@@ -336,6 +377,27 @@ def _has_explicit_total_loss_keywords(text: str) -> bool:
 def _has_catastrophic_keywords(text: str) -> bool:
     """Check if text contains any total-loss signal (event or explicit outcome)."""
     return _has_catastrophic_event_keywords(text) or _has_explicit_total_loss_keywords(text)
+
+
+def _extract_damage_tags(text: str) -> set[str]:
+    """Extract coarse damage-type tags from incident/damage text."""
+    if not text:
+        return set()
+    text_lower = text.lower()
+    tags: set[str] = set()
+    for tag, keywords in _DAMAGE_TYPE_TAGS.items():
+        for kw in keywords:
+            if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
+                tags.add(tag)
+                break
+    return tags
+
+
+def _damage_tags_overlap(tags_a: set[str], tags_b: set[str]) -> bool:
+    """Return True when both tag sets are non-empty and overlap."""
+    if not tags_a or not tags_b:
+        return False
+    return not tags_a.isdisjoint(tags_b)
 
 
 def _has_repairable_damage_keywords(text: str) -> bool:
@@ -450,10 +512,8 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
     """
     workflow_start_time = time.time()
 
-    # Sanitize input to limit prompt injection and abuse
-    claim_data = sanitize_claim_data(claim_data)
-
     llm = llm or get_llm()
+    claim_input, claim_data = _normalize_claim_data(claim_data)
     repo = ClaimRepository()
     metrics = get_metrics()
 
@@ -464,7 +524,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             raise ValueError(f"Claim not found: {claim_id}")
         logger.info("Reprocessing existing claim", extra={"claim_id": claim_id})
     else:
-        claim_input = ClaimInput(**claim_data)
         claim_id = repo.create_claim(claim_input)
         logger.info(
             "Created new claim",
@@ -540,17 +599,21 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
 
             # Pre-check: Search for potential duplicate claims by VIN
             existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id)
+            similarity_score_for_escalation = None
             if existing_claims:
                 from claim_agent.tools.logic import compute_similarity_score_impl
                 current_incident = claim_data.get("incident_description", "") or ""
                 current_damage = claim_data.get("damage_description", "") or ""
                 current_combined = f"{current_incident} {current_damage}"
+                current_damage_tags = _extract_damage_tags(current_combined)
                 
                 enriched_claims = []
                 for c in existing_claims[:5]:
                     existing_incident = c.get("incident_description", "") or ""
                     existing_damage = c.get("damage_description", "") or ""
                     existing_combined = f"{existing_incident} {existing_damage}"
+                    existing_damage_tags = _extract_damage_tags(existing_combined)
+                    damage_type_match = _damage_tags_overlap(current_damage_tags, existing_damage_tags)
                     
                     try:
                         similarity_score = compute_similarity_score_impl(current_combined, existing_combined)
@@ -566,20 +629,29 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                         "claim_id": c.get("id"),
                         "incident_date": c.get("incident_date"),
                         "incident_description": existing_incident[:200],
+                        "damage_description": existing_damage[:200],
+                        "damage_tags": sorted(existing_damage_tags),
+                        "damage_type_match": damage_type_match,
                         "days_difference": c.get("days_difference"),
                         "description_similarity_score": similarity_score,
                     })
+                    if similarity_score_for_escalation is None or similarity_score > similarity_score_for_escalation:
+                        similarity_score_for_escalation = similarity_score
                 
                 claim_data_with_id["existing_claims_for_vin"] = enriched_claims
+                claim_data_with_id["damage_tags"] = sorted(current_damage_tags)
                 # Deterministic duplicate: if any existing claim meets thresholds, set definitive_duplicate
                 is_high_value = claim_data_with_id.get("high_value_claim", False)
                 sim_threshold = 60 if is_high_value else 40
                 definitive_duplicate = any(
                     (e.get("description_similarity_score") or 0) >= sim_threshold
                     and e.get("days_difference", 999) <= 3
+                    and e.get("damage_type_match")
                     for e in enriched_claims
                 )
                 claim_data_with_id["definitive_duplicate"] = definitive_duplicate
+            else:
+                similarity_score_for_escalation = None
             inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
             claim_data_str = inputs["claim_data"] if isinstance(inputs["claim_data"], str) else json.dumps(inputs["claim_data"])
             logger.debug(
@@ -608,14 +680,14 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 latency_ms=router_latency,
             )
 
-            _check_token_budget(claim_id, metrics)
+            _check_token_budget(claim_id, metrics, llm)
 
             # Step 1b: Escalation check (HITL) — skip for fraud so the fraud crew runs and performs its own assessment
             if claim_type != ClaimType.FRAUD.value:
                 escalation_json = evaluate_escalation_impl(
                     claim_data,
                     raw_output,
-                    similarity_score=None,
+                    similarity_score=similarity_score_for_escalation,
                     payout_amount=None,
                 )
                 escalation_result = json.loads(escalation_json)
@@ -666,7 +738,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                     }
 
             # Step 2: Run the appropriate crew
-            _check_token_budget(claim_id, metrics)
+            _check_token_budget(claim_id, metrics, llm)
             logger.log_event("crew_started", crew=claim_type)
             crew_start = time.time()
 
@@ -682,7 +754,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 crew = create_total_loss_crew(llm)
 
             workflow_result = _kickoff_with_retry(crew, inputs)
-            _check_token_budget(claim_id, metrics)
+            _check_token_budget(claim_id, metrics, llm)
             crew_latency = (time.time() - crew_start) * 1000
 
             workflow_output = getattr(workflow_result, "raw", None) or getattr(workflow_result, "output", None) or str(workflow_result)
