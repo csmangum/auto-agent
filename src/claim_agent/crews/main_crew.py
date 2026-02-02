@@ -576,7 +576,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 sim_threshold = 60 if is_high_value else 40
                 definitive_duplicate = any(
                     (e.get("description_similarity_score") or 0) >= sim_threshold
-                    and (e.get("days_difference") or 999) <= 3
+                    and e.get("days_difference", 999) <= 3
                     for e in enriched_claims
                 )
                 claim_data_with_id["definitive_duplicate"] = definitive_duplicate
