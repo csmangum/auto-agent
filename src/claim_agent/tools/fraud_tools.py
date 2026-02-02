@@ -1,6 +1,7 @@
 """Fraud detection tools: pattern analysis, cross-reference, and fraud assessment."""
 
 import json
+from typing import Union
 
 from crewai.tools import tool
 
@@ -103,7 +104,7 @@ def generate_fraud_report(
     claim_id: str,
     fraud_likelihood: str,
     fraud_score: str,
-    fraud_indicators: str,
+    fraud_indicators: Union[str, list],
     recommended_action: str,
     siu_referral: str = "false",
     should_block: str = "false",
@@ -114,7 +115,7 @@ def generate_fraud_report(
         claim_id: The claim ID.
         fraud_likelihood: low, medium, high, or critical.
         fraud_score: Numeric fraud risk score as string.
-        fraud_indicators: JSON array of fraud indicator strings.
+        fraud_indicators: JSON array of fraud indicator strings, or a list (e.g. []).
         recommended_action: Recommended action text.
         siu_referral: 'true' or 'false' for SIU referral.
         should_block: 'true' or 'false' for claim blocking.
@@ -122,10 +123,13 @@ def generate_fraud_report(
     Returns:
         Formatted fraud assessment report string.
     """
-    try:
-        indicators = json.loads(fraud_indicators) if fraud_indicators else []
-    except json.JSONDecodeError:
-        indicators = []
+    if isinstance(fraud_indicators, list):
+        indicators = fraud_indicators
+    else:
+        try:
+            indicators = json.loads(fraud_indicators) if fraud_indicators else []
+        except json.JSONDecodeError:
+            indicators = []
     
     try:
         score = int(float(fraud_score)) if fraud_score else 0

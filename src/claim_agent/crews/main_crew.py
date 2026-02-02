@@ -82,6 +82,8 @@ Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or par
 
 CLASSIFICATION RULES (in priority order):
 
+0. **definitive_duplicate**: If "definitive_duplicate" is true in the claim data, you MUST classify as duplicate. Do not classify as anything else.
+
 1. **duplicate**: ONLY if "existing_claims_for_vin" contains claims with:
    - For standard claims: description_similarity_score >= 40 AND days_difference <= 3 (incident dates within 3 days)
    - For high-value claims ("high_value_claim": true): description_similarity_score >= 60 AND days_difference <= 3
@@ -93,10 +95,11 @@ CLASSIFICATION RULES (in priority order):
    - "is_economic_total_loss": true AND damage description does NOT conflict with minor damage
    - Damage description contains: totaled, flood, fire, destroyed, frame bent, frame damage, rollover, submerged, roof crushed, beyond repair, complete loss, unrepairable
 
-3. **fraud**: ONLY if:
+3. **fraud**: Classify as fraud if:
    - "pre_routing_fraud_indicators" is present AND not empty
-   - OR incident description conflicts significantly with damage description (minor incident but major damage claimed)
-   - BUT: If damage_indicates_total_loss is true with catastrophic keywords, classify as total_loss, NOT fraud
+   - OR incident description describes a minor event (e.g. "minor bump", "barely tapped", "parking lot bump") AND damage description claims major damage (e.g. "frame damage", "entire front end", "vehicle stripped") — this incident/damage mismatch is fraud
+   - Fraud-override phrases in incident text: "minor bump", "barely tapped", "staged", "no witnesses", "cameras not working", "inflated" — when present with conflicting damage or pre_routing_fraud_indicators, prefer fraud
+   - EXCEPTION: If damage text contains catastrophic keywords (flood, fire, rollover, submerged), classify as total_loss, NOT fraud
    - High damage-to-value ratio alone is NOT fraud if the damage description supports total loss
 
 4. **partial_loss**: Damage is repairable:
@@ -108,9 +111,15 @@ CLASSIFICATION RULES (in priority order):
 
 5. **new**: First-time claim, unclear damage, or needs assessment. Use only if none of the above apply.
 
+EDGE CASE HINTS:
+- Very old vehicles (15+ years) with repair cost > 75% of value are typically total_loss.
+- If damage_is_repairable is true and no catastrophic keywords in damage description, prefer partial_loss unless is_economic_total_loss is explicitly true.
+
 KEY DECISION POINTS:
+- If definitive_duplicate is true -> duplicate (MUST)
 - If damage says "totaled", "destroyed", "total loss", "beyond repair" -> total_loss (NOT fraud)
-- If rollover, fire, or flood mentioned -> total_loss (NOT fraud)
+- If rollover, fire, or flood mentioned in damage -> total_loss (NOT fraud)
+- If incident says "minor bump"/"barely tapped"/"staged"/"no witnesses" and damage claims major damage or pre_routing_fraud_indicators present -> fraud (unless damage has catastrophic keywords)
 - High damage cost alone without fraud keywords -> check if total_loss first
 - For duplicates: Look at both days_difference AND description_similarity_score
 
@@ -205,13 +214,19 @@ def _record_crew_llm_usage(claim_id: str, llm: Any, metrics: Any) -> None:
         return
     try:
         usage = get_usage()
-    except Exception:
+    except Exception as exc:
+        logger.debug(
+            "Failed to get LLM token usage summary for claim_id=%s: %s",
+            claim_id,
+            exc,
+            exc_info=True,
+        )
         return
     prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
     completion_tokens = getattr(usage, "completion_tokens", 0) or 0
     if (prompt_tokens + completion_tokens) == 0 and getattr(usage, "successful_requests", 0) == 0:
         return
-    model = get_model_name() or getattr(llm, "model", "unknown")
+    model = getattr(llm, "model", None) or get_model_name()
     metrics.record_llm_call(
         claim_id=claim_id,
         model=model,
@@ -556,7 +571,23 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                     })
                 
                 claim_data_with_id["existing_claims_for_vin"] = enriched_claims
+                # Deterministic duplicate: if any existing claim meets thresholds, set definitive_duplicate
+                is_high_value = claim_data_with_id.get("high_value_claim", False)
+                sim_threshold = 60 if is_high_value else 40
+                definitive_duplicate = any(
+                    (e.get("description_similarity_score") or 0) >= sim_threshold
+                    and (e.get("days_difference") or 999) <= 3
+                    for e in enriched_claims
+                )
+                claim_data_with_id["definitive_duplicate"] = definitive_duplicate
             inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
+            claim_data_str = inputs["claim_data"] if isinstance(inputs["claim_data"], str) else json.dumps(inputs["claim_data"])
+            logger.debug(
+                "router_input_size claim_id=%s payload_chars=%s existing_claims_count=%s",
+                claim_id,
+                len(claim_data_str),
+                len(claim_data_with_id.get("existing_claims_for_vin") or []),
+            )
 
             # Step 1: Classify
             logger.log_event("router_started", step="classification")

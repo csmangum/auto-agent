@@ -38,7 +38,10 @@ def create_total_loss_crew(
     settlement_agent = create_settlement_agent(llm, state=state, use_rag=use_rag)
 
     assess_task = Task(
-        description="""Evaluate the damage_description and optional estimated_damage from the claim_data.
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Evaluate the damage_description and optional estimated_damage from the claim_data above.
 Use the evaluate_damage tool. If the description suggests total loss (e.g. totaled, flood, fire, frame damage) or repair cost would exceed 75% of value, mark as total loss candidate.""",
         expected_output="Damage severity, estimated_repair_cost if any, and total_loss_candidate (true/false).",
         agent=damage_agent,

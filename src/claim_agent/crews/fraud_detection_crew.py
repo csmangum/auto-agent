@@ -34,9 +34,12 @@ def create_fraud_detection_crew(llm=None):
     crossref_agent = create_cross_reference_agent(llm)
     assessment_agent = create_fraud_assessment_agent(llm)
 
-    # Task 1: Pattern Analysis
+    # Task 1: Pattern Analysis (claim_data injected so agent can pass it to tools)
     pattern_task = Task(
-        description="""Analyze the claim for suspicious patterns using the claim_data from crew inputs.
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Analyze the claim for suspicious patterns using the claim_data above.
 
 Steps:
 1. Use analyze_claim_patterns with the claim_data JSON to detect patterns.

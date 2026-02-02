@@ -98,9 +98,14 @@ Observations:
 
 ## How to Re-run
 
+Full evaluation runs 37 scenarios (router + workflow crew per claim) and can take **10–15 minutes**. Use `--timeout-per-scenario` to avoid one stuck scenario hanging the run.
+
 ```bash
 # Activate venv and run full evaluation
 .venv/bin/python scripts/evaluate_claim_processing.py --all
+
+# With per-scenario timeout (e.g. 120s) so one stuck scenario does not hang the run
+.venv/bin/python scripts/evaluate_claim_processing.py --all --timeout-per-scenario 120
 
 # Save to a named report
 .venv/bin/python scripts/evaluate_claim_processing.py --all --output evaluation_report.json

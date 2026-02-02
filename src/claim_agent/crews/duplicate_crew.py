@@ -19,7 +19,10 @@ def create_duplicate_crew(llm=None):
     resolution_agent = create_resolution_agent(llm)
 
     search_task = Task(
-        description="""Search existing claims using the claim_data from crew inputs.
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Search existing claims using the claim_data above.
 Use search_claims_db with vin and incident_date from the claim.
 Return the list of matching or similar claims.""",
         expected_output="List of existing claims matching the same VIN and incident date (or empty list).",

@@ -858,9 +858,15 @@ ALL_SCENARIOS = {
 class ClaimEvaluator:
     """Engine for evaluating claim processing accuracy and performance."""
     
-    def __init__(self, verbose: bool = False, parallel: int = 1):
+    def __init__(
+        self,
+        verbose: bool = False,
+        parallel: int = 1,
+        timeout_per_scenario: float = 0.0,
+    ):
         self.verbose = verbose
         self.parallel = parallel
+        self.timeout_per_scenario = timeout_per_scenario  # seconds; 0 = no timeout
         self.results: list[EvaluationResult] = []
         self._db_path: str | None = None
         
@@ -1005,7 +1011,10 @@ def _claim_evaluator_run_scenarios(
     scenarios: list[EvaluationScenario],
     parallel: int = 1,
 ) -> list[EvaluationResult]:
-    """Run multiple evaluation scenarios, optionally in parallel (N worker processes)."""
+    """Run multiple evaluation scenarios, optionally in parallel (N worker processes).
+    When timeout_per_scenario > 0, each scenario is run in a subprocess and timed out
+    to avoid one stuck scenario hanging the full run (full eval can take 10-15 min)."""
+    timeout = self.timeout_per_scenario if self.timeout_per_scenario > 0 else None
     if parallel and parallel > 1:
         results = []
         with ProcessPoolExecutor(max_workers=parallel) as executor:
@@ -1014,11 +1023,40 @@ def _claim_evaluator_run_scenarios(
                 for s in scenarios
             }
             for future in as_completed(futures):
-                result = future.result()
+                try:
+                    result = future.result(timeout=timeout) if timeout else future.result()
+                except TimeoutError:
+                    scenario = futures[future]
+                    result = EvaluationResult(
+                        scenario=scenario,
+                        success=False,
+                        error=f"Scenario timed out after {timeout}s",
+                        latency_ms=timeout * 1000.0 if timeout else 0.0,
+                    )
+                    if self.verbose:
+                        print(f"\n  ✗ {scenario.name}: timed out after {timeout}s")
                 results.append(result)
                 self.results.append(result)
         return results
     results = []
+    if timeout and timeout > 0:
+        with ProcessPoolExecutor(max_workers=1) as executor:
+            for scenario in scenarios:
+                future = executor.submit(_run_scenario_worker, (scenario, self.verbose))
+                try:
+                    result = future.result(timeout=timeout)
+                except TimeoutError:
+                    result = EvaluationResult(
+                        scenario=scenario,
+                        success=False,
+                        error=f"Scenario timed out after {timeout}s",
+                        latency_ms=timeout * 1000.0,
+                    )
+                    if self.verbose:
+                        print(f"\n  ✗ {scenario.name}: timed out after {timeout}s")
+                results.append(result)
+                self.results.append(result)
+        return results
     for scenario in scenarios:
         result = self.run_scenario(scenario)
         results.append(result)
@@ -1413,6 +1451,13 @@ Examples:
         help="Run scenarios in parallel with N worker processes (default: 1)",
     )
     parser.add_argument(
+        "--timeout-per-scenario",
+        type=float,
+        default=0,
+        metavar="SECS",
+        help="Max seconds per scenario; 0 = no timeout. Use e.g. 120 to avoid one stuck scenario hanging full run (full eval can take 10-15 min).",
+    )
+    parser.add_argument(
         "--tag",
         action="append",
         metavar="TAG",
@@ -1495,7 +1540,11 @@ Examples:
         sys.exit(1)
     
     # Initialize evaluator
-    evaluator = ClaimEvaluator(verbose=args.verbose, parallel=args.parallel)
+    evaluator = ClaimEvaluator(
+        verbose=args.verbose,
+        parallel=args.parallel,
+        timeout_per_scenario=args.timeout_per_scenario,
+    )
     
     try:
         evaluator.setup()
