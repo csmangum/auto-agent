@@ -82,9 +82,8 @@ Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or par
 CLASSIFICATION RULES (in priority order):
 
 1. **duplicate**: ONLY if "existing_claims_for_vin" contains claims with:
-   - days_difference <= 3 (dates within 3 days)
-   - AND description_similarity_score >= 40 OR incident descriptions describe the same type of incident (e.g., both are rear-end collisions, both are parking lot incidents)
-   - High-value claims ("high_value_claim": true) require stronger evidence (similarity_score >= 60)
+   - days_difference <= 3 (dates within 3 days) AND (description_similarity_score >= 40 OR incident descriptions clearly describe the same type of incident (e.g., both are rear-end collisions, both are parking lot incidents))
+   - High-value claims ("high_value_claim": true) require stronger evidence (description_similarity_score >= 60)
    - Different damage types on same VIN are NOT duplicates
 
 2. **total_loss**: Classify as total_loss if ANY of these are true:
@@ -257,18 +256,38 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
     return matches
 
 
-def _has_catastrophic_keywords(text: str) -> bool:
-    """Check if text contains catastrophic event keywords indicating total loss."""
+# Catastrophic event keywords (incident type: flood, fire, rollover, etc.)
+_CATASTROPHIC_EVENT_KEYWORDS = [
+    "flood", "fire", "submerged", "rollover", "rolled over",
+    "roof crushed", "burned",
+]
+# Explicit total-loss wording (outcome: totaled, destroyed, beyond repair, etc.)
+_EXPLICIT_TOTAL_LOSS_KEYWORDS = [
+    "totaled", "total loss", "destroyed", "beyond repair",
+    "unrepairable", "complete loss", "write-off", "write off",
+    "frame bent", "frame damage",
+]
+
+
+def _has_catastrophic_event_keywords(text: str) -> bool:
+    """Check if text contains catastrophic event keywords (flood, fire, rollover, etc.)."""
     if not text:
         return False
     text_lower = text.lower()
-    catastrophic_keywords = [
-        "totaled", "total loss", "destroyed", "beyond repair",
-        "flood", "fire", "submerged", "rollover", "rolled over",
-        "frame bent", "frame damage", "roof crushed", "burned",
-        "unrepairable", "complete loss", "write-off", "write off",
-    ]
-    return any(kw in text_lower for kw in catastrophic_keywords)
+    return any(kw in text_lower for kw in _CATASTROPHIC_EVENT_KEYWORDS)
+
+
+def _has_explicit_total_loss_keywords(text: str) -> bool:
+    """Check if text explicitly mentions total loss (totaled, destroyed, beyond repair, etc.)."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in _EXPLICIT_TOTAL_LOSS_KEYWORDS)
+
+
+def _has_catastrophic_keywords(text: str) -> bool:
+    """Check if text contains any total-loss signal (event or explicit outcome)."""
+    return _has_catastrophic_event_keywords(text) or _has_explicit_total_loss_keywords(text)
 
 
 def _has_repairable_damage_keywords(text: str) -> bool:
@@ -276,13 +295,11 @@ def _has_repairable_damage_keywords(text: str) -> bool:
     if not text:
         return False
     text_lower = text.lower()
-    # These keywords suggest damage that is typically repairable
     repairable_keywords = [
         "door", "doors", "fender", "bumper", "hood", "trunk",
         "mirror", "light", "headlight", "taillight", "dent", "scratch",
         "panel", "quarter panel", "windshield", "window", "paint",
     ]
-    # Check if any repairable keyword is present AND no catastrophic keywords
     has_repairable = any(kw in text_lower for kw in repairable_keywords)
     has_catastrophic = _has_catastrophic_keywords(text)
     return has_repairable and not has_catastrophic
@@ -292,23 +309,27 @@ def _check_economic_total_loss(claim_data: dict) -> dict:
     """Check if repair cost exceeds 75% of vehicle value (economic total loss).
     
     Returns additional context:
-    - is_economic_total_loss: True if cost >= 75% of value AND damage supports it
-    - is_catastrophic_event: True if damage description contains catastrophic keywords
-    - damage_indicates_total_loss: True if damage description explicitly mentions total loss
+    - is_economic_total_loss: True only when cost >= 75% of value (strictly cost-based); high cost
+      with repairable-only damage may be set False when ratio < 100%.
+    - is_catastrophic_event: True if incident or damage description contains catastrophic event
+      keywords (flood, fire, rollover, etc.).
+    - damage_indicates_total_loss: True if damage description explicitly mentions total loss or
+      contains catastrophic event keywords.
     - damage_is_repairable: True if damage describes repairable parts (doors, bumpers, etc.)
+      and no total-loss keywords.
     """
     from claim_agent.tools.logic import fetch_vehicle_value_impl
     from claim_agent.config.settings import PARTIAL_LOSS_THRESHOLD
 
     damage_desc = claim_data.get("damage_description", "") or ""
     incident_desc = claim_data.get("incident_description", "") or ""
-    
-    # Check for catastrophic event keywords in both incident and damage descriptions
-    # Catastrophic events (rollover, fire, flood) are typically described in incident_description
-    is_catastrophic = _has_catastrophic_keywords(incident_desc) or _has_catastrophic_keywords(damage_desc)
-    damage_indicates_total = _has_catastrophic_keywords(damage_desc)
+
+    # Catastrophic events (rollover, fire, flood) often appear in incident_description
+    is_catastrophic = _has_catastrophic_event_keywords(incident_desc) or _has_catastrophic_event_keywords(damage_desc)
+    # Damage indicates total when it has explicit wording or catastrophic event keywords
+    damage_indicates_total = _has_explicit_total_loss_keywords(damage_desc) or _has_catastrophic_event_keywords(damage_desc)
     damage_is_repairable = _has_repairable_damage_keywords(damage_desc)
-    
+
     estimated_damage = claim_data.get("estimated_damage")
     if estimated_damage is None or not isinstance(estimated_damage, (int, float)) or estimated_damage <= 0:
         return {
@@ -329,16 +350,11 @@ def _check_economic_total_loss(claim_data: dict) -> dict:
     threshold = PARTIAL_LOSS_THRESHOLD * vehicle_value
     cost_exceeds_threshold = estimated_damage >= threshold
     ratio = round(estimated_damage / vehicle_value, 2) if vehicle_value > 0 else 0
-    
-    # Determine is_economic_total_loss with nuance:
-    # - If damage indicates total loss (catastrophic keywords), it's total loss
-    # - If cost exceeds threshold but damage describes repairable parts only, 
-    #   only consider it economic total loss if ratio is very high (>= 100%)
-    # - Otherwise, use the standard threshold
-    if damage_indicates_total:
-        is_total = True
-    elif cost_exceeds_threshold and damage_is_repairable and ratio < 1.0:
-        # High cost ratio but damage is described as repairable parts - lean toward partial_loss
+
+    # is_economic_total_loss is strictly cost/value-based (75% rule). Do not set True from
+    # damage keywords alone; use damage_indicates_total_loss / is_catastrophic_event for that.
+    if cost_exceeds_threshold and damage_is_repairable and ratio < 1.0:
+        # High cost but damage described as repairable parts only -> lean toward partial_loss
         is_total = False
     else:
         is_total = cost_exceeds_threshold
