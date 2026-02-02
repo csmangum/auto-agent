@@ -93,20 +93,22 @@ Valuation/partial loss: `VALUATION_*`, `PARTIAL_LOSS_*`. See `.env.example` for 
 
 ## LLM Configuration Code
 
+The module uses `load_dotenv()` and sets up observability (e.g. LangSmith) on first LLM use:
+
 ```python
-# src/claim_agent/config/llm.py
+# src/claim_agent/config/llm.py (simplified)
 
 def get_llm():
-    """Return the configured LLM for agents."""
-    from crewai import LLM
-    
+    """Return the configured LLM for agents. Requires OPENAI_API_KEY."""
+    setup_observability()  # LangSmith etc., called once on first LLM use
+
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable is required")
-    
+
     base = os.environ.get("OPENAI_API_BASE", "").strip()
     model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini").strip()
-    
+
     if base and "openrouter" in base.lower():
         return LLM(model=model, base_url=base, api_key=api_key)
     return LLM(model=model, api_key=api_key)
