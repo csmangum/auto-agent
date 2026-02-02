@@ -193,6 +193,36 @@ def _check_token_budget(claim_id: str, metrics: Any) -> None:
         )
 
 
+def _record_crew_llm_usage(claim_id: str, llm: Any, metrics: Any) -> None:
+    """Record CrewAI LLM token usage and cost into metrics for this claim.
+
+    CrewAI uses native SDK (OpenAI etc.) for standard models, so LiteLLM callbacks
+    are not invoked. The LLM instance accumulates usage via get_token_usage_summary().
+    We record one aggregated call so evaluation and reporting get real token/cost data.
+    """
+    get_usage = getattr(llm, "get_token_usage_summary", None)
+    if get_usage is None:
+        return
+    try:
+        usage = get_usage()
+    except Exception:
+        return
+    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+    if (prompt_tokens + completion_tokens) == 0 and getattr(usage, "successful_requests", 0) == 0:
+        return
+    model = get_model_name() or getattr(llm, "model", "unknown")
+    metrics.record_llm_call(
+        claim_id=claim_id,
+        model=model,
+        input_tokens=prompt_tokens,
+        output_tokens=completion_tokens,
+        cost_usd=None,
+        latency_ms=0.0,
+        status="success",
+    )
+
+
 def _final_status(claim_type: str) -> str:
     """Map claim_type to final claim status."""
     if claim_type == ClaimType.NEW.value:
@@ -680,3 +710,6 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             with _callbacks_lock:
                 current_callbacks = list(getattr(litellm, "callbacks", None) or [])
                 litellm.callbacks = [cb for cb in current_callbacks if cb is not litellm_callback]
+            # Record CrewAI LLM token usage into metrics (CrewAI uses native SDK, not LiteLLM, so
+            # litellm callbacks are not invoked; the LLM instance accumulates usage per workflow)
+            _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
