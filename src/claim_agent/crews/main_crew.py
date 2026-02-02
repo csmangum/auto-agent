@@ -610,19 +610,22 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                     repo.save_workflow_result(claim_id, claim_type, raw_output, details)
                     repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details)
 
-                    workflow_duration = (time.time() - workflow_start_time) * 1000
-                    logger.log_event(
-                        "claim_escalated",
-                        reasons=reasons,
-                        priority=priority,
-                        duration_ms=workflow_duration,
-                    )
+            workflow_duration = (time.time() - workflow_start_time) * 1000
+            logger.log_event(
+                "claim_escalated",
+                reasons=reasons,
+                priority=priority,
+                duration_ms=workflow_duration,
+            )
 
-                    # End metrics tracking
-                    metrics.end_claim(claim_id, status="escalated")
-                    metrics.log_claim_summary(claim_id)
+            # Record CrewAI LLM usage before ending metrics tracking
+            _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
 
-                    return {
+            # End metrics tracking
+            metrics.end_claim(claim_id, status="escalated")
+            metrics.log_claim_summary(claim_id)
+
+            return {
                         **escalation_output.model_dump(),
                         "claim_type": claim_type,
                         "status": STATUS_NEEDS_REVIEW,
@@ -676,6 +679,9 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 duration_ms=workflow_duration,
             )
 
+            # Record CrewAI LLM usage before ending metrics tracking
+            _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+
             # End metrics tracking
             metrics.end_claim(claim_id, status=final_status)
             metrics.log_claim_summary(claim_id)
@@ -701,6 +707,9 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 level=logging.ERROR,
             )
 
+            # Record CrewAI LLM usage before ending metrics tracking
+            _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+
             # End metrics tracking with error status
             metrics.end_claim(claim_id, status="error")
             metrics.log_claim_summary(claim_id)
@@ -710,6 +719,3 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             with _callbacks_lock:
                 current_callbacks = list(getattr(litellm, "callbacks", None) or [])
                 litellm.callbacks = [cb for cb in current_callbacks if cb is not litellm_callback]
-            # Record CrewAI LLM token usage into metrics (CrewAI uses native SDK, not LiteLLM, so
-            # litellm callbacks are not invoked; the LLM instance accumulates usage per workflow)
-            _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
