@@ -7,13 +7,13 @@
 |--------|--------|
 | **Total scenarios** | 37 |
 | **Successful runs** | 37 |
-| **Overall classification accuracy** | **86.5%** |
-| **Total latency** | 186,157 ms (~3.1 min) |
-| **Average latency** | 5,031 ms per scenario |
-| **Total tokens** | **120,134** |
-| **Total cost** | **$0.0214** |
+| **Overall classification accuracy** | **89.2%** |
+| **Total latency** | 243,737 ms (~4.1 min) |
+| **Average latency** | 6,587 ms per scenario |
+| **Total tokens** | **141,056** |
+| **Total cost** | **$0.0253** |
 
-All scenarios completed without runtime errors. Token count and cost are wired from CrewAI LLM usage (see `main_crew._record_crew_llm_usage`). Five scenarios were misclassified in this run.
+All scenarios completed without runtime errors. Token count and cost are from CrewAI LLM usage (see `main_crew._record_crew_llm_usage`). Four scenarios were misclassified in this run.
 
 ---
 
@@ -54,14 +54,14 @@ Total: **37** scenarios. Each scenario has a difficulty (`easy` / `medium` / `ha
 | Expected type | Correct | Total | Accuracy |
 |---------------|---------|-------|----------|
 | **new** | 3 | 3 | **100%** |
-| **partial_loss** | 18 | 19 | 94.7% |
+| **partial_loss** | 19 | 19 | **100%** |
 | **total_loss** | 7 | 8 | 87.5% |
-| **duplicate** | 2 | 3 | 66.7% |
-| **fraud** | 2 | 4 | 50.0% |
+| **fraud** | 3 | 4 | 75.0% |
+| **duplicate** | 1 | 3 | 33.3% |
 
-- **Strong:** `new` is perfect.
-- **Good:** `partial_loss` at 94.7%, `total_loss` at 87.5%.
-- **Needs work:** `duplicate` at 66.7%, `fraud` at 50%.
+- **Strong:** `new` and `partial_loss` at 100%.
+- **Good:** `total_loss` at 87.5%, `fraud` at 75%.
+- **Needs work:** `duplicate` at 33.3%.
 
 ---
 
@@ -69,30 +69,28 @@ Total: **37** scenarios. Each scenario has a difficulty (`easy` / `medium` / `ha
 
 | Expected \\ Actual | duplicate | fraud | new | partial_loss | total_loss |
 |-------------------|-----------|-------|-----|--------------|------------|
-| **duplicate** | 2 | 0 | 0 | 1 | 0 |
-| **fraud** | 0 | 2 | 0 | 0 | 2 |
+| **duplicate** | 1 | 0 | 0 | 2 | 0 |
+| **fraud** | 0 | 3 | 0 | 0 | 1 |
 | **new** | 0 | 0 | 3 | 0 | 0 |
-| **partial_loss** | 0 | 0 | 0 | 18 | 1 |
+| **partial_loss** | 0 | 0 | 0 | 19 | 0 |
 | **total_loss** | 0 | 0 | 0 | 1 | 7 |
 
 Observations:
 
-- **duplicate → partial_loss (1):** `duplicate_same_vin_date` classified as partial_loss.
-- **fraud → total_loss (2):** `fraud_inflated_estimate`, `fraud_suspicious_timing` routed to total_loss.
-- **partial_loss → total_loss (1):** `edge_mixed_signals_partial` routed to total_loss.
+- **duplicate → partial_loss (2):** `duplicate_same_vin_date`, `duplicate_similar_description` classified as partial_loss.
+- **fraud → total_loss (1):** `fraud_inflated_estimate` routed to total_loss.
 - **total_loss → partial_loss (1):** `edge_very_old_vehicle` routed to partial_loss.
 
 ---
 
-## Misclassifications (5)
+## Misclassifications (4)
 
 | Scenario | Expected | Actual | Notes |
 |----------|----------|--------|--------|
 | `duplicate_same_vin_date` | duplicate | partial_loss | Same VIN/date duplicate routed to partial_loss. |
+| `duplicate_similar_description` | duplicate | partial_loss | Similar-description duplicate routed to partial_loss. |
 | `fraud_inflated_estimate` | fraud | total_loss | Inflated estimate scenario routed to total_loss. |
-| `fraud_suspicious_timing` | fraud | total_loss | Suspicious timing fraud routed to total_loss. |
 | `edge_very_old_vehicle` | total_loss | partial_loss | Very old vehicle economic total routed to partial_loss. |
-| `edge_mixed_signals_partial` | partial_loss | total_loss | Mixed signals repairable case routed to total_loss. |
 
 ---
 
@@ -115,5 +113,3 @@ Full evaluation runs 37 scenarios (router + workflow crew per claim) and can tak
 ```
 
 Full per-scenario details (latency, claim_id, status) are in the JSON report file.
-
----
