@@ -79,21 +79,39 @@ CLAIM DATA:
 
 Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or partial_loss.
 
-- duplicate: ONLY if "existing_claims_for_vin" contains claims with BOTH days_difference <= 3 AND the incident descriptions are nearly identical (same type of incident, same damage pattern). Different types of damage (e.g., fender damage vs windshield) on the same vehicle are NOT duplicates. If no similarity is evident, do NOT classify as duplicate.
-- new: First-time claim submission, standard intake with no red flags. Only use if no existing claims match.
-- total_loss: Vehicle damage suggests total loss (e.g. totaled, flood, fire, destroyed, frame damage, or repair would exceed 75% of vehicle value). If "is_economic_total_loss" is true, classify as total_loss.
-- fraud: Claim shows fraud indicators. If "pre_routing_fraud_indicators" is present, strongly consider fraud. Inflated damage estimates that exceed vehicle value without catastrophic event (flood/fire/rollover) suggest fraud, not total_loss.
-- partial_loss: Vehicle has repairable damage (e.g. bumper, fender, door, dents, scratches, broken lights). The vehicle is NOT totaled and can be repaired.
+CLASSIFICATION RULES (in priority order):
 
-Guidelines for duplicate detection:
-- Require BOTH days_difference <= 3 AND nearly identical incident/description (same incident type, same damage).
-- High-value claims ("high_value_claim": true) should NOT be classified as duplicate without strong evidence.
-- Different damage types (fender vs windshield, sideswipe vs road debris) on same VIN are NOT duplicates.
+1. **duplicate**: ONLY if "existing_claims_for_vin" contains claims with:
+   - days_difference <= 3 (dates within 3 days) AND (description_similarity_score >= 40 OR incident descriptions clearly describe the same type of incident (e.g., both are rear-end collisions, both are parking lot incidents))
+   - High-value claims ("high_value_claim": true) require stronger evidence (description_similarity_score >= 60)
+   - Different damage types on same VIN are NOT duplicates
 
-Guidelines for partial_loss vs total_loss:
-- If damage mentions: bumper, fender, door, mirror, dent, scratch, light, windshield, minor collision -> partial_loss
-- If damage mentions: totaled, flood, fire, destroyed, frame damage, rollover, submerged, total loss -> total_loss
-- If estimated_damage is moderate (under $10,000 typically), consider partial_loss.
+2. **total_loss**: Classify as total_loss if ANY of these are true:
+   - "is_catastrophic_event": true (rollover, fire, flood, etc.)
+   - "damage_indicates_total_loss": true (damage description mentions totaled/destroyed/etc.)
+   - "is_economic_total_loss": true AND damage description does NOT conflict with minor damage
+   - Damage description contains: totaled, flood, fire, destroyed, frame bent, frame damage, rollover, submerged, roof crushed, beyond repair, complete loss, unrepairable
+
+3. **fraud**: ONLY if:
+   - "pre_routing_fraud_indicators" is present AND not empty
+   - OR incident description conflicts significantly with damage description (minor incident but major damage claimed)
+   - BUT: If damage_indicates_total_loss is true with catastrophic keywords, classify as total_loss, NOT fraud
+   - High damage-to-value ratio alone is NOT fraud if the damage description supports total loss
+
+4. **partial_loss**: Damage is repairable:
+   - Bumper, fender, door, mirror, dent, scratch, light, windshield damage
+   - No catastrophic keywords in damage description
+   - "damage_is_repairable": true indicates damage to replaceable parts
+   - If damage_is_repairable is true AND is_economic_total_loss is false -> partial_loss
+   - Even with high damage cost, if only repairable parts are mentioned (doors, panels, etc.) -> partial_loss
+
+5. **new**: First-time claim, unclear damage, or needs assessment. Use only if none of the above apply.
+
+KEY DECISION POINTS:
+- If damage says "totaled", "destroyed", "total loss", "beyond repair" -> total_loss (NOT fraud)
+- If rollover, fire, or flood mentioned -> total_loss (NOT fraud)
+- High damage cost alone without fraud keywords -> check if total_loss first
+- For duplicates: Look at both days_difference AND description_similarity_score
 
 Reply with exactly one word: new, duplicate, total_loss, fraud, or partial_loss. Then on the next line give one sentence reasoning.""",
         expected_output="One line: exactly 'new', 'duplicate', 'total_loss', 'fraud', or 'partial_loss'. Second line: brief reasoning.",
@@ -238,14 +256,88 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
     return matches
 
 
+# Catastrophic event keywords (incident type: flood, fire, rollover, etc.)
+_CATASTROPHIC_EVENT_KEYWORDS = [
+    "flood", "fire", "submerged", "rollover", "rolled over",
+    "roof crushed", "burned",
+]
+# Explicit total-loss wording (outcome: totaled, destroyed, beyond repair, etc.)
+_EXPLICIT_TOTAL_LOSS_KEYWORDS = [
+    "totaled", "total loss", "destroyed", "beyond repair",
+    "unrepairable", "complete loss", "write-off", "write off",
+    "frame bent", "frame damage",
+]
+
+
+def _has_catastrophic_event_keywords(text: str) -> bool:
+    """Check if text contains catastrophic event keywords (flood, fire, rollover, etc.)."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in _CATASTROPHIC_EVENT_KEYWORDS)
+
+
+def _has_explicit_total_loss_keywords(text: str) -> bool:
+    """Check if text explicitly mentions total loss (totaled, destroyed, beyond repair, etc.)."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in _EXPLICIT_TOTAL_LOSS_KEYWORDS)
+
+
+def _has_catastrophic_keywords(text: str) -> bool:
+    """Check if text contains any total-loss signal (event or explicit outcome)."""
+    return _has_catastrophic_event_keywords(text) or _has_explicit_total_loss_keywords(text)
+
+
+def _has_repairable_damage_keywords(text: str) -> bool:
+    """Check if text describes repairable damage (parts that can be replaced)."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    repairable_keywords = [
+        "door", "doors", "fender", "bumper", "hood", "trunk",
+        "mirror", "light", "headlight", "taillight", "dent", "scratch",
+        "panel", "quarter panel", "windshield", "window", "paint",
+    ]
+    has_repairable = any(kw in text_lower for kw in repairable_keywords)
+    has_catastrophic = _has_catastrophic_keywords(text)
+    return has_repairable and not has_catastrophic
+
+
 def _check_economic_total_loss(claim_data: dict) -> dict:
-    """Check if repair cost exceeds 75% of vehicle value (economic total loss)."""
+    """Check if repair cost exceeds 75% of vehicle value (economic total loss).
+    
+    Returns additional context:
+    - is_economic_total_loss: True only when cost >= 75% of value (strictly cost-based); high cost
+      with repairable-only damage may be set False when ratio < 100%.
+    - is_catastrophic_event: True if incident or damage description contains catastrophic event
+      keywords (flood, fire, rollover, etc.).
+    - damage_indicates_total_loss: True if damage description explicitly mentions total loss or
+      contains catastrophic event keywords.
+    - damage_is_repairable: True if damage describes repairable parts (doors, bumpers, etc.)
+      and no total-loss keywords.
+    """
     from claim_agent.tools.logic import fetch_vehicle_value_impl
     from claim_agent.config.settings import PARTIAL_LOSS_THRESHOLD
 
+    damage_desc = claim_data.get("damage_description", "") or ""
+    incident_desc = claim_data.get("incident_description", "") or ""
+
+    # Catastrophic events (rollover, fire, flood) often appear in incident_description
+    is_catastrophic = _has_catastrophic_event_keywords(incident_desc) or _has_catastrophic_event_keywords(damage_desc)
+    # Damage indicates total when it has explicit wording or catastrophic event keywords
+    damage_indicates_total = _has_explicit_total_loss_keywords(damage_desc) or _has_catastrophic_event_keywords(damage_desc)
+    damage_is_repairable = _has_repairable_damage_keywords(damage_desc)
+
     estimated_damage = claim_data.get("estimated_damage")
     if estimated_damage is None or not isinstance(estimated_damage, (int, float)) or estimated_damage <= 0:
-        return {"is_economic_total_loss": False}
+        return {
+            "is_economic_total_loss": False,
+            "is_catastrophic_event": is_catastrophic,
+            "damage_indicates_total_loss": damage_indicates_total,
+            "damage_is_repairable": damage_is_repairable,
+        }
 
     vin = claim_data.get("vin", "") or ""
     year = claim_data.get("vehicle_year", 2020)
@@ -256,11 +348,22 @@ def _check_economic_total_loss(claim_data: dict) -> dict:
     vehicle_value = value_result.get("value", 15000)
 
     threshold = PARTIAL_LOSS_THRESHOLD * vehicle_value
-    is_total = estimated_damage >= threshold
+    cost_exceeds_threshold = estimated_damage >= threshold
     ratio = round(estimated_damage / vehicle_value, 2) if vehicle_value > 0 else 0
+
+    # is_economic_total_loss is strictly cost/value-based (75% rule). Do not set True from
+    # damage keywords alone; use damage_indicates_total_loss / is_catastrophic_event for that.
+    if cost_exceeds_threshold and damage_is_repairable and ratio < 1.0:
+        # High cost but damage described as repairable parts only -> lean toward partial_loss
+        is_total = False
+    else:
+        is_total = cost_exceeds_threshold
 
     return {
         "is_economic_total_loss": is_total,
+        "is_catastrophic_event": is_catastrophic,
+        "damage_indicates_total_loss": damage_indicates_total,
+        "damage_is_repairable": damage_is_repairable,
         "vehicle_value": vehicle_value,
         "damage_to_value_ratio": ratio,
     }
@@ -340,20 +443,36 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
 
         try:
-            # Pre-check: Economic total loss (75% rule)
+            # Pre-check: Economic total loss (75% rule) and catastrophic event detection
             economic_check = _check_economic_total_loss(claim_data)
             claim_data_with_id = {**claim_data, "claim_id": claim_id}
             claim_data_with_id["is_economic_total_loss"] = economic_check.get("is_economic_total_loss", False)
+            claim_data_with_id["is_catastrophic_event"] = economic_check.get("is_catastrophic_event", False)
+            claim_data_with_id["damage_indicates_total_loss"] = economic_check.get("damage_indicates_total_loss", False)
+            claim_data_with_id["damage_is_repairable"] = economic_check.get("damage_is_repairable", False)
             claim_data_with_id["vehicle_value"] = economic_check.get("vehicle_value")
             claim_data_with_id["damage_to_value_ratio"] = economic_check.get("damage_to_value_ratio")
 
             # Pre-routing fraud indicators for high damage-to-value claims
-            if (economic_check.get("damage_to_value_ratio") or 0) > 0.9:
+            # BUT: Skip fraud indicators if this is a catastrophic event (rollover, fire, flood, etc.)
+            # Catastrophic events naturally have high damage-to-value ratios and should be total_loss, not fraud
+            is_catastrophic = economic_check.get("is_catastrophic_event", False)
+            damage_indicates_total = economic_check.get("damage_indicates_total_loss", False)
+            
+            if (economic_check.get("damage_to_value_ratio") or 0) > 0.9 and not is_catastrophic and not damage_indicates_total:
                 fraud_result = detect_fraud_indicators_impl(claim_data)
                 fraud_data = json.loads(fraud_result)
                 indicators = fraud_data if isinstance(fraud_data, list) else (fraud_data.get("indicators", []) if isinstance(fraud_data, dict) else [])
+                # Filter out indicators that don't apply to potential total loss scenarios
                 if indicators:
-                    claim_data_with_id["pre_routing_fraud_indicators"] = indicators
+                    # These indicators are not strong fraud signals by themselves:
+                    # - damage_near_or_above_vehicle_value: Expected for total loss
+                    # - incident_damage_description_mismatch: Often false positive for legitimate claims
+                    #   (just means different vocabulary used, not necessarily fraud)
+                    weak_indicators = {"damage_near_or_above_vehicle_value", "incident_damage_description_mismatch"}
+                    meaningful_indicators = [i for i in indicators if i not in weak_indicators]
+                    if meaningful_indicators:
+                        claim_data_with_id["pre_routing_fraud_indicators"] = meaningful_indicators
 
             # High-value claims: avoid duplicate classification without strong evidence
             est_damage = claim_data.get("estimated_damage")
@@ -368,15 +487,30 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             # Pre-check: Search for potential duplicate claims by VIN
             existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id)
             if existing_claims:
-                claim_data_with_id["existing_claims_for_vin"] = [
-                    {
+                from claim_agent.tools.logic import compute_similarity_impl
+                current_incident = claim_data.get("incident_description", "") or ""
+                current_damage = claim_data.get("damage_description", "") or ""
+                current_combined = f"{current_incident} {current_damage}"
+                
+                enriched_claims = []
+                for c in existing_claims[:5]:
+                    existing_incident = c.get("incident_description", "") or ""
+                    existing_damage = c.get("damage_description", "") or ""
+                    existing_combined = f"{existing_incident} {existing_damage}"
+                    
+                    # Compute similarity between current and existing claim descriptions
+                    sim_result = json.loads(compute_similarity_impl(current_combined, existing_combined))
+                    similarity_score = sim_result.get("similarity_score", 0)
+                    
+                    enriched_claims.append({
                         "claim_id": c.get("id"),
                         "incident_date": c.get("incident_date"),
-                        "incident_description": c.get("incident_description", "")[:200],
+                        "incident_description": existing_incident[:200],
                         "days_difference": c.get("days_difference"),
-                    }
-                    for c in existing_claims[:5]
-                ]
+                        "description_similarity_score": similarity_score,
+                    })
+                
+                claim_data_with_id["existing_claims_for_vin"] = enriched_claims
             inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
 
             # Step 1: Classify
