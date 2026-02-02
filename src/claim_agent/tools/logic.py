@@ -73,19 +73,24 @@ def search_claims_db_impl(vin: str, incident_date: str) -> str:
     return json.dumps(out)
 
 
-def compute_similarity_impl(description_a: str, description_b: str) -> str:
+def compute_similarity_score_impl(description_a: str, description_b: str) -> float:
+    """Compute Jaccard similarity (0–100) between two descriptions. Use this when only the score is needed to avoid JSON round-trip."""
     a = description_a.lower().strip()
     b = description_b.lower().strip()
     if not a or not b:
-        return json.dumps({"similarity_score": 0.0, "is_duplicate": False})
+        return 0.0
     words_a = set(a.split())
     words_b = set(b.split())
     if not words_a or not words_b:
-        return json.dumps({"similarity_score": 0.0, "is_duplicate": False})
+        return 0.0
     intersection = len(words_a & words_b)
     union = len(words_a | words_b)
-    score = (intersection / union) * 100.0
-    return json.dumps({"similarity_score": round(score, 2), "is_duplicate": score > 80.0})
+    return round((intersection / union) * 100.0, 2)
+
+
+def compute_similarity_impl(description_a: str, description_b: str) -> str:
+    score = compute_similarity_score_impl(description_a, description_b)
+    return json.dumps({"similarity_score": score, "is_duplicate": score > 80.0})
 
 
 def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
