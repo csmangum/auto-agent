@@ -7,13 +7,15 @@
 |--------|--------|
 | **Total scenarios** | 37 |
 | **Successful runs** | 37 |
-| **Overall classification accuracy** | **89.2%** |
-| **Total latency** | 243,737 ms (~4.1 min) |
-| **Average latency** | 6,587 ms per scenario |
-| **Total tokens** | **141,056** |
-| **Total cost** | **$0.0253** |
+| **Overall classification accuracy** | **91.9%** |
+| **Total latency** | 175,185 ms (~2.9 min) |
+| **Average latency** | 4,735 ms per scenario |
+| **Total tokens** | **112,185** |
+| **Total cost** | **$0.0199** |
 
-All scenarios completed without runtime errors. Token count and cost are from CrewAI LLM usage (see `main_crew._record_crew_llm_usage`). Four scenarios were misclassified in this run.
+*Run: 2026-02-01.*
+
+All scenarios completed without runtime errors. Token count and cost are from CrewAI LLM usage (see `main_crew._record_crew_llm_usage`). Three scenarios were misclassified in this run.
 
 ---
 
@@ -57,11 +59,11 @@ Total: **37** scenarios. Each scenario has a difficulty (`easy` / `medium` / `ha
 | **partial_loss** | 19 | 19 | **100%** |
 | **total_loss** | 7 | 8 | 87.5% |
 | **fraud** | 3 | 4 | 75.0% |
-| **duplicate** | 1 | 3 | 33.3% |
+| **duplicate** | 2 | 3 | 66.7% |
 
 - **Strong:** `new` and `partial_loss` at 100%.
 - **Good:** `total_loss` at 87.5%, `fraud` at 75%.
-- **Needs work:** `duplicate` at 33.3%.
+- **Needs work:** `duplicate` at 66.7%.
 
 ---
 
@@ -69,7 +71,7 @@ Total: **37** scenarios. Each scenario has a difficulty (`easy` / `medium` / `ha
 
 | Expected \\ Actual | duplicate | fraud | new | partial_loss | total_loss |
 |-------------------|-----------|-------|-----|--------------|------------|
-| **duplicate** | 1 | 0 | 0 | 2 | 0 |
+| **duplicate** | 2 | 0 | 0 | 1 | 0 |
 | **fraud** | 0 | 3 | 0 | 0 | 1 |
 | **new** | 0 | 0 | 3 | 0 | 0 |
 | **partial_loss** | 0 | 0 | 0 | 19 | 0 |
@@ -77,17 +79,16 @@ Total: **37** scenarios. Each scenario has a difficulty (`easy` / `medium` / `ha
 
 Observations:
 
-- **duplicate → partial_loss (2):** `duplicate_same_vin_date`, `duplicate_similar_description` classified as partial_loss.
+- **duplicate → partial_loss (1):** `duplicate_similar_description` classified as partial_loss.
 - **fraud → total_loss (1):** `fraud_inflated_estimate` routed to total_loss.
 - **total_loss → partial_loss (1):** `edge_very_old_vehicle` routed to partial_loss.
 
 ---
 
-## Misclassifications (4)
+## Misclassifications (3)
 
 | Scenario | Expected | Actual | Notes |
 |----------|----------|--------|--------|
-| `duplicate_same_vin_date` | duplicate | partial_loss | Same VIN/date duplicate routed to partial_loss. |
 | `duplicate_similar_description` | duplicate | partial_loss | Similar-description duplicate routed to partial_loss. |
 | `fraud_inflated_estimate` | fraud | total_loss | Inflated estimate scenario routed to total_loss. |
 | `edge_very_old_vehicle` | total_loss | partial_loss | Very old vehicle economic total routed to partial_loss. |
