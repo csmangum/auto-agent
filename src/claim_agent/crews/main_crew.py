@@ -8,6 +8,7 @@ This module orchestrates the claim processing workflow with full observability:
 
 import json
 import logging
+import re
 import threading
 import time
 from datetime import date
@@ -258,8 +259,8 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
 
 # Catastrophic event keywords (incident type: flood, fire, rollover, etc.)
 _CATASTROPHIC_EVENT_KEYWORDS = [
-    "flood", "fire", "submerged", "rollover", "rolled over",
-    "roof crushed", "burned",
+    "flood", "flooded", "flooding", "fire", "fires", "submerged", "rollover", "rolled over",
+    "roof crushed", "burned", "burning", "burnt",
 ]
 # Explicit total-loss wording (outcome: totaled, destroyed, beyond repair, etc.)
 _EXPLICIT_TOTAL_LOSS_KEYWORDS = [
@@ -274,7 +275,8 @@ def _has_catastrophic_event_keywords(text: str) -> bool:
     if not text:
         return False
     text_lower = text.lower()
-    return any(kw in text_lower for kw in _CATASTROPHIC_EVENT_KEYWORDS)
+    # Use word boundary matching to avoid false positives (e.g., "fire" matching "misfired")
+    return any(re.search(r'\b' + re.escape(kw) + r'\b', text_lower) for kw in _CATASTROPHIC_EVENT_KEYWORDS)
 
 
 def _has_explicit_total_loss_keywords(text: str) -> bool:
@@ -282,7 +284,8 @@ def _has_explicit_total_loss_keywords(text: str) -> bool:
     if not text:
         return False
     text_lower = text.lower()
-    return any(kw in text_lower for kw in _EXPLICIT_TOTAL_LOSS_KEYWORDS)
+    # Use word boundary matching to avoid false positives
+    return any(re.search(r'\b' + re.escape(kw) + r'\b', text_lower) for kw in _EXPLICIT_TOTAL_LOSS_KEYWORDS)
 
 
 def _has_catastrophic_keywords(text: str) -> bool:
@@ -300,7 +303,8 @@ def _has_repairable_damage_keywords(text: str) -> bool:
         "mirror", "light", "headlight", "taillight", "dent", "scratch",
         "panel", "quarter panel", "windshield", "window", "paint",
     ]
-    has_repairable = any(kw in text_lower for kw in repairable_keywords)
+    # Use word boundary matching to avoid false positives (e.g., "dent" matching "accident")
+    has_repairable = any(re.search(r'\b' + re.escape(kw) + r'\b', text_lower) for kw in repairable_keywords)
     has_catastrophic = _has_catastrophic_keywords(text)
     return has_repairable and not has_catastrophic
 
