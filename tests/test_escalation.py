@@ -184,6 +184,22 @@ def test_detect_fraud_indicators_keywords():
     assert len(indicators) >= 1
 
 
+def test_detect_fraud_indicators_accepts_date_object():
+    """detect_fraud_indicators handles date-typed incident_date."""
+    from datetime import date
+    from claim_agent.tools.logic import detect_fraud_indicators_impl
+
+    claim_data = {
+        "incident_description": "Minor bump in parking lot.",
+        "damage_description": "Scratch on bumper.",
+        "vin": "VIN123",
+        "incident_date": date(2025, 1, 1),
+    }
+    result = detect_fraud_indicators_impl(claim_data)
+    indicators = json.loads(result)
+    assert isinstance(indicators, list)
+
+
 def test_parse_router_confidence():
     """Router confidence decreases with uncertainty language."""
     from claim_agent.tools.logic import _parse_router_confidence
