@@ -109,17 +109,17 @@ class TestTokenBudgetEnvOverrides:
     """Test token budget constants read env (requires module reload)."""
 
     def test_max_tokens_override(self):
-        with patch.dict(os.environ, {"CLAIM_AGENT_MAX_TOKENS_PER_CLAIM": "200000"}):
-            importlib.reload(settings)
-            try:
-                assert settings.MAX_TOKENS_PER_CLAIM == 200000
-            finally:
+        try:
+            with patch.dict(os.environ, {"CLAIM_AGENT_MAX_TOKENS_PER_CLAIM": "200000"}):
                 importlib.reload(settings)
+                assert settings.MAX_TOKENS_PER_CLAIM == 200000
+        finally:
+            importlib.reload(settings)
 
     def test_max_llm_calls_override(self):
-        with patch.dict(os.environ, {"CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM": "100"}):
-            importlib.reload(settings)
-            try:
-                assert settings.MAX_LLM_CALLS_PER_CLAIM == 100
-            finally:
+        try:
+            with patch.dict(os.environ, {"CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM": "100"}):
                 importlib.reload(settings)
+                assert settings.MAX_LLM_CALLS_PER_CLAIM == 100
+        finally:
+            importlib.reload(settings)

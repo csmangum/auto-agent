@@ -213,6 +213,8 @@ def _get_llm_usage_snapshot(llm: Any) -> tuple[int, int, int] | None:
     # Reject mock objects (e.g. MagicMock) that would break cost calculation
     if not isinstance(prompt_tokens, (int, float)) or not isinstance(completion_tokens, (int, float)):
         return None
+    if not isinstance(successful_requests, (int, float)):
+        successful_requests = 0
     if (prompt_tokens + completion_tokens) == 0 and successful_requests == 0:
         return None
     return int(prompt_tokens), int(completion_tokens), int(successful_requests or 0)

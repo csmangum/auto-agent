@@ -309,7 +309,9 @@ def detect_fraud_indicators_impl(claim_data: dict[str, Any]) -> str:
     damage = (claim_data.get("damage_description") or "").strip().lower()
     vin = (claim_data.get("vin") or "").strip()
     incident_date_raw = claim_data.get("incident_date")
-    if isinstance(incident_date_raw, date):
+    if isinstance(incident_date_raw, datetime):
+        incident_date = incident_date_raw.strftime("%Y-%m-%d")
+    elif isinstance(incident_date_raw, date):
         incident_date = incident_date_raw.isoformat()
     elif isinstance(incident_date_raw, str):
         incident_date = incident_date_raw.strip()
