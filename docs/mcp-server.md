@@ -55,7 +55,7 @@ The MCP server exposes these tools:
 | `search_california_compliance` | Search CA compliance data |
 | `get_claim_metrics` | Get metrics for claim processing (optional claim ID) |
 | `get_observability_config` | Get current tracing and logging configuration |
-| `health_check` | Health check for monitoring (returns status and version info) |
+| `health_check` | Health check for monitoring (returns status and timestamp) |
 
 ## Observability tools
 
@@ -71,12 +71,12 @@ See [Observability](observability.md) for full details.
 ```python
 @mcp.tool()
 def health_check() -> str:
-    """Health check for monitoring. Returns status and version info."""
+    """Health check for monitoring. Returns status and timestamp."""
 ```
 
 **Parameters:** None.
 
-**Returns:** JSON with `status`, `version`, and optional details. Use for liveness/readiness probes.
+**Returns:** JSON with `status` ("healthy") and `timestamp` (ISO 8601 UTC). Use for liveness/readiness probes.
 
 ## Tool Definitions
 
@@ -351,10 +351,7 @@ python -c "from claim_agent.mcp_server.server import main; print('OK')"
 
 ### Tools not appearing
 
-Ensure FastMCP is installed:
-```bash
-pip install mcp
-```
+Ensure the claim-agent package is installed: `pip install -e .` (mcp is included with the package).
 
 ### Connection issues
 

@@ -104,12 +104,14 @@ src/claim_agent/
 ├── config/           # LLM (llm.py) and centralized settings (settings.py)
 ├── agents/           # Agent definitions
 ├── crews/            # Crew definitions
+├── skills/           # Agent prompts (markdown)
 ├── tools/            # CrewAI tools
+├── rag/              # RAG pipeline (policy/compliance search)
 ├── utils/            # Sanitization, retry
 ├── db/               # SQLite database
 ├── models/           # Pydantic models (ClaimInput, ClaimType, etc.)
-├── observability/   # Logging, tracing, metrics
-└── mcp_server/      # Optional MCP server (includes health_check)
+├── observability/    # Logging, tracing, metrics
+└── mcp_server/       # Optional MCP server (includes health_check)
 ```
 
 ## Testing

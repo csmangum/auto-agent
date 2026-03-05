@@ -79,14 +79,14 @@ claim-agent history CLM-11EEF959
 
 | File | Type | Description |
 |------|------|-------------|
-| `new_claim.json` | new | First-time submission |
-| `partial_loss_parking.json` | partial_loss | Parking lot fender bender |
-| `duplicate_claim.json` | duplicate | Potential duplicate |
-| `total_loss_claim.json` | total_loss | Flood damage |
-| `fraud_claim.json` | fraud | Suspicious indicators |
-| `partial_loss_claim.json` | partial_loss | Repairable damage |
-| `partial_loss_fender.json` | partial_loss | Fender damage |
-| `partial_loss_front_collision.json` | partial_loss | Front collision |
+| `tests/sample_claims/new_claim.json` | new | First-time submission |
+| `tests/sample_claims/partial_loss_parking.json` | partial_loss | Parking lot fender bender |
+| `tests/sample_claims/duplicate_claim.json` | duplicate | Potential duplicate |
+| `tests/sample_claims/total_loss_claim.json` | total_loss | Flood damage |
+| `tests/sample_claims/fraud_claim.json` | fraud | Suspicious indicators |
+| `tests/sample_claims/partial_loss_claim.json` | partial_loss | Repairable damage |
+| `tests/sample_claims/partial_loss_fender.json` | partial_loss | Fender damage |
+| `tests/sample_claims/partial_loss_front_collision.json` | partial_loss | Front collision |
 
 See [Claim Types](claim-types.md) for classification criteria.
 

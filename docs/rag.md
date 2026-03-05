@@ -54,8 +54,8 @@ Constants: `claim_agent.rag.constants.SUPPORTED_STATES`, `DEFAULT_STATE` ("Calif
 
 ## Data sources
 
-- **Policy language**: `data/<state>_auto_policy_language.json` — policy terms, coverage, exclusions, definitions.
-- **Compliance**: `data/<state>_auto_compliance.json` — regulations, deadlines, disclosures, prohibited practices.
+- **Policy language**: `data/<state>_auto_policy_language.json` — policy terms, coverage, exclusions, definitions. Exists for California, Texas, Florida, and New York.
+- **Compliance**: `data/<state>_auto_compliance.json` — regulations, deadlines, disclosures, prohibited practices. Currently only California (`california_auto_compliance.json`) has compliance data; other states can be added later.
 
 Files must include a `metadata` section with at least `data_type` (`"policy_language"` or `"compliance"`) and `state`. The chunker uses structure (sections, provisions, exclusions, deadlines, etc.) to produce meaningful chunks.
 
