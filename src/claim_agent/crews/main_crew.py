@@ -350,10 +350,10 @@ _EXPLICIT_TOTAL_LOSS_KEYWORDS = [
     "frame bent", "frame damage",
 ]
 _DAMAGE_TYPE_TAGS: dict[str, list[str]] = {
-    "front": ["front bumper", "front end", "hood", "grille", "headlight", "radiator"],
-    "rear": ["rear bumper", "rear end", "trunk", "taillight", "tail light"],
-    "side": ["door", "side", "fender", "quarter panel", "mirror"],
-    "glass": ["windshield", "window", "glass"],
+    "front": ["front bumper", "front end", "hood", "grille", "headlight", "headlights", "radiator"],
+    "rear": ["rear bumper", "rear end", "trunk", "taillight", "taillights", "tail light", "tail lights"],
+    "side": ["door", "doors", "side", "fender", "fenders", "quarter panel", "mirror", "mirrors"],
+    "glass": ["windshield", "window", "windows", "glass"],
     "roof": ["roof"],
     "interior": ["interior", "seat", "dashboard", "airbag"],
     "undercarriage": ["frame", "suspension", "axle"],
