@@ -5,6 +5,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# Load .env before any tests run (API keys, etc.)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # Point to project data for mock_db
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))

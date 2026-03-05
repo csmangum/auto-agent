@@ -210,9 +210,12 @@ def _get_llm_usage_snapshot(llm: Any) -> tuple[int, int, int] | None:
     prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
     completion_tokens = getattr(usage, "completion_tokens", 0) or 0
     successful_requests = getattr(usage, "successful_requests", 0) or 0
+    # Reject mock objects (e.g. MagicMock) that would break cost calculation
+    if not isinstance(prompt_tokens, (int, float)) or not isinstance(completion_tokens, (int, float)):
+        return None
     if (prompt_tokens + completion_tokens) == 0 and successful_requests == 0:
         return None
-    return prompt_tokens, completion_tokens, successful_requests
+    return int(prompt_tokens), int(completion_tokens), int(successful_requests or 0)
 
 
 def _check_token_budget(claim_id: str, metrics: Any, llm: Any | None = None) -> None:
@@ -257,6 +260,9 @@ def _record_crew_llm_usage(claim_id: str, llm: Any, metrics: Any) -> None:
         return
     prompt_tokens, completion_tokens, _successful_requests = usage
     model = getattr(llm, "model", None) or get_model_name()
+    # Ensure model is a string (reject MagicMock from mocked LLM)
+    if not isinstance(model, str):
+        model = get_model_name()
     metrics.record_llm_call(
         claim_id=claim_id,
         model=model,

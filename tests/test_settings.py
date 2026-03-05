@@ -1,5 +1,6 @@
 """Tests for centralized configuration (settings)."""
 
+import importlib
 import os
 from unittest.mock import patch
 
@@ -50,3 +51,75 @@ def test_get_crew_verbose_respects_env():
         assert settings.get_crew_verbose() is False
     with patch.dict(os.environ, {"CREWAI_VERBOSE": "true"}):
         assert settings.get_crew_verbose() is True
+
+
+class TestEscalationConfigEnvOverrides:
+    """Test escalation config reads env overrides."""
+
+    def test_confidence_threshold_override(self):
+        with patch.dict(os.environ, {"ESCALATION_CONFIDENCE_THRESHOLD": "0.5"}):
+            config = settings.get_escalation_config()
+            assert config["confidence_threshold"] == 0.5
+
+    def test_high_value_threshold_override(self):
+        with patch.dict(os.environ, {"ESCALATION_HIGH_VALUE_THRESHOLD": "25000"}):
+            config = settings.get_escalation_config()
+            assert config["high_value_threshold"] == 25000.0
+
+    def test_invalid_float_uses_default(self):
+        with patch.dict(os.environ, {"ESCALATION_CONFIDENCE_THRESHOLD": "not-a-number"}):
+            config = settings.get_escalation_config()
+            assert config["confidence_threshold"] == 0.7
+
+
+class TestFraudConfigEnvOverrides:
+    """Test fraud config reads env overrides."""
+
+    def test_multiple_claims_days_override(self):
+        with patch.dict(os.environ, {"FRAUD_MULTIPLE_CLAIMS_DAYS": "60"}):
+            config = settings.get_fraud_config()
+            assert config["multiple_claims_days"] == 60
+
+    def test_high_risk_threshold_override(self):
+        with patch.dict(os.environ, {"FRAUD_HIGH_RISK_THRESHOLD": "40"}):
+            config = settings.get_fraud_config()
+            assert config["high_risk_threshold"] == 40
+
+    def test_invalid_int_uses_default(self):
+        with patch.dict(os.environ, {"FRAUD_MULTIPLE_CLAIMS_DAYS": "invalid"}):
+            config = settings.get_fraud_config()
+            assert config["multiple_claims_days"] == 90
+
+
+class TestSimilarityAmbiguousRange:
+    """Test _tuple_float for similarity range."""
+
+    def test_valid_tuple_override(self):
+        with patch.dict(os.environ, {"ESCALATION_SIMILARITY_AMBIGUOUS_RANGE": "40,90"}):
+            config = settings.get_escalation_config()
+            assert config["similarity_ambiguous_range"] == (40.0, 90.0)
+
+    def test_invalid_tuple_uses_default(self):
+        with patch.dict(os.environ, {"ESCALATION_SIMILARITY_AMBIGUOUS_RANGE": "single"}):
+            config = settings.get_escalation_config()
+            assert config["similarity_ambiguous_range"] == (50.0, 80.0)
+
+
+class TestTokenBudgetEnvOverrides:
+    """Test token budget constants read env (requires module reload)."""
+
+    def test_max_tokens_override(self):
+        with patch.dict(os.environ, {"CLAIM_AGENT_MAX_TOKENS_PER_CLAIM": "200000"}):
+            importlib.reload(settings)
+            try:
+                assert settings.MAX_TOKENS_PER_CLAIM == 200000
+            finally:
+                importlib.reload(settings)
+
+    def test_max_llm_calls_override(self):
+        with patch.dict(os.environ, {"CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM": "100"}):
+            importlib.reload(settings)
+            try:
+                assert settings.MAX_LLM_CALLS_PER_CLAIM == 100
+            finally:
+                importlib.reload(settings)

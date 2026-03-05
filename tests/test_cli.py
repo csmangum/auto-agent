@@ -212,6 +212,48 @@ class TestCmdHistory:
 class TestCmdProcess:
     """Tests for cmd_process function."""
 
+    def test_cmd_process_success_creates_claim_and_status_works(self, monkeypatch):
+        """Process valid claim file, verify claim in DB, then status returns it."""
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        claim_file = Path(__file__).parent / "sample_claims" / "new_claim.json"
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+
+            def fake_run_workflow(claim_data, existing_claim_id=None, **kwargs):
+                if existing_claim_id:
+                    return {"claim_id": existing_claim_id, "claim_type": "new", "workflow_output": "Reprocessed."}
+                from claim_agent.models.claim import ClaimInput
+                repo = ClaimRepository()
+                claim_input = ClaimInput.model_validate(claim_data)
+                claim_id = repo.create_claim(claim_input)
+                repo.update_claim_status(claim_id, "open")
+                return {"claim_id": claim_id, "claim_type": "new", "workflow_output": "Processed."}
+
+            with patch("claim_agent.crews.main_crew.run_claim_workflow", side_effect=fake_run_workflow):
+                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                    cmd_process(claim_file)
+                    output = mock_stdout.getvalue()
+
+            result = json.loads(output)
+            assert "claim_id" in result
+            claim_id = result["claim_id"]
+            assert claim_id.startswith("CLM-")
+
+            with patch("sys.stdout", new_callable=StringIO) as status_out:
+                cmd_status(claim_id)
+                status_data = json.loads(status_out.getvalue())
+            assert status_data["id"] == claim_id
+            assert status_data["policy_number"] == "POL-001"
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+
     def test_cmd_process_file_not_found(self):
         """Test cmd_process with non-existent file."""
         with pytest.raises(SystemExit) as exc_info:
@@ -320,6 +362,74 @@ class TestMain:
                 main()
             
             assert exc_info.value.code == 1
+
+    def test_main_with_debug_flag(self, monkeypatch):
+        """Test main accepts --debug flag without error."""
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_id = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-001",
+                    vin="VIN123",
+                    vehicle_year=2021,
+                    vehicle_make="Honda",
+                    vehicle_model="Accord",
+                    incident_date="2025-01-15",
+                    incident_description="Test.",
+                    damage_description="Test damage.",
+                )
+            )
+            with patch("sys.argv", ["claim-agent", "status", claim_id, "--debug"]):
+                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                    main()
+                    output = mock_stdout.getvalue()
+            data = json.loads(output)
+            assert data["id"] == claim_id
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+
+    def test_main_with_json_flag(self, monkeypatch):
+        """Test main accepts --json flag without error."""
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_id = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-001",
+                    vin="VIN123",
+                    vehicle_year=2021,
+                    vehicle_make="Honda",
+                    vehicle_model="Accord",
+                    incident_date="2025-01-15",
+                    incident_description="Test.",
+                    damage_description="Test damage.",
+                )
+            )
+            with patch("sys.argv", ["claim-agent", "--json", "status", claim_id]):
+                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                    main()
+                    output = mock_stdout.getvalue()
+            data = json.loads(output)
+            assert data["id"] == claim_id
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
 
     def test_main_status_with_claim_id(self, monkeypatch):
         """Test main status command with claim_id."""

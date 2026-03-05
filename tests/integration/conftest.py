@@ -161,6 +161,20 @@ def sample_total_loss_claim() -> dict:
         return json.load(f)
 
 
+@pytest.fixture
+def sample_duplicate_claim() -> dict:
+    """Load sample duplicate claim data."""
+    with open(SAMPLE_CLAIMS_DIR / "duplicate_claim.json") as f:
+        return json.load(f)
+
+
+@pytest.fixture
+def sample_partial_loss_claim() -> dict:
+    """Load sample partial loss claim data."""
+    with open(SAMPLE_CLAIMS_DIR / "partial_loss_claim.json") as f:
+        return json.load(f)
+
+
 # ============================================================================
 # Mock LLM Fixtures
 # ============================================================================
