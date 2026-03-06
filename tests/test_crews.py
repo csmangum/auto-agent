@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -25,13 +25,14 @@ def _kickoff_with_retry(crew, inputs):
     return _call()
 
 
-@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_new_claim_crew_acceptance_criteria():
     """Verify New Claim crew structure matches formal specification (Issue #64)."""
+    from crewai import LLM
     from claim_agent.crews.new_claim_crew import create_new_claim_crew
     from claim_agent.agents.new_claim import create_policy_checker_agent
 
-    crew = create_new_claim_crew()
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_new_claim_crew(llm=mock_llm)
 
     # AC1: Intake task validates required fields and data types
     intake_task = crew.tasks[0]
@@ -41,7 +42,7 @@ def test_new_claim_crew_acceptance_criteria():
     assert "valid" in intake_task.expected_output.lower() or "missing" in intake_task.expected_output.lower()
 
     # AC2: Policy task calls query_policy_db
-    policy_agent = create_policy_checker_agent()
+    policy_agent = create_policy_checker_agent(llm=mock_llm)
     policy_tool_names = [getattr(t, "name", str(t)) for t in (policy_agent.tools or [])]
     assert any("policy" in n.lower() and "query" in n.lower() for n in policy_tool_names), (
         "AC2: Policy agent must have query_policy_db tool"
