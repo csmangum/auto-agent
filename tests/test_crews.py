@@ -25,6 +25,7 @@ def _kickoff_with_retry(crew, inputs):
     return _call()
 
 
+@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_new_claim_crew_acceptance_criteria():
     """Verify New Claim crew structure matches formal specification (Issue #64)."""
     from claim_agent.crews.new_claim_crew import create_new_claim_crew
