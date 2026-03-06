@@ -118,7 +118,7 @@ def test_repository_update_claim_status(temp_db):
     assert len(history) >= 2
     actions = [h["action"] for h in history]
     assert "created" in actions
-    assert "status_changed" in actions
+    assert "status_change" in actions
 
 
 def test_repository_save_workflow_result(temp_db):
@@ -171,8 +171,13 @@ def test_repository_get_claim_history(temp_db):
     history = repo.get_claim_history(claim_id)
     assert len(history) == 3
     assert history[0]["action"] == "created"
-    assert history[1]["action"] == "status_changed"
-    assert history[2]["action"] == "status_changed"
+    assert history[1]["action"] == "status_change"
+    assert history[2]["action"] == "status_change"
+    # Audit trail enhancements: actor_id, before_state, after_state
+    assert history[0].get("actor_id") == "workflow"
+    assert history[0].get("after_state") is not None
+    assert history[1].get("before_state") is not None
+    assert history[1].get("after_state") is not None
     assert history[2]["new_status"] == "open"
 
 

@@ -40,6 +40,7 @@ from claim_agent.db.constants import (
     STATUS_PROCESSING,
 )
 from claim_agent.tools.logic import evaluate_escalation_impl, detect_fraud_indicators_impl
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput, ClaimType, EscalationOutput
 from claim_agent.observability import (
@@ -498,7 +499,13 @@ def _check_economic_total_loss(claim_data: dict) -> dict:
     }
 
 
-def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None = None) -> dict:
+def run_claim_workflow(
+    claim_data: dict,
+    llm=None,
+    existing_claim_id: str | None = None,
+    *,
+    actor_id: str | None = None,
+) -> dict:
     """
     Run the full claim workflow: classify with router crew, then run the appropriate workflow crew.
     Persists claim to SQLite, logs state changes, and saves workflow result.
@@ -521,6 +528,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         the dict has claim_id, claim_type, router_output, workflow_output (crew output), summary.
     """
     workflow_start_time = time.time()
+    _actor = actor_id if actor_id is not None else ACTOR_WORKFLOW
 
     llm = llm or get_llm()
     claim_input, claim_data = _normalize_claim_data(claim_data)
@@ -534,7 +542,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             raise ValueError(f"Claim not found: {claim_id}")
         logger.info("Reprocessing existing claim", extra={"claim_id": claim_id})
     else:
-        claim_id = repo.create_claim(claim_input)
+        claim_id = repo.create_claim(claim_input, actor_id=_actor)
         logger.info(
             "Created new claim",
             extra={
@@ -556,7 +564,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
         policy_number=claim_data.get("policy_number"),
     ):
         # Both new and reprocessed claims set to PROCESSING for consistent workflow tracking
-        repo.update_claim_status(claim_id, STATUS_PROCESSING)
+        repo.update_claim_status(claim_id, STATUS_PROCESSING, actor_id=_actor)
         logger.log_event("workflow_started", status=STATUS_PROCESSING)
 
         # Register LiteLLM callback so all LLM calls (via CrewAI) are traced with real token/cost data
@@ -722,7 +730,9 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                         "fraud_indicators": fraud_indicators,
                     })
                     repo.save_workflow_result(claim_id, claim_type, raw_output, details)
-                    repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details)
+                    repo.update_claim_status(
+                        claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details, actor_id=_actor
+                    )
 
                     workflow_duration = (time.time() - workflow_start_time) * 1000
                     logger.log_event(
@@ -784,6 +794,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 final_status,
                 details=workflow_output[:500] if len(workflow_output) > 500 else workflow_output,
                 claim_type=claim_type,
+                actor_id=_actor,
             )
 
             workflow_duration = (time.time() - workflow_start_time) * 1000
@@ -811,7 +822,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
             details = str(e)
             if len(details) > 500:
                 details = details[:500] + "..."
-            repo.update_claim_status(claim_id, STATUS_FAILED, details=details)
+            repo.update_claim_status(claim_id, STATUS_FAILED, details=details, actor_id=_actor)
 
             workflow_duration = (time.time() - workflow_start_time) * 1000
             logger.log_event(

@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS claims (
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
--- Audit log (state changes)
+-- Audit log (state changes). Append-only: no UPDATE or DELETE.
 CREATE TABLE IF NOT EXISTS claim_audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id TEXT NOT NULL,
@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS claim_audit_log (
     old_status TEXT,
     new_status TEXT,
     details TEXT,
+    actor_id TEXT DEFAULT 'system',
+    before_state TEXT,
+    after_state TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
