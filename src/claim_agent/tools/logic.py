@@ -338,8 +338,7 @@ def detect_fraud_indicators_impl(claim_data: dict[str, Any]) -> str:
     if vin and incident_date:
         try:
             repo = ClaimRepository()
-            from datetime import datetime as dt
-            dt_obj = dt.strptime(incident_date, "%Y-%m-%d")
+            dt_obj = datetime.strptime(incident_date, "%Y-%m-%d")
             start = (dt_obj - timedelta(days=get_escalation_config()["vin_claims_days"])).strftime("%Y-%m-%d")
             end = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
             matches = repo.search_claims(vin=vin, incident_date=None)

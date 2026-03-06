@@ -4,19 +4,6 @@ import os
 
 import pytest
 
-# Use real LLM when API key is set (required by CrewAI Agent)
-SKIP_AGENTS = not os.environ.get("OPENAI_API_KEY")
-
-
-@pytest.fixture
-def mock_llm():
-    if SKIP_AGENTS:
-        return None
-    from claim_agent.config.llm import get_llm
-
-    return get_llm()
-
-
 from claim_agent.agents.duplicate import (
     create_resolution_agent,
     create_search_agent,
@@ -46,6 +33,17 @@ from claim_agent.agents.total_loss import (
     create_settlement_agent,
     create_valuation_agent,
 )
+from claim_agent.config.llm import get_llm
+
+# Use real LLM when API key is set (required by CrewAI Agent)
+SKIP_AGENTS = not os.environ.get("OPENAI_API_KEY")
+
+
+@pytest.fixture
+def mock_llm():
+    if SKIP_AGENTS:
+        return None
+    return get_llm()
 
 
 @pytest.mark.skipif(SKIP_AGENTS, reason="OPENAI_API_KEY not set; skip agent creation tests")

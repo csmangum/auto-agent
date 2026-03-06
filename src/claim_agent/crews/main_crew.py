@@ -11,7 +11,7 @@ import logging
 import re
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import litellm
@@ -317,7 +317,6 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
     
     # If we have an incident date, prioritize claims with matching/close dates
     if incident_date and matches:
-        from datetime import datetime
         try:
             target_date = datetime.fromisoformat(incident_date)
             for match in matches:
@@ -351,6 +350,9 @@ _EXPLICIT_TOTAL_LOSS_KEYWORDS = [
     "unrepairable", "complete loss", "write-off", "write off",
     "frame bent", "frame damage",
 ]
+# Damage-type tags for duplicate overlap check (not for total-loss classification).
+# "catastrophic" overlaps with _CATASTROPHIC_EVENT_KEYWORDS; used so two flood/fire
+# claims on same VIN can match as duplicates.
 _DAMAGE_TYPE_TAGS: dict[str, list[str]] = {
     "front": ["front bumper", "front end", "hood", "grille", "headlight", "headlights", "radiator"],
     "rear": ["rear bumper", "rear end", "trunk", "taillight", "taillights", "tail light", "tail lights"],
@@ -660,6 +662,7 @@ def run_claim_workflow(claim_data: dict, llm=None, existing_claim_id: str | None
                 claim_data_with_id["definitive_duplicate"] = definitive_duplicate
             else:
                 similarity_score_for_escalation = None
+                claim_data_with_id["definitive_duplicate"] = False
             inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
             claim_data_str = inputs["claim_data"] if isinstance(inputs["claim_data"], str) else json.dumps(inputs["claim_data"])
             logger.debug(

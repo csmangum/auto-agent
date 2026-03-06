@@ -7,8 +7,9 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-# Load .env before any tests run (API keys, etc.)
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+# Load .env before any tests run (API keys, etc.). override=False so existing
+# env vars (e.g. CLAIMS_DB_PATH from fixtures) are not overwritten.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 # Point to project data for mock_db
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
