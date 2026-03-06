@@ -1,6 +1,7 @@
 """Claim repository: CRUD, audit logging, and search.
 
-Audit log is append-only: no UPDATE or DELETE on claim_audit_log.
+This repository treats claim_audit_log as append-only: it only inserts new
+audit entries and does not perform UPDATE or DELETE operations on that table.
 """
 
 import json

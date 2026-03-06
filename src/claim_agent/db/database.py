@@ -45,6 +45,19 @@ CREATE TABLE IF NOT EXISTS claim_audit_log (
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 
+-- Enforce append-only behavior: reject UPDATE/DELETE on claim_audit_log
+CREATE TRIGGER IF NOT EXISTS claim_audit_log_prevent_update
+BEFORE UPDATE ON claim_audit_log
+BEGIN
+    SELECT RAISE(ABORT, 'claim_audit_log is append-only: updates are not allowed');
+END;
+
+CREATE TRIGGER IF NOT EXISTS claim_audit_log_prevent_delete
+BEFORE DELETE ON claim_audit_log
+BEGIN
+    SELECT RAISE(ABORT, 'claim_audit_log is append-only: deletes are not allowed');
+END;
+
 -- Workflow results (preserves each processing run)
 CREATE TABLE IF NOT EXISTS workflow_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

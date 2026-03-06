@@ -36,9 +36,29 @@ def upgrade() -> None:
         op.execute(text("ALTER TABLE claim_audit_log ADD COLUMN after_state TEXT"))
     # Backfill actor_id for existing rows
     op.execute(text("UPDATE claim_audit_log SET actor_id = 'system' WHERE actor_id IS NULL"))
+    # Enforce append-only behavior: prevent UPDATE and DELETE on claim_audit_log
+    op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_update"))
+    op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_delete"))
+    op.execute(text("""
+        CREATE TRIGGER claim_audit_log_prevent_update
+        BEFORE UPDATE ON claim_audit_log
+        BEGIN
+            SELECT RAISE(ABORT, 'claim_audit_log is append-only: updates are not allowed');
+        END;
+    """))
+    op.execute(text("""
+        CREATE TRIGGER claim_audit_log_prevent_delete
+        BEFORE DELETE ON claim_audit_log
+        BEGIN
+            SELECT RAISE(ABORT, 'claim_audit_log is append-only: deletes are not allowed');
+        END;
+    """))
 
 
 def downgrade() -> None:
+    # Drop append-only triggers before table recreation
+    op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_update"))
+    op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_delete"))
     # SQLite does not support DROP COLUMN until 3.35.0. Recreate table.
     op.execute(text("""
         CREATE TABLE claim_audit_log_old (

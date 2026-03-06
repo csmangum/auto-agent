@@ -1,6 +1,7 @@
 """Tests for database and ClaimRepository."""
 
 import os
+import sqlite3
 import tempfile
 
 import pytest
@@ -52,6 +53,61 @@ def test_init_db_creates_tables(temp_db):
     assert "claims" in tables
     assert "claim_audit_log" in tables
     assert "workflow_runs" in tables
+
+
+def test_init_db_creates_append_only_triggers(temp_db):
+    """init_db creates triggers that prevent UPDATE and DELETE on claim_audit_log."""
+    with get_connection(temp_db) as conn:
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name"
+        )
+        triggers = [row[0] for row in cur.fetchall()]
+    assert "claim_audit_log_prevent_update" in triggers
+    assert "claim_audit_log_prevent_delete" in triggers
+
+
+def test_audit_log_prevents_update(temp_db):
+    """Updating a claim_audit_log row raises an error (append-only enforcement)."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-TRIGGER",
+        vin="VIN-TRIGGER",
+        vehicle_year=2022,
+        vehicle_make="Ford",
+        vehicle_model="F-150",
+        incident_date="2025-03-01",
+        incident_description="Hail damage.",
+        damage_description="Roof dents.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        with get_connection(temp_db) as conn:
+            conn.execute(
+                "UPDATE claim_audit_log SET details = 'tampered' WHERE claim_id = ?",
+                (claim_id,),
+            )
+
+
+def test_audit_log_prevents_delete(temp_db):
+    """Deleting a claim_audit_log row raises an error (append-only enforcement)."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-TRIGGER2",
+        vin="VIN-TRIGGER2",
+        vehicle_year=2023,
+        vehicle_make="Chevrolet",
+        vehicle_model="Silverado",
+        incident_date="2025-04-01",
+        incident_description="Flood damage.",
+        damage_description="Interior soaked.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        with get_connection(temp_db) as conn:
+            conn.execute(
+                "DELETE FROM claim_audit_log WHERE claim_id = ?",
+                (claim_id,),
+            )
 
 
 def test_repository_create_claim(temp_db):
