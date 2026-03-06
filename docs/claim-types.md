@@ -80,7 +80,7 @@ Standard first-time claim submissions with no red flags. For the formal workflow
 
 ## Duplicate Claim
 
-Claims matching existing claims in the system.
+Claims matching existing claims in the system. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Duplicate Crew](crews.md#duplicate-crew).
 
 ### Classification Criteria
 
@@ -88,13 +88,13 @@ Claims matching existing claims in the system.
 - Same or similar incident date
 - Similar incident description
 
-### Similarity Scoring
+### Similarity Thresholds
 
 | Score | Interpretation | Action |
 |-------|----------------|--------|
-| 0-50 | Low similarity | Process as new |
-| 51-79 | Moderate | Review recommended |
-| 80-100 | High similarity | Likely duplicate |
+| 0-50 | Low similarity | Not duplicate, process normally |
+| 51-79 | Moderate | Review recommended (may escalate) |
+| 80-100 | High similarity | Likely duplicate, recommend merge/reject |
 
 ### Example
 

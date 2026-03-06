@@ -115,7 +115,7 @@ Search existing claims by VIN and incident date for potential duplicates.
 ]
 ```
 
-**Used by:** [Duplicate Crew](crews.md#duplicate-crew)
+**Used by:** [Duplicate Crew](crews.md#duplicate-crew) — Claims Search Specialist (Step 1: Search)
 
 ---
 
@@ -137,10 +137,9 @@ Compare two incident descriptions and return a similarity score.
 }
 ```
 
-**Threshold:** Score > 80% indicates likely duplicate
+**Threshold:** Score > 80% indicates likely duplicate. The Similarity Analyst agent uses this tool and provides brief reasoning in its task output (score 0–100, is_duplicate, reasoning).
 
-**Usage by Agents:**
-- Similarity Analyst (Duplicate Crew)
+**Used by:** [Duplicate Crew](crews.md#duplicate-crew) — Similarity Analyst (Step 2: Similarity Analysis)
 
 ---
 

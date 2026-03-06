@@ -132,6 +132,8 @@ See [Crews](crews.md) for crew details.
 
 **New Claim flow:** The main flow creates the claim record and assigns `claim_id` before routing. `claim_data` passed to the New Claim crew includes `claim_id`. The crew uses it (Assignment step) rather than generating a new one. See [New Claim Crew](crews.md#new-claim-crew) for the formal specification.
 
+**Duplicate flow:** The main flow runs `_check_for_duplicates` before routing; `claim_data` may include `existing_claims_for_vin` with pre-computed similarity scores. The Duplicate crew still runs Search → Similarity → Resolution. See [Duplicate Crew](crews.md#duplicate-crew) for the formal specification.
+
 ### 6. Finalization
 
 ```python
