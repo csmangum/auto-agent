@@ -162,6 +162,54 @@ def generate_report_impl(
     return json.dumps(report)
 
 
+def generate_report_pdf_impl(
+    claim_id: str,
+    claim_type: str,
+    status: str,
+    summary: str,
+    payout_amount: float | None = None,
+) -> str:
+    """Generate a PDF report from claim data. Requires reportlab (pip install claim-agent[pdf]).
+
+    Returns JSON with pdf_path (file path) or error.
+    """
+    import os
+    from pathlib import Path
+
+    result = {"pdf_path": None, "error": None}
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+        out_dir = Path(os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")).parent / "reports"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        pdf_path = out_dir / f"report_{claim_id.replace('/', '_')}_{uuid.uuid4().hex[:6]}.pdf"
+
+        doc = SimpleDocTemplate(str(pdf_path), pagesize=letter, rightMargin=inch, leftMargin=inch)
+        styles = getSampleStyleSheet()
+        story = []
+        story.append(Paragraph("Claim Report", styles["Title"]))
+        story.append(Spacer(1, 0.25 * inch))
+        story.append(Paragraph(f"<b>Claim ID:</b> {claim_id}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Type:</b> {claim_type}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Status:</b> {status}", styles["Normal"]))
+        if payout_amount is not None:
+            story.append(Paragraph(f"<b>Payout:</b> ${payout_amount:,.2f}", styles["Normal"]))
+        story.append(Spacer(1, 0.25 * inch))
+        story.append(Paragraph("<b>Summary</b>", styles["Heading2"]))
+        story.append(Paragraph(summary.replace("\n", "<br/>"), styles["Normal"]))
+        doc.build(story)
+        result["pdf_path"] = str(pdf_path.resolve())
+    except ImportError:
+        result["error"] = "reportlab required. Install with: pip install claim-agent[pdf]"
+    except Exception as e:
+        logger.warning("PDF generation failed: %s", e, exc_info=True)
+        result["error"] = str(e)
+    return json.dumps(result)
+
+
 def generate_claim_id_impl(prefix: str = "CLM") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
@@ -1284,6 +1332,89 @@ def calculate_repair_estimate_impl(
     }
     
     return json.dumps(estimate)
+
+
+def analyze_damage_photo_impl(
+    image_url: str,
+    damage_description: str | None = None,
+) -> str:
+    """Analyze a damage photo using a vision model. Returns JSON with damage severity, parts affected, consistency.
+
+    Args:
+        image_url: URL to the damage photo (file://, https://, or data URL).
+        damage_description: Optional text description to check consistency against.
+
+    Returns:
+        JSON with severity, parts_affected, consistency_with_description, notes.
+    """
+    import base64
+    import os
+    from urllib.parse import unquote, urlparse
+
+    result = {
+        "severity": "unknown",
+        "parts_affected": [],
+        "consistency_with_description": "unknown",
+        "notes": "",
+        "error": None,
+    }
+
+    # Resolve file:// URLs to base64 for vision models
+    content_for_vision = image_url
+    if image_url.startswith("file://"):
+        try:
+            path = unquote(urlparse(image_url).path)
+            if os.path.isfile(path):
+                with open(path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("ascii")
+                ext = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"
+                mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}" if ext in ("png", "gif", "webp") else "image/jpeg"
+                content_for_vision = f"data:{mime};base64,{b64}"
+            else:
+                result["error"] = "File not found"
+                return json.dumps(result)
+        except Exception as e:
+            result["error"] = str(e)
+            return json.dumps(result)
+
+    try:
+        import litellm
+
+        model = os.environ.get("OPENAI_VISION_MODEL", "gpt-4o").strip()
+        prompt = """Analyze this vehicle damage photo. Return a JSON object with:
+- severity: "low" | "medium" | "high" | "total_loss"
+- parts_affected: list of damaged parts (e.g. bumper, fender, door)
+- consistency_with_description: "consistent" | "inconsistent" | "unknown" (if no description provided)
+- notes: brief assessment"""
+        if damage_description:
+            prompt += f"\n\nClaimant's damage description: {damage_description}"
+        else:
+            prompt += "\n\nNo text description provided."
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": content_for_vision}},
+                ],
+            }
+        ]
+        resp = litellm.completion(model=model, messages=messages)
+        text = resp.choices[0].message.content or ""
+        # Try to parse JSON from response
+        import re
+        match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            result.update({k: v for k, v in parsed.items() if k in result})
+        else:
+            result["notes"] = text[:500]
+    except Exception as e:
+        logger.warning("Vision analysis failed: %s", e, exc_info=True)
+        result["error"] = str(e)
+
+    return json.dumps(result)
 
 
 def generate_repair_authorization_impl(

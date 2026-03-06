@@ -60,3 +60,29 @@ def test_sanitize_claim_data_truncates_long_fields():
     out = sanitize_claim_data(data)
     assert len(out["incident_description"]) <= 5000
     assert len(out["damage_description"]) <= 3000
+
+
+def test_sanitize_claim_data_attachments():
+    """Attachments are sanitized: url, type, optional description."""
+    data = {
+        "policy_number": "POL-001",
+        "vin": "VIN123",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Accord",
+        "incident_date": "2025-01-15",
+        "incident_description": "Rear-ended.",
+        "damage_description": "Bumper damage",
+        "attachments": [
+            {"url": "https://example.com/photo.jpg", "type": "photo", "description": "Damage"},
+            {"url": "file:///tmp/estimate.pdf", "type": "pdf"},
+            {"url": "", "type": "other"},  # skipped - empty url
+        ],
+    }
+    out = sanitize_claim_data(data)
+    assert len(out["attachments"]) == 2
+    assert out["attachments"][0]["url"] == "https://example.com/photo.jpg"
+    assert out["attachments"][0]["type"] == "photo"
+    assert out["attachments"][0]["description"] == "Damage"
+    assert out["attachments"][1]["type"] == "pdf"
+    assert out["attachments"][1].get("description") is None

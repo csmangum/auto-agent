@@ -78,6 +78,26 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
         elif key in ("vehicle_year", "estimated_damage", "claim_id", "incident_date"):
             # Pass through; validated by Pydantic or business logic
             out[key] = value
+        elif key == "attachments":
+            # Sanitize attachment list: url, type (photo|pdf|estimate|other), description
+            if isinstance(value, list):
+                valid_types = {"photo", "pdf", "estimate", "other"}
+                sanitized_attachments = []
+                for item in value:
+                    if isinstance(item, dict):
+                        t = str(item.get("type", "other")).strip().lower()
+                        if t not in valid_types:
+                            t = "other"
+                        a = {
+                            "url": _sanitize_text(item.get("url"), 2048),
+                            "type": t,
+                            "description": _sanitize_text(item.get("description"), 500) or None,
+                        }
+                        if a["url"]:
+                            sanitized_attachments.append(a)
+                out[key] = sanitized_attachments
+            else:
+                out[key] = []
         else:
             out[key] = value
     return out

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS claims (
     claim_type TEXT,
     status TEXT DEFAULT 'pending',
     payout_amount REAL,
+    attachments TEXT DEFAULT '[]',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

@@ -27,6 +27,7 @@ _CLAIM_DATA_KEYS = (
     "incident_description",
     "damage_description",
     "estimated_damage",
+    "attachments",
 )
 
 # Defaults for _claim_data_from_row when row has None (required for ClaimInput)
@@ -40,6 +41,7 @@ _CLAIM_DATA_DEFAULTS = {
     "incident_description": "",
     "damage_description": "",
     "estimated_damage": None,
+    "attachments": [],
 }
 
 
@@ -57,7 +59,7 @@ def _setup_logging() -> None:
 
 def _usage() -> str:
     return """Usage:
-  claim-agent process <claim.json>   Process a new claim from JSON file
+  claim-agent process <claim.json> [--attachment <file> ...]   Process a new claim
   claim-agent status <claim_id>      Get claim status
   claim-agent history <claim_id>     Get claim audit log
   claim-agent reprocess <claim_id>   Re-run workflow for an existing claim
@@ -65,6 +67,7 @@ def _usage() -> str:
   claim-agent <claim.json>           Same as process (legacy)
 
 Options:
+  --attachment <file>                Attach file (photo, PDF, estimate). May be repeated.
   --debug                            Enable debug logging
   --json                             Use JSON log format
 """
@@ -78,8 +81,20 @@ def _claim_data_from_row(row: dict) -> dict:
     }
 
 
-def cmd_process(claim_path: Path) -> None:
-    """Process a claim from a JSON file."""
+def _infer_attachment_type(filename: str) -> str:
+    """Infer attachment type from filename extension."""
+    ext = (filename.rsplit(".", 1)[-1] or "").lower()
+    if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic"):
+        return "photo"
+    if ext == "pdf":
+        return "pdf"
+    if ext in ("doc", "docx", "xls", "xlsx") or "estimate" in filename.lower():
+        return "estimate"
+    return "other"
+
+
+def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) -> None:
+    """Process a claim from a JSON file, optionally with file attachments."""
     if not claim_path.exists():
         print(f"Error: File not found: {claim_path}", file=sys.stderr)
         sys.exit(1)
@@ -96,9 +111,45 @@ def cmd_process(claim_path: Path) -> None:
         print("Error: Invalid claim data:", file=sys.stderr)
         print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
         sys.exit(1)
+
     from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.repository import ClaimRepository
+    from claim_agent.models.claim import Attachment, AttachmentType
+    from claim_agent.storage import get_storage_adapter
+    from claim_agent.utils.sanitization import sanitize_claim_data
+
+    sanitized = sanitize_claim_data(claim_data)
+    claim_input = ClaimInput.model_validate(sanitized)
+    repo = ClaimRepository()
+    claim_id = repo.create_claim(claim_input)
+
+    all_attachments = list(claim_input.attachments)
+    if attachment_paths:
+        storage = get_storage_adapter()
+        for ap in attachment_paths:
+            if not ap.exists():
+                print(f"Warning: Attachment not found: {ap}", file=sys.stderr)
+                continue
+            content = ap.read_bytes()
+            stored_key = storage.save(
+                claim_id=claim_id,
+                filename=ap.name,
+                content=content,
+            )
+            url = storage.get_url(claim_id, stored_key)
+            atype = AttachmentType(_infer_attachment_type(ap.name))
+            all_attachments.append(
+                Attachment(url=url, type=atype, description=f"Uploaded: {ap.name}")
+            )
+        if all_attachments:
+            repo.update_claim_attachments(claim_id, all_attachments)
+
+    claim_data_with_attachments = {
+        **sanitized,
+        "attachments": [a.model_dump(mode="json") for a in all_attachments],
+    }
     try:
-        result = run_claim_workflow(claim_data)
+        result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id)
         print(json.dumps(result, indent=2))
     except Exception as e:
         print(f"Error: Claim processing failed: {e}", file=sys.stderr)
@@ -240,13 +291,32 @@ def main() -> None:
             print(_usage(), file=sys.stderr)
             sys.exit(1)
         path = Path(argv[1])
-        cmd_process(path)
+        # Parse --attachment from raw argv (filtered argv drops all --options)
+        attachment_paths = []
+        raw = sys.argv[1:]
+        i = 0
+        while i < len(raw):
+            if raw[i] == "--attachment" and i + 1 < len(raw):
+                attachment_paths.append(Path(raw[i + 1]))
+                i += 2
+            else:
+                i += 1
+        cmd_process(path, attachment_paths if attachment_paths else None)
         return
 
     # Legacy: single argument is a file path (process)
     path = Path(argv[0])
     if path.suffix and path.exists():
-        cmd_process(path)
+        attachment_paths = []
+        raw = sys.argv[1:]
+        i = 0
+        while i < len(raw):
+            if raw[i] == "--attachment" and i + 1 < len(raw):
+                attachment_paths.append(Path(raw[i + 1]))
+                i += 2
+            else:
+                i += 1
+        cmd_process(path, attachment_paths if attachment_paths else None)
         return
 
     print(f"Error: Unknown command or file not found: {first}", file=sys.stderr)

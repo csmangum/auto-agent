@@ -112,6 +112,21 @@ MAX_LLM_CALLS_PER_CLAIM = _int("CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM", 50)
 
 
 # ---------------------------------------------------------------------------
+# Attachment storage
+# ---------------------------------------------------------------------------
+
+def get_attachment_storage_config() -> dict[str, Any]:
+    """Attachment storage configuration (local or S3)."""
+    return {
+        "backend": os.environ.get("ATTACHMENT_STORAGE_BACKEND", "local").strip().lower(),
+        "local_path": os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments"),
+        "s3_bucket": os.environ.get("ATTACHMENT_S3_BUCKET", ""),
+        "s3_prefix": os.environ.get("ATTACHMENT_S3_PREFIX", "attachments"),
+        "s3_endpoint": os.environ.get("ATTACHMENT_S3_ENDPOINT"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Crew verbose mode
 # ---------------------------------------------------------------------------
 
