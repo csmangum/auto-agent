@@ -145,8 +145,8 @@ def get_job_status(job_id: str) -> dict[str, Any] | None:
         return None
 
     rq_status = job.get_status()
-    # Map RQ status to our status
-    status = rq_status  # queued, started, finished, failed, deferred, etc.
+    # Map RQ status to our status; convert enum to string for JSON serialization
+    status = rq_status.value if hasattr(rq_status, "value") else str(rq_status)
 
     out: dict[str, Any] = {
         "job_id": job_id,

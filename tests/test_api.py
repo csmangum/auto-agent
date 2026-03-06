@@ -186,8 +186,9 @@ class TestClaimSubmit:
         assert resp.status_code == 503
         assert "REDIS_URL" in resp.json()["detail"]
 
-    def test_invalid_claim_body(self, client):
+    def test_invalid_claim_body(self, client, monkeypatch):
         """Invalid claim data returns 422 (FastAPI/Pydantic validation)."""
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         resp = client.post("/api/claims?async=false", json={"policy_number": "x"})
         assert resp.status_code == 422  # Validation error
 
