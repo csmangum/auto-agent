@@ -7,7 +7,6 @@ Provides REST API endpoints for:
 - System configuration and health
 """
 
-import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -39,6 +38,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/api/health")
+async def health():
+    """Quick health check."""
+    return {"status": "ok"}
+
+
 # Register API routes
 app.include_router(claims_router, prefix="/api")
 app.include_router(metrics_router, prefix="/api")
@@ -47,12 +53,7 @@ app.include_router(system_router, prefix="/api")
 
 
 # Serve frontend static files in production (when built)
+# Must be after API routes so /api/* paths are handled first
 _frontend_dist = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
 if _frontend_dist.exists():
     app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
-
-
-@app.get("/api/health")
-async def health():
-    """Quick health check."""
-    return {"status": "ok"}
