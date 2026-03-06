@@ -5,6 +5,7 @@ from typing import Callable, TypeVar
 
 from tenacity import (
     retry,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -14,8 +15,30 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Transient errors that are worth retrying
-RETRYABLE_EXCEPTIONS = (ConnectionError, TimeoutError, OSError)
+# Transient errors that are worth retrying (API disconnects, timeouts, etc.)
+_base_retryable = (ConnectionError, TimeoutError, OSError)
+RETRYABLE_EXCEPTIONS = _base_retryable
+
+# Status codes that indicate transient LLM failures (retry); others (400, 401, 404, etc.) are not retried
+_TRANSIENT_STATUS_CODES = {0, 408, 429}  # 0=no response, 408=timeout, 429=rate limit; 5xx checked separately
+
+
+def _is_transient_litellm_error(exc: BaseException) -> bool:
+    """Retry LiteLLM APIError only for transient status codes (0, 408, 429, 5xx)."""
+    try:
+        from litellm.exceptions import APIError as LiteLLMAPIError
+    except ImportError:
+        return False
+    if not isinstance(exc, LiteLLMAPIError):
+        return False
+    sc = getattr(exc, "status_code", None)
+    if sc is None:
+        return False
+    try:
+        sc = int(sc)
+    except (TypeError, ValueError):
+        return False
+    return sc in _TRANSIENT_STATUS_CODES or 500 <= sc <= 599
 
 
 def with_llm_retry(
@@ -37,7 +60,8 @@ def with_llm_retry(
         @retry(
             stop=stop_after_attempt(max_attempts),
             wait=wait_exponential(multiplier=multiplier, min=min_wait, max=max_wait),
-            retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+            retry=retry_if_exception_type(_base_retryable)
+            | retry_if_exception(_is_transient_litellm_error),
             reraise=True,
         )
         def wrapper(*args, **kwargs) -> T:

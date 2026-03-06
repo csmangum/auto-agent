@@ -53,8 +53,11 @@ If estimated repair cost would exceed 75% of vehicle value, flag as potential to
 
     # Task 2: Calculate repair estimate
     estimate_task = Task(
-        description="""Calculate a complete repair estimate using calculate_repair_estimate tool.
-Pass: damage_description, vehicle_make, vehicle_year, policy_number from claim_data.
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Calculate a complete repair estimate using calculate_repair_estimate tool.
+Extract and use damage_description, vehicle_make, vehicle_year, policy_number from the claim_data JSON above.
 
 The estimate should include:
 - Parts needed with costs
@@ -71,7 +74,10 @@ Use get_parts_catalog if you need more details on specific parts.""",
 
     # Task 3: Find and assign repair shop
     shop_assignment_task = Task(
-        description="""Find available repair shops and assign the best one for this claim.
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Find available repair shops and assign the best one for this claim.
 
 1. Use get_available_repair_shops to get a list of available shops.
    - Filter by network_type 'preferred' first for best rates
@@ -93,9 +99,12 @@ Output the shop assignment details including start and completion dates.""",
 
     # Task 4: Order parts
     parts_order_task = Task(
-        description="""Order all required parts for the repair.
+        description="""CLAIM DATA (JSON):
+{claim_data}
 
-1. Use get_parts_catalog with damage_description and vehicle_make to get recommended parts.
+Order all required parts for the repair.
+
+1. Use get_parts_catalog with damage_description and vehicle_make from claim_data to get recommended parts.
    - Use 'aftermarket' for part_type_preference unless policy specifies OEM
 
 2. Create the parts order using create_parts_order:
@@ -111,7 +120,10 @@ Output the order confirmation with order ID, items, total cost, and delivery dat
 
     # Task 5: Generate authorization and close claim
     authorization_task = Task(
-        description="""Generate the repair authorization and finalize the claim.
+        description="""CLAIM DATA (JSON):
+{claim_data}
+
+Generate the repair authorization and finalize the claim.
 
 1. Use generate_repair_authorization with:
    - claim_id from claim_data (or generate one with generate_claim_id if not present)

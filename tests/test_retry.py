@@ -42,3 +42,48 @@ def test_with_llm_retry_retries_on_connection_error():
 
     assert flaky() == "ok"
     assert len(attempts) == 2
+
+
+def test_with_llm_retry_retries_on_litellm_api_error():
+    """Retries on litellm APIError (e.g. server disconnect) then succeeds."""
+    pytest.importorskip("litellm")
+    from litellm.exceptions import APIError
+
+    attempts = []
+
+    @with_llm_retry(max_attempts=3, min_wait=0.01, max_wait=0.05)
+    def flaky():
+        attempts.append(1)
+        if len(attempts) < 2:
+            raise APIError(
+                status_code=0,
+                message="Server disconnected without sending a response",
+                llm_provider="openrouter",
+                model="test",
+            )
+        return "ok"
+
+    assert flaky() == "ok"
+    assert len(attempts) == 2
+
+
+def test_with_llm_retry_does_not_retry_on_non_transient_litellm_error():
+    """Does not retry on LiteLLM APIError with non-transient status (e.g. 400, 401)."""
+    pytest.importorskip("litellm")
+    from litellm.exceptions import APIError
+
+    attempts = []
+
+    @with_llm_retry(max_attempts=3, min_wait=0.01, max_wait=0.05)
+    def bad_request():
+        attempts.append(1)
+        raise APIError(
+            status_code=400,
+            message="Bad request",
+            llm_provider="openai",
+            model="test",
+        )
+
+    with pytest.raises(APIError):
+        bad_request()
+    assert len(attempts) == 1
