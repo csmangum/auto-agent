@@ -49,7 +49,17 @@ For classification criteria, see [Claim Types](claim-types.md).
 
 **Location**: `src/claim_agent/crews/new_claim_crew.py`
 
-Handles first-time claim submissions through validation, policy verification, and assignment.
+Handles first-time claim submissions through validation, policy verification, and assignment. This section is the **formal specification** for the New Claim workflow.
+
+### Entry Conditions
+
+- **Claim type:** `new` (from Router classification)
+- **Classification criteria:**
+  - First-time submission for this incident
+  - No duplicate indicators (different VIN or date from existing claims)
+  - No fraud indicators in description
+  - Damage not clearly total or partial loss
+- **Escalation:** If `needs_review` from escalation check, return early with escalation details (no crew execution)
 
 ### Agents
 
@@ -59,21 +69,84 @@ Handles first-time claim submissions through validation, policy verification, an
 | Policy Verification Specialist | [`query_policy_db`](tools.md#query_policy_db) |
 | Claim Assignment Specialist | [`generate_claim_id`](tools.md#generate_claim_id), [`generate_report`](tools.md#generate_report) |
 
-### Flow
+### Flow Sequence
 
 ```mermaid
-flowchart LR
-    A[Validate] --> B[Check Policy] --> C[Assign ID]
+flowchart TB
+    subgraph NewClaim["New Claim Crew"]
+        A[1. Intake: Validate] --> B[2. Policy: Verify Coverage]
+        B --> C[3. Assignment: Generate ID & Report]
+    end
     
-    A -.- A1[Required fields]
-    A -.- A2[Data types]
+    A -.- A1[Required fields present]
+    A -.- A2[Data types valid]
     
-    B -.- B1[Query policy DB]
-    B -.- B2[Verify coverage]
+    B -.- B1[query_policy_db]
+    B -.- B2[Active coverage]
     
-    C -.- C1[Generate CLM-ID]
-    C -.- C2[Set status: open]
+    C -.- C1[generate_claim_id or use existing]
+    C -.- C2[generate_report]
+    C -.- C3[Status: open]
 ```
+
+### Step 1: Intake Validation
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Intake Specialist |
+| **Input** | `claim_data` JSON |
+| **Required fields** | `policy_number`, `vin`, `vehicle_year`, `vehicle_make`, `vehicle_model`, `incident_date`, `incident_description`, `damage_description` |
+| **Output** | `valid` with no missing fields, OR list of missing/invalid fields |
+| **Tools** | None |
+
+### Step 2: Policy Verification
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Policy Verification Specialist |
+| **Input** | `claim_data` + validation result |
+| **Action** | Query policy DB for `policy_number` |
+| **Output** | Policy validity, coverage type, deductible |
+| **Tools** | `query_policy_db` |
+
+### Step 3: Assignment
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Claim Assignment Specialist |
+| **Input** | `claim_data` (with `claim_id` if provided), validation + policy results |
+| **Action** | Use `claim_id` from `claim_data` if present; else call `generate_claim_id` (prefix `CLM`) |
+| **Output** | Claim ID, status `open`, one-line summary |
+| **Tools** | `generate_claim_id`, `generate_report` |
+
+### Exit Conditions
+
+| Outcome | Status | Notes |
+|---------|--------|-------|
+| Success | `open` | Claim ID assigned, report generated |
+| Escalated | `needs_review` | Returned before crew execution (main flow) |
+| Failed | `failed` | Error during crew execution |
+
+### Integration with Main Flow
+
+The New Claim crew is invoked **after**:
+
+1. Pydantic validation (CLI)
+2. Claim creation in SQLite (`repo.create_claim`)
+3. Router classification → `claim_type == "new"`
+4. Escalation check (if not escalated)
+
+**Note:** The main flow creates the claim record and assigns `claim_id` before routing. The New Claim crew receives `claim_id` in `claim_data` and should use it rather than generating a new one (except when `claim_id` is absent for edge cases).
+
+### Acceptance Criteria
+
+- **AC1:** Intake task validates all required fields and data types; outputs `valid` or list of issues
+- **AC2:** Policy task calls `query_policy_db` and returns coverage details
+- **AC3:** Assignment task uses existing `claim_id` when present, otherwise generates via `generate_claim_id`
+- **AC4:** Assignment task calls `generate_report` with `claim_type='new'`, `status='open'`
+- **AC5:** Final status is `open` on success
+- **AC6:** Task context flows correctly: Policy receives validation output; Assignment receives validation + policy output
+- **AC7:** Documentation (`docs/crews.md`, `docs/agent-flow.md`) matches this specification
 
 ---
 

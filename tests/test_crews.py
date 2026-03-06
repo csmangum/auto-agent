@@ -25,6 +25,46 @@ def _kickoff_with_retry(crew, inputs):
     return _call()
 
 
+def test_new_claim_crew_acceptance_criteria():
+    """Verify New Claim crew structure matches formal specification (Issue #64)."""
+    from claim_agent.crews.new_claim_crew import create_new_claim_crew
+    from claim_agent.agents.new_claim import create_policy_checker_agent
+
+    crew = create_new_claim_crew()
+
+    # AC1: Intake task validates required fields and data types
+    intake_task = crew.tasks[0]
+    required = ["policy_number", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "incident_date", "incident_description", "damage_description"]
+    for field in required:
+        assert field in intake_task.description, f"AC1: Intake task must validate {field}"
+    assert "valid" in intake_task.expected_output.lower() or "missing" in intake_task.expected_output.lower()
+
+    # AC2: Policy task calls query_policy_db
+    policy_agent = create_policy_checker_agent()
+    policy_tool_names = [getattr(t, "name", str(t)) for t in (policy_agent.tools or [])]
+    assert any("policy" in n.lower() and "query" in n.lower() for n in policy_tool_names), (
+        "AC2: Policy agent must have query_policy_db tool"
+    )
+
+    # AC3 & AC4: Assignment task uses claim_id when present, calls generate_report with claim_type='new', status='open'
+    assign_task = crew.tasks[2]
+    assert "claim_id" in assign_task.description and "claim_data" in assign_task.description
+    assert "generate_claim_id" in assign_task.description
+    assert "generate_report" in assign_task.description
+    assert "claim_type='new'" in assign_task.description or "claim_type=\"new\"" in assign_task.description
+    assert "status='open'" in assign_task.description or "status=\"open\"" in assign_task.description
+
+    # AC5: Final status is 'open' - verified by main flow; crew outputs status open
+    assert "open" in assign_task.description.lower()
+
+    # AC6: Task context flows correctly
+    policy_task = crew.tasks[1]
+    assert intake_task in policy_task.context, "Policy task must receive validation output"
+    assert intake_task in assign_task.context and policy_task in assign_task.context, (
+        "Assignment task must receive validation + policy output"
+    )
+
+
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_new_claim_crew_kickoff():
     """Run new claim crew on sample input (requires LLM)."""
