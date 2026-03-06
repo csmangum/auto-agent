@@ -403,8 +403,8 @@ class TestProcessClaimEndpoint:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
-        import claim_agent.crews.main_crew as main_crew_mod
-        monkeypatch.setattr(main_crew_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        import claim_agent.api.routes.claims as claims_mod
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         # Ensure the storage singleton is reset to local (tmp) for each test
         import claim_agent.storage.factory as factory_mod
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
@@ -479,3 +479,46 @@ class TestProcessClaimEndpoint:
         finally:
             claims_module._MAX_UPLOAD_SIZE_BYTES = original_limit
         assert resp.status_code == 413
+
+    def test_valid_claim_with_files_creates_single_claim(self, client, monkeypatch, tmp_path):
+        """Process claim with file upload creates exactly one claim and stores attachment."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        self._mock_workflow(monkeypatch)
+        import json
+
+        with get_connection() as conn:
+            count_before = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
+
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            files=[("files", ("damage.jpg", b"fake image data", "image/jpeg"))],
+        )
+        assert resp.status_code == 200
+
+        with get_connection() as conn:
+            count_after = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
+            # Exactly one new claim (no duplicate creation)
+            assert count_after == count_before + 1
+
+    def test_attachment_download_returns_file(self, client, monkeypatch, tmp_path):
+        """GET /claims/{claim_id}/attachments/{key} serves the file for local storage."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+
+        storage = factory_mod.get_storage_adapter()
+        stored_key = storage.save(
+            claim_id="CLM-TEST001",
+            filename="test_photo.jpg",
+            content=b"fake image content",
+        )
+        resp = client.get(f"/api/claims/CLM-TEST001/attachments/{stored_key}")
+        assert resp.status_code == 200
+        assert resp.content == b"fake image content"
+
+    def test_attachment_download_claim_not_found(self, client, monkeypatch, tmp_path):
+        """Attachment download returns 404 for non-existent claim."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        resp = client.get("/api/claims/CLM-NONEXISTENT/attachments/abc123_photo.jpg")
+        assert resp.status_code == 404

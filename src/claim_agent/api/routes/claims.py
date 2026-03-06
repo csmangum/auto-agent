@@ -1,16 +1,23 @@
 """Claims API routes: listing, detail, audit log, workflow runs, statistics."""
 
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 
+from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_SYSTEM
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.models.claim import Attachment
+from claim_agent.models.claim import Attachment, ClaimInput
 from claim_agent.storage import get_storage_adapter
+from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type
+from claim_agent.utils.sanitization import sanitize_claim_data
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 
@@ -18,27 +25,41 @@ _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def _resolve_attachment_urls(claim_dict: dict) -> dict:
-    """Convert S3 keys to presigned URLs in claim attachments."""
+    """Convert storage keys to fetchable URLs: presigned for S3, download endpoint for local."""
     if "attachments" not in claim_dict or not claim_dict["attachments"]:
         return claim_dict
-    
+
     try:
-        attachments = json.loads(claim_dict["attachments"]) if isinstance(claim_dict["attachments"], str) else claim_dict["attachments"]
+        raw = claim_dict["attachments"]
+        attachments = (
+            json.loads(raw) if isinstance(raw, str) else raw
+        )
         if not attachments:
             return claim_dict
-        
+
         storage = get_storage_adapter()
         claim_id = claim_dict.get("id", "")
-        
+
         for attachment in attachments:
             url = attachment.get("url", "")
-            if url and not url.startswith(("http://", "https://")):
+            if not url or url.startswith(("http://", "https://")):
+                continue
+            if isinstance(storage, LocalStorageAdapter):
+                stored_name = url.split("/")[-1] if "/" in url else url
+                attachment["url"] = f"/api/claims/{claim_id}/attachments/{stored_name}"
+            else:
                 attachment["url"] = storage.get_url(claim_id, url)
-        
-        claim_dict["attachments"] = json.dumps(attachments) if isinstance(claim_dict.get("attachments"), str) else attachments
-    except Exception:
-        pass
-    
+
+        claim_dict["attachments"] = (
+            json.dumps(attachments) if isinstance(raw, str) else attachments
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to resolve attachment URLs for claim %s: %s",
+            claim_dict.get("id"),
+            e,
+        )
+
     return claim_dict
 
 
@@ -145,6 +166,30 @@ def get_claim(claim_id: str):
     return _resolve_attachment_urls(dict(row))
 
 
+@router.get("/claims/{claim_id}/attachments/{key}")
+def get_claim_attachment(claim_id: str, key: str):
+    """Serve an attachment file for a claim. Local storage only; S3 uses presigned URLs."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM claims WHERE id = ?", (claim_id,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    storage = get_storage_adapter()
+    if not isinstance(storage, LocalStorageAdapter):
+        raise HTTPException(
+            status_code=404,
+            detail="Attachment download is only available for local storage",
+        )
+
+    file_path = storage.get_path(claim_id, key)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"Attachment not found: {key}")
+
+    return FileResponse(path=str(file_path), filename=key)
+
+
 @router.get("/claims/{claim_id}/history")
 def get_claim_history(claim_id: str):
     """Get audit log entries for a claim."""
@@ -192,13 +237,8 @@ async def process_claim(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
 
-    from claim_agent.crews.main_crew import run_claim_workflow
-    from claim_agent.utils.sanitization import sanitize_claim_data
-
     sanitized = sanitize_claim_data(claim_data)
     try:
-        from claim_agent.models.claim import ClaimInput
-
         claim_input = ClaimInput.model_validate(sanitized)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
@@ -208,8 +248,6 @@ async def process_claim(
     # Validate and buffer all file uploads BEFORE creating the claim record so
     # that a bad upload (oversized or empty) does not leave a dangling claim row.
     buffered_files: list[tuple[str, bytes, str | None]] = []
-    # Validate file sizes before creating claim to avoid orphaned records
-    file_contents = []
     if files:
         for f in files:
             if not f.filename:
@@ -239,22 +277,6 @@ async def process_claim(
     if buffered_files:
         storage = get_storage_adapter()
         for filename, content, content_type in buffered_files:
-            content = await f.read()
-            if len(content) > _MAX_UPLOAD_SIZE_BYTES:
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
-                )
-            file_contents.append((f.filename, content, f.content_type))
-
-    repo = ClaimRepository(db_path=get_db_path())
-    claim_id = repo.create_claim(claim_input)
-
-    # Process uploaded files
-    all_attachments = list(claim_input.attachments)
-    if file_contents:
-        storage = get_storage_adapter()
-        for filename, content, content_type in file_contents:
             stored_key = storage.save(
                 claim_id=claim_id,
                 filename=filename,
@@ -265,14 +287,26 @@ async def process_claim(
             atype = infer_attachment_type(filename)
             all_attachments.append(
                 Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
-            atype = infer_attachment_type(filename)
-            all_attachments.append(
-                Attachment(url=stored_key, type=atype, description=f"Uploaded: {filename}")
             )
         if all_attachments:
             repo.update_claim_attachments(claim_id, all_attachments, actor_id=ACTOR_SYSTEM)
 
-    # Run workflow with updated claim data (including attachment URLs)
-    claim_data_with_attachments = {**sanitized, "attachments": [a.model_dump(mode="json") for a in all_attachments]}
+    # Build workflow input: use file:// URLs for local storage so vision tool can read
+    attachments_for_workflow = []
+    storage = get_storage_adapter()
+    for a in all_attachments:
+        url = a.url
+        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
+            ("http://", "https://", "file://")
+        ):
+            path = storage.get_path(claim_id, url)
+            if path.exists():
+                url = f"file://{path.resolve()}"
+        attachments_for_workflow.append({**a.model_dump(mode="json"), "url": url})
+
+    claim_data_with_attachments = {
+        **sanitized,
+        "attachments": attachments_for_workflow,
+    }
     result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id)
     return result

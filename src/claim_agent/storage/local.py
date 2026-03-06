@@ -53,3 +53,10 @@ class LocalStorageAdapter(StorageAdapter):
         """Check if file exists."""
         safe_claim = "".join(c if c.isalnum() or c in "-_" else "_" for c in claim_id)
         return (self._base / safe_claim / stored_path_or_key).exists()
+
+    def get_path(self, claim_id: str, stored_key: str) -> Path:
+        """Return filesystem path for a stored file. Key is stored_name (from save) or last segment of get_url result."""
+        # Handle "safe_claim/stored_name" format from get_url
+        stored_name = stored_key.split("/")[-1] if "/" in stored_key else stored_key
+        safe_claim = "".join(c if c.isalnum() or c in "-_" else "_" for c in claim_id)
+        return self._base / safe_claim / stored_name

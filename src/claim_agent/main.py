@@ -118,14 +118,16 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
         sys.exit(1)
 
     from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.database import get_db_path
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import Attachment
     from claim_agent.storage import get_storage_adapter
+    from claim_agent.storage.local import LocalStorageAdapter
     from claim_agent.utils import infer_attachment_type, sanitize_claim_data
 
     sanitized = sanitize_claim_data(claim_data)
     claim_input = ClaimInput.model_validate(sanitized)
-    repo = ClaimRepository()
+    repo = ClaimRepository(db_path=get_db_path())
     claim_id = repo.create_claim(claim_input)
 
     all_attachments = list(claim_input.attachments)
@@ -141,16 +143,30 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
                 filename=ap.name,
                 content=content,
             )
+            url = storage.get_url(claim_id, stored_key)
             atype = infer_attachment_type(ap.name)
             all_attachments.append(
-                Attachment(url=stored_key, type=atype, description=f"Uploaded: {ap.name}")
+                Attachment(url=url, type=atype, description=f"Uploaded: {ap.name}")
             )
         if all_attachments:
             repo.update_claim_attachments(claim_id, all_attachments)
 
+    # Use file:// URLs for local storage so vision tool can read
+    storage = get_storage_adapter()
+    attachments_for_workflow = []
+    for a in all_attachments:
+        url = a.url
+        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
+            ("http://", "https://", "file://")
+        ):
+            path = storage.get_path(claim_id, url)
+            if path.exists():
+                url = f"file://{path.resolve()}"
+        attachments_for_workflow.append({**a.model_dump(mode="json"), "url": url})
+
     claim_data_with_attachments = {
         **sanitized,
-        "attachments": [a.model_dump(mode="json") for a in all_attachments],
+        "attachments": attachments_for_workflow,
     }
     try:
         result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id)
@@ -162,8 +178,10 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
 
 def cmd_status(claim_id: str) -> None:
     """Print claim status."""
+    from claim_agent.db.database import get_db_path
     from claim_agent.db.repository import ClaimRepository
-    repo = ClaimRepository()
+
+    repo = ClaimRepository(db_path=get_db_path())
     claim = repo.get_claim(claim_id)
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
@@ -173,8 +191,10 @@ def cmd_status(claim_id: str) -> None:
 
 def cmd_history(claim_id: str) -> None:
     """Print claim audit log."""
+    from claim_agent.db.database import get_db_path
     from claim_agent.db.repository import ClaimRepository
-    repo = ClaimRepository()
+
+    repo = ClaimRepository(db_path=get_db_path())
     claim = repo.get_claim(claim_id)
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
@@ -186,9 +206,11 @@ def cmd_history(claim_id: str) -> None:
 def cmd_reprocess(claim_id: str) -> None:
     """Re-run workflow for an existing claim."""
     from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.database import get_db_path
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
-    repo = ClaimRepository()
+
+    repo = ClaimRepository(db_path=get_db_path())
     claim = repo.get_claim(claim_id)
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)

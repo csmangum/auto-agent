@@ -28,7 +28,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # SQLite does not support DROP COLUMN easily; recreate table
+    # SQLite does not support DROP COLUMN easily; recreate table.
+    # Disable FKs so DROP TABLE claims succeeds (claim_audit_log, workflow_runs reference it).
+    op.execute(text("PRAGMA foreign_keys = OFF"))
+    try:
+        _downgrade_recreate_claims()
+    finally:
+        op.execute(text("PRAGMA foreign_keys = ON"))
+
+
+def _downgrade_recreate_claims() -> None:
     op.execute(text("""
         CREATE TABLE claims_new (
             id TEXT PRIMARY KEY,
