@@ -19,18 +19,16 @@ Sync mode is preserved for the CLI (`claim-agent process`) and for API requests 
 │   Client    │ ───────────────────► │   API       │ ──────────────► │   Redis     │
 │             │  202 {job_id,claim_id}│   Server    │                  │   (RQ)      │
 └─────────────┘                       └─────────────┘                  └──────┬──────┘
-       │                                                                    │
-       │ GET /jobs/{job_id}                                                 │
-       │ ◄─────────────────────────────────────────────────────────────────┘
-       │                                                                    │
-       │                                                                    ▼
-       │                                                           ┌─────────────┐
-       │                                                           │   Worker    │
-       │                                                           │   Process   │
-       │                                                           └──────┬──────┘
-       │                                                                  │
-       │                                                                  │ run_claim_workflow
-       │                                                                  ▼
+       │                                    ▲                                  │
+       │ GET /jobs/{job_id}                  │ (queries DB + Redis)             │ dequeue
+       │ ──────────────────────────────────►│                                  ▼
+       │ ◄──────────────────────────────────┘                        ┌─────────────┐
+       │                 job status response                          │   Worker    │
+       │                                                              │   Process   │
+       │                                                              └──────┬──────┘
+       │                                                                     │
+       │                                                                     │ run_claim_workflow
+       │                                                                     ▼
        │                                                           ┌─────────────┐
        │                                                           │   SQLite    │
        │                                                           │   (claims)  │
