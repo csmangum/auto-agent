@@ -6,8 +6,8 @@ Provides REST API endpoints for:
 - Documentation browsing (markdown docs and agent skills)
 - System configuration and health
 
-Security: When CLAIMS_API_KEY is set, all /api/* endpoints require API key auth.
-Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
+Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/* endpoints
+require auth. Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
 """
 
 import os
@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from claim_agent.api.auth import is_auth_required, verify_token
 from claim_agent.api.rate_limit import get_client_ip, is_rate_limited
 from claim_agent.api.routes.claims import router as claims_router
 from claim_agent.api.routes.metrics import router as metrics_router
@@ -53,6 +54,17 @@ app.add_middleware(
 )
 
 
+def _get_token(request: Request) -> str | None:
+    """Extract token from X-API-Key or Authorization: Bearer."""
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        return api_key.strip()
+    auth = request.headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return None
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limit API routes: 100 req/min per IP."""
@@ -68,28 +80,30 @@ async def rate_limit_middleware(request: Request, call_next):
 
 
 @app.middleware("http")
-async def api_key_auth(request: Request, call_next):
-    """Require API key when CLAIMS_API_KEY is set.
-    Skips /api/health and non-API paths."""
-    api_key = os.environ.get("CLAIMS_API_KEY")
-    if not api_key:
-        return await call_next(request)
-
+async def auth_middleware(request: Request, call_next):
+    """Verify auth when configured. Set request.state.auth on success."""
     path = request.url.path
-    if not path.startswith("/api/"):
-        return await call_next(request)
-    if path == "/api/health":
+    if not path.startswith("/api/") or path == "/api/health":
         return await call_next(request)
 
-    provided = request.headers.get("X-API-Key") or (
-        request.headers.get("Authorization") or ""
-    ).replace("Bearer ", "").strip()
-    if provided != api_key:
+    if not is_auth_required():
+        return await call_next(request)
+
+    token = _get_token(request)
+    if not token:
         return JSONResponse(
             status_code=401,
             content={"detail": "Invalid or missing API key"},
         )
 
+    ctx = verify_token(token)
+    if ctx is None:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or expired token"},
+        )
+
+    request.state.auth = ctx
     return await call_next(request)
 
 

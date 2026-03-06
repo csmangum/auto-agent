@@ -4,6 +4,7 @@ import logging
 
 from fastapi import APIRouter
 
+from claim_agent.api.deps import require_role
 from claim_agent.config.settings import (
     get_escalation_config,
     get_fraud_config,
@@ -25,6 +26,10 @@ from claim_agent.db.database import get_connection
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["system"])
+
+RequireAdmin = require_role("admin")
+
+
 
 
 # Agent/crew catalog (static structure from codebase)
@@ -188,7 +193,7 @@ _CREWS_CATALOG = [
 ]
 
 
-@router.get("/system/config")
+@router.get("/system/config", dependencies=[RequireAdmin])
 def get_config():
     """Get current system configuration grouped by category."""
     return {
@@ -215,7 +220,7 @@ def get_config():
     }
 
 
-@router.get("/system/health")
+@router.get("/system/health", dependencies=[RequireAdmin])
 def health_check():
     """Health check with database connectivity."""
     try:
@@ -234,7 +239,7 @@ def health_check():
     }
 
 
-@router.get("/system/agents")
+@router.get("/system/agents", dependencies=[RequireAdmin])
 def get_agents_catalog():
     """Get the complete agent/crew catalog."""
     return {"crews": _CREWS_CATALOG}

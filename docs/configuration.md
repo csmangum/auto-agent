@@ -31,6 +31,20 @@ cp .env.example .env
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `100000` | Max tokens per claim before stopping |
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
 
+### Authentication and RBAC
+
+When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoints (except `/api/health`) require authentication.
+
+| Variable | Description |
+|---------|-------------|
+| `API_KEYS` | Comma-separated `key:role` pairs, e.g. `sk-adj-xxx:adjuster,sk-sup-yyy:supervisor,sk-admin-zzz:admin` |
+| `CLAIMS_API_KEY` | Single API key (backward compat). When set and `API_KEYS` unset, treated as admin role |
+| `JWT_SECRET` | Secret for verifying JWT Bearer tokens. JWT payload should include `sub` (user id) and `role` |
+
+**Roles**: `adjuster` (submit/view claims, docs), `supervisor` (all adjuster + reprocess, metrics), `admin` (all + config, system).
+
+Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
+
 ### Observability
 
 Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `CLAIM_AGENT_LOG_LEVEL`, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `CLAIM_AGENT_TRACE_LLM`, `CLAIM_AGENT_TRACE_TOOLS`. See [Observability](observability.md) for full details.
@@ -86,6 +100,8 @@ The module `src/claim_agent/config/settings.py` centralizes configuration from e
 | `get_escalation_config()` | Escalation thresholds (confidence, high value, similarity range, etc.) |
 | `get_fraud_config()` | Fraud detection scores and thresholds |
 | `get_crew_verbose()` | Whether CrewAI runs in verbose mode |
+| `get_api_keys_config()` | API keys mapping (key -> role) from `API_KEYS` or `CLAIMS_API_KEY` |
+| `get_jwt_secret()` | JWT secret for Bearer token verification, or None |
 | `MAX_TOKENS_PER_CLAIM`, `MAX_LLM_CALLS_PER_CLAIM` | Token and call budgets per claim |
 | `DEFAULT_BASE_VALUE`, `DEPRECIATION_PER_YEAR`, etc. | Valuation and partial-loss defaults |
 

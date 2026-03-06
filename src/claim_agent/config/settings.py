@@ -112,6 +112,37 @@ MAX_LLM_CALLS_PER_CLAIM = _int("CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM", 50)
 
 
 # ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+def get_api_keys_config() -> dict[str, str]:
+    """API keys mapping key -> role. From API_KEYS (key:role,key:role) or CLAIMS_API_KEY (single admin key)."""
+    api_keys_raw = os.environ.get("API_KEYS", "").strip()
+    if api_keys_raw:
+        result: dict[str, str] = {}
+        for part in api_keys_raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if ":" in part:
+                key, role = part.split(":", 1)
+                result[key.strip()] = role.strip()
+            else:
+                result[part] = "admin"
+        return result
+    claims_key = os.environ.get("CLAIMS_API_KEY", "").strip()
+    if claims_key:
+        return {claims_key: "admin"}
+    return {}
+
+
+def get_jwt_secret() -> str | None:
+    """JWT secret for verifying Bearer tokens. None if not configured."""
+    raw = os.environ.get("JWT_SECRET", "").strip()
+    return raw if raw else None
+
+
+# ---------------------------------------------------------------------------
 # Crew verbose mode
 # ---------------------------------------------------------------------------
 

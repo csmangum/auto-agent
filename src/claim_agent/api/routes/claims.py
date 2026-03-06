@@ -4,11 +4,14 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
+from claim_agent.api.auth import AuthContext
+from claim_agent.api.deps import require_role
 from claim_agent.crews.main_crew import run_claim_workflow
-from claim_agent.db.audit_events import ACTOR_SYSTEM
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import Attachment, ClaimInput
@@ -20,6 +23,9 @@ from claim_agent.utils.sanitization import sanitize_claim_data
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
+
+RequireAdjuster = require_role("adjuster", "supervisor", "admin")
+RequireSupervisor = require_role("supervisor", "admin")
 
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -63,7 +69,7 @@ def _resolve_attachment_urls(claim_dict: dict) -> dict:
     return claim_dict
 
 
-@router.get("/claims/stats")
+@router.get("/claims/stats", dependencies=[RequireAdjuster])
 def get_claims_stats():
     """Aggregate statistics: count by status, count by type, totals."""
     with get_connection() as conn:
@@ -110,7 +116,7 @@ def get_claims_stats():
     }
 
 
-@router.get("/claims")
+@router.get("/claims", dependencies=[RequireAdjuster])
 def list_claims(
     status: Optional[str] = Query(None, description="Filter by status"),
     claim_type: Optional[str] = Query(None, description="Filter by claim type"),
@@ -152,7 +158,7 @@ def list_claims(
     }
 
 
-@router.get("/claims/{claim_id}")
+@router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
 def get_claim(claim_id: str):
     """Get a single claim by ID."""
     with get_connection() as conn:
@@ -166,7 +172,7 @@ def get_claim(claim_id: str):
     return _resolve_attachment_urls(dict(row))
 
 
-@router.get("/claims/{claim_id}/attachments/{key}")
+@router.get("/claims/{claim_id}/attachments/{key}", dependencies=[RequireAdjuster])
 def get_claim_attachment(claim_id: str, key: str):
     """Serve an attachment file for a claim. Local storage only; S3 uses presigned URLs."""
     with get_connection() as conn:
@@ -190,7 +196,7 @@ def get_claim_attachment(claim_id: str, key: str):
     return FileResponse(path=str(file_path), filename=key)
 
 
-@router.get("/claims/{claim_id}/history")
+@router.get("/claims/{claim_id}/history", dependencies=[RequireAdjuster])
 def get_claim_history(claim_id: str):
     """Get audit log entries for a claim."""
     repo = ClaimRepository(db_path=get_db_path())
@@ -201,7 +207,7 @@ def get_claim_history(claim_id: str):
     return {"claim_id": claim_id, "history": history}
 
 
-@router.get("/claims/{claim_id}/workflows")
+@router.get("/claims/{claim_id}/workflows", dependencies=[RequireAdjuster])
 def get_claim_workflows(claim_id: str):
     """Get workflow runs for a claim."""
     with get_connection() as conn:
@@ -224,6 +230,7 @@ def get_claim_workflows(claim_id: str):
 async def process_claim(
     claim: str = Form(..., description="Claim data as JSON string"),
     files: list[UploadFile] = File(default=[], description="Optional attachment files"),
+    auth: AuthContext = RequireAdjuster,
 ):
     """Submit a new claim for processing. Accepts claim JSON and optional file uploads.
 
@@ -270,7 +277,8 @@ async def process_claim(
                 chunks.append(chunk)
             buffered_files.append((f.filename, b"".join(chunks), f.content_type))
 
-    claim_id = repo.create_claim(claim_input)
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    claim_id = repo.create_claim(claim_input, actor_id=actor_id)
 
     # Store uploaded files now that the claim record exists.
     all_attachments = list(claim_input.attachments)
@@ -289,7 +297,7 @@ async def process_claim(
                 Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
             )
         if all_attachments:
-            repo.update_claim_attachments(claim_id, all_attachments, actor_id=ACTOR_SYSTEM)
+            repo.update_claim_attachments(claim_id, all_attachments, actor_id=actor_id)
 
     # Build workflow input: use file:// URLs for local storage so vision tool can read
     attachments_for_workflow = []
@@ -308,5 +316,35 @@ async def process_claim(
         **sanitized,
         "attachments": attachments_for_workflow,
     }
-    result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id)
+    result = run_claim_workflow(
+        claim_data_with_attachments,
+        existing_claim_id=claim_id,
+        actor_id=actor_id,
+    )
+    return result
+
+
+@router.post("/claims/{claim_id}/reprocess")
+async def reprocess_claim(
+    claim_id: str,
+    auth: AuthContext = RequireSupervisor,
+):
+    """Re-run workflow for an existing claim. Requires supervisor role."""
+    repo = ClaimRepository(db_path=get_db_path())
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    claim_data = claim_data_from_row(claim)
+    try:
+        ClaimInput.model_validate(claim_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
+
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    result = run_claim_workflow(
+        claim_data,
+        existing_claim_id=claim_id,
+        actor_id=actor_id,
+    )
     return result
