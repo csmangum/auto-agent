@@ -22,6 +22,7 @@ flowchart LR
 ### Core Concepts
 
 - **[Architecture](architecture.md)** - System design, components, and patterns
+- **[Design Considerations](design-considerations.md)** - Known limitations and future enhancements
 - **[Agent Flow](agent-flow.md)** - Execution flow and state management
 - **[Crews](crews.md)** - Workflow crew details and agent composition
 - **[Skills](skills.md)** - Agent prompts and operational procedures

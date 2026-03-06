@@ -200,3 +200,5 @@ src/claim_agent/
 - **Error messages** – Policy lookup and similar failures return generic messages to callers; detailed errors are logged internally.
 - **Token budgets** – Configurable max tokens and LLM calls per claim prevent runaway usage. See [Configuration](configuration.md#centralized-settings).
 - **Retry** – Transient LLM failures are retried with exponential backoff via `claim_agent.utils.retry`.
+
+For known limitations and future considerations, see [Design Considerations](design-considerations.md).
