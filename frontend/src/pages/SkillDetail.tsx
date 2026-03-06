@@ -2,18 +2,20 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import { getSkill } from '../api/client';
+import type { SkillDetailResponse } from '../api/types';
 
 export default function SkillDetail() {
-  const { name } = useParams();
-  const [skill, setSkill] = useState(null);
+  const { name } = useParams<{ name: string }>();
+  const [skill, setSkill] = useState<SkillDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!name) return;
     setLoading(true);
     getSkill(name)
       .then((data) => setSkill(data))
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
   }, [name]);
 
@@ -38,6 +40,8 @@ export default function SkillDetail() {
     );
   }
 
+  if (!skill) return null;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4 flex-wrap">
@@ -46,7 +50,6 @@ export default function SkillDetail() {
         <span className="text-sm text-gray-400 font-mono">{skill.name}.md</span>
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {skill.goal && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
@@ -62,7 +65,6 @@ export default function SkillDetail() {
         )}
       </div>
 
-      {/* Full content */}
       <div className="bg-white rounded-xl border border-gray-200 p-8">
         <MarkdownRenderer content={skill.content} />
       </div>

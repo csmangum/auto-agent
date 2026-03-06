@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ClaimTable from '../components/ClaimTable';
 import { getClaims } from '../api/client';
+import type { Claim } from '../api/types';
 
 const STATUSES = [
   'pending', 'processing', 'open', 'closed', 'duplicate',
@@ -11,17 +12,17 @@ const STATUSES = [
 const TYPES = ['new', 'duplicate', 'total_loss', 'fraud', 'partial_loss'];
 
 export default function ClaimsList() {
-  const [claims, setClaims] = useState([]);
+  const [claims, setClaims] = useState<Claim[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    const params = { limit: 200 };
+    const params: { limit: number; status?: string; claim_type?: string } = { limit: 200 };
     if (statusFilter) params.status = statusFilter;
     if (typeFilter) params.claim_type = typeFilter;
 
@@ -30,7 +31,7 @@ export default function ClaimsList() {
         setClaims(data.claims);
         setTotal(data.total);
       })
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
   }, [statusFilter, typeFilter]);
 
@@ -41,7 +42,6 @@ export default function ClaimsList() {
         <p className="text-sm text-gray-500 mt-1">Browse and filter all claims in the system</p>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-4">
         <select
           value={statusFilter}
@@ -80,7 +80,6 @@ export default function ClaimsList() {
         </div>
       )}
 
-      {/* Claims table */}
       <div className="bg-white rounded-xl border border-gray-200">
         {loading ? (
           <div className="p-8 text-center">

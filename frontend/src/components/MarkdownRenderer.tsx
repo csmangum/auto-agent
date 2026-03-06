@@ -1,8 +1,25 @@
+import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import MermaidDiagram from './MermaidDiagram';
 
-const components = {
+/** Allowed URL schemes to prevent XSS via javascript:, data:, etc. */
+const SAFE_SCHEMES = ['http:', 'https:', 'mailto:'];
+
+function isSafeHref(href: string | null | undefined): boolean {
+  if (!href || typeof href !== 'string') return false;
+  const trimmed = href.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('#') || trimmed.startsWith('/')) return true;
+  try {
+    const url = new URL(trimmed, 'https://example.com');
+    return SAFE_SCHEMES.includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+const components: Components = {
   h1: ({ children }) => (
     <h1 className="text-3xl font-bold text-gray-900 mt-8 mb-4 pb-2 border-b border-gray-200">
       {children}
@@ -21,11 +38,18 @@ const components = {
   ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1 text-gray-700">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1 text-gray-700">{children}</ol>,
   li: ({ children }) => <li className="text-gray-700">{children}</li>,
-  a: ({ href, children }) => (
-    <a href={href} className="text-blue-600 hover:text-blue-800 underline">
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => {
+    const safeHref = isSafeHref(href) ? href : '#';
+    return (
+      <a
+        href={safeHref}
+        className="text-blue-600 hover:text-blue-800 underline"
+        rel={safeHref.startsWith('http') ? 'noopener noreferrer' : undefined}
+      >
+        {children}
+      </a>
+    );
+  },
   table: ({ children }) => (
     <div className="overflow-x-auto mb-4">
       <table className="min-w-full border border-gray-200 text-sm">{children}</table>
@@ -48,10 +72,9 @@ const components = {
         </code>
       );
     }
-    // Render mermaid blocks as diagrams
-    const lang = className?.replace('language-', '') || '';
+    const lang = className?.replace('language-', '') ?? '';
     if (lang === 'mermaid') {
-      const code = Array.isArray(children) ? children.join('') : String(children || '');
+      const code = Array.isArray(children) ? children.join('') : String(children ?? '');
       return <MermaidDiagram chart={code} />;
     }
     return (
@@ -69,7 +92,11 @@ const components = {
   strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
 };
 
-export default function MarkdownRenderer({ content }) {
+interface MarkdownRendererProps {
+  content?: string | null;
+}
+
+export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
   if (!content) return null;
 
   return (

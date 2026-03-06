@@ -145,6 +145,33 @@ To enable duplicate detection with historical claims:
 python scripts/seed_claims_from_mock_db.py
 ```
 
+## Observability UI (Dashboard)
+
+A React + Vite frontend provides a dashboard for claims, docs, skills, and system config.
+
+```bash
+# Terminal 1: Start backend
+uvicorn claim_agent.api.server:app --reload --port 8000
+
+# Terminal 2: Start frontend (dev)
+cd frontend && npm run dev
+```
+
+Visit http://localhost:5173. The Vite dev server proxies `/api` to the backend.
+
+**Production**: Build with `cd frontend && npm run build`. The backend serves `frontend/dist` when present.
+
+**Security**: Set `CLAIMS_API_KEY` in `.env` to require API key auth (X-API-Key or Authorization: Bearer). Set `CORS_ORIGINS` for production frontend origins.
+
+## Database Migrations
+
+Schema changes use [Alembic](https://alembic.sqlalchemy.org/):
+
+```bash
+alembic upgrade head   # Apply migrations
+alembic revision -m "description"  # Create new migration
+```
+
 ## MCP Server (Optional)
 
 Run claim tools as an MCP server:

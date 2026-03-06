@@ -19,10 +19,14 @@ mermaid.initialize({
 
 let idCounter = 0;
 
-export default function MermaidDiagram({ chart }) {
-  const containerRef = useRef(null);
+interface MermaidDiagramProps {
+  chart: string;
+}
+
+export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState('');
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!chart) return;
@@ -38,9 +42,9 @@ export default function MermaidDiagram({ chart }) {
           setError(null);
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err?.message || 'Failed to render diagram');
+          setError(err instanceof Error ? err.message : 'Failed to render diagram');
           setSvg('');
         }
       });

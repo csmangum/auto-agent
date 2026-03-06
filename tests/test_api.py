@@ -289,3 +289,65 @@ class TestHealthEndpoint:
         resp = client.get("/api/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+# -------------------------------------------------------------------
+# API Key Auth (when CLAIMS_API_KEY is set)
+# -------------------------------------------------------------------
+
+class TestApiKeyAuth:
+    def test_health_always_public(self, client, monkeypatch):
+        """Health endpoint is always accessible without auth."""
+        monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+
+    def test_protected_endpoint_requires_key(self, client, monkeypatch):
+        monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        resp = client.get("/api/claims/stats")
+        assert resp.status_code == 401
+
+    def test_protected_endpoint_accepts_x_api_key(self, client, monkeypatch):
+        monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        resp = client.get("/api/claims/stats", headers={"X-API-Key": "secret123"})
+        assert resp.status_code == 200
+
+    def test_protected_endpoint_accepts_bearer(self, client, monkeypatch):
+        monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        resp = client.get("/api/claims/stats", headers={"Authorization": "Bearer secret123"})
+        assert resp.status_code == 200
+
+
+# -------------------------------------------------------------------
+# Path traversal and injection resistance
+# -------------------------------------------------------------------
+
+class TestPathTraversal:
+    def test_docs_rejects_path_traversal(self, client):
+        """Docs slug is whitelisted; path traversal attempts return 404."""
+        resp = client.get("/api/docs/../etc/passwd")
+        assert resp.status_code == 404
+
+    def test_docs_rejects_encoded_traversal(self, client):
+        resp = client.get("/api/docs/..%2F..%2Fetc%2Fpasswd")
+        assert resp.status_code == 404
+
+    def test_skills_rejects_path_traversal(self, client):
+        """Skills name is validated or path is rejected; no file read."""
+        resp = client.get("/api/skills/../../../etc/passwd")
+        assert resp.status_code in (400, 404)
+
+    def test_skills_rejects_invalid_chars(self, client):
+        resp = client.get("/api/skills/foo;bar")
+        assert resp.status_code == 400
+
+
+class TestInvalidClaimId:
+    def test_claim_id_sql_injection_like_returns_404(self, client):
+        """Malformed claim IDs should return 404, not 500."""
+        resp = client.get("/api/claims/CLM-001' OR '1'='1")
+        assert resp.status_code == 404
+
+    def test_claim_id_semicolon_returns_404(self, client):
+        resp = client.get("/api/claims/CLM-001;DROP TABLE claims")
+        assert resp.status_code == 404

@@ -68,7 +68,10 @@ export default function Layout() {
         {/* Top bar */}
         <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4 lg:hidden">
           <button
+            type="button"
             onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            aria-expanded={sidebarOpen}
             className="text-gray-500 hover:text-gray-700"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

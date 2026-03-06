@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
 import { getSystemConfig, getSystemHealth } from '../api/client';
 
-function ConfigTable({ title, config, descriptions = {} }) {
-  const entries = Object.entries(config);
+interface ConfigTableProps {
+  title: string;
+  config: Record<string, unknown>;
+  descriptions?: Record<string, string>;
+}
+
+function ConfigTable({ title, config, descriptions = {} }: ConfigTableProps) {
+  const entries = Object.entries(config ?? {});
   if (entries.length === 0) return null;
 
   return (
@@ -28,7 +34,7 @@ function ConfigTable({ title, config, descriptions = {} }) {
                 </td>
                 {Object.keys(descriptions).length > 0 && (
                   <td className="px-4 py-2 text-gray-500 text-xs">
-                    {descriptions[key] || ''}
+                    {descriptions[key] ?? ''}
                   </td>
                 )}
               </tr>
@@ -40,7 +46,7 @@ function ConfigTable({ title, config, descriptions = {} }) {
   );
 }
 
-const ESCALATION_DESCRIPTIONS = {
+const ESCALATION_DESCRIPTIONS: Record<string, string> = {
   confidence_threshold: 'Minimum confidence for automated processing',
   high_value_threshold: 'Payout amount ($) triggering human review',
   similarity_ambiguous_range: 'Similarity score range considered ambiguous [low, high]',
@@ -50,7 +56,7 @@ const ESCALATION_DESCRIPTIONS = {
   description_overlap_threshold: 'Minimum description overlap ratio',
 };
 
-const FRAUD_DESCRIPTIONS = {
+const FRAUD_DESCRIPTIONS: Record<string, string> = {
   multiple_claims_days: 'Window (days) for multiple claims check',
   multiple_claims_threshold: 'Number of claims to trigger fraud flag',
   fraud_keyword_score: 'Score points per fraud keyword match',
@@ -63,19 +69,34 @@ const FRAUD_DESCRIPTIONS = {
   critical_indicator_count: 'Number of indicators for critical status',
 };
 
+interface SystemConfigData {
+  escalation?: Record<string, unknown>;
+  fraud?: Record<string, unknown>;
+  valuation?: Record<string, unknown>;
+  partial_loss?: Record<string, unknown>;
+  token_budgets?: Record<string, unknown>;
+  crew_verbose?: boolean;
+}
+
+interface SystemHealthData {
+  status: string;
+  database: string;
+  total_claims: number;
+}
+
 export default function SystemConfig() {
-  const [config, setConfig] = useState(null);
-  const [health, setHealth] = useState(null);
+  const [config, setConfig] = useState<SystemConfigData | null>(null);
+  const [health, setHealth] = useState<SystemHealthData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([getSystemConfig(), getSystemHealth()])
       .then(([configData, healthData]) => {
-        setConfig(configData);
-        setHealth(healthData);
+        setConfig(configData as SystemConfigData);
+        setHealth(healthData as SystemHealthData);
       })
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -100,6 +121,8 @@ export default function SystemConfig() {
     );
   }
 
+  if (!config) return null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -109,7 +132,6 @@ export default function SystemConfig() {
         </p>
       </div>
 
-      {/* Health */}
       {health && (
         <div className={`rounded-xl border p-5 ${
           health.status === 'healthy'
@@ -125,36 +147,35 @@ export default function SystemConfig() {
                 System {health.status === 'healthy' ? 'Healthy' : 'Degraded'}
               </h3>
               <p className="text-sm text-gray-600">
-                Database: {health.database} &middot; {health.total_claims} claims stored
+                Database: {health.database} · {health.total_claims} claims stored
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Configuration sections */}
       <div className="space-y-4">
         <ConfigTable
           title="Escalation (Human-in-the-Loop)"
-          config={config.escalation}
+          config={config.escalation ?? {}}
           descriptions={ESCALATION_DESCRIPTIONS}
         />
         <ConfigTable
           title="Fraud Detection"
-          config={config.fraud}
+          config={config.fraud ?? {}}
           descriptions={FRAUD_DESCRIPTIONS}
         />
         <ConfigTable
           title="Vehicle Valuation"
-          config={config.valuation}
+          config={config.valuation ?? {}}
         />
         <ConfigTable
           title="Partial Loss"
-          config={config.partial_loss}
+          config={config.partial_loss ?? {}}
         />
         <ConfigTable
           title="Token Budgets"
-          config={config.token_budgets}
+          config={config.token_budgets ?? {}}
         />
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">General</h3>

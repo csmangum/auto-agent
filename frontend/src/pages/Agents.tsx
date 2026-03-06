@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getAgentsCatalog } from '../api/client';
+import type { CrewInfo } from '../api/types';
 
 const CREW_COLORS = [
   'border-blue-200 bg-blue-50',
@@ -14,14 +15,14 @@ const CREW_COLORS = [
 const CREW_ICONS = ['🔀', '📝', '🔍', '💥', '🚨', '🔧'];
 
 export default function Agents() {
-  const [crews, setCrews] = useState([]);
+  const [crews, setCrews] = useState<CrewInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getAgentsCatalog()
       .then((data) => setCrews(data.crews))
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
   }, []);
 

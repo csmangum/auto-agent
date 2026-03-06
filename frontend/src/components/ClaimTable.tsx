@@ -1,7 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import StatusBadge from './StatusBadge';
+import { formatDate } from '../utils/date';
+import type { Claim } from '../api/types';
 
-export default function ClaimTable({ claims, compact = false }) {
+interface ClaimTableProps {
+  claims: Claim[];
+  compact?: boolean;
+}
+
+export default function ClaimTable({ claims, compact = false }: ClaimTableProps) {
   const navigate = useNavigate();
 
   if (!claims || claims.length === 0) {
@@ -48,7 +55,7 @@ export default function ClaimTable({ claims, compact = false }) {
                 <td className="px-4 py-3 text-gray-500">{claim.incident_date || '—'}</td>
               )}
               <td className="px-4 py-3 text-gray-400 text-xs">
-                {claim.created_at ? new Date(claim.created_at.replace(' ', 'T') + 'Z').toLocaleDateString() : '—'}
+                {formatDate(claim.created_at) ?? '—'}
               </td>
             </tr>
           ))}

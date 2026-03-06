@@ -2,31 +2,28 @@ import { useState, useEffect } from 'react';
 import { useParams, NavLink, useNavigate } from 'react-router-dom';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import { getDocs, getDoc } from '../api/client';
+import type { DocPage } from '../api/types';
 
 export default function Documentation() {
-  const { slug } = useParams();
+  const { slug } = useParams<{ slug?: string }>();
   const navigate = useNavigate();
-  const [pages, setPages] = useState([]);
-  const [content, setContent] = useState(null);
-  const [title, setTitle] = useState('');
+  const [pages, setPages] = useState<DocPage[]>([]);
+  const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load page list
   useEffect(() => {
     getDocs()
       .then((data) => {
         const availablePages = data.pages.filter((p) => p.available);
         setPages(availablePages);
-        // If no slug specified, navigate to first available page
         if (!slug && availablePages.length > 0) {
           navigate(`/docs/${availablePages[0].slug}`, { replace: true });
         }
       })
-      .catch((err) => setError(err.message));
-  }, []);
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'));
+  }, [navigate, slug]);
 
-  // Load page content
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
@@ -34,15 +31,13 @@ export default function Documentation() {
     getDoc(slug)
       .then((data) => {
         setContent(data.content);
-        setTitle(data.title);
       })
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
   }, [slug]);
 
   return (
     <div className="flex gap-6 min-h-[calc(100vh-120px)]">
-      {/* Sidebar */}
       <div className="w-56 shrink-0 hidden md:block">
         <div className="sticky top-6">
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
@@ -68,10 +63,9 @@ export default function Documentation() {
         </div>
       </div>
 
-      {/* Mobile page selector */}
       <div className="md:hidden mb-4 w-full">
         <select
-          value={slug || ''}
+          value={slug ?? ''}
           onChange={(e) => navigate(`/docs/${e.target.value}`)}
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
         >
@@ -83,7 +77,6 @@ export default function Documentation() {
         </select>
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">

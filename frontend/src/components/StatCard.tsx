@@ -1,5 +1,13 @@
-export default function StatCard({ title, value, subtitle, icon, color = 'blue' }) {
-  const colorMap = {
+interface StatCardProps {
+  title: string;
+  value: number | string;
+  subtitle?: string;
+  icon?: string;
+  color?: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'teal' | 'gray';
+}
+
+export default function StatCard({ title, value, subtitle, icon, color = 'blue' }: StatCardProps) {
+  const colorMap: Record<string, string> = {
     blue: 'bg-blue-50 text-blue-700 border-blue-200',
     green: 'bg-green-50 text-green-700 border-green-200',
     purple: 'bg-purple-50 text-purple-700 border-purple-200',
@@ -10,7 +18,7 @@ export default function StatCard({ title, value, subtitle, icon, color = 'blue' 
   };
 
   return (
-    <div className={`rounded-xl border p-5 ${colorMap[color] || colorMap.blue}`}>
+    <div className={`rounded-xl border p-5 ${colorMap[color] ?? colorMap.blue}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium opacity-75">{title}</p>

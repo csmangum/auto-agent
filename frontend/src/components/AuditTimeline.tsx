@@ -1,6 +1,12 @@
 import StatusBadge from './StatusBadge';
+import { formatDateTime } from '../utils/date';
+import type { AuditEvent } from '../api/types';
 
-export default function AuditTimeline({ events }) {
+interface AuditTimelineProps {
+  events: AuditEvent[];
+}
+
+export default function AuditTimeline({ events }: AuditTimelineProps) {
   if (!events || events.length === 0) {
     return <p className="text-gray-500 text-sm py-4">No audit events.</p>;
   }
@@ -10,8 +16,7 @@ export default function AuditTimeline({ events }) {
       <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
       <div className="space-y-6">
         {events.map((event, i) => (
-          <div key={event.id || i} className="relative pl-10">
-            {/* Dot */}
+          <div key={event.id ?? i} className="relative pl-10">
             <div className="absolute left-2.5 top-1.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow" />
 
             <div className="bg-white border border-gray-100 rounded-lg p-4 shadow-sm">
@@ -36,9 +41,7 @@ export default function AuditTimeline({ events }) {
               )}
 
               <p className="text-xs text-gray-400 mt-2">
-                {event.created_at
-                  ? new Date(event.created_at + 'Z').toLocaleString()
-                  : '—'}
+                {formatDateTime(event.created_at) ?? '—'}
               </p>
             </div>
           </div>

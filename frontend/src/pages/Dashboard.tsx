@@ -1,10 +1,22 @@
 import { useState, useEffect } from 'react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import StatCard from '../components/StatCard';
 import ClaimTable from '../components/ClaimTable';
 import { getClaimsStats, getClaims } from '../api/client';
+import type { ClaimsStats } from '../api/types';
 
-const TYPE_COLORS = {
+const TYPE_COLORS: Record<string, string> = {
   new: '#3B82F6',
   duplicate: '#F97316',
   total_loss: '#6366F1',
@@ -13,7 +25,7 @@ const TYPE_COLORS = {
   unclassified: '#9CA3AF',
 };
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   pending: '#EAB308',
   processing: '#3B82F6',
   open: '#22C55E',
@@ -32,10 +44,10 @@ const STATUS_COLORS = {
 };
 
 export default function Dashboard() {
-  const [stats, setStats] = useState(null);
-  const [recentClaims, setRecentClaims] = useState([]);
+  const [stats, setStats] = useState<ClaimsStats | null>(null);
+  const [recentClaims, setRecentClaims] = useState<import('../api/types').Claim[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([getClaimsStats(), getClaims({ limit: 10 })])
@@ -43,7 +55,7 @@ export default function Dashboard() {
         setStats(statsData);
         setRecentClaims(claimsData.claims);
       })
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -71,32 +83,33 @@ export default function Dashboard() {
     );
   }
 
-  const typeData = Object.entries(stats.by_type || {}).map(([name, value]) => ({
+  if (!stats) return null;
+
+  const typeData = Object.entries(stats.by_type ?? {}).map(([name, value]) => ({
     name: name.replace(/_/g, ' '),
     value,
-    fill: TYPE_COLORS[name] || TYPE_COLORS.unclassified,
+    fill: TYPE_COLORS[name] ?? TYPE_COLORS.unclassified,
   }));
 
-  const statusData = Object.entries(stats.by_status || {}).map(([name, value]) => ({
+  const statusData = Object.entries(stats.by_status ?? {}).map(([name, value]) => ({
     name: name.replace(/_/g, ' '),
     value,
-    fill: STATUS_COLORS[name] || STATUS_COLORS.unknown,
+    fill: STATUS_COLORS[name] ?? STATUS_COLORS.unknown,
   }));
 
-  // Compute counts for stat cards
   const activeStatuses = ['pending', 'processing', 'needs_review', 'under_investigation'];
   const activeCount = activeStatuses.reduce(
-    (sum, s) => sum + (stats.by_status[s] || 0),
+    (sum, s) => sum + (stats.by_status?.[s] ?? 0),
     0
   );
   const resolvedStatuses = ['closed', 'settled', 'denied', 'duplicate'];
   const resolvedCount = resolvedStatuses.reduce(
-    (sum, s) => sum + (stats.by_status[s] || 0),
+    (sum, s) => sum + (stats.by_status?.[s] ?? 0),
     0
   );
   const flaggedStatuses = ['fraud_suspected', 'fraud_confirmed', 'disputed'];
   const flaggedCount = flaggedStatuses.reduce(
-    (sum, s) => sum + (stats.by_status[s] || 0),
+    (sum, s) => sum + (stats.by_status?.[s] ?? 0),
     0
   );
 
@@ -107,7 +120,6 @@ export default function Dashboard() {
         <p className="text-sm text-gray-500 mt-1">Claims system observability overview</p>
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Claims"
@@ -139,9 +151,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Claims by Type - Pie */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Claims by Type</h3>
           {typeData.length > 0 ? (
@@ -169,7 +179,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Claims by Status - Bar */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Claims by Status</h3>
           {statusData.length > 0 ? (
@@ -192,7 +201,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Claims */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent Claims</h3>
         <ClaimTable claims={recentClaims} compact />
