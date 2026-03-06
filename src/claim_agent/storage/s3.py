@@ -18,17 +18,20 @@ class S3StorageAdapter(StorageAdapter):
         self._bucket = bucket
         self._prefix = prefix.rstrip("/")
         self._endpoint_url = endpoint_url
+        self._client_instance = None
 
     def _client(self):
-        import boto3
-        from botocore.config import Config
+        if self._client_instance is None:
+            import boto3
+            from botocore.config import Config
 
-        config = Config(signature_version="s3v4")
-        return boto3.client(
-            "s3",
-            endpoint_url=self._endpoint_url,
-            config=config,
-        )
+            config = Config(signature_version="s3v4")
+            self._client_instance = boto3.client(
+                "s3",
+                endpoint_url=self._endpoint_url,
+                config=config,
+            )
+        return self._client_instance
 
     def save(
         self,

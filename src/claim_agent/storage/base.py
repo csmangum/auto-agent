@@ -1,7 +1,6 @@
 """Abstract storage adapter for claim attachments."""
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import BinaryIO
 
 
@@ -25,7 +24,7 @@ class StorageAdapter(ABC):
             content_type: Optional MIME type.
 
         Returns:
-            URL or path string for the stored file.
+            A storage key or path used as input to `get_url()`.
         """
         ...
 

@@ -89,10 +89,11 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
                         if t not in valid_types:
                             t = "other"
                         a = {
-                            "url": _sanitize_text(item.get("url"), 2048),
+                            "url": _remove_injection_patterns(_sanitize_text(item.get("url"), 2048)),
                             "type": t,
-                            "description": _sanitize_text(item.get("description"), 500) or None,
                         }
+                        raw_desc = _sanitize_text(item.get("description"), 500)
+                        a["description"] = _remove_injection_patterns(raw_desc) or None
                         if a["url"]:
                             sanitized_attachments.append(a)
                 out[key] = sanitized_attachments

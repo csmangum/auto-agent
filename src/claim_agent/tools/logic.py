@@ -182,24 +182,33 @@ def generate_report_pdf_impl(
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+        from xml.sax.saxutils import escape
+
+        def _escape_field(value: object) -> str:
+            return escape(str(value)) if value is not None else ""
 
         out_dir = Path(os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")).parent / "reports"
         out_dir.mkdir(parents=True, exist_ok=True)
-        pdf_path = out_dir / f"report_{claim_id.replace('/', '_')}_{uuid.uuid4().hex[:6]}.pdf"
+        pdf_path = out_dir / f"report_{str(claim_id).replace('/', '_')}_{uuid.uuid4().hex[:6]}.pdf"
+
+        escaped_claim_id = _escape_field(claim_id)
+        escaped_claim_type = _escape_field(claim_type)
+        escaped_status = _escape_field(status)
+        safe_summary = escape(summary or "").replace("\n", "<br/>")
 
         doc = SimpleDocTemplate(str(pdf_path), pagesize=letter, rightMargin=inch, leftMargin=inch)
         styles = getSampleStyleSheet()
         story = []
         story.append(Paragraph("Claim Report", styles["Title"]))
         story.append(Spacer(1, 0.25 * inch))
-        story.append(Paragraph(f"<b>Claim ID:</b> {claim_id}", styles["Normal"]))
-        story.append(Paragraph(f"<b>Type:</b> {claim_type}", styles["Normal"]))
-        story.append(Paragraph(f"<b>Status:</b> {status}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Claim ID:</b> {escaped_claim_id}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Type:</b> {escaped_claim_type}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Status:</b> {escaped_status}", styles["Normal"]))
         if payout_amount is not None:
             story.append(Paragraph(f"<b>Payout:</b> ${payout_amount:,.2f}", styles["Normal"]))
         story.append(Spacer(1, 0.25 * inch))
         story.append(Paragraph("<b>Summary</b>", styles["Heading2"]))
-        story.append(Paragraph(summary.replace("\n", "<br/>"), styles["Normal"]))
+        story.append(Paragraph(safe_summary, styles["Normal"]))
         doc.build(story)
         result["pdf_path"] = str(pdf_path.resolve())
     except ImportError:

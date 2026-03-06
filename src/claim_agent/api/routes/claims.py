@@ -13,6 +13,8 @@ from claim_agent.utils import infer_attachment_type
 
 router = APIRouter(tags=["claims"])
 
+_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
 
 @router.get("/claims/stats")
 def get_claims_stats():
@@ -186,6 +188,11 @@ async def process_claim(
             if not f.filename:
                 continue
             content = await f.read()
+            if len(content) > _MAX_UPLOAD_SIZE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+                )
             stored_key = storage.save(
                 claim_id=claim_id,
                 filename=f.filename,
