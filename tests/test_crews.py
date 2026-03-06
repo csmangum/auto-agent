@@ -71,12 +71,6 @@ def test_total_loss_crew_acceptance_criteria():
     """Verify Total Loss crew structure matches formal specification (Issue #73)."""
     from crewai import LLM
     from claim_agent.crews.total_loss_crew import create_total_loss_crew
-    from claim_agent.agents.total_loss import (
-        create_damage_assessor_agent,
-        create_valuation_agent,
-        create_payout_agent,
-        create_settlement_agent,
-    )
 
     mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
     crew = create_total_loss_crew(llm=mock_llm)
@@ -84,7 +78,7 @@ def test_total_loss_crew_acceptance_criteria():
     assess_task, valuation_task, payout_task, settlement_task = crew.tasks
 
     # AC1: Damage task calls evaluate_damage and outputs total_loss_candidate
-    damage_agent = create_damage_assessor_agent(llm=mock_llm, use_rag=False)
+    damage_agent = crew.agents[0]
     damage_tool_names = [getattr(t, "name", str(t)) for t in (damage_agent.tools or [])]
     assert any("evaluate" in n.lower() and "damage" in n.lower() for n in damage_tool_names), (
         "AC1: Damage agent must have evaluate_damage tool"
@@ -92,7 +86,7 @@ def test_total_loss_crew_acceptance_criteria():
     assert "total_loss_candidate" in assess_task.expected_output, "AC1: Damage task must output total_loss_candidate"
 
     # AC2: Valuation task calls fetch_vehicle_value with vehicle identifiers
-    valuation_agent = create_valuation_agent(llm=mock_llm, use_rag=False)
+    valuation_agent = crew.agents[1]
     valuation_tool_names = [getattr(t, "name", str(t)) for t in (valuation_agent.tools or [])]
     assert any("fetch" in n.lower() and "vehicle" in n.lower() for n in valuation_tool_names), (
         "AC2: Valuation agent must have fetch_vehicle_value tool"
@@ -100,7 +94,7 @@ def test_total_loss_crew_acceptance_criteria():
     assert "vin" in valuation_task.description and "vehicle_year" in valuation_task.description
 
     # AC3: Payout task calls calculate_payout with vehicle value and policy_number
-    payout_agent = create_payout_agent(llm=mock_llm, use_rag=False)
+    payout_agent = crew.agents[2]
     payout_tool_names = [getattr(t, "name", str(t)) for t in (payout_agent.tools or [])]
     assert any("calculate" in n.lower() and "payout" in n.lower() for n in payout_tool_names), (
         "AC3: Payout agent must have calculate_payout tool"
@@ -111,7 +105,7 @@ def test_total_loss_crew_acceptance_criteria():
     assert "minus" in payout_task.description.lower() or "deductible" in payout_task.description.lower()
 
     # AC5: Settlement task calls generate_report with claim_type='total_loss', status='closed', payout_amount
-    settlement_agent = create_settlement_agent(llm=mock_llm, use_rag=False)
+    settlement_agent = crew.agents[3]
     settlement_tool_names = [getattr(t, "name", str(t)) for t in (settlement_agent.tools or [])]
     assert any("generate" in n.lower() and "report" in n.lower() for n in settlement_tool_names), (
         "AC5: Settlement agent must have generate_report tool"
