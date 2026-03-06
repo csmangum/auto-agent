@@ -60,7 +60,7 @@ class ClaimRepository:
                     STATUS_PENDING,
                 ),
             )
-            after_state = json.dumps({"status": STATUS_PENDING})
+            after_state = json.dumps({"status": STATUS_PENDING, "claim_type": None, "payout_amount": None})
             conn.execute(
                 """
                 INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
