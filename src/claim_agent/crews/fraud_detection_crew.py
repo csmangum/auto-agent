@@ -57,9 +57,9 @@ Output the pattern analysis results including patterns_detected, timing_flags, a
         agent=pattern_agent,
     )
 
-    # Task 2: Cross-Reference Fraud Indicators
+    # Task 2: Cross-Reference Fraud Indicators (receives pattern_task output via context)
     crossref_task = Task(
-        description="""Cross-reference the claim against known fraud indicators using claim_data.
+        description="""Cross-reference the claim against known fraud indicators using claim_data and the pattern analysis from the previous task.
 
 Steps:
 1. Use cross_reference_fraud_indicators with the claim_data JSON.
