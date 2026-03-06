@@ -351,10 +351,13 @@ _CLAIM_DATA_DEFAULTS = {
 
 def _claim_data_from_row(row: dict) -> dict:
     """Build claim_data dict from claim row for reprocess."""
-    result = {
-        k: row.get(k) if row.get(k) is not None else _CLAIM_DATA_DEFAULTS[k]
-        for k in _CLAIM_DATA_KEYS
-    }
+    result = {}
+    for k in _CLAIM_DATA_KEYS:
+        if row.get(k) is not None:
+            result[k] = row[k]
+        else:
+            default = _CLAIM_DATA_DEFAULTS[k]
+            result[k] = list(default) if isinstance(default, list) else default
     if isinstance(result.get("attachments"), str):
         result["attachments"] = json.loads(result["attachments"])
     return result
