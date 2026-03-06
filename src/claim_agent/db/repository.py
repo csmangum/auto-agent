@@ -190,10 +190,12 @@ class ClaimRepository:
             default=str,
         )
         with get_connection(self._db_path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 "UPDATE claims SET attachments = ?, updated_at = datetime('now') WHERE id = ?",
                 (attachments_json, claim_id),
             )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Claim not found: {claim_id}")
 
     def get_claim_history(self, claim_id: str) -> list[dict[str, Any]]:
         """Get audit log entries for a claim."""

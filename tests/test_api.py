@@ -373,3 +373,109 @@ class TestInvalidClaimId:
     def test_claim_id_semicolon_returns_404(self, client):
         resp = client.get("/api/claims/CLM-001;DROP TABLE claims")
         assert resp.status_code == 404
+
+
+# -------------------------------------------------------------------
+# POST /claims/process
+# -------------------------------------------------------------------
+
+VALID_CLAIM_PAYLOAD = {
+    "policy_number": "POL-001",
+    "vin": "1HGBH41JXMN109186",
+    "vehicle_year": 2021,
+    "vehicle_make": "Honda",
+    "vehicle_model": "Accord",
+    "incident_date": "2025-01-15",
+    "incident_description": "Rear-ended at stoplight",
+    "damage_description": "Rear bumper damage",
+    "estimated_damage": 2500.0,
+}
+
+
+class TestProcessClaimEndpoint:
+    """Tests for POST /claims/process multipart endpoint."""
+
+    def _mock_workflow(self, monkeypatch):
+        """Patch run_claim_workflow to avoid real LLM calls."""
+        mock_result = {
+            "claim_id": "CLM-TEST-MOCK",
+            "claim_type": "new",
+            "status": "open",
+            "summary": "Claim processed successfully.",
+        }
+        import claim_agent.crews.main_crew as main_crew_mod
+        monkeypatch.setattr(main_crew_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        # Ensure the storage singleton is reset to local (tmp) for each test
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+
+    def test_valid_claim_no_files(self, client, monkeypatch, tmp_path):
+        """Valid claim JSON without file attachments returns a workflow result."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        self._mock_workflow(monkeypatch)
+        import json
+
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST-MOCK"
+
+    def test_invalid_json_in_claim_field(self, client, monkeypatch):
+        """Malformed JSON in the 'claim' form field returns 400."""
+        self._mock_workflow(monkeypatch)
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": "not-valid-json{"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid claim JSON" in resp.json()["detail"]
+
+    def test_validation_failure_in_claim_data(self, client, monkeypatch):
+        """Claim data failing Pydantic validation returns 400."""
+        self._mock_workflow(monkeypatch)
+        import json
+
+        bad_claim = {**VALID_CLAIM_PAYLOAD, "vehicle_year": "not-a-year"}
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(bad_claim)},
+        )
+        assert resp.status_code == 400
+        assert "Invalid claim data" in resp.json()["detail"]
+
+    def test_valid_claim_with_file_upload(self, client, monkeypatch, tmp_path):
+        """Valid claim with an uploaded file stores the file and includes it in result."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        self._mock_workflow(monkeypatch)
+        import json
+
+        file_content = b"fake image data"
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            files=[("files", ("damage.jpg", file_content, "image/jpeg"))],
+        )
+        assert resp.status_code == 200
+
+    def test_file_too_large_returns_413(self, client, monkeypatch, tmp_path):
+        """A file exceeding the 50 MB limit returns HTTP 413."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        self._mock_workflow(monkeypatch)
+        import json
+        from claim_agent.api.routes import claims as claims_module
+
+        # Temporarily lower the limit to make the test fast
+        original_limit = claims_module._MAX_UPLOAD_SIZE_BYTES
+        monkeypatch.setattr(claims_module, "_MAX_UPLOAD_SIZE_BYTES", 10)
+        try:
+            resp = client.post(
+                "/api/claims/process",
+                data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+                files=[("files", ("big.jpg", b"X" * 11, "image/jpeg"))],
+            )
+        finally:
+            claims_module._MAX_UPLOAD_SIZE_BYTES = original_limit
+        assert resp.status_code == 413
