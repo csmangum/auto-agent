@@ -1,0 +1,170 @@
+import { useState, useEffect } from 'react';
+import { getSystemConfig, getSystemHealth } from '../api/client';
+
+function ConfigTable({ title, config, descriptions = {} }) {
+  const entries = Object.entries(config);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wider text-gray-500">
+              <th className="px-4 py-2 font-medium">Parameter</th>
+              <th className="px-4 py-2 font-medium">Value</th>
+              {Object.keys(descriptions).length > 0 && (
+                <th className="px-4 py-2 font-medium">Description</th>
+              )}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {entries.map(([key, value]) => (
+              <tr key={key} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-mono text-gray-700 text-xs">{key}</td>
+                <td className="px-4 py-2 font-mono text-blue-700 font-medium">
+                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                </td>
+                {Object.keys(descriptions).length > 0 && (
+                  <td className="px-4 py-2 text-gray-500 text-xs">
+                    {descriptions[key] || ''}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const ESCALATION_DESCRIPTIONS = {
+  confidence_threshold: 'Minimum confidence for automated processing',
+  high_value_threshold: 'Payout amount ($) triggering human review',
+  similarity_ambiguous_range: 'Similarity score range considered ambiguous [low, high]',
+  fraud_damage_vs_value_ratio: 'Damage-to-value ratio triggering fraud check',
+  vin_claims_days: 'Days window for checking VIN claim history',
+  confidence_decrement_per_pattern: 'Confidence reduction per suspicious pattern',
+  description_overlap_threshold: 'Minimum description overlap ratio',
+};
+
+const FRAUD_DESCRIPTIONS = {
+  multiple_claims_days: 'Window (days) for multiple claims check',
+  multiple_claims_threshold: 'Number of claims to trigger fraud flag',
+  fraud_keyword_score: 'Score points per fraud keyword match',
+  multiple_claims_score: 'Score points for multiple claims',
+  timing_anomaly_score: 'Score points for timing anomalies',
+  damage_mismatch_score: 'Score points for damage/incident mismatch',
+  high_risk_threshold: 'Score threshold for high risk',
+  medium_risk_threshold: 'Score threshold for medium risk',
+  critical_risk_threshold: 'Score threshold for critical risk',
+  critical_indicator_count: 'Number of indicators for critical status',
+};
+
+export default function SystemConfig() {
+  const [config, setConfig] = useState(null);
+  const [health, setHealth] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    Promise.all([getSystemConfig(), getSystemHealth()])
+      .then(([configData, healthData]) => {
+        setConfig(configData);
+        setHealth(healthData);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-gray-900">System Configuration</h1>
+        <div className="animate-pulse space-y-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-40 bg-gray-100 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">System Configuration</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Current configuration thresholds and system health
+        </p>
+      </div>
+
+      {/* Health */}
+      {health && (
+        <div className={`rounded-xl border p-5 ${
+          health.status === 'healthy'
+            ? 'bg-green-50 border-green-200'
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">
+              {health.status === 'healthy' ? '✅' : '⚠️'}
+            </span>
+            <div>
+              <h3 className="font-semibold text-gray-900">
+                System {health.status === 'healthy' ? 'Healthy' : 'Degraded'}
+              </h3>
+              <p className="text-sm text-gray-600">
+                Database: {health.database} &middot; {health.total_claims} claims stored
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Configuration sections */}
+      <div className="space-y-4">
+        <ConfigTable
+          title="Escalation (Human-in-the-Loop)"
+          config={config.escalation}
+          descriptions={ESCALATION_DESCRIPTIONS}
+        />
+        <ConfigTable
+          title="Fraud Detection"
+          config={config.fraud}
+          descriptions={FRAUD_DESCRIPTIONS}
+        />
+        <ConfigTable
+          title="Vehicle Valuation"
+          config={config.valuation}
+        />
+        <ConfigTable
+          title="Partial Loss"
+          config={config.partial_loss}
+        />
+        <ConfigTable
+          title="Token Budgets"
+          config={config.token_budgets}
+        />
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">General</h3>
+          <p className="text-sm text-gray-600">
+            CrewAI Verbose Mode: <span className="font-mono font-medium text-blue-700">
+              {config.crew_verbose ? 'true' : 'false'}
+            </span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
