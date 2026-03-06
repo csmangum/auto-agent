@@ -7,22 +7,11 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.models.claim import Attachment, AttachmentType
+from claim_agent.models.claim import Attachment
 from claim_agent.storage import get_storage_adapter
+from claim_agent.utils import infer_attachment_type
 
 router = APIRouter(tags=["claims"])
-
-
-def _infer_attachment_type(filename: str) -> AttachmentType:
-    """Infer attachment type from filename extension."""
-    ext = (filename.rsplit(".", 1)[-1] or "").lower()
-    if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic"):
-        return AttachmentType.PHOTO
-    if ext == "pdf":
-        return AttachmentType.PDF
-    if ext in ("doc", "docx", "xls", "xlsx") or "estimate" in filename.lower():
-        return AttachmentType.ESTIMATE
-    return AttachmentType.OTHER
 
 
 @router.get("/claims/stats")
@@ -204,7 +193,7 @@ async def process_claim(
                 content_type=f.content_type,
             )
             url = storage.get_url(claim_id, stored_key)
-            atype = _infer_attachment_type(f.filename)
+            atype = infer_attachment_type(f.filename)
             all_attachments.append(
                 Attachment(url=url, type=atype, description=f"Uploaded: {f.filename}")
             )

@@ -73,24 +73,29 @@ Options:
 """
 
 
+def _parse_attachment_args() -> list[Path]:
+    """Parse --attachment arguments from sys.argv."""
+    attachment_paths = []
+    raw = sys.argv[1:]
+    i = 0
+    while i < len(raw):
+        if raw[i] == "--attachment" and i + 1 < len(raw):
+            attachment_paths.append(Path(raw[i + 1]))
+            i += 2
+        else:
+            i += 1
+    return attachment_paths
+
+
 def _claim_data_from_row(row: dict) -> dict:
     """Build full claim_data dict from a claim row for reprocess. Uses defaults for None."""
-    return {
+    result = {
         k: row.get(k) if row.get(k) is not None else _CLAIM_DATA_DEFAULTS[k]
         for k in _CLAIM_DATA_KEYS
     }
-
-
-def _infer_attachment_type(filename: str) -> str:
-    """Infer attachment type from filename extension."""
-    ext = (filename.rsplit(".", 1)[-1] or "").lower()
-    if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic"):
-        return "photo"
-    if ext == "pdf":
-        return "pdf"
-    if ext in ("doc", "docx", "xls", "xlsx") or "estimate" in filename.lower():
-        return "estimate"
-    return "other"
+    if isinstance(result.get("attachments"), str):
+        result["attachments"] = json.loads(result["attachments"])
+    return result
 
 
 def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) -> None:
@@ -114,9 +119,9 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
 
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.repository import ClaimRepository
-    from claim_agent.models.claim import Attachment, AttachmentType
+    from claim_agent.models.claim import Attachment
     from claim_agent.storage import get_storage_adapter
-    from claim_agent.utils.sanitization import sanitize_claim_data
+    from claim_agent.utils import infer_attachment_type, sanitize_claim_data
 
     sanitized = sanitize_claim_data(claim_data)
     claim_input = ClaimInput.model_validate(sanitized)
@@ -137,7 +142,7 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
                 content=content,
             )
             url = storage.get_url(claim_id, stored_key)
-            atype = AttachmentType(_infer_attachment_type(ap.name))
+            atype = infer_attachment_type(ap.name)
             all_attachments.append(
                 Attachment(url=url, type=atype, description=f"Uploaded: {ap.name}")
             )
@@ -291,31 +296,14 @@ def main() -> None:
             print(_usage(), file=sys.stderr)
             sys.exit(1)
         path = Path(argv[1])
-        # Parse --attachment from raw argv (filtered argv drops all --options)
-        attachment_paths = []
-        raw = sys.argv[1:]
-        i = 0
-        while i < len(raw):
-            if raw[i] == "--attachment" and i + 1 < len(raw):
-                attachment_paths.append(Path(raw[i + 1]))
-                i += 2
-            else:
-                i += 1
+        attachment_paths = _parse_attachment_args()
         cmd_process(path, attachment_paths if attachment_paths else None)
         return
 
     # Legacy: single argument is a file path (process)
     path = Path(argv[0])
     if path.suffix and path.exists():
-        attachment_paths = []
-        raw = sys.argv[1:]
-        i = 0
-        while i < len(raw):
-            if raw[i] == "--attachment" and i + 1 < len(raw):
-                attachment_paths.append(Path(raw[i + 1]))
-                i += 2
-            else:
-                i += 1
+        attachment_paths = _parse_attachment_args()
         cmd_process(path, attachment_paths if attachment_paths else None)
         return
 
