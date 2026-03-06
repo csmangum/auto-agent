@@ -8,8 +8,11 @@ import json
 import uuid
 from typing import Any
 
+from claim_agent.models.claim import Attachment
+
 from claim_agent.db.audit_events import (
     ACTOR_WORKFLOW,
+    AUDIT_EVENT_ATTACHMENTS_UPDATED,
     AUDIT_EVENT_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
 )
@@ -37,14 +40,18 @@ class ClaimRepository:
     ) -> str:
         """Insert new claim, generate ID, log 'created' audit entry. Returns claim_id."""
         claim_id = _generate_claim_id()
+        attachments_json = json.dumps(
+            [a.model_dump(mode="json") for a in claim_input.attachments],
+            default=str,
+        )
         with get_connection(self._db_path) as conn:
             conn.execute(
                 """
                 INSERT INTO claims (
                     id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                     incident_date, incident_description, damage_description, estimated_damage,
-                    claim_type, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    claim_type, status, attachments
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     claim_id,
@@ -59,6 +66,7 @@ class ClaimRepository:
                     claim_input.estimated_damage,
                     None,
                     STATUS_PENDING,
+                    attachments_json,
                 ),
             )
             after_state = json.dumps({"status": STATUS_PENDING, "claim_type": None, "payout_amount": None})
@@ -170,6 +178,48 @@ class ClaimRepository:
                 VALUES (?, ?, ?, ?)
                 """,
                 (claim_id, claim_type, router_output, workflow_output),
+            )
+
+    def update_claim_attachments(
+        self,
+        claim_id: str,
+        attachments: list[Attachment],
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Update attachments for a claim (e.g. after file upload). Logs an audit entry."""
+        attachments_json = json.dumps(
+            [a.model_dump(mode="json") for a in attachments],
+            default=str,
+        )
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT attachments FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Claim not found: {claim_id}")
+            before_attachments = row["attachments"] or "[]"
+            cursor = conn.execute(
+                "UPDATE claims SET attachments = ?, updated_at = datetime('now') WHERE id = ?",
+                (attachments_json, claim_id),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Claim not found: {claim_id}")
+            before_state = before_attachments  # already a serialized JSON array
+            after_state = attachments_json      # already a serialized JSON array
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim_id,
+                    AUDIT_EVENT_ATTACHMENTS_UPDATED,
+                    f"Attachments updated: {len(attachments)} file(s)",
+                    actor_id,
+                    before_state,
+                    after_state,
+                ),
             )
 
     def get_claim_history(self, claim_id: str) -> list[dict[str, Any]]:

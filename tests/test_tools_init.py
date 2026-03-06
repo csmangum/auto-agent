@@ -209,6 +209,29 @@ class TestToolsLazyLoading:
             from claim_agent import tools
             _ = tools.nonexistent_tool
 
+    def test_generate_report_pdf_lazy_load(self):
+        """Test lazy loading of generate_report_pdf; returns error JSON when reportlab is absent."""
+        from claim_agent.tools import generate_report_pdf
+
+        result = generate_report_pdf.run(
+            claim_id="CLM-TEST",
+            claim_type="new",
+            status="open",
+            summary="Test summary",
+        )
+        data = json.loads(result)
+        # Either pdf_path is set (reportlab available) or error is set (not installed)
+        assert "pdf_path" in data or "error" in data
+
+    def test_analyze_damage_photo_lazy_load(self):
+        """Test lazy loading of analyze_damage_photo; returns error JSON when litellm is absent."""
+        from claim_agent.tools import analyze_damage_photo
+
+        result = analyze_damage_photo.run(image_url="https://example.com/photo.jpg")
+        data = json.loads(result)
+        # Either a full analysis or an error key is returned
+        assert "severity" in data or "error" in data
+
 
 class TestClaimsToolsWrapper:
     """Test claims_tools.py wrappers."""

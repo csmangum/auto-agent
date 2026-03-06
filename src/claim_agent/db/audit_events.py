@@ -12,6 +12,7 @@ AUDIT_EVENT_REJECTION = "rejection"
 AUDIT_EVENT_REPROCESS = "reprocess"
 AUDIT_EVENT_ESCALATION = "escalation"
 AUDIT_EVENT_PAYOUT_SET = "payout_set"
+AUDIT_EVENT_ATTACHMENTS_UPDATED = "attachments_updated"
 
 # Actor identifiers for automated actions
 ACTOR_SYSTEM = "system"
@@ -26,4 +27,5 @@ AUDIT_EVENT_TYPES = (
     AUDIT_EVENT_REPROCESS,
     AUDIT_EVENT_ESCALATION,
     AUDIT_EVENT_PAYOUT_SET,
+    AUDIT_EVENT_ATTACHMENTS_UPDATED,
 )
