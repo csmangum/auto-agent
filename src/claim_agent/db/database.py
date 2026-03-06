@@ -52,6 +52,19 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
+
+-- Async job queue tracking (job_id -> claim_id)
+CREATE TABLE IF NOT EXISTS claim_jobs (
+    job_id TEXT PRIMARY KEY,
+    claim_id TEXT NOT NULL,
+    status TEXT DEFAULT 'queued',
+    result_summary TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_jobs_claim_id ON claim_jobs(claim_id);
+
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """

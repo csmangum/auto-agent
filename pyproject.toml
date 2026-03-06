@@ -28,9 +28,14 @@ dev = [
 observability = [
     "langsmith>=0.1.0",
 ]
+async = [
+    "redis>=5.0.0",
+    "rq>=1.16.0",
+]
 
 [project.scripts]
 claim-agent = "claim_agent.main:main"
+claim-agent-worker = "claim_agent.worker:main"
 
 [build-system]
 requires = ["hatchling"]

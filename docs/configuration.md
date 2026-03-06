@@ -25,6 +25,7 @@ cp .env.example .env
 | `OPENAI_API_BASE` | (none) | Custom API base URL (for OpenRouter) |
 | `OPENAI_MODEL_NAME` | `gpt-4o-mini` | Model to use for agents |
 | `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database |
+| `REDIS_URL` | (none) | Redis URL for async job queue (see [Async Processing](async-processing.md)) |
 | `MOCK_DB_PATH` | `data/mock_db.json` | Path to mock policy/vehicle data |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
@@ -295,7 +296,7 @@ For production, consider:
 ### Performance
 
 1. Consider caching for frequently accessed data
-2. Use async processing for high-volume scenarios
+2. **Async processing:** Set `REDIS_URL` and run `claim-agent-worker` for high-volume scenarios. See [Async Processing](async-processing.md).
 3. Monitor LLM API usage and costs
 
 ## Configuration Validation
