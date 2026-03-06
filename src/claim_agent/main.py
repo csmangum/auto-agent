@@ -17,34 +17,6 @@ from pydantic import ValidationError
 if __name__ == "__main__" and str(Path(__file__).resolve().parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-_CLAIM_DATA_KEYS = (
-    "policy_number",
-    "vin",
-    "vehicle_year",
-    "vehicle_make",
-    "vehicle_model",
-    "incident_date",
-    "incident_description",
-    "damage_description",
-    "estimated_damage",
-    "attachments",
-)
-
-# Defaults for _claim_data_from_row when row has None (required for ClaimInput)
-_CLAIM_DATA_DEFAULTS = {
-    "policy_number": "",
-    "vin": "",
-    "vehicle_year": 0,
-    "vehicle_make": "",
-    "vehicle_model": "",
-    "incident_date": "",
-    "incident_description": "",
-    "damage_description": "",
-    "estimated_damage": None,
-    "attachments": [],
-}
-
-
 def _setup_logging() -> None:
     """Configure logging for CLI usage."""
     from claim_agent.observability import get_logger
@@ -85,17 +57,6 @@ def _parse_attachment_args() -> list[Path]:
         else:
             i += 1
     return attachment_paths
-
-
-def _claim_data_from_row(row: dict) -> dict:
-    """Build full claim_data dict from a claim row for reprocess. Uses defaults for None."""
-    result = {
-        k: row.get(k) if row.get(k) is not None else _CLAIM_DATA_DEFAULTS[k]
-        for k in _CLAIM_DATA_KEYS
-    }
-    if isinstance(result.get("attachments"), str):
-        result["attachments"] = json.loads(result["attachments"])
-    return result
 
 
 def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) -> None:
@@ -206,6 +167,7 @@ def cmd_history(claim_id: str) -> None:
 def cmd_reprocess(claim_id: str) -> None:
     """Re-run workflow for an existing claim."""
     from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.claim_data import claim_data_from_row
     from claim_agent.db.database import get_db_path
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
@@ -215,7 +177,7 @@ def cmd_reprocess(claim_id: str) -> None:
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
-    claim_data = _claim_data_from_row(claim)
+    claim_data = claim_data_from_row(claim)
     try:
         ClaimInput.model_validate(claim_data)
     except ValidationError as e:

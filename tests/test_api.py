@@ -441,6 +441,100 @@ class TestRBAC:
 
 
 # -------------------------------------------------------------------
+# JWT authentication (when JWT_SECRET is set)
+# -------------------------------------------------------------------
+
+class TestJWTAuth:
+    """Test JWT Bearer token authentication."""
+
+    def test_valid_jwt_with_role(self, client, monkeypatch):
+        """Valid JWT with known secret and role is accepted."""
+        jwt = pytest.importorskip("jwt")
+        monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        token = jwt.encode(
+            {"sub": "user-123", "role": "admin"},
+            "test-jwt-secret",
+            algorithm="HS256",
+        )
+        resp = client.get(
+            "/api/claims/stats",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+
+    def test_expired_jwt_returns_401(self, client, monkeypatch):
+        """Expired JWT returns 401."""
+        jwt = pytest.importorskip("jwt")
+        import time
+        monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        token = jwt.encode(
+            {"sub": "user-123", "role": "admin", "exp": int(time.time()) - 3600},
+            "test-jwt-secret",
+            algorithm="HS256",
+        )
+        resp = client.get(
+            "/api/claims/stats",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+    def test_invalid_signature_returns_401(self, client, monkeypatch):
+        """JWT with invalid signature returns 401."""
+        jwt = pytest.importorskip("jwt")
+        monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        token = jwt.encode(
+            {"sub": "user-123", "role": "admin"},
+            "wrong-secret",
+            algorithm="HS256",
+        )
+        resp = client.get(
+            "/api/claims/stats",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+    def test_jwt_missing_sub_returns_401(self, client, monkeypatch):
+        """JWT without sub claim returns 401."""
+        jwt = pytest.importorskip("jwt")
+        monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        token = jwt.encode(
+            {"role": "admin"},
+            "test-jwt-secret",
+            algorithm="HS256",
+        )
+        resp = client.get(
+            "/api/claims/stats",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+    def test_jwt_unknown_role_returns_401(self, client, monkeypatch):
+        """JWT with role not in (adjuster, supervisor, admin) returns 401."""
+        jwt = pytest.importorskip("jwt")
+        monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        token = jwt.encode(
+            {"sub": "user-123", "role": "superadmin"},
+            "test-jwt-secret",
+            algorithm="HS256",
+        )
+        resp = client.get(
+            "/api/claims/stats",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+
+# -------------------------------------------------------------------
 # Path traversal and injection resistance
 # -------------------------------------------------------------------
 

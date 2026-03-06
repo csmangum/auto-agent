@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
 from claim_agent.crews.main_crew import run_claim_workflow
-from claim_agent.db.audit_events import ACTOR_SYSTEM, ACTOR_WORKFLOW
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import Attachment, ClaimInput
@@ -323,46 +324,6 @@ async def process_claim(
     return result
 
 
-_CLAIM_DATA_KEYS = (
-    "policy_number",
-    "vin",
-    "vehicle_year",
-    "vehicle_make",
-    "vehicle_model",
-    "incident_date",
-    "incident_description",
-    "damage_description",
-    "estimated_damage",
-    "attachments",
-)
-_CLAIM_DATA_DEFAULTS = {
-    "policy_number": "",
-    "vin": "",
-    "vehicle_year": 0,
-    "vehicle_make": "",
-    "vehicle_model": "",
-    "incident_date": "",
-    "incident_description": "",
-    "damage_description": "",
-    "estimated_damage": None,
-    "attachments": [],
-}
-
-
-def _claim_data_from_row(row: dict) -> dict:
-    """Build claim_data dict from claim row for reprocess."""
-    result = {}
-    for k in _CLAIM_DATA_KEYS:
-        if row.get(k) is not None:
-            result[k] = row[k]
-        else:
-            default = _CLAIM_DATA_DEFAULTS[k]
-            result[k] = list(default) if isinstance(default, list) else default
-    if isinstance(result.get("attachments"), str):
-        result["attachments"] = json.loads(result["attachments"])
-    return result
-
-
 @router.post("/claims/{claim_id}/reprocess")
 async def reprocess_claim(
     claim_id: str,
@@ -374,7 +335,7 @@ async def reprocess_claim(
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
-    claim_data = _claim_data_from_row(claim)
+    claim_data = claim_data_from_row(claim)
     try:
         ClaimInput.model_validate(claim_data)
     except Exception as e:

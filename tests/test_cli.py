@@ -9,9 +9,9 @@ from unittest.mock import patch
 
 import pytest
 
+from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.main import (
     _usage,
-    _claim_data_from_row,
     cmd_process,
     cmd_status,
     cmd_history,
@@ -38,7 +38,7 @@ class TestUsage:
 
 
 class TestClaimDataFromRow:
-    """Tests for _claim_data_from_row function."""
+    """Tests for claim_data_from_row function."""
 
     def test_claim_data_from_row_complete(self):
         """Test with complete row data."""
@@ -53,7 +53,7 @@ class TestClaimDataFromRow:
             "damage_description": "Test damage",
             "estimated_damage": 5000.0,
         }
-        result = _claim_data_from_row(row)
+        result = claim_data_from_row(row)
         assert result["policy_number"] == "POL-001"
         assert result["vin"] == "VIN123"
         assert result["vehicle_year"] == 2021
@@ -72,7 +72,7 @@ class TestClaimDataFromRow:
             "damage_description": None,
             "estimated_damage": None,
         }
-        result = _claim_data_from_row(row)
+        result = claim_data_from_row(row)
         assert result["policy_number"] == ""
         assert result["vin"] == ""
         assert result["vehicle_year"] == 0
@@ -84,7 +84,7 @@ class TestClaimDataFromRow:
             "policy_number": "POL-001",
             "vin": "VIN123",
         }
-        result = _claim_data_from_row(row)
+        result = claim_data_from_row(row)
         assert result["policy_number"] == "POL-001"
         assert result["vin"] == "VIN123"
         # Missing keys should use defaults
@@ -104,7 +104,7 @@ class TestClaimDataFromRow:
             "estimated_damage": 5000.0,
             "attachments": '[{"url": "http://example.com/photo.jpg", "type": "photo"}]',
         }
-        result = _claim_data_from_row(row)
+        result = claim_data_from_row(row)
         assert isinstance(result["attachments"], list)
         assert len(result["attachments"]) == 1
         assert result["attachments"][0]["url"] == "http://example.com/photo.jpg"
@@ -124,7 +124,7 @@ class TestClaimDataFromRow:
             "estimated_damage": 5000.0,
             "attachments": "[]",
         }
-        result = _claim_data_from_row(row)
+        result = claim_data_from_row(row)
         assert isinstance(result["attachments"], list)
         assert len(result["attachments"]) == 0
 
