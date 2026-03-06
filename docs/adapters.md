@@ -119,7 +119,7 @@ Located in `src/claim_agent/adapters/stub.py`. Every method raises `NotImplement
 
 ## Configuration
 
-Adapter selection is controlled by environment variables. Each defaults to `mock`.
+Adapter selection is controlled by environment variables. Each defaults to `mock`. Unknown values raise `ValueError` at first use.
 
 | Variable | Values | Default | Description |
 |----------|--------|---------|-------------|

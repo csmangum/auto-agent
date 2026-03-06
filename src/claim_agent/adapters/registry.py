@@ -3,12 +3,10 @@
 Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
-Supported values: ``mock``, ``stub``.
+Supported values: ``mock``, ``stub``. Unknown values raise ValueError.
 """
 
-import os
 import threading
-from typing import TypeVar
 
 from claim_agent.adapters.base import (
     PartsAdapter,
@@ -17,8 +15,7 @@ from claim_agent.adapters.base import (
     SIUAdapter,
     ValuationAdapter,
 )
-
-T = TypeVar("T")
+from claim_agent.config.settings import VALID_ADAPTER_BACKENDS, get_adapter_backend
 
 _lock = threading.Lock()
 
@@ -29,8 +26,14 @@ _parts_adapter: PartsAdapter | None = None
 _siu_adapter: SIUAdapter | None = None
 
 
-def _resolve_backend(env_key: str) -> str:
-    return os.environ.get(env_key, "mock").strip().lower()
+def _resolve_backend(adapter_name: str) -> str:
+    backend = get_adapter_backend(adapter_name)
+    if backend not in VALID_ADAPTER_BACKENDS:
+        raise ValueError(
+            f"Unknown {adapter_name.upper()}_ADAPTER backend: {backend!r}. "
+            f"Expected one of: {sorted(VALID_ADAPTER_BACKENDS)}."
+        )
+    return backend
 
 
 def get_policy_adapter() -> PolicyAdapter:
@@ -40,7 +43,7 @@ def get_policy_adapter() -> PolicyAdapter:
     with _lock:
         if _policy_adapter is not None:
             return _policy_adapter
-        backend = _resolve_backend("POLICY_ADAPTER")
+        backend = _resolve_backend("policy")
         if backend == "stub":
             from claim_agent.adapters.stub import StubPolicyAdapter
             _policy_adapter = StubPolicyAdapter()
@@ -57,7 +60,7 @@ def get_valuation_adapter() -> ValuationAdapter:
     with _lock:
         if _valuation_adapter is not None:
             return _valuation_adapter
-        backend = _resolve_backend("VALUATION_ADAPTER")
+        backend = _resolve_backend("valuation")
         if backend == "stub":
             from claim_agent.adapters.stub import StubValuationAdapter
             _valuation_adapter = StubValuationAdapter()
@@ -74,7 +77,7 @@ def get_repair_shop_adapter() -> RepairShopAdapter:
     with _lock:
         if _repair_shop_adapter is not None:
             return _repair_shop_adapter
-        backend = _resolve_backend("REPAIR_SHOP_ADAPTER")
+        backend = _resolve_backend("repair_shop")
         if backend == "stub":
             from claim_agent.adapters.stub import StubRepairShopAdapter
             _repair_shop_adapter = StubRepairShopAdapter()
@@ -91,7 +94,7 @@ def get_parts_adapter() -> PartsAdapter:
     with _lock:
         if _parts_adapter is not None:
             return _parts_adapter
-        backend = _resolve_backend("PARTS_ADAPTER")
+        backend = _resolve_backend("parts")
         if backend == "stub":
             from claim_agent.adapters.stub import StubPartsAdapter
             _parts_adapter = StubPartsAdapter()
@@ -108,7 +111,7 @@ def get_siu_adapter() -> SIUAdapter:
     with _lock:
         if _siu_adapter is not None:
             return _siu_adapter
-        backend = _resolve_backend("SIU_ADAPTER")
+        backend = _resolve_backend("siu")
         if backend == "stub":
             from claim_agent.adapters.stub import StubSIUAdapter
             _siu_adapter = StubSIUAdapter()

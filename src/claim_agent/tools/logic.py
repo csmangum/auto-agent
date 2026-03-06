@@ -915,8 +915,12 @@ def perform_fraud_assessment_impl(
             )
             result["siu_case_id"] = case_id
         except NotImplementedError:
+            logger.warning(
+                "SIU case creation not implemented (stub adapter); claim %s flagged for referral but no case_id",
+                result["claim_id"],
+            )
             result["siu_case_id"] = None
-    
+
     return json.dumps(result)
 
 

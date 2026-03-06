@@ -164,6 +164,8 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "siu": "SIU_ADAPTER",
 }
 
+VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub"})
+
 
 def get_adapter_backend(adapter_name: str) -> str:
     """Return the configured backend for *adapter_name* (default: ``mock``)."""

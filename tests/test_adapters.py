@@ -221,3 +221,10 @@ class TestRegistry:
         reset_adapters()
         b = get_policy_adapter()
         assert a is not b
+
+    def test_invalid_backend_raises(self, monkeypatch):
+        """Unknown backend value raises ValueError with helpful message."""
+        reset_adapters()
+        monkeypatch.setenv("POLICY_ADAPTER", "rest")
+        with pytest.raises(ValueError, match="Unknown POLICY_ADAPTER backend.*rest"):
+            get_policy_adapter()
