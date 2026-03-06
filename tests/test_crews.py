@@ -8,10 +8,21 @@ from unittest.mock import patch
 
 import pytest
 
+from claim_agent.utils.retry import with_llm_retry
+
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
 
 # Skip crew tests if no OpenAI/OpenRouter key (avoid failing in CI without key)
 SKIP_CREW = not os.environ.get("OPENAI_API_KEY")
+
+
+def _kickoff_with_retry(crew, inputs):
+    """Run crew.kickoff with retry on transient LLM/API failures."""
+    @with_llm_retry()
+    def _call():
+        return crew.kickoff(inputs=inputs)
+
+    return _call()
 
 
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
@@ -24,7 +35,7 @@ def test_new_claim_crew_kickoff():
 
     crew = create_new_claim_crew()
     inputs = {"claim_data": json.dumps(claim_data)}
-    result = crew.kickoff(inputs=inputs)
+    result = _kickoff_with_retry(crew, inputs)
     output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
     assert output
     assert "CLM-" in str(output) or "claim" in str(output).lower()
@@ -40,7 +51,7 @@ def test_duplicate_crew_kickoff():
 
     crew = create_duplicate_crew()
     inputs = {"claim_data": json.dumps(claim_data)}
-    result = crew.kickoff(inputs=inputs)
+    result = _kickoff_with_retry(crew, inputs)
     output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
     assert output
 
@@ -55,7 +66,7 @@ def test_total_loss_crew_kickoff():
 
     crew = create_total_loss_crew()
     inputs = {"claim_data": json.dumps(claim_data)}
-    result = crew.kickoff(inputs=inputs)
+    result = _kickoff_with_retry(crew, inputs)
     output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
     assert output
 
@@ -70,7 +81,7 @@ def test_fraud_detection_crew_kickoff():
 
     crew = create_fraud_detection_crew()
     inputs = {"claim_data": json.dumps(claim_data)}
-    result = crew.kickoff(inputs=inputs)
+    result = _kickoff_with_retry(crew, inputs)
     output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
     assert output
     assert "fraud" in str(output).lower() or "risk" in str(output).lower()
@@ -86,7 +97,7 @@ def test_partial_loss_crew_kickoff():
 
     crew = create_partial_loss_crew()
     inputs = {"claim_data": json.dumps(claim_data)}
-    result = crew.kickoff(inputs=inputs)
+    result = _kickoff_with_retry(crew, inputs)
     output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
     assert output
 

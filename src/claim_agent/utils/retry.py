@@ -14,8 +14,14 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Transient errors that are worth retrying
-RETRYABLE_EXCEPTIONS = (ConnectionError, TimeoutError, OSError)
+# Transient errors that are worth retrying (API disconnects, timeouts, etc.)
+_base_retryable = (ConnectionError, TimeoutError, OSError)
+try:
+    from litellm.exceptions import APIError as LiteLLMAPIError
+
+    RETRYABLE_EXCEPTIONS = _base_retryable + (LiteLLMAPIError,)
+except ImportError:
+    RETRYABLE_EXCEPTIONS = _base_retryable
 
 
 def with_llm_retry(
