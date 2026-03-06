@@ -150,3 +150,22 @@ def get_crew_verbose() -> bool:
     """Whether CrewAI runs in verbose mode (default: True)."""
     raw = os.environ.get("CREWAI_VERBOSE", "true").strip().lower()
     return raw in ("true", "1", "yes")
+
+
+# ---------------------------------------------------------------------------
+# Adapter backends
+# ---------------------------------------------------------------------------
+
+ADAPTER_ENV_KEYS: dict[str, str] = {
+    "policy": "POLICY_ADAPTER",
+    "valuation": "VALUATION_ADAPTER",
+    "repair_shop": "REPAIR_SHOP_ADAPTER",
+    "parts": "PARTS_ADAPTER",
+    "siu": "SIU_ADAPTER",
+}
+
+
+def get_adapter_backend(adapter_name: str) -> str:
+    """Return the configured backend for *adapter_name* (default: ``mock``)."""
+    env_key = ADAPTER_ENV_KEYS.get(adapter_name, f"{adapter_name.upper()}_ADAPTER")
+    return os.environ.get(env_key, "mock").strip().lower()

@@ -20,6 +20,10 @@ flowchart LR
     subgraph Logic["Implementation"]
         F[logic.py]
     end
+
+    subgraph Adapters["Adapter Layer"]
+        Reg[registry.py]
+    end
     
     subgraph Data["Data Sources"]
         G[(SQLite)]
@@ -28,9 +32,13 @@ flowchart LR
         J[(RAG / policy+compliance)]
     end
     
-    Tools --> Logic --> Data
+    Tools --> Logic --> Adapters --> Data
+    Logic --> G
+    Logic --> I
     R --> J
 ```
+
+Logic functions access external data (policies, valuations, repair shops, parts, SIU) through pluggable [adapters](adapters.md). SQLite (claims DB) and compliance data are accessed directly.
 
 ## Tool Categories
 
@@ -665,6 +673,8 @@ def tool_function(param1: str, param2: int = 0) -> str:
 # In tools/logic.py
 def <tool>_impl(param1: str, param2: int) -> str:
     """Core implementation logic."""
+    adapter = get_policy_adapter()  # or other adapter
+    data = adapter.get_policy(param1)
     # Business logic here
     return json.dumps(result)
 ```
@@ -673,3 +683,4 @@ This separation allows:
 1. Tools to be used by CrewAI agents
 2. Same logic to be exposed via MCP server
 3. Direct testing of implementation without CrewAI
+4. External data sources to be swapped via [adapters](adapters.md) without changing tool code

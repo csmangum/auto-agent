@@ -19,7 +19,14 @@ from claim_agent.config.settings import (
     get_escalation_config,
     get_fraud_config,
 )
-from claim_agent.tools.data_loader import load_mock_db, load_california_compliance
+from claim_agent.adapters.registry import (
+    get_parts_adapter,
+    get_policy_adapter,
+    get_repair_shop_adapter,
+    get_siu_adapter,
+    get_valuation_adapter,
+)
+from claim_agent.tools.data_loader import load_california_compliance
 from claim_agent.db.repository import ClaimRepository
 
 # Set up logger
@@ -32,10 +39,8 @@ def query_policy_db_impl(policy_number: str) -> str:
     policy_number = policy_number.strip()
     if not policy_number:
         return json.dumps({"valid": False, "message": "Empty policy number"})
-    db = load_mock_db()
-    policies = db.get("policies", {})
-    if policy_number in policies:
-        p = policies[policy_number]
+    p = get_policy_adapter().get_policy(policy_number)
+    if p is not None:
         status = p.get("status", "active")
         is_active = isinstance(status, str) and status.lower() == "active"
         if is_active:
@@ -98,11 +103,8 @@ def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
     make = make.strip() if isinstance(make, str) else ""
     model = model.strip() if isinstance(model, str) else ""
     year_int = int(year) if isinstance(year, (int, float)) and year > 0 else 2020
-    db = load_mock_db()
-    key = vin or f"{year_int}_{make}_{model}"
-    values = db.get("vehicle_values", {})
-    if key in values:
-        v = values[key]
+    v = get_valuation_adapter().get_vehicle_value(vin, year_int, make, model)
+    if v is not None:
         return json.dumps({
             "value": v.get("value", 15000),
             "condition": v.get("condition", "good"),
@@ -905,6 +907,15 @@ def perform_fraud_assessment_impl(
             "Low fraud risk. Process claim per standard workflow. "
             "Document any minor discrepancies."
         )
+
+    if result["siu_referral"]:
+        try:
+            case_id = get_siu_adapter().create_case(
+                result["claim_id"], result["fraud_indicators"]
+            )
+            result["siu_case_id"] = case_id
+        except NotImplementedError:
+            result["siu_case_id"] = None
     
     return json.dumps(result)
 
@@ -912,16 +923,14 @@ def perform_fraud_assessment_impl(
 # --- Partial Loss Tools ---
 
 
-def _get_shop_labor_rate(
-    db: dict[str, Any], shop_id: Optional[str], default: float = 75.0
-) -> float:
-    """Return labor rate for shop_id from db, or default if not found."""
+def _get_shop_labor_rate(shop_id: Optional[str], default: float = 75.0) -> float:
+    """Return labor rate for shop_id, or default if not found."""
     if not shop_id:
         return default
-    shops = db.get("repair_shops", {})
-    if shop_id not in shops:
+    shop = get_repair_shop_adapter().get_shop(shop_id)
+    if shop is None:
         return default
-    return shops[shop_id].get("labor_rate_per_hour", default)
+    return shop.get("labor_rate_per_hour", default)
 
 
 def get_available_repair_shops_impl(
@@ -939,8 +948,7 @@ def get_available_repair_shops_impl(
     Returns:
         JSON string with list of available repair shops.
     """
-    db = load_mock_db()
-    shops = db.get("repair_shops", {})
+    shops = get_repair_shop_adapter().get_shops()
     
     available_shops = []
     for shop_id, shop_data in shops.items():
@@ -996,16 +1004,13 @@ def assign_repair_shop_impl(
     Returns:
         JSON string with assignment confirmation and details.
     """
-    db = load_mock_db()
-    shops = db.get("repair_shops", {})
+    shop = get_repair_shop_adapter().get_shop(shop_id)
     
-    if shop_id not in shops:
+    if shop is None:
         return json.dumps({
             "success": False,
             "error": f"Repair shop {shop_id} not found",
         })
-    
-    shop = shops[shop_id]
     
     if not shop.get("capacity_available", False):
         return json.dumps({
@@ -1027,7 +1032,7 @@ def assign_repair_shop_impl(
         "shop_name": shop.get("name", ""),
         "address": shop.get("address", ""),
         "phone": shop.get("phone", ""),
-        "labor_rate_per_hour": _get_shop_labor_rate(db, shop_id, 75.0),
+        "labor_rate_per_hour": _get_shop_labor_rate(shop_id, 75.0),
         "network": shop.get("network", "standard"),
         "estimated_start_date": start_date.strftime("%Y-%m-%d"),
         "estimated_completion_date": completion_date.strftime("%Y-%m-%d"),
@@ -1052,8 +1057,7 @@ def get_parts_catalog_impl(
     Returns:
         JSON string with list of recommended parts and pricing.
     """
-    db = load_mock_db()
-    parts_catalog = db.get("parts_catalog", {})
+    parts_catalog = get_parts_adapter().get_catalog()
     
     # Keyword mapping to parts (more specific keywords first to prevent incorrect matches)
     damage_to_parts = {
@@ -1172,8 +1176,7 @@ def create_parts_order_impl(
             "error": "No parts specified for order",
         })
     
-    db = load_mock_db()
-    parts_catalog = db.get("parts_catalog", {})
+    parts_catalog = get_parts_adapter().get_catalog()
     
     order_items = []
     total_cost = 0.0
@@ -1262,7 +1265,7 @@ def calculate_repair_estimate_impl(
     Returns:
         JSON string with complete repair estimate breakdown.
     """
-    db = load_mock_db()
+    shop_adapter = get_repair_shop_adapter()
 
     # Get parts cost
     parts_result = get_parts_catalog_impl(damage_description, vehicle_make, part_type_preference)
@@ -1270,10 +1273,10 @@ def calculate_repair_estimate_impl(
     parts_cost = parts_data.get("total_parts_cost", 0.0)
     parts_list = parts_data.get("parts", [])
 
-    labor_rate = _get_shop_labor_rate(db, shop_id, 75.0)
+    labor_rate = _get_shop_labor_rate(shop_id, 75.0)
 
     # Estimate labor hours based on damage and parts
-    labor_operations = db.get("labor_operations", {})
+    labor_operations = shop_adapter.get_labor_operations()
     base_labor_hours = 0.0
     damage_lower = damage_description.lower()
     
@@ -1458,10 +1461,7 @@ def generate_repair_authorization_impl(
     Returns:
         JSON string with repair authorization details.
     """
-    db = load_mock_db()
-    shops = db.get("repair_shops", {})
-    
-    shop = shops.get(shop_id, {})
+    shop = get_repair_shop_adapter().get_shop(shop_id) or {}
     
     authorization = {
         "authorization_id": f"RA-{uuid.uuid4().hex[:8].upper()}",
