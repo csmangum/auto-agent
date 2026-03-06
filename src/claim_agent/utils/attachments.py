@@ -8,8 +8,8 @@ def infer_attachment_type(filename: str) -> AttachmentType:
     ext = (filename.rsplit(".", 1)[-1] or "").lower()
     if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic"):
         return AttachmentType.PHOTO
-    if ext == "pdf":
-        return AttachmentType.PDF
     if ext in ("doc", "docx", "xls", "xlsx") or "estimate" in filename.lower():
         return AttachmentType.ESTIMATE
+    if ext == "pdf":
+        return AttachmentType.PDF
     return AttachmentType.OTHER

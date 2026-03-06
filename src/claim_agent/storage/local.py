@@ -39,10 +39,15 @@ class LocalStorageAdapter(StorageAdapter):
         return stored_name
 
     def get_url(self, claim_id: str, stored_path_or_key: str) -> str:
-        """Return file:// URL for local storage."""
+        """Return an opaque storage key for local storage.
+
+        Returns a relative key (safe_claim_id/stored_name) instead of an
+        absolute file:// URL to avoid leaking server filesystem layout.
+        Callers can map this key to a download endpoint or resolve it to a
+        local path using the configured ATTACHMENT_STORAGE_PATH.
+        """
         safe_claim = "".join(c if c.isalnum() or c in "-_" else "_" for c in claim_id)
-        full_path = (self._base / safe_claim / stored_path_or_key).resolve()
-        return f"file://{full_path}"
+        return f"{safe_claim}/{stored_path_or_key}"
 
     def exists(self, claim_id: str, stored_path_or_key: str) -> bool:
         """Check if file exists."""

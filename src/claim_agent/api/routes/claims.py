@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
+from claim_agent.db.audit_events import ACTOR_SYSTEM
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import Attachment
@@ -202,12 +203,42 @@ async def process_claim(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
 
+    repo = ClaimRepository(db_path=get_db_path())
+
+    # Validate and buffer all file uploads BEFORE creating the claim record so
+    # that a bad upload (oversized or empty) does not leave a dangling claim row.
+    buffered_files: list[tuple[str, bytes, str | None]] = []
     # Validate file sizes before creating claim to avoid orphaned records
     file_contents = []
     if files:
         for f in files:
             if not f.filename:
                 continue
+            # Read in bounded chunks to enforce the size limit without loading
+            # an arbitrarily large file into memory.
+            chunks: list[bytes] = []
+            total_size = 0
+            chunk_size = 1024 * 1024  # 1 MB
+            while True:
+                chunk = await f.read(chunk_size)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > _MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+                    )
+                chunks.append(chunk)
+            buffered_files.append((f.filename, b"".join(chunks), f.content_type))
+
+    claim_id = repo.create_claim(claim_input)
+
+    # Store uploaded files now that the claim record exists.
+    all_attachments = list(claim_input.attachments)
+    if buffered_files:
+        storage = get_storage_adapter()
+        for filename, content, content_type in buffered_files:
             content = await f.read()
             if len(content) > _MAX_UPLOAD_SIZE_BYTES:
                 raise HTTPException(
@@ -230,12 +261,16 @@ async def process_claim(
                 content=content,
                 content_type=content_type,
             )
+            url = storage.get_url(claim_id, stored_key)
+            atype = infer_attachment_type(filename)
+            all_attachments.append(
+                Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
             atype = infer_attachment_type(filename)
             all_attachments.append(
                 Attachment(url=stored_key, type=atype, description=f"Uploaded: {filename}")
             )
         if all_attachments:
-            repo.update_claim_attachments(claim_id, all_attachments)
+            repo.update_claim_attachments(claim_id, all_attachments, actor_id=ACTOR_SYSTEM)
 
     # Run workflow with updated claim data (including attachment URLs)
     claim_data_with_attachments = {**sanitized, "attachments": [a.model_dump(mode="json") for a in all_attachments]}
