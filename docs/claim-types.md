@@ -80,7 +80,7 @@ Standard first-time claim submissions with no red flags. For the formal workflow
 
 ## Duplicate Claim
 
-Claims matching existing claims in the system.
+Claims matching existing claims in the system. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Duplicate Crew](crews.md#duplicate-crew).
 
 ### Classification Criteria
 
@@ -88,13 +88,13 @@ Claims matching existing claims in the system.
 - Same or similar incident date
 - Similar incident description
 
-### Similarity Scoring
+### Similarity Thresholds
 
 | Score | Interpretation | Action |
 |-------|----------------|--------|
-| 0-50 | Low similarity | Process as new |
-| 51-79 | Moderate | Review recommended |
-| 80-100 | High similarity | Likely duplicate |
+| 0-50 | Low similarity | Not duplicate, process normally |
+| 51-79 | Moderate | Review recommended (may escalate) |
+| 80-100 | High similarity | Likely duplicate, recommend merge/reject |
 
 ### Example
 
@@ -112,7 +112,7 @@ Claims matching existing claims in the system.
 
 ## Total Loss
 
-Vehicle is unrepairable or repair cost exceeds value.
+Vehicle is unrepairable or repair cost exceeds value. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Total Loss Crew](crews.md#total-loss-crew).
 
 ### Classification Criteria
 
@@ -148,7 +148,7 @@ Example: $25,000 value - $1,000 deductible = $24,000 payout
 
 ## Fraud
 
-Claims with indicators suggesting fraudulent activity.
+Claims with indicators suggesting fraudulent activity. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Fraud Detection Crew](crews.md#fraud-detection-crew).
 
 ### Classification Criteria
 
@@ -196,7 +196,7 @@ Claims with indicators suggesting fraudulent activity.
 
 ## Partial Loss
 
-Repairable vehicle damage.
+Repairable vehicle damage. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Partial Loss Crew](crews.md#partial-loss-crew).
 
 ### Classification Criteria
 
@@ -204,13 +204,13 @@ Repairable vehicle damage.
 
 **Cost:** Typically < $10,000, repair cost < 75% of vehicle value
 
-### Damage Severity
+### Damage Severity → Repair Days
 
-| Severity | Examples | Repair Days |
-|----------|----------|-------------|
-| Minor | Scratches, dents, mirrors | 3 days |
-| Moderate | Bumper, fender, lights | 5 days |
-| Severe | Door, hood, panels | 7 days |
+| Severity | Repair Days | Examples |
+|----------|-------------|----------|
+| Minor | 3 days | Scratches, dents, mirrors |
+| Moderate | 5 days | Bumper, fender, lights |
+| Severe | 7 days | Door, hood, multiple panels |
 
 ### Cost Breakdown
 
