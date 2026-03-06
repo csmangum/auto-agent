@@ -58,6 +58,8 @@ BEGIN
     SELECT RAISE(ABORT, 'claim_audit_log is append-only: deletes are not allowed');
 END;
 
+CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
+
 -- Workflow results (preserves each processing run)
 CREATE TABLE IF NOT EXISTS workflow_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

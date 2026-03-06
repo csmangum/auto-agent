@@ -10,6 +10,20 @@ For configuration options, see [Configuration](configuration.md).
 |---------------------|---------|-------------|
 | `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database file |
 
+## Schema Change Process
+
+The schema is defined in two places and both must be kept in sync:
+
+1. **`src/claim_agent/db/database.py`** – `SCHEMA_SQL` used by `init_db()`. New installs and tests use this; `CREATE TABLE IF NOT EXISTS` applies the full schema when tables do not exist.
+
+2. **`alembic/versions/`** – Incremental migrations for existing databases. Production upgrades use `alembic upgrade head`.
+
+**When changing the schema:**
+
+- Add an Alembic migration for the change (e.g. `alembic revision -m "description"`).
+- Update `SCHEMA_SQL` in `database.py` so new installs and tests get the same schema.
+- Run migrations on existing DBs; `init_db` will not alter existing tables.
+
 ## Schema Overview
 
 ```mermaid
@@ -124,6 +138,8 @@ CREATE TABLE IF NOT EXISTS claim_audit_log (
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
 ```
 
 | Column | Type | Description |

@@ -42,6 +42,9 @@ export interface AuditEvent {
   old_status?: string;
   new_status?: string;
   details?: string;
+  actor_id?: string;
+  before_state?: string;
+  after_state?: string;
   created_at?: string;
 }
 

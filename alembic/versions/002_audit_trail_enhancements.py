@@ -20,7 +20,11 @@ depends_on = None
 
 
 def _columns_exist(conn, table: str) -> set[str]:
-    """Return set of column names for table."""
+    """Return set of column names for table.
+
+    Note: table must be a trusted identifier (hardcoded). Do not pass
+    user-controlled input; PRAGMA table_info does not support parameterization.
+    """
     cursor = conn.execute(text(f"PRAGMA table_info({table})"))
     return {row[1] for row in cursor.fetchall()}
 

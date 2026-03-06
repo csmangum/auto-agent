@@ -49,16 +49,32 @@ def _seed_test_data(db_path: str):
              "fraud", "fraud_suspected"),
         )
 
-        # Audit log entries
+        # Audit log entries (with actor_id, before_state, after_state for audit trail)
         conn.execute(
-            "INSERT INTO claim_audit_log (claim_id, action, new_status, details) "
-            "VALUES (?, ?, ?, ?)",
-            ("CLM-TEST001", "created", "pending", "Claim record created"),
+            "INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "CLM-TEST001",
+                "created",
+                "pending",
+                "Claim record created",
+                "workflow",
+                '{"status": "pending", "claim_type": null, "payout_amount": null}',
+            ),
         )
         conn.execute(
-            "INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details) "
-            "VALUES (?, ?, ?, ?, ?)",
-            ("CLM-TEST001", "status_change", "pending", "open", "Processed successfully"),
+            "INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "CLM-TEST001",
+                "status_change",
+                "pending",
+                "open",
+                "Processed successfully",
+                "workflow",
+                '{"status": "pending", "claim_type": null, "payout_amount": null}',
+                '{"status": "open", "claim_type": "new", "payout_amount": null}',
+            ),
         )
 
         # Workflow run
@@ -142,6 +158,12 @@ class TestClaimHistory:
         assert data["claim_id"] == "CLM-TEST001"
         assert len(data["history"]) == 2
         assert data["history"][0]["action"] == "created"
+        assert data["history"][0]["actor_id"] == "workflow"
+        assert data["history"][0]["after_state"] is not None
+        assert data["history"][1]["action"] == "status_change"
+        assert data["history"][1]["actor_id"] == "workflow"
+        assert data["history"][1]["before_state"] is not None
+        assert data["history"][1]["after_state"] is not None
 
     def test_not_found(self, client):
         resp = client.get("/api/claims/CLM-NOTEXIST/history")
