@@ -64,6 +64,10 @@ db.sqlite3-journal
 # Claim agent SQLite DB
 data/claims.db
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
 # Evaluation reports
 evaluation_report.json
 evaluation_report_*.json
