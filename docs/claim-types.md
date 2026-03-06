@@ -196,7 +196,7 @@ Claims with indicators suggesting fraudulent activity.
 
 ## Partial Loss
 
-Repairable vehicle damage.
+Repairable vehicle damage. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Partial Loss Crew](crews.md#partial-loss-crew).
 
 ### Classification Criteria
 
@@ -204,13 +204,13 @@ Repairable vehicle damage.
 
 **Cost:** Typically < $10,000, repair cost < 75% of vehicle value
 
-### Damage Severity
+### Damage Severity → Repair Days
 
-| Severity | Examples | Repair Days |
-|----------|----------|-------------|
-| Minor | Scratches, dents, mirrors | 3 days |
-| Moderate | Bumper, fender, lights | 5 days |
-| Severe | Door, hood, panels | 7 days |
+| Severity | Repair Days | Examples |
+|----------|-------------|----------|
+| Minor | 3 days | Scratches, dents, mirrors |
+| Moderate | 5 days | Bumper, fender, lights |
+| Severe | 7 days | Door, hood, multiple panels |
 
 ### Cost Breakdown
 
