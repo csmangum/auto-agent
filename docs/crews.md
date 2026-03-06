@@ -263,38 +263,139 @@ flowchart LR
 
 **Location**: `src/claim_agent/crews/partial_loss_crew.py`
 
-Handles claims for repairable vehicle damage.
+Handles claims for repairable vehicle damage: assess damage, calculate repair estimate, assign repair shop, order parts, and generate repair authorization. This section is the **formal specification** for the Partial Loss workflow.
+
+### Entry Conditions
+
+- **Claim type:** `partial_loss` (from Router classification)
+- **Classification criteria:**
+  - Repairable damage (bumper, fender, door, mirror, light, windshield, dent, scratch, crack)
+  - Typically < $10,000, repair cost < 75% of vehicle value
+- **Escalation:** If `needs_review` from escalation check, return early (no crew execution)
 
 ### Agents
 
 | Agent | Tools Used |
 |-------|------------|
-| Damage Assessor | [`evaluate_damage`](tools.md#evaluate_damage), [`fetch_vehicle_value`](tools.md#fetch_vehicle_value) |
+| Damage Assessor (Partial Loss) | [`evaluate_damage`](tools.md#evaluate_damage), [`fetch_vehicle_value`](tools.md#fetch_vehicle_value) |
 | Repair Estimator | [`calculate_repair_estimate`](tools.md#calculate_repair_estimate), [`get_parts_catalog`](tools.md#get_parts_catalog) |
 | Repair Shop Coordinator | [`get_available_repair_shops`](tools.md#get_available_repair_shops), [`assign_repair_shop`](tools.md#assign_repair_shop) |
 | Parts Ordering Specialist | [`get_parts_catalog`](tools.md#get_parts_catalog), [`create_parts_order`](tools.md#create_parts_order) |
 | Repair Authorization Specialist | [`generate_repair_authorization`](tools.md#generate_repair_authorization), [`generate_report`](tools.md#generate_report) |
 
-### Flow
+### Flow Sequence
 
 ```mermaid
-flowchart LR
-    A[Assess] --> B[Estimate] --> C[Assign Shop] --> D[Order Parts] --> E[Authorize]
+flowchart TB
+    subgraph PartialLoss["Partial Loss Crew"]
+        A[1. Assess] --> B[2. Estimate] --> C[3. Assign Shop] --> D[4. Order Parts] --> E[5. Authorize]
+    end
     
-    A -.- A1[Severity/parts]
-    B -.- B1[Parts + labor]
-    C -.- C1[Best fit shop]
-    D -.- D1[Create order]
-    E -.- E1[Auth document]
+    A -.- A1[evaluate_damage]
+    A -.- A2[fetch_vehicle_value]
+    
+    B -.- B1[calculate_repair_estimate]
+    B -.- B2[get_parts_catalog]
+    
+    C -.- C1[get_available_repair_shops]
+    C -.- C2[assign_repair_shop]
+    
+    D -.- D1[get_parts_catalog]
+    D -.- D2[create_parts_order]
+    
+    E -.- E1[generate_repair_authorization]
+    E -.- E2[generate_report]
 ```
 
-### Damage Severity Levels
+### Step 1: Damage Assessment
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Damage Assessor (Partial Loss) |
+| **Input** | `claim_data` JSON |
+| **Action** | Evaluate damage_description; fetch vehicle value; confirm repairable |
+| **Output** | Severity (minor/moderate/severe), damaged components, vehicle value, partial loss confirmation |
+| **Tools** | `evaluate_damage`, `fetch_vehicle_value` |
+| **Note** | Flag if repair > 75% of value (potential total loss) |
+
+### Step 2: Repair Estimate
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Repair Estimator |
+| **Input** | `claim_data` + damage assessment |
+| **Action** | Calculate parts + labor, deductible, customer vs insurance responsibility |
+| **Output** | Parts list, labor hours, total cost, deductible, customer_pays, insurance_pays |
+| **Tools** | `calculate_repair_estimate`, `get_parts_catalog` |
+
+### Step 3: Shop Assignment
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Repair Shop Coordinator |
+| **Input** | `claim_data` + damage + estimate |
+| **Action** | Get available shops, select best (rating, wait time, certifications), assign |
+| **Output** | Shop name, address, phone, confirmation, start/completion dates |
+| **Tools** | `get_available_repair_shops`, `assign_repair_shop` |
+| **Repair days** | Minor: 3, Moderate: 5, Severe: 7 |
+
+### Step 4: Parts Order
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Parts Ordering Specialist |
+| **Input** | `claim_data` + damage + estimate + shop assignment |
+| **Action** | Get parts catalog, create order with claim_id, shop_id |
+| **Output** | order_id, parts list, total cost, delivery date |
+| **Tools** | `get_parts_catalog`, `create_parts_order` |
+
+### Step 5: Authorization
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Repair Authorization Specialist |
+| **Input** | All prior outputs |
+| **Action** | Generate repair authorization; generate final report |
+| **Output** | authorization_id, authorized amounts, claim report with payout |
+| **Tools** | `generate_repair_authorization`, `generate_report` |
+| **Report** | claim_type='partial_loss', status='approved', payout_amount=insurance_pays |
+
+### Damage Severity → Repair Days
 
 | Severity | Repair Days | Examples |
 |----------|-------------|----------|
 | Minor | 3 days | Scratches, dents, mirrors |
 | Moderate | 5 days | Bumper, fender, lights |
 | Severe | 7 days | Door, hood, multiple panels |
+
+### Exit Conditions
+
+| Outcome | Status | Notes |
+|---------|--------|-------|
+| Success | `partial_loss` | Authorization issued, report generated |
+| Escalated | `needs_review` | Returned before crew execution |
+| Failed | `failed` | Error during crew execution |
+
+### Integration with Main Flow
+
+The Partial Loss crew is invoked **after**:
+
+1. Pydantic validation (CLI)
+2. Claim creation in SQLite (`repo.create_claim`)
+3. Router classification → `claim_type == "partial_loss"`
+4. Escalation check (if not escalated)
+
+### Acceptance Criteria
+
+- **AC1:** Damage task calls `evaluate_damage` and `fetch_vehicle_value`; confirms repairable
+- **AC2:** Estimate task calls `calculate_repair_estimate`; outputs parts, labor, deductible, insurance_pays
+- **AC3:** Shop task calls `get_available_repair_shops` and `assign_repair_shop` with claim_id
+- **AC4:** Parts task calls `create_parts_order` with claim_id, shop_id, parts list
+- **AC5:** Authorization task calls `generate_repair_authorization` and `generate_report`
+- **AC6:** Report has claim_type='partial_loss', status='approved', payout_amount
+- **AC7:** Final status is `partial_loss` on success
+- **AC8:** Task context flows correctly through all five steps
+- **AC9:** Documentation matches this specification
 
 ---
 
