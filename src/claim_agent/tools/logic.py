@@ -189,7 +189,8 @@ def generate_report_pdf_impl(
 
         out_dir = Path(os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")).parent / "reports"
         out_dir.mkdir(parents=True, exist_ok=True)
-        pdf_path = out_dir / f"report_{str(claim_id).replace('/', '_')}_{uuid.uuid4().hex[:6]}.pdf"
+        safe_claim_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(claim_id))
+        pdf_path = out_dir / f"report_{safe_claim_id}_{uuid.uuid4().hex[:6]}.pdf"
 
         escaped_claim_id = _escape_field(claim_id)
         escaped_claim_type = _escape_field(claim_type)
@@ -1372,8 +1373,22 @@ def analyze_damage_photo_impl(
     content_for_vision = image_url
     if image_url.startswith("file://"):
         try:
-            path = unquote(urlparse(image_url).path)
+            path = os.path.realpath(unquote(urlparse(image_url).path))
+            # Restrict file:// access to the configured attachment storage directory
+            # to prevent arbitrary local file reads when given untrusted input.
+            allowed_base = os.path.realpath(
+                os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")
+            )
+            if not path.startswith(allowed_base + os.sep) and path != allowed_base:
+                result["error"] = "Access to this file path is not permitted"
+                return json.dumps(result)
+            # Guard against excessively large files before reading into memory.
+            _MAX_VISION_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
             if os.path.isfile(path):
+                file_size = os.path.getsize(path)
+                if file_size > _MAX_VISION_FILE_BYTES:
+                    result["error"] = f"File size ({file_size} bytes) exceeds the limit for vision analysis"
+                    return json.dumps(result)
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode("ascii")
                 ext = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"

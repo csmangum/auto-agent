@@ -42,7 +42,7 @@ def get_storage_adapter() -> StorageAdapter:
                 )
             except ImportError as e:
                 raise RuntimeError(
-                    "S3 storage requires boto3. Install with: pip install boto3"
+                    "S3 storage requires the optional S3 dependencies. Install with: pip install 'claim-agent[s3]'"
                 ) from e
         else:
             base_path = os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")
