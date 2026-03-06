@@ -328,14 +328,13 @@ def my_new_tool(param: str) -> str:
 
 ## Security Considerations
 
-1. **Local Only**: The stdio transport is local-only (no network exposure)
-2. **Data Access**: The server has access to SQLite and mock data
-3. **No Authentication**: No authentication is performed (trust local user)
-
-For production deployment with network access:
-- Use HTTP transport with authentication
-- Implement rate limiting
-- Add request logging/auditing
+1. **Local Only (stdio)**: The default stdio transport is local-only (no network exposure). No authentication is performed—trust the local user.
+2. **Data Access**: The server has access to SQLite and mock data.
+3. **Auth by Transport**: stdio does not support passing auth headers. For production with network access:
+   - Use MCP HTTP transport (when available) with `Authorization: Bearer <API_KEY>` header
+   - Run the MCP server behind an authenticated gateway or reverse proxy
+   - Configure `API_KEYS` or `CLAIMS_API_KEY` for the REST API; MCP clients connecting via HTTP can pass the same key
+4. **Production Recommendations**: Implement rate limiting, request logging, and auditing when exposing over the network.
 
 ## Troubleshooting
 

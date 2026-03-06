@@ -2,12 +2,15 @@
 
 from fastapi import APIRouter, HTTPException
 
+from claim_agent.api.deps import require_role
 from claim_agent.observability import get_metrics
 
 router = APIRouter(tags=["metrics"])
 
+RequireSupervisor = require_role("supervisor", "admin")
 
-@router.get("/metrics")
+
+@router.get("/metrics", dependencies=[RequireSupervisor])
 async def get_global_metrics():
     """Get global metrics summary across all claims.
 
@@ -25,7 +28,7 @@ async def get_global_metrics():
     }
 
 
-@router.get("/metrics/{claim_id}")
+@router.get("/metrics/{claim_id}", dependencies=[RequireSupervisor])
 async def get_claim_metrics(claim_id: str):
     """Get metrics for a specific claim."""
     metrics = get_metrics()

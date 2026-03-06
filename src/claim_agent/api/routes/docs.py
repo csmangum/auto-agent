@@ -5,7 +5,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+from claim_agent.api.deps import require_role
+
 router = APIRouter(tags=["documentation"])
+
+RequireAdjuster = require_role("adjuster", "supervisor", "admin")
 
 # Resolve paths relative to project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
@@ -60,7 +64,7 @@ def _parse_skill_sections(content: str) -> dict:
     return result
 
 
-@router.get("/docs")
+@router.get("/docs", dependencies=[RequireAdjuster])
 def list_docs():
     """List all available documentation pages."""
     pages = []
@@ -74,7 +78,7 @@ def list_docs():
     return {"pages": pages}
 
 
-@router.get("/docs/{slug}")
+@router.get("/docs/{slug}", dependencies=[RequireAdjuster])
 def get_doc(slug: str):
     """Get markdown content for a documentation page."""
     # Find the page config
@@ -99,7 +103,7 @@ def get_doc(slug: str):
     }
 
 
-@router.get("/skills")
+@router.get("/skills", dependencies=[RequireAdjuster])
 def list_skills():
     """List all agent skills grouped by workflow."""
     groups = {}
@@ -126,7 +130,7 @@ def list_skills():
     return {"groups": groups}
 
 
-@router.get("/skills/{name}")
+@router.get("/skills/{name}", dependencies=[RequireAdjuster])
 def get_skill(name: str):
     """Get full content for an agent skill."""
     # Validate name: only allow alphanumeric characters and underscores (no path separators)

@@ -314,30 +314,130 @@ class TestHealthEndpoint:
 
 
 # -------------------------------------------------------------------
-# API Key Auth (when CLAIMS_API_KEY is set)
+# API Key Auth (when CLAIMS_API_KEY or API_KEYS is set)
 # -------------------------------------------------------------------
+
+def _auth_headers(key: str, use_bearer: bool = False):
+    if use_bearer:
+        return {"Authorization": f"Bearer {key}"}
+    return {"X-API-Key": key}
+
 
 class TestApiKeyAuth:
     def test_health_always_public(self, client, monkeypatch):
         """Health endpoint is always accessible without auth."""
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        monkeypatch.delenv("API_KEYS", raising=False)
         resp = client.get("/api/health")
         assert resp.status_code == 200
 
     def test_protected_endpoint_requires_key(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        monkeypatch.delenv("API_KEYS", raising=False)
         resp = client.get("/api/claims/stats")
         assert resp.status_code == 401
 
     def test_protected_endpoint_accepts_x_api_key(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        monkeypatch.delenv("API_KEYS", raising=False)
         resp = client.get("/api/claims/stats", headers={"X-API-Key": "secret123"})
         assert resp.status_code == 200
 
     def test_protected_endpoint_accepts_bearer(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        monkeypatch.delenv("API_KEYS", raising=False)
         resp = client.get("/api/claims/stats", headers={"Authorization": "Bearer secret123"})
         assert resp.status_code == 200
+
+    def test_invalid_key_returns_401(self, client, monkeypatch):
+        monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        resp = client.get("/api/claims/stats", headers={"X-API-Key": "wrong-key"})
+        assert resp.status_code == 401
+        assert "Invalid" in resp.json()["detail"]
+
+
+# -------------------------------------------------------------------
+# RBAC (API_KEYS with roles)
+# -------------------------------------------------------------------
+
+class TestRBAC:
+    """Test role-based access control with API_KEYS."""
+
+    def _set_api_keys(self, monkeypatch, keys: str):
+        monkeypatch.setenv("API_KEYS", keys)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+
+    def test_adjuster_can_access_claims(self, client, monkeypatch):
+        """Adjuster can access claims endpoints."""
+        self._set_api_keys(monkeypatch, "sk-adj:adjuster")
+        resp = client.get("/api/claims/stats", headers=_auth_headers("sk-adj"))
+        assert resp.status_code == 200
+
+    def test_adjuster_forbidden_metrics(self, client, monkeypatch):
+        """Adjuster gets 403 for metrics (supervisor+ only)."""
+        self._set_api_keys(monkeypatch, "sk-adj:adjuster")
+        resp = client.get("/api/metrics", headers=_auth_headers("sk-adj"))
+        assert resp.status_code == 403
+
+    def test_adjuster_forbidden_system_config(self, client, monkeypatch):
+        """Adjuster gets 403 for system/config (admin only)."""
+        self._set_api_keys(monkeypatch, "sk-adj:adjuster")
+        resp = client.get("/api/system/config", headers=_auth_headers("sk-adj"))
+        assert resp.status_code == 403
+
+    def test_supervisor_can_access_metrics(self, client, monkeypatch):
+        """Supervisor can access metrics."""
+        self._set_api_keys(monkeypatch, "sk-sup:supervisor")
+        resp = client.get("/api/metrics", headers=_auth_headers("sk-sup"))
+        assert resp.status_code == 200
+
+    def test_supervisor_forbidden_system_config(self, client, monkeypatch):
+        """Supervisor gets 403 for system/config (admin only)."""
+        self._set_api_keys(monkeypatch, "sk-sup:supervisor")
+        resp = client.get("/api/system/config", headers=_auth_headers("sk-sup"))
+        assert resp.status_code == 403
+
+    def test_admin_can_access_all(self, client, monkeypatch):
+        """Admin can access claims, metrics, and system config."""
+        self._set_api_keys(monkeypatch, "sk-admin:admin")
+        headers = _auth_headers("sk-admin")
+        assert client.get("/api/claims/stats", headers=headers).status_code == 200
+        assert client.get("/api/metrics", headers=headers).status_code == 200
+        assert client.get("/api/system/config", headers=headers).status_code == 200
+
+    def test_adjuster_forbidden_reprocess(self, client, monkeypatch):
+        """Adjuster gets 403 for reprocess (supervisor+ only)."""
+        self._set_api_keys(monkeypatch, "sk-adj:adjuster")
+        import claim_agent.api.routes.claims as claims_mod
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"})
+        resp = client.post(
+            "/api/claims/CLM-TEST001/reprocess",
+            headers=_auth_headers("sk-adj"),
+        )
+        assert resp.status_code == 403
+
+    def test_supervisor_can_reprocess(self, client, monkeypatch):
+        """Supervisor can call reprocess endpoint."""
+        self._set_api_keys(monkeypatch, "sk-sup:supervisor")
+        import claim_agent.api.routes.claims as claims_mod
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"})
+        resp = client.post(
+            "/api/claims/CLM-TEST001/reprocess",
+            headers=_auth_headers("sk-sup"),
+        )
+        assert resp.status_code == 200
+
+    def test_reprocess_not_found_returns_404(self, client, monkeypatch):
+        """Reprocess of non-existent claim returns 404."""
+        self._set_api_keys(monkeypatch, "sk-sup:supervisor")
+        import claim_agent.api.routes.claims as claims_mod
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "x"})
+        resp = client.post(
+            "/api/claims/CLM-NOTEXIST/reprocess",
+            headers=_auth_headers("sk-sup"),
+        )
+        assert resp.status_code == 404
 
 
 # -------------------------------------------------------------------
@@ -394,6 +494,19 @@ VALID_CLAIM_PAYLOAD = {
 
 class TestProcessClaimEndpoint:
     """Tests for POST /claims/process multipart endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_workflow_for_class(self, monkeypatch):
+        """Ensure workflow is mocked for all tests in this class to avoid LLM calls."""
+        mock_result = {
+            "claim_id": "CLM-TEST-MOCK",
+            "claim_type": "new",
+            "status": "open",
+            "summary": "Claim processed successfully.",
+        }
+        import claim_agent.api.routes.claims as claims_mod
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        yield
 
     def _mock_workflow(self, monkeypatch):
         """Patch run_claim_workflow to avoid real LLM calls."""
@@ -500,6 +613,31 @@ class TestProcessClaimEndpoint:
             count_after = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
             # Exactly one new claim (no duplicate creation)
             assert count_after == count_before + 1
+
+    def test_audit_log_records_actor_id_when_authenticated(self, client, monkeypatch, tmp_path):
+        """When processing with API key, claim_audit_log records authenticated identity."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        monkeypatch.setenv("API_KEYS", "sk-audit-test:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        import json
+
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            headers={"X-API-Key": "sk-audit-test"},
+        )
+        assert resp.status_code == 200
+        # Find the claim created by create_claim (first audit entry, before workflow runs)
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT claim_id, actor_id FROM claim_audit_log WHERE action = 'created' "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert rows
+        # actor_id for 'created' comes from process_claim's create_claim; should be key identity
+        assert rows["actor_id"].startswith("key-"), f"Expected key identity, got {rows['actor_id']}"
 
     def test_attachment_download_returns_file(self, client, monkeypatch, tmp_path):
         """GET /claims/{claim_id}/attachments/{key} serves the file for local storage."""
