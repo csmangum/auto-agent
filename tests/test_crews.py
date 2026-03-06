@@ -67,6 +67,72 @@ def test_new_claim_crew_acceptance_criteria():
     )
 
 
+def test_total_loss_crew_acceptance_criteria():
+    """Verify Total Loss crew structure matches formal specification (Issue #73)."""
+    from crewai import LLM
+    from claim_agent.crews.total_loss_crew import create_total_loss_crew
+    from claim_agent.agents.total_loss import (
+        create_damage_assessor_agent,
+        create_valuation_agent,
+        create_payout_agent,
+        create_settlement_agent,
+    )
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_total_loss_crew(llm=mock_llm)
+
+    assess_task, valuation_task, payout_task, settlement_task = crew.tasks
+
+    # AC1: Damage task calls evaluate_damage and outputs total_loss_candidate
+    damage_agent = create_damage_assessor_agent(llm=mock_llm, use_rag=False)
+    damage_tool_names = [getattr(t, "name", str(t)) for t in (damage_agent.tools or [])]
+    assert any("evaluate" in n.lower() and "damage" in n.lower() for n in damage_tool_names), (
+        "AC1: Damage agent must have evaluate_damage tool"
+    )
+    assert "total_loss_candidate" in assess_task.expected_output, "AC1: Damage task must output total_loss_candidate"
+
+    # AC2: Valuation task calls fetch_vehicle_value with vehicle identifiers
+    valuation_agent = create_valuation_agent(llm=mock_llm, use_rag=False)
+    valuation_tool_names = [getattr(t, "name", str(t)) for t in (valuation_agent.tools or [])]
+    assert any("fetch" in n.lower() and "vehicle" in n.lower() for n in valuation_tool_names), (
+        "AC2: Valuation agent must have fetch_vehicle_value tool"
+    )
+    assert "vin" in valuation_task.description and "vehicle_year" in valuation_task.description
+
+    # AC3: Payout task calls calculate_payout with vehicle value and policy_number
+    payout_agent = create_payout_agent(llm=mock_llm, use_rag=False)
+    payout_tool_names = [getattr(t, "name", str(t)) for t in (payout_agent.tools or [])]
+    assert any("calculate" in n.lower() and "payout" in n.lower() for n in payout_tool_names), (
+        "AC3: Payout agent must have calculate_payout tool"
+    )
+    assert "policy_number" in payout_task.description and "vehicle value" in payout_task.description.lower()
+
+    # AC4: Payout formula: value - deductible
+    assert "minus" in payout_task.description.lower() or "deductible" in payout_task.description.lower()
+
+    # AC5: Settlement task calls generate_report with claim_type='total_loss', status='closed', payout_amount
+    settlement_agent = create_settlement_agent(llm=mock_llm, use_rag=False)
+    settlement_tool_names = [getattr(t, "name", str(t)) for t in (settlement_agent.tools or [])]
+    assert any("generate" in n.lower() and "report" in n.lower() for n in settlement_tool_names), (
+        "AC5: Settlement agent must have generate_report tool"
+    )
+    assert "claim_type='total_loss'" in settlement_task.description or "claim_type=\"total_loss\"" in settlement_task.description
+    assert "status='closed'" in settlement_task.description or "status=\"closed\"" in settlement_task.description
+    assert "payout_amount" in settlement_task.description
+
+    # AC6: Final status is closed on success - verified by settlement task
+    assert "closed" in settlement_task.description.lower()
+
+    # AC7: Task context flows: Valuation receives damage; Payout receives damage + valuation; Settlement receives all
+    assert assess_task in valuation_task.context, "AC7: Valuation must receive damage assessment"
+    assert assess_task in payout_task.context and valuation_task in payout_task.context, (
+        "AC7: Payout must receive damage + valuation"
+    )
+    assert assess_task in settlement_task.context and valuation_task in settlement_task.context and payout_task in settlement_task.context, (
+        "AC7: Settlement must receive all prior outputs"
+    )
+
+
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_new_claim_crew_kickoff():
     """Run new claim crew on sample input (requires LLM)."""
