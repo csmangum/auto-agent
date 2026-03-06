@@ -148,7 +148,7 @@ Example: $25,000 value - $1,000 deductible = $24,000 payout
 
 ## Fraud
 
-Claims with indicators suggesting fraudulent activity.
+Claims with indicators suggesting fraudulent activity. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Fraud Detection Crew](crews.md#fraud-detection-crew).
 
 ### Classification Criteria
 

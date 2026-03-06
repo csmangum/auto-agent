@@ -222,7 +222,16 @@ Payout = Vehicle Market Value - Policy Deductible
 
 **Location**: `src/claim_agent/crews/fraud_detection_crew.py`
 
-Analyzes claims flagged for potential fraud. This crew runs **directly without escalation check** (it performs its own assessment).
+Analyzes claims flagged for potential fraud through pattern analysis, cross-reference with fraud indicators, and comprehensive assessment with SIU referral recommendations. This section is the **formal specification** for the Fraud Detection workflow.
+
+### Entry Conditions
+
+- **Claim type:** `fraud` (from Router classification)
+- **Classification criteria:**
+  - Staged accident indicators (multiple occupants, witnesses left, inconsistent damage)
+  - Financial red flags (inflated estimates, prior fraud history)
+  - Pattern anomalies (multiple claims in 90 days, new policy + quick filing)
+- **Escalation:** **Skipped** for fraud—crew always runs (no pre-escalation return)
 
 ### Agents
 
@@ -232,30 +241,92 @@ Analyzes claims flagged for potential fraud. This crew runs **directly without e
 | Cross-Reference Specialist | [`cross_reference_fraud_indicators`](tools.md#cross_reference_fraud_indicators), [`detect_fraud_indicators`](tools.md#detect_fraud_indicators) |
 | Fraud Assessment Specialist | [`perform_fraud_assessment`](tools.md#perform_fraud_assessment), [`generate_fraud_report`](tools.md#generate_fraud_report) |
 
-### Flow
+### Flow Sequence
 
 ```mermaid
-flowchart LR
-    A[Pattern Analysis] --> B[Cross-Reference] --> C[Assessment]
+flowchart TB
+    subgraph Fraud["Fraud Detection Crew"]
+        A[1. Pattern Analysis] --> B[2. Cross-Reference] --> C[3. Assessment]
+    end
     
-    A -.- A1[Multiple claims?]
-    A -.- A2[Timing anomalies?]
+    A -.- A1[analyze_claim_patterns]
+    A -.- A2[Multiple claims, timing]
     
-    B -.- B1[Fraud keywords?]
-    B -.- B2[Prior flags?]
+    B -.- B1[cross_reference_fraud_indicators]
+    B -.- B2[detect_fraud_indicators]
     
-    C -.- C1[Fraud score]
-    C -.- C2[SIU referral?]
+    C -.- C1[perform_fraud_assessment]
+    C -.- C2[generate_fraud_report]
 ```
+
+### Step 1: Pattern Analysis
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Pattern Analysis Specialist |
+| **Input** | `claim_data` JSON |
+| **Action** | Analyze for suspicious patterns |
+| **Checks** | Multiple claims on same VIN (90 days), timing anomalies, staged accident indicators, claim frequency |
+| **Output** | patterns_detected, timing_flags, claim_history, risk_factors, pattern_score |
+| **Tools** | `analyze_claim_patterns` |
+
+### Step 2: Cross-Reference
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Cross-Reference Specialist |
+| **Input** | `claim_data` + pattern analysis |
+| **Action** | Match against known fraud indicators |
+| **Checks** | Fraud keywords, damage vs value mismatches, prior fraud flags |
+| **Output** | fraud_keywords_found, database_matches, risk_level, cross_reference_score |
+| **Tools** | `cross_reference_fraud_indicators`, `detect_fraud_indicators` |
+
+### Step 3: Fraud Assessment
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Fraud Assessment Specialist |
+| **Input** | Pattern + cross-reference results |
+| **Action** | Combine scores, determine likelihood, recommend action |
+| **Output** | fraud_score, fraud_likelihood, should_block, siu_referral, recommended_action |
+| **Tools** | `perform_fraud_assessment`, `generate_fraud_report` |
 
 ### Fraud Likelihood Levels
 
 | Level | Score | Action |
 |-------|-------|--------|
-| Low | 0-25 | Process normally |
-| Medium | 26-50 | Flag for review |
-| High | 51-75 | SIU referral |
-| Critical | 76-100 | Block claim |
+| Low | 0–25 | Process normally |
+| Medium | 26–50 | Flag for review |
+| High | 51–75 | SIU referral |
+| Critical | 76–100 | Block claim |
+
+### Exit Conditions
+
+| Outcome | Status | Notes |
+|---------|--------|-------|
+| Success | `fraud_suspected` | Assessment complete, report generated |
+| Failed | `failed` | Error during crew execution |
+
+### Integration with Main Flow
+
+The Fraud crew is invoked **after**:
+
+1. Pydantic validation (CLI)
+2. Claim creation in SQLite (`repo.create_claim`)
+3. Router classification → `claim_type == "fraud"`
+4. **Escalation check is skipped** (unlike other claim types)
+
+### Acceptance Criteria
+
+- **AC1:** Pattern task calls `analyze_claim_patterns` with claim_data
+- **AC2:** Pattern task outputs patterns_detected, timing_flags, risk_factors
+- **AC3:** Cross-reference task calls `cross_reference_fraud_indicators` and `detect_fraud_indicators`
+- **AC4:** Cross-reference task outputs fraud_keywords_found, database_matches
+- **AC5:** Assessment task calls `perform_fraud_assessment` and `generate_fraud_report`
+- **AC6:** Assessment task outputs fraud_score, fraud_likelihood, siu_referral, should_block
+- **AC7:** Final status is `fraud_suspected` on success
+- **AC8:** Task context flows: Cross-reference receives pattern; Assessment receives both
+- **AC9:** Documentation matches this specification
 
 ---
 
