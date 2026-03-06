@@ -11,8 +11,8 @@ function StateDiff({ label, jsonStr }: { label: string; jsonStr?: string }) {
   if (!jsonStr) return null;
   try {
     const obj = JSON.parse(jsonStr) as Record<string, unknown>;
-    const entries = Object.entries(obj).filter(([, v]) => v != null);
-    if (entries.length === 0) return null;
+    const hasNonNull = Object.values(obj).some((v) => v != null);
+    if (!hasNonNull) return null;
     return (
       <div className="mt-2 text-xs">
         <span className="font-medium text-gray-500">{label}:</span>

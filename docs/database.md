@@ -22,7 +22,7 @@ The schema is defined in two places and both must be kept in sync:
 
 - Add an Alembic migration for the change (e.g. `alembic revision -m "description"`).
 - Update `SCHEMA_SQL` in `database.py` so new installs and tests get the same schema.
-- Run migrations on existing DBs; `init_db` will not alter existing tables.
+- Run migrations on existing DBs; `init_db` will not modify existing table columns, although `SCHEMA_SQL` may still create new indexes or triggers defined there. All schema changes for existing databases must go through Alembic.
 
 ## Schema Overview
 
@@ -381,7 +381,7 @@ claim-agent history CLM-11EEF959
     "details": "Claim record created",
     "actor_id": "workflow",
     "before_state": null,
-    "after_state": "{\"status\": \"pending\"}",
+    "after_state": "{\"status\": \"pending\", \"claim_type\": null, \"payout_amount\": null}",
     "created_at": "2025-01-28 10:00:00"
   },
   {
