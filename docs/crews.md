@@ -154,7 +154,91 @@ The New Claim crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/duplicate_crew.py`
 
-Identifies and resolves potential duplicate claims.
+Identifies and resolves potential duplicate claims by searching existing claims, comparing similarity, and recommending merge or reject. This section is the **formal specification** for the Duplicate Claim workflow.
+
+### Entry Conditions
+
+- **Claim type:** `duplicate` (from Router classification)
+- **Classification criteria:**
+  - Same VIN as an existing claim
+  - Same or similar incident date
+  - Similar incident description
+- **Escalation:** If `needs_review` from escalation check (e.g., similarity 60–80%), return early with escalation details (no crew execution)
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Duplicate["Duplicate Crew"]
+        A[1. Search] --> B[2. Similarity] --> C[3. Resolution]
+    end
+    
+    A -.- A1[search_claims_db]
+    A -.- A2[VIN + incident_date]
+    
+    B -.- B1[compute_similarity]
+    B -.- B2[Score 0-100]
+    
+    C -.- C1[merge or reject]
+    C -.- C2[>80% = duplicate]
+```
+
+### Step 1: Search
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Claims Search Specialist |
+| **Input** | `claim_data` JSON |
+| **Action** | Search existing claims by VIN and incident_date |
+| **Output** | List of matching or similar claims (or empty list) |
+| **Tools** | `search_claims_db` |
+
+### Step 2: Similarity Analysis
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Similarity Analyst |
+| **Input** | `claim_data` + search results |
+| **Action** | Compare incident_description with found claims using compute_similarity |
+| **Output** | Similarity score (0–100), is_duplicate (true/false), brief reasoning |
+| **Tools** | `compute_similarity` |
+| **Threshold** | >80% = likely duplicate |
+
+### Step 3: Resolution
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Duplicate Resolution Specialist |
+| **Input** | Search results + similarity result |
+| **Action** | If similarity >80%, decide merge or reject |
+| **Output** | Resolution: `merge` or `reject`, one-line summary |
+| **Tools** | None |
+
+### Similarity Thresholds
+
+| Score | Interpretation | Action |
+|-------|----------------|--------|
+| 0–50 | Low similarity | Not duplicate, process normally |
+| 51–79 | Moderate | Review recommended (may escalate) |
+| 80–100 | High similarity | Likely duplicate, recommend merge/reject |
+
+### Exit Conditions
+
+| Outcome | Status | Notes |
+|---------|--------|-------|
+| Success | `duplicate` | Resolution (merge/reject) with summary |
+| Escalated | `needs_review` | Returned before crew execution (main flow) |
+| Failed | `failed` | Error during crew execution |
+
+### Integration with Main Flow
+
+The Duplicate crew is invoked **after**:
+
+1. Pydantic validation (CLI)
+2. Claim creation in SQLite (`repo.create_claim`)
+3. Router classification → `claim_type == "duplicate"`
+4. Escalation check (if not escalated)
+5. Pre-routing duplicate check (`_check_for_duplicates`) may populate `existing_claims_for_vin` in claim_data
 
 ### Agents
 
@@ -164,22 +248,16 @@ Identifies and resolves potential duplicate claims.
 | Similarity Analyst | [`compute_similarity`](tools.md#compute_similarity) |
 | Duplicate Resolution Specialist | - |
 
-### Flow
+### Acceptance Criteria
 
-```mermaid
-flowchart LR
-    A[Search] --> B[Compare] --> C{Score?}
-    C -->|>80%| D[Merge/Reject]
-    C -->|<80%| E[Not Duplicate]
-    
-    A -.- A1[Match VIN/date]
-    B -.- B1[Similarity 0-100]
-```
-
-### Similarity Threshold
-
-- **>80%**: Likely duplicate, recommend merge
-- **<80%**: Not duplicate, process normally
+- **AC1:** Search task calls `search_claims_db` with vin and incident_date from claim_data
+- **AC2:** Search task returns list of matching claims (or empty list)
+- **AC3:** Similarity task calls `compute_similarity` comparing incident descriptions
+- **AC4:** Similarity task outputs score (0–100), is_duplicate, and reasoning
+- **AC5:** Resolution task outputs `merge` or `reject` when similarity >80%
+- **AC6:** Final status is `duplicate` on success
+- **AC7:** Task context flows: Similarity receives search output; Resolution receives search + similarity
+- **AC8:** Documentation matches this specification
 
 ---
 
