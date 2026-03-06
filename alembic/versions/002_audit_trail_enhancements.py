@@ -38,11 +38,11 @@ def upgrade() -> None:
         op.execute(text("ALTER TABLE claim_audit_log ADD COLUMN before_state TEXT"))
     if "after_state" not in existing:
         op.execute(text("ALTER TABLE claim_audit_log ADD COLUMN after_state TEXT"))
-    # Backfill actor_id for existing rows
-    op.execute(text("UPDATE claim_audit_log SET actor_id = 'system' WHERE actor_id IS NULL"))
     # Enforce append-only behavior: prevent UPDATE and DELETE on claim_audit_log
     op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_update"))
     op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_delete"))
+    # Backfill actor_id for existing rows
+    op.execute(text("UPDATE claim_audit_log SET actor_id = 'system' WHERE actor_id IS NULL"))
     op.execute(text("""
         CREATE TRIGGER claim_audit_log_prevent_update
         BEFORE UPDATE ON claim_audit_log
