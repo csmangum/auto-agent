@@ -68,8 +68,8 @@ export default function ClaimDetail() {
     { label: 'Claim Type', value: claim.claim_type?.replace(/_/g, ' ') || 'unclassified' },
     { label: 'Estimated Damage', value: claim.estimated_damage != null ? `$${Number(claim.estimated_damage).toLocaleString()}` : '—' },
     { label: 'Payout Amount', value: claim.payout_amount != null ? `$${Number(claim.payout_amount).toLocaleString()}` : '—' },
-    { label: 'Created', value: claim.created_at ? new Date(claim.created_at + 'Z').toLocaleString() : '—' },
-    { label: 'Updated', value: claim.updated_at ? new Date(claim.updated_at + 'Z').toLocaleString() : '—' },
+    { label: 'Created', value: claim.created_at ? new Date(claim.created_at.replace(' ', 'T') + 'Z').toLocaleString() : '—' },
+    { label: 'Updated', value: claim.updated_at ? new Date(claim.updated_at.replace(' ', 'T') + 'Z').toLocaleString() : '—' },
   ];
 
   return (
@@ -155,7 +155,7 @@ export default function ClaimDetail() {
                     Run #{wf.id} — {wf.claim_type || 'unknown'}
                   </h3>
                   <span className="text-xs text-gray-400">
-                    {wf.created_at ? new Date(wf.created_at + 'Z').toLocaleString() : ''}
+                    {wf.created_at ? new Date(wf.created_at.replace(' ', 'T') + 'Z').toLocaleString() : ''}
                   </span>
                 </div>
 

@@ -48,7 +48,7 @@ export default function ClaimTable({ claims, compact = false }) {
                 <td className="px-4 py-3 text-gray-500">{claim.incident_date || '—'}</td>
               )}
               <td className="px-4 py-3 text-gray-400 text-xs">
-                {claim.created_at ? new Date(claim.created_at).toLocaleDateString() : '—'}
+                {claim.created_at ? new Date(claim.created_at.replace(' ', 'T') + 'Z').toLocaleDateString() : '—'}
               </td>
             </tr>
           ))}

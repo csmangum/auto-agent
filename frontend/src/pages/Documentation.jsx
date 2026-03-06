@@ -16,10 +16,11 @@ export default function Documentation() {
   useEffect(() => {
     getDocs()
       .then((data) => {
-        setPages(data.pages.filter((p) => p.available));
-        // If no slug specified, navigate to first page
-        if (!slug && data.pages.length > 0) {
-          navigate(`/docs/${data.pages[0].slug}`, { replace: true });
+        const availablePages = data.pages.filter((p) => p.available);
+        setPages(availablePages);
+        // If no slug specified, navigate to first available page
+        if (!slug && availablePages.length > 0) {
+          navigate(`/docs/${availablePages[0].slug}`, { replace: true });
         }
       })
       .catch((err) => setError(err.message));

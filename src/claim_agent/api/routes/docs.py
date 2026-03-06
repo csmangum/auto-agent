@@ -1,5 +1,6 @@
 """Documentation and Skills API routes."""
 
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -49,8 +50,6 @@ _SKILL_GROUPS = {
 
 def _parse_skill_sections(content: str) -> dict:
     """Parse role, goal, backstory from skill markdown."""
-    import re
-
     result = {}
     for section in ("Role", "Goal", "Backstory"):
         pattern = rf"## {section}\s*\n(.*?)(?=\n## |\Z)"
@@ -61,7 +60,7 @@ def _parse_skill_sections(content: str) -> dict:
 
 
 @router.get("/docs")
-async def list_docs():
+def list_docs():
     """List all available documentation pages."""
     pages = []
     for page in _DOC_PAGES:
@@ -75,7 +74,7 @@ async def list_docs():
 
 
 @router.get("/docs/{slug}")
-async def get_doc(slug: str):
+def get_doc(slug: str):
     """Get markdown content for a documentation page."""
     # Find the page config
     page_config = None
@@ -100,7 +99,7 @@ async def get_doc(slug: str):
 
 
 @router.get("/skills")
-async def list_skills():
+def list_skills():
     """List all agent skills grouped by workflow."""
     groups = {}
     for group_name, skill_names in _SKILL_GROUPS.items():
@@ -127,9 +126,17 @@ async def list_skills():
 
 
 @router.get("/skills/{name}")
-async def get_skill(name: str):
+def get_skill(name: str):
     """Get full content for an agent skill."""
-    skill_path = _SKILLS_DIR / f"{name}.md"
+    # Validate name: only allow alphanumeric characters and underscores (no path separators)
+    if not re.fullmatch(r"[a-zA-Z0-9_]+", name):
+        raise HTTPException(status_code=400, detail="Invalid skill name")
+
+    skill_path = (_SKILLS_DIR / f"{name}.md").resolve()
+    # Ensure the resolved path is within the skills directory
+    if not str(skill_path).startswith(str(_SKILLS_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid skill name")
+
     if not skill_path.exists():
         raise HTTPException(status_code=404, detail=f"Skill not found: {name}")
 
