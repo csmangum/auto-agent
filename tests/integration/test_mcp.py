@@ -167,6 +167,64 @@ class TestMCPServerTools:
         # Should return matches or sections
         assert "matches" in data or "sections" in data or "error" in data
 
+    @pytest.mark.integration
+    def test_get_claim_metrics_global(self):
+        """Test MCP get_claim_metrics with no claim_id returns global stats."""
+        from claim_agent.mcp_server.server import get_claim_metrics
+
+        result = get_claim_metrics()
+        data = json.loads(result)
+
+        assert "global_stats" in data
+        assert "claims" in data
+        assert isinstance(data["claims"], list)
+
+    @pytest.mark.integration
+    def test_get_claim_metrics_nonexistent_claim(self):
+        """Test MCP get_claim_metrics with nonexistent claim_id returns error."""
+        from claim_agent.mcp_server.server import get_claim_metrics
+
+        result = get_claim_metrics(claim_id="CLM-NONEXISTENT")
+        data = json.loads(result)
+
+        assert "error" in data
+        assert "CLM-NONEXISTENT" in data["error"]
+
+    @pytest.mark.integration
+    def test_get_claim_metrics_with_claim_id(self, integration_db):
+        """Test MCP get_claim_metrics with valid claim_id after processing."""
+        from claim_agent.observability.metrics import get_metrics, reset_metrics
+
+        reset_metrics()
+        metrics = get_metrics()
+        metrics.start_claim("CLM-METRICTEST")
+        metrics.end_claim("CLM-METRICTEST", status="completed")
+
+        from claim_agent.mcp_server.server import get_claim_metrics
+
+        result = get_claim_metrics(claim_id="CLM-METRICTEST")
+        data = json.loads(result)
+
+        assert "claim_id" in data
+        assert data["claim_id"] == "CLM-METRICTEST"
+        assert "total_llm_calls" in data
+        assert "total_tokens" in data
+
+    @pytest.mark.integration
+    def test_get_observability_config(self):
+        """Test MCP get_observability_config returns tracing config."""
+        from claim_agent.mcp_server.server import get_observability_config
+
+        result = get_observability_config()
+        data = json.loads(result)
+
+        assert "langsmith_enabled" in data
+        assert "trace_llm_calls" in data
+        assert "trace_tool_calls" in data
+        assert isinstance(data["langsmith_enabled"], bool)
+        assert isinstance(data["trace_llm_calls"], bool)
+        assert isinstance(data["trace_tool_calls"], bool)
+
 
 # ============================================================================
 # MCP Tool Pipeline Tests

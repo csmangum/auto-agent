@@ -113,6 +113,13 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     Returns:
         Estimated cost in USD
     """
+    # Guard against mock objects (e.g. MagicMock in tests)
+    if not isinstance(model, str):
+        return 0.0
+    if not isinstance(input_tokens, (int, float)) or not isinstance(output_tokens, (int, float)):
+        return 0.0
+    input_tokens = int(input_tokens)
+    output_tokens = int(output_tokens)
     # Try exact match first
     if model in MODEL_PRICING:
         input_price, output_price = MODEL_PRICING[model]

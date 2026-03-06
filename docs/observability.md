@@ -185,7 +185,7 @@ When using the [MCP server](mcp-server.md), two tools expose observability data:
 | Tool | Description |
 |------|-------------|
 | **`get_claim_metrics`** | Takes optional `claim_id`. Returns JSON: per-claim summary for that ID, or global stats plus all per-claim summaries when no ID is given. |
-| **`get_observability_config`** | Returns JSON with current tracing/config: `langsmith_enabled`, `langsmith_project`, `trace_llm_calls`, `trace_tool_calls`, `log_prompts`, `log_responses`. |
+| **`get_observability_config`** | Returns JSON with `langsmith_enabled`, `trace_llm_calls`, `trace_tool_calls`. Sensitive fields (langsmith_project, log_prompts, log_responses) are redacted. |
 
 These are useful for external agents or dashboards that consume the MCP server.
 

@@ -31,6 +31,10 @@ cp .env.example .env
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `100000` | Max tokens per claim before stopping |
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
 
+### Observability
+
+Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `CLAIM_AGENT_LOG_LEVEL`, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `CLAIM_AGENT_TRACE_LLM`, `CLAIM_AGENT_TRACE_TOOLS`. See [Observability](observability.md) for full details.
+
 Escalation, fraud detection, valuation, and partial-loss thresholds are also configurable via environment variables. See [Centralized Settings](#centralized-settings) and `.env.example` for the full list.
 
 ## LLM Configuration

@@ -3,7 +3,7 @@
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from claim_agent.config.settings import (
@@ -308,7 +308,15 @@ def detect_fraud_indicators_impl(claim_data: dict[str, Any]) -> str:
     incident = (claim_data.get("incident_description") or "").strip().lower()
     damage = (claim_data.get("damage_description") or "").strip().lower()
     vin = (claim_data.get("vin") or "").strip()
-    incident_date = (claim_data.get("incident_date") or "").strip()
+    incident_date_raw = claim_data.get("incident_date")
+    if isinstance(incident_date_raw, datetime):
+        incident_date = incident_date_raw.strftime("%Y-%m-%d")
+    elif isinstance(incident_date_raw, date):
+        incident_date = incident_date_raw.isoformat()
+    elif isinstance(incident_date_raw, str):
+        incident_date = incident_date_raw.strip()
+    else:
+        incident_date = ""
     estimated_damage = claim_data.get("estimated_damage")
     if isinstance(estimated_damage, str):
         try:
@@ -330,8 +338,7 @@ def detect_fraud_indicators_impl(claim_data: dict[str, Any]) -> str:
     if vin and incident_date:
         try:
             repo = ClaimRepository()
-            from datetime import datetime as dt
-            dt_obj = dt.strptime(incident_date, "%Y-%m-%d")
+            dt_obj = datetime.strptime(incident_date, "%Y-%m-%d")
             start = (dt_obj - timedelta(days=get_escalation_config()["vin_claims_days"])).strftime("%Y-%m-%d")
             end = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
             matches = repo.search_claims(vin=vin, incident_date=None)

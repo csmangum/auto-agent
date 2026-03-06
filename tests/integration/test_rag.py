@@ -322,6 +322,31 @@ class TestRAGToolsIntegration:
         result = get_repair_standards.run(state="California")
         
         assert isinstance(result, str)
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    def test_get_required_disclosures_tool(self):
+        """Test required disclosures tool."""
+        from claim_agent.tools.rag_tools import get_required_disclosures
+
+        result = get_required_disclosures.run(state="California")
+
+        assert isinstance(result, str)
+        assert "California" in result or "disclosure" in result.lower() or "No disclosure" in result
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    def test_get_coverage_exclusions_tool(self):
+        """Test coverage exclusions tool."""
+        from claim_agent.tools.rag_tools import get_coverage_exclusions
+
+        result = get_coverage_exclusions.run(
+            coverage_type="collision",
+            state="California",
+        )
+
+        assert isinstance(result, str)
+        assert "California" in result or "collision" in result.lower() or "No exclusions" in result
     
     @pytest.mark.integration
     @pytest.mark.slow

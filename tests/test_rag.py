@@ -764,6 +764,29 @@ class TestRAGTools:
         
         assert isinstance(result, str)
 
+    @pytest.mark.slow
+    def test_get_required_disclosures_tool(self):
+        """Test the required disclosures tool."""
+        from claim_agent.tools.rag_tools import get_required_disclosures
+
+        result = get_required_disclosures.run(state="California")
+
+        assert isinstance(result, str)
+        assert "California" in result or "disclosure" in result.lower() or "No disclosure" in result
+
+    @pytest.mark.slow
+    def test_get_coverage_exclusions_tool(self):
+        """Test the coverage exclusions tool."""
+        from claim_agent.tools.rag_tools import get_coverage_exclusions
+
+        result = get_coverage_exclusions.run(
+            coverage_type="collision",
+            state="California",
+        )
+
+        assert isinstance(result, str)
+        assert "California" in result or "collision" in result.lower() or "No exclusions" in result
+
     def test_rag_tool_invalid_state_returns_friendly_message(self):
         """Test that RAG tools return a friendly message for unsupported state."""
         from claim_agent.rag.constants import SUPPORTED_STATES
