@@ -334,7 +334,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
         crew = create_duplicate_crew()
         first_task = crew.tasks[0]
-        assert "claim_data" in first_task.description, (
+        assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
         )
 
@@ -345,7 +345,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
         crew = create_fraud_detection_crew()
         first_task = crew.tasks[0]
-        assert "claim_data" in first_task.description, (
+        assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
         )
 
@@ -356,7 +356,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
         crew = create_new_claim_crew()
         first_task = crew.tasks[0]
-        assert "claim_data" in first_task.description, (
+        assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
         )
 
@@ -367,7 +367,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
         crew = create_total_loss_crew()
         first_task = crew.tasks[0]
-        assert "claim_data" in first_task.description, (
+        assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
         )
 
@@ -378,7 +378,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
         crew = create_partial_loss_crew()
         first_task = crew.tasks[0]
-        assert "claim_data" in first_task.description, (
+        assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
         )
 
@@ -389,7 +389,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
         crew = create_partial_loss_crew()
         for i, task in enumerate(crew.tasks):
-            assert "claim_data" in task.description, (
+            assert "{claim_data}" in task.description, (
                 f"Task {i} ({task.description[:50]}...) must contain {{claim_data}} for input injection"
             )
 
