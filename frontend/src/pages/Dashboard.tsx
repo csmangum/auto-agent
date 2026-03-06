@@ -14,7 +14,7 @@ import {
 import StatCard from '../components/StatCard';
 import ClaimTable from '../components/ClaimTable';
 import { getClaimsStats, getClaims } from '../api/client';
-import type { ClaimsStats } from '../api/types';
+import type { Claim, ClaimsStats } from '../api/types';
 
 const TYPE_COLORS: Record<string, string> = {
   new: '#3B82F6',
@@ -45,7 +45,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function Dashboard() {
   const [stats, setStats] = useState<ClaimsStats | null>(null);
-  const [recentClaims, setRecentClaims] = useState<import('../api/types').Claim[]>([]);
+  const [recentClaims, setRecentClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
