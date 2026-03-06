@@ -16,6 +16,31 @@ router = APIRouter(tags=["claims"])
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
+def _resolve_attachment_urls(claim_dict: dict) -> dict:
+    """Convert S3 keys to presigned URLs in claim attachments."""
+    if "attachments" not in claim_dict or not claim_dict["attachments"]:
+        return claim_dict
+    
+    try:
+        attachments = json.loads(claim_dict["attachments"]) if isinstance(claim_dict["attachments"], str) else claim_dict["attachments"]
+        if not attachments:
+            return claim_dict
+        
+        storage = get_storage_adapter()
+        claim_id = claim_dict.get("id", "")
+        
+        for attachment in attachments:
+            url = attachment.get("url", "")
+            if url and not url.startswith(("http://", "https://")):
+                attachment["url"] = storage.get_url(claim_id, url)
+        
+        claim_dict["attachments"] = json.dumps(attachments) if isinstance(claim_dict.get("attachments"), str) else attachments
+    except Exception:
+        pass
+    
+    return claim_dict
+
+
 @router.get("/claims/stats")
 def get_claims_stats():
     """Aggregate statistics: count by status, count by type, totals."""
@@ -98,7 +123,7 @@ def list_claims(
         ).fetchall()
 
     return {
-        "claims": [dict(r) for r in rows],
+        "claims": [_resolve_attachment_urls(dict(r)) for r in rows],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -116,7 +141,7 @@ def get_claim(claim_id: str):
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
-    return dict(row)
+    return _resolve_attachment_urls(dict(row))
 
 
 @router.get("/claims/{claim_id}/history")
@@ -177,13 +202,9 @@ async def process_claim(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claim_id = repo.create_claim(claim_input)
-
-    # Process uploaded files
-    all_attachments = list(claim_input.attachments)
+    # Validate file sizes before creating claim to avoid orphaned records
+    file_contents = []
     if files:
-        storage = get_storage_adapter()
         for f in files:
             if not f.filename:
                 continue
@@ -193,16 +214,25 @@ async def process_claim(
                     status_code=413,
                     detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
                 )
+            file_contents.append((f.filename, content, f.content_type))
+
+    repo = ClaimRepository(db_path=get_db_path())
+    claim_id = repo.create_claim(claim_input)
+
+    # Process uploaded files
+    all_attachments = list(claim_input.attachments)
+    if file_contents:
+        storage = get_storage_adapter()
+        for filename, content, content_type in file_contents:
             stored_key = storage.save(
                 claim_id=claim_id,
-                filename=f.filename,
+                filename=filename,
                 content=content,
-                content_type=f.content_type,
+                content_type=content_type,
             )
-            url = storage.get_url(claim_id, stored_key)
-            atype = infer_attachment_type(f.filename)
+            atype = infer_attachment_type(filename)
             all_attachments.append(
-                Attachment(url=url, type=atype, description=f"Uploaded: {f.filename}")
+                Attachment(url=stored_key, type=atype, description=f"Uploaded: {filename}")
             )
         if all_attachments:
             repo.update_claim_attachments(claim_id, all_attachments)

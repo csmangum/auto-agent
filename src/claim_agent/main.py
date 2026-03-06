@@ -141,10 +141,9 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
                 filename=ap.name,
                 content=content,
             )
-            url = storage.get_url(claim_id, stored_key)
             atype = infer_attachment_type(ap.name)
             all_attachments.append(
-                Attachment(url=url, type=atype, description=f"Uploaded: {ap.name}")
+                Attachment(url=stored_key, type=atype, description=f"Uploaded: {ap.name}")
             )
         if all_attachments:
             repo.update_claim_attachments(claim_id, all_attachments)
