@@ -25,7 +25,7 @@ router = APIRouter(tags=["claims"])
 @router.post("/claims")
 def submit_claim(
     body: ClaimInput,
-    async_mode: bool = Query(True, description="If true, enqueue and return 202; if false, process synchronously"),
+    async_mode: bool = Query(True, alias="async", description="If true, enqueue and return 202; if false, process synchronously"),
 ):
     """Submit a claim for processing.
 
@@ -110,6 +110,8 @@ def submit_claims_batch(body: list[dict[str, Any]]):
         repo = ClaimRepository()
         claim_id = repo.create_claim(ClaimInput.model_validate(claim_data), initial_status=STATUS_QUEUED)
         job_id = enqueue_claim_job(claim_data, claim_id)
+        if job_id is None:
+            repo.update_claim_status(claim_id, STATUS_PENDING)
         results.append({
             "index": i,
             "job_id": job_id,

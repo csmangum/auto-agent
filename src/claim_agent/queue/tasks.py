@@ -43,6 +43,8 @@ def process_claim_task(claim_data: dict, claim_id: str) -> dict[str, Any]:
 
     repo = ClaimRepository()
     if repo.get_claim(claim_id) is None:
+        if job_id:
+            _update_job_status(job_id, "failed", result_summary=f"Claim not found: {claim_id}")
         return {"error": f"Claim not found: {claim_id}"}
 
     repo.update_claim_status(claim_id, STATUS_PROCESSING)
