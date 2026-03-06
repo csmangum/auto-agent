@@ -63,6 +63,7 @@ claim-agent status CLM-11EEF959
 | `claim-agent history <id>` | Get claim audit log |
 | `claim-agent reprocess <id>` | Re-run workflow |
 | `claim-agent metrics [id]` | Show metrics (optional claim ID) |
+| `claim-agent-worker` | Start async job worker (requires REDIS_URL) |
 
 ## Sample Claims
 
@@ -94,6 +95,7 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [Observability](docs/observability.md) | Logging, tracing, metrics |
 | [RAG](docs/rag.md) | Policy and compliance search |
 | [MCP Server](docs/mcp-server.md) | External tool access and health check |
+| [Async Processing](docs/async-processing.md) | Job queue, worker deployment, batch API |
 | [Evaluation](docs/evaluation-results.md) | Claim processing eval results and how to run |
 
 ## Project Layout

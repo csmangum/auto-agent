@@ -164,6 +164,76 @@ class TestClaimWorkflows:
 
 
 # -------------------------------------------------------------------
+# Async / Job queue endpoints (no Redis required for these tests)
+# -------------------------------------------------------------------
+
+class TestClaimSubmit:
+    def test_async_requires_redis(self, client, monkeypatch):
+        """Async mode returns 503 when REDIS_URL not set."""
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        claim = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Rear-ended at stoplight",
+            "damage_description": "Rear bumper damage",
+            "estimated_damage": 2500.0,
+        }
+        resp = client.post("/api/claims?async=true", json=claim)
+        assert resp.status_code == 503
+        assert "REDIS_URL" in resp.json()["detail"]
+
+    def test_invalid_claim_body(self, client):
+        """Invalid claim data returns 422 (FastAPI/Pydantic validation)."""
+        resp = client.post("/api/claims?async=false", json={"policy_number": "x"})
+        assert resp.status_code == 422  # Validation error
+
+
+class TestClaimJob:
+    def test_get_claim_job_no_async_job(self, client):
+        """Claim not submitted via async returns job_id: null."""
+        resp = client.get("/api/claims/CLM-TEST001/job")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["job_id"] is None
+
+    def test_get_claim_job_not_found(self, client):
+        resp = client.get("/api/claims/CLM-NOTEXIST/job")
+        assert resp.status_code == 404
+
+
+class TestJobs:
+    def test_get_job_not_found(self, client):
+        resp = client.get("/api/jobs/nonexistent-job-id-12345")
+        assert resp.status_code == 404
+
+
+class TestBatchSubmit:
+    def test_batch_requires_redis(self, client, monkeypatch):
+        """Batch submit returns 503 when REDIS_URL not set."""
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        claims = [
+            {
+                "policy_number": "POL-001",
+                "vin": "1HGBH41JXMN109186",
+                "vehicle_year": 2021,
+                "vehicle_make": "Honda",
+                "vehicle_model": "Accord",
+                "incident_date": "2025-01-15",
+                "incident_description": "Rear-ended",
+                "damage_description": "Bumper damage",
+                "estimated_damage": 2500.0,
+            },
+        ]
+        resp = client.post("/api/claims/batch", json=claims)
+        assert resp.status_code == 503
+
+
+# -------------------------------------------------------------------
 # Metrics endpoints
 # -------------------------------------------------------------------
 

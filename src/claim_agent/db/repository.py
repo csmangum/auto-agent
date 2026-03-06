@@ -3,7 +3,7 @@
 import uuid
 from typing import Any
 
-from claim_agent.db.constants import STATUS_PENDING
+from claim_agent.db.constants import STATUS_PENDING, STATUS_QUEUED
 from claim_agent.db.database import get_connection
 from claim_agent.models.claim import ClaimInput
 
@@ -19,7 +19,11 @@ class ClaimRepository:
     def __init__(self, db_path: str | None = None):
         self._db_path = db_path
 
-    def create_claim(self, claim_input: ClaimInput) -> str:
+    def create_claim(
+        self,
+        claim_input: ClaimInput,
+        initial_status: str = STATUS_PENDING,
+    ) -> str:
         """Insert new claim, generate ID, log 'created' audit entry. Returns claim_id."""
         claim_id = _generate_claim_id()
         with get_connection(self._db_path) as conn:
@@ -43,7 +47,7 @@ class ClaimRepository:
                     claim_input.damage_description,
                     claim_input.estimated_damage,
                     None,
-                    STATUS_PENDING,
+                    initial_status,
                 ),
             )
             conn.execute(
@@ -51,7 +55,7 @@ class ClaimRepository:
                 INSERT INTO claim_audit_log (claim_id, action, new_status, details)
                 VALUES (?, 'created', ?, ?)
                 """,
-                (claim_id, STATUS_PENDING, "Claim record created"),
+                (claim_id, initial_status, "Claim record created"),
             )
         return claim_id
 

@@ -6,6 +6,7 @@ crews) and are not yet set by the main router/workflow.
 """
 
 STATUS_PENDING = "pending"
+STATUS_QUEUED = "queued"
 STATUS_PROCESSING = "processing"
 STATUS_OPEN = "open"
 STATUS_CLOSED = "closed"
@@ -23,6 +24,7 @@ STATUS_NEEDS_REVIEW = "needs_review"
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
     STATUS_PENDING,
+    STATUS_QUEUED,
     STATUS_PROCESSING,
     STATUS_OPEN,
     STATUS_CLOSED,

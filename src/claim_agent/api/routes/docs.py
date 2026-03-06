@@ -28,6 +28,7 @@ _DOC_PAGES = [
     {"slug": "observability", "title": "Observability", "file": "observability.md"},
     {"slug": "rag", "title": "RAG", "file": "rag.md"},
     {"slug": "mcp-server", "title": "MCP Server", "file": "mcp-server.md"},
+    {"slug": "async-processing", "title": "Async Processing", "file": "async-processing.md"},
     {"slug": "evaluation-results", "title": "Evaluation Results", "file": "evaluation-results.md"},
 ]
 
