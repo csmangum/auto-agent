@@ -17,6 +17,7 @@ _DOC_PAGES = [
     {"slug": "index", "title": "Overview", "file": "index.md"},
     {"slug": "getting-started", "title": "Getting Started", "file": "getting-started.md"},
     {"slug": "architecture", "title": "Architecture", "file": "architecture.md"},
+    {"slug": "design-considerations", "title": "Design Considerations", "file": "design-considerations.md"},
     {"slug": "crews", "title": "Crews", "file": "crews.md"},
     {"slug": "claim-types", "title": "Claim Types", "file": "claim-types.md"},
     {"slug": "agent-flow", "title": "Agent Flow", "file": "agent-flow.md"},
