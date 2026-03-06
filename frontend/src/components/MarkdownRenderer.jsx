@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import MermaidDiagram from './MermaidDiagram';
 
 const components = {
   h1: ({ children }) => (
@@ -47,15 +48,11 @@ const components = {
         </code>
       );
     }
-    // Detect mermaid blocks
+    // Render mermaid blocks as diagrams
     const lang = className?.replace('language-', '') || '';
     if (lang === 'mermaid') {
-      return (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-          <p className="text-xs text-blue-500 mb-2 font-medium">Mermaid Diagram (source)</p>
-          <pre className="text-sm text-blue-900 whitespace-pre-wrap font-mono">{children}</pre>
-        </div>
-      );
+      const code = Array.isArray(children) ? children.join('') : String(children || '');
+      return <MermaidDiagram chart={code} />;
     }
     return (
       <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto mb-4">
