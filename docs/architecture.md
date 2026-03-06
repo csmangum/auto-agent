@@ -68,7 +68,7 @@ See [Agent Flow - Escalation](agent-flow.md#4-escalation-check-hitl) for details
 
 ### Data Flow
 
-Claim data flows through the system as follows. The Router Crew receives a `ClaimInput` (from `models/claim.py`) and classifies the claim; it passes the validated claim data and classification to the selected workflow crew. Within each crew, context is shared via **CrewAI's sequential task context mechanism**: each task declares a `context` list of prior tasks whose outputs become input context for the next agent. Persistent state (claim records, workflow runs) is stored in the SQLite database via the repository layer. The final output is a `ClaimOutput` (or `EscalationOutput` for escalated claims) containing `claim_id`, `status`, `actions_taken`, and optional `payout_amount`.
+Claim data flows through the system as follows. The Router Crew receives a `ClaimInput` (from `models/claim.py`) and classifies the claim; it passes the validated claim data and classification to the selected workflow crew. Within each crew, context is shared between tasks (see Agent Composition below for details on the context mechanism). Persistent state (claim records, workflow runs) is stored in the SQLite database via the repository layer. The final output is a `ClaimOutput` (or `EscalationOutput` for escalated claims) containing `claim_id`, `status`, `actions_taken`, and optional `payout_amount`.
 
 ### Agent Composition
 
