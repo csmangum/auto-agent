@@ -271,7 +271,7 @@ class TestAuditLog:
         
         # Check transitions
         assert history[0]["action"] == "created"
-        assert history[1]["action"] == "status_changed"
+        assert history[1]["action"] == "status_change"
         assert history[1]["old_status"] == STATUS_PENDING
         assert history[1]["new_status"] == STATUS_PROCESSING
         assert history[2]["old_status"] == STATUS_PROCESSING

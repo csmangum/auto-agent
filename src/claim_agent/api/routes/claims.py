@@ -4,7 +4,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from claim_agent.db.database import get_connection
+from claim_agent.db.database import get_connection, get_db_path
+from claim_agent.db.repository import ClaimRepository
 
 router = APIRouter(tags=["claims"])
 
@@ -115,20 +116,12 @@ def get_claim(claim_id: str):
 @router.get("/claims/{claim_id}/history")
 def get_claim_history(claim_id: str):
     """Get audit log entries for a claim."""
-    with get_connection() as conn:
-        # Verify claim exists
-        claim = conn.execute(
-            "SELECT id FROM claims WHERE id = ?", (claim_id,)
-        ).fetchone()
-        if claim is None:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-
-        rows = conn.execute(
-            "SELECT * FROM claim_audit_log WHERE claim_id = ? ORDER BY id ASC",
-            (claim_id,),
-        ).fetchall()
-
-    return {"claim_id": claim_id, "history": [dict(r) for r in rows]}
+    repo = ClaimRepository(db_path=get_db_path())
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    history = repo.get_claim_history(claim_id)
+    return {"claim_id": claim_id, "history": history}
 
 
 @router.get("/claims/{claim_id}/workflows")

@@ -146,11 +146,11 @@ class TestWorkflowWithMockedLLM:
         repo = ClaimRepository(db_path=integration_db)
         history = repo.get_claim_history(result["claim_id"])
         
-        # Should have at least: created, status_changed (processing), status_changed (final)
+        # Should have at least: created, status_change (processing), status_change (final)
         assert len(history) >= 2
         actions = [h["action"] for h in history]
         assert "created" in actions
-        assert "status_changed" in actions
+        assert "status_change" in actions
     
     @pytest.mark.integration
     def test_workflow_handles_failure_gracefully(

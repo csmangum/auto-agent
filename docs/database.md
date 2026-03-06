@@ -10,6 +10,20 @@ For configuration options, see [Configuration](configuration.md).
 |---------------------|---------|-------------|
 | `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database file |
 
+## Schema Change Process
+
+The schema is defined in two places and both must be kept in sync:
+
+1. **`src/claim_agent/db/database.py`** – `SCHEMA_SQL` used by `init_db()`. New installs and tests use this; `CREATE TABLE IF NOT EXISTS` applies the full schema when tables do not exist.
+
+2. **`alembic/versions/`** – Incremental migrations for existing databases. Production upgrades use `alembic upgrade head`.
+
+**When changing the schema:**
+
+- Add an Alembic migration for the change (e.g. `alembic revision -m "description"`).
+- Update `SCHEMA_SQL` in `database.py` so new installs and tests get the same schema.
+- Run migrations on existing DBs; `init_db` will not modify existing table columns, although `SCHEMA_SQL` may still create new indexes or triggers defined there. All schema changes for existing databases must go through Alembic.
+
 ## Schema Overview
 
 ```mermaid
@@ -42,6 +56,9 @@ erDiagram
         text old_status
         text new_status
         text details
+        text actor_id
+        text before_state
+        text after_state
         text created_at
     }
     
@@ -105,7 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 
 ### claim_audit_log
 
-Audit trail of all status changes and actions.
+Audit trail of all status changes and actions. **Append-only**: no UPDATE or DELETE. Records are immutable for compliance.
 
 ```sql
 CREATE TABLE IF NOT EXISTS claim_audit_log (
@@ -115,20 +132,50 @@ CREATE TABLE IF NOT EXISTS claim_audit_log (
     old_status TEXT,
     new_status TEXT,
     details TEXT,
+    actor_id TEXT DEFAULT 'system',
+    before_state TEXT,
+    after_state TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
 ```
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INTEGER | Auto-increment primary key |
 | `claim_id` | TEXT | Foreign key to claims.id |
-| `action` | TEXT | Action type (created, status_changed) |
-| `old_status` | TEXT | Previous status (for status_changed) |
+| `action` | TEXT | Event type (see Audit Event Types below) |
+| `old_status` | TEXT | Previous status (for status_change) |
 | `new_status` | TEXT | New status |
 | `details` | TEXT | Additional details/notes |
+| `actor_id` | TEXT | Who performed the action: `system`, `workflow`, or adjuster ID |
+| `before_state` | TEXT | JSON of state before change (status, claim_type, payout_amount) |
+| `after_state` | TEXT | JSON of state after change |
 | `created_at` | TEXT | Timestamp of action |
+
+#### Audit Event Types
+
+| Event | Description |
+|-------|-------------|
+| `created` | Claim record created |
+| `status_change` | Status, claim_type, or payout_amount changed |
+| `approval` | Human approval (future) |
+| `rejection` | Human rejection (future) |
+| `reprocess` | Workflow reprocessed (future) |
+| `escalation` | Escalated for HITL (future) |
+| `payout_set` | Payout amount set (future) |
+
+#### Actor Identity
+
+- `system` – System-level actions (e.g. initialization)
+- `workflow` – Automated workflow actions (default for `run_claim_workflow`)
+- `<adjuster_id>` – Human adjuster when populated from auth context (API)
+
+#### Retention
+
+Audit log retention is compliance-dependent. Configure via backup/archival policies. The audit table may outlive claims for regulatory requirements. See your compliance team for retention periods.
 
 ### workflow_runs
 
@@ -220,7 +267,7 @@ def create_claim(self, claim_input: ClaimInput) -> str:
 
 - Generates unique claim ID (CLM-XXXXXXXX)
 - Inserts claim record with status 'pending'
-- Creates audit log entry with action 'created'
+- Creates audit log entry with action `created`, actor_id (default `workflow`)
 
 ### get_claim
 
@@ -247,7 +294,7 @@ def update_claim_status(
 
 - Updates claim status
 - Optionally updates claim_type and payout_amount
-- Creates audit log entry with action 'status_changed'
+- Creates audit log entry with action `status_change`, actor_id, before_state, after_state
 
 ### save_workflow_result
 
@@ -332,24 +379,33 @@ claim-agent history CLM-11EEF959
     "old_status": null,
     "new_status": "pending",
     "details": "Claim record created",
+    "actor_id": "workflow",
+    "before_state": null,
+    "after_state": "{\"status\": \"pending\", \"claim_type\": null, \"payout_amount\": null}",
     "created_at": "2025-01-28 10:00:00"
   },
   {
     "id": 2,
     "claim_id": "CLM-11EEF959",
-    "action": "status_changed",
+    "action": "status_change",
     "old_status": "pending",
     "new_status": "processing",
     "details": null,
+    "actor_id": "workflow",
+    "before_state": "{\"status\": \"pending\", \"claim_type\": null, \"payout_amount\": null}",
+    "after_state": "{\"status\": \"processing\", \"claim_type\": null, \"payout_amount\": null}",
     "created_at": "2025-01-28 10:00:01"
   },
   {
     "id": 3,
     "claim_id": "CLM-11EEF959",
-    "action": "status_changed",
+    "action": "status_change",
     "old_status": "processing",
     "new_status": "open",
     "details": "Claim ID: CLM-11EEF959, Status: open, Summary: ...",
+    "actor_id": "workflow",
+    "before_state": "{\"status\": \"processing\", \"claim_type\": \"new\", \"payout_amount\": null}",
+    "after_state": "{\"status\": \"open\", \"claim_type\": \"new\", \"payout_amount\": null}",
     "created_at": "2025-01-28 10:00:15"
   }
 ]

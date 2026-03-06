@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS claims (
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
--- Audit log (state changes)
+-- Audit log (state changes). Append-only: no UPDATE or DELETE.
 CREATE TABLE IF NOT EXISTS claim_audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id TEXT NOT NULL,
@@ -38,9 +38,27 @@ CREATE TABLE IF NOT EXISTS claim_audit_log (
     old_status TEXT,
     new_status TEXT,
     details TEXT,
+    actor_id TEXT DEFAULT 'system',
+    before_state TEXT,
+    after_state TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
+
+-- Enforce append-only behavior: reject UPDATE/DELETE on claim_audit_log
+CREATE TRIGGER IF NOT EXISTS claim_audit_log_prevent_update
+BEFORE UPDATE ON claim_audit_log
+BEGIN
+    SELECT RAISE(ABORT, 'claim_audit_log is append-only: updates are not allowed');
+END;
+
+CREATE TRIGGER IF NOT EXISTS claim_audit_log_prevent_delete
+BEFORE DELETE ON claim_audit_log
+BEGIN
+    SELECT RAISE(ABORT, 'claim_audit_log is append-only: deletes are not allowed');
+END;
+
+CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
 
 -- Workflow results (preserves each processing run)
 CREATE TABLE IF NOT EXISTS workflow_runs (
