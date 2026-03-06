@@ -1,8 +1,18 @@
-"""Claim repository: CRUD, audit logging, and search."""
+"""Claim repository: CRUD, audit logging, and search.
 
+This repository treats claim_audit_log as append-only: it only inserts new
+audit entries and does not perform UPDATE or DELETE operations on that table.
+"""
+
+import json
 import uuid
 from typing import Any
 
+from claim_agent.db.audit_events import (
+    ACTOR_WORKFLOW,
+    AUDIT_EVENT_CREATED,
+    AUDIT_EVENT_STATUS_CHANGE,
+)
 from claim_agent.db.constants import STATUS_PENDING
 from claim_agent.db.database import get_connection
 from claim_agent.models.claim import ClaimInput
@@ -19,7 +29,12 @@ class ClaimRepository:
     def __init__(self, db_path: str | None = None):
         self._db_path = db_path
 
-    def create_claim(self, claim_input: ClaimInput) -> str:
+    def create_claim(
+        self,
+        claim_input: ClaimInput,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> str:
         """Insert new claim, generate ID, log 'created' audit entry. Returns claim_id."""
         claim_id = _generate_claim_id()
         with get_connection(self._db_path) as conn:
@@ -46,12 +61,13 @@ class ClaimRepository:
                     STATUS_PENDING,
                 ),
             )
+            after_state = json.dumps({"status": STATUS_PENDING, "claim_type": None, "payout_amount": None})
             conn.execute(
                 """
-                INSERT INTO claim_audit_log (claim_id, action, new_status, details)
-                VALUES (?, 'created', ?, ?)
+                INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, STATUS_PENDING, "Claim record created"),
+                (claim_id, AUDIT_EVENT_CREATED, STATUS_PENDING, "Claim record created", actor_id, after_state),
             )
         return claim_id
 
@@ -72,15 +88,30 @@ class ClaimRepository:
         details: str | None = None,
         claim_type: str | None = None,
         payout_amount: float | None = None,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
     ) -> None:
         """Update status, optionally claim_type and payout_amount; log state change to audit."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT status FROM claims WHERE id = ?", (claim_id,)
+                "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if row is None:
                 raise ValueError(f"Claim not found: {claim_id}")
             old_status = row["status"]
+            old_claim_type = row["claim_type"]
+            old_payout = row["payout_amount"]
+
+            before_state = {
+                "status": old_status,
+                "claim_type": old_claim_type,
+                "payout_amount": old_payout,
+            }
+            after_state = {
+                "status": new_status,
+                "claim_type": claim_type if claim_type is not None else old_claim_type,
+                "payout_amount": payout_amount if payout_amount is not None else old_payout,
+            }
 
             # Explicit parameterized queries (no dynamic SQL)
             if claim_type is not None and payout_amount is not None:
@@ -109,10 +140,19 @@ class ClaimRepository:
 
             conn.execute(
                 """
-                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details)
-                VALUES (?, 'status_changed', ?, ?, ?)
+                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, old_status, new_status, details or ""),
+                (
+                    claim_id,
+                    AUDIT_EVENT_STATUS_CHANGE,
+                    old_status,
+                    new_status,
+                    details or "",
+                    actor_id,
+                    json.dumps(before_state),
+                    json.dumps(after_state),
+                ),
             )
 
     def save_workflow_result(
@@ -137,7 +177,8 @@ class ClaimRepository:
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
                 """
-                SELECT id, claim_id, action, old_status, new_status, details, created_at
+                SELECT id, claim_id, action, old_status, new_status, details,
+                       actor_id, before_state, after_state, created_at
                 FROM claim_audit_log
                 WHERE claim_id = ?
                 ORDER BY id ASC

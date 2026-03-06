@@ -58,7 +58,7 @@ def _seed_test_data(db_path: str):
         conn.execute(
             "INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details) "
             "VALUES (?, ?, ?, ?, ?)",
-            ("CLM-TEST001", "status_changed", "pending", "open", "Processed successfully"),
+            ("CLM-TEST001", "status_change", "pending", "open", "Processed successfully"),
         )
 
         # Workflow run
