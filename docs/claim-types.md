@@ -112,7 +112,7 @@ Claims matching existing claims in the system.
 
 ## Total Loss
 
-Vehicle is unrepairable or repair cost exceeds value.
+Vehicle is unrepairable or repair cost exceeds value. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [Total Loss Crew](crews.md#total-loss-crew).
 
 ### Classification Criteria
 

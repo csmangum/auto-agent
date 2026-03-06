@@ -187,7 +187,97 @@ flowchart LR
 
 **Location**: `src/claim_agent/crews/total_loss_crew.py`
 
-Processes claims where the vehicle is a total loss.
+Processes claims where the vehicle is unrepairable or repair cost exceeds 75% of value: assess damage, fetch vehicle value, calculate payout, and settle. This section is the **formal specification** for the Total Loss workflow.
+
+### Entry Conditions
+
+- **Claim type:** `total_loss` (from Router classification)
+- **Classification criteria:**
+  - Total loss keywords: totaled, flood, submerged, fire, burned, destroyed, frame damage, rollover
+  - Repair cost > 75% of vehicle value
+- **Escalation:** If `needs_review` from escalation check, return early (no crew execution)
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph TotalLoss["Total Loss Crew"]
+        A[1. Assess Damage] --> B[2. Valuation] --> C[3. Payout] --> D[4. Settlement]
+    end
+    
+    A -.- A1[evaluate_damage]
+    A -.- A2[total_loss_candidate]
+    
+    B -.- B1[fetch_vehicle_value]
+    B -.- B2[Market value]
+    
+    C -.- C1[calculate_payout]
+    C -.- C2[Value - Deductible]
+    
+    D -.- D1[generate_report]
+    D -.- D2[status: closed]
+```
+
+### Step 1: Damage Assessment
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Damage Assessor |
+| **Input** | `claim_data` JSON |
+| **Action** | Evaluate damage_description, estimated_damage; check for total loss indicators |
+| **Output** | Damage severity, estimated_repair_cost, total_loss_candidate (true/false) |
+| **Tools** | `evaluate_damage` |
+
+### Step 2: Vehicle Valuation
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Vehicle Valuation Specialist |
+| **Input** | `claim_data` + damage assessment |
+| **Action** | Fetch current market value using vin, vehicle_year, vehicle_make, vehicle_model |
+| **Output** | Vehicle value (USD), condition, source |
+| **Tools** | `fetch_vehicle_value` |
+
+### Step 3: Payout Calculation
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Payout Calculator |
+| **Input** | Damage assessment + valuation + policy_number |
+| **Action** | Calculate payout (vehicle value minus deductible) |
+| **Output** | Payout amount (USD), calculation details |
+| **Tools** | `calculate_payout` |
+| **Formula** | `Payout = Vehicle Market Value - Policy Deductible` |
+
+### Step 4: Settlement
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Settlement Specialist |
+| **Input** | All prior outputs + claim_data |
+| **Action** | Generate report with claim_id, claim_type='total_loss', status='closed', payout_amount |
+| **Output** | Settlement report summary, claim closed confirmation |
+| **Tools** | `generate_claim_id`, `generate_report` |
+
+### Exit Conditions
+
+| Outcome | Status | Notes |
+|---------|--------|-------|
+| Success | `closed` | Payout calculated, report generated |
+| Escalated | `needs_review` | Returned before crew execution |
+| Failed | `failed` | Error during crew execution |
+
+### Integration with Main Flow
+
+The Total Loss crew is invoked **after**:
+
+1. Pydantic validation (CLI)
+2. Claim creation in SQLite (`repo.create_claim`)
+3. Router classification → `claim_type == "total_loss"`
+4. Escalation check (if not escalated)
+5. Economic total loss pre-check may populate `is_economic_total_loss`, `vehicle_value`, etc. in claim_data
+
+**RAG:** Crew supports `state` (jurisdiction) and `use_rag` for policy/compliance context.
 
 ### Agents
 
@@ -198,23 +288,16 @@ Processes claims where the vehicle is a total loss.
 | Payout Calculator | [`calculate_payout`](tools.md#calculate_payout) |
 | Settlement Specialist | [`generate_claim_id`](tools.md#generate_claim_id), [`generate_report`](tools.md#generate_report) |
 
-### Flow
+### Acceptance Criteria
 
-```mermaid
-flowchart LR
-    A[Assess Damage] --> B[Get Value] --> C[Calculate Payout] --> D[Settle]
-    
-    A -.- A1[Severity]
-    B -.- B1[Market value]
-    C -.- C1[Value - Deductible]
-    D -.- D1[Close claim]
-```
-
-### Payout Calculation
-
-```
-Payout = Vehicle Market Value - Policy Deductible
-```
+- **AC1:** Damage task calls `evaluate_damage` and outputs total_loss_candidate
+- **AC2:** Valuation task calls `fetch_vehicle_value` with vehicle identifiers
+- **AC3:** Payout task calls `calculate_payout` with vehicle value and policy_number
+- **AC4:** Payout formula: value - deductible
+- **AC5:** Settlement task calls `generate_report` with claim_type='total_loss', status='closed', payout_amount
+- **AC6:** Final status is `closed` on success
+- **AC7:** Task context flows: Valuation receives damage; Payout receives damage + valuation; Settlement receives all
+- **AC8:** Documentation matches this specification
 
 ---
 
