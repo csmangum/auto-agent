@@ -37,7 +37,7 @@ flowchart TD
 
 ## New Claim
 
-Standard first-time claim submissions with no red flags.
+Standard first-time claim submissions with no red flags. For the formal workflow specification (entry conditions, flow sequence, acceptance criteria), see [New Claim Crew](crews.md#new-claim-crew).
 
 ### Classification Criteria
 

@@ -1,4 +1,8 @@
-"""New claim workflow crew."""
+"""New claim workflow crew.
+
+Formal specification: docs/crews.md#new-claim-crew (Issue #64).
+Flow: Intake (validate) -> Policy (query_policy_db) -> Assignment (claim_id, generate_report).
+"""
 
 from crewai import Crew, Task
 

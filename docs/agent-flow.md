@@ -130,6 +130,8 @@ workflow_result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
 
 See [Crews](crews.md) for crew details.
 
+**New Claim flow:** The main flow creates the claim record and assigns `claim_id` before routing. `claim_data` passed to the New Claim crew includes `claim_id`. The crew uses it (Assignment step) rather than generating a new one. See [New Claim Crew](crews.md#new-claim-crew) for the formal specification.
+
 ### 6. Finalization
 
 ```python
