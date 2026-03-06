@@ -36,8 +36,12 @@ flowchart TB
         MockDB[(Mock Data)]
     end
     
+    ClaimResult[Claim Result]
+
     CLI --> Router --> Escalation
+    Escalation -->|Escalated| ClaimResult
     Escalation -->|Not Escalated| Workflows
+    Workflows --> ClaimResult
     Workflows --> Tools
     Tools --> Data
 ```
@@ -62,12 +66,16 @@ After classification but before workflow execution:
 
 See [Agent Flow - Escalation](agent-flow.md#4-escalation-check-hitl) for details.
 
+### Data Flow
+
+Claim data flows through the system as follows. The Router Crew receives a `ClaimInput` (from `models/claim.py`) and classifies the claim; it passes the validated claim data and classification to the selected workflow crew. Within each crew, context is shared via **CrewAI's sequential task context mechanism**: each task declares a `context` list of prior tasks whose outputs become input context for the next agent. Persistent state (claim records, workflow runs) is stored in the SQLite database via the repository layer. The final output is a `ClaimOutput` (or `EscalationOutput` for escalated claims) containing `claim_id`, `status`, `actions_taken`, and optional `payout_amount`.
+
 ### Agent Composition
 
 Each crew consists of multiple **specialized agents** that:
 - Have specific roles, goals, and backstories defined in **skill files**
 - Use dedicated tools to accomplish tasks
-- Pass context between sequential tasks
+- Pass context between sequential tasks via **CrewAI's sequential task context mechanism**: each task declares a `context` parameter listing prior tasks; the output of those tasks is automatically injected as input context for the next agent. For example, in the Total Loss crew, the payout task receives context from both the damage assessment and valuation tasks. Tasks specify an `expected_output` string to guide the LLM; structured Pydantic output is used where the workflow needs to parse results (e.g., escalation reports).
 
 See [Skills](skills.md) for agent prompt definitions.
 
@@ -79,6 +87,10 @@ The system maintains state through:
 - **Status tracking** with full audit trail
 
 See [Database](database.md) for schema details.
+
+### Observability
+
+The `observability/` module provides structured logging, tracing, and metrics. **ClaimLogger** and **claim_context** attach `claim_id` and `claim_type` to all log lines (JSON or human-readable format). **LangSmith** integration (optional) records LLM traces; a **LiteLLM callback** captures token usage and cost per call. **ClaimMetrics** aggregates per-claim and global stats: LLM call count, tokens, estimated cost (USD), and latency percentiles. See [Observability](observability.md) for configuration and usage.
 
 ## Main Flow Diagram
 
@@ -131,8 +143,8 @@ src/claim_agent/
 ├── config/              # LLM and configuration
 │   ├── llm.py           # LLM configuration
 │   ├── settings.py      # Centralized settings (escalation, fraud, valuation, token budgets)
-│   ├── agents.yaml      # Agent reference
-│   └── tasks.yaml       # Task reference
+│   ├── agents.yaml      # CrewAI agent role/goal/backstory definitions
+│   └── tasks.yaml       # CrewAI task description and expected output definitions
 ├── agents/              # Agent factory functions
 ├── crews/               # Crew definitions
 ├── skills/              # Agent prompt definitions (markdown)
@@ -163,6 +175,8 @@ src/claim_agent/
 | LLM Provider | OpenRouter / OpenAI | [Configuration](configuration.md) |
 | Database | SQLite | [Database](database.md) |
 | Data Validation | Pydantic | [Claim Types](claim-types.md#required-fields) |
+| Python | ≥3.10 | `pyproject.toml` |
+| CLI | Custom (sys.argv) | `main.py` |
 | MCP Server | FastMCP | [MCP Server](mcp-server.md) |
 
 ## Key Design Decisions
@@ -193,7 +207,7 @@ src/claim_agent/
 3. **Sufficient for POC** - Handles demonstration data volumes
 4. **Easy Migration** - Schema migrates easily to PostgreSQL
 
-### Security and Resilience
+## Security and Resilience
 
 - **Input sanitization** – Incoming claim data is sanitized (control characters, field length, prompt-injection patterns) before processing. See `claim_agent.utils.sanitization`.
 - **Parameterized queries** – The repository uses explicit parameterized queries; no dynamic SQL string building.
