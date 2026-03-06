@@ -4,7 +4,7 @@ import mermaid from 'mermaid';
 mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
-  securityLevel: 'loose',
+  securityLevel: 'strict',
   fontFamily: 'ui-sans-serif, system-ui, sans-serif',
   flowchart: { curve: 'basis', padding: 15 },
   themeVariables: {

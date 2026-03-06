@@ -1,9 +1,5 @@
 """Tests for the FastAPI backend API endpoints."""
 
-import json
-import os
-import tempfile
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -236,7 +232,7 @@ class TestSkills:
         assert data["content"]  # Should have content
 
     def test_skill_not_found(self, client):
-        resp = client.get("/api/skills/nonexistent-skill")
+        resp = client.get("/api/skills/nonexistent_skill")
         assert resp.status_code == 404
 
 

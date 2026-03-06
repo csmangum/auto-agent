@@ -1,5 +1,7 @@
 """System configuration, health, and agent catalog API routes."""
 
+import logging
+
 from fastapi import APIRouter
 
 from claim_agent.config.settings import (
@@ -19,6 +21,8 @@ from claim_agent.config.settings import (
     LABOR_HOURS_MIN,
 )
 from claim_agent.db.database import get_connection
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["system"])
 
@@ -185,7 +189,7 @@ _CREWS_CATALOG = [
 
 
 @router.get("/system/config")
-async def get_config():
+def get_config():
     """Get current system configuration grouped by category."""
     return {
         "escalation": get_escalation_config(),
@@ -212,7 +216,7 @@ async def get_config():
 
 
 @router.get("/system/health")
-async def health_check():
+def health_check():
     """Health check with database connectivity."""
     try:
         with get_connection() as conn:
@@ -220,7 +224,8 @@ async def health_check():
         db_status = "connected"
     except Exception as e:
         count = 0
-        db_status = f"error: {e}"
+        logger.error("Health check database error: %s", e)
+        db_status = "error"
 
     return {
         "status": "healthy" if db_status == "connected" else "degraded",
@@ -230,6 +235,6 @@ async def health_check():
 
 
 @router.get("/system/agents")
-async def get_agents_catalog():
+def get_agents_catalog():
     """Get the complete agent/crew catalog."""
     return {"crews": _CREWS_CATALOG}

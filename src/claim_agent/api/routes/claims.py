@@ -10,7 +10,7 @@ router = APIRouter(tags=["claims"])
 
 
 @router.get("/claims/stats")
-async def get_claims_stats():
+def get_claims_stats():
     """Aggregate statistics: count by status, count by type, totals."""
     with get_connection() as conn:
         # Total count
@@ -57,7 +57,7 @@ async def get_claims_stats():
 
 
 @router.get("/claims")
-async def list_claims(
+def list_claims(
     status: Optional[str] = Query(None, description="Filter by status"),
     claim_type: Optional[str] = Query(None, description="Filter by claim type"),
     limit: int = Query(100, ge=1, le=1000),
@@ -99,7 +99,7 @@ async def list_claims(
 
 
 @router.get("/claims/{claim_id}")
-async def get_claim(claim_id: str):
+def get_claim(claim_id: str):
     """Get a single claim by ID."""
     with get_connection() as conn:
         row = conn.execute(
@@ -113,7 +113,7 @@ async def get_claim(claim_id: str):
 
 
 @router.get("/claims/{claim_id}/history")
-async def get_claim_history(claim_id: str):
+def get_claim_history(claim_id: str):
     """Get audit log entries for a claim."""
     with get_connection() as conn:
         # Verify claim exists
@@ -132,7 +132,7 @@ async def get_claim_history(claim_id: str):
 
 
 @router.get("/claims/{claim_id}/workflows")
-async def get_claim_workflows(claim_id: str):
+def get_claim_workflows(claim_id: str):
     """Get workflow runs for a claim."""
     with get_connection() as conn:
         # Verify claim exists
