@@ -90,6 +90,44 @@ class TestClaimDataFromRow:
         # Missing keys should use defaults
         assert result["vehicle_year"] == 0
 
+    def test_claim_data_from_row_attachments_json_string(self):
+        """Test that JSON string attachments are parsed to list."""
+        row = {
+            "policy_number": "POL-001",
+            "vin": "VIN123",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Test incident",
+            "damage_description": "Test damage",
+            "estimated_damage": 5000.0,
+            "attachments": '[{"url": "http://example.com/photo.jpg", "type": "photo"}]',
+        }
+        result = _claim_data_from_row(row)
+        assert isinstance(result["attachments"], list)
+        assert len(result["attachments"]) == 1
+        assert result["attachments"][0]["url"] == "http://example.com/photo.jpg"
+        assert result["attachments"][0]["type"] == "photo"
+
+    def test_claim_data_from_row_attachments_empty_json_string(self):
+        """Test that empty JSON array string is parsed to empty list."""
+        row = {
+            "policy_number": "POL-001",
+            "vin": "VIN123",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Test incident",
+            "damage_description": "Test damage",
+            "estimated_damage": 5000.0,
+            "attachments": "[]",
+        }
+        result = _claim_data_from_row(row)
+        assert isinstance(result["attachments"], list)
+        assert len(result["attachments"]) == 0
+
 
 class TestCmdStatus:
     """Tests for cmd_status function."""

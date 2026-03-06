@@ -1,6 +1,8 @@
 """Pydantic models for claims."""
 
 from claim_agent.models.claim import (
+    Attachment,
+    AttachmentType,
     ClaimInput,
     ClaimOutput,
     ClaimType,
@@ -8,6 +10,8 @@ from claim_agent.models.claim import (
 )
 
 __all__ = [
+    "Attachment",
+    "AttachmentType",
     "ClaimInput",
     "ClaimOutput",
     "ClaimType",

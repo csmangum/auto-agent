@@ -1,13 +1,19 @@
 """Claims API routes: listing, detail, audit log, workflow runs, statistics."""
 
+import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.claim import Attachment
+from claim_agent.storage import get_storage_adapter
+from claim_agent.utils import infer_attachment_type
 
 router = APIRouter(tags=["claims"])
+
+_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 @router.get("/claims/stats")
@@ -141,3 +147,67 @@ def get_claim_workflows(claim_id: str):
         ).fetchall()
 
     return {"claim_id": claim_id, "workflows": [dict(r) for r in rows]}
+
+
+@router.post("/claims/process")
+async def process_claim(
+    claim: str = Form(..., description="Claim data as JSON string"),
+    files: list[UploadFile] = File(default=[], description="Optional attachment files"),
+):
+    """Submit a new claim for processing. Accepts claim JSON and optional file uploads.
+
+    - claim: JSON string with policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+      incident_date, incident_description, damage_description, estimated_damage (optional),
+      attachments (optional list of {url, type, description}).
+    - files: Optional multipart files (photos, PDFs, estimates). Stored via configured backend.
+    """
+    try:
+        claim_data = json.loads(claim)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.utils.sanitization import sanitize_claim_data
+
+    sanitized = sanitize_claim_data(claim_data)
+    try:
+        from claim_agent.models.claim import ClaimInput
+
+        claim_input = ClaimInput.model_validate(sanitized)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
+
+    repo = ClaimRepository(db_path=get_db_path())
+    claim_id = repo.create_claim(claim_input)
+
+    # Process uploaded files
+    all_attachments = list(claim_input.attachments)
+    if files:
+        storage = get_storage_adapter()
+        for f in files:
+            if not f.filename:
+                continue
+            content = await f.read()
+            if len(content) > _MAX_UPLOAD_SIZE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+                )
+            stored_key = storage.save(
+                claim_id=claim_id,
+                filename=f.filename,
+                content=content,
+                content_type=f.content_type,
+            )
+            url = storage.get_url(claim_id, stored_key)
+            atype = infer_attachment_type(f.filename)
+            all_attachments.append(
+                Attachment(url=url, type=atype, description=f"Uploaded: {f.filename}")
+            )
+        if all_attachments:
+            repo.update_claim_attachments(claim_id, all_attachments)
+
+    # Run workflow with updated claim data (including attachment URLs)
+    claim_data_with_attachments = {**sanitized, "attachments": [a.model_dump(mode="json") for a in all_attachments]}
+    result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id)
+    return result

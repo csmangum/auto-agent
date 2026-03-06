@@ -6,6 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from claim_agent.models.claim import (
+    Attachment,
+    AttachmentType,
     ClaimInput,
     ClaimOutput,
     ClaimType,
@@ -120,6 +122,28 @@ class TestClaimInput:
         claim = ClaimInput(**data)
         dumped = claim.model_dump(mode="json")
         assert dumped["incident_date"] == "2025-01-15"
+
+    def test_valid_with_attachments(self):
+        data = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Rear-ended.",
+            "damage_description": "Bumper damage.",
+            "attachments": [
+                {"url": "https://example.com/photo.jpg", "type": "photo", "description": "Damage photo"},
+                {"url": "https://example.com/estimate.pdf", "type": "estimate"},
+            ],
+        }
+        claim = ClaimInput(**data)
+        assert len(claim.attachments) == 2
+        assert claim.attachments[0].type == AttachmentType.PHOTO
+        assert claim.attachments[0].description == "Damage photo"
+        assert claim.attachments[1].type == AttachmentType.ESTIMATE
+        assert claim.attachments[1].description is None
 
 
 class TestClaimOutput:

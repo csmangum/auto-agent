@@ -23,6 +23,7 @@ __all__ = [
     "evaluate_damage",
     "calculate_payout",
     "generate_report",
+    "generate_report_pdf",
     "generate_claim_id",
     "search_california_compliance",
     "evaluate_escalation",
@@ -40,6 +41,8 @@ __all__ = [
     "create_parts_order",
     "calculate_repair_estimate",
     "generate_repair_authorization",
+    # Vision tools
+    "analyze_damage_photo",
     # RAG tools
     "search_policy_compliance",
     "get_compliance_deadlines",
@@ -81,6 +84,10 @@ def __getattr__(name: str):
         from claim_agent.tools.document_tools import generate_report
         setattr(mod, "generate_report", generate_report)
         return generate_report
+    if name == "generate_report_pdf":
+        from claim_agent.tools.document_tools import generate_report_pdf
+        setattr(mod, "generate_report_pdf", generate_report_pdf)
+        return generate_report_pdf
     if name == "generate_claim_id":
         from claim_agent.tools.document_tools import generate_claim_id
         setattr(mod, "generate_claim_id", generate_claim_id)
@@ -143,6 +150,11 @@ def __getattr__(name: str):
         from claim_agent.tools.partial_loss_tools import generate_repair_authorization
         setattr(mod, "generate_repair_authorization", generate_repair_authorization)
         return generate_repair_authorization
+    # Vision tools
+    if name == "analyze_damage_photo":
+        from claim_agent.tools.vision_tools import analyze_damage_photo
+        setattr(mod, "analyze_damage_photo", analyze_damage_photo)
+        return analyze_damage_photo
     # RAG tools
     if name == "search_policy_compliance":
         from claim_agent.tools.rag_tools import search_policy_compliance

@@ -7,6 +7,23 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class AttachmentType(str, Enum):
+    """Type of claim attachment."""
+
+    PHOTO = "photo"
+    PDF = "pdf"
+    ESTIMATE = "estimate"
+    OTHER = "other"
+
+
+class Attachment(BaseModel):
+    """Attachment metadata: url, type, optional description."""
+
+    url: str = Field(..., description="URL to the file (S3, local path, or external)")
+    type: AttachmentType = Field(..., description="Attachment type: photo, pdf, estimate, other")
+    description: Optional[str] = Field(default=None, description="Optional description of the attachment")
+
+
 class ClaimType(str, Enum):
     """Classification of claim workflow."""
 
@@ -30,6 +47,10 @@ class ClaimInput(BaseModel):
     damage_description: str = Field(..., description="Description of vehicle damage")
     estimated_damage: Optional[float] = Field(
         default=None, description="Estimated repair cost in dollars"
+    )
+    attachments: list[Attachment] = Field(
+        default_factory=list,
+        description="Optional attachments (photos, PDFs, estimates)",
     )
 
 
