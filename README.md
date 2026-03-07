@@ -120,11 +120,20 @@ src/claim_agent/
 ```bash
 # Unit tests (no API key needed)
 export MOCK_DB_PATH=data/mock_db.json
-pytest tests/ -v
+pytest tests/ -v --ignore=tests/integration --ignore=tests/e2e --ignore=tests/load \
+  -m "not slow and not integration and not llm and not e2e and not load"
 
-# Integration tests (API key required)
-pytest tests/test_crews.py -v
+# Integration tests (mocked LLM, no API key needed)
+pytest tests/integration/ -v -m "integration and not slow and not llm"
+
+# E2E tests (submit claims via API, mocked LLM, no API key needed)
+pytest tests/e2e/ -v -m e2e
+
+# Load tests (concurrent claim submissions, throughput, latency)
+LOAD_TEST_CONCURRENCY=20 pytest tests/load/ -v -m load -s
 ```
+
+E2E tests submit claims via the REST API and assert claim_id, status, and audit history. Load tests report throughput (claims/sec), latency percentiles (p50, p99), and error rate. Set `LOAD_TEST_CONCURRENCY` for concurrency (default 10). Use `LOAD_TEST_OUTPUT=report.json` to write metrics to a file.
 
 ## Evaluation
 
