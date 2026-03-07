@@ -561,6 +561,7 @@ def _handle_mid_workflow_escalation(
     prior_workflow_output: str | None = None,
     actor_id: str | None = None,
     stage: str | None = None,
+    payout_amount: float | None = None,
 ) -> dict:
     """Build and return an escalation response for a MidWorkflowEscalation.
 
@@ -584,6 +585,8 @@ def _handle_mid_workflow_escalation(
         actor_id: Actor to record in audit log entries.
         stage: Optional stage name (e.g. ``"settlement"``).  When provided the
             claim status and review metadata are updated.
+        payout_amount: Optional payout from primary crew; persisted when available
+            for settlement-stage escalations so adjusters see it in the claim record.
     """
     details_payload: dict[str, Any] = {
         "escalation": True,
@@ -611,7 +614,12 @@ def _handle_mid_workflow_escalation(
         current_status = current_claim.get("status") if current_claim else None
         if current_status != STATUS_NEEDS_REVIEW:
             repo.update_claim_status(
-                claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=escalation_details, actor_id=actor_id
+                claim_id,
+                STATUS_NEEDS_REVIEW,
+                claim_type=claim_type,
+                details=escalation_details,
+                payout_amount=payout_amount,
+                actor_id=actor_id,
             )
             hours = 24 if e.priority in ("critical", "high") else 48 if e.priority == "medium" else 72
             due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
@@ -999,6 +1007,7 @@ def run_claim_workflow(
                         prior_workflow_output=workflow_output,
                         actor_id=_actor,
                         stage="settlement",
+                        payout_amount=extracted_payout if extracted_payout is not None else None,
                     )
 
                 _check_token_budget(claim_id, metrics, llm)

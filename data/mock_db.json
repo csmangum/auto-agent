@@ -231,28 +231,28 @@
       "vin": "5FNRL6H76MB012346",
       "incident_date": "2024-11-15",
       "incident_description": "Hail damage to hood and roof. Repaired but diminished value claim submitted.",
-      "status": "partial_loss"
+      "status": "settled"
     },
     {
       "claim_id": "CLM-PART02",
       "vin": "WBA3B1C50EK123457",
       "incident_date": "2024-12-05",
       "incident_description": "Significant front-end damage. Repaired; vehicle retained. Diminished value applicable.",
-      "status": "partial_loss"
+      "status": "settled"
     },
     {
       "claim_id": "CLM-PART03",
       "vin": "1G1ZD5ST0LF123457",
       "incident_date": "2024-12-18",
       "incident_description": "Water intrusion from storm. Interior and electronics damaged. Not total loss; repair authorized.",
-      "status": "partial_loss"
+      "status": "settled"
     },
     {
       "claim_id": "CLM-PART04",
       "vin": "2T1BURHE5KC123457",
       "incident_date": "2025-01-06",
       "incident_description": "Side impact. Structural repair completed. Customer retained vehicle with diminished value.",
-      "status": "partial_loss"
+      "status": "settled"
     },
     {
       "claim_id": "CLM-INV01",

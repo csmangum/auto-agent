@@ -233,10 +233,11 @@ Defined in `src/claim_agent/db/constants.py`:
 | `STATUS_PENDING` | "pending" | Initial state after creation |
 | `STATUS_PROCESSING` | "processing" | Workflow is running |
 | `STATUS_OPEN` | "open" | New claim opened |
-| `STATUS_CLOSED` | "closed" | Claim finalized (total loss) |
+| `STATUS_CLOSED` | "closed" | Claim finalized (legacy) |
 | `STATUS_DUPLICATE` | "duplicate" | Marked as duplicate |
 | `STATUS_FRAUD_SUSPECTED` | "fraud_suspected" | Flagged for fraud |
-| `STATUS_PARTIAL_LOSS` | "partial_loss" | Partial loss processed |
+| `STATUS_PARTIAL_LOSS` | "partial_loss" | Reserved for schema/validation |
+| `STATUS_SETTLED` | "settled" | Total loss or partial loss settlement complete |
 | `STATUS_NEEDS_REVIEW` | "needs_review" | Escalated for HITL |
 | `STATUS_PENDING_INFO` | "pending_info" | Awaiting info from claimant |
 | `STATUS_FAILED` | "failed" | Processing failed |
@@ -267,10 +268,10 @@ Defined in `src/claim_agent/db/constants.py`:
 │                ┌────────────┬────────────┬───┴───────┬────────────┐        │
 │                │            │            │           │            │        │
 │                ▼            ▼            ▼           ▼            ▼        │
-│           ┌────────┐  ┌───────────┐  ┌────────┐  ┌─────────────┐  ┌──────┐ │
-│           │  open  │  │ duplicate │  │ closed │  │partial_loss │  │fraud │ │
-│           │ (new)  │  │           │  │ (t.l.) │  │             │  │      │ │
-│           └────────┘  └───────────┘  └────────┘  └─────────────┘  └──────┘ │
+│           ┌────────┐  ┌───────────┐  ┌─────────┐  ┌──────────┐          │
+│           │  open  │  │ duplicate │  │ settled │  │  fraud   │          │
+│           │ (new)  │  │           │  │(t.l/p.l)│  │suspected │          │
+│           └────────┘  └───────────┘  └─────────┘  └──────────┘          │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
