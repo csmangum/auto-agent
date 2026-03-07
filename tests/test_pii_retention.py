@@ -348,3 +348,45 @@ class TestRetentionCLI:
             assert "claims_to_archive" in data
         finally:
             os.unlink(db_path)
+
+    def test_retention_enforce_exits_1_when_archive_fails(self):
+        """retention-enforce exits with code 1 when any archive fails."""
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_input = ClaimInput(
+                policy_number="POL-1",
+                vin="1HGCM82633A123456",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date="2020-01-15",
+                incident_description="Test",
+                damage_description="Test",
+            )
+            claim_id = repo.create_claim(claim_input)
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",
+                    (claim_id,),
+                )
+
+            with mock.patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+                with mock.patch.object(
+                    ClaimRepository,
+                    "archive_claim",
+                    side_effect=ValueError("Claim not found: " + claim_id),
+                ):
+                    from claim_agent.main import cmd_retention_enforce
+
+                    with pytest.raises(SystemExit) as exc_info:
+                        cmd_retention_enforce(dry_run=False)
+                    assert exc_info.value.code == 1
+        finally:
+            os.unlink(db_path)

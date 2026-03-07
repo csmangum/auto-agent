@@ -26,6 +26,7 @@ Outbound webhooks notify external systems when claim status changes or when repa
 | `claim.denied` | Rejected by adjuster |
 | `claim.pending_info` | More info requested |
 | `claim.under_investigation` | Escalated to SIU |
+| `claim.archived` | Archived for retention (older than retention period) |
 | `repair.authorized` | Repair authorization generated for partial loss |
 
 ## Payload Schema
@@ -102,3 +103,11 @@ def verify_webhook(body: bytes, signature_header: str, secret: str) -> bool:
 - Retries on connection errors, timeouts, and 5xx responses
 - After max retries: log error; optionally append to `WEBHOOK_DEAD_LETTER_PATH`
 - Delivery runs in a thread pool; does not block claim processing
+
+## Dead-Letter File
+
+When `WEBHOOK_DEAD_LETTER_PATH` is set, failed deliveries (after all retries) are appended as JSONL (one JSON object per line). Each line contains `url`, `payload`, and `error`.
+
+**Rotation**: The file grows unbounded. Operators should rotate or archive it periodically (e.g. via logrotate or a scheduled job). Consider moving processed lines to an archive before truncating.
+
+**Concurrency**: Multiple threads may append to the same file. Writes are atomic per line (each `write` is a single JSON object + newline). Under heavy load, lines from different deliveries may interleave; each line remains valid JSON and can be parsed independently.

@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import logging
 import os
+import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -153,6 +154,26 @@ class TestDispatchClaimEvent:
                 assert event == "claim.closed"
                 assert payload["claim_type"] == "partial_loss"
                 assert payload["payout_amount"] == 2500.0
+
+    def test_archived_maps_to_claim_archived(self):
+        with patch("claim_agent.notifications.webhook.dispatch_webhook") as mock:
+            with patch.dict(
+                os.environ,
+                {"WEBHOOK_URL": "https://x.com/hook", "WEBHOOK_ENABLED": "true"},
+            ):
+                dispatch_claim_event(
+                    "CLM-123",
+                    "archived",
+                    summary="Archived for retention",
+                    claim_type="partial_loss",
+                    payout_amount=1500.0,
+                )
+                event, payload = mock.call_args[0]
+                assert event == "claim.archived"
+                assert payload["status"] == "archived"
+                assert payload["summary"] == "Archived for retention"
+                assert payload["claim_type"] == "partial_loss"
+                assert payload["payout_amount"] == 1500.0
 
 
 class TestDispatchWebhook:
@@ -321,3 +342,39 @@ class TestRepositoryWebhookIntegration:
             mock.assert_called_once()
             assert mock.call_args[0][0] == claim_id
             assert mock.call_args[0][1] == "processing"
+
+    def test_archive_claim_dispatches_archived(self):
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_input = ClaimInput(
+                policy_number="POL-003",
+                vin="3HGBH41JXMN109188",
+                vehicle_year=2019,
+                vehicle_make="Honda",
+                vehicle_model="Accord",
+                incident_date="2019-06-01",
+                incident_description="Test",
+                damage_description="Test",
+            )
+            claim_id = repo.create_claim(claim_input)
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",
+                    (claim_id,),
+                )
+
+            with patch("claim_agent.db.repository.dispatch_claim_event") as mock:
+                repo.archive_claim(claim_id)
+                mock.assert_called_once()
+                assert mock.call_args[0][0] == claim_id
+                assert mock.call_args[0][1] == "archived"
+                assert mock.call_args[1]["summary"] == "Archived for retention"
+        finally:
+            os.unlink(db_path)

@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
+
 from claim_agent.config.settings import get_webhook_config
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,7 @@ _STATUS_TO_EVENT: dict[str, str] = {
     "denied": "claim.denied",
     "pending_info": "claim.pending_info",
     "under_investigation": "claim.under_investigation",
+    "archived": "claim.archived",
 }
 
 
@@ -51,8 +54,6 @@ def _deliver_one(
     dead_letter_path: str | None,
 ) -> None:
     """Deliver webhook to a single URL with retry and exponential backoff."""
-    import httpx
-
     body = json.dumps(payload).encode("utf-8")
     signature = _sign_payload(secret, body)
     headers = {
@@ -119,7 +120,7 @@ def dispatch_webhook(event: str, payload: dict[str, Any]) -> None:
                     payload,
                     config["secret"],
                     config["max_retries"],
-                    config.get("dead_letter_path"),
+                    config["dead_letter_path"] or None,
                 )
             except Exception as e:
                 logger.exception("Webhook dispatch error for %s: %s", url, e)
@@ -182,7 +183,7 @@ def dispatch_repair_authorized(
                     full_payload,
                     config["secret"],
                     config["max_retries"],
-                    config.get("dead_letter_path"),
+                    config["dead_letter_path"] or None,
                 )
             except Exception as e:
                 logger.exception("Shop webhook delivery error for %s: %s", shop_url, e)

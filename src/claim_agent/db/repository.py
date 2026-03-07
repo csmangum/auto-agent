@@ -716,3 +716,11 @@ class ClaimRepository:
                     actor_id,
                 ),
             )
+
+        dispatch_claim_event(
+            claim_id,
+            STATUS_ARCHIVED,
+            summary="Archived for retention",
+            claim_type=row["claim_type"],
+            payout_amount=row["payout_amount"],
+        )
