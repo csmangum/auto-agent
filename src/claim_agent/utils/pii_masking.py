@@ -5,7 +5,6 @@ to comply with data protection requirements. Format: mask middle characters
 (e.g. POL-***-001, 1HG***9186).
 """
 
-import re
 from typing import Any
 
 
@@ -76,7 +75,7 @@ def mask_value(key: str, value: Any) -> Any:
     key_lower = key.lower()
     if "policy" in key_lower or key_lower == "policy_number":
         return mask_policy_number(value)
-    if "vin" in key_lower:
+    if key_lower == "vin":
         return mask_vin(value)
     if "name" in key_lower or "claimant" in key_lower:
         return mask_claimant_name(value)
@@ -96,7 +95,7 @@ def mask_dict(data: dict[str, Any], keys_to_mask: set[str] | None = None) -> dic
     result: dict[str, Any] = {}
     for k, v in data.items():
         k_lower = k.lower()
-        if k_lower in mask_keys or any(mk in k_lower for mk in ("policy", "vin", "claimant")):
+        if k_lower in mask_keys or any(mk in k_lower for mk in ("policy", "claimant")) or k_lower == "vin":
             result[k] = mask_value(k, v)
         elif isinstance(v, dict):
             result[k] = mask_dict(v, keys_to_mask)
@@ -107,32 +106,4 @@ def mask_dict(data: dict[str, Any], keys_to_mask: set[str] | None = None) -> dic
             ]
         else:
             result[k] = v
-    return result
-
-
-def mask_string_for_logs(text: str, mask_policy: bool = True, mask_vin_pattern: bool = True) -> str:
-    """Mask PII that may appear inline in log messages.
-
-    Applies regex-based masking for policy numbers and VINs in free text.
-    Policy: alphanumeric with dashes, 6+ chars
-    VIN: 17 alphanumeric (excluding I,O,Q)
-    """
-    if not text or not isinstance(text, str):
-        return text
-
-    result = text
-    if mask_policy:
-        # Policy-like: POL-12345-001, ABC123456, etc.
-        result = re.sub(
-            r"\b([A-Za-z0-9]{3})[-]?[A-Za-z0-9]{2,}[-]?([A-Za-z0-9]{3})\b",
-            r"\1***\2",
-            result,
-        )
-    if mask_vin_pattern:
-        # VIN: 17 alphanumeric (standard format)
-        result = re.sub(
-            r"\b([A-HJ-NPR-Z0-9]{3})[A-HJ-NPR-Z0-9]{10}([A-HJ-NPR-Z0-9]{4})\b",
-            r"\1***\2",
-            result,
-        )
     return result

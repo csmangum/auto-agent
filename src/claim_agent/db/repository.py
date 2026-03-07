@@ -641,8 +641,6 @@ class ClaimRepository:
     def list_claims_for_retention(
         self,
         retention_period_years: int,
-        *,
-        actor_id: str = ACTOR_RETENTION,
     ) -> list[dict[str, Any]]:
         """List claims older than retention period that are not yet archived.
 
