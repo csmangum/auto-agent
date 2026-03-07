@@ -1051,7 +1051,7 @@ def run_claim_workflow(
                             return _escalate_low_router_confidence_response(
                                 claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
                             )
-                    except (json.JSONDecodeError, TypeError, KeyError) as e:
+                    except (json.JSONDecodeError, TypeError, KeyError, ValueError) as e:
                         logger.warning("Router validation parse failed: %s", e)
                         _escalate_low_router_confidence(
                             claim_id, claim_type, raw_output, router_confidence,

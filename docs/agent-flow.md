@@ -23,7 +23,13 @@ flowchart TB
         F[Router Crew]
         G{claim_type}
     end
-    
+
+    subgraph ConfidenceCheck["Router Confidence Check"]
+        R{confidence >= threshold?}
+        V[Optional: Validate & Reclassify]
+        S[Escalate: needs_review]
+    end
+
     subgraph Escalation["Escalation Check"]
         H{Fraud type?}
         I[Evaluate escalation]
@@ -41,7 +47,11 @@ flowchart TB
         O[Return JSON]
     end
     
-    A --> B --> C --> D --> E --> F --> G --> H
+    A --> B --> C --> D --> E --> F --> G --> R
+    R -->|Yes| H
+    R -->|No| V
+    V -->|high confidence| H
+    V -->|low confidence| S --> O
     H -->|Yes| K
     H -->|No| I --> J
     J -->|Yes| O
