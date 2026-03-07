@@ -935,8 +935,15 @@ class TestProcessClaimAsyncEndpoint:
         import claim_agent.api.routes.claims as claims_mod
         import json
 
-        # Mock workflow to return the actual claim_id (from existing_claim_id)
+        # Mock workflow to return the actual claim_id (from existing_claim_id) and
+        # update the DB to a terminal status so the SSE stream terminates promptly.
         def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None):
+            if existing_claim_id:
+                from claim_agent.db.database import get_db_path
+                from claim_agent.db.repository import ClaimRepository
+                ClaimRepository(db_path=get_db_path()).update_claim_status(
+                    existing_claim_id, "open"
+                )
             return {
                 "claim_id": existing_claim_id or "CLM-MOCK",
                 "claim_type": "new",
