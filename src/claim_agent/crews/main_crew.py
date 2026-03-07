@@ -679,10 +679,11 @@ def run_claim_workflow(
         existing_claim_id: if set, re-run workflow for this claim (no new claim created).
 
     Returns:
-        dict with claim_id, claim_type, summary, and workflow_output. When the claim is
-        escalated (needs_review), the dict also includes status (STATUS_NEEDS_REVIEW), escalation_reasons,
-        escalation_priority, and workflow_output holds escalation details (JSON). When not escalated,
-        the dict has claim_id, claim_type, router_output, workflow_output (crew output), summary.
+        dict with claim_id, claim_type, status, summary, and workflow_output. Both paths include
+        status: when escalated, status is STATUS_NEEDS_REVIEW; when not escalated, status is the
+        final claim status (e.g. settled, duplicate, fraud_suspected, closed). Escalated returns
+        also include needs_review, escalation_reasons, priority; workflow_output holds escalation
+        details (JSON). Successful returns include router_output and workflow_output (crew output).
     """
     workflow_start_time = time.time()
     _actor = actor_id if actor_id is not None else ACTOR_WORKFLOW
@@ -1049,6 +1050,7 @@ def run_claim_workflow(
             return {
                 "claim_id": claim_id,
                 "claim_type": claim_type,
+                "status": final_status,
                 "router_output": raw_output,
                 "workflow_output": final_workflow_output,
                 "summary": final_workflow_output[:500] + "..." if len(final_workflow_output) > 500 else final_workflow_output,
