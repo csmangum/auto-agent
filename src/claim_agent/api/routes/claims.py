@@ -436,9 +436,8 @@ async def create_claim(
     For file uploads, use POST /claims/process with multipart form.
     """
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    sanitized = sanitize_claim_data(claim_input.model_dump(mode="json"))
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        json.dumps(sanitized), None, actor_id
+        claim_input.model_dump_json(), None, actor_id
     )
 
     if async_mode:
