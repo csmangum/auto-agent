@@ -10,7 +10,6 @@ from claim_agent.agents.total_loss import (
     create_damage_assessor_agent,
     create_valuation_agent,
     create_payout_agent,
-    create_settlement_agent,
 )
 from claim_agent.config.llm import get_llm
 from claim_agent.config.settings import get_crew_verbose
@@ -21,7 +20,7 @@ def create_total_loss_crew(
     state: str = "California",
     use_rag: bool = True,
 ):
-    """Create the Total Loss Evaluator crew: assess damage -> valuation -> payout -> settlement.
+    """Create the Total Loss Evaluator crew: assess damage -> valuation -> payout.
     
     Args:
         llm: Language model to use (defaults to configured LLM)
@@ -35,7 +34,6 @@ def create_total_loss_crew(
     damage_agent = create_damage_assessor_agent(llm, state=state, use_rag=use_rag)
     valuation_agent = create_valuation_agent(llm, state=state, use_rag=use_rag)
     payout_agent = create_payout_agent(llm, state=state, use_rag=use_rag)
-    settlement_agent = create_settlement_agent(llm, state=state, use_rag=use_rag)
 
     assess_task = Task(
         description="""CLAIM DATA (JSON):
@@ -65,16 +63,8 @@ Output the payout amount and calculation details.""",
         context=[assess_task, valuation_task],
     )
 
-    settlement_task = Task(
-        description="""Generate the settlement report and close the claim.
-Use generate_report with claim_id (generate one with generate_claim_id if not set), claim_type='total_loss', status='closed', summary (one paragraph of actions and payout), and payout_amount.""",
-        expected_output="Settlement report summary and claim closed confirmation with payout amount.",
-        agent=settlement_agent,
-        context=[assess_task, valuation_task, payout_task],
-    )
-
     return Crew(
-        agents=[damage_agent, valuation_agent, payout_agent, settlement_agent],
-        tasks=[assess_task, valuation_task, payout_task, settlement_task],
+        agents=[damage_agent, valuation_agent, payout_agent],
+        tasks=[assess_task, valuation_task, payout_task],
         verbose=get_crew_verbose(),
     )

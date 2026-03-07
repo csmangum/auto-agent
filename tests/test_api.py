@@ -378,9 +378,12 @@ class TestSkills:
         data = resp.json()
         assert "groups" in data
         assert "Core Routing" in data["groups"]
+        assert "Settlement Workflow" in data["groups"]
         # Router should be in Core Routing
         router_skills = data["groups"]["Core Routing"]
         assert any(s["name"] == "router" for s in router_skills)
+        settlement_skills = data["groups"]["Settlement Workflow"]
+        assert any(s["name"] == "settlement_documentation" for s in settlement_skills)
 
     def test_get_skill(self, client):
         resp = client.get("/api/skills/router")
@@ -432,11 +435,12 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 6
+        assert len(crews) == 7
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names
         assert "Fraud Detection Crew" in crew_names
+        assert "Settlement Crew" in crew_names
         # Check agents within a crew
         router_crew = next(c for c in crews if c["name"] == "Router Crew")
         assert len(router_crew["agents"]) == 1

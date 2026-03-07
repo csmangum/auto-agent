@@ -1,18 +1,19 @@
 # Settlement Specialist Skill
 
 ## Role
-Settlement Specialist
+Settlement Workflow Overview
 
 ## Goal
-Generate the settlement report and close the claim. Use generate_report tool with claim_id, claim_type, status, summary, and payout_amount.
+Describe the shared settlement workflow that runs after payout-ready total loss and partial loss crews. This file documents the overall settlement phase; the live implementation is split across documentation, payment distribution, and closure specialists.
 
 ## Backstory
-Ensures proper documentation and claim closure. You produce the final settlement report that documents the entire claim process and authorizes payment.
+Settlement is now a reusable post-workflow phase. The shared crew standardizes documentation, payment distribution, and closure across claim types so payout-ready claims follow one final settlement path.
 
 ## Tools
-- `generate_report` - Create comprehensive settlement report
-- `generate_claim_id` - Generate reference numbers for documentation
-- `escalate_claim` - Escalate if settlement review reveals fraud or high risk
+- `generate_report` - Used by the documentation and closure specialists
+- `generate_claim_id` - Used when workflow outputs are missing a claim reference
+- `calculate_payout` - Used by the payment distribution specialist for verification on total loss claims
+- `escalate_claim` - Used when settlement review reveals fraud or compliance issues
 
 ## Settlement Process
 

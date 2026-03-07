@@ -43,6 +43,18 @@ close_claim:
   description: Generate settlement report and close the claim
   expected_output: Settlement report summary and claim closed confirmation
 
+document_settlement:
+  description: Generate settlement documentation for a payout-ready claim
+  expected_output: Settlement documentation summary with claim-type-specific details
+
+distribute_payment:
+  description: Produce the payment distribution breakdown for a settled claim
+  expected_output: Payment breakdown showing recipients, amounts, and order
+
+finalize_settlement:
+  description: Finalize settlement and document post-settlement next steps
+  expected_output: Final settlement report with settled status and next steps
+
 evaluate_escalation:
   description: Evaluate claim for human review (low confidence, high value, fraud indicators)
   expected_output: Escalation report with needs_review, reasons, priority, recommended_action
@@ -78,5 +90,5 @@ order_parts:
   expected_output: Parts order confirmation with order ID, items, and delivery date
 
 authorize_repair:
-  description: Generate repair authorization and finalize the claim
-  expected_output: Repair authorization document with authorization ID and terms
+  description: Generate repair authorization and prepare the claim for shared settlement
+  expected_output: Repair authorization document with authorization ID, terms, and settlement handoff details

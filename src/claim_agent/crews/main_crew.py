@@ -23,6 +23,7 @@ from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
+from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.config.llm import get_llm, get_model_name
 from claim_agent.config.settings import (
     get_crew_verbose,
@@ -36,8 +37,8 @@ from claim_agent.db.constants import (
     STATUS_FRAUD_SUSPECTED,
     STATUS_NEEDS_REVIEW,
     STATUS_OPEN,
-    STATUS_PARTIAL_LOSS,
     STATUS_PROCESSING,
+    STATUS_SETTLED,
 )
 from claim_agent.tools.logic import evaluate_escalation_impl, detect_fraud_indicators_impl
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
@@ -286,9 +287,26 @@ def _final_status(claim_type: str) -> str:
         return STATUS_DUPLICATE
     if claim_type == ClaimType.FRAUD.value:
         return STATUS_FRAUD_SUSPECTED
-    if claim_type == ClaimType.PARTIAL_LOSS.value:
-        return STATUS_PARTIAL_LOSS
+    if claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value):
+        return STATUS_SETTLED
     return STATUS_CLOSED
+
+
+def _requires_settlement(claim_type: str) -> bool:
+    """Return True when the workflow should hand off to the shared settlement crew."""
+    return claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value)
+
+
+def _combine_workflow_outputs(primary_output: str, settlement_output: str | None = None) -> str:
+    """Combine primary workflow and settlement outputs for persistence and summaries."""
+    if not settlement_output:
+        return primary_output
+    return (
+        "Primary workflow output:\n"
+        f"{primary_output}\n\n"
+        "Settlement workflow output:\n"
+        f"{settlement_output}"
+    )
 
 
 def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None) -> list[dict]:
@@ -497,6 +515,102 @@ def _check_economic_total_loss(claim_data: dict) -> dict:
         "damage_is_repairable": damage_is_repairable,
         "vehicle_value": vehicle_value,
         "damage_to_value_ratio": ratio,
+    }
+
+
+def _handle_mid_workflow_escalation(
+    e: MidWorkflowEscalation,
+    *,
+    claim_id: str,
+    claim_type: str,
+    raw_output: str,
+    repo: "ClaimRepository",
+    logger,
+    metrics,
+    llm,
+    workflow_start_time: float,
+    prior_workflow_output: str | None = None,
+    actor_id: str | None = None,
+    stage: str | None = None,
+) -> dict:
+    """Build and return an escalation response for a MidWorkflowEscalation.
+
+    When *stage* is provided (e.g. ``"settlement"``), the escalation details
+    include that stage, the claim status is updated to ``STATUS_NEEDS_REVIEW``,
+    and review metadata (priority / due-at) are persisted.  Without *stage*
+    (primary crew escalation), only the workflow result is saved.
+
+    Args:
+        e: The ``MidWorkflowEscalation`` exception.
+        claim_id: Active claim identifier.
+        claim_type: Claim classification (e.g. ``"total_loss"``).
+        raw_output: Router/crew raw output captured before the escalation.
+        repo: ``ClaimRepository`` instance for persistence.
+        logger: Structured logger bound to the current claim context.
+        metrics: ``ClaimMetrics`` collector for this claim.
+        llm: LLM instance used by the crew (for usage recording).
+        workflow_start_time: ``time.time()`` captured at workflow start.
+        prior_workflow_output: For settlement-stage escalations, the completed
+            primary-crew output to combine with escalation details.
+        actor_id: Actor to record in audit log entries.
+        stage: Optional stage name (e.g. ``"settlement"``).  When provided the
+            claim status and review metadata are updated.
+    """
+    details_payload: dict[str, Any] = {
+        "escalation": True,
+        "mid_workflow": True,
+        "reason": e.reason,
+        "indicators": e.indicators,
+        "priority": e.priority,
+    }
+    if stage is not None:
+        details_payload["stage"] = stage
+
+    escalation_details = json.dumps(details_payload)
+
+    if stage is not None and prior_workflow_output is not None:
+        saved_output = _combine_workflow_outputs(prior_workflow_output, escalation_details)
+    else:
+        saved_output = escalation_details
+
+    repo.save_workflow_result(claim_id, claim_type, raw_output, saved_output)
+
+    if stage is not None:
+        repo.update_claim_status(
+            claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=escalation_details, actor_id=actor_id
+        )
+        hours = 24 if e.priority in ("critical", "high") else 48 if e.priority == "medium" else 72
+        due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+        repo.update_claim_review_metadata(
+            claim_id,
+            priority=e.priority,
+            due_at=due_at,
+            review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+    workflow_duration = (time.time() - workflow_start_time) * 1000
+    logger.log_event(
+        "claim_escalated",
+        reasons=[e.reason],
+        priority=e.priority,
+        duration_ms=workflow_duration,
+    )
+    _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+    metrics.end_claim(claim_id, status="escalated")
+    metrics.log_claim_summary(claim_id)
+
+    summary = f"Escalated during {stage}: {e.reason}" if stage else f"Escalated mid-workflow: {e.reason}"
+    return {
+        "claim_id": claim_id,
+        "claim_type": claim_type,
+        "status": STATUS_NEEDS_REVIEW,
+        "needs_review": True,
+        "escalation_reasons": [e.reason],
+        "priority": e.priority,
+        "fraud_indicators": e.indicators,
+        "router_output": raw_output,
+        "workflow_output": saved_output,
+        "summary": summary,
     }
 
 
@@ -792,37 +906,17 @@ def run_claim_workflow(
             try:
                 workflow_result = _kickoff_with_retry(crew, crew_inputs)
             except MidWorkflowEscalation as e:
-                crew_latency = (time.time() - crew_start) * 1000
-                escalation_details = json.dumps({
-                    "escalation": True,
-                    "mid_workflow": True,
-                    "reason": e.reason,
-                    "indicators": e.indicators,
-                    "priority": e.priority,
-                })
-                repo.save_workflow_result(claim_id, claim_type, raw_output, escalation_details)
-                workflow_duration = (time.time() - workflow_start_time) * 1000
-                logger.log_event(
-                    "claim_escalated",
-                    reasons=[e.reason],
-                    priority=e.priority,
-                    duration_ms=workflow_duration,
+                return _handle_mid_workflow_escalation(
+                    e,
+                    claim_id=claim_id,
+                    claim_type=claim_type,
+                    raw_output=raw_output,
+                    repo=repo,
+                    logger=logger,
+                    metrics=metrics,
+                    llm=llm,
+                    workflow_start_time=workflow_start_time,
                 )
-                _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
-                metrics.end_claim(claim_id, status="escalated")
-                metrics.log_claim_summary(claim_id)
-                return {
-                    "claim_id": claim_id,
-                    "claim_type": claim_type,
-                    "status": STATUS_NEEDS_REVIEW,
-                    "needs_review": True,
-                    "escalation_reasons": [e.reason],
-                    "priority": e.priority,
-                    "fraud_indicators": e.indicators,
-                    "router_output": raw_output,
-                    "workflow_output": escalation_details,
-                    "summary": f"Escalated mid-workflow: {e.reason}",
-                }
 
             _check_token_budget(claim_id, metrics, llm)
             crew_latency = (time.time() - crew_start) * 1000
@@ -836,12 +930,56 @@ def run_claim_workflow(
                 latency_ms=crew_latency,
             )
 
+            final_workflow_output = workflow_output
+            if _requires_settlement(claim_type):
+                _check_token_budget(claim_id, metrics, llm)
+                logger.log_event("crew_started", crew="settlement")
+                settlement_start = time.time()
+
+                settlement_crew = create_settlement_crew(
+                    llm,
+                    claim_type=claim_type,
+                )
+                settlement_inputs = {
+                    "claim_data": json.dumps({**claim_data_with_id, "claim_type": claim_type}),
+                    "workflow_output": workflow_output,
+                }
+
+                try:
+                    settlement_result = _kickoff_with_retry(settlement_crew, settlement_inputs)
+                except MidWorkflowEscalation as e:
+                    return _handle_mid_workflow_escalation(
+                        e,
+                        claim_id=claim_id,
+                        claim_type=claim_type,
+                        raw_output=raw_output,
+                        repo=repo,
+                        logger=logger,
+                        metrics=metrics,
+                        llm=llm,
+                        workflow_start_time=workflow_start_time,
+                        prior_workflow_output=workflow_output,
+                        actor_id=_actor,
+                        stage="settlement",
+                    )
+
+                _check_token_budget(claim_id, metrics, llm)
+                settlement_latency = (time.time() - settlement_start) * 1000
+                settlement_output = getattr(settlement_result, "raw", None) or getattr(settlement_result, "output", None) or str(settlement_result)
+                settlement_output = str(settlement_output)
+                logger.log_event(
+                    "crew_completed",
+                    crew="settlement",
+                    latency_ms=settlement_latency,
+                )
+                final_workflow_output = _combine_workflow_outputs(workflow_output, settlement_output)
+
             final_status = _final_status(claim_type)
-            repo.save_workflow_result(claim_id, claim_type, raw_output, workflow_output)
+            repo.save_workflow_result(claim_id, claim_type, raw_output, final_workflow_output)
             repo.update_claim_status(
                 claim_id,
                 final_status,
-                details=workflow_output[:500] if len(workflow_output) > 500 else workflow_output,
+                details=final_workflow_output[:500] if len(final_workflow_output) > 500 else final_workflow_output,
                 claim_type=claim_type,
                 actor_id=_actor,
             )
@@ -864,8 +1002,8 @@ def run_claim_workflow(
                 "claim_id": claim_id,
                 "claim_type": claim_type,
                 "router_output": raw_output,
-                "workflow_output": workflow_output,
-                "summary": workflow_output[:500] + "..." if len(workflow_output) > 500 else workflow_output,
+                "workflow_output": final_workflow_output,
+                "summary": final_workflow_output[:500] + "..." if len(final_workflow_output) > 500 else final_workflow_output,
             }
         except Exception as e:
             details = str(e)

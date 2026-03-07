@@ -75,7 +75,7 @@ def test_total_loss_crew_acceptance_criteria():
     mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
     crew = create_total_loss_crew(llm=mock_llm)
 
-    assess_task, valuation_task, payout_task, settlement_task = crew.tasks
+    assess_task, valuation_task, payout_task = crew.tasks
 
     # AC1: Damage task calls evaluate_damage and outputs total_loss_candidate
     damage_agent = crew.agents[0]
@@ -104,27 +104,69 @@ def test_total_loss_crew_acceptance_criteria():
     # AC4: Payout formula: value - deductible
     assert "minus" in payout_task.description.lower() or "deductible" in payout_task.description.lower()
 
-    # AC5: Settlement task calls generate_report with claim_type='total_loss', status='closed', payout_amount
-    settlement_agent = crew.agents[3]
-    settlement_tool_names = [getattr(t, "name", str(t)) for t in (settlement_agent.tools or [])]
-    assert any("generate" in n.lower() and "report" in n.lower() for n in settlement_tool_names), (
-        "AC5: Settlement agent must have generate_report tool"
-    )
-    assert "claim_type='total_loss'" in settlement_task.description or "claim_type=\"total_loss\"" in settlement_task.description
-    assert "status='closed'" in settlement_task.description or "status=\"closed\"" in settlement_task.description
-    assert "payout_amount" in settlement_task.description
+    # AC5: Total Loss now ends at payout and hands off to shared settlement crew
+    assert len(crew.agents) == 3
+    assert len(crew.tasks) == 3
 
-    # AC6: Final status is closed on success - verified by settlement task
-    assert "closed" in settlement_task.description.lower()
-
-    # AC7: Task context flows: Valuation receives damage; Payout receives damage + valuation; Settlement receives all
-    assert assess_task in valuation_task.context, "AC7: Valuation must receive damage assessment"
+    # AC6: Task context flows: Valuation receives damage; Payout receives damage + valuation
+    assert assess_task in valuation_task.context, "AC6: Valuation must receive damage assessment"
     assert assess_task in payout_task.context and valuation_task in payout_task.context, (
-        "AC7: Payout must receive damage + valuation"
+        "AC6: Payout must receive damage + valuation"
     )
-    assert assess_task in settlement_task.context and valuation_task in settlement_task.context and payout_task in settlement_task.context, (
-        "AC7: Settlement must receive all prior outputs"
+
+
+def test_partial_loss_crew_acceptance_criteria():
+    """Verify Partial Loss crew now hands off to the shared settlement crew."""
+    from crewai import LLM
+    from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_partial_loss_crew(llm=mock_llm)
+
+    assess_task, estimate_task, shop_task, parts_task, authorization_task = crew.tasks
+
+    auth_agent = crew.agents[4]
+    auth_tool_names = [getattr(t, "name", str(t)) for t in (auth_agent.tools or [])]
+    assert any("repair authorization" in n.lower() for n in auth_tool_names), (
+        "AC1: Repair authorization agent must have generate_repair_authorization tool"
     )
+    assert not any("report" in n.lower() for n in auth_tool_names), (
+        "AC2: Repair authorization agent should no longer finalize reports"
+    )
+    assert "Do not generate the final claim report" in authorization_task.description
+    assert "insurance_pays" in authorization_task.description
+    assert assess_task in estimate_task.context
+    assert assess_task in shop_task.context and estimate_task in shop_task.context
+    assert all(task in authorization_task.context for task in [assess_task, estimate_task, shop_task, parts_task])
+
+
+def test_settlement_crew_acceptance_criteria():
+    """Verify shared Settlement crew structure matches Issue #76 specification."""
+    from crewai import LLM
+    from claim_agent.crews.settlement_crew import create_settlement_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_settlement_crew(llm=mock_llm, claim_type="total_loss", use_rag=False)
+
+    documentation_task, payment_task, closure_task = crew.tasks
+    documentation_agent, payment_agent, closure_agent = crew.agents
+
+    documentation_tool_names = [getattr(t, "name", str(t)) for t in (documentation_agent.tools or [])]
+    payment_tool_names = [getattr(t, "name", str(t)) for t in (payment_agent.tools or [])]
+    closure_tool_names = [getattr(t, "name", str(t)) for t in (closure_agent.tools or [])]
+
+    assert any("report" in n.lower() for n in documentation_tool_names)
+    assert any("calculate" in n.lower() and "payout" in n.lower() for n in payment_tool_names)
+    assert any("report" in n.lower() for n in closure_tool_names)
+
+    assert "{workflow_output}" in documentation_task.description
+    assert "claim_type from claim_data" in documentation_task.description
+    assert "payment distribution" in payment_task.description.lower()
+    assert "status='settled'" in closure_task.description or "status=\"settled\"" in closure_task.description
+    assert "next_steps" in closure_task.description
+
+    assert documentation_task in payment_task.context
+    assert documentation_task in closure_task.context and payment_task in closure_task.context
 
 
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")

@@ -11,7 +11,6 @@ from claim_agent.tools import (
     fetch_vehicle_value,
     generate_claim_id,
     generate_repair_authorization,
-    generate_report,
     get_available_repair_shops,
     get_parts_catalog,
     query_policy_db,
@@ -79,13 +78,13 @@ def create_parts_ordering_agent(llm=None):
 
 
 def create_repair_authorization_agent(llm=None):
-    """Repair Authorization Specialist: generates authorization and closes claim."""
+    """Repair Authorization Specialist: generates the repair authorization handoff."""
     skill = load_skill(REPAIR_AUTHORIZATION)
     return Agent(
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[generate_repair_authorization, generate_report, generate_claim_id, escalate_claim],
+        tools=[generate_repair_authorization, generate_claim_id, escalate_claim],
         verbose=True,
         llm=llm,
     )

@@ -126,6 +126,15 @@ else:
     crew = create_total_loss_crew(llm)
 
 workflow_result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+
+if claim_type in {"total_loss", "partial_loss"}:
+    settlement_crew = create_settlement_crew(llm, claim_type=claim_type)
+    workflow_result = settlement_crew.kickoff(
+        inputs={
+            "claim_data": json.dumps(claim_data),
+            "workflow_output": str(workflow_result),
+        }
+    )
 ```
 
 See [Crews](crews.md) for crew details.
@@ -160,9 +169,9 @@ repo.update_claim_status(claim_id, final_status, details=workflow_output)
 |------------|--------------|
 | new | open |
 | duplicate | duplicate |
-| total_loss | closed |
+| total_loss | settled |
 | fraud | fraud_suspected |
-| partial_loss | partial_loss |
+| partial_loss | settled |
 
 ## Agent Communication
 
