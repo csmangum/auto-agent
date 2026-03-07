@@ -45,6 +45,44 @@ PRIORITY_VALUES = ("critical", "high", "medium", "low")
 _background_tasks: set[asyncio.Task] = set()
 
 
+def _run_workflow_background(
+    claim_id: str,
+    claim_data_with_attachments: dict,
+    actor_id: str,
+) -> asyncio.Task:
+    """Run claim workflow in background. Returns task for tracking."""
+    async def run_in_thread():
+        try:
+            await asyncio.to_thread(
+                run_claim_workflow,
+                claim_data_with_attachments,
+                None,
+                claim_id,
+                actor_id=actor_id,
+            )
+        except Exception:
+            logger.exception(
+                "Unhandled exception in background workflow for claim_id %s", claim_id
+            )
+            try:
+                _repo = ClaimRepository(db_path=get_db_path())
+                _repo.update_claim_status(
+                    claim_id,
+                    STATUS_FAILED,
+                    details="Background workflow failed",
+                    actor_id=ACTOR_WORKFLOW,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to mark claim %s as failed after workflow error", claim_id
+                )
+
+    task = asyncio.create_task(run_in_thread())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
 def _resolve_attachment_urls(claim_dict: dict) -> dict:
     """Convert storage keys to fetchable URLs: presigned for S3, download endpoint for local."""
     if "attachments" not in claim_dict or not claim_dict["attachments"]:
@@ -404,35 +442,9 @@ async def create_claim(
     )
 
     if async_mode:
-        async def run_workflow_in_thread():
-            try:
-                await asyncio.to_thread(
-                    run_claim_workflow,
-                    claim_data_with_attachments,
-                    None,
-                    claim_id,
-                    actor_id=actor_id,
-                )
-            except Exception:
-                logger.exception(
-                    "Unhandled exception in background workflow for claim_id %s", claim_id
-                )
-                try:
-                    _repo = ClaimRepository(db_path=get_db_path())
-                    _repo.update_claim_status(
-                        claim_id,
-                        STATUS_FAILED,
-                        details="Background workflow failed",
-                        actor_id=ACTOR_WORKFLOW,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to mark claim %s as failed after workflow error", claim_id
-                    )
-
-        task = asyncio.create_task(run_workflow_in_thread())
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+        _run_workflow_background(
+            claim_id, claim_data_with_attachments, actor_id
+        )
         return {"claim_id": claim_id}
 
     result = await asyncio.to_thread(
@@ -581,36 +593,9 @@ async def process_claim_async(
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id
     )
-
-    async def run_workflow_in_thread():
-        try:
-            await asyncio.to_thread(
-                run_claim_workflow,
-                claim_data_with_attachments,
-                None,  # llm
-                claim_id,  # existing_claim_id
-                actor_id=actor_id,
-            )
-        except Exception:
-            logger.exception(
-                "Unhandled exception in background workflow for claim_id %s", claim_id
-            )
-            try:
-                _repo = ClaimRepository(db_path=get_db_path())
-                _repo.update_claim_status(
-                    claim_id,
-                    STATUS_FAILED,
-                    details="Background workflow failed",
-                    actor_id=ACTOR_WORKFLOW,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to mark claim %s as failed after workflow error", claim_id
-                )
-
-    task = asyncio.create_task(run_workflow_in_thread())
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    _run_workflow_background(
+        claim_id, claim_data_with_attachments, actor_id
+    )
     return {"claim_id": claim_id}
 
 

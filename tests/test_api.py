@@ -504,6 +504,23 @@ class TestApiKeyAuth:
         assert resp.status_code == 401
         assert "Invalid" in resp.json()["detail"]
 
+    def test_post_claims_requires_key_when_auth_enabled(self, client, monkeypatch):
+        """POST /api/claims returns 401 when auth is required and no key provided."""
+        monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        payload = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Rear-ended at stoplight",
+            "damage_description": "Rear bumper damage",
+        }
+        resp = client.post("/api/claims", json=payload)
+        assert resp.status_code == 401
+
 
 # -------------------------------------------------------------------
 # RBAC (API_KEYS with roles)
