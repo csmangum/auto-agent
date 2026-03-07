@@ -320,9 +320,9 @@ def _parse_router_output(result: Any, raw_output: str) -> tuple[str, float, str]
                 try:
                     confidence = max(0.0, min(1.0, float(conf_val)))
                 except (TypeError, ValueError):
-                    confidence = 0.7
+                    confidence = 0.0
             else:
-                confidence = 0.7
+                confidence = 0.0
             reasoning = str(parsed.get("reasoning", "") or "").strip()
             return claim_type, confidence, reasoning
     except (json.JSONDecodeError, TypeError):

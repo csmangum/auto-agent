@@ -424,7 +424,7 @@ Independently verify the classification. Return JSON only:
         "claim_type": original_claim_type,
         "confidence": original_confidence,
         "reasoning": "Validation failed, using original",
-        "validation_agrees": True,
+        "validation_agrees": False,
     })
 
 
