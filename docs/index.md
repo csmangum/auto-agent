@@ -31,6 +31,7 @@ flowchart LR
 ### Reference
 
 - **[Tools](tools.md)** - Complete tool reference
+- **[Adapters](adapters.md)** - Pluggable external-system integrations (policy, valuation, repair shops, parts, SIU)
 - **[RAG](rag.md)** - Retrieval-Augmented Generation for policy and compliance
 - **[Database](database.md)** - Schema and repository operations
 - **[Configuration](configuration.md)** - Environment and LLM setup
@@ -69,6 +70,7 @@ See [Claim Types](claim-types.md) for classification criteria and examples.
 - **Human-in-the-Loop** - Escalation for high-risk claims ([Agent Flow](agent-flow.md#4-escalation-check-hitl))
 - **Persistent State** - SQLite with full audit trail ([Database](database.md))
 - **Extensible Tools** - Easy to add capabilities ([Tools](tools.md))
+- **Pluggable Adapters** - Swap mock data for real integrations via env vars ([Adapters](adapters.md))
 - **Observability** - Structured logging, correlation IDs, LangSmith/LiteLLM tracing, cost and latency metrics ([Observability](observability.md))
 - **RAG for Policy/Compliance** - Semantic search over regulations ([RAG](rag.md))
 - **MCP Integration** - Optional external access and health check ([MCP Server](mcp-server.md))

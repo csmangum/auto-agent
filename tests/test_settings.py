@@ -39,6 +39,28 @@ def test_token_budget_constants_positive():
     assert settings.MAX_LLM_CALLS_PER_CLAIM > 0
 
 
+def test_get_adapter_backend_default():
+    """get_adapter_backend returns 'mock' when env is mock or unset."""
+    with patch.dict(os.environ, {"POLICY_ADAPTER": "mock"}):
+        assert settings.get_adapter_backend("policy") == "mock"
+
+
+def test_get_adapter_backend_respects_env():
+    """get_adapter_backend reads env and normalizes value."""
+    with patch.dict(os.environ, {"POLICY_ADAPTER": "stub"}):
+        assert settings.get_adapter_backend("policy") == "stub"
+    with patch.dict(os.environ, {"POLICY_ADAPTER": "  MOCK  "}):
+        assert settings.get_adapter_backend("policy") == "mock"
+
+
+def test_get_adapter_backend_blank_treated_as_unset():
+    """get_adapter_backend treats blank env var same as unset, returns mock."""
+    with patch.dict(os.environ, {"POLICY_ADAPTER": ""}, clear=False):
+        assert settings.get_adapter_backend("policy") == "mock"
+    with patch.dict(os.environ, {"POLICY_ADAPTER": "   "}, clear=False):
+        assert settings.get_adapter_backend("policy") == "mock"
+
+
 def test_get_crew_verbose_default():
     """get_crew_verbose returns bool."""
     result = settings.get_crew_verbose()

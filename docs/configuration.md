@@ -45,6 +45,18 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 
 Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
 
+### Adapter Backends
+
+Each external-system adapter can be configured independently. See [Adapters](adapters.md) for full documentation.
+
+| Variable | Default | Values | Description |
+|----------|---------|--------|-------------|
+| `POLICY_ADAPTER` | `mock` | `mock`, `stub` | Policy database backend |
+| `VALUATION_ADAPTER` | `mock` | `mock`, `stub` | Vehicle valuation backend |
+| `REPAIR_SHOP_ADAPTER` | `mock` | `mock`, `stub` | Repair shop network backend |
+| `PARTS_ADAPTER` | `mock` | `mock`, `stub` | Parts catalog backend |
+| `SIU_ADAPTER` | `mock` | `mock`, `stub` | SIU case management backend |
+
 ### Observability
 
 Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `CLAIM_AGENT_LOG_LEVEL`, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `CLAIM_AGENT_TRACE_LLM`, `CLAIM_AGENT_TRACE_TOOLS`. See [Observability](observability.md) for full details.
@@ -104,6 +116,7 @@ The module `src/claim_agent/config/settings.py` centralizes configuration from e
 | `get_jwt_secret()` | JWT secret for Bearer token verification, or None |
 | `MAX_TOKENS_PER_CLAIM`, `MAX_LLM_CALLS_PER_CLAIM` | Token and call budgets per claim |
 | `DEFAULT_BASE_VALUE`, `DEPRECIATION_PER_YEAR`, etc. | Valuation and partial-loss defaults |
+| `get_adapter_backend(name)` | Configured adapter backend for a given adapter name |
 
 Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_THRESHOLD`, `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`, `ESCALATION_FRAUD_DAMAGE_VS_VALUE_RATIO`, `ESCALATION_VIN_CLAIMS_DAYS`, `ESCALATION_CONFIDENCE_DECREMENT_PER_PATTERN`, `ESCALATION_DESCRIPTION_OVERLAP_THRESHOLD`.
 

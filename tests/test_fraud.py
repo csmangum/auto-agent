@@ -120,6 +120,9 @@ class TestFraudAssessment:
         assert result["fraud_likelihood"] in ("high", "critical")
         assert len(result["fraud_indicators"]) >= 2
         assert result["siu_referral"] is True
+        assert "siu_case_id" in result
+        assert result["siu_case_id"] is not None
+        assert result["siu_case_id"].startswith("SIU-MOCK-")
 
     def test_critical_risk_triggers_block(self):
         """Critical risk claims should be blocked; input is designed to exceed critical_risk_threshold and critical_indicator_count."""
@@ -140,6 +143,26 @@ class TestFraudAssessment:
         assert result["fraud_likelihood"] == "critical"
         assert result["should_block"] is True
         assert result["siu_referral"] is True
+        assert "siu_case_id" in result
+        assert result["siu_case_id"] is not None
+        assert result["siu_case_id"].startswith("SIU-MOCK-")
+
+    def test_siu_referral_with_stub_adapter_sets_case_id_none(self, monkeypatch):
+        """When SIU adapter is stub, siu_case_id is None (NotImplementedError caught)."""
+        from claim_agent.adapters.registry import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("SIU_ADAPTER", "stub")
+        claim_data = {
+            "vin": "FRAUD123",
+            "incident_date": "2026-01-15",
+            "incident_description": "Staged accident. Brake checked.",
+            "damage_description": "Inflated damage. Complete destruction.",
+            "estimated_damage": 50000,
+        }
+        result = json.loads(perform_fraud_assessment_impl(claim_data))
+        assert result["siu_referral"] is True
+        assert result["siu_case_id"] is None
 
 
 class TestFraudConfig:

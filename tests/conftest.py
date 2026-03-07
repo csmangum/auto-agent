@@ -40,6 +40,15 @@ def temp_db():
 
 
 @pytest.fixture(autouse=True)
+def reset_adapters():
+    """Clear adapter singletons so each test gets a fresh instance."""
+    from claim_agent.adapters.registry import reset_adapters as _reset
+    _reset()
+    yield
+    _reset()
+
+
+@pytest.fixture(autouse=True)
 def reset_global_metrics():
     """Reset the global ClaimMetrics singleton before and after each test."""
     try:

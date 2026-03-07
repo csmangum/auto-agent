@@ -30,6 +30,10 @@ flowchart TB
         FraudTools[Fraud Tools]
         PLTools[Partial Loss Tools]
     end
+
+    subgraph Adapters["Adapter Layer"]
+        AdapterRegistry[Registry]
+    end
     
     subgraph Data["Data Layer"]
         SQLite[(SQLite DB)]
@@ -43,7 +47,8 @@ flowchart TB
     Escalation -->|Not Escalated| Workflows
     Workflows --> ClaimResult
     Workflows --> Tools
-    Tools --> Data
+    Tools --> Adapters
+    Adapters --> Data
 ```
 
 ## Core Architectural Patterns
@@ -145,13 +150,18 @@ src/claim_agent/
 │   ├── settings.py      # Centralized settings (escalation, fraud, valuation, token budgets)
 │   ├── agents.yaml      # CrewAI agent role/goal/backstory definitions
 │   └── tasks.yaml       # CrewAI task description and expected output definitions
+├── adapters/            # Pluggable external-system adapters
+│   ├── base.py          # Abstract interfaces (Policy, Valuation, RepairShop, Parts, SIU)
+│   ├── registry.py      # Thread-safe factory functions (env-var-driven)
+│   ├── stub.py          # Stub adapters (NotImplementedError placeholders)
+│   └── mock/            # Mock adapters backed by mock_db.json
 ├── agents/              # Agent factory functions
 ├── crews/               # Crew definitions
 ├── skills/              # Agent prompt definitions (markdown)
 │   ├── __init__.py      # Skill loading utilities
 │   └── *.md             # Individual agent skills
 ├── tools/               # CrewAI tools
-│   ├── logic.py         # Core implementation
+│   ├── logic.py         # Core implementation (uses adapters for data access)
 │   └── *_tools.py       # Tool wrappers
 ├── utils/               # Shared utilities
 │   ├── sanitization.py  # Input sanitization for claim data
@@ -178,6 +188,7 @@ src/claim_agent/
 | Python | ≥3.10 | `pyproject.toml` |
 | CLI | Custom (sys.argv) | `main.py` |
 | MCP Server | FastMCP | [MCP Server](mcp-server.md) |
+| External Integrations | Adapter Pattern | [Adapters](adapters.md) |
 
 ## Key Design Decisions
 
@@ -199,6 +210,15 @@ src/claim_agent/
 1. **Risk Mitigation** - High-value or suspicious claims need human oversight
 2. **Regulatory Compliance** - Insurance often requires human review
 3. **Auditability** - All escalations are logged with reasons
+
+### Why Adapter Pattern for External Data?
+
+1. **Pluggability** - Swap mock data for real services (KBB, policy DB, SIU) without changing tool logic
+2. **Testability** - Mock adapters keep all tests self-contained; no external dependencies
+3. **Configuration** - Backend selection via env vars (`POLICY_ADAPTER=mock|stub`)
+4. **Consistency** - Mirrors the existing `StorageAdapter` pattern used for attachments
+
+See [Adapters](adapters.md) for interfaces, implementations, and integration guide.
 
 ### Why SQLite?
 
