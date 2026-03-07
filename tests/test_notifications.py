@@ -192,14 +192,17 @@ class TestDispatchClaimEvent:
 class TestSafeDispatchClaimEvent:
     """Tests for safe_dispatch_claim_event best-effort behavior."""
 
-    def test_swallows_exceptions_and_logs(self, caplog):
+    def test_swallows_exceptions_and_logs(self, caplog, capsys):
         caplog.set_level(logging.WARNING)
         with patch("claim_agent.notifications.webhook.dispatch_claim_event") as mock:
             mock.side_effect = RuntimeError("executor shutdown")
             safe_dispatch_claim_event("CLM-123", "pending", summary="Test")
             mock.assert_called_once()
-            assert "Webhook dispatch failed" in caplog.text
-            assert "executor shutdown" in caplog.text
+        # Log may appear in caplog or stdout depending on logging config
+        captured = capsys.readouterr()
+        log_output = caplog.text + captured.out + captured.err
+        assert "Webhook dispatch failed" in log_output
+        assert "executor shutdown" in log_output
 
     def test_delegates_to_dispatch_claim_event_on_success(self):
         with patch("claim_agent.notifications.webhook.dispatch_claim_event") as mock:
@@ -313,20 +316,26 @@ class TestNotifyClaimant:
             notify_claimant("receipt_acknowledged", "CLM-123")
         assert "Would send" not in caplog.text
 
-    def test_logs_when_email_enabled_and_contact_present(self, caplog):
+    def test_logs_when_email_enabled_and_contact_present(self, caplog, capsys):
         caplog.set_level(logging.INFO)
         with patch.dict(os.environ, {"NOTIFICATION_EMAIL_ENABLED": "true"}):
             notify_claimant("receipt_acknowledged", "CLM-123", email="a@b.com")
-        assert "Would send claimant email" in caplog.text
-        assert "receipt_acknowledged" in caplog.text
-        assert "CLM-123" in caplog.text
+        # Log may appear in caplog or stdout depending on logging config
+        captured = capsys.readouterr()
+        log_output = caplog.text + captured.out + captured.err
+        assert "Would send claimant email" in log_output
+        assert "receipt_acknowledged" in log_output
+        assert "CLM-123" in log_output
 
-    def test_logs_when_sms_enabled_and_phone_present(self, caplog):
+    def test_logs_when_sms_enabled_and_phone_present(self, caplog, capsys):
         caplog.set_level(logging.INFO)
         with patch.dict(os.environ, {"NOTIFICATION_SMS_ENABLED": "true"}):
             notify_claimant("claim_closed", "CLM-456", phone="+15551234567")
-        assert "Would send claimant SMS" in caplog.text
-        assert "claim_closed" in caplog.text
+        # Log may appear in caplog or stdout depending on logging config
+        captured = capsys.readouterr()
+        log_output = caplog.text + captured.out + captured.err
+        assert "Would send claimant SMS" in log_output
+        assert "claim_closed" in log_output
 
 
 class TestRepositoryWebhookIntegration:

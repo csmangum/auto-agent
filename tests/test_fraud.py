@@ -242,7 +242,7 @@ class TestFraudAssessment:
         assert f"SIU case created: {result['siu_case_id']}" in siu_entries[0]["details"]
 
     def test_siu_referral_persistence_failure_returns_case_id_and_persisted_false(
-        self, temp_db, caplog
+        self, temp_db, caplog, capsys
     ):
         """When update_claim_siu_case_id raises, response has siu_case_id and siu_case_id_persisted=False."""
         repo = ClaimRepository()
@@ -281,7 +281,10 @@ class TestFraudAssessment:
         assert result["siu_case_id"] is not None
         assert result["siu_case_id"].startswith("SIU-MOCK-")
         assert result["siu_case_id_persisted"] is False
-        assert "Failed to persist siu_case_id" in caplog.text
+        # Log may appear in caplog or stdout depending on logging config
+        captured = capsys.readouterr()
+        log_output = caplog.text + captured.out + captured.err
+        assert "Failed to persist siu_case_id" in log_output
 
 
 class TestFraudConfig:

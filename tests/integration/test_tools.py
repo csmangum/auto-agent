@@ -454,8 +454,8 @@ class TestEscalationTools:
                 "estimated_damage": 100000,
             }),
             router_output="new",
-            similarity_score=None,
-            payout_amount=100000
+            similarity_score="",
+            payout_amount="100000"
         )
         data = json.loads(result)
         
