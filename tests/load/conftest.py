@@ -1,6 +1,5 @@
 """Shared fixtures for load tests."""
 
-import os
 import tempfile
 import threading
 
@@ -13,10 +12,10 @@ def load_client(temp_db, monkeypatch):
     """Create a TestClient for load tests with mocked workflow."""
     with tempfile.TemporaryDirectory() as storage_path:
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", storage_path)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("API_KEYS", raising=False)
         import claim_agent.storage.factory as factory_mod
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        os.environ.pop("CLAIMS_API_KEY", None)
-        os.environ.pop("API_KEYS", None)
 
         from claim_agent.api.server import app
         yield TestClient(app)

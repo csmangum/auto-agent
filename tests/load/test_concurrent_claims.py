@@ -4,9 +4,11 @@ import json
 import math
 import os
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
+from fastapi.testclient import TestClient
 
 VALID_CLAIM_PAYLOAD = {
     "policy_number": "POL-001",
@@ -40,19 +42,21 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
     """Run concurrent POST /api/claims and report throughput, latency, error rate.
 
     Concurrency is configurable via LOAD_TEST_CONCURRENCY (default 10).
+    Each worker uses its own TestClient to avoid sharing a non-thread-safe client.
     """
     concurrency = int(os.environ.get("LOAD_TEST_CONCURRENCY", "10"))
     total_requests = concurrency * 2  # 2 rounds per worker
+    app = load_client.app
 
-    latencies: list[float] = []
-    errors = 0
-    status_codes: list[int] = []
+    def worker(index: int) -> tuple[float, bool, int]:
+        with TestClient(app) as client:
+            return _submit_one(client, index)
 
     def run_batch():
         results = []
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
             futures = {
-                executor.submit(_submit_one, load_client, i): i
+                executor.submit(worker, i): i
                 for i in range(total_requests)
             }
             for future in as_completed(futures):
@@ -64,9 +68,12 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
     results = run_batch()
     wall_duration = time.perf_counter() - start
 
+    latencies: list[float] = []
+    errors = 0
+    status_code_counts: Counter[int] = Counter()
     for lat, ok, code in results:
         latencies.append(lat)
-        status_codes.append(code)
+        status_code_counts[code] += 1
         if not ok:
             errors += 1
 
@@ -87,6 +94,7 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
         "latency_p99_sec": round(p99, 4),
         "error_rate": round(error_rate, 4),
         "errors": errors,
+        "status_code_counts": dict(status_code_counts),
     }
 
     print("\n" + "=" * 50)
@@ -99,6 +107,7 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
     print(f"  Latency p99:        {report['latency_p99_sec']}s")
     print(f"  Error rate:         {report['error_rate']:.2%}")
     print(f"  Errors:             {report['errors']}")
+    print(f"  Status codes:       {report['status_code_counts']}")
     print("=" * 50)
 
     output_path = os.environ.get("LOAD_TEST_OUTPUT")
