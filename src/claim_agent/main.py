@@ -485,7 +485,18 @@ def main() -> None:
     if first == "retention-enforce":
         dry_run = "--dry-run" in options
         years_arg = _parse_opt_arg("--years")
-        years = int(years_arg) if years_arg else None
+        years = None
+        if years_arg:
+            try:
+                years = int(years_arg)
+            except ValueError:
+                print("Error: --years must be an integer", file=sys.stderr)
+                print(_usage(), file=sys.stderr)
+                sys.exit(1)
+            if years <= 0:
+                print("Error: --years must be a positive integer", file=sys.stderr)
+                print(_usage(), file=sys.stderr)
+                sys.exit(1)
         cmd_retention_enforce(dry_run=dry_run, years=years)
         return
 

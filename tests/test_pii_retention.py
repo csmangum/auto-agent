@@ -17,7 +17,7 @@ class TestPIIMasking:
         from claim_agent.utils.pii_masking import mask_policy_number
 
         assert mask_policy_number("POL-12345-001") == "POL***001"
-        assert mask_policy_number("ABC123") == "ABC***"  # 6 chars: first 3 + *** + last 3
+        assert mask_policy_number("ABC123") == "ABC***"  # 6 chars: first 3 + ***
         assert mask_policy_number("X") == "*"
         assert mask_policy_number("") == "***"
         assert mask_policy_number(None) == "***"
@@ -132,11 +132,9 @@ class TestRetentionConfig:
         """get_retention_period_years should default to 5 from compliance."""
         from claim_agent.config.settings import get_retention_period_years
 
-        with mock.patch.dict(os.environ, {}, clear=False):
-            if "RETENTION_PERIOD_YEARS" in os.environ:
-                del os.environ["RETENTION_PERIOD_YEARS"]
-        # Should get 5 from compliance config
-        assert get_retention_period_years() == 5
+        with mock.patch.dict(os.environ, {}, clear=True):
+            # Should get 5 from compliance config when RETENTION_PERIOD_YEARS is unset
+            assert get_retention_period_years() == 5
 
 
 class TestRetentionRepository:

@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from claim_agent.config.settings import get_mask_pii
-from claim_agent.utils.pii_masking import mask_policy_number, mask_vin, mask_dict
+from claim_agent.utils.pii_masking import mask_policy_number, mask_vin, mask_dict, mask_text
 
 # Thread-local storage for claim context
 _context = threading.local()
@@ -43,10 +43,11 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON with claim context."""
+        raw_message = record.getMessage()
         log_data: dict[str, Any] = {
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": mask_text(raw_message) if get_mask_pii() else raw_message,
         }
 
         if self.include_timestamp:
@@ -132,6 +133,8 @@ class HumanReadableFormatter(logging.Formatter):
         
         # Format message
         message = record.getMessage()
+        if get_mask_pii():
+            message = mask_text(message)
         
         # Add extra data if present (mask PII in extra_data)
         if hasattr(record, "extra_data") and record.extra_data:
