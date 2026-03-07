@@ -4,6 +4,7 @@ import { useState } from 'react';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/claims', label: 'Claims', icon: '📋' },
+  { to: '/claims/new', label: 'New Claim', icon: '➕' },
   { to: '/docs', label: 'Documentation', icon: '📖' },
   { to: '/skills', label: 'Skills', icon: '🧠' },
   { to: '/agents', label: 'Agents & Crews', icon: '🤖' },

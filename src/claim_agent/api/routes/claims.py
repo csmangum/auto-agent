@@ -1,11 +1,12 @@
 """Claims API routes: listing, detail, audit log, workflow runs, statistics."""
 
+import asyncio
 import json
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
@@ -443,29 +444,186 @@ async def process_claim(
         if all_attachments:
             repo.update_claim_attachments(claim_id, all_attachments, actor_id=actor_id)
 
-    # Build workflow input: use file:// URLs for local storage so vision tool can read
-    attachments_for_workflow = []
-    storage = get_storage_adapter()
-    for a in all_attachments:
-        url = a.url
-        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
-            ("http://", "https://", "file://")
-        ):
-            path = storage.get_path(claim_id, url)
-            if path.exists():
-                url = f"file://{path.resolve()}"
-        attachments_for_workflow.append({**a.model_dump(mode="json"), "url": url})
-
-    claim_data_with_attachments = {
-        **sanitized,
-        "attachments": attachments_for_workflow,
-    }
+    claim_data_with_attachments = _prepare_claim_for_workflow(
+        claim_id, sanitized, all_attachments
+    )
     result = run_claim_workflow(
         claim_data_with_attachments,
         existing_claim_id=claim_id,
         actor_id=actor_id,
     )
     return result
+
+
+def _prepare_claim_for_workflow(
+    claim_id: str,
+    sanitized: dict,
+    all_attachments: list,
+) -> dict:
+    """Build claim_data_with_attachments for run_claim_workflow."""
+    attachments_for_workflow = []
+    storage = get_storage_adapter()
+    for a in all_attachments:
+        url = a.url if hasattr(a, "url") else a.get("url", "")
+        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
+            ("http://", "https://", "file://")
+        ):
+            path = storage.get_path(claim_id, url)
+            if path.exists():
+                url = f"file://{path.resolve()}"
+        att = a.model_dump(mode="json") if hasattr(a, "model_dump") else a
+        attachments_for_workflow.append({**att, "url": url})
+    return {**sanitized, "attachments": attachments_for_workflow}
+
+
+@router.post("/claims/process/async")
+async def process_claim_async(
+    claim: str = Form(..., description="Claim data as JSON string"),
+    files: list[UploadFile] = File(default=[], description="Optional attachment files"),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
+    Use GET /claims/{claim_id}/stream to receive realtime updates."""
+    try:
+        claim_data = json.loads(claim)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
+
+    sanitized = sanitize_claim_data(claim_data)
+    try:
+        claim_input = ClaimInput.model_validate(sanitized)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
+
+    repo = ClaimRepository(db_path=get_db_path())
+
+    buffered_files: list[tuple[str, bytes, str | None]] = []
+    if files:
+        for f in files:
+            if not f.filename:
+                continue
+            chunks: list[bytes] = []
+            total_size = 0
+            chunk_size = 1024 * 1024
+            while True:
+                chunk = await f.read(chunk_size)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > _MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+                    )
+                chunks.append(chunk)
+            buffered_files.append((f.filename, b"".join(chunks), f.content_type))
+
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    claim_id = repo.create_claim(claim_input, actor_id=actor_id)
+
+    all_attachments = list(claim_input.attachments)
+    if buffered_files:
+        storage = get_storage_adapter()
+        for filename, content, content_type in buffered_files:
+            stored_key = storage.save(
+                claim_id=claim_id,
+                filename=filename,
+                content=content,
+                content_type=content_type,
+            )
+            url = storage.get_url(claim_id, stored_key)
+            atype = infer_attachment_type(filename)
+            all_attachments.append(
+                Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
+            )
+        if all_attachments:
+            repo.update_claim_attachments(claim_id, all_attachments, actor_id=actor_id)
+
+    claim_data_with_attachments = _prepare_claim_for_workflow(
+        claim_id, sanitized, all_attachments
+    )
+
+    async def run_workflow_in_thread():
+        await asyncio.to_thread(
+            run_claim_workflow,
+            claim_data_with_attachments,
+            None,  # llm
+            claim_id,  # existing_claim_id
+            actor_id=actor_id,
+        )
+
+    asyncio.create_task(run_workflow_in_thread())
+    return {"claim_id": claim_id}
+
+
+async def _stream_claim_updates(claim_id: str):
+    """SSE generator: poll claim, history, workflows and yield updates."""
+    db_path = get_db_path()
+    poll_interval = 1.0
+    max_duration = 300  # 5 min timeout
+    elapsed = 0.0
+
+    while elapsed < max_duration:
+        with get_connection(db_path) as conn:
+            claim_row = conn.execute(
+                "SELECT * FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if claim_row is None:
+                yield f"data: {json.dumps({'error': 'Claim not found'})}\n\n"
+                return
+
+            claim_dict = dict(claim_row)
+            _resolve_attachment_urls(claim_dict)
+            claim_json = json.dumps(claim_dict)
+
+            history_rows = conn.execute(
+                """SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at
+                   FROM claim_audit_log WHERE claim_id = ? ORDER BY id ASC""",
+                (claim_id,),
+            ).fetchall()
+            history_json = json.dumps([dict(r) for r in history_rows])
+
+            wf_rows = conn.execute(
+                "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY id ASC",
+                (claim_id,),
+            ).fetchall()
+            workflows_json = json.dumps([dict(r) for r in wf_rows])
+
+        payload = {
+            "claim": claim_dict,
+            "history": [dict(r) for r in history_rows],
+            "workflows": [dict(r) for r in wf_rows],
+        }
+        data_line = f"data: {json.dumps(payload)}\n\n"
+        yield data_line
+
+        status = claim_dict.get("status") or ""
+        if status not in ("pending", "processing"):
+            yield f"data: {json.dumps({'done': True, 'status': status})}\n\n"
+            return
+
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+
+    yield f"data: {json.dumps({'error': 'Stream timeout', 'elapsed': elapsed})}\n\n"
+
+
+@router.get("/claims/{claim_id}/stream")
+async def stream_claim_updates(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+):
+    """Server-Sent Events stream of claim status, audit log, and workflow runs.
+    Polls every second until claim status is no longer pending/processing."""
+    return StreamingResponse(
+        _stream_claim_updates(claim_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/claims/{claim_id}/reprocess")
