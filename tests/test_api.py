@@ -891,3 +891,117 @@ class TestProcessClaimEndpoint:
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         resp = client.get("/api/claims/CLM-NONEXISTENT/attachments/abc123_photo.jpg")
         assert resp.status_code == 404
+
+
+# -------------------------------------------------------------------
+# POST /claims/process/async and GET /claims/{id}/stream
+# -------------------------------------------------------------------
+
+
+class TestProcessClaimAsyncEndpoint:
+    """Tests for POST /claims/process/async and GET /claims/{id}/stream."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_workflow_for_class(self, monkeypatch):
+        mock_result = {
+            "claim_id": "CLM-ASYNC-MOCK",
+            "claim_type": "new",
+            "status": "open",
+            "summary": "Claim processed.",
+        }
+        import claim_agent.api.routes.claims as claims_mod
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        yield
+
+    def test_async_returns_claim_id_immediately(self, client, monkeypatch, tmp_path):
+        """Async process returns claim_id immediately without waiting for workflow."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import json
+
+        resp = client.post(
+            "/api/claims/process/async",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "claim_id" in data
+        assert data["claim_id"].startswith("CLM-")
+
+    def test_stream_returns_sse_events(self, client, monkeypatch, tmp_path):
+        """Stream endpoint returns SSE-formatted events for existing claim."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        import claim_agent.api.routes.claims as claims_mod
+        import json
+
+        # Mock workflow to return the actual claim_id (from existing_claim_id) and
+        # update the DB to a terminal status so the SSE stream terminates promptly.
+        def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None):
+            if existing_claim_id:
+                from claim_agent.db.database import get_db_path
+                from claim_agent.db.repository import ClaimRepository
+                ClaimRepository(db_path=get_db_path()).update_claim_status(
+                    existing_claim_id, "open"
+                )
+            return {
+                "claim_id": existing_claim_id or "CLM-MOCK",
+                "claim_type": "new",
+                "status": "open",
+                "summary": "Claim processed.",
+            }
+
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", mock_wf)
+
+        process_resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+        )
+        assert process_resp.status_code == 200
+        claim_id = process_resp.json()["claim_id"]
+
+        stream_resp = client.get(f"/api/claims/{claim_id}/stream")
+        assert stream_resp.status_code == 200
+        assert stream_resp.headers.get("content-type", "").startswith("text/event-stream")
+        content = stream_resp.text
+        assert "data:" in content
+        assert claim_id in content or "done" in content
+
+    def test_async_then_stream_returns_done(self, client, monkeypatch, tmp_path):
+        """Async process + stream: POST async, then GET stream until done."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        import claim_agent.api.routes.claims as claims_mod
+        import json
+
+        def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None):
+            if existing_claim_id:
+                from claim_agent.db.database import get_db_path
+                from claim_agent.db.repository import ClaimRepository
+                ClaimRepository(db_path=get_db_path()).update_claim_status(
+                    existing_claim_id, "open"
+                )
+            return {
+                "claim_id": existing_claim_id or "CLM-MOCK",
+                "claim_type": "new",
+                "status": "open",
+                "summary": "Claim processed.",
+            }
+
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", mock_wf)
+
+        async_resp = client.post(
+            "/api/claims/process/async",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+        )
+        assert async_resp.status_code == 200
+        claim_id = async_resp.json()["claim_id"]
+
+        stream_resp = client.get(f"/api/claims/{claim_id}/stream")
+        assert stream_resp.status_code == 200
+        assert stream_resp.headers.get("content-type", "").startswith("text/event-stream")
+        content = stream_resp.text
+        assert "data:" in content
+        assert claim_id in content
+        assert '"done":true' in content or '"done": true' in content
