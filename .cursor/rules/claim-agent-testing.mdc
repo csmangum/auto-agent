@@ -1,0 +1,11 @@
+---
+description: Python test environment for claim-agent
+globs: tests/**/*.py, **/conftest.py
+alwaysApply: false
+---
+
+# claim-agent Test Environment
+
+- Use `.venv/bin/pytest` (or `python -m pytest` with `.venv` activated) for running tests.
+- Bootstrap runs on agent start via `scripts/bootstrap.sh`; `.venv` has claim-agent + dev deps (pytest, pytest-cov, PyJWT).
+- Unit tests: `pytest tests/ -v --ignore=tests/integration -m "not slow and not integration and not llm and not e2e"`
