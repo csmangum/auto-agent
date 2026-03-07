@@ -278,7 +278,11 @@ class ClaimRepository:
         *,
         actor_id: str = ACTOR_WORKFLOW,
     ) -> None:
-        """Store SIU case ID on claim and log siu_case_created audit entry."""
+        """Store SIU case ID on claim and log siu_case_created audit entry.
+
+        Idempotent: calling again with the same or different siu_case_id overwrites
+        the previous value. Safe to retry on transient failures.
+        """
         with get_connection(self._db_path) as conn:
             conn.execute(
                 """

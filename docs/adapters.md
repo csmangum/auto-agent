@@ -254,3 +254,5 @@ When the fraud workflow sets `siu_referral=true`, `perform_fraud_assessment_impl
 
 1. Updates `claims.siu_case_id`
 2. Inserts an audit log entry with action `siu_case_created` and details `"SIU case created: {case_id}"`
+
+The assessment result includes `siu_case_id_persisted: true` when persistence succeeds, or `siu_case_id_persisted: false` when it fails (DB error, claim deleted, etc.). Callers can use this to detect and handle inconsistent state.

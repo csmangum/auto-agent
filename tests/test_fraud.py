@@ -2,6 +2,7 @@
 
 import json
 from datetime import date
+from unittest.mock import patch
 
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
@@ -142,6 +143,7 @@ class TestFraudAssessment:
         assert "siu_case_id" in result
         assert result["siu_case_id"] is not None
         assert result["siu_case_id"].startswith("SIU-MOCK-")
+        assert result["siu_case_id_persisted"] is True
 
     def test_critical_risk_triggers_block(self, temp_db):
         """Critical risk claims should be blocked; input is designed to exceed critical_risk_threshold and critical_indicator_count."""
@@ -180,6 +182,7 @@ class TestFraudAssessment:
         assert "siu_case_id" in result
         assert result["siu_case_id"] is not None
         assert result["siu_case_id"].startswith("SIU-MOCK-")
+        assert result["siu_case_id_persisted"] is True
 
     def test_siu_referral_with_stub_adapter_sets_case_id_none(self, monkeypatch):
         """When SIU adapter is stub, siu_case_id is None (NotImplementedError caught)."""
@@ -227,6 +230,7 @@ class TestFraudAssessment:
         assert result["siu_referral"] is True
         assert result["siu_case_id"] is not None
         assert result["siu_case_id"].startswith("SIU-MOCK-")
+        assert result["siu_case_id_persisted"] is True
 
         claim = repo.get_claim(claim_id)
         assert claim is not None
@@ -236,6 +240,48 @@ class TestFraudAssessment:
         siu_entries = [h for h in history if h["action"] == AUDIT_EVENT_SIU_CASE_CREATED]
         assert len(siu_entries) == 1
         assert f"SIU case created: {result['siu_case_id']}" in siu_entries[0]["details"]
+
+    def test_siu_referral_persistence_failure_returns_case_id_and_persisted_false(
+        self, temp_db, caplog
+    ):
+        """When update_claim_siu_case_id raises, response has siu_case_id and siu_case_id_persisted=False."""
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-PERSIST-FAIL",
+                vin="FRAUD123",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident with multiple occupants.",
+                damage_description="Inflated damage. Pre-existing dents.",
+                estimated_damage=50000,
+            )
+        )
+        claim_data = {
+            "claim_id": claim_id,
+            "vin": "FRAUD123",
+            "incident_date": "2026-01-15",
+            "incident_description": "Staged accident with multiple occupants.",
+            "damage_description": "Inflated damage. Pre-existing dents.",
+            "estimated_damage": 50000,
+        }
+
+        with patch(
+            "claim_agent.tools.logic.ClaimRepository"
+        ) as mock_repo_cls:
+            mock_instance = mock_repo_cls.return_value
+            mock_instance.update_claim_siu_case_id.side_effect = RuntimeError(
+                "DB connection failed"
+            )
+            result = json.loads(perform_fraud_assessment_impl(claim_data))
+
+        assert result["siu_referral"] is True
+        assert result["siu_case_id"] is not None
+        assert result["siu_case_id"].startswith("SIU-MOCK-")
+        assert result["siu_case_id_persisted"] is False
+        assert "Failed to persist siu_case_id" in caplog.text
 
 
 class TestFraudConfig:

@@ -436,9 +436,16 @@ Perform comprehensive fraud assessment.
   "fraud_indicators": ["staged_accident", "inflated_estimate"],
   "recommended_action": "Refer to Special Investigations Unit",
   "should_block": false,
-  "siu_referral": true
+  "siu_referral": true,
+  "siu_case_id": "SIU-MOCK-abc123",
+  "siu_case_id_persisted": true
 }
 ```
+
+When `siu_referral` is true and a case was created: `siu_case_id` holds the case ID;
+`siu_case_id_persisted` is true if it was stored on the claim, false if persistence
+failed (DB error, claim deleted, etc.). Omitted when no case was created (stub adapter
+or missing claim_id).
 
 ---
 
