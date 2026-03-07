@@ -36,6 +36,7 @@ flowchart LR
 - **[Database](database.md)** - Schema and repository operations
 - **[Configuration](configuration.md)** - Environment and LLM setup
 - **[Observability](observability.md)** - Logging, tracing, and metrics
+- **[PII and Retention](pii-and-retention.md)** - PII masking in logs and data retention enforcement
 - **[MCP Server](mcp-server.md)** - Optional external tool access
 
 ## Quick Reference
@@ -48,6 +49,7 @@ claim-agent status <claim_id>      # Get claim status
 claim-agent history <claim_id>     # Get claim audit log
 claim-agent reprocess <claim_id>   # Re-run workflow
 claim-agent metrics [claim_id]     # Show metrics (optional claim ID)
+claim-agent retention-enforce [--dry-run] [--years N]  # Archive claims older than retention
 ```
 
 ### Claim Types at a Glance

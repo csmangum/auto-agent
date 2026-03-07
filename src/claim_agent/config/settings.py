@@ -1,7 +1,10 @@
 """Centralized configuration from environment variables with defaults."""
 
+import logging
 import os
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 def _float(key: str, default: float) -> float:
@@ -153,6 +156,62 @@ def get_jwt_secret() -> str | None:
     """JWT secret for verifying Bearer tokens. None if not configured."""
     raw = os.environ.get("JWT_SECRET", "").strip()
     return raw if raw else None
+
+
+# ---------------------------------------------------------------------------
+# PII masking
+# ---------------------------------------------------------------------------
+
+def get_mask_pii() -> bool:
+    """Whether to mask PII (policy_number, vin) in logs and metrics. Default: True (production-safe)."""
+    raw = os.environ.get("CLAIM_AGENT_MASK_PII", "true").strip().lower()
+    return raw in ("true", "1", "yes")
+
+
+# ---------------------------------------------------------------------------
+# Data retention
+# ---------------------------------------------------------------------------
+
+def get_retention_period_years() -> int:
+    """Retention period in years from compliance config or RETENTION_PERIOD_YEARS env. Default: 5."""
+    raw = os.environ.get("RETENTION_PERIOD_YEARS", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+            if value < 1:
+                _log.warning(
+                    "RETENTION_PERIOD_YEARS must be >= 1 (got %r); using default 5.",
+                    raw,
+                )
+            else:
+                return value
+        except ValueError:
+            _log.warning(
+                "RETENTION_PERIOD_YEARS is set but invalid (%r); using compliance/default.",
+                raw,
+            )
+    # Fallback: try to load from compliance config
+    try:
+        from claim_agent.tools.data_loader import load_california_compliance
+        data = load_california_compliance()
+        if data:
+            ecr = data.get("electronic_claims_requirements", {})
+            for p in ecr.get("provisions", []):
+                if p.get("id") == "ECR-003" and "retention_period_years" in p:
+                    value = int(p["retention_period_years"])
+                    if value >= 1:
+                        return value
+                    _log.warning(
+                        "Compliance retention_period_years must be >= 1 (got %s); using default 5.",
+                        value,
+                    )
+                    break
+    except (ImportError, TypeError, ValueError, KeyError) as e:
+        _log.warning(
+            "Could not load retention period from compliance config: %s; using default 5 years.",
+            e,
+        )
+    return 5
 
 
 # ---------------------------------------------------------------------------

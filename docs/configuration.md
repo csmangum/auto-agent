@@ -61,6 +61,15 @@ Each external-system adapter can be configured independently. See [Adapters](ada
 
 Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `CLAIM_AGENT_LOG_LEVEL`, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `CLAIM_AGENT_TRACE_LLM`, `CLAIM_AGENT_TRACE_TOOLS`. See [Observability](observability.md) for full details.
 
+### PII and Retention
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAIM_AGENT_MASK_PII` | `true` | Mask policy_number and vin in logs. Set `false` for dev. |
+| `RETENTION_PERIOD_YEARS` | 5 (from compliance) | Override retention period. Run `claim-agent retention-enforce` to archive. |
+
+See [PII and Retention](pii-and-retention.md) for full documentation.
+
 Escalation, fraud detection, valuation, and partial-loss thresholds are also configurable via environment variables. See [Centralized Settings](#centralized-settings) and `.env.example` for the full list.
 
 ## LLM Configuration
@@ -113,6 +122,8 @@ The module `src/claim_agent/config/settings.py` centralizes configuration from e
 | `get_escalation_config()` | Escalation thresholds (confidence, high value, similarity range, etc.) |
 | `get_fraud_config()` | Fraud detection scores and thresholds |
 | `get_crew_verbose()` | Whether CrewAI runs in verbose mode |
+| `get_mask_pii()` | Whether to mask PII in logs (from `CLAIM_AGENT_MASK_PII`) |
+| `get_retention_period_years()` | Retention period from compliance or `RETENTION_PERIOD_YEARS` |
 | `get_api_keys_config()` | API keys mapping (key -> role) from `API_KEYS` or `CLAIMS_API_KEY` |
 | `get_jwt_secret()` | JWT secret for Bearer token verification, or None |
 | `MAX_TOKENS_PER_CLAIM`, `MAX_LLM_CALLS_PER_CLAIM` | Token and call budgets per claim |

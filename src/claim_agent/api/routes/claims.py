@@ -14,7 +14,12 @@ from claim_agent.api.deps import require_role
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
-from claim_agent.db.constants import STATUS_FAILED, STATUS_PENDING, STATUS_PROCESSING
+from claim_agent.db.constants import (
+    STATUS_ARCHIVED,
+    STATUS_FAILED,
+    STATUS_PENDING,
+    STATUS_PROCESSING,
+)
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import Attachment, ClaimInput
@@ -130,16 +135,20 @@ def get_claims_stats():
 def list_claims(
     status: Optional[str] = Query(None, description="Filter by status"),
     claim_type: Optional[str] = Query(None, description="Filter by claim type"),
+    include_archived: bool = Query(False, description="Include archived claims (retention)"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    """List claims with optional filtering."""
+    """List claims with optional filtering. Archived claims are excluded by default."""
     conditions = []
     params: list = []
 
     if status:
         conditions.append("status = ?")
         params.append(status)
+    if not include_archived and (status is None or status != STATUS_ARCHIVED):
+        conditions.append("status != ?")
+        params.append(STATUS_ARCHIVED)
     if claim_type:
         conditions.append("claim_type = ?")
         params.append(claim_type)
