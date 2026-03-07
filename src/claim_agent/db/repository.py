@@ -34,7 +34,7 @@ from claim_agent.db.constants import (
 )
 from claim_agent.db.database import get_connection
 from claim_agent.models.claim import ClaimInput
-from claim_agent.notifications.webhook import dispatch_claim_event
+from claim_agent.notifications.webhook import safe_dispatch_claim_event
 
 
 def _generate_claim_id(prefix: str = "CLM") -> str:
@@ -93,7 +93,7 @@ class ClaimRepository:
                 """,
                 (claim_id, AUDIT_EVENT_CREATED, STATUS_PENDING, "Claim record created", actor_id, after_state),
             )
-        dispatch_claim_event(claim_id, STATUS_PENDING, summary="Claim submitted")
+        safe_dispatch_claim_event(claim_id, STATUS_PENDING, summary="Claim submitted")
         return claim_id
 
     def get_claim(self, claim_id: str) -> dict[str, Any] | None:
@@ -182,7 +182,7 @@ class ClaimRepository:
 
         final_claim_type = claim_type if claim_type is not None else old_claim_type
         final_payout = payout_amount if payout_amount is not None else old_payout
-        dispatch_claim_event(
+        safe_dispatch_claim_event(
             claim_id,
             new_status,
             summary=details,
@@ -482,7 +482,7 @@ class ClaimRepository:
                         None,
                     ),
                 )
-                dispatch_claim_event(claim_id, STATUS_DENIED, summary=reason or "Rejected by adjuster")
+                safe_dispatch_claim_event(claim_id, STATUS_DENIED, summary=reason or "Rejected by adjuster")
                 return
             if action == "request_info":
                 old_claim_type = row["claim_type"]
@@ -533,7 +533,7 @@ class ClaimRepository:
                         None,
                     ),
                 )
-                dispatch_claim_event(claim_id, STATUS_PENDING_INFO, summary=note or "Requested more information")
+                safe_dispatch_claim_event(claim_id, STATUS_PENDING_INFO, summary=note or "Requested more information")
                 return
             if action == "escalate_to_siu":
                 old_claim_type = row["claim_type"]
@@ -584,7 +584,7 @@ class ClaimRepository:
                         None,
                     ),
                 )
-                dispatch_claim_event(claim_id, STATUS_UNDER_INVESTIGATION, summary="Escalated to SIU")
+                safe_dispatch_claim_event(claim_id, STATUS_UNDER_INVESTIGATION, summary="Escalated to SIU")
                 return
             raise ValueError(f"Unknown adjuster action: {action}")
 
@@ -717,7 +717,7 @@ class ClaimRepository:
                 ),
             )
 
-        dispatch_claim_event(
+        safe_dispatch_claim_event(
             claim_id,
             STATUS_ARCHIVED,
             summary="Archived for retention",

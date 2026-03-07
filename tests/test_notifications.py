@@ -16,6 +16,7 @@ from claim_agent.notifications.webhook import (
     dispatch_claim_event,
     dispatch_repair_authorized,
     dispatch_webhook,
+    safe_dispatch_claim_event,
 )
 
 
@@ -138,6 +139,18 @@ class TestDispatchClaimEvent:
                 dispatch_claim_event("CLM-123", "failed")
                 assert mock.call_args[0][0] == "claim.failed"
 
+    def test_open_maps_to_opened(self):
+        with patch("claim_agent.notifications.webhook.dispatch_webhook") as mock:
+            with patch.dict(
+                os.environ,
+                {"WEBHOOK_URL": "https://x.com/hook", "WEBHOOK_ENABLED": "true"},
+            ):
+                dispatch_claim_event("CLM-123", "open", summary="Claim opened for claimant")
+                mock.assert_called_once()
+                event, payload = mock.call_args[0]
+                assert event == "claim.opened"
+                assert payload["status"] == "open"
+
     def test_settled_maps_to_closed(self):
         with patch("claim_agent.notifications.webhook.dispatch_webhook") as mock:
             with patch.dict(
@@ -174,6 +187,27 @@ class TestDispatchClaimEvent:
                 assert payload["summary"] == "Archived for retention"
                 assert payload["claim_type"] == "partial_loss"
                 assert payload["payout_amount"] == 1500.0
+
+
+class TestSafeDispatchClaimEvent:
+    """Tests for safe_dispatch_claim_event best-effort behavior."""
+
+    def test_swallows_exceptions_and_logs(self, caplog):
+        caplog.set_level(logging.WARNING)
+        with patch("claim_agent.notifications.webhook.dispatch_claim_event") as mock:
+            mock.side_effect = RuntimeError("executor shutdown")
+            safe_dispatch_claim_event("CLM-123", "pending", summary="Test")
+            mock.assert_called_once()
+            assert "Webhook dispatch failed" in caplog.text
+            assert "executor shutdown" in caplog.text
+
+    def test_delegates_to_dispatch_claim_event_on_success(self):
+        with patch("claim_agent.notifications.webhook.dispatch_claim_event") as mock:
+            safe_dispatch_claim_event("CLM-123", "pending", summary="Test")
+            mock.assert_called_once()
+            assert mock.call_args[0][0] == "CLM-123"
+            assert mock.call_args[0][1] == "pending"
+            assert mock.call_args[1]["summary"] == "Test"
 
 
 class TestDispatchWebhook:
@@ -302,7 +336,7 @@ class TestRepositoryWebhookIntegration:
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
 
-        with patch("claim_agent.db.repository.dispatch_claim_event") as mock:
+        with patch("claim_agent.db.repository.safe_dispatch_claim_event") as mock:
             repo = ClaimRepository()
             claim_input = ClaimInput(
                 policy_number="POL-001",
@@ -336,7 +370,7 @@ class TestRepositoryWebhookIntegration:
         )
         claim_id = repo.create_claim(claim_input)
 
-        with patch("claim_agent.db.repository.dispatch_claim_event") as mock:
+        with patch("claim_agent.db.repository.safe_dispatch_claim_event") as mock:
             mock.reset_mock()
             repo.update_claim_status(claim_id, "processing", details="Started")
             mock.assert_called_once()
@@ -370,7 +404,7 @@ class TestRepositoryWebhookIntegration:
                     (claim_id,),
                 )
 
-            with patch("claim_agent.db.repository.dispatch_claim_event") as mock:
+            with patch("claim_agent.db.repository.safe_dispatch_claim_event") as mock:
                 repo.archive_claim(claim_id)
                 mock.assert_called_once()
                 assert mock.call_args[0][0] == claim_id

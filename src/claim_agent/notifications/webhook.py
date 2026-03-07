@@ -1,5 +1,6 @@
 """Webhook delivery with HMAC signing and retry."""
 
+import atexit
 import hashlib
 import hmac
 import json
@@ -17,6 +18,14 @@ logger = logging.getLogger(__name__)
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
 
+
+def _shutdown_executor() -> None:
+    """Shut down the webhook executor for clean process exit."""
+    _EXECUTOR.shutdown(wait=False)
+
+
+atexit.register(_shutdown_executor)
+
 # Map claim status to webhook event name
 _STATUS_TO_EVENT: dict[str, str] = {
     "pending": "claim.submitted",
@@ -28,7 +37,7 @@ _STATUS_TO_EVENT: dict[str, str] = {
     "fraud_suspected": "claim.closed",
     "fraud_confirmed": "claim.closed",
     "settled": "claim.closed",
-    "open": "claim.closed",
+    "open": "claim.opened",
     "denied": "claim.denied",
     "pending_info": "claim.pending_info",
     "under_investigation": "claim.under_investigation",
@@ -72,16 +81,25 @@ def _deliver_one(
             with httpx.Client(timeout=30.0) as client:
                 resp = client.post(url, content=body, headers=headers)
             if 200 <= resp.status_code < 300:
-                logger.debug("Webhook delivered to %s event=%s claim_id=%s", url, payload.get("event"), payload.get("claim_id"))
+                logger.debug(
+                    "Webhook delivered to %s event=%s claim_id=%s",
+                    url,
+                    payload.get("event"),
+                    payload.get("claim_id"),
+                )
                 return
             last_error = httpx.HTTPStatusError(
                 f"Webhook returned {resp.status_code}",
                 request=resp.request,
                 response=resp,
             )
-            if 400 <= resp.status_code < 500:
-                logger.error(
-                    "Webhook delivery failed with client error %d to %s (not retrying)",
+            # Retriable: 408 (timeout), 429 (rate limit), 5xx
+            if resp.status_code in (408, 429) or 500 <= resp.status_code < 600:
+                pass  # fall through to retry
+            else:
+                # Non-retriable (typically 4xx). Do not retry.
+                logger.warning(
+                    "Non-retriable webhook response %s from %s; not retrying.",
                     resp.status_code,
                     url,
                 )
@@ -159,6 +177,27 @@ def dispatch_claim_event(
     if payout_amount is not None:
         payload["payout_amount"] = payout_amount
     dispatch_webhook(event, payload)
+
+
+def safe_dispatch_claim_event(
+    claim_id: str,
+    status: str,
+    *,
+    summary: str | None = None,
+    claim_type: str | None = None,
+    payout_amount: float | None = None,
+) -> None:
+    """Best-effort dispatch of claim event. Logs and swallows errors so notification failures do not affect core operations."""
+    try:
+        dispatch_claim_event(
+            claim_id,
+            status,
+            summary=summary,
+            claim_type=claim_type,
+            payout_amount=payout_amount,
+        )
+    except Exception as e:
+        logger.warning("Webhook dispatch failed (best-effort): %s", e)
 
 
 def dispatch_repair_authorized(

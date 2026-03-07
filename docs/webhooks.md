@@ -22,7 +22,8 @@ Outbound webhooks notify external systems when claim status changes or when repa
 | `claim.processing` | Workflow started |
 | `claim.needs_review` | Escalated to human review |
 | `claim.failed` | Workflow failed |
-| `claim.closed` | Claim closed (open, closed, duplicate, fraud_suspected, settled) |
+| `claim.opened` | Claim opened for claimant (status: open) |
+| `claim.closed` | Claim resolved (closed, duplicate, fraud_suspected, settled) |
 | `claim.denied` | Rejected by adjuster |
 | `claim.pending_info` | More info requested |
 | `claim.under_investigation` | Escalated to SIU |
@@ -100,7 +101,8 @@ def verify_webhook(body: bytes, signature_header: str, secret: str) -> bool:
 ## Retry Behavior
 
 - Exponential backoff: 1s, 2s, 4s, 8s, 16s (capped at 60s)
-- Retries on connection errors, timeouts, and 5xx responses
+- Retries on connection errors, timeouts, 408 (Request Timeout), 429 (Too Many Requests), and 5xx responses
+- Non-retriable 4xx (e.g. 400, 401) are not retried
 - After max retries: log error; optionally append to `WEBHOOK_DEAD_LETTER_PATH`
 - Delivery runs in a thread pool; does not block claim processing
 
@@ -110,4 +112,4 @@ When `WEBHOOK_DEAD_LETTER_PATH` is set, failed deliveries (after all retries) ar
 
 **Rotation**: The file grows unbounded. Operators should rotate or archive it periodically (e.g. via logrotate or a scheduled job). Consider moving processed lines to an archive before truncating.
 
-**Concurrency**: Multiple threads may append to the same file. Writes are atomic per line (each `write` is a single JSON object + newline). Under heavy load, lines from different deliveries may interleave; each line remains valid JSON and can be parsed independently.
+**Concurrency**: Multiple threads may append to the same file. The application does not provide explicit locking or guarantee of line-level atomicity; depending on the OS and filesystem, writes from different deliveries may interleave at sub-line granularity and individual lines may become invalid JSON. Treat this file as best-effort diagnostics, or ensure a single writer (e.g. a single worker process or external log aggregation) if you require strict JSONL integrity.
