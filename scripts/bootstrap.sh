@@ -4,15 +4,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Create .venv if missing
-if [[ ! -d .venv ]]; then
-  if python3 -m venv .venv &>/dev/null; then
+# Create .venv if missing or incomplete
+if [[ ! -d .venv ]] || [[ ! -f .venv/bin/pip ]]; then
+  rm -rf .venv
+  if python3 -m venv .venv 2>/dev/null; then
     : # venv with pip created successfully
   else
     # ensurepip not available (e.g. minimal Ubuntu without python3-venv)
-    rm -rf .venv
     python3 -m venv .venv --without-pip
-    curl -sS https://bootstrap.pypa.io/get-pip.py | .venv/bin/python3 -
+    if ! curl -sS https://bootstrap.pypa.io/get-pip.py | .venv/bin/python3 -; then
+      rm -rf .venv
+      exit 1
+    fi
   fi
 fi
 
