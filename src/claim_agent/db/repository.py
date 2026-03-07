@@ -280,16 +280,20 @@ class ClaimRepository:
     ) -> None:
         """Store SIU case ID on claim and log siu_case_created audit entry.
 
-        Idempotent: calling again with the same or different siu_case_id overwrites
-        the previous value. Safe to retry on transient failures.
+        Calling this method overwrites any existing siu_case_id on the claim and
+        always appends a new siu_case_created audit log entry. Retrying this call
+        after a transient failure will therefore produce multiple
+        siu_case_created entries for the same claim in claim_audit_log.
         """
         with get_connection(self._db_path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE claims SET siu_case_id = ?, updated_at = datetime('now') WHERE id = ?
                 """,
                 (siu_case_id, claim_id),
             )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Claim not found: {claim_id}")
             conn.execute(
                 """
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
