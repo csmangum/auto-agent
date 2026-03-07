@@ -12,6 +12,7 @@ import re
 import threading
 import time
 import uuid
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -706,6 +707,7 @@ def _handle_mid_workflow_escalation(
     actor_id: str | None = None,
     stage: str | None = None,
     payout_amount: float | None = None,
+    workflow_run_id: str | None = None,
 ) -> dict:
     """Build and return an escalation response for a MidWorkflowEscalation.
 
@@ -713,6 +715,9 @@ def _handle_mid_workflow_escalation(
     include that stage, the claim status is updated to ``STATUS_NEEDS_REVIEW``,
     and review metadata (priority / due-at) are persisted.  Without *stage*
     (primary crew escalation), only the workflow result is saved.
+
+    Cleans up any checkpoints for *workflow_run_id* so that a future resume
+    does not reuse stale cached outputs from a run that ended in escalation.
 
     Args:
         e: The ``MidWorkflowEscalation`` exception.
@@ -731,7 +736,11 @@ def _handle_mid_workflow_escalation(
             claim status and review metadata are updated.
         payout_amount: Optional payout from primary crew; persisted when available
             for settlement-stage escalations so adjusters see it in the claim record.
+        workflow_run_id: When set, all checkpoints for this run are deleted so
+            future resumes start fresh.
     """
+    if workflow_run_id:
+        repo.delete_task_checkpoints(claim_id, workflow_run_id)
     details_payload: dict[str, Any] = {
         "escalation": True,
         "mid_workflow": True,
@@ -811,6 +820,371 @@ def _checkpoint_keys_to_invalidate(from_stage: str, checkpoints: dict[str, str])
         key for key in checkpoints
         if (key.split(":")[0] if ":" in key else key) in stages_to_drop
     ]
+
+
+@dataclass
+class _WorkflowCtx:
+    """Shared mutable context threaded through workflow stages."""
+
+    claim_id: str
+    claim_data: dict
+    claim_data_with_id: dict
+    inputs: dict
+    similarity_score_for_escalation: float | None
+    repo: ClaimRepository
+    metrics: Any
+    llm: Any
+    workflow_run_id: str
+    workflow_start_time: float
+    actor_id: str
+    checkpoints: dict[str, str] = field(default_factory=dict)
+
+    claim_type: str = ""
+    router_confidence: float = 0.0
+    router_reasoning: str = ""
+    raw_output: str = ""
+    workflow_output: str = ""
+    extracted_payout: float | None = None
+
+
+def _stage_router(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the router classification stage.
+
+    Returns an early-return response dict when the router escalates,
+    otherwise populates ``ctx.claim_type``, ``ctx.router_confidence``,
+    ``ctx.router_reasoning``, and ``ctx.raw_output`` and returns ``None``.
+    """
+    if "router" in ctx.checkpoints:
+        router_cp = json.loads(ctx.checkpoints["router"])
+        ctx.claim_type = router_cp["claim_type"]
+        ctx.router_confidence = router_cp["router_confidence"]
+        ctx.router_reasoning = router_cp["router_reasoning"]
+        ctx.raw_output = router_cp["raw_output"]
+        logger.set_claim_type(ctx.claim_type)
+        logger.info("Restored router from checkpoint", extra={"claim_id": ctx.claim_id})
+        return None
+
+    logger.log_event("router_started", step="classification")
+    router_start = time.time()
+
+    router_crew = create_router_crew(ctx.llm)
+    result = _kickoff_with_retry(router_crew, ctx.inputs)
+
+    router_latency = (time.time() - router_start) * 1000
+    ctx.raw_output = str(
+        getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
+    )
+    ctx.claim_type, ctx.router_confidence, ctx.router_reasoning = _parse_router_output(
+        result, ctx.raw_output
+    )
+
+    logger.set_claim_type(ctx.claim_type)
+    logger.log_event(
+        "router_completed",
+        claim_type=ctx.claim_type,
+        confidence=ctx.router_confidence,
+        latency_ms=router_latency,
+    )
+
+    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+
+    router_config = get_router_config()
+    confidence_threshold = router_config["confidence_threshold"]
+    validation_enabled = router_config.get("validation_enabled", False)
+
+    if ctx.router_confidence < confidence_threshold:
+        if validation_enabled:
+            try:
+                val_json = validate_router_classification_impl(
+                    ctx.claim_data_with_id,
+                    ctx.claim_type,
+                    ctx.router_confidence,
+                    ctx.router_reasoning,
+                    metrics=ctx.metrics,
+                    claim_id=ctx.claim_id,
+                )
+                val_data = json.loads(val_json)
+                val_claim_type = normalize_claim_type(val_data.get("claim_type", ctx.claim_type))
+                val_confidence = max(0.0, min(1.0, float(val_data.get("confidence", 0))))
+                val_agrees = val_data.get("validation_agrees", True)
+                if val_confidence >= confidence_threshold:
+                    if not val_agrees:
+                        logger.log_event(
+                            "router_reclassified",
+                            original_claim_type=ctx.claim_type,
+                            final_claim_type=val_claim_type,
+                            validation_confidence=val_confidence,
+                        )
+                    ctx.claim_type = val_claim_type
+                    ctx.router_confidence = val_confidence
+                    ctx.router_reasoning = val_data.get("reasoning", ctx.router_reasoning)
+                    logger.set_claim_type(ctx.claim_type)
+                    try:
+                        original_router_output = json.loads(ctx.raw_output)
+                    except (TypeError, ValueError):
+                        original_router_output = ctx.raw_output
+                    ctx.raw_output = json.dumps({
+                        "original_router_output": original_router_output,
+                        "validation": val_data,
+                    })
+                    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+                else:
+                    _escalate_low_router_confidence(
+                        ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
+                        confidence_threshold, ctx.router_reasoning,
+                        ctx.repo, logger, ctx.metrics, ctx.llm, ctx.workflow_start_time,
+                        ctx.actor_id,
+                    )
+                    return _escalate_low_router_confidence_response(
+                        ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
+                        confidence_threshold, router_reasoning=ctx.router_reasoning,
+                    )
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                logger.warning("Router validation parse failed: %s", e)
+                _escalate_low_router_confidence(
+                    ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
+                    confidence_threshold, ctx.router_reasoning,
+                    ctx.repo, logger, ctx.metrics, ctx.llm, ctx.workflow_start_time,
+                    ctx.actor_id,
+                )
+                return _escalate_low_router_confidence_response(
+                    ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
+                    confidence_threshold, router_reasoning=ctx.router_reasoning,
+                )
+        else:
+            _escalate_low_router_confidence(
+                ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
+                confidence_threshold, ctx.router_reasoning,
+                ctx.repo, logger, ctx.metrics, ctx.llm, ctx.workflow_start_time,
+                ctx.actor_id,
+            )
+            return _escalate_low_router_confidence_response(
+                ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
+                confidence_threshold, router_reasoning=ctx.router_reasoning,
+            )
+
+    ctx.repo.save_task_checkpoint(
+        ctx.claim_id, ctx.workflow_run_id, "router",
+        json.dumps({
+            "claim_type": ctx.claim_type,
+            "router_confidence": ctx.router_confidence,
+            "router_reasoning": ctx.router_reasoning,
+            "raw_output": ctx.raw_output,
+        }),
+    )
+    return None
+
+
+def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the pre-workflow escalation check.
+
+    Returns an early-return response dict when the claim is escalated,
+    otherwise returns ``None``.
+    """
+    if "escalation_check" in ctx.checkpoints:
+        logger.info("Restored escalation_check from checkpoint", extra={"claim_id": ctx.claim_id})
+        return None
+
+    if ctx.claim_type != ClaimType.FRAUD.value:
+        escalation_json = evaluate_escalation_impl(
+            ctx.claim_data,
+            ctx.raw_output,
+            similarity_score=ctx.similarity_score_for_escalation,
+            payout_amount=None,
+            router_confidence=ctx.router_confidence,
+        )
+        escalation_result = json.loads(escalation_json)
+        if escalation_result.get("needs_review"):
+            reasons = escalation_result.get("escalation_reasons", [])
+            priority = escalation_result.get("priority", "low")
+            recommended_action = escalation_result.get("recommended_action", "")
+            fraud_indicators = escalation_result.get("fraud_indicators", [])
+            escalation_output = EscalationOutput(
+                claim_id=ctx.claim_id,
+                needs_review=True,
+                escalation_reasons=reasons,
+                priority=priority,
+                recommended_action=recommended_action,
+                fraud_indicators=fraud_indicators,
+            )
+            details = json.dumps({
+                "escalation_reasons": reasons,
+                "priority": priority,
+                "recommended_action": recommended_action,
+                "fraud_indicators": fraud_indicators,
+            })
+            ctx.repo.save_workflow_result(ctx.claim_id, ctx.claim_type, ctx.raw_output, details)
+            ctx.repo.update_claim_status(
+                ctx.claim_id, STATUS_NEEDS_REVIEW, claim_type=ctx.claim_type,
+                details=details, actor_id=ctx.actor_id,
+            )
+            hours = 24 if priority in ("critical", "high") else 48 if priority == "medium" else 72
+            due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+            ctx.repo.update_claim_review_metadata(
+                ctx.claim_id, priority=priority, due_at=due_at,
+                review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            )
+
+            workflow_duration = (time.time() - ctx.workflow_start_time) * 1000
+            logger.log_event(
+                "claim_escalated", reasons=reasons, priority=priority,
+                duration_ms=workflow_duration,
+            )
+            _record_crew_llm_usage(claim_id=ctx.claim_id, llm=ctx.llm, metrics=ctx.metrics)
+            ctx.metrics.end_claim(ctx.claim_id, status="escalated")
+            ctx.metrics.log_claim_summary(ctx.claim_id)
+
+            return {
+                **escalation_output.model_dump(),
+                "claim_type": ctx.claim_type,
+                "status": STATUS_NEEDS_REVIEW,
+                "router_output": ctx.raw_output,
+                "workflow_output": details,
+                "summary": f"Escalated for review: {', '.join(reasons)}",
+            }
+
+    ctx.repo.save_task_checkpoint(ctx.claim_id, ctx.workflow_run_id, "escalation_check", "{}")
+    return None
+
+
+def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the primary workflow crew.
+
+    Populates ``ctx.workflow_output`` and ``ctx.extracted_payout``.
+    Returns an early-return response dict on mid-workflow escalation.
+    """
+    workflow_stage_key = f"workflow:{ctx.claim_type}"
+
+    if workflow_stage_key in ctx.checkpoints:
+        wf_cp = json.loads(ctx.checkpoints[workflow_stage_key])
+        ctx.workflow_output = wf_cp["workflow_output"]
+        ctx.extracted_payout = wf_cp.get("extracted_payout")
+        if ctx.extracted_payout is not None:
+            ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
+        logger.info("Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": ctx.claim_id})
+        return None
+
+    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    logger.log_event("crew_started", crew=ctx.claim_type)
+    crew_start = time.time()
+
+    if ctx.claim_type == ClaimType.NEW.value:
+        crew = create_new_claim_crew(ctx.llm)
+    elif ctx.claim_type == ClaimType.DUPLICATE.value:
+        crew = create_duplicate_crew(ctx.llm)
+    elif ctx.claim_type == ClaimType.FRAUD.value:
+        crew = create_fraud_detection_crew(ctx.llm)
+    elif ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
+        crew = create_partial_loss_crew(ctx.llm)
+    else:
+        crew = create_total_loss_crew(ctx.llm)
+
+    crew_inputs = {
+        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
+    }
+
+    try:
+        workflow_result = _kickoff_with_retry(crew, crew_inputs)
+    except MidWorkflowEscalation as e:
+        return _handle_mid_workflow_escalation(
+            e,
+            claim_id=ctx.claim_id,
+            claim_type=ctx.claim_type,
+            raw_output=ctx.raw_output,
+            repo=ctx.repo,
+            logger=logger,
+            metrics=ctx.metrics,
+            llm=ctx.llm,
+            workflow_start_time=ctx.workflow_start_time,
+            workflow_run_id=ctx.workflow_run_id,
+        )
+
+    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    crew_latency = (time.time() - crew_start) * 1000
+
+    ctx.workflow_output = str(
+        getattr(workflow_result, "raw", None)
+        or getattr(workflow_result, "output", None)
+        or str(workflow_result)
+    )
+
+    logger.log_event("crew_completed", crew=ctx.claim_type, latency_ms=crew_latency)
+
+    ctx.extracted_payout = _extract_payout_from_workflow_result(workflow_result, ctx.claim_type)
+    if ctx.extracted_payout is not None:
+        ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
+
+    ctx.repo.save_task_checkpoint(
+        ctx.claim_id, ctx.workflow_run_id, workflow_stage_key,
+        json.dumps({
+            "workflow_output": ctx.workflow_output,
+            "extracted_payout": ctx.extracted_payout,
+        }),
+    )
+    return None
+
+
+def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the settlement crew when required by claim type.
+
+    Returns an early-return response dict on mid-workflow escalation.
+    Populates ``ctx.workflow_output`` with the combined final output.
+    """
+    if not _requires_settlement(ctx.claim_type):
+        return None
+
+    if "settlement" in ctx.checkpoints:
+        stl_cp = json.loads(ctx.checkpoints["settlement"])
+        settlement_output = stl_cp["settlement_output"]
+        ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
+        logger.info("Restored settlement from checkpoint", extra={"claim_id": ctx.claim_id})
+        return None
+
+    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    logger.log_event("crew_started", crew="settlement")
+    settlement_start = time.time()
+
+    settlement_crew = create_settlement_crew(ctx.llm, claim_type=ctx.claim_type)
+    settlement_inputs = {
+        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
+        "workflow_output": ctx.workflow_output,
+    }
+
+    try:
+        settlement_result = _kickoff_with_retry(settlement_crew, settlement_inputs)
+    except MidWorkflowEscalation as e:
+        return _handle_mid_workflow_escalation(
+            e,
+            claim_id=ctx.claim_id,
+            claim_type=ctx.claim_type,
+            raw_output=ctx.raw_output,
+            repo=ctx.repo,
+            logger=logger,
+            metrics=ctx.metrics,
+            llm=ctx.llm,
+            workflow_start_time=ctx.workflow_start_time,
+            prior_workflow_output=ctx.workflow_output,
+            actor_id=ctx.actor_id,
+            stage="settlement",
+            payout_amount=ctx.extracted_payout,
+            workflow_run_id=ctx.workflow_run_id,
+        )
+
+    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    settlement_latency = (time.time() - settlement_start) * 1000
+    settlement_output = str(
+        getattr(settlement_result, "raw", None)
+        or getattr(settlement_result, "output", None)
+        or str(settlement_result)
+    )
+    logger.log_event("crew_completed", crew="settlement", latency_ms=settlement_latency)
+    ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
+
+    ctx.repo.save_task_checkpoint(
+        ctx.claim_id, ctx.workflow_run_id, "settlement",
+        json.dumps({"settlement_output": settlement_output}),
+    )
+    return None
 
 
 def run_claim_workflow(
@@ -897,6 +1271,14 @@ def run_claim_workflow(
 
         try:
             # Checkpoint initialization for resumable workflows
+            if from_stage and not resume_run_id:
+                logger.warning(
+                    "from_stage=%s ignored because resume_run_id is not set",
+                    from_stage,
+                    extra={"claim_id": claim_id},
+                )
+                from_stage = None
+
             workflow_run_id = resume_run_id or uuid.uuid4().hex
             checkpoints: dict[str, str] = {}
             if resume_run_id:
@@ -1017,319 +1399,34 @@ def run_claim_workflow(
                 len(claim_data_with_id.get("existing_claims_for_vin") or []),
             )
 
-            # Step 1: Classify (with checkpoint support)
-            if "router" in checkpoints:
-                router_cp = json.loads(checkpoints["router"])
-                claim_type = router_cp["claim_type"]
-                router_confidence = router_cp["router_confidence"]
-                router_reasoning = router_cp["router_reasoning"]
-                raw_output = router_cp["raw_output"]
-                logger.set_claim_type(claim_type)
-                logger.info("Restored router from checkpoint", extra={"claim_id": claim_id})
-            else:
-                logger.log_event("router_started", step="classification")
-                router_start = time.time()
+            ctx = _WorkflowCtx(
+                claim_id=claim_id,
+                claim_data=claim_data,
+                claim_data_with_id=claim_data_with_id,
+                inputs=inputs,
+                similarity_score_for_escalation=similarity_score_for_escalation,
+                repo=repo,
+                metrics=metrics,
+                llm=llm,
+                workflow_run_id=workflow_run_id,
+                workflow_start_time=workflow_start_time,
+                actor_id=_actor,
+                checkpoints=checkpoints,
+            )
 
-                router_crew = create_router_crew(llm)
-                result = _kickoff_with_retry(router_crew, inputs)
+            for stage_fn in (_stage_router, _stage_escalation_check, _stage_workflow_crew, _stage_settlement):
+                early_return = stage_fn(ctx)
+                if early_return is not None:
+                    return early_return
 
-                router_latency = (time.time() - router_start) * 1000
-                raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
-                raw_output = str(raw_output)
-                claim_type, router_confidence, router_reasoning = _parse_router_output(result, raw_output)
-
-                logger.set_claim_type(claim_type)
-                logger.log_event(
-                    "router_completed",
-                    claim_type=claim_type,
-                    confidence=router_confidence,
-                    latency_ms=router_latency,
-                )
-
-                _check_token_budget(claim_id, metrics, llm)
-
-                # Step 1a: Router confidence threshold — escalate when confidence < threshold
-                router_config = get_router_config()
-                confidence_threshold = router_config["confidence_threshold"]
-                validation_enabled = router_config.get("validation_enabled", False)
-
-                if router_confidence < confidence_threshold:
-                    # Optional validation: run second LLM call before escalating
-                    if validation_enabled:
-                        try:
-                            val_json = validate_router_classification_impl(
-                                claim_data_with_id,
-                                claim_type,
-                                router_confidence,
-                                router_reasoning,
-                                metrics=metrics,
-                                claim_id=claim_id,
-                            )
-                            val_data = json.loads(val_json)
-                            val_claim_type = normalize_claim_type(val_data.get("claim_type", claim_type))
-                            val_confidence = max(0.0, min(1.0, float(val_data.get("confidence", 0))))
-                            val_agrees = val_data.get("validation_agrees", True)
-                            if val_confidence >= confidence_threshold:
-                                if not val_agrees:
-                                    logger.log_event(
-                                        "router_reclassified",
-                                        original_claim_type=claim_type,
-                                        final_claim_type=val_claim_type,
-                                        validation_confidence=val_confidence,
-                                    )
-                                claim_type = val_claim_type
-                                router_confidence = val_confidence
-                                router_reasoning = val_data.get("reasoning", router_reasoning)
-                                logger.set_claim_type(claim_type)
-                                try:
-                                    original_router_output = json.loads(raw_output)
-                                except (TypeError, ValueError):
-                                    original_router_output = raw_output
-                                raw_output = json.dumps({
-                                    "original_router_output": original_router_output,
-                                    "validation": val_data,
-                                })
-                                _check_token_budget(claim_id, metrics, llm)
-                            else:
-                                _escalate_low_router_confidence(
-                                    claim_id, claim_type, raw_output, router_confidence,
-                                    confidence_threshold, router_reasoning,
-                                    repo, logger, metrics, llm, workflow_start_time, _actor,
-                                )
-                                return _escalate_low_router_confidence_response(
-                                    claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
-                                    router_reasoning=router_reasoning,
-                                )
-                        except (json.JSONDecodeError, TypeError, ValueError) as e:
-                            logger.warning("Router validation parse failed: %s", e)
-                            _escalate_low_router_confidence(
-                                claim_id, claim_type, raw_output, router_confidence,
-                                confidence_threshold, router_reasoning,
-                                repo, logger, metrics, llm, workflow_start_time, _actor,
-                            )
-                            return _escalate_low_router_confidence_response(
-                                claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
-                                router_reasoning=router_reasoning,
-                            )
-                    else:
-                        _escalate_low_router_confidence(
-                            claim_id, claim_type, raw_output, router_confidence,
-                            confidence_threshold, router_reasoning,
-                            repo, logger, metrics, llm, workflow_start_time, _actor,
-                        )
-                        return _escalate_low_router_confidence_response(
-                            claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
-                            router_reasoning=router_reasoning,
-                        )
-
-                # Router passed — save checkpoint
-                repo.save_task_checkpoint(claim_id, workflow_run_id, "router", json.dumps({
-                    "claim_type": claim_type,
-                    "router_confidence": router_confidence,
-                    "router_reasoning": router_reasoning,
-                    "raw_output": raw_output,
-                }))
-
-            # Step 1b: Escalation check (with checkpoint support)
-            if "escalation_check" in checkpoints:
-                logger.info("Restored escalation_check from checkpoint", extra={"claim_id": claim_id})
-            else:
-                if claim_type != ClaimType.FRAUD.value:
-                    escalation_json = evaluate_escalation_impl(
-                        claim_data,
-                        raw_output,
-                        similarity_score=similarity_score_for_escalation,
-                        payout_amount=None,
-                        router_confidence=router_confidence,
-                    )
-                    escalation_result = json.loads(escalation_json)
-                    if escalation_result.get("needs_review"):
-                        reasons = escalation_result.get("escalation_reasons", [])
-                        priority = escalation_result.get("priority", "low")
-                        recommended_action = escalation_result.get("recommended_action", "")
-                        fraud_indicators = escalation_result.get("fraud_indicators", [])
-                        escalation_output = EscalationOutput(
-                            claim_id=claim_id,
-                            needs_review=True,
-                            escalation_reasons=reasons,
-                            priority=priority,
-                            recommended_action=recommended_action,
-                            fraud_indicators=fraud_indicators,
-                        )
-                        details = json.dumps({
-                            "escalation_reasons": reasons,
-                            "priority": priority,
-                            "recommended_action": recommended_action,
-                            "fraud_indicators": fraud_indicators,
-                        })
-                        repo.save_workflow_result(claim_id, claim_type, raw_output, details)
-                        repo.update_claim_status(
-                            claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details, actor_id=_actor
-                        )
-                        hours = 24 if priority in ("critical", "high") else 48 if priority == "medium" else 72
-                        due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
-                        repo.update_claim_review_metadata(
-                            claim_id,
-                            priority=priority,
-                            due_at=due_at,
-                            review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                        )
-
-                        workflow_duration = (time.time() - workflow_start_time) * 1000
-                        logger.log_event(
-                            "claim_escalated",
-                            reasons=reasons,
-                            priority=priority,
-                            duration_ms=workflow_duration,
-                        )
-
-                        _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
-
-                        metrics.end_claim(claim_id, status="escalated")
-                        metrics.log_claim_summary(claim_id)
-
-                        return {
-                            **escalation_output.model_dump(),
-                            "claim_type": claim_type,
-                            "status": STATUS_NEEDS_REVIEW,
-                            "router_output": raw_output,
-                            "workflow_output": details,
-                            "summary": f"Escalated for review: {', '.join(reasons)}",
-                        }
-
-                repo.save_task_checkpoint(claim_id, workflow_run_id, "escalation_check", json.dumps({
-                    "escalated": False,
-                }))
-
-            # Step 2: Run the appropriate crew (with checkpoint support)
-            workflow_stage_key = f"workflow:{claim_type}"
-            if workflow_stage_key in checkpoints:
-                wf_cp = json.loads(checkpoints[workflow_stage_key])
-                workflow_output = wf_cp["workflow_output"]
-                extracted_payout = wf_cp.get("extracted_payout")
-                if extracted_payout is not None:
-                    claim_data_with_id["payout_amount"] = extracted_payout
-                logger.info("Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": claim_id})
-            else:
-                _check_token_budget(claim_id, metrics, llm)
-                logger.log_event("crew_started", crew=claim_type)
-                crew_start = time.time()
-
-                if claim_type == ClaimType.NEW.value:
-                    crew = create_new_claim_crew(llm)
-                elif claim_type == ClaimType.DUPLICATE.value:
-                    crew = create_duplicate_crew(llm)
-                elif claim_type == ClaimType.FRAUD.value:
-                    crew = create_fraud_detection_crew(llm)
-                elif claim_type == ClaimType.PARTIAL_LOSS.value:
-                    crew = create_partial_loss_crew(llm)
-                else:
-                    crew = create_total_loss_crew(llm)
-
-                crew_inputs = {
-                    "claim_data": json.dumps({**claim_data_with_id, "claim_type": claim_type}),
-                }
-
-                try:
-                    workflow_result = _kickoff_with_retry(crew, crew_inputs)
-                except MidWorkflowEscalation as e:
-                    return _handle_mid_workflow_escalation(
-                        e,
-                        claim_id=claim_id,
-                        claim_type=claim_type,
-                        raw_output=raw_output,
-                        repo=repo,
-                        logger=logger,
-                        metrics=metrics,
-                        llm=llm,
-                        workflow_start_time=workflow_start_time,
-                    )
-
-                _check_token_budget(claim_id, metrics, llm)
-                crew_latency = (time.time() - crew_start) * 1000
-
-                workflow_output = getattr(workflow_result, "raw", None) or getattr(workflow_result, "output", None) or str(workflow_result)
-                workflow_output = str(workflow_output)
-
-                logger.log_event(
-                    "crew_completed",
-                    crew=claim_type,
-                    latency_ms=crew_latency,
-                )
-
-                extracted_payout = _extract_payout_from_workflow_result(workflow_result, claim_type)
-                if extracted_payout is not None:
-                    claim_data_with_id["payout_amount"] = extracted_payout
-
-                repo.save_task_checkpoint(claim_id, workflow_run_id, workflow_stage_key, json.dumps({
-                    "workflow_output": workflow_output,
-                    "extracted_payout": extracted_payout,
-                }))
-
-            # Step 3: Settlement (with checkpoint support)
-            final_workflow_output = workflow_output
-            if _requires_settlement(claim_type):
-                if "settlement" in checkpoints:
-                    stl_cp = json.loads(checkpoints["settlement"])
-                    settlement_output = stl_cp["settlement_output"]
-                    final_workflow_output = _combine_workflow_outputs(workflow_output, settlement_output)
-                    logger.info("Restored settlement from checkpoint", extra={"claim_id": claim_id})
-                else:
-                    _check_token_budget(claim_id, metrics, llm)
-                    logger.log_event("crew_started", crew="settlement")
-                    settlement_start = time.time()
-
-                    settlement_crew = create_settlement_crew(
-                        llm,
-                        claim_type=claim_type,
-                    )
-                    settlement_inputs = {
-                        "claim_data": json.dumps({**claim_data_with_id, "claim_type": claim_type}),
-                        "workflow_output": workflow_output,
-                    }
-
-                    try:
-                        settlement_result = _kickoff_with_retry(settlement_crew, settlement_inputs)
-                    except MidWorkflowEscalation as e:
-                        return _handle_mid_workflow_escalation(
-                            e,
-                            claim_id=claim_id,
-                            claim_type=claim_type,
-                            raw_output=raw_output,
-                            repo=repo,
-                            logger=logger,
-                            metrics=metrics,
-                            llm=llm,
-                            workflow_start_time=workflow_start_time,
-                            prior_workflow_output=workflow_output,
-                            actor_id=_actor,
-                            stage="settlement",
-                            payout_amount=extracted_payout if extracted_payout is not None else None,
-                        )
-
-                    _check_token_budget(claim_id, metrics, llm)
-                    settlement_latency = (time.time() - settlement_start) * 1000
-                    settlement_output = getattr(settlement_result, "raw", None) or getattr(settlement_result, "output", None) or str(settlement_result)
-                    settlement_output = str(settlement_output)
-                    logger.log_event(
-                        "crew_completed",
-                        crew="settlement",
-                        latency_ms=settlement_latency,
-                    )
-                    final_workflow_output = _combine_workflow_outputs(workflow_output, settlement_output)
-
-                    repo.save_task_checkpoint(claim_id, workflow_run_id, "settlement", json.dumps({
-                        "settlement_output": settlement_output,
-                    }))
-
-            final_status = _final_status(claim_type)
-            repo.save_workflow_result(claim_id, claim_type, raw_output, final_workflow_output)
+            final_status = _final_status(ctx.claim_type)
+            repo.save_workflow_result(claim_id, ctx.claim_type, ctx.raw_output, ctx.workflow_output)
             repo.update_claim_status(
                 claim_id,
                 final_status,
-                details=final_workflow_output[:500] if len(final_workflow_output) > 500 else final_workflow_output,
-                claim_type=claim_type,
-                payout_amount=extracted_payout if extracted_payout is not None else None,
+                details=ctx.workflow_output[:500] if len(ctx.workflow_output) > 500 else ctx.workflow_output,
+                claim_type=ctx.claim_type,
+                payout_amount=ctx.extracted_payout,
                 actor_id=_actor,
             )
 
@@ -1347,12 +1444,12 @@ def run_claim_workflow(
 
             return {
                 "claim_id": claim_id,
-                "claim_type": claim_type,
+                "claim_type": ctx.claim_type,
                 "status": final_status,
-                "router_output": raw_output,
-                "workflow_output": final_workflow_output,
+                "router_output": ctx.raw_output,
+                "workflow_output": ctx.workflow_output,
                 "workflow_run_id": workflow_run_id,
-                "summary": final_workflow_output[:500] + "..." if len(final_workflow_output) > 500 else final_workflow_output,
+                "summary": ctx.workflow_output[:500] + "..." if len(ctx.workflow_output) > 500 else ctx.workflow_output,
             }
         except Exception as e:
             details = str(e)

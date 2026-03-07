@@ -5,6 +5,8 @@ Covers:
 - Resume logic in run_claim_workflow
 - from_stage invalidation
 - No regression for full (non-resume) runs
+- MidWorkflowEscalation checkpoint cleanup
+- API / CLI from_stage parameter
 """
 
 import json
@@ -14,6 +16,7 @@ import pytest
 
 from claim_agent.db.database import get_connection
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimInput
 
 
@@ -523,3 +526,197 @@ class TestWorkflowCheckpoints:
         router_crew_inst.kickoff.assert_called_once()
         new_crew_inst.kickoff.assert_called_once()
         assert result1["workflow_run_id"] != result2["workflow_run_id"]
+
+    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
+    @patch("claim_agent.crews.main_crew.create_router_crew")
+    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
+    @patch("claim_agent.crews.main_crew.get_llm")
+    @patch("claim_agent.crews.main_crew.get_router_config")
+    def test_mid_workflow_escalation_cleans_checkpoints(
+        self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
+        mock_escalation, temp_db,
+    ):
+        """MidWorkflowEscalation during crew run deletes all checkpoints for the run."""
+        from claim_agent.crews.main_crew import run_claim_workflow
+
+        mock_router_config.return_value = {"confidence_threshold": 0.7}
+        mock_escalation.return_value = json.dumps({"needs_review": False})
+
+        mock_llm = MagicMock()
+        mock_llm.model = "test-model"
+        mock_get_llm.return_value = mock_llm
+
+        router_crew_inst = MagicMock()
+        router_crew_inst.kickoff.return_value = _mock_router_result("new", 0.95)
+        mock_router_crew.return_value = router_crew_inst
+
+        new_crew_inst = MagicMock()
+        new_crew_inst.kickoff.side_effect = MidWorkflowEscalation(
+            reason="Suspicious pattern detected",
+            indicators=["indicator1"],
+            priority="high",
+            claim_id="will-be-overridden",
+        )
+        mock_new_crew.return_value = new_crew_inst
+
+        result = run_claim_workflow(
+            {
+                "policy_number": "POL-600",
+                "vin": "CPVIN600",
+                "vehicle_year": 2023,
+                "vehicle_make": "Test",
+                "vehicle_model": "Car",
+                "incident_date": "2025-06-01",
+                "incident_description": "Suspicious incident",
+                "damage_description": "Major damage",
+            },
+            llm=mock_llm,
+        )
+
+        assert result["status"] == "needs_review"
+
+        repo = ClaimRepository(db_path=temp_db)
+        cps = repo.get_task_checkpoints(
+            result["claim_id"], result.get("workflow_run_id", ""),
+        )
+        assert cps == {}, "Checkpoints should be cleared after mid-workflow escalation"
+
+    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
+    @patch("claim_agent.crews.main_crew.create_router_crew")
+    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
+    @patch("claim_agent.crews.main_crew.get_llm")
+    @patch("claim_agent.crews.main_crew.get_router_config")
+    def test_from_stage_without_resume_run_id_runs_full(
+        self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
+        mock_escalation, temp_db,
+    ):
+        """from_stage without resume_run_id is ignored and a full run executes."""
+        from claim_agent.crews.main_crew import run_claim_workflow
+
+        mock_router_config.return_value = {"confidence_threshold": 0.7}
+        mock_escalation.return_value = json.dumps({"needs_review": False})
+
+        mock_llm = MagicMock()
+        mock_llm.model = "test-model"
+        mock_get_llm.return_value = mock_llm
+
+        router_crew_inst = MagicMock()
+        router_crew_inst.kickoff.return_value = _mock_router_result("new", 0.95)
+        mock_router_crew.return_value = router_crew_inst
+
+        new_crew_inst = MagicMock()
+        new_crew_inst.kickoff.return_value = _mock_crew_result("Processed")
+        mock_new_crew.return_value = new_crew_inst
+
+        result = run_claim_workflow(
+            {
+                "policy_number": "POL-700",
+                "vin": "CPVIN700",
+                "vehicle_year": 2023,
+                "vehicle_make": "Test",
+                "vehicle_model": "Car",
+                "incident_date": "2025-06-01",
+                "incident_description": "Normal incident",
+                "damage_description": "Minor dent",
+            },
+            llm=mock_llm,
+            from_stage="workflow",
+        )
+
+        router_crew_inst.kickoff.assert_called_once()
+        new_crew_inst.kickoff.assert_called_once()
+        assert result["claim_type"] == "new"
+
+
+# ============================================================================
+# API from_stage parameter
+# ============================================================================
+
+
+class TestReprocessAPIFromStage:
+    """Test the reprocess endpoint with from_stage query param."""
+
+    def test_reprocess_invalid_from_stage_returns_400(self, temp_db):
+        from fastapi.testclient import TestClient
+        from claim_agent.api.server import app
+
+        client = TestClient(app)
+        import os
+        os.environ["API_KEYS"] = "sk-sup:supervisor"
+
+        try:
+            resp = client.post(
+                "/api/claims/CLM-001/reprocess?from_stage=bogus",
+                headers={"X-API-Key": "sk-sup"},
+            )
+            assert resp.status_code == 400
+            assert "from_stage" in resp.json()["detail"]
+        finally:
+            os.environ.pop("API_KEYS", None)
+
+    def test_reprocess_valid_from_stage_accepted(self, temp_db):
+        from fastapi.testclient import TestClient
+        from claim_agent.api.server import app
+
+        client = TestClient(app)
+        import os
+        os.environ["API_KEYS"] = "sk-sup:supervisor"
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim(repo)
+
+        try:
+            with patch("claim_agent.api.routes.claims.run_claim_workflow") as mock_wf:
+                mock_wf.return_value = {"claim_id": claim_id, "status": "open"}
+                resp = client.post(
+                    f"/api/claims/{claim_id}/reprocess?from_stage=workflow",
+                    headers={"X-API-Key": "sk-sup"},
+                )
+            assert resp.status_code == 200
+            call_kwargs = mock_wf.call_args[1]
+            assert call_kwargs.get("from_stage") is None or call_kwargs.get("from_stage") == "workflow"
+        finally:
+            os.environ.pop("API_KEYS", None)
+
+
+# ============================================================================
+# CLI --from-stage flag
+# ============================================================================
+
+
+class TestReprocessCLIFromStage:
+    """Test the CLI --from-stage flag for cmd_reprocess."""
+
+    def test_invalid_from_stage_exits_nonzero(self, temp_db):
+        from claim_agent.main import cmd_reprocess
+
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_reprocess("CLM-DOES-NOT-MATTER", from_stage="bogus_stage")
+        assert exc_info.value.code == 1
+
+    def test_from_stage_no_checkpoints_falls_back_to_full(self, temp_db):
+        from claim_agent.main import cmd_reprocess
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim(repo)
+
+        with patch("claim_agent.crews.main_crew.run_claim_workflow") as mock_wf:
+            mock_wf.return_value = {"claim_id": claim_id, "status": "open"}
+            cmd_reprocess(claim_id, from_stage="router")
+
+        call_kwargs = mock_wf.call_args[1]
+        assert call_kwargs["resume_run_id"] is None
+        assert call_kwargs["from_stage"] is None
+
+    def test_main_parses_from_stage_flag(self, temp_db):
+        import sys
+        from claim_agent.main import main
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim(repo)
+
+        with patch("claim_agent.main.cmd_reprocess") as mock_cmd:
+            with patch.object(sys, "argv", ["claim-agent", "reprocess", claim_id, "--from-stage", "settlement"]):
+                main()
+
+        mock_cmd.assert_called_once_with(claim_id, from_stage="settlement")

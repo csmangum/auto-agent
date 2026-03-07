@@ -95,10 +95,10 @@ When `resume_run_id` is passed to `run_claim_workflow`:
 ### CLI
 
 ```
-claim-agent reprocess <claim_id> --from-task <stage>
+claim-agent reprocess <claim_id> --from-stage <stage>
 ```
 
-`--from-task` accepts one of: `router`, `escalation_check`, `workflow`, `settlement`.
+`--from-stage` accepts one of: `router`, `escalation_check`, `workflow`, `settlement`.
 The CLI looks up the most recent `workflow_run_id` with checkpoints and resumes
 from the specified stage.
 
@@ -118,6 +118,6 @@ Optional `from_stage` query parameter; same semantics as the CLI flag.
 | Router     | Structured JSON (claim_type, confidence, reasoning); threshold + optional validation | — |
 | Escalation | Pre-workflow + mid-workflow (escalate_claim tool) | — |
 | Data       | SQLite (claims) + Mock JSON (reference) | Mock DB role not obvious from architecture diagram        |
-| Reprocess  | Per-stage checkpoints; resume via `--from-task` / `from_stage` | Checkpoints are at stage boundaries, not individual CrewAI tasks |
+| Reprocess  | Per-stage checkpoints; resume via `--from-stage` / `from_stage` | Checkpoints are at stage boundaries, not individual CrewAI tasks |
 
 

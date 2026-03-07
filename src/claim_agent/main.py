@@ -34,7 +34,7 @@ def _usage() -> str:
   claim-agent process <claim.json> [--attachment <file> ...]   Process a new claim
   claim-agent status <claim_id>      Get claim status
   claim-agent history <claim_id>     Get claim audit log
-  claim-agent reprocess <claim_id> [--from-task <stage>]   Re-run workflow (optionally resume from stage)
+  claim-agent reprocess <claim_id> [--from-stage <stage>]   Re-run workflow (optionally resume from stage)
   claim-agent metrics [claim_id]     Show metrics (optionally for specific claim)
   claim-agent review-queue [--assignee X] [--priority P]  List claims needing review
   claim-agent assign <claim_id> <assignee>   Assign claim to adjuster
@@ -51,7 +51,7 @@ Options:
   --priority <level>                 Filter review queue by priority
   --reason <text>                    Rejection reason
   --note <text>                      Note for request-info
-  --from-task <stage>                Resume reprocess from stage (router, escalation_check, workflow, settlement)
+  --from-stage <stage>               Resume reprocess from stage (router, escalation_check, workflow, settlement)
   --dry-run                          Show what would be archived without making changes (retention-enforce)
   --years <n>                        Override retention period in years (retention-enforce)
   --debug                            Enable debug logging
@@ -197,7 +197,7 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
 
     if from_stage is not None and from_stage not in WORKFLOW_STAGES:
         print(
-            f"Error: --from-task must be one of {', '.join(WORKFLOW_STAGES)}",
+            f"Error: --from-stage must be one of {', '.join(WORKFLOW_STAGES)}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -470,8 +470,8 @@ def main() -> None:
         elif first == "history":
             cmd_history(claim_id)
         else:
-            from_task = _parse_opt_arg("--from-task") or None
-            cmd_reprocess(claim_id, from_stage=from_task)
+            from_stage = _parse_opt_arg("--from-stage") or None
+            cmd_reprocess(claim_id, from_stage=from_stage)
         return
 
     # Review queue command
