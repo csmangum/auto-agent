@@ -131,7 +131,7 @@ async def auth_middleware(request: Request, call_next):
 def _health_response():
     """Return health check response with appropriate status code."""
     result = check_health()
-    status_code = 200 if is_healthy() else 503
+    status_code = 200 if result["status"] == "ok" else 503
     return JSONResponse(content=result, status_code=status_code)
 
 
