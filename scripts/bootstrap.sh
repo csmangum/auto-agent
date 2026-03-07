@@ -12,7 +12,12 @@ if [[ ! -d .venv ]] || [[ ! -f .venv/bin/pip ]]; then
   else
     # ensurepip not available (e.g. minimal Ubuntu without python3-venv)
     python3 -m venv .venv --without-pip
-    if ! curl -sS https://bootstrap.pypa.io/get-pip.py | .venv/bin/python3 -; then
+    if ! command -v curl >/dev/null 2>&1; then
+      echo "Error: curl is required to download get-pip.py" >&2
+      rm -rf .venv
+      exit 1
+    fi
+    if ! curl -fLsS https://bootstrap.pypa.io/get-pip.py | .venv/bin/python3 -; then
       rm -rf .venv
       exit 1
     fi

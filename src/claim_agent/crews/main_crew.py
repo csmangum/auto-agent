@@ -1040,6 +1040,16 @@ def run_claim_workflow(
                             router_confidence = val_confidence
                             router_reasoning = val_data.get("reasoning", router_reasoning)
                             logger.set_claim_type(claim_type)
+                            # Persist combined audit record so stored router_output matches the
+                            # classification that actually drove the workflow.
+                            try:
+                                original_router_output = json.loads(raw_output)
+                            except (TypeError, ValueError):
+                                original_router_output = raw_output
+                            raw_output = json.dumps({
+                                "original_router_output": original_router_output,
+                                "validation": val_data,
+                            })
                             # Proceed to Step 1b (skip escalation)
                         else:
                             # Validation also low confidence -> escalate

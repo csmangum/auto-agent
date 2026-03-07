@@ -119,7 +119,7 @@ The module `src/claim_agent/config/settings.py` centralizes configuration from e
 | `DEFAULT_BASE_VALUE`, `DEPRECIATION_PER_YEAR`, etc. | Valuation and partial-loss defaults |
 | `get_adapter_backend(name)` | Configured adapter backend for a given adapter name |
 
-Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATION_ENABLED` (default false).
+Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATION_ENABLED` (default false). When `ROUTER_VALIDATION_ENABLED=true`, the optional second-pass validation LLM call uses `OPENAI_MODEL_NAME` (the same variable that controls all other LLM calls; default `gpt-4o-mini`).
 
 Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_THRESHOLD`, `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`, `ESCALATION_FRAUD_DAMAGE_VS_VALUE_RATIO`, `ESCALATION_VIN_CLAIMS_DAYS`, `ESCALATION_CONFIDENCE_DECREMENT_PER_PATTERN`, `ESCALATION_DESCRIPTION_OVERLAP_THRESHOLD`.
 
