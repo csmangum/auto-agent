@@ -23,7 +23,13 @@ flowchart TB
         F[Router Crew]
         G{claim_type}
     end
-    
+
+    subgraph ConfidenceCheck["Router Confidence Check"]
+        R{confidence >= threshold?}
+        V[Optional: Validate & Reclassify]
+        S[Escalate: needs_review]
+    end
+
     subgraph Escalation["Escalation Check"]
         H{Fraud type?}
         I[Evaluate escalation]
@@ -41,7 +47,11 @@ flowchart TB
         O[Return JSON]
     end
     
-    A --> B --> C --> D --> E --> F --> G --> H
+    A --> B --> C --> D --> E --> F --> G --> R
+    R -->|Yes| H
+    R -->|No| V
+    V -->|high confidence| H
+    V -->|low confidence| S --> O
     H -->|Yes| K
     H -->|No| I --> J
     J -->|Yes| O
@@ -78,14 +88,16 @@ Creates audit log entries. See [Database](database.md) for schema.
 
 Router and workflow crew kickoffs use **retry with exponential backoff** for transient LLM failures. **Token and call budgets** (configurable via `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` and `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM`) are enforced; processing stops if limits are exceeded.
 
+The router returns **structured JSON** with `claim_type`, `confidence` (0.0–1.0), and `reasoning`. When confidence is below `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), the claim is escalated to `needs_review` for human classification before any workflow runs. Optionally, `ROUTER_VALIDATION_ENABLED=true` runs a second LLM call; if validation returns high confidence, the workflow proceeds (re-classification if validation disagrees). See [Design Considerations - Router Classification](design-considerations.md#router-classification).
+
 ```mermaid
 flowchart LR
     A[claim_data JSON] --> B[Router Agent]
     B --> C[Analyze descriptions]
-    C --> D[Return type + reasoning]
+    C --> D[JSON: claim_type, confidence, reasoning]
 ```
 
-Output: `"partial_loss\nBumper damage is repairable"`
+Output: `{"claim_type": "partial_loss", "confidence": 0.92, "reasoning": "Bumper damage is repairable"}`
 
 ### 4. Escalation Check (HITL)
 

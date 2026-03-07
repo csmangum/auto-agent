@@ -360,6 +360,70 @@ def test_parse_claim_type_default():
     assert _parse_claim_type("Unable to classify.") == "new"
 
 
+def test_parse_router_output_structured_json():
+    """_parse_router_output parses JSON with claim_type, confidence, reasoning."""
+    from claim_agent.crews.main_crew import _parse_router_output
+
+    result = object()  # No tasks_output
+    raw = '{"claim_type": "partial_loss", "confidence": 0.85, "reasoning": "Repairable bumper damage."}'
+    claim_type, confidence, reasoning = _parse_router_output(result, raw)
+    assert claim_type == "partial_loss"
+    assert confidence == 0.85
+    assert "bumper" in reasoning
+
+
+def test_parse_router_output_json_with_markdown():
+    """_parse_router_output extracts JSON from markdown code block."""
+    from claim_agent.crews.main_crew import _parse_router_output
+
+    result = object()
+    raw = '```json\n{"claim_type": "fraud", "confidence": 0.6, "reasoning": "Suspicious."}\n```'
+    claim_type, confidence, reasoning = _parse_router_output(result, raw)
+    assert claim_type == "fraud"
+    assert confidence == 0.6
+
+
+def test_parse_router_output_legacy_fallback():
+    """_parse_router_output falls back to legacy parsing when JSON invalid."""
+    from claim_agent.crews.main_crew import _parse_router_output
+
+    result = object()
+    raw = "total_loss\nVehicle flooded."
+    claim_type, confidence, reasoning = _parse_router_output(result, raw)
+    assert claim_type == "total_loss"
+    assert 0.3 <= confidence <= 1.0
+    assert "flooded" in reasoning or reasoning == ""
+
+
+def test_parse_router_output_pydantic_from_tasks_output():
+    """_parse_router_output uses RouterOutput from tasks_output when available."""
+    from unittest.mock import MagicMock
+    from claim_agent.crews.main_crew import _parse_router_output
+    from claim_agent.models.claim import RouterOutput
+
+    mock_output = RouterOutput(claim_type="duplicate", confidence=0.92, reasoning="Same VIN and date.")
+    mock_task = MagicMock(output=mock_output)
+    result = MagicMock(tasks_output=[mock_task])
+    raw = "fallback"
+    claim_type, confidence, reasoning = _parse_router_output(result, raw)
+    assert claim_type == "duplicate"
+    assert confidence == 0.92
+    assert "Same VIN" in reasoning
+
+
+def test_normalize_claim_type():
+    """_normalize_claim_type maps variants to canonical values."""
+    from claim_agent.crews.main_crew import _normalize_claim_type
+
+    assert _normalize_claim_type("total_loss") == "total_loss"
+    assert _normalize_claim_type("total loss") == "total_loss"
+    assert _normalize_claim_type("partial_loss") == "partial_loss"
+    assert _normalize_claim_type("new") == "new"
+    assert _normalize_claim_type("duplicate") == "duplicate"
+    assert _normalize_claim_type("fraud") == "fraud"
+    assert _normalize_claim_type("unknown") == "new"
+
+
 def test_check_for_duplicates_empty_vin_returns_empty():
     """_check_for_duplicates returns [] when VIN is missing or blank."""
     from claim_agent.crews.main_crew import _check_for_duplicates

@@ -7,6 +7,7 @@ from claim_agent.models.claim import (
     ClaimOutput,
     ClaimType,
     EscalationOutput,
+    RouterOutput,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ClaimOutput",
     "ClaimType",
     "EscalationOutput",
+    "RouterOutput",
 ]

@@ -368,6 +368,66 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
 # --- Escalation (HITL) ---
 
 
+def validate_router_classification_impl(
+    claim_data: dict[str, Any],
+    original_claim_type: str,
+    original_confidence: float,
+    original_reasoning: str,
+) -> str:
+    """Optional validation: second LLM call to confirm or correct router classification.
+
+    Returns JSON: {claim_type, confidence, reasoning, validation_agrees}.
+    When validation_agrees is False and confidence >= threshold, caller should re-route.
+    """
+    import os
+
+    try:
+        import litellm
+    except ImportError:
+        return json.dumps({
+            "claim_type": original_claim_type,
+            "confidence": original_confidence,
+            "reasoning": "Validation skipped: litellm not available",
+            "validation_agrees": True,
+        })
+
+    claim_str = json.dumps(claim_data, default=str)[:2000]
+    prompt = f"""A claim was classified as "{original_claim_type}" with confidence {original_confidence:.2f}. Reasoning: {original_reasoning}
+
+Claim data (excerpt): {claim_str}
+
+Independently verify the classification. Return JSON only:
+{{"claim_type": "new"|"duplicate"|"total_loss"|"fraud"|"partial_loss", "confidence": 0.0-1.0, "reasoning": "brief explanation"}}"""
+
+    try:
+        model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+        resp = litellm.completion(model=model, messages=[{"role": "user", "content": prompt}])
+        text = (resp.choices[0].message.content or "").strip()
+        # Extract JSON
+        import re
+        match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            v_type = (parsed.get("claim_type") or original_claim_type).strip().lower().replace(" ", "_")
+            v_conf = max(0.0, min(1.0, float(parsed.get("confidence", 0.5))))
+            v_reason = str(parsed.get("reasoning", "") or "").strip()
+            agrees = v_type == original_claim_type.lower().replace(" ", "_")
+            return json.dumps({
+                "claim_type": v_type,
+                "confidence": v_conf,
+                "reasoning": v_reason,
+                "validation_agrees": agrees,
+            })
+    except Exception as e:
+        logger.warning("Router validation failed: %s", e, exc_info=True)
+    return json.dumps({
+        "claim_type": original_claim_type,
+        "confidence": original_confidence,
+        "reasoning": "Validation failed, using original",
+        "validation_agrees": False,
+    })
+
+
 def _parse_router_confidence(router_output: str) -> float:
     """Derive routing confidence from router output language, in the range 0.3-1.0."""
     if not router_output or not isinstance(router_output, str):
@@ -489,10 +549,15 @@ def evaluate_escalation_impl(
     router_output: str,
     similarity_score: float | None = None,
     payout_amount: float | None = None,
+    *,
+    router_confidence: float | None = None,
 ) -> str:
     """
     Evaluate claim for escalation. Returns JSON with needs_review, escalation_reasons,
     priority, fraud_indicators, recommended_action.
+
+    When router_confidence is provided (explicit 0.0-1.0 from structured router output),
+    it is used instead of inferring confidence from router output text.
     """
     reasons: list[str] = []
     esc_config = get_escalation_config()
@@ -500,7 +565,10 @@ def evaluate_escalation_impl(
     high_value_threshold = esc_config["high_value_threshold"]
     low_sim, high_sim = esc_config["similarity_ambiguous_range"]
 
-    confidence = _parse_router_confidence(router_output or "")
+    if router_confidence is not None:
+        confidence = max(0.0, min(1.0, float(router_confidence)))
+    else:
+        confidence = _parse_router_confidence(router_output or "")
     if confidence < conf_threshold:
         reasons.append("low_confidence")
 
