@@ -33,6 +33,7 @@ from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimType
+from claim_agent.notifications.webhook import dispatch_repair_authorized
 
 try:
     import litellm
@@ -1760,5 +1761,16 @@ def generate_repair_authorization_impl(
             "Original damaged parts must be retained for inspection if requested",
         ],
     }
-    
+
+    authorized_amount = authorization.get("authorized_amount", 0) or 0
+    dispatch_repair_authorized(
+        claim_id=claim_id,
+        shop_id=shop_id,
+        shop_name=authorization["shop_name"],
+        shop_phone=authorization["shop_phone"],
+        authorized_amount=float(authorized_amount),
+        authorization_id=authorization["authorization_id"],
+        shop_webhook_url=shop.get("webhook_url"),
+    )
+
     return json.dumps(authorization)

@@ -225,6 +225,40 @@ def get_crew_verbose() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Webhooks
+# ---------------------------------------------------------------------------
+
+def get_webhook_config() -> dict[str, Any]:
+    """Webhook configuration for outbound notifications."""
+    urls_raw = os.environ.get("WEBHOOK_URLS", "").strip() or os.environ.get("WEBHOOK_URL", "").strip()
+    urls = [u.strip() for u in urls_raw.split(",") if u.strip()] if urls_raw else []
+    raw = os.environ.get("WEBHOOK_ENABLED", "true").strip().lower()
+    enabled = raw in ("true", "1", "yes")
+    return {
+        "urls": urls,
+        "secret": os.environ.get("WEBHOOK_SECRET", "").strip(),
+        "max_retries": _int("WEBHOOK_MAX_RETRIES", 5),
+        "enabled": enabled,
+        "shop_url": os.environ.get("WEBHOOK_SHOP_URL", "").strip() or None,
+        "dead_letter_path": os.environ.get("WEBHOOK_DEAD_LETTER_PATH", "").strip() or None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Claimant notifications (optional)
+# ---------------------------------------------------------------------------
+
+def get_notification_config() -> dict[str, Any]:
+    """Claimant notification configuration (email/SMS). Stub for now."""
+    raw_email = os.environ.get("NOTIFICATION_EMAIL_ENABLED", "false").strip().lower()
+    raw_sms = os.environ.get("NOTIFICATION_SMS_ENABLED", "false").strip().lower()
+    return {
+        "email_enabled": raw_email in ("true", "1", "yes"),
+        "sms_enabled": raw_sms in ("true", "1", "yes"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Adapter backends
 # ---------------------------------------------------------------------------
 
