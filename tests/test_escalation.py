@@ -322,14 +322,14 @@ def test_run_claim_workflow_escalates_on_low_router_confidence(_temp_claims_db):
         "estimated_damage": 500.0,
     }
     # Mock router to return JSON with low confidence (0.5 < 0.7 threshold)
-    low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear damage."}'
+    router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear damage."}'
     no_escalation = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
 
     with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
         with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
             with patch("claim_agent.crews.main_crew.evaluate_escalation_impl", return_value=no_escalation):
                 mock_llm.return_value = MagicMock()
-                mock_router.return_value.kickoff.return_value = MagicMock(raw=low_conf_raw)
+                mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
 
                 result = run_claim_workflow(claim_data)
 
@@ -337,6 +337,227 @@ def test_run_claim_workflow_escalates_on_low_router_confidence(_temp_claims_db):
     assert result["needs_review"] is True
     assert "low_router_confidence" in result.get("escalation_reasons", [])
     assert "0.5" in result.get("summary", "") or "threshold" in result.get("summary", "").lower()
+
+
+def test_run_claim_workflow_validation_enabled_agrees_high_confidence(_temp_claims_db):
+    """Validation enabled: validator agrees and returns high confidence → workflow proceeds."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+
+    claim_data = {
+        "policy_number": "POL-002",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Minor bumper damage.",
+        "damage_description": "Bumper scratch.",
+        "estimated_damage": 500.0,
+    }
+    router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
+    # Validator agrees: same claim_type, high confidence
+    val_result = json.dumps({
+        "claim_type": "new",
+        "confidence": 0.9,
+        "reasoning": "First-time submission confirmed.",
+        "validation_agrees": True,
+    })
+    no_escalation = json.dumps({
+        "needs_review": False,
+        "escalation_reasons": [],
+        "priority": "low",
+        "fraud_indicators": [],
+        "recommended_action": "",
+    })
+    workflow_output = MagicMock()
+    workflow_output.raw = "Claim processed successfully."
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm, \
+         patch("claim_agent.crews.main_crew.create_router_crew") as mock_router, \
+         patch("claim_agent.crews.main_crew.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
+         patch("claim_agent.crews.main_crew.validate_router_classification_impl", return_value=val_result), \
+         patch("claim_agent.crews.main_crew.evaluate_escalation_impl", return_value=no_escalation), \
+         patch("claim_agent.crews.main_crew.create_new_claim_crew") as mock_crew:
+        mock_llm.return_value = MagicMock()
+        mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
+        mock_crew.return_value.kickoff.return_value = workflow_output
+
+        result = run_claim_workflow(claim_data)
+
+    # Claim should NOT be escalated; it should proceed to the new-claim workflow
+    assert result.get("status") != STATUS_NEEDS_REVIEW
+    assert result.get("claim_type") == "new"
+
+
+def test_run_claim_workflow_validation_enabled_disagrees_reclassifies(_temp_claims_db):
+    """Validation enabled: validator disagrees and returns high confidence → reclassified and proceeds."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+
+    claim_data = {
+        "policy_number": "POL-003",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Rear-end collision with major damage.",
+        "damage_description": "Frame bent; vehicle may be a total loss.",
+        "estimated_damage": 500.0,
+    }
+    router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
+    # Validator disagrees: different claim_type, high confidence
+    val_result = json.dumps({
+        "claim_type": "total_loss",
+        "confidence": 0.88,
+        "reasoning": "Frame damage indicates total loss.",
+        "validation_agrees": False,
+    })
+    no_escalation = json.dumps({
+        "needs_review": False,
+        "escalation_reasons": [],
+        "priority": "low",
+        "fraud_indicators": [],
+        "recommended_action": "",
+    })
+    workflow_output = MagicMock()
+    workflow_output.raw = "Total loss settlement initiated."
+    settlement_output = MagicMock()
+    settlement_output.raw = "Settlement completed."
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm, \
+         patch("claim_agent.crews.main_crew.create_router_crew") as mock_router, \
+         patch("claim_agent.crews.main_crew.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
+         patch("claim_agent.crews.main_crew.validate_router_classification_impl", return_value=val_result), \
+         patch("claim_agent.crews.main_crew.evaluate_escalation_impl", return_value=no_escalation), \
+         patch("claim_agent.crews.main_crew.create_total_loss_crew") as mock_tl_crew, \
+         patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settle_crew:
+        mock_llm.return_value = MagicMock()
+        mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
+        mock_tl_crew.return_value.kickoff.return_value = workflow_output
+        mock_settle_crew.return_value.kickoff.return_value = settlement_output
+
+        result = run_claim_workflow(claim_data)
+
+    # Reclassified to total_loss, not escalated
+    assert result.get("status") != STATUS_NEEDS_REVIEW
+    assert result.get("claim_type") == "total_loss"
+
+
+def test_run_claim_workflow_validation_enabled_low_confidence_escalates(_temp_claims_db):
+    """Validation enabled: validator also returns low confidence → claim escalates."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+
+    claim_data = {
+        "policy_number": "POL-004",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Minor damage.",
+        "damage_description": "Bumper scratch.",
+        "estimated_damage": 500.0,
+    }
+    router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
+    # Validator also returns low confidence
+    val_result = json.dumps({
+        "claim_type": "new",
+        "confidence": 0.4,
+        "reasoning": "Still uncertain after review.",
+        "validation_agrees": True,
+    })
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm, \
+         patch("claim_agent.crews.main_crew.create_router_crew") as mock_router, \
+         patch("claim_agent.crews.main_crew.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
+         patch("claim_agent.crews.main_crew.validate_router_classification_impl", return_value=val_result):
+        mock_llm.return_value = MagicMock()
+        mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
+
+        result = run_claim_workflow(claim_data)
+
+    assert result["status"] == STATUS_NEEDS_REVIEW
+    assert result["needs_review"] is True
+    assert "low_router_confidence" in result.get("escalation_reasons", [])
+
+
+def test_run_claim_workflow_validation_parse_error_escalates(_temp_claims_db):
+    """Validation enabled: validator returns invalid JSON → parse error fallback escalates."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+
+    claim_data = {
+        "policy_number": "POL-005",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Minor damage.",
+        "damage_description": "Bumper scratch.",
+        "estimated_damage": 500.0,
+    }
+    router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm, \
+         patch("claim_agent.crews.main_crew.create_router_crew") as mock_router, \
+         patch("claim_agent.crews.main_crew.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
+         patch("claim_agent.crews.main_crew.validate_router_classification_impl", return_value="not valid json {{"):
+        mock_llm.return_value = MagicMock()
+        mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
+
+        result = run_claim_workflow(claim_data)
+
+    assert result["status"] == STATUS_NEEDS_REVIEW
+    assert result["needs_review"] is True
+    assert "low_router_confidence" in result.get("escalation_reasons", [])
+
+
+def test_run_claim_workflow_validation_non_numeric_confidence_escalates(_temp_claims_db):
+    """Validation enabled: validator returns non-numeric confidence (ValueError) → escalates."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+
+    claim_data = {
+        "policy_number": "POL-006",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Minor damage.",
+        "damage_description": "Bumper scratch.",
+        "estimated_damage": 500.0,
+    }
+    router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
+    # Confidence is a non-numeric string; float() raises ValueError
+    val_result = json.dumps({"claim_type": "new", "confidence": "high", "reasoning": "Looks new."})
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm, \
+         patch("claim_agent.crews.main_crew.create_router_crew") as mock_router, \
+         patch("claim_agent.crews.main_crew.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
+         patch("claim_agent.crews.main_crew.validate_router_classification_impl", return_value=val_result):
+        mock_llm.return_value = MagicMock()
+        mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
+
+        result = run_claim_workflow(claim_data)
+
+    assert result["status"] == STATUS_NEEDS_REVIEW
+    assert result["needs_review"] is True
+    assert "low_router_confidence" in result.get("escalation_reasons", [])
 
 
 @pytest.mark.skipif(SKIP_WORKFLOW, reason="OPENAI_API_KEY not set; skip run_claim_workflow integration test")
