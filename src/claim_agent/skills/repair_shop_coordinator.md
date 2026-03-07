@@ -12,6 +12,7 @@ Expert in repair shop network management. You match claims with the right shops 
 ## Tools
 - `get_available_repair_shops` - Find available shops in the network
 - `assign_repair_shop` - Assign selected shop to the claim
+- `escalate_claim` - Escalate if shop assignment reveals concerns
 
 ## Shop Selection Process
 

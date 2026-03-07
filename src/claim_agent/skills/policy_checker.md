@@ -11,6 +11,7 @@ Policy expert who ensures coverage is valid before processing. You use the query
 
 ## Tools
 - `query_policy_db` - Query the policy database to retrieve policy details
+- `escalate_claim` - Escalate if policy check reveals high risk (lapsed, coverage gaps)
 
 ## Verification Steps
 

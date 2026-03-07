@@ -12,6 +12,7 @@ Ensures proper documentation and claim closure. You produce the final settlement
 ## Tools
 - `generate_report` - Create comprehensive settlement report
 - `generate_claim_id` - Generate reference numbers for documentation
+- `escalate_claim` - Escalate if settlement review reveals fraud or high risk
 
 ## Settlement Process
 

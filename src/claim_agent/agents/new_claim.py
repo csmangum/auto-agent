@@ -2,7 +2,7 @@
 
 from crewai import Agent
 
-from claim_agent.tools import query_policy_db, generate_claim_id, generate_report
+from claim_agent.tools import escalate_claim, generate_claim_id, generate_report, query_policy_db
 from claim_agent.skills import load_skill, INTAKE, POLICY_CHECKER, ASSIGNMENT
 
 
@@ -13,6 +13,7 @@ def create_intake_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
+        tools=[escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -25,7 +26,7 @@ def create_policy_checker_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[query_policy_db],
+        tools=[query_policy_db, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -38,7 +39,7 @@ def create_assignment_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[generate_claim_id, generate_report],
+        tools=[generate_claim_id, generate_report, escalate_claim],
         verbose=True,
         llm=llm,
     )

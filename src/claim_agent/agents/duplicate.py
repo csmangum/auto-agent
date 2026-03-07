@@ -2,7 +2,7 @@
 
 from crewai import Agent
 
-from claim_agent.tools import search_claims_db, compute_similarity
+from claim_agent.tools import compute_similarity, escalate_claim, search_claims_db
 from claim_agent.skills import load_skill, SEARCH, SIMILARITY, RESOLUTION
 
 
@@ -13,7 +13,7 @@ def create_search_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[search_claims_db],
+        tools=[search_claims_db, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -26,7 +26,7 @@ def create_similarity_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[compute_similarity],
+        tools=[compute_similarity, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -39,6 +39,7 @@ def create_resolution_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
+        tools=[escalate_claim],
         verbose=True,
         llm=llm,
     )

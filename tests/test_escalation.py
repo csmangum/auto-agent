@@ -290,3 +290,179 @@ def test_run_claim_workflow_escalation_high_value(_temp_claims_db):
     result = run_claim_workflow(claim_data)
     assert result["status"] == STATUS_NEEDS_REVIEW
     assert "high_value" in result["escalation_reasons"]
+
+
+# --- Mid-Workflow Escalation Tests ---
+
+
+def test_escalate_claim_impl_updates_db(_temp_claims_db):
+    """escalate_claim_impl sets status to needs_review and persists escalation details."""
+    from claim_agent.db.repository import ClaimRepository
+    from claim_agent.models.claim import ClaimInput
+    from claim_agent.tools.logic import escalate_claim_impl
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+    from datetime import date
+
+    repo = ClaimRepository()
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="5YJSA1E26HF123456",
+        vehicle_year=2022,
+        vehicle_make="Tesla",
+        vehicle_model="Model 3",
+        incident_date=date(2025, 1, 20),
+        incident_description="Minor damage.",
+        damage_description="Bumper scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+
+    escalate_claim_impl(
+        claim_id=claim_id,
+        reason="damage_inconsistent_with_incident",
+        indicators=["incident_damage_mismatch"],
+        priority="high",
+    )
+
+    claim = repo.get_claim(claim_id)
+    assert claim["status"] == STATUS_NEEDS_REVIEW
+    assert claim["priority"] == "high"
+    assert claim.get("due_at") is not None
+
+    history = repo.get_claim_history(claim_id)
+    escalation_entries = [h for h in history if h.get("action") == "escalation"]
+    assert len(escalation_entries) >= 1
+
+
+def test_escalate_claim_tool_raises_mid_workflow_escalation(_temp_claims_db):
+    """escalate_claim tool raises MidWorkflowEscalation after persisting to DB."""
+    from claim_agent.db.repository import ClaimRepository
+    from claim_agent.models.claim import ClaimInput
+    from claim_agent.tools.escalation_tools import escalate_claim
+    from claim_agent.exceptions import MidWorkflowEscalation
+    from datetime import date
+
+    repo = ClaimRepository()
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="5YJSA1E26HF123456",
+        vehicle_year=2022,
+        vehicle_make="Tesla",
+        vehicle_model="Model 3",
+        incident_date=date(2025, 1, 20),
+        incident_description="Minor damage.",
+        damage_description="Bumper scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    claim_data = json.dumps({"claim_id": claim_id, "vin": "5YJSA1E26HF123456"})
+
+    with pytest.raises(MidWorkflowEscalation) as exc_info:
+        escalate_claim.run(claim_data=claim_data, reason="fraud_indicators", indicators='["staged"]', priority="critical")
+
+    e = exc_info.value
+    assert e.claim_id == claim_id
+    assert e.reason == "fraud_indicators"
+    assert e.indicators == ["staged"]
+    assert e.priority == "critical"
+
+    claim = repo.get_claim(claim_id)
+    assert claim["status"] == "needs_review"
+
+
+def test_escalate_claim_impl_raises_for_missing_claim_id():
+    """escalate_claim_impl raises ValueError when claim_id is empty."""
+    from claim_agent.tools.logic import escalate_claim_impl
+
+    with pytest.raises(ValueError, match="claim_id is required"):
+        escalate_claim_impl(claim_id="", reason="test", indicators=[], priority="low")
+
+    with pytest.raises(ValueError, match="claim_id is required"):
+        escalate_claim_impl(claim_id="   ", reason="test", indicators=[], priority="low")
+
+
+def test_escalate_claim_impl_raises_for_missing_reason():
+    """escalate_claim_impl raises ValueError when reason is empty."""
+    from claim_agent.tools.logic import escalate_claim_impl
+
+    with pytest.raises(ValueError, match="reason is required"):
+        escalate_claim_impl(claim_id="CLM-12345678", reason="", indicators=[], priority="low")
+
+
+def test_escalate_claim_impl_raises_for_invalid_indicators():
+    """escalate_claim_impl raises ValueError when indicators is not a list or tuple."""
+    from claim_agent.tools.logic import escalate_claim_impl
+
+    with pytest.raises(ValueError, match="indicators must be a list or tuple"):
+        escalate_claim_impl(
+            claim_id="CLM-12345678",
+            reason="test",
+            indicators="not a list",  # type: ignore[arg-type]
+            priority="low",
+        )
+
+
+def test_main_crew_handles_mid_workflow_escalation(_temp_claims_db):
+    """When crew raises MidWorkflowEscalation, main_crew returns escalation response and saves escalation details."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+    from claim_agent.exceptions import MidWorkflowEscalation
+    from claim_agent.tools.logic import escalate_claim_impl
+
+    claim_data = {
+        "policy_number": "POL-001",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Minor damage.",
+        "damage_description": "Bumper scratch.",
+        "estimated_damage": 500.0,
+    }
+
+    def mock_kickoff(inputs=None, **kwargs):
+        # Simulate escalate_claim tool: persist to DB then raise (tool always does this)
+        if inputs and "claim_data" in inputs:
+            data = json.loads(inputs["claim_data"]) if isinstance(inputs["claim_data"], str) else inputs["claim_data"]
+            claim_id = data.get("claim_id")
+            if claim_id:
+                escalate_claim_impl(
+                    claim_id=claim_id,
+                    reason="damage_inconsistent_with_incident",
+                    indicators=["incident_damage_mismatch"],
+                    priority="high",
+                )
+        raise MidWorkflowEscalation(
+            reason="damage_inconsistent_with_incident",
+            indicators=["incident_damage_mismatch"],
+            priority="high",
+            claim_id="will-be-overridden",
+        )
+
+    no_escalation = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
+        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
+            with patch("claim_agent.crews.main_crew.create_total_loss_crew") as mock_crew:
+                with patch("claim_agent.crews.main_crew.evaluate_escalation_impl", return_value=no_escalation):
+                    mock_llm.return_value = MagicMock()
+                    mock_router.return_value.kickoff.return_value = MagicMock(
+                        raw="total_loss\nVehicle damage suggests total loss."
+                    )
+                    mock_crew.return_value.kickoff.side_effect = mock_kickoff
+
+                    result = run_claim_workflow(claim_data)
+
+    assert result["status"] == STATUS_NEEDS_REVIEW
+    assert result["needs_review"] is True
+    assert "damage_inconsistent_with_incident" in result["escalation_reasons"]
+    assert result["priority"] == "high"
+    assert "Escalated mid-workflow" in result["summary"]
+
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ClaimRepository()
+    claim_id = result["claim_id"]
+    claim = repo.get_claim(claim_id)
+    assert claim["status"] == STATUS_NEEDS_REVIEW

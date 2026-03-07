@@ -4,9 +4,11 @@ import json
 
 from crewai.tools import tool
 
+from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.tools.logic import (
-    evaluate_escalation_impl,
     detect_fraud_indicators_impl,
+    escalate_claim_impl,
+    evaluate_escalation_impl,
 )
 
 
@@ -47,6 +49,66 @@ def evaluate_escalation(
             # Invalid payout amount; leave payout as None and treat as no payout provided.
             pass
     return evaluate_escalation_impl(data, router_output or "", sim, payout)
+
+
+@tool("Escalate Claim")
+def escalate_claim(
+    claim_data: str,
+    reason: str,
+    indicators: str = "[]",
+    priority: str = "medium",
+) -> str:
+    """Escalate a claim for human review mid-workflow. Halts crew execution immediately.
+
+    Use when you discover fraud, high risk, or inconsistencies during processing
+    (e.g., damage inconsistent with incident description, liability dispute).
+
+    Args:
+        claim_data: JSON string of claim input. Must include claim_id.
+        reason: Escalation reason (e.g., 'damage_inconsistent_with_incident', 'fraud_indicators').
+        indicators: JSON array of fraud/risk indicator strings (optional).
+        priority: low, medium, high, or critical.
+
+    Raises:
+        MidWorkflowEscalation: Always. Execution halts; claim is routed to review queue.
+    """
+    data = {}
+    if isinstance(claim_data, str) and claim_data.strip():
+        try:
+            data = json.loads(claim_data)
+        except json.JSONDecodeError:
+            data = {}
+    claim_id = data.get("claim_id") if isinstance(data, dict) else None
+    if not claim_id:
+        raise ValueError("claim_data must include claim_id for escalate_claim")
+    claim_id = str(claim_id).strip()
+    claim_type = data.get("claim_type") if isinstance(data, dict) else None
+    claim_type = str(claim_type).strip() if claim_type else None
+
+    ind_list = []
+    if indicators and str(indicators).strip():
+        try:
+            parsed = json.loads(indicators)
+            ind_list = list(parsed) if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            ind_list = []
+
+    normalized_reason = reason.strip() or "mid_workflow_escalation"
+    normalized_priority = priority.strip() or "medium"
+
+    escalate_claim_impl(
+        claim_id=claim_id,
+        reason=normalized_reason,
+        indicators=ind_list,
+        priority=normalized_priority,
+        claim_type=claim_type,
+    )
+    raise MidWorkflowEscalation(
+        reason=normalized_reason,
+        indicators=ind_list,
+        priority=normalized_priority,
+        claim_id=claim_id,
+    )
 
 
 @tool("Detect Fraud Indicators")

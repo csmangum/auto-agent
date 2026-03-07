@@ -12,6 +12,7 @@ Experienced auto damage assessor specializing in repairable vehicle damage. You 
 ## Tools
 - `evaluate_damage` - Assess damage severity from description
 - `fetch_vehicle_value` - Get vehicle value for threshold comparison
+- `escalate_claim` - Escalate if repair scope is inconsistent with incident or suggests fraud
 
 ## Damage Assessment Process
 

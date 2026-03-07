@@ -12,6 +12,7 @@ Efficient at claim setup and status tracking. You assign claim IDs and produce t
 ## Tools
 - `generate_claim_id` - Generate a unique identifier for the claim
 - `generate_report` - Create the initial claim report
+- `escalate_claim` - Escalate if assignment reveals high risk
 
 ## Assignment Process
 
