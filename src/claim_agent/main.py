@@ -353,6 +353,7 @@ def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> No
         return
 
     archived = []
+    failed = []
     for claim in claims:
         claim_id = claim["id"]
         try:
@@ -360,12 +361,18 @@ def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> No
             archived.append(claim_id)
         except ValueError as e:
             print(f"Warning: Could not archive {claim_id}: {e}", file=sys.stderr)
+            failed.append(claim_id)
 
     print(json.dumps({
         "retention_period_years": retention_years,
         "archived_count": len(archived),
         "archived_claim_ids": archived,
+        "failed_count": len(failed),
+        "failed_claim_ids": failed,
     }, indent=2))
+
+    if failed:
+        sys.exit(1)
 
 
 def cmd_metrics(claim_id: str | None = None) -> None:

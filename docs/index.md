@@ -31,6 +31,7 @@ flowchart LR
 ### Reference
 
 - **[Tools](tools.md)** - Complete tool reference
+- **[Webhooks](webhooks.md)** - Outbound webhooks for status changes and repair authorization
 - **[Adapters](adapters.md)** - Pluggable external-system integrations (policy, valuation, repair shops, parts, SIU)
 - **[RAG](rag.md)** - Retrieval-Augmented Generation for policy and compliance
 - **[Database](database.md)** - Schema and repository operations

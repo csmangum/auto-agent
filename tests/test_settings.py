@@ -93,6 +93,24 @@ def test_get_crew_verbose_respects_env():
         assert settings.get_crew_verbose() is True
 
 
+def test_get_webhook_config_returns_dict():
+    """get_webhook_config returns dict with urls, secret, max_retries, enabled."""
+    config = settings.get_webhook_config()
+    assert isinstance(config, dict)
+    assert "urls" in config
+    assert "secret" in config
+    assert "max_retries" in config
+    assert "enabled" in config
+
+
+def test_get_notification_config_returns_dict():
+    """get_notification_config returns dict with email_enabled, sms_enabled."""
+    config = settings.get_notification_config()
+    assert isinstance(config, dict)
+    assert "email_enabled" in config
+    assert "sms_enabled" in config
+
+
 class TestEscalationConfigEnvOverrides:
     """Test escalation config reads env overrides."""
 
