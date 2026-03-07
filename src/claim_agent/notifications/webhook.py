@@ -26,12 +26,15 @@ _STATUS_TO_EVENT: dict[str, str] = {
     "closed": "claim.closed",
     "duplicate": "claim.closed",
     "fraud_suspected": "claim.closed",
+    "fraud_confirmed": "claim.closed",
     "settled": "claim.closed",
     "open": "claim.closed",
     "denied": "claim.denied",
     "pending_info": "claim.pending_info",
     "under_investigation": "claim.under_investigation",
     "archived": "claim.archived",
+    "disputed": "claim.disputed",
+    "partial_loss": "claim.partial_loss",
 }
 
 
@@ -76,6 +79,13 @@ def _deliver_one(
                 request=resp.request,
                 response=resp,
             )
+            if 400 <= resp.status_code < 500:
+                logger.error(
+                    "Webhook delivery failed with client error %d to %s (not retrying)",
+                    resp.status_code,
+                    url,
+                )
+                break
         except Exception as e:
             last_error = e
             logger.warning(
