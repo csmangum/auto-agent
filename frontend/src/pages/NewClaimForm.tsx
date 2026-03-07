@@ -62,6 +62,11 @@ export default function NewClaimForm() {
       const abort = streamClaimUpdates(
         claim_id,
         (data: ClaimStreamUpdate) => {
+          if (data.error) {
+            setError(data.error);
+            setDone(true);
+            return;
+          }
           if (data.claim) setClaim(data.claim);
           if (data.history) setHistory(data.history);
           if (data.workflows) setWorkflows(data.workflows);
