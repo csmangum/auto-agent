@@ -4,6 +4,7 @@ This module provides:
 - ClaimLogger: A structured logger that attaches claim_id to all log messages
 - claim_context: A context manager for setting claim context
 - log_claim_event: Helper for logging claim-specific events
+- PII masking: policy_number, vin redacted in logs when CLAIM_AGENT_MASK_PII=true
 """
 
 import json
@@ -15,6 +16,9 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
+
+from claim_agent.config.settings import get_mask_pii
+from claim_agent.utils.pii_masking import mask_policy_number, mask_vin, mask_dict
 
 # Thread-local storage for claim context
 _context = threading.local()
@@ -53,7 +57,15 @@ class StructuredFormatter(logging.Formatter):
         if claim_ctx:
             log_data["claim_id"] = claim_ctx.get("claim_id")
             log_data["claim_type"] = claim_ctx.get("claim_type")
-            log_data["policy_number"] = claim_ctx.get("policy_number")
+            policy_number = claim_ctx.get("policy_number")
+            vin = claim_ctx.get("vin")
+            if get_mask_pii():
+                policy_number = mask_policy_number(policy_number) if policy_number else None
+                vin = mask_vin(vin) if vin else None
+            if policy_number is not None:
+                log_data["policy_number"] = policy_number
+            if vin is not None:
+                log_data["vin"] = vin
             if claim_ctx.get("correlation_id"):
                 log_data["correlation_id"] = claim_ctx["correlation_id"]
 
@@ -63,7 +75,8 @@ class StructuredFormatter(logging.Formatter):
         if hasattr(record, "claim_type") and record.claim_type:
             log_data["claim_type"] = record.claim_type
         if hasattr(record, "extra_data") and record.extra_data:
-            log_data["data"] = record.extra_data
+            extra = record.extra_data
+            log_data["data"] = mask_dict(extra) if get_mask_pii() and isinstance(extra, dict) else extra
 
         # Add exception info if present
         if record.exc_info:
@@ -98,6 +111,19 @@ class HumanReadableFormatter(logging.Formatter):
         if claim_type:
             ctx_parts.append(f"type={claim_type}")
 
+        if get_mask_pii():
+            policy_number = claim_ctx.get("policy_number")
+            vin = claim_ctx.get("vin")
+            if policy_number:
+                ctx_parts.append(f"policy={mask_policy_number(policy_number)}")
+            if vin:
+                ctx_parts.append(f"vin={mask_vin(vin)}")
+        else:
+            if claim_ctx.get("policy_number"):
+                ctx_parts.append(f"policy={claim_ctx['policy_number']}")
+            if claim_ctx.get("vin"):
+                ctx_parts.append(f"vin={claim_ctx['vin']}")
+
         correlation_id = claim_ctx.get("correlation_id")
         if correlation_id:
             ctx_parts.append(f"correlation_id={correlation_id}")
@@ -107,9 +133,12 @@ class HumanReadableFormatter(logging.Formatter):
         # Format message
         message = record.getMessage()
         
-        # Add extra data if present
+        # Add extra data if present (mask PII in extra_data)
         if hasattr(record, "extra_data") and record.extra_data:
-            message += f" | {record.extra_data}"
+            extra = record.extra_data
+            if get_mask_pii() and isinstance(extra, dict):
+                extra = mask_dict(extra)
+            message += f" | {extra}"
 
         return f"{timestamp} {record.levelname:8}{ctx_str} {record.name}: {message}"
 
@@ -216,6 +245,7 @@ def claim_context(
     claim_id: str,
     claim_type: str | None = None,
     policy_number: str | None = None,
+    vin: str | None = None,
     correlation_id: str | None = None,
     **extra: Any,
 ):
@@ -233,6 +263,7 @@ def claim_context(
         "claim_id": claim_id,
         "claim_type": claim_type,
         "policy_number": policy_number,
+        "vin": vin,
         "correlation_id": correlation_id or str(uuid.uuid4()),
         **extra,
     }

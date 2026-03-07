@@ -155,6 +155,42 @@ def get_jwt_secret() -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# PII masking
+# ---------------------------------------------------------------------------
+
+def get_mask_pii() -> bool:
+    """Whether to mask PII (policy_number, vin) in logs and metrics. Default: True (production-safe)."""
+    raw = os.environ.get("CLAIM_AGENT_MASK_PII", "true").strip().lower()
+    return raw in ("true", "1", "yes")
+
+
+# ---------------------------------------------------------------------------
+# Data retention
+# ---------------------------------------------------------------------------
+
+def get_retention_period_years() -> int:
+    """Retention period in years from compliance config or RETENTION_PERIOD_YEARS env. Default: 5."""
+    raw = os.environ.get("RETENTION_PERIOD_YEARS", "").strip()
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    # Fallback: try to load from compliance config
+    try:
+        from claim_agent.tools.data_loader import load_california_compliance
+        data = load_california_compliance()
+        if data:
+            ecr = data.get("electronic_claims_requirements", {})
+            for p in ecr.get("provisions", []):
+                if p.get("id") == "ECR-003" and "retention_period_years" in p:
+                    return int(p["retention_period_years"])
+    except Exception:
+        pass
+    return 5
+
+
+# ---------------------------------------------------------------------------
 # Crew verbose mode
 # ---------------------------------------------------------------------------
 

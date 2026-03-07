@@ -11,6 +11,7 @@ from typing import Any
 from claim_agent.models.claim import Attachment
 
 from claim_agent.db.audit_events import (
+    ACTOR_RETENTION,
     ACTOR_WORKFLOW,
     AUDIT_EVENT_APPROVAL,
     AUDIT_EVENT_ASSIGN,
@@ -19,10 +20,12 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_ESCALATE_TO_SIU,
     AUDIT_EVENT_REJECTION,
     AUDIT_EVENT_REQUEST_INFO,
+    AUDIT_EVENT_RETENTION,
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
 )
 from claim_agent.db.constants import (
+    STATUS_ARCHIVED,
     STATUS_DENIED,
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
@@ -634,3 +637,63 @@ class ClaimRepository:
                     (incident_date,),
                 ).fetchall()
         return [dict(r) for r in rows]
+
+    def list_claims_for_retention(
+        self,
+        retention_period_years: int,
+        *,
+        actor_id: str = ACTOR_RETENTION,
+    ) -> list[dict[str, Any]]:
+        """List claims older than retention period that are not yet archived.
+
+        Uses created_at for cutoff. Excludes claims with status archived.
+        """
+        cutoff = f"-{retention_period_years} years"
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM claims
+                WHERE datetime(created_at) <= datetime('now', ?)
+                  AND archived_at IS NULL
+                ORDER BY created_at ASC
+                """,
+                (cutoff,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def archive_claim(
+        self,
+        claim_id: str,
+        *,
+        actor_id: str = ACTOR_RETENTION,
+    ) -> None:
+        """Archive a claim (soft delete for retention). Sets archived_at and status=archived."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?",
+                (claim_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Claim not found: {claim_id}")
+            old_status = row["status"]
+            conn.execute(
+                """
+                UPDATE claims SET status = ?, archived_at = datetime('now'), updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (STATUS_ARCHIVED, claim_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim_id,
+                    AUDIT_EVENT_RETENTION,
+                    old_status,
+                    STATUS_ARCHIVED,
+                    f"Archived for retention (claim older than retention period)",
+                    actor_id,
+                ),
+            )

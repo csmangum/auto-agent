@@ -20,6 +20,7 @@ STATUS_DENIED = "denied"
 STATUS_SETTLED = "settled"
 STATUS_NEEDS_REVIEW = "needs_review"
 STATUS_PENDING_INFO = "pending_info"
+STATUS_ARCHIVED = "archived"
 
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
@@ -38,4 +39,5 @@ CLAIM_STATUSES = (
     STATUS_SETTLED,
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING_INFO,
+    STATUS_ARCHIVED,
 )

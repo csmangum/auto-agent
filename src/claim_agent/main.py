@@ -42,6 +42,7 @@ def _usage() -> str:
   claim-agent reject <claim_id> [--reason "..."]   Reject claim
   claim-agent request-info <claim_id> [--note "..."]   Request more info
   claim-agent escalate-siu <claim_id>   Escalate to SIU
+  claim-agent retention-enforce [--dry-run] [--years N]   Archive claims older than retention period
   claim-agent <claim.json>           Same as process (legacy)
 
 Options:
@@ -50,6 +51,8 @@ Options:
   --priority <level>                 Filter review queue by priority
   --reason <text>                    Rejection reason
   --note <text>                      Note for request-info
+  --dry-run                          Show what would be archived without making changes (retention-enforce)
+  --years <n>                        Override retention period in years (retention-enforce)
   --debug                            Enable debug logging
   --json                             Use JSON log format
 """
@@ -330,6 +333,41 @@ def cmd_escalate_siu(claim_id: str) -> None:
         sys.exit(1)
 
 
+def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> None:
+    """Archive claims older than retention period. Logs actions to audit."""
+    from claim_agent.config.settings import get_retention_period_years
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+
+    retention_years = years if years is not None else get_retention_period_years()
+    repo = ClaimRepository(db_path=get_db_path())
+    claims = repo.list_claims_for_retention(retention_years)
+
+    if dry_run:
+        print(json.dumps({
+            "dry_run": True,
+            "retention_period_years": retention_years,
+            "claims_to_archive": len(claims),
+            "claim_ids": [c["id"] for c in claims],
+        }, indent=2))
+        return
+
+    archived = []
+    for claim in claims:
+        claim_id = claim["id"]
+        try:
+            repo.archive_claim(claim_id)
+            archived.append(claim_id)
+        except ValueError as e:
+            print(f"Warning: Could not archive {claim_id}: {e}", file=sys.stderr)
+
+    print(json.dumps({
+        "retention_period_years": retention_years,
+        "archived_count": len(archived),
+        "archived_claim_ids": archived,
+    }, indent=2))
+
+
 def cmd_metrics(claim_id: str | None = None) -> None:
     """Display metrics for claims.
 
@@ -441,6 +479,14 @@ def main() -> None:
     if first == "metrics":
         claim_id = argv[1] if len(argv) > 1 else None
         cmd_metrics(claim_id)
+        return
+
+    # Retention enforce command
+    if first == "retention-enforce":
+        dry_run = "--dry-run" in options
+        years_arg = _parse_opt_arg("--years")
+        years = int(years_arg) if years_arg else None
+        cmd_retention_enforce(dry_run=dry_run, years=years)
         return
 
     # Process command
