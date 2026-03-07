@@ -36,13 +36,32 @@ def _usage() -> str:
   claim-agent history <claim_id>     Get claim audit log
   claim-agent reprocess <claim_id>   Re-run workflow for an existing claim
   claim-agent metrics [claim_id]     Show metrics (optionally for specific claim)
+  claim-agent review-queue [--assignee X] [--priority P]  List claims needing review
+  claim-agent assign <claim_id> <assignee>   Assign claim to adjuster
+  claim-agent approve <claim_id>     Approve and reprocess (supervisor)
+  claim-agent reject <claim_id> [--reason "..."]   Reject claim
+  claim-agent request-info <claim_id> [--note "..."]   Request more info
+  claim-agent escalate-siu <claim_id>   Escalate to SIU
   claim-agent <claim.json>           Same as process (legacy)
 
 Options:
   --attachment <file>                Attach file (photo, PDF, estimate). May be repeated.
+  --assignee <id>                    Filter review queue by assignee
+  --priority <level>                 Filter review queue by priority
+  --reason <text>                    Rejection reason
+  --note <text>                      Note for request-info
   --debug                            Enable debug logging
   --json                             Use JSON log format
 """
+
+
+def _parse_opt_arg(name: str, default: str = "") -> str:
+    """Parse --name value from sys.argv. Returns default if not found."""
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
+        if arg == name and i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+            return argv[i + 1]
+    return default
 
 
 def _parse_attachment_args() -> list[Path]:
@@ -192,6 +211,125 @@ def cmd_reprocess(claim_id: str) -> None:
         sys.exit(1)
 
 
+def cmd_review_queue(assignee: str | None = None, priority: str | None = None) -> None:
+    """List claims needing review."""
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ClaimRepository(db_path=get_db_path())
+    claims, total = repo.list_claims_needing_review(
+        assignee=assignee,
+        priority=priority,
+    )
+    print(json.dumps({"claims": claims, "total": total}, indent=2))
+
+
+def cmd_assign(claim_id: str, assignee: str) -> None:
+    """Assign claim to adjuster."""
+    from claim_agent.db.audit_events import ACTOR_WORKFLOW
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        repo.assign_claim(claim_id, assignee, actor_id=ACTOR_WORKFLOW)
+        print(json.dumps({"claim_id": claim_id, "assignee": assignee}, indent=2))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_approve(claim_id: str) -> None:
+    """Approve claim and re-run workflow."""
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.audit_events import ACTOR_WORKFLOW
+    from claim_agent.db.claim_data import claim_data_from_row
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+    from claim_agent.models.claim import ClaimInput
+
+    repo = ClaimRepository(db_path=get_db_path())
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        sys.exit(1)
+    claim_data = claim_data_from_row(claim)
+    try:
+        ClaimInput.model_validate(claim_data)
+    except ValidationError as e:
+        print("Error: Invalid claim data for reprocess:", file=sys.stderr)
+        print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
+        sys.exit(1)
+    try:
+        repo.perform_adjuster_action(claim_id, "approve", actor_id=ACTOR_WORKFLOW)
+        result = run_claim_workflow(
+            claim_data,
+            existing_claim_id=claim_id,
+            actor_id=ACTOR_WORKFLOW,
+        )
+        print(json.dumps(result, indent=2))
+    except (ValueError, Exception) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_reject(claim_id: str, reason: str = "") -> None:
+    """Reject claim."""
+    from claim_agent.db.audit_events import ACTOR_WORKFLOW
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        repo.perform_adjuster_action(claim_id, "reject", actor_id=ACTOR_WORKFLOW, reason=reason)
+        print(json.dumps({"claim_id": claim_id, "status": "denied"}, indent=2))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_request_info(claim_id: str, note: str = "") -> None:
+    """Request more information from claimant."""
+    from claim_agent.db.audit_events import ACTOR_WORKFLOW
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        repo.perform_adjuster_action(claim_id, "request_info", actor_id=ACTOR_WORKFLOW, note=note)
+        print(json.dumps({"claim_id": claim_id, "status": "pending_info"}, indent=2))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_escalate_siu(claim_id: str) -> None:
+    """Escalate claim to SIU."""
+    from claim_agent.db.audit_events import ACTOR_WORKFLOW
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=ACTOR_WORKFLOW)
+        print(json.dumps({"claim_id": claim_id, "status": "under_investigation"}, indent=2))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_metrics(claim_id: str | None = None) -> None:
     """Display metrics for claims.
 
@@ -264,6 +402,39 @@ def main() -> None:
             cmd_history(claim_id)
         else:
             cmd_reprocess(claim_id)
+        return
+
+    # Review queue command
+    if first == "review-queue":
+        assignee = _parse_opt_arg("--assignee") or None
+        priority = _parse_opt_arg("--priority") or None
+        cmd_review_queue(assignee=assignee, priority=priority)
+        return
+
+    # Assign command (claim_id, assignee)
+    if first == "assign":
+        if len(argv) < 3:
+            print("Error: assign requires <claim_id> <assignee>", file=sys.stderr)
+            print(_usage(), file=sys.stderr)
+            sys.exit(1)
+        cmd_assign(argv[1], argv[2])
+        return
+
+    # Adjuster action commands (claim_id required)
+    if first in ("approve", "reject", "request-info", "escalate-siu"):
+        if len(argv) < 2:
+            print(f"Error: {first} requires <claim_id>", file=sys.stderr)
+            print(_usage(), file=sys.stderr)
+            sys.exit(1)
+        claim_id = argv[1]
+        if first == "approve":
+            cmd_approve(claim_id)
+        elif first == "reject":
+            cmd_reject(claim_id, reason=_parse_opt_arg("--reason"))
+        elif first == "request-info":
+            cmd_request_info(claim_id, note=_parse_opt_arg("--note"))
+        else:
+            cmd_escalate_siu(claim_id)
         return
 
     # Metrics command (optional claim_id)

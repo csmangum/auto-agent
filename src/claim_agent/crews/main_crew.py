@@ -11,7 +11,7 @@ import logging
 import re
 import threading
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import litellm
@@ -732,6 +732,15 @@ def run_claim_workflow(
                     repo.save_workflow_result(claim_id, claim_type, raw_output, details)
                     repo.update_claim_status(
                         claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details, actor_id=_actor
+                    )
+                    # SLA: critical/high 24h, medium 48h, low 72h
+                    hours = 24 if priority in ("critical", "high") else 48 if priority == "medium" else 72
+                    due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    repo.update_claim_review_metadata(
+                        claim_id,
+                        priority=priority,
+                        due_at=due_at,
+                        review_started_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                     )
 
                     workflow_duration = (time.time() - workflow_start_time) * 1000

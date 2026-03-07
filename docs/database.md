@@ -45,6 +45,12 @@ erDiagram
         text claim_type
         text status
         real payout_amount
+        text attachments
+        text assignee
+        text review_started_at
+        text review_notes
+        text due_at
+        text priority
         text created_at
         text updated_at
     }
@@ -93,6 +99,12 @@ CREATE TABLE IF NOT EXISTS claims (
     claim_type TEXT,
     status TEXT DEFAULT 'pending',
     payout_amount REAL,
+    attachments TEXT DEFAULT '[]',
+    assignee TEXT,
+    review_started_at TEXT,
+    review_notes TEXT,
+    due_at TEXT,
+    priority TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -117,6 +129,12 @@ CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 | `claim_type` | TEXT | Classification (new, duplicate, etc.) |
 | `status` | TEXT | Current status |
 | `payout_amount` | REAL | Settlement amount (if applicable) |
+| `attachments` | TEXT | JSON array of attachment metadata |
+| `assignee` | TEXT | Adjuster/user ID (review queue) |
+| `review_started_at` | TEXT | When claim entered needs_review |
+| `review_notes` | TEXT | Adjuster notes |
+| `due_at` | TEXT | SLA target datetime (ISO) |
+| `priority` | TEXT | critical \| high \| medium \| low (from escalation) |
 | `created_at` | TEXT | Creation timestamp |
 | `updated_at` | TEXT | Last update timestamp |
 
@@ -161,11 +179,15 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim
 |-------|-------------|
 | `created` | Claim record created |
 | `status_change` | Status, claim_type, or payout_amount changed |
-| `approval` | Human approval (future) |
-| `rejection` | Human rejection (future) |
-| `reprocess` | Workflow reprocessed (future) |
-| `escalation` | Escalated for HITL (future) |
-| `payout_set` | Payout amount set (future) |
+| `approval` | Human approval for continued processing |
+| `rejection` | Human rejection with reason |
+| `reprocess` | Workflow reprocessed |
+| `escalation` | Escalated for HITL |
+| `payout_set` | Payout amount set |
+| `attachments_updated` | Attachments modified |
+| `request_info` | Adjuster requested more info from claimant |
+| `escalate_to_siu` | Escalated to Special Investigations Unit |
+| `assign` | Claim assigned to adjuster |
 
 #### Actor Identity
 
@@ -216,6 +238,7 @@ Defined in `src/claim_agent/db/constants.py`:
 | `STATUS_FRAUD_SUSPECTED` | "fraud_suspected" | Flagged for fraud |
 | `STATUS_PARTIAL_LOSS` | "partial_loss" | Partial loss processed |
 | `STATUS_NEEDS_REVIEW` | "needs_review" | Escalated for HITL |
+| `STATUS_PENDING_INFO` | "pending_info" | Awaiting info from claimant |
 | `STATUS_FAILED` | "failed" | Processing failed |
 
 ## Status Flow
