@@ -207,6 +207,83 @@ class ClaimRepository:
                 (claim_id, claim_type, router_output, workflow_output),
             )
 
+    def save_task_checkpoint(
+        self,
+        claim_id: str,
+        workflow_run_id: str,
+        stage_key: str,
+        output: str,
+    ) -> None:
+        """Persist a stage checkpoint. Replaces any existing checkpoint for the same key."""
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO task_checkpoints
+                    (claim_id, workflow_run_id, stage_key, output)
+                VALUES (?, ?, ?, ?)
+                """,
+                (claim_id, workflow_run_id, stage_key, output),
+            )
+
+    def get_task_checkpoints(
+        self,
+        claim_id: str,
+        workflow_run_id: str,
+    ) -> dict[str, str]:
+        """Load all checkpoints for a workflow run. Returns {stage_key: output_json}."""
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT stage_key, output FROM task_checkpoints
+                WHERE claim_id = ? AND workflow_run_id = ?
+                """,
+                (claim_id, workflow_run_id),
+            ).fetchall()
+        return {row["stage_key"]: row["output"] for row in rows}
+
+    def delete_task_checkpoints(
+        self,
+        claim_id: str,
+        workflow_run_id: str,
+        stage_keys: list[str] | None = None,
+    ) -> None:
+        """Delete checkpoints. If stage_keys given, only those; if None, all for the run.
+        Empty list deletes nothing."""
+        if stage_keys is not None and not stage_keys:
+            return
+        with get_connection(self._db_path) as conn:
+            if stage_keys is not None:
+                placeholders = ",".join("?" for _ in stage_keys)
+                conn.execute(
+                    f"""
+                    DELETE FROM task_checkpoints
+                    WHERE claim_id = ? AND workflow_run_id = ? AND stage_key IN ({placeholders})
+                    """,
+                    [claim_id, workflow_run_id, *stage_keys],
+                )
+            else:
+                conn.execute(
+                    """
+                    DELETE FROM task_checkpoints
+                    WHERE claim_id = ? AND workflow_run_id = ?
+                    """,
+                    (claim_id, workflow_run_id),
+                )
+
+    def get_latest_checkpointed_run_id(self, claim_id: str) -> str | None:
+        """Return the most recent workflow_run_id that has checkpoints for this claim."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT workflow_run_id FROM task_checkpoints
+                WHERE claim_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (claim_id,),
+            ).fetchone()
+        return row["workflow_run_id"] if row else None
+
     def update_claim_attachments(
         self,
         claim_id: str,

@@ -34,7 +34,7 @@ def _usage() -> str:
   claim-agent process <claim.json> [--attachment <file> ...]   Process a new claim
   claim-agent status <claim_id>      Get claim status
   claim-agent history <claim_id>     Get claim audit log
-  claim-agent reprocess <claim_id>   Re-run workflow for an existing claim
+  claim-agent reprocess <claim_id> [--from-stage <stage>]   Re-run workflow (optionally resume from stage)
   claim-agent metrics [claim_id]     Show metrics (optionally for specific claim)
   claim-agent review-queue [--assignee X] [--priority P]  List claims needing review
   claim-agent assign <claim_id> <assignee>   Assign claim to adjuster
@@ -51,6 +51,7 @@ Options:
   --priority <level>                 Filter review queue by priority
   --reason <text>                    Rejection reason
   --note <text>                      Note for request-info
+  --from-stage <stage>               Resume reprocess from stage (router, escalation_check, workflow, settlement)
   --dry-run                          Show what would be archived without making changes (retention-enforce)
   --years <n>                        Override retention period in years (retention-enforce)
   --debug                            Enable debug logging
@@ -186,13 +187,20 @@ def cmd_history(claim_id: str) -> None:
     print(json.dumps(history, indent=2))
 
 
-def cmd_reprocess(claim_id: str) -> None:
-    """Re-run workflow for an existing claim."""
-    from claim_agent.crews.main_crew import run_claim_workflow
+def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
+    """Re-run workflow for an existing claim, optionally resuming from a stage."""
+    from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
     from claim_agent.db.claim_data import claim_data_from_row
     from claim_agent.db.database import get_db_path
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
+
+    if from_stage is not None and from_stage not in WORKFLOW_STAGES:
+        print(
+            f"Error: --from-stage must be one of {', '.join(WORKFLOW_STAGES)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     repo = ClaimRepository(db_path=get_db_path())
     claim = repo.get_claim(claim_id)
@@ -206,8 +214,24 @@ def cmd_reprocess(claim_id: str) -> None:
         print("Error: Invalid claim data for reprocess:", file=sys.stderr)
         print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
         sys.exit(1)
+
+    resume_run_id: str | None = None
+    if from_stage is not None:
+        resume_run_id = repo.get_latest_checkpointed_run_id(claim_id)
+        if resume_run_id is None:
+            print(
+                f"Warning: No prior checkpoints for {claim_id}; running full workflow.",
+                file=sys.stderr,
+            )
+            from_stage = None
+
     try:
-        result = run_claim_workflow(claim_data, existing_claim_id=claim_id)
+        result = run_claim_workflow(
+            claim_data,
+            existing_claim_id=claim_id,
+            resume_run_id=resume_run_id,
+            from_stage=from_stage,
+        )
         print(json.dumps(result, indent=2))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -446,7 +470,8 @@ def main() -> None:
         elif first == "history":
             cmd_history(claim_id)
         else:
-            cmd_reprocess(claim_id)
+            from_stage = _parse_opt_arg("--from-stage") or None
+            cmd_reprocess(claim_id, from_stage=from_stage)
         return
 
     # Review queue command
