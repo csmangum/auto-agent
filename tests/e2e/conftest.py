@@ -5,6 +5,7 @@ Reuses integration fixtures for database and sample claims.
 """
 
 import os
+import shutil
 import tempfile
 
 import pytest
@@ -40,3 +41,4 @@ def e2e_client(integration_db: str):
         yield TestClient(app)
     finally:
         os.environ.pop("ATTACHMENT_STORAGE_PATH", None)
+        shutil.rmtree(tmpdir, ignore_errors=True)

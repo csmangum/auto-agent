@@ -10,15 +10,15 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def load_client(temp_db, monkeypatch):
     """Create a TestClient for load tests with mocked workflow."""
-    storage_path = tempfile.mkdtemp()
-    monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", storage_path)
-    import claim_agent.storage.factory as factory_mod
-    monkeypatch.setattr(factory_mod, "_storage_instance", None)
-    os.environ.pop("CLAIMS_API_KEY", None)
-    os.environ.pop("API_KEYS", None)
+    with tempfile.TemporaryDirectory() as storage_path:
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", storage_path)
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        os.environ.pop("CLAIMS_API_KEY", None)
+        os.environ.pop("API_KEYS", None)
 
-    from claim_agent.api.server import app
-    return TestClient(app)
+        from claim_agent.api.server import app
+        yield TestClient(app)
 
 
 @pytest.fixture

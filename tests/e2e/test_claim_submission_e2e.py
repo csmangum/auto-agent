@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import claim_agent.storage.factory as factory_mod
 from claim_agent.db.constants import (
     STATUS_DUPLICATE,
     STATUS_FRAUD_SUSPECTED,
@@ -28,11 +29,8 @@ def test_e2e_submit_new_claim_via_api(
     sample_new_claim,
     mock_router_response,
     mock_crew_response,
-    tmp_path,
 ):
     """Submit new claim via POST /api/claims; assert claim_id, status, history."""
-    import claim_agent.storage.factory as factory_mod
-
     factory_mod._storage_instance = None
     with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
         with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
@@ -75,11 +73,8 @@ def test_e2e_submit_duplicate_claim_via_api(
     sample_duplicate_claim,
     mock_router_response,
     mock_crew_response,
-    tmp_path,
 ):
     """Submit duplicate claim via POST /api/claims; assert claim_id, status, history."""
-    import claim_agent.storage.factory as factory_mod
-
     factory_mod._storage_instance = None
     with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
         with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
@@ -121,11 +116,8 @@ def test_e2e_submit_total_loss_claim_via_api(
     sample_total_loss_claim,
     mock_router_response,
     mock_crew_response,
-    tmp_path,
 ):
     """Submit total loss claim via POST /api/claims; assert claim_id, status, history."""
-    import claim_agent.storage.factory as factory_mod
-
     # Low damage to avoid escalation
     low_value_claim = {**sample_total_loss_claim, "estimated_damage": 5000}
 
@@ -184,11 +176,8 @@ def test_e2e_submit_fraud_claim_via_api(
     sample_fraud_claim,
     mock_router_response,
     mock_crew_response,
-    tmp_path,
 ):
     """Submit fraud claim via POST /api/claims; assert claim_id, status, history."""
-    import claim_agent.storage.factory as factory_mod
-
     factory_mod._storage_instance = None
     with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
         with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
@@ -230,11 +219,8 @@ def test_e2e_submit_partial_loss_claim_via_api(
     sample_partial_loss_claim,
     mock_router_response,
     mock_crew_response,
-    tmp_path,
 ):
     """Submit partial loss claim via POST /api/claims; assert claim_id, status, history."""
-    import claim_agent.storage.factory as factory_mod
-
     mock_task = MagicMock()
     mock_task.output = PartialLossWorkflowOutput(
         payout_amount=2100.0,

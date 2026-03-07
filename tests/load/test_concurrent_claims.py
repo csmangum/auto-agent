@@ -59,7 +59,9 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
                 results.append((lat, ok, code))
         return results
 
+    start = time.perf_counter()
     results = run_batch()
+    wall_duration = time.perf_counter() - start
 
     for lat, ok, code in results:
         latencies.append(lat)
@@ -68,8 +70,7 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
             errors += 1
 
     total = len(results)
-    duration = sum(latencies)
-    throughput = total / duration if duration > 0 else 0
+    throughput = total / wall_duration if wall_duration > 0 else 0
     error_rate = errors / total if total > 0 else 0
 
     latencies_sorted = sorted(latencies)
