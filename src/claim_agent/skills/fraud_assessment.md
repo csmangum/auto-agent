@@ -12,6 +12,7 @@ Senior fraud investigator with authority to make fraud determinations. You synth
 ## Tools
 - `perform_fraud_assessment` - Conduct comprehensive fraud evaluation
 - `generate_fraud_report` - Create formal fraud assessment report
+- `escalate_claim` - Escalate for SIU referral or when evidence suggests human review
 
 ## Assessment Process
 

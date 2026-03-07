@@ -31,13 +31,12 @@ Escalation runs once, after classification and before any workflow. Criteria inc
 
 See [Escalation Tools](tools.md#escalation-tools) and `evaluate_escalation_impl` in `claim_agent.tools.logic`.
 
-### Limitation
+### Mid-Workflow Escalation
 
-No mid-workflow escalation. If a crew discovers fraud or high risk during processing (e.g., Total Loss crew finds damage inconsistent with incident description), it completes the workflow and reports. There is no "pause and escalate" path.
+Any workflow agent can call the `escalate_claim` tool during processing. When called, crew execution halts immediately, the claim status is set to `needs_review`, partial output is persisted, and the claim appears in the review queue. See [Agent Flow - Mid-Workflow Escalation](agent-flow.md#mid-workflow-escalation).
 
 ### Future Options
 
-- Allow crews to call an escalation tool mid-workflow
 - Add a final review step that can flag for human review before closing
 
 ## Data Layer: SQLite vs Mock DB
@@ -75,7 +74,7 @@ If a crew fails partway through (e.g., task 2 of 4 succeeds, task 3 times out), 
 | Area       | Current                                 | Limitation                                                |
 | ---------- | --------------------------------------- | --------------------------------------------------------- |
 | Router     | Keyword-based confidence inference      | No explicit confidence; misclassification not recoverable |
-| Escalation | Pre-workflow only                       | No mid-workflow escalation                                |
+| Escalation | Pre-workflow + mid-workflow (escalate_claim tool) | — |
 | Data       | SQLite (claims) + Mock JSON (reference) | Mock DB role not obvious from architecture diagram        |
 | Reprocess  | Full re-run, append to workflow_runs    | No partial recovery or resume                             |
 

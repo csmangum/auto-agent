@@ -27,6 +27,8 @@ from claim_agent.adapters.registry import (
     get_valuation_adapter,
 )
 from claim_agent.tools.data_loader import load_california_compliance
+from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
+from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
 
 # Set up logger
@@ -550,6 +552,70 @@ def evaluate_escalation_impl(
         "fraud_indicators": fraud_indicators,
         "recommended_action": recommended.strip(),
     })
+
+
+def escalate_claim_impl(
+    claim_id: str,
+    reason: str,
+    indicators: list[str],
+    priority: str,
+    *,
+    claim_type: str | None = None,
+    actor_id: str = ACTOR_WORKFLOW,
+) -> None:
+    """Persist mid-workflow escalation: set status to needs_review, save details, audit log.
+
+    Called by escalate_claim tool before it raises MidWorkflowEscalation.
+    """
+    if not claim_id or not isinstance(claim_id, str) or not claim_id.strip():
+        raise ValueError("claim_id is required for escalate_claim")
+    claim_id = claim_id.strip()
+    if not reason or not isinstance(reason, str) or not reason.strip():
+        raise ValueError("reason is required for escalate_claim")
+    reason = reason.strip()
+    indicators = list(indicators) if indicators else []
+    valid_priorities = ("low", "medium", "high", "critical")
+    priority = (priority or "low").strip().lower()
+    if priority not in valid_priorities:
+        priority = "low"
+
+    repo = ClaimRepository()
+    if repo.get_claim(claim_id) is None:
+        raise ValueError(f"Claim not found: {claim_id}")
+
+    details = json.dumps({
+        "escalation": True,
+        "mid_workflow": True,
+        "reason": reason,
+        "indicators": indicators,
+        "priority": priority,
+    })
+
+    repo.update_claim_status(
+        claim_id,
+        STATUS_NEEDS_REVIEW,
+        details=details,
+        claim_type=claim_type,
+        actor_id=actor_id,
+    )
+
+    hours = 24 if priority in ("critical", "high") else 48 if priority == "medium" else 72
+    due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    repo.update_claim_review_metadata(
+        claim_id,
+        priority=priority,
+        due_at=due_at,
+        review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    repo.insert_audit_entry(
+        claim_id,
+        AUDIT_EVENT_ESCALATION,
+        new_status=STATUS_NEEDS_REVIEW,
+        details=f"Mid-workflow escalation: {reason}",
+        actor_id=actor_id,
+        after_state=details,
+    )
 
 
 # --- Fraud Detection ---

@@ -6,6 +6,9 @@ Intake Specialist
 ## Goal
 Validate claim data and ensure all required fields are present.
 
+## Tools
+- `escalate_claim` - Escalate if validation reveals high risk or suspicious patterns
+
 ### Step 1: Field Presence Validation
 Ensure all required fields are present in the claim submission.
 

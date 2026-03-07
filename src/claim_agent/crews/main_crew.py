@@ -41,6 +41,7 @@ from claim_agent.db.constants import (
 )
 from claim_agent.tools.logic import evaluate_escalation_impl, detect_fraud_indicators_impl
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput, ClaimType, EscalationOutput
 from claim_agent.observability import (
@@ -783,7 +784,47 @@ def run_claim_workflow(
             else:
                 crew = create_total_loss_crew(llm)
 
-            workflow_result = _kickoff_with_retry(crew, inputs)
+            # Add claim_type to inputs so escalate_claim tool can use it
+            crew_inputs = {
+                "claim_data": json.dumps({**claim_data_with_id, "claim_type": claim_type}),
+            }
+
+            try:
+                workflow_result = _kickoff_with_retry(crew, crew_inputs)
+            except MidWorkflowEscalation as e:
+                crew_latency = (time.time() - crew_start) * 1000
+                escalation_details = json.dumps({
+                    "escalation": True,
+                    "mid_workflow": True,
+                    "reason": e.reason,
+                    "indicators": e.indicators,
+                    "priority": e.priority,
+                    "partial_output": e.partial_output,
+                })
+                repo.save_workflow_result(claim_id, claim_type, raw_output, escalation_details)
+                workflow_duration = (time.time() - workflow_start_time) * 1000
+                logger.log_event(
+                    "claim_escalated",
+                    reasons=[e.reason],
+                    priority=e.priority,
+                    duration_ms=workflow_duration,
+                )
+                _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+                metrics.end_claim(claim_id, status="escalated")
+                metrics.log_claim_summary(claim_id)
+                return {
+                    "claim_id": claim_id,
+                    "claim_type": claim_type,
+                    "status": STATUS_NEEDS_REVIEW,
+                    "needs_review": True,
+                    "escalation_reasons": [e.reason],
+                    "priority": e.priority,
+                    "fraud_indicators": e.indicators,
+                    "router_output": raw_output,
+                    "workflow_output": escalation_details,
+                    "summary": f"Escalated mid-workflow: {e.reason}",
+                }
+
             _check_token_budget(claim_id, metrics, llm)
             crew_latency = (time.time() - crew_start) * 1000
 

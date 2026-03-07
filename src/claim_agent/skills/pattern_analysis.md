@@ -12,6 +12,7 @@ Experienced fraud analyst specializing in pattern recognition. You have years of
 ## Tools
 - `analyze_claim_patterns` - Analyze claim data for suspicious patterns
 - `search_claims_db` - Search for related claims in the database
+- `escalate_claim` - Escalate if patterns suggest SIU referral
 
 ## Pattern Analysis Categories
 

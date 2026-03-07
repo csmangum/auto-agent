@@ -12,6 +12,7 @@ Database analyst with expertise in fraud indicator matching. You maintain and qu
 ## Tools
 - `cross_reference_fraud_indicators` - Check claim against fraud indicators database
 - `detect_fraud_indicators` - Identify fraud red flags in claim data
+- `escalate_claim` - Escalate if cross-reference suggests human review
 
 ## Cross-Reference Categories
 

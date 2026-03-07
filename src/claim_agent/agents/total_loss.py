@@ -7,13 +7,14 @@ parameters to include relevant policy and compliance regulations in prompts.
 from crewai import Agent
 
 from claim_agent.tools import (
-    fetch_vehicle_value,
-    evaluate_damage,
     calculate_payout,
-    generate_report,
+    evaluate_damage,
+    escalate_claim,
+    fetch_vehicle_value,
     generate_claim_id,
-    get_total_loss_requirements,
+    generate_report,
     get_compliance_deadlines,
+    get_total_loss_requirements,
     search_policy_compliance,
 )
 from claim_agent.skills import (
@@ -48,7 +49,7 @@ def create_damage_assessor_agent(
         skill = load_skill(DAMAGE_ASSESSOR)
     
     # Include RAG tools for dynamic queries
-    tools = [evaluate_damage]
+    tools = [evaluate_damage, escalate_claim]
     if use_rag:
         tools.extend([get_total_loss_requirements, search_policy_compliance])
     
@@ -83,7 +84,7 @@ def create_valuation_agent(
     else:
         skill = load_skill(VALUATION)
     
-    tools = [fetch_vehicle_value]
+    tools = [fetch_vehicle_value, escalate_claim]
     if use_rag:
         tools.extend([get_total_loss_requirements, search_policy_compliance])
     
@@ -118,7 +119,7 @@ def create_payout_agent(
     else:
         skill = load_skill(PAYOUT)
     
-    tools = [calculate_payout]
+    tools = [calculate_payout, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
     
@@ -153,7 +154,7 @@ def create_settlement_agent(
     else:
         skill = load_skill(SETTLEMENT)
     
-    tools = [generate_report, generate_claim_id]
+    tools = [generate_report, generate_claim_id, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
     

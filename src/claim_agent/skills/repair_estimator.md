@@ -13,6 +13,7 @@ Certified collision estimator with expertise in repair costs. You produce accura
 - `calculate_repair_estimate` - Calculate full repair estimate
 - `get_parts_catalog` - Look up parts and pricing
 - `query_policy_db` - Check policy for parts preferences
+- `escalate_claim` - Escalate if estimate reveals scope inconsistent with incident
 
 ## Estimation Process
 

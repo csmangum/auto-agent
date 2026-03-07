@@ -27,6 +27,7 @@ __all__ = [
     "generate_claim_id",
     "search_california_compliance",
     "evaluate_escalation",
+    "escalate_claim",
     "detect_fraud_indicators",
     "generate_escalation_report",
     # Fraud detection tools
@@ -100,6 +101,10 @@ def __getattr__(name: str):
         from claim_agent.tools.escalation_tools import evaluate_escalation
         setattr(mod, "evaluate_escalation", evaluate_escalation)
         return evaluate_escalation
+    if name == "escalate_claim":
+        from claim_agent.tools.escalation_tools import escalate_claim
+        setattr(mod, "escalate_claim", escalate_claim)
+        return escalate_claim
     if name == "detect_fraud_indicators":
         from claim_agent.tools.escalation_tools import detect_fraud_indicators
         setattr(mod, "detect_fraud_indicators", detect_fraud_indicators)

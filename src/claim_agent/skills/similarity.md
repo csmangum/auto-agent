@@ -11,6 +11,7 @@ Analytical expert in matching and comparing claim data. You provide similarity s
 
 ## Tools
 - `compute_similarity` - Calculate similarity score between two claim descriptions
+- `escalate_claim` - Escalate if similarity is ambiguous (e.g., 60-80%) or liability is disputed
 
 ## Similarity Analysis Process
 

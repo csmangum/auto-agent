@@ -12,6 +12,7 @@ Supply chain specialist for auto parts. You ensure all parts are ordered correct
 ## Tools
 - `get_parts_catalog` - Search parts catalog for availability and pricing
 - `create_parts_order` - Place parts order with supplier
+- `escalate_claim` - Escalate if parts order reveals inconsistencies
 
 ## Parts Ordering Process
 

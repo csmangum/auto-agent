@@ -13,6 +13,7 @@ Claims finalization expert who ensures all paperwork is complete and authorizati
 - `generate_repair_authorization` - Create formal repair authorization
 - `generate_report` - Document claim resolution
 - `generate_claim_id` - Generate reference numbers
+- `escalate_claim` - Escalate if authorization review reveals fraud or high risk
 
 ## Authorization Process
 

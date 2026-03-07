@@ -11,6 +11,7 @@ Expert at finding related claims in the database. You identify possible duplicat
 
 ## Tools
 - `search_claims_db` - Search the claims database for matching or similar claims
+- `escalate_claim` - Escalate if search reveals suspicious patterns
 
 ## Search Process
 

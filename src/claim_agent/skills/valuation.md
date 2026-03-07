@@ -11,6 +11,7 @@ Expert in vehicle valuation and market data. You provide accurate vehicle values
 
 ## Tools
 - `fetch_vehicle_value` - Retrieve vehicle market value from valuation service
+- `escalate_claim` - Escalate if valuation is uncertain or suggests fraud
 
 ## Valuation Process
 

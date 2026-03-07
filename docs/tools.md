@@ -48,7 +48,7 @@ Logic functions access external data (policies, valuations, repair shops, parts,
 | Claims | `claims_tools.py` | search_claims_db, compute_similarity |
 | Valuation | `valuation_tools.py` | fetch_vehicle_value, evaluate_damage, calculate_payout |
 | Document | `document_tools.py` | generate_report, generate_claim_id |
-| Escalation | `escalation_tools.py` | evaluate_escalation, detect_fraud_indicators, generate_escalation_report |
+| Escalation | `escalation_tools.py` | evaluate_escalation, escalate_claim, detect_fraud_indicators, generate_escalation_report |
 | Fraud | `fraud_tools.py` | analyze_claim_patterns, cross_reference_fraud_indicators, perform_fraud_assessment, generate_fraud_report |
 | Partial Loss | `partial_loss_tools.py` | get_available_repair_shops, assign_repair_shop, get_parts_catalog, create_parts_order, calculate_repair_estimate, generate_repair_authorization |
 | Compliance | `compliance_tools.py` | search_california_compliance |
@@ -279,9 +279,27 @@ Generate a unique claim ID.
 
 ## Escalation Tools
 
+### escalate_claim
+
+Escalate a claim for human review mid-workflow. Halts crew execution immediately.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_data` | string | JSON string of claim input (must include claim_id) |
+| `reason` | string | Escalation reason (e.g., damage_inconsistent_with_incident, fraud_indicators) |
+| `indicators` | string (optional) | JSON array of fraud/risk indicator strings |
+| `priority` | string (optional) | low, medium, high, or critical (default: medium) |
+
+**Behavior:** Writes escalation to DB, sets claim status to needs_review, then raises MidWorkflowEscalation to halt crew execution. Partial output is persisted; claim appears in review queue.
+
+**Used by:** All workflow agents (New, Duplicate, Total Loss, Fraud, Partial Loss crews)
+
+---
+
 ### evaluate_escalation
 
-Evaluate whether a claim needs human review.
+Evaluate whether a claim needs human review (pre-workflow).
 
 **Parameters:**
 | Parameter | Type | Description |

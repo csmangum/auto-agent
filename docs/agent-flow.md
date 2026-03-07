@@ -134,6 +134,19 @@ See [Crews](crews.md) for crew details.
 
 **Duplicate flow:** The main flow runs `_check_for_duplicates` before routing; `claim_data` may include `existing_claims_for_vin` with pre-computed similarity scores. The Duplicate crew still runs Search → Similarity → Resolution. See [Duplicate Crew](crews.md#duplicate-crew) for the formal specification.
 
+### Mid-Workflow Escalation
+
+Any workflow agent can call the `escalate_claim` tool during processing. When called:
+
+1. Crew execution halts immediately (remaining tasks are not run)
+2. Claim status is set to `needs_review`
+3. Partial output (completed task outputs) is persisted to `workflow_runs`
+4. Escalation reason, indicators, and priority are recorded
+5. Claim appears in the review queue for adjuster action
+6. Audit log records the mid-workflow escalation event
+
+Use `escalate_claim` when discovering fraud, high risk, or inconsistencies during processing (e.g., damage inconsistent with incident description, liability dispute, ambiguous similarity).
+
 ### 6. Finalization
 
 ```python
