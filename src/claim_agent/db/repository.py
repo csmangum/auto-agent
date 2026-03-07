@@ -644,8 +644,11 @@ class ClaimRepository:
     ) -> list[dict[str, Any]]:
         """List claims older than retention period that are not yet archived.
 
-        Uses created_at for cutoff. Excludes claims with status archived.
+        Uses created_at for cutoff. Excludes claims with status archived
+        or a non-null archived_at.
         """
+        if retention_period_years < 0:
+            raise ValueError("retention_period_years must be non-negative")
         cutoff = f"-{retention_period_years} years"
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
@@ -653,9 +656,10 @@ class ClaimRepository:
                 SELECT * FROM claims
                 WHERE datetime(created_at) <= datetime('now', ?)
                   AND archived_at IS NULL
+                  AND status != ?
                 ORDER BY created_at ASC
                 """,
-                (cutoff,),
+                (cutoff, STATUS_ARCHIVED),
             ).fetchall()
         return [dict(r) for r in rows]
 

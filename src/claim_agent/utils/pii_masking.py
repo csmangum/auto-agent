@@ -2,9 +2,10 @@
 
 Masks policy_number, VIN, and optionally claimant names in log output
 to comply with data protection requirements. Format: mask middle characters
-(e.g. POL-***-001, 1HG***9186).
+(e.g. POL***001, 1HG***3456).
 """
 
+import re
 from typing import Any
 
 
@@ -12,7 +13,7 @@ def mask_policy_number(value: str | None) -> str:
     """Mask policy number, preserving first 3 and last 3 characters.
 
     Examples:
-        POL-12345-001 -> POL-***-001
+        POL-12345-001 -> POL***001
         ABC123 -> ABC***
         X -> *
     """
@@ -43,7 +44,7 @@ def mask_vin(value: str | None) -> str:
 
 
 def mask_claimant_name(value: str | None) -> str:
-    """Mask claimant/person name, preserving first letter and last initial.
+    """Mask claimant/person name, preserving the first letter of each part.
 
     Example: John Smith -> J*** S***
     """
@@ -107,3 +108,16 @@ def mask_dict(data: dict[str, Any], keys_to_mask: set[str] | None = None) -> dic
         else:
             result[k] = v
     return result
+
+
+# VIN pattern: 17 characters, excluding I, O, Q (standard VIN alphabet)
+_VIN_RE = re.compile(r"\b([A-HJ-NPR-Z0-9]{3})[A-HJ-NPR-Z0-9]{10}([A-HJ-NPR-Z0-9]{4})\b")
+
+
+def mask_text(text: str) -> str:
+    """Mask PII patterns (VINs) found within a free-text string.
+
+    Replaces VIN-like 17-character sequences with a masked form.
+    Example: "VIN 1HGCM82633A123456 was processed" -> "VIN 1HG***3456 was processed"
+    """
+    return _VIN_RE.sub(lambda m: f"{m.group(1)}***{m.group(2)}", text)
