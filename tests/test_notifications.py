@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from claim_agent.config.settings import get_notification_config, get_webhook_config
+from tests.conftest import LogCaptureHandler
 from claim_agent.notifications.claimant import notify_claimant
 from claim_agent.notifications.webhook import (
     _sign_payload,
@@ -192,17 +193,20 @@ class TestDispatchClaimEvent:
 class TestSafeDispatchClaimEvent:
     """Tests for safe_dispatch_claim_event best-effort behavior."""
 
-    def test_swallows_exceptions_and_logs(self, caplog, capsys):
-        caplog.set_level(logging.WARNING)
-        with patch("claim_agent.notifications.webhook.dispatch_claim_event") as mock:
-            mock.side_effect = RuntimeError("executor shutdown")
-            safe_dispatch_claim_event("CLM-123", "pending", summary="Test")
-            mock.assert_called_once()
-        # Log may appear in caplog or stdout depending on logging config
-        captured = capsys.readouterr()
-        log_output = caplog.text + captured.out + captured.err
-        assert "Webhook dispatch failed" in log_output
-        assert "executor shutdown" in log_output
+    def test_swallows_exceptions_and_logs(self):
+        webhook_logger = logging.getLogger("claim_agent.notifications.webhook")
+        cap = LogCaptureHandler()
+        webhook_logger.addHandler(cap)
+        webhook_logger.setLevel(logging.WARNING)
+        try:
+            with patch("claim_agent.notifications.webhook.dispatch_claim_event") as mock:
+                mock.side_effect = RuntimeError("executor shutdown")
+                safe_dispatch_claim_event("CLM-123", "pending", summary="Test")
+                mock.assert_called_once()
+        finally:
+            webhook_logger.removeHandler(cap)
+        assert any("Webhook dispatch failed" in m for m in cap.messages)
+        assert any("executor shutdown" in m for m in cap.messages)
 
     def test_delegates_to_dispatch_claim_event_on_success(self):
         with patch("claim_agent.notifications.webhook.dispatch_claim_event") as mock:
@@ -316,26 +320,32 @@ class TestNotifyClaimant:
             notify_claimant("receipt_acknowledged", "CLM-123")
         assert "Would send" not in caplog.text
 
-    def test_logs_when_email_enabled_and_contact_present(self, caplog, capsys):
-        caplog.set_level(logging.INFO)
-        with patch.dict(os.environ, {"NOTIFICATION_EMAIL_ENABLED": "true"}):
-            notify_claimant("receipt_acknowledged", "CLM-123", email="a@b.com")
-        # Log may appear in caplog or stdout depending on logging config
-        captured = capsys.readouterr()
-        log_output = caplog.text + captured.out + captured.err
-        assert "Would send claimant email" in log_output
-        assert "receipt_acknowledged" in log_output
-        assert "CLM-123" in log_output
+    def test_logs_when_email_enabled_and_contact_present(self):
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.INFO)
+        try:
+            with patch.dict(os.environ, {"NOTIFICATION_EMAIL_ENABLED": "true"}):
+                notify_claimant("receipt_acknowledged", "CLM-123", email="a@b.com")
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("Would send claimant email" in m for m in cap.messages)
+        assert any("receipt_acknowledged" in m for m in cap.messages)
+        assert any("CLM-123" in m for m in cap.messages)
 
-    def test_logs_when_sms_enabled_and_phone_present(self, caplog, capsys):
-        caplog.set_level(logging.INFO)
-        with patch.dict(os.environ, {"NOTIFICATION_SMS_ENABLED": "true"}):
-            notify_claimant("claim_closed", "CLM-456", phone="+15551234567")
-        # Log may appear in caplog or stdout depending on logging config
-        captured = capsys.readouterr()
-        log_output = caplog.text + captured.out + captured.err
-        assert "Would send claimant SMS" in log_output
-        assert "claim_closed" in log_output
+    def test_logs_when_sms_enabled_and_phone_present(self):
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.INFO)
+        try:
+            with patch.dict(os.environ, {"NOTIFICATION_SMS_ENABLED": "true"}):
+                notify_claimant("claim_closed", "CLM-456", phone="+15551234567")
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("Would send claimant SMS" in m for m in cap.messages)
+        assert any("claim_closed" in m for m in cap.messages)
 
 
 class TestRepositoryWebhookIntegration:

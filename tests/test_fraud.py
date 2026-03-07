@@ -1,6 +1,7 @@
 """Tests for fraud detection workflow."""
 
 import json
+import logging
 from datetime import date
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from claim_agent.tools.logic import (
     perform_fraud_assessment_impl,
     KNOWN_FRAUD_PATTERNS,
 )
+from tests.conftest import LogCaptureHandler
 
 
 class TestFraudPatternAnalysis:
@@ -242,7 +244,7 @@ class TestFraudAssessment:
         assert f"SIU case created: {result['siu_case_id']}" in siu_entries[0]["details"]
 
     def test_siu_referral_persistence_failure_returns_case_id_and_persisted_false(
-        self, temp_db, caplog, capsys
+        self, temp_db
     ):
         """When update_claim_siu_case_id raises, response has siu_case_id and siu_case_id_persisted=False."""
         repo = ClaimRepository()
@@ -268,23 +270,27 @@ class TestFraudAssessment:
             "estimated_damage": 50000,
         }
 
-        with patch(
-            "claim_agent.tools.logic.ClaimRepository"
-        ) as mock_repo_cls:
-            mock_instance = mock_repo_cls.return_value
-            mock_instance.update_claim_siu_case_id.side_effect = RuntimeError(
-                "DB connection failed"
-            )
-            result = json.loads(perform_fraud_assessment_impl(claim_data))
+        logic_logger = logging.getLogger("claim_agent.tools.logic")
+        cap = LogCaptureHandler()
+        logic_logger.addHandler(cap)
+        logic_logger.setLevel(logging.WARNING)
+        try:
+            with patch(
+                "claim_agent.tools.logic.ClaimRepository"
+            ) as mock_repo_cls:
+                mock_instance = mock_repo_cls.return_value
+                mock_instance.update_claim_siu_case_id.side_effect = RuntimeError(
+                    "DB connection failed"
+                )
+                result = json.loads(perform_fraud_assessment_impl(claim_data))
+        finally:
+            logic_logger.removeHandler(cap)
 
         assert result["siu_referral"] is True
         assert result["siu_case_id"] is not None
         assert result["siu_case_id"].startswith("SIU-MOCK-")
         assert result["siu_case_id_persisted"] is False
-        # Log may appear in caplog or stdout depending on logging config
-        captured = capsys.readouterr()
-        log_output = caplog.text + captured.out + captured.err
-        assert "Failed to persist siu_case_id" in log_output
+        assert any("Failed to persist siu_case_id" in m for m in cap.messages)
 
 
 class TestFraudConfig:
