@@ -1,11 +1,27 @@
 """Shared pytest fixtures for all test files."""
 
+import logging
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+
+
+class LogCaptureHandler(logging.Handler):
+    """Capture log records for assertions. Use with the logger that emits the log."""
+
+    def __init__(self):
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+    @property
+    def messages(self) -> list[str]:
+        return [r.getMessage() for r in self.records]
 
 # Load .env before any tests run (API keys, etc.). override=False so existing
 # env vars (e.g. CLAIMS_DB_PATH from fixtures) are not overwritten.

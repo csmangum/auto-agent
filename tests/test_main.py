@@ -102,7 +102,7 @@ def test_cli_reprocess_nonexistent_exits_nonzero():
 
 def test_reprocess_validation_invalid_data_exits_nonzero():
     """Reprocess with claim data that would fail ClaimInput validation exits non-zero."""
-    from claim_agent.main import _claim_data_from_row
+    from claim_agent.db.claim_data import claim_data_from_row
     from claim_agent.models.claim import ClaimInput
     from pydantic import ValidationError
 
@@ -118,7 +118,7 @@ def test_reprocess_validation_invalid_data_exits_nonzero():
         "damage_description": "Test",
         "estimated_damage": None,
     }
-    claim_data = _claim_data_from_row(row)
+    claim_data = claim_data_from_row(row)
     # With defaults, vin becomes "" which may still validate in Pydantic (str allows "")
     # So force invalid: wrong type for vehicle_year
     claim_data["vehicle_year"] = "not_an_int"

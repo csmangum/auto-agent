@@ -62,6 +62,7 @@ markers = [
     "integration: marks tests as integration tests (test component interactions)",
     "llm: marks tests that require LLM API access (OPENAI_API_KEY must be set)",
     "e2e: marks tests as end-to-end tests (full workflow tests)",
+    "load: marks tests as load tests (concurrent submissions, throughput, latency)",
 ]
 # Default addopts to show test output and warnings
 addopts = "-v --tb=short"

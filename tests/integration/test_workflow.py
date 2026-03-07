@@ -402,6 +402,12 @@ class TestReprocessing:
 # ============================================================================
 
 
+def _structural_llm_for_crew():
+    """Return a CrewAI LLM for structural tests (no API calls during crew creation)."""
+    from crewai import LLM
+    return LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+
+
 class TestWorkflowCrewClaimDataAndTools:
     """Verify workflow crews receive claim_data in task prompts and agents can invoke tools."""
 
@@ -410,7 +416,7 @@ class TestWorkflowCrewClaimDataAndTools:
         """First task of duplicate crew must contain {claim_data} so kickoff(inputs=...) injects it."""
         from claim_agent.crews.duplicate_crew import create_duplicate_crew
 
-        crew = create_duplicate_crew()
+        crew = create_duplicate_crew(llm=_structural_llm_for_crew())
         first_task = crew.tasks[0]
         assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
@@ -421,7 +427,7 @@ class TestWorkflowCrewClaimDataAndTools:
         """First task of fraud crew must contain {claim_data} for input injection."""
         from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 
-        crew = create_fraud_detection_crew()
+        crew = create_fraud_detection_crew(llm=_structural_llm_for_crew())
         first_task = crew.tasks[0]
         assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
@@ -432,7 +438,7 @@ class TestWorkflowCrewClaimDataAndTools:
         """First task of new claim crew must contain {claim_data} for input injection."""
         from claim_agent.crews.new_claim_crew import create_new_claim_crew
 
-        crew = create_new_claim_crew()
+        crew = create_new_claim_crew(llm=_structural_llm_for_crew())
         first_task = crew.tasks[0]
         assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
@@ -443,7 +449,7 @@ class TestWorkflowCrewClaimDataAndTools:
         """First task of total loss crew must contain {claim_data} for input injection."""
         from claim_agent.crews.total_loss_crew import create_total_loss_crew
 
-        crew = create_total_loss_crew()
+        crew = create_total_loss_crew(llm=_structural_llm_for_crew())
         first_task = crew.tasks[0]
         assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
@@ -454,7 +460,7 @@ class TestWorkflowCrewClaimDataAndTools:
         """First task of partial loss crew must contain {claim_data} for input injection."""
         from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 
-        crew = create_partial_loss_crew()
+        crew = create_partial_loss_crew(llm=_structural_llm_for_crew())
         first_task = crew.tasks[0]
         assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
@@ -465,7 +471,7 @@ class TestWorkflowCrewClaimDataAndTools:
         """All partial loss crew tasks must contain {claim_data} so agents receive claim context."""
         from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 
-        crew = create_partial_loss_crew()
+        crew = create_partial_loss_crew(llm=_structural_llm_for_crew())
         for i, task in enumerate(crew.tasks):
             assert "{claim_data}" in task.description, (
                 f"Task {i} ({task.description[:50]}...) must contain {{claim_data}} for input injection"

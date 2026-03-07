@@ -13,6 +13,9 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 - **Security & Resilience** - Input sanitization, parameterized DB queries, retry for transient LLM failures
 - **MCP Server** - Optional external tool access and health check via Model Context Protocol
 - **RAG** - Semantic search over policy and compliance (see [RAG](docs/rag.md))
+- **Webhooks** - Outbound webhooks for status changes and repair authorization
+- **Adapters** - Pluggable backends for policy, valuation, repair shops, parts, SIU (see `.env.example`)
+- **File Attachments** - Photos, PDFs, estimates via CLI `--attachment` or API upload
 
 ## Architecture
 
@@ -50,7 +53,7 @@ cp .env.example .env
 # Process a claim
 claim-agent process tests/sample_claims/partial_loss_parking.json
 
-# Check status
+# Check status (use the claim_id from the process output)
 claim-agent status CLM-11EEF959
 ```
 
@@ -59,11 +62,18 @@ claim-agent status CLM-11EEF959
 | Command | Description |
 |---------|-------------|
 | `claim-agent serve [--reload] [--port <port>] [--host <host>]` | Start REST API server |
-| `claim-agent process <file>` | Process a claim from JSON |
+| `claim-agent process <file> [--attachment <file> ...]` | Process a claim from JSON (optionally attach photos, PDFs, estimates) |
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get claim audit log |
-| `claim-agent reprocess <id>` | Re-run workflow |
+| `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from router, escalation_check, workflow, or settlement) |
 | `claim-agent metrics [id]` | Show metrics (optional claim ID) |
+| `claim-agent review-queue [--assignee X] [--priority P]` | List claims needing review |
+| `claim-agent assign <id> <assignee>` | Assign claim to adjuster |
+| `claim-agent approve <id>` | Approve and reprocess (supervisor) |
+| `claim-agent reject <id> [--reason "..."]` | Reject claim |
+| `claim-agent request-info <id> [--note "..."]` | Request more info |
+| `claim-agent escalate-siu <id>` | Escalate to SIU |
+| `claim-agent retention-enforce [--dry-run] [--years N]` | Archive claims older than retention period |
 
 ## Sample Claims
 
@@ -87,14 +97,21 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [Getting Started](docs/getting-started.md) | Installation and quick start |
 | [Architecture](docs/architecture.md) | System design and patterns |
 | [Crews](docs/crews.md) | Workflow crews and agents |
+| [Skills](docs/skills.md) | Agent prompts and operational procedures |
 | [Claim Types](docs/claim-types.md) | Classification criteria |
 | [Agent Flow](docs/agent-flow.md) | Execution flow |
+| [Adjuster Workflow](docs/adjuster-workflow.md) | Human review workflow |
 | [Tools](docs/tools.md) | Tool reference |
+| [Webhooks](docs/webhooks.md) | Outbound webhooks |
+| [Adapters](docs/adapters.md) | Pluggable integrations |
 | [Database](docs/database.md) | Schema and operations |
 | [Configuration](docs/configuration.md) | Environment and centralized settings |
 | [Observability](docs/observability.md) | Logging, tracing, metrics |
+| [PII and Retention](docs/pii-and-retention.md) | PII masking and data retention |
 | [RAG](docs/rag.md) | Policy and compliance search |
 | [MCP Server](docs/mcp-server.md) | External tool access and health check |
+| [Design Considerations](docs/design-considerations.md) | Limitations and future work |
+| [Alerting](docs/alerting.md) | Alert configuration |
 | [Evaluation](docs/evaluation-results.md) | Claim processing eval results and how to run |
 
 ## Project Layout
@@ -102,12 +119,16 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 ```
 src/claim_agent/
 ├── main.py           # CLI entry point
+├── api/              # REST API (FastAPI routes, auth, deps)
 ├── config/           # LLM (llm.py) and centralized settings (settings.py)
 ├── agents/           # Agent definitions
 ├── crews/            # Crew definitions
 ├── skills/           # Agent prompts (markdown)
 ├── tools/            # CrewAI tools
+├── adapters/         # Policy, valuation, repair shop, parts, SIU adapters
 ├── rag/              # RAG pipeline (policy/compliance search)
+├── storage/          # Local and S3 storage for attachments
+├── notifications/    # Webhooks and claimant notifications
 ├── utils/            # Sanitization, retry
 ├── db/               # SQLite database
 ├── models/           # Pydantic models (ClaimInput, ClaimType, etc.)
@@ -119,12 +140,22 @@ src/claim_agent/
 
 ```bash
 # Unit tests (no API key needed)
+# MOCK_DB_PATH defaults to data/mock_db.json if unset
 export MOCK_DB_PATH=data/mock_db.json
-pytest tests/ -v
+pytest tests/ -v --ignore=tests/integration --ignore=tests/e2e --ignore=tests/load \
+  -m "not slow and not integration and not llm and not e2e and not load"
 
-# Integration tests (API key required)
-pytest tests/test_crews.py -v
+# Integration tests (mocked LLM, no API key needed)
+pytest tests/integration/ -v -m "integration and not slow and not llm"
+
+# E2E tests (submit claims via API, mocked LLM, no API key needed)
+pytest tests/e2e/ -v -m e2e
+
+# Load tests (concurrent claim submissions, throughput, latency)
+LOAD_TEST_CONCURRENCY=20 pytest tests/load/ -v -m load -s
 ```
+
+E2E tests submit claims via the REST API and assert claim_id, status, and audit history. Load tests report throughput (claims/sec), latency percentiles (p50, p99), and error rate. Set `LOAD_TEST_CONCURRENCY` for concurrency (default 10). Use `LOAD_TEST_OUTPUT=report.json` to write metrics to a file.
 
 ## Evaluation
 
@@ -136,6 +167,10 @@ Run the claim processing evaluation (requires API key). See [Evaluation](docs/ev
 
 # All scenarios
 .venv/bin/python scripts/evaluate_claim_processing.py --all --output evaluation_report.json
+
+# List scenarios or run sample claim files
+.venv/bin/python scripts/evaluate_claim_processing.py --list
+.venv/bin/python scripts/evaluate_claim_processing.py --sample-claims --output evaluation_report.json
 ```
 
 ## Data Setup
