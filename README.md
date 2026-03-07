@@ -58,6 +58,7 @@ claim-agent status CLM-11EEF959
 
 | Command | Description |
 |---------|-------------|
+| `claim-agent serve [--reload] [--port <port>] [--host <host>]` | Start REST API server |
 | `claim-agent process <file>` | Process a claim from JSON |
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get claim audit log |
@@ -150,14 +151,17 @@ python scripts/seed_claims_from_mock_db.py
 A React + Vite frontend provides a dashboard for claims, docs, skills, and system config.
 
 ```bash
-# Terminal 1: Start backend
-uvicorn claim_agent.api.server:app --reload --port 8000
+# Terminal 1: Start backend (use --reload for dev auto-reload)
+claim-agent serve --reload
+# Or: claim-agent serve  (production, no reload)
 
 # Terminal 2: Start frontend (dev)
 cd frontend && npm run dev
 ```
 
 Visit http://localhost:5173. The Vite dev server proxies `/api` to the backend.
+
+**REST API**: The backend exposes a REST API for programmatic access. OpenAPI spec: http://localhost:8000/api/openapi.json. Interactive docs: http://localhost:8000/api/openapi/docs. When auth is enabled (CLAIMS_API_KEY or API_KEYS), an API key is required to access OpenAPI docs.
 
 **Production**: Build with `cd frontend && npm run build`. The backend serves `frontend/dist` when present.
 

@@ -42,6 +42,9 @@ app = FastAPI(
     description="API for the Agentic Claims Processing System dashboard",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/api/openapi/docs",
+    redoc_url="/api/openapi/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 # CORS: use CORS_ORIGINS env var for production, default to localhost for dev

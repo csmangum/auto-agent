@@ -11,6 +11,7 @@ import logging
 import sys
 from pathlib import Path
 
+import uvicorn
 from pydantic import ValidationError
 
 # Ensure src is on path when run as script
@@ -31,6 +32,7 @@ def _setup_logging() -> None:
 
 def _usage() -> str:
     return """Usage:
+  claim-agent serve [--reload] [--port <port>] [--host <host>]   Start REST API server
   claim-agent process <claim.json> [--attachment <file> ...]   Process a new claim
   claim-agent status <claim_id>      Get claim status
   claim-agent history <claim_id>     Get claim audit log
@@ -46,6 +48,9 @@ def _usage() -> str:
   claim-agent <claim.json>           Same as process (legacy)
 
 Options:
+  --reload                           Enable auto-reload for development (serve)
+  --port <port>                      API server port (default: 8000)
+  --host <host>                      API server host (default: 0.0.0.0)
   --attachment <file>                Attach file (photo, PDF, estimate). May be repeated.
   --assignee <id>                    Filter review queue by assignee
   --priority <level>                 Filter review queue by priority
@@ -457,6 +462,24 @@ def main() -> None:
         sys.exit(1)
 
     first = argv[0].lower()
+
+    # Serve command: start REST API server
+    if first == "serve":
+        port_str = _parse_opt_arg("--port") or "8000"
+        host = _parse_opt_arg("--host") or "0.0.0.0"
+        reload = "--reload" in options
+        try:
+            port = int(port_str)
+        except ValueError:
+            print(f"Error: --port must be an integer, got {port_str!r}", file=sys.stderr)
+            sys.exit(1)
+        uvicorn.run(
+            "claim_agent.api.server:app",
+            host=host,
+            port=port,
+            reload=reload,
+        )
+        return
 
     # Commands that require a claim_id argument
     if first in ("status", "history", "reprocess"):

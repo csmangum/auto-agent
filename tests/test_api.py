@@ -454,6 +454,15 @@ class TestHealthEndpoint:
         assert resp.json()["status"] == "ok"
 
 
+class TestOpenAPIEndpoints:
+    def test_openapi_spec_accessible(self, client):
+        """OpenAPI spec is available at /api/openapi.json."""
+        resp = client.get("/api/openapi.json")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "paths" in data
+
+
 # -------------------------------------------------------------------
 # API Key Auth (when CLAIMS_API_KEY or API_KEYS is set)
 # -------------------------------------------------------------------
@@ -496,6 +505,23 @@ class TestApiKeyAuth:
         resp = client.get("/api/claims/stats", headers={"X-API-Key": "wrong-key"})
         assert resp.status_code == 401
         assert "Invalid" in resp.json()["detail"]
+
+    def test_post_claims_requires_key_when_auth_enabled(self, client, monkeypatch):
+        """POST /api/claims returns 401 when auth is required and no key provided."""
+        monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        payload = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Rear-ended at stoplight",
+            "damage_description": "Rear bumper damage",
+        }
+        resp = client.post("/api/claims", json=payload)
+        assert resp.status_code == 401
 
 
 # -------------------------------------------------------------------
@@ -725,6 +751,68 @@ VALID_CLAIM_PAYLOAD = {
     "damage_description": "Rear bumper damage",
     "estimated_damage": 2500.0,
 }
+
+
+# -------------------------------------------------------------------
+# POST /api/claims (JSON body)
+# -------------------------------------------------------------------
+
+
+class TestPostClaimsJson:
+    """Tests for POST /api/claims with ClaimInput JSON body."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_workflow_for_class(self, monkeypatch):
+        mock_result = {
+            "claim_id": "CLM-JSON-MOCK",
+            "claim_type": "new",
+            "status": "open",
+            "summary": "Claim processed successfully.",
+        }
+        import claim_agent.api.routes.claims as claims_mod
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        yield
+
+    def test_post_claims_valid_returns_result(self, client, monkeypatch, tmp_path):
+        """Valid ClaimInput JSON returns claim_id and processing result."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+
+        resp = client.post("/api/claims", json=VALID_CLAIM_PAYLOAD)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-JSON-MOCK"
+        assert data["claim_type"] == "new"
+        assert data["status"] == "open"
+
+    def test_post_claims_invalid_returns_422(self, client, monkeypatch):
+        """Missing required field returns 422 with validation detail."""
+        bad_claim = {**VALID_CLAIM_PAYLOAD}
+        del bad_claim["policy_number"]
+        resp = client.post("/api/claims", json=bad_claim)
+        assert resp.status_code == 422
+        assert "detail" in resp.json()
+
+    def test_post_claims_async_returns_claim_id_only(self, client, monkeypatch, tmp_path):
+        """POST /api/claims?async=true returns claim_id immediately, processes in background."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+
+        resp = client.post("/api/claims", json=VALID_CLAIM_PAYLOAD, params={"async": "true"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "claim_id" in data
+        assert data["claim_id"].startswith("CLM-")
+        assert "claim_type" not in data
+        assert "status" not in data
+
+    def test_post_claims_validation_error_returns_422(self, client, monkeypatch):
+        """ClaimInput validation errors produce 422 (FastAPI default)."""
+        bad_claim = {**VALID_CLAIM_PAYLOAD, "vehicle_year": "not-a-number"}
+        resp = client.post("/api/claims", json=bad_claim)
+        assert resp.status_code == 422
 
 
 class TestProcessClaimEndpoint:
