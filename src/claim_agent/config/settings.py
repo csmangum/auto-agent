@@ -177,7 +177,14 @@ def get_retention_period_years() -> int:
     raw = os.environ.get("RETENTION_PERIOD_YEARS", "").strip()
     if raw:
         try:
-            return int(raw)
+            value = int(raw)
+            if value < 1:
+                _log.warning(
+                    "RETENTION_PERIOD_YEARS must be >= 1 (got %r); using default 5.",
+                    raw,
+                )
+            else:
+                return value
         except ValueError:
             _log.warning(
                 "RETENTION_PERIOD_YEARS is set but invalid (%r); using compliance/default.",
@@ -191,7 +198,14 @@ def get_retention_period_years() -> int:
             ecr = data.get("electronic_claims_requirements", {})
             for p in ecr.get("provisions", []):
                 if p.get("id") == "ECR-003" and "retention_period_years" in p:
-                    return int(p["retention_period_years"])
+                    value = int(p["retention_period_years"])
+                    if value >= 1:
+                        return value
+                    _log.warning(
+                        "Compliance retention_period_years must be >= 1 (got %s); using default 5.",
+                        value,
+                    )
+                    break
     except (ImportError, TypeError, ValueError, KeyError) as e:
         _log.warning(
             "Could not load retention period from compliance config: %s; using default 5 years.",

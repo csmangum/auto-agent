@@ -678,6 +678,8 @@ class ClaimRepository:
             if row is None:
                 raise ValueError(f"Claim not found: {claim_id}")
             old_status = row["status"]
+            if old_status == STATUS_ARCHIVED:
+                return
             conn.execute(
                 """
                 UPDATE claims SET status = ?, archived_at = datetime('now'), updated_at = datetime('now')

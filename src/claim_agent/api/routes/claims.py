@@ -146,7 +146,7 @@ def list_claims(
     if status:
         conditions.append("status = ?")
         params.append(status)
-    elif not include_archived:
+    if not include_archived and (status is None or status != STATUS_ARCHIVED):
         conditions.append("status != ?")
         params.append(STATUS_ARCHIVED)
     if claim_type:

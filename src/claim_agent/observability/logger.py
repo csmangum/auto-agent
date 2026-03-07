@@ -43,11 +43,12 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON with claim context."""
+        mask_pii = get_mask_pii()
         raw_message = record.getMessage()
         log_data: dict[str, Any] = {
             "level": record.levelname,
             "logger": record.name,
-            "message": mask_text(raw_message) if get_mask_pii() else raw_message,
+            "message": mask_text(raw_message) if mask_pii else raw_message,
         }
 
         if self.include_timestamp:
@@ -60,7 +61,7 @@ class StructuredFormatter(logging.Formatter):
             log_data["claim_type"] = claim_ctx.get("claim_type")
             policy_number = claim_ctx.get("policy_number")
             vin = claim_ctx.get("vin")
-            if get_mask_pii():
+            if mask_pii:
                 policy_number = mask_policy_number(policy_number) if policy_number else None
                 vin = mask_vin(vin) if vin else None
             if policy_number is not None:
@@ -77,7 +78,7 @@ class StructuredFormatter(logging.Formatter):
             log_data["claim_type"] = record.claim_type
         if hasattr(record, "extra_data") and record.extra_data:
             extra = record.extra_data
-            log_data["data"] = mask_dict(extra) if get_mask_pii() and isinstance(extra, dict) else extra
+            log_data["data"] = mask_dict(extra) if mask_pii and isinstance(extra, dict) else extra
 
         # Add exception info if present
         if record.exc_info:
@@ -98,6 +99,7 @@ class HumanReadableFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format log record with claim context prefix."""
+        mask_pii = get_mask_pii()
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         
         # Build context prefix
@@ -112,7 +114,7 @@ class HumanReadableFormatter(logging.Formatter):
         if claim_type:
             ctx_parts.append(f"type={claim_type}")
 
-        if get_mask_pii():
+        if mask_pii:
             policy_number = claim_ctx.get("policy_number")
             vin = claim_ctx.get("vin")
             if policy_number:
@@ -133,13 +135,13 @@ class HumanReadableFormatter(logging.Formatter):
         
         # Format message
         message = record.getMessage()
-        if get_mask_pii():
+        if mask_pii:
             message = mask_text(message)
         
         # Add extra data if present (mask PII in extra_data)
         if hasattr(record, "extra_data") and record.extra_data:
             extra = record.extra_data
-            if get_mask_pii() and isinstance(extra, dict):
+            if mask_pii and isinstance(extra, dict):
                 extra = mask_dict(extra)
             message += f" | {extra}"
 
