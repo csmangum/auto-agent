@@ -165,7 +165,7 @@ def list_claims(
 def get_review_queue(
     assignee: Optional[str] = Query(None, description="Filter by assignee"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
-    older_than_hours: Optional[float] = Query(None, description="Claims older than N hours in queue"),
+    older_than_hours: Optional[float] = Query(None, ge=0, description="Claims older than N hours in queue"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
@@ -231,16 +231,16 @@ async def approve_review(
     claim = repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        repo.perform_adjuster_action(claim_id, "approve", actor_id=actor_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
     claim_data = claim_data_from_row(claim)
     try:
         ClaimInput.model_validate(claim_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        repo.perform_adjuster_action(claim_id, "approve", actor_id=actor_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     result = run_claim_workflow(
         claim_data,
         existing_claim_id=claim_id,

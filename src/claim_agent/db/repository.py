@@ -365,7 +365,7 @@ class ClaimRepository:
         """
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT status FROM claims WHERE id = ?", (claim_id,)
+                "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if row is None:
                 raise ValueError(f"Claim not found: {claim_id}")
@@ -378,55 +378,162 @@ class ClaimRepository:
                 )
 
             if action == "approve":
-                self.insert_audit_entry(
-                    claim_id,
-                    AUDIT_EVENT_APPROVAL,
-                    old_status=old_status,
-                    new_status=None,
-                    details="Approved for continued processing",
-                    actor_id=actor_id,
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (claim_id, AUDIT_EVENT_APPROVAL, old_status, None, "Approved for continued processing", actor_id, None, None),
                 )
                 return
             if action == "reject":
-                self.update_claim_status(
-                    claim_id, STATUS_DENIED, details=reason or "Rejected by adjuster", actor_id=actor_id
+                old_claim_type = row["claim_type"]
+                old_payout = row["payout_amount"]
+                before_state = {
+                    "status": old_status,
+                    "claim_type": old_claim_type,
+                    "payout_amount": old_payout,
+                }
+                after_state = {
+                    "status": STATUS_DENIED,
+                    "claim_type": old_claim_type,
+                    "payout_amount": old_payout,
+                }
+                conn.execute(
+                    """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
+                    (STATUS_DENIED, claim_id),
                 )
-                self.insert_audit_entry(
-                    claim_id,
-                    AUDIT_EVENT_REJECTION,
-                    old_status=old_status,
-                    new_status=STATUS_DENIED,
-                    details=reason or "",
-                    actor_id=actor_id,
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id,
+                        AUDIT_EVENT_STATUS_CHANGE,
+                        old_status,
+                        STATUS_DENIED,
+                        reason or "Rejected by adjuster",
+                        actor_id,
+                        json.dumps(before_state),
+                        json.dumps(after_state),
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id,
+                        AUDIT_EVENT_REJECTION,
+                        old_status,
+                        STATUS_DENIED,
+                        reason or "",
+                        actor_id,
+                        None,
+                        None,
+                    ),
                 )
                 return
             if action == "request_info":
-                self.update_claim_status(
-                    claim_id, STATUS_PENDING_INFO, details=note or "Requested more information", actor_id=actor_id
+                old_claim_type = row["claim_type"]
+                old_payout = row["payout_amount"]
+                before_state = {
+                    "status": old_status,
+                    "claim_type": old_claim_type,
+                    "payout_amount": old_payout,
+                }
+                after_state = {
+                    "status": STATUS_PENDING_INFO,
+                    "claim_type": old_claim_type,
+                    "payout_amount": old_payout,
+                }
+                conn.execute(
+                    """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
+                    (STATUS_PENDING_INFO, claim_id),
                 )
-                self.insert_audit_entry(
-                    claim_id,
-                    AUDIT_EVENT_REQUEST_INFO,
-                    old_status=old_status,
-                    new_status=STATUS_PENDING_INFO,
-                    details=note or "",
-                    actor_id=actor_id,
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id,
+                        AUDIT_EVENT_STATUS_CHANGE,
+                        old_status,
+                        STATUS_PENDING_INFO,
+                        note or "Requested more information",
+                        actor_id,
+                        json.dumps(before_state),
+                        json.dumps(after_state),
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id,
+                        AUDIT_EVENT_REQUEST_INFO,
+                        old_status,
+                        STATUS_PENDING_INFO,
+                        note or "",
+                        actor_id,
+                        None,
+                        None,
+                    ),
                 )
                 return
             if action == "escalate_to_siu":
-                self.update_claim_status(
-                    claim_id,
-                    STATUS_UNDER_INVESTIGATION,
-                    details="Escalated to SIU",
-                    actor_id=actor_id,
+                old_claim_type = row["claim_type"]
+                old_payout = row["payout_amount"]
+                before_state = {
+                    "status": old_status,
+                    "claim_type": old_claim_type,
+                    "payout_amount": old_payout,
+                }
+                after_state = {
+                    "status": STATUS_UNDER_INVESTIGATION,
+                    "claim_type": old_claim_type,
+                    "payout_amount": old_payout,
+                }
+                conn.execute(
+                    """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
+                    (STATUS_UNDER_INVESTIGATION, claim_id),
                 )
-                self.insert_audit_entry(
-                    claim_id,
-                    AUDIT_EVENT_ESCALATE_TO_SIU,
-                    old_status=old_status,
-                    new_status=STATUS_UNDER_INVESTIGATION,
-                    details="Referred to Special Investigations Unit",
-                    actor_id=actor_id,
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id,
+                        AUDIT_EVENT_STATUS_CHANGE,
+                        old_status,
+                        STATUS_UNDER_INVESTIGATION,
+                        "Escalated to SIU",
+                        actor_id,
+                        json.dumps(before_state),
+                        json.dumps(after_state),
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id,
+                        AUDIT_EVENT_ESCALATE_TO_SIU,
+                        old_status,
+                        STATUS_UNDER_INVESTIGATION,
+                        "Referred to Special Investigations Unit",
+                        actor_id,
+                        None,
+                        None,
+                    ),
                 )
                 return
             raise ValueError(f"Unknown adjuster action: {action}")
@@ -450,6 +557,8 @@ class ClaimRepository:
             conditions.append("priority = ?")
             params.append(priority)
         if older_than_hours is not None:
+            if older_than_hours < 0:
+                raise ValueError("older_than_hours must be non-negative")
             conditions.append("review_started_at IS NOT NULL AND datetime(review_started_at) <= datetime('now', ?)")
             params.append(f"-{older_than_hours} hours")
         where = " AND ".join(conditions)
