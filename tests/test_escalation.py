@@ -251,6 +251,39 @@ def test_escalation_output_structure():
     assert "recommended_action" in data
 
 
+def test_evaluate_escalation_uses_explicit_router_confidence():
+    """When router_confidence is passed, it overrides keyword inference."""
+    from claim_agent.tools.logic import evaluate_escalation_impl
+
+    claim_data = {
+        "policy_number": "POL-001",
+        "vin": "UNIQUEVIN999NOCLAIMS",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Bumper damage.",
+        "damage_description": "Bumper scratch.",
+        "estimated_damage": 500.0,
+    }
+    # Router output with uncertainty keywords would normally give low confidence
+    router_output = "possibly new. Unclear."
+    # But explicit confidence 0.9 should override -> no low_confidence reason
+    result = evaluate_escalation_impl(
+        claim_data, router_output, None, None, router_confidence=0.9
+    )
+    data = json.loads(result)
+    assert "low_confidence" not in data["escalation_reasons"]
+    assert data["needs_review"] is False
+
+    # Explicit low confidence should trigger
+    result2 = evaluate_escalation_impl(
+        claim_data, "new\nClear.", None, None, router_confidence=0.5
+    )
+    data2 = json.loads(result2)
+    assert "low_confidence" in data2["escalation_reasons"]
+
+
 def test_escalation_output_model_validate_from_main_crew_dict():
     """EscalationOutput validates the dict shape returned by main_crew when escalated."""
     from claim_agent.models.claim import EscalationOutput
@@ -268,6 +301,42 @@ def test_escalation_output_model_validate_from_main_crew_dict():
     assert out.needs_review is True
     assert out.priority == "low"
     assert out.priority in ("low", "medium", "high", "critical")
+
+
+def test_run_claim_workflow_escalates_on_low_router_confidence(_temp_claims_db):
+    """When router returns low confidence (< threshold), claim escalates before workflow."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+
+    claim_data = {
+        "policy_number": "POL-001",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Minor damage.",
+        "damage_description": "Bumper scratch.",
+        "estimated_damage": 500.0,
+    }
+    # Mock router to return JSON with low confidence (0.5 < 0.7 threshold)
+    low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear damage."}'
+    no_escalation = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
+        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
+            with patch("claim_agent.crews.main_crew.evaluate_escalation_impl", return_value=no_escalation):
+                mock_llm.return_value = MagicMock()
+                mock_router.return_value.kickoff.return_value = MagicMock(raw=low_conf_raw)
+
+                result = run_claim_workflow(claim_data)
+
+    assert result["status"] == STATUS_NEEDS_REVIEW
+    assert result["needs_review"] is True
+    assert "low_router_confidence" in result.get("escalation_reasons", [])
+    assert "0.5" in result.get("summary", "") or "threshold" in result.get("summary", "").lower()
 
 
 @pytest.mark.skipif(SKIP_WORKFLOW, reason="OPENAI_API_KEY not set; skip run_claim_workflow integration test")

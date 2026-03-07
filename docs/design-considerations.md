@@ -6,17 +6,16 @@ This document captures design tradeoffs, known limitations, and future considera
 
 ### Current Behavior
 
-The router classifies claims into one of five types. There is no explicit confidence score from the LLM; instead, `claim_agent.tools.logic` uses `_parse_router_confidence()` to infer confidence from router output text. Keywords like "possibly", "unclear", "might be", "unsure", "could be", and "uncertain" reduce the inferred confidence. This feeds into the escalation check.
+The router returns structured JSON with `claim_type`, `confidence` (0.0–1.0), and `reasoning` via `output_pydantic=RouterOutput`. Confidence is explicit from the LLM, not inferred from keywords. When the LLM returns non-JSON or legacy format, the system falls back to `_parse_claim_type()` and `_parse_router_confidence()` for backward compatibility.
 
-### Limitation
+**Confidence threshold:** `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7). When confidence < threshold: escalate to `needs_review` for human classification (Option A).
 
-Misclassification sends the claim to the wrong crew. There is no re-routing, validation step, or fallback. If the router classifies a claim as `partial_loss` but it is actually fraud, the Partial Loss crew runs.
+**Optional validation:** `ROUTER_VALIDATION_ENABLED=true` runs a second LLM call. If validation returns confidence ≥ threshold, the workflow proceeds with the validated classification (re-classification if validation disagrees). If validation also returns low confidence, the claim is escalated.
 
-### Future Options
+### Misclassification Recovery
 
-- Explicit confidence in router output (structured JSON)
-- Confidence threshold for re-classification
-- Lightweight validation step before workflow execution
+- **Original vs final classification:** When validation disagrees with the router, the `router_reclassified` event logs both. The workflow proceeds with the validated classification.
+- **Escalation:** Low-confidence claims are escalated before any workflow runs, so misclassification does not send the claim to the wrong crew.
 
 ## Escalation Scope
 
@@ -73,7 +72,7 @@ If a crew fails partway through (e.g., task 2 of 4 succeeds, task 3 times out), 
 
 | Area       | Current                                 | Limitation                                                |
 | ---------- | --------------------------------------- | --------------------------------------------------------- |
-| Router     | Keyword-based confidence inference      | No explicit confidence; misclassification not recoverable |
+| Router     | Structured JSON (claim_type, confidence, reasoning); threshold + optional validation | — |
 | Escalation | Pre-workflow + mid-workflow (escalate_claim tool) | — |
 | Data       | SQLite (claims) + Mock JSON (reference) | Mock DB role not obvious from architecture diagram        |
 | Reprocess  | Full re-run, append to workflow_runs    | No partial recovery or resume                             |
