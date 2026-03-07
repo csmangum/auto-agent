@@ -251,6 +251,18 @@ def test_escalation_output_structure():
     assert "recommended_action" in data
 
 
+def test_extract_json_handles_braces_in_reasoning():
+    """_extract_json_from_text handles JSON with braces in string values (e.g. reasoning)."""
+    from claim_agent.tools.logic import _extract_json_from_text
+
+    text = 'Here is the result: {"claim_type": "partial_loss", "confidence": 0.9, "reasoning": "Damage is {severe}."}'
+    parsed = _extract_json_from_text(text)
+    assert parsed is not None
+    assert parsed["claim_type"] == "partial_loss"
+    assert parsed["confidence"] == 0.9
+    assert parsed["reasoning"] == "Damage is {severe}."
+
+
 def test_evaluate_escalation_uses_explicit_router_confidence():
     """When router_confidence is passed, it overrides keyword inference."""
     from claim_agent.tools.logic import evaluate_escalation_impl

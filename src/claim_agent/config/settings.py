@@ -46,6 +46,7 @@ def get_router_config() -> dict[str, Any]:
     return {
         "confidence_threshold": _float("ROUTER_CONFIDENCE_THRESHOLD", 0.7),
         "validation_enabled": os.environ.get("ROUTER_VALIDATION_ENABLED", "false").strip().lower() in ("true", "1", "yes"),
+        "escalation_sla_hours": _int("ROUTER_ESCALATION_SLA_HOURS", 48),
     }
 
 

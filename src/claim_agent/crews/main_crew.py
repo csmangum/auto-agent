@@ -44,7 +44,9 @@ from claim_agent.db.constants import (
 from claim_agent.tools.logic import (
     evaluate_escalation_impl,
     detect_fraud_indicators_impl,
+    normalize_claim_type,
     validate_router_classification_impl,
+    _parse_router_confidence,
 )
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.exceptions import MidWorkflowEscalation
@@ -196,22 +198,6 @@ def _parse_claim_type(raw_output: str) -> str:
     return ClaimType.NEW.value
 
 
-def _normalize_claim_type(value: str) -> str:
-    """Normalize claim_type string to canonical value."""
-    v = (value or "").strip().lower().replace(" ", "_")
-    if v == "total_loss":
-        return ClaimType.TOTAL_LOSS.value
-    if v == "partial_loss":
-        return ClaimType.PARTIAL_LOSS.value
-    if v == "new":
-        return ClaimType.NEW.value
-    if v == "duplicate":
-        return ClaimType.DUPLICATE.value
-    if v == "fraud":
-        return ClaimType.FRAUD.value
-    return ClaimType.NEW.value
-
-
 def _escalate_low_router_confidence(
     claim_id: str,
     claim_type: str,
@@ -227,6 +213,8 @@ def _escalate_low_router_confidence(
     actor_id: str,
 ) -> None:
     """Persist low router confidence escalation to DB."""
+    router_config = get_router_config()
+    sla_hours = router_config.get("escalation_sla_hours", 48)
     details = json.dumps({
         "escalation_reasons": ["low_router_confidence"],
         "priority": "medium",
@@ -241,7 +229,7 @@ def _escalate_low_router_confidence(
     repo.update_claim_status(
         claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details, actor_id=actor_id
     )
-    hours = 48
+    hours = sla_hours
     due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
     repo.update_claim_review_metadata(
         claim_id,
@@ -267,13 +255,18 @@ def _escalate_low_router_confidence_response(
     raw_output: str,
     router_confidence: float,
     confidence_threshold: float,
+    router_reasoning: str = "",
 ) -> dict:
     """Build response dict for low router confidence escalation."""
     details = json.dumps({
         "escalation_reasons": ["low_router_confidence"],
         "priority": "medium",
+        "recommended_action": "Confirm routing classification. Router confidence below threshold.",
+        "fraud_indicators": [],
         "router_confidence": router_confidence,
         "router_confidence_threshold": confidence_threshold,
+        "router_claim_type": claim_type,
+        "router_reasoning": router_reasoning,
     })
     return {
         "claim_id": claim_id,
@@ -299,7 +292,7 @@ def _parse_router_output(result: Any, raw_output: str) -> tuple[str, float, str]
     if tasks_output and isinstance(tasks_output, list) and len(tasks_output) > 0:
         first_output = getattr(tasks_output[0], "output", None)
         if isinstance(first_output, RouterOutput):
-            claim_type = _normalize_claim_type(first_output.claim_type)
+            claim_type = normalize_claim_type(first_output.claim_type)
             confidence = max(0.0, min(1.0, float(first_output.confidence)))
             reasoning = (first_output.reasoning or "").strip()
             return claim_type, confidence, reasoning
@@ -314,7 +307,7 @@ def _parse_router_output(result: Any, raw_output: str) -> tuple[str, float, str]
             text = text.split("```")[1].split("```")[0].strip()
         parsed = json.loads(text)
         if isinstance(parsed, dict):
-            claim_type = _normalize_claim_type(parsed.get("claim_type", ""))
+            claim_type = normalize_claim_type(parsed.get("claim_type", ""))
             conf_val = parsed.get("confidence")
             if conf_val is not None:
                 try:
@@ -330,7 +323,6 @@ def _parse_router_output(result: Any, raw_output: str) -> tuple[str, float, str]
 
     # 3. Fallback: legacy parsing (no explicit confidence)
     claim_type = _parse_claim_type(raw_output)
-    from claim_agent.tools.logic import _parse_router_confidence
     confidence = _parse_router_confidence(raw_output)
     reasoning = raw_output.strip().split("\n", 1)[-1].strip() if "\n" in raw_output else ""
     return claim_type, confidence, reasoning
@@ -1023,9 +1015,11 @@ def run_claim_workflow(
                             claim_type,
                             router_confidence,
                             router_reasoning,
+                            metrics=metrics,
+                            claim_id=claim_id,
                         )
                         val_data = json.loads(val_json)
-                        val_claim_type = _normalize_claim_type(val_data.get("claim_type", claim_type))
+                        val_claim_type = normalize_claim_type(val_data.get("claim_type", claim_type))
                         val_confidence = max(0.0, min(1.0, float(val_data.get("confidence", 0))))
                         val_agrees = val_data.get("validation_agrees", True)
                         if val_confidence >= confidence_threshold:
@@ -1050,6 +1044,7 @@ def run_claim_workflow(
                                 "original_router_output": original_router_output,
                                 "validation": val_data,
                             })
+                            _check_token_budget(claim_id, metrics, llm)
                             # Proceed to Step 1b (skip escalation)
                         else:
                             # Validation also low confidence -> escalate
@@ -1060,8 +1055,9 @@ def run_claim_workflow(
                             )
                             return _escalate_low_router_confidence_response(
                                 claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
+                                router_reasoning=router_reasoning,
                             )
-                    except (json.JSONDecodeError, TypeError, KeyError, ValueError) as e:
+                    except (json.JSONDecodeError, TypeError, ValueError) as e:
                         logger.warning("Router validation parse failed: %s", e)
                         _escalate_low_router_confidence(
                             claim_id, claim_type, raw_output, router_confidence,
@@ -1070,6 +1066,7 @@ def run_claim_workflow(
                         )
                         return _escalate_low_router_confidence_response(
                             claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
+                            router_reasoning=router_reasoning,
                         )
                 else:
                     _escalate_low_router_confidence(
@@ -1079,6 +1076,7 @@ def run_claim_workflow(
                     )
                     return _escalate_low_router_confidence_response(
                         claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
+                        router_reasoning=router_reasoning,
                     )
 
             # Step 1b: Escalation check (HITL) — skip for fraud so the fraud crew runs and performs its own assessment

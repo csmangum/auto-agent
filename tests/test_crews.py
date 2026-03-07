@@ -412,16 +412,16 @@ def test_parse_router_output_pydantic_from_tasks_output():
 
 
 def test_normalize_claim_type():
-    """_normalize_claim_type maps variants to canonical values."""
-    from claim_agent.crews.main_crew import _normalize_claim_type
+    """normalize_claim_type maps variants to canonical values."""
+    from claim_agent.tools.logic import normalize_claim_type
 
-    assert _normalize_claim_type("total_loss") == "total_loss"
-    assert _normalize_claim_type("total loss") == "total_loss"
-    assert _normalize_claim_type("partial_loss") == "partial_loss"
-    assert _normalize_claim_type("new") == "new"
-    assert _normalize_claim_type("duplicate") == "duplicate"
-    assert _normalize_claim_type("fraud") == "fraud"
-    assert _normalize_claim_type("unknown") == "new"
+    assert normalize_claim_type("total_loss") == "total_loss"
+    assert normalize_claim_type("total loss") == "total_loss"
+    assert normalize_claim_type("partial_loss") == "partial_loss"
+    assert normalize_claim_type("new") == "new"
+    assert normalize_claim_type("duplicate") == "duplicate"
+    assert normalize_claim_type("fraud") == "fraud"
+    assert normalize_claim_type("unknown") == "new"
 
 
 def test_check_for_duplicates_empty_vin_returns_empty():
