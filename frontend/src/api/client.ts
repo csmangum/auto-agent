@@ -15,6 +15,8 @@ import type {
   SkillsListResponse,
   SkillDetailResponse,
   AgentsCatalogResponse,
+  AuditEvent,
+  WorkflowRun,
 } from './types';
 
 const BASE = '/api';
@@ -86,3 +88,102 @@ export const getSystemHealth = (): Promise<unknown> =>
 
 export const getAgentsCatalog = (): Promise<AgentsCatalogResponse> =>
   fetchJSON<AgentsCatalogResponse>('/system/agents');
+
+// ---------------------------------------------------------------------------
+// Claim submission and realtime stream
+// ---------------------------------------------------------------------------
+
+export interface ProcessClaimPayload {
+  policy_number: string;
+  vin: string;
+  vehicle_year: number;
+  vehicle_make: string;
+  vehicle_model: string;
+  incident_date: string;
+  incident_description: string;
+  damage_description: string;
+  estimated_damage?: number;
+  attachments?: Array<{ url: string; type: string; description?: string }>;
+}
+
+export interface ProcessClaimAsyncResponse {
+  claim_id: string;
+}
+
+export interface ClaimStreamUpdate {
+  claim?: Claim;
+  history?: AuditEvent[];
+  workflows?: WorkflowRun[];
+  done?: boolean;
+  status?: string;
+  error?: string;
+}
+
+export async function processClaimAsync(
+  payload: ProcessClaimPayload,
+  files?: File[]
+): Promise<ProcessClaimAsyncResponse> {
+  const formData = new FormData();
+  formData.append('claim', JSON.stringify(payload));
+  if (files) {
+    for (const f of files) {
+      formData.append('files', f);
+    }
+  }
+  const res = await fetch(`${BASE}/claims/process/async`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return res.json() as Promise<ProcessClaimAsyncResponse>;
+}
+
+export function streamClaimUpdates(
+  claimId: string,
+  onUpdate: (data: ClaimStreamUpdate) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+
+  fetch(`${BASE}/claims/${claimId}/stream`, {
+    signal: controller.signal,
+    credentials: 'include',
+  })
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`Stream error ${res.status}`);
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() ?? '';
+        for (const block of lines) {
+          const match = block.match(/^data: (.+)$/m);
+          if (match) {
+            try {
+              const data = JSON.parse(match[1]) as ClaimStreamUpdate;
+              onUpdate(data);
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') {
+        onError?.(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+
+  return abort;
+}
