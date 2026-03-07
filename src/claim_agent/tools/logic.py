@@ -822,6 +822,7 @@ def perform_fraud_assessment_impl(
         "recommended_action": "",
         "should_block": False,
         "siu_referral": False,
+        "siu_case_id": None,
         "assessment_details": {},
     }
     

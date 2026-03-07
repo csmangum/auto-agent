@@ -7,6 +7,7 @@ Supported values: ``mock``, ``stub``. Unknown values raise ValueError.
 """
 
 import threading
+from typing import Any, TypeVar
 
 from claim_agent.adapters.base import (
     PartsAdapter,
@@ -18,12 +19,9 @@ from claim_agent.adapters.base import (
 from claim_agent.config.settings import VALID_ADAPTER_BACKENDS, get_adapter_backend
 
 _lock = threading.Lock()
+_cache: dict[str, Any] = {}
 
-_policy_adapter: PolicyAdapter | None = None
-_valuation_adapter: ValuationAdapter | None = None
-_repair_shop_adapter: RepairShopAdapter | None = None
-_parts_adapter: PartsAdapter | None = None
-_siu_adapter: SIUAdapter | None = None
+T = TypeVar('T')
 
 
 def _resolve_backend(adapter_name: str) -> str:
@@ -36,98 +34,55 @@ def _resolve_backend(adapter_name: str) -> str:
     return backend
 
 
-def get_policy_adapter() -> PolicyAdapter:
-    global _policy_adapter
-    if _policy_adapter is not None:
-        return _policy_adapter
+def _get_or_create_adapter(
+    adapter_name: str,
+    stub_class: type[T],
+    mock_class: type[T],
+) -> T:
+    if adapter_name in _cache:
+        return _cache[adapter_name]
     with _lock:
-        if _policy_adapter is not None:
-            return _policy_adapter
-        backend = _resolve_backend("policy")
+        if adapter_name in _cache:
+            return _cache[adapter_name]
+        backend = _resolve_backend(adapter_name)
         if backend == "stub":
-            from claim_agent.adapters.stub import StubPolicyAdapter
-            _policy_adapter = StubPolicyAdapter()
+            _cache[adapter_name] = stub_class()
         else:
-            from claim_agent.adapters.mock.policy import MockPolicyAdapter
-            _policy_adapter = MockPolicyAdapter()
-        return _policy_adapter
+            _cache[adapter_name] = mock_class()
+        return _cache[adapter_name]
+
+
+def get_policy_adapter() -> PolicyAdapter:
+    from claim_agent.adapters.stub import StubPolicyAdapter
+    from claim_agent.adapters.mock.policy import MockPolicyAdapter
+    return _get_or_create_adapter("policy", StubPolicyAdapter, MockPolicyAdapter)
 
 
 def get_valuation_adapter() -> ValuationAdapter:
-    global _valuation_adapter
-    if _valuation_adapter is not None:
-        return _valuation_adapter
-    with _lock:
-        if _valuation_adapter is not None:
-            return _valuation_adapter
-        backend = _resolve_backend("valuation")
-        if backend == "stub":
-            from claim_agent.adapters.stub import StubValuationAdapter
-            _valuation_adapter = StubValuationAdapter()
-        else:
-            from claim_agent.adapters.mock.valuation import MockValuationAdapter
-            _valuation_adapter = MockValuationAdapter()
-        return _valuation_adapter
+    from claim_agent.adapters.stub import StubValuationAdapter
+    from claim_agent.adapters.mock.valuation import MockValuationAdapter
+    return _get_or_create_adapter("valuation", StubValuationAdapter, MockValuationAdapter)
 
 
 def get_repair_shop_adapter() -> RepairShopAdapter:
-    global _repair_shop_adapter
-    if _repair_shop_adapter is not None:
-        return _repair_shop_adapter
-    with _lock:
-        if _repair_shop_adapter is not None:
-            return _repair_shop_adapter
-        backend = _resolve_backend("repair_shop")
-        if backend == "stub":
-            from claim_agent.adapters.stub import StubRepairShopAdapter
-            _repair_shop_adapter = StubRepairShopAdapter()
-        else:
-            from claim_agent.adapters.mock.repair_shop import MockRepairShopAdapter
-            _repair_shop_adapter = MockRepairShopAdapter()
-        return _repair_shop_adapter
+    from claim_agent.adapters.stub import StubRepairShopAdapter
+    from claim_agent.adapters.mock.repair_shop import MockRepairShopAdapter
+    return _get_or_create_adapter("repair_shop", StubRepairShopAdapter, MockRepairShopAdapter)
 
 
 def get_parts_adapter() -> PartsAdapter:
-    global _parts_adapter
-    if _parts_adapter is not None:
-        return _parts_adapter
-    with _lock:
-        if _parts_adapter is not None:
-            return _parts_adapter
-        backend = _resolve_backend("parts")
-        if backend == "stub":
-            from claim_agent.adapters.stub import StubPartsAdapter
-            _parts_adapter = StubPartsAdapter()
-        else:
-            from claim_agent.adapters.mock.parts import MockPartsAdapter
-            _parts_adapter = MockPartsAdapter()
-        return _parts_adapter
+    from claim_agent.adapters.stub import StubPartsAdapter
+    from claim_agent.adapters.mock.parts import MockPartsAdapter
+    return _get_or_create_adapter("parts", StubPartsAdapter, MockPartsAdapter)
 
 
 def get_siu_adapter() -> SIUAdapter:
-    global _siu_adapter
-    if _siu_adapter is not None:
-        return _siu_adapter
-    with _lock:
-        if _siu_adapter is not None:
-            return _siu_adapter
-        backend = _resolve_backend("siu")
-        if backend == "stub":
-            from claim_agent.adapters.stub import StubSIUAdapter
-            _siu_adapter = StubSIUAdapter()
-        else:
-            from claim_agent.adapters.mock.siu import MockSIUAdapter
-            _siu_adapter = MockSIUAdapter()
-        return _siu_adapter
+    from claim_agent.adapters.stub import StubSIUAdapter
+    from claim_agent.adapters.mock.siu import MockSIUAdapter
+    return _get_or_create_adapter("siu", StubSIUAdapter, MockSIUAdapter)
 
 
 def reset_adapters() -> None:
     """Clear cached singletons (useful in tests)."""
-    global _policy_adapter, _valuation_adapter, _repair_shop_adapter
-    global _parts_adapter, _siu_adapter
     with _lock:
-        _policy_adapter = None
-        _valuation_adapter = None
-        _repair_shop_adapter = None
-        _parts_adapter = None
-        _siu_adapter = None
+        _cache.clear()
