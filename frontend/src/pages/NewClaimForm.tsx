@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import StatusBadge from '../components/StatusBadge';
 import {
@@ -31,6 +31,7 @@ export default function NewClaimForm() {
   const [history, setHistory] = useState<AuditEvent[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowRun[]>([]);
   const [done, setDone] = useState(false);
+  const abortStreamRef = useRef<(() => void) | null>(null);
 
   const updateField = useCallback(
     <K extends keyof ProcessClaimPayload>(key: K, value: ProcessClaimPayload[K]) => {
@@ -49,11 +50,16 @@ export default function NewClaimForm() {
     setWorkflows([]);
     setDone(false);
 
+    if (abortStreamRef.current) {
+      abortStreamRef.current();
+      abortStreamRef.current = null;
+    }
+
     try {
       const { claim_id } = await processClaimAsync(form, files.length ? files : undefined);
       setClaimId(claim_id);
 
-      streamClaimUpdates(
+      const abort = streamClaimUpdates(
         claim_id,
         (data: ClaimStreamUpdate) => {
           if (data.claim) setClaim(data.claim);
@@ -66,6 +72,7 @@ export default function NewClaimForm() {
           setDone(true);
         }
       );
+      abortStreamRef.current = abort;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit claim');
       setDone(true);
@@ -75,6 +82,10 @@ export default function NewClaimForm() {
   };
 
   const resetForm = () => {
+    if (abortStreamRef.current) {
+      abortStreamRef.current();
+      abortStreamRef.current = null;
+    }
     setForm(INITIAL_FORM);
     setFiles([]);
     setClaimId(null);
@@ -84,6 +95,14 @@ export default function NewClaimForm() {
     setDone(false);
     setError(null);
   };
+
+  useEffect(() => {
+    return () => {
+      if (abortStreamRef.current) {
+        abortStreamRef.current();
+      }
+    };
+  }, []);
 
   return (
     <div className="space-y-8">

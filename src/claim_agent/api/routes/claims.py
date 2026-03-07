@@ -33,6 +33,8 @@ _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 PRIORITY_VALUES = ("critical", "high", "medium", "low")
 
+_background_tasks: set[asyncio.Task] = set()
+
 
 def _resolve_attachment_urls(claim_dict: dict) -> dict:
     """Convert storage keys to fetchable URLs: presigned for S3, download endpoint for local."""
@@ -552,7 +554,9 @@ async def process_claim_async(
             actor_id=actor_id,
         )
 
-    asyncio.create_task(run_workflow_in_thread())
+    task = asyncio.create_task(run_workflow_in_thread())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return {"claim_id": claim_id}
 
 
@@ -574,20 +578,17 @@ async def _stream_claim_updates(claim_id: str):
 
             claim_dict = dict(claim_row)
             _resolve_attachment_urls(claim_dict)
-            claim_json = json.dumps(claim_dict)
 
             history_rows = conn.execute(
                 """SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at
                    FROM claim_audit_log WHERE claim_id = ? ORDER BY id ASC""",
                 (claim_id,),
             ).fetchall()
-            history_json = json.dumps([dict(r) for r in history_rows])
 
             wf_rows = conn.execute(
                 "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY id ASC",
                 (claim_id,),
             ).fetchall()
-            workflows_json = json.dumps([dict(r) for r in wf_rows])
 
         payload = {
             "claim": claim_dict,
