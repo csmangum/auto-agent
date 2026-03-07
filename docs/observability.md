@@ -8,7 +8,7 @@ For configuration details, see [Configuration](configuration.md). For MCP observ
 
 The observability module (`claim_agent.observability`) provides:
 
-- **Structured logging** – Logs tagged with `claim_id`, `claim_type`, and optional policy/context. Output can be human-readable or JSON for log aggregators.
+- **Structured logging** – Logs tagged with `claim_id`, `claim_type`, and optional policy/context. Output can be human-readable or JSON for log aggregators. PII (policy_number, vin) is masked when `CLAIM_AGENT_MASK_PII=true` (default).
 - **Tracing** – LangSmith integration for LLM traces and a LiteLLM callback so all LLM calls (via CrewAI) report real token usage and cost.
 - **Metrics** – Per-claim and global aggregates: LLM call count, tokens, estimated cost (USD), and latency (total, average, p50/p95/p99).
 
@@ -34,7 +34,7 @@ flowchart LR
 
 All logging within a claim run can carry claim context so you can filter or search by `claim_id` and `claim_type`.
 
-- **`claim_context(claim_id, claim_type=..., policy_number=..., correlation_id=..., **extra)`** – Context manager. While active, any log record from the observability logger includes this context. A **`correlation_id`** (UUID) is generated automatically if not provided, so all log lines for a run can be correlated.
+- **`claim_context(claim_id, claim_type=..., policy_number=..., vin=..., correlation_id=..., **extra)`** – Context manager. While active, any log record from the observability logger includes this context. A **`correlation_id`** (UUID) is generated automatically if not provided, so all log lines for a run can be correlated. When `CLAIM_AGENT_MASK_PII=true`, policy_number and vin are masked in log output.
 - **`get_logger(name, claim_id=..., structured=...)`** – Returns a `ClaimLogger` that adds claim fields to every log. You can also set `claim_id` / `claim_type` / context on the logger instance.
 - **`log_claim_event(logger, event, claim_id=..., level=..., **data)`** – Log a named event (e.g. `claim_created`, `workflow_started`) with optional extra key-value data.
 
