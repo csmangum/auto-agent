@@ -38,6 +38,19 @@ def _tuple_float(key: str, default: tuple[float, float]) -> tuple[float, float]:
 
 
 # ---------------------------------------------------------------------------
+# Router confidence
+# ---------------------------------------------------------------------------
+
+def get_router_config() -> dict[str, Any]:
+    """Router classification thresholds and behavior."""
+    return {
+        "confidence_threshold": _float("ROUTER_CONFIDENCE_THRESHOLD", 0.7),
+        "validation_enabled": os.environ.get("ROUTER_VALIDATION_ENABLED", "false").strip().lower() in ("true", "1", "yes"),
+        "escalation_sla_hours": _int("ROUTER_ESCALATION_SLA_HOURS", 48),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Escalation (HITL)
 # ---------------------------------------------------------------------------
 

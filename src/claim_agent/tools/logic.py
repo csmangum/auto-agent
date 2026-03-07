@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import re
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
@@ -30,6 +32,12 @@ from claim_agent.tools.data_loader import load_california_compliance
 from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.claim import ClaimType
+
+try:
+    import litellm
+except ImportError:
+    litellm = None  # type: ignore[assignment]
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -368,6 +376,136 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
 # --- Escalation (HITL) ---
 
 
+def normalize_claim_type(value: str) -> str:
+    """Normalize claim_type string to canonical value (new, duplicate, total_loss, fraud, partial_loss)."""
+    v = (value or "").strip().lower().replace(" ", "_")
+    if v == "total_loss":
+        return ClaimType.TOTAL_LOSS.value
+    if v == "partial_loss":
+        return ClaimType.PARTIAL_LOSS.value
+    if v == "new":
+        return ClaimType.NEW.value
+    if v == "duplicate":
+        return ClaimType.DUPLICATE.value
+    if v == "fraud":
+        return ClaimType.FRAUD.value
+    return ClaimType.NEW.value
+
+
+def _extract_json_from_text(text: str) -> dict | None:
+    """Extract JSON object from LLM output text. Handles markdown blocks and braces in strings."""
+    text = text.strip()
+    # Try direct parse
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        pass
+    # Try markdown code blocks
+    if "```json" in text:
+        try:
+            extracted = text.split("```json")[1].split("```")[0].strip()
+            parsed = json.loads(extracted)
+            return parsed if isinstance(parsed, dict) else None
+        except (IndexError, json.JSONDecodeError):
+            pass
+    elif "```" in text:
+        try:
+            extracted = text.split("```")[1].split("```")[0].strip()
+            parsed = json.loads(extracted)
+            return parsed if isinstance(parsed, dict) else None
+        except (IndexError, json.JSONDecodeError):
+            pass
+    # Brace-matching: find outermost {} (handles braces in string values)
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    for i, c in enumerate(text[start:], start):
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    parsed = json.loads(text[start : i + 1])
+                    return parsed if isinstance(parsed, dict) else None
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
+def validate_router_classification_impl(
+    claim_data: dict[str, Any],
+    original_claim_type: str,
+    original_confidence: float,
+    original_reasoning: str,
+    *,
+    metrics: Any = None,
+    claim_id: str | None = None,
+) -> str:
+    """Optional validation: second LLM call to confirm or correct router classification.
+
+    Returns JSON: {claim_type, confidence, reasoning, validation_agrees}.
+    When validation_agrees is False and confidence >= threshold, caller should re-route.
+
+    When metrics and claim_id are provided, records the validation LLM call for token budget tracking.
+    """
+    if litellm is None:
+        return json.dumps({
+            "claim_type": original_claim_type,
+            "confidence": original_confidence,
+            "reasoning": "Validation skipped: litellm not available",
+            "validation_agrees": True,
+        })
+
+    claim_str = json.dumps(claim_data, default=str)[:2000]
+    prompt = f"""A claim was classified as "{original_claim_type}" with confidence {original_confidence:.2f}. Reasoning: {original_reasoning}
+
+Claim data (excerpt): {claim_str}
+
+Independently verify the classification. Return JSON only:
+{{"claim_type": "new"|"duplicate"|"total_loss"|"fraud"|"partial_loss", "confidence": 0.0-1.0, "reasoning": "brief explanation"}}"""
+
+    try:
+        model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+        resp = litellm.completion(model=model, messages=[{"role": "user", "content": prompt}])
+        text = (resp.choices[0].message.content or "").strip()
+        parsed = _extract_json_from_text(text)
+        if parsed:
+            v_type = normalize_claim_type(parsed.get("claim_type", "") or original_claim_type)
+            v_conf = max(0.0, min(1.0, float(parsed.get("confidence", 0.5))))
+            v_reason = str(parsed.get("reasoning", "") or "").strip()
+            orig_normalized = normalize_claim_type(original_claim_type)
+            agrees = v_type == orig_normalized
+            result = json.dumps({
+                "claim_type": v_type,
+                "confidence": v_conf,
+                "reasoning": v_reason,
+                "validation_agrees": agrees,
+            })
+            if metrics is not None and claim_id:
+                usage = getattr(resp, "usage", None)
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+                model_name = getattr(resp, "model", None) or str(model)
+                metrics.record_llm_call(
+                    claim_id=claim_id,
+                    model=model_name,
+                    input_tokens=int(prompt_tokens),
+                    output_tokens=int(completion_tokens),
+                )
+            return result
+    except Exception as e:
+        logger.warning("Router validation failed: %s", e, exc_info=True)
+    return json.dumps({
+        "claim_type": original_claim_type,
+        "confidence": original_confidence,
+        "reasoning": "Validation failed, using original",
+        "validation_agrees": False,
+    })
+
+
 def _parse_router_confidence(router_output: str) -> float:
     """Derive routing confidence from router output language, in the range 0.3-1.0."""
     if not router_output or not isinstance(router_output, str):
@@ -489,10 +627,15 @@ def evaluate_escalation_impl(
     router_output: str,
     similarity_score: float | None = None,
     payout_amount: float | None = None,
+    *,
+    router_confidence: float | None = None,
 ) -> str:
     """
     Evaluate claim for escalation. Returns JSON with needs_review, escalation_reasons,
     priority, fraud_indicators, recommended_action.
+
+    When router_confidence is provided (explicit 0.0-1.0 from structured router output),
+    it is used instead of inferring confidence from router output text.
     """
     reasons: list[str] = []
     esc_config = get_escalation_config()
@@ -500,7 +643,10 @@ def evaluate_escalation_impl(
     high_value_threshold = esc_config["high_value_threshold"]
     low_sim, high_sim = esc_config["similarity_ambiguous_range"]
 
-    confidence = _parse_router_confidence(router_output or "")
+    if router_confidence is not None:
+        confidence = max(0.0, min(1.0, float(router_confidence)))
+    else:
+        confidence = _parse_router_confidence(router_output or "")
     if confidence < conf_threshold:
         reasons.append("low_confidence")
 

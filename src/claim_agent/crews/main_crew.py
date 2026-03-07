@@ -27,6 +27,7 @@ from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.config.llm import get_llm, get_model_name
 from claim_agent.config.settings import (
     get_crew_verbose,
+    get_router_config,
     MAX_LLM_CALLS_PER_CLAIM,
     MAX_TOKENS_PER_CLAIM,
 )
@@ -40,11 +41,17 @@ from claim_agent.db.constants import (
     STATUS_PROCESSING,
     STATUS_SETTLED,
 )
-from claim_agent.tools.logic import evaluate_escalation_impl, detect_fraud_indicators_impl
+from claim_agent.tools.logic import (
+    evaluate_escalation_impl,
+    detect_fraud_indicators_impl,
+    normalize_claim_type,
+    validate_router_classification_impl,
+    _parse_router_confidence,
+)
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.models.claim import ClaimInput, ClaimType, EscalationOutput
+from claim_agent.models.claim import ClaimInput, ClaimType, EscalationOutput, RouterOutput
 from claim_agent.observability import (
     get_logger,
     claim_context,
@@ -138,9 +145,13 @@ KEY DECISION POINTS:
 - High damage cost alone without fraud keywords -> check if total_loss first
 - For duplicates: Look at both days_difference AND description_similarity_score
 
-Reply with exactly one word: new, duplicate, total_loss, fraud, or partial_loss. Then on the next line give one sentence reasoning.""",
-        expected_output="One line: exactly 'new', 'duplicate', 'total_loss', 'fraud', or 'partial_loss'. Second line: brief reasoning.",
+Reply with a JSON object containing:
+- claim_type: exactly one of new, duplicate, total_loss, fraud, or partial_loss
+- confidence: a number from 0.0 to 1.0 indicating your confidence in this classification (1.0 = certain, 0.5 = uncertain)
+- reasoning: one sentence explaining your classification""",
+        expected_output="JSON: {claim_type, confidence (0.0-1.0), reasoning}",
         agent=router,
+        output_pydantic=RouterOutput,
     )
 
     return Crew(
@@ -185,6 +196,136 @@ def _parse_claim_type(raw_output: str) -> str:
         if normalized.startswith("new"):
             return ClaimType.NEW.value
     return ClaimType.NEW.value
+
+
+def _escalate_low_router_confidence(
+    claim_id: str,
+    claim_type: str,
+    raw_output: str,
+    router_confidence: float,
+    confidence_threshold: float,
+    router_reasoning: str,
+    repo: "ClaimRepository",
+    logger,
+    metrics,
+    llm,
+    workflow_start_time: float,
+    actor_id: str,
+) -> None:
+    """Persist low router confidence escalation to DB."""
+    router_config = get_router_config()
+    sla_hours = router_config.get("escalation_sla_hours", 48)
+    details = json.dumps({
+        "escalation_reasons": ["low_router_confidence"],
+        "priority": "medium",
+        "recommended_action": "Confirm routing classification. Router confidence below threshold.",
+        "fraud_indicators": [],
+        "router_confidence": router_confidence,
+        "router_confidence_threshold": confidence_threshold,
+        "router_claim_type": claim_type,
+        "router_reasoning": router_reasoning,
+    })
+    repo.save_workflow_result(claim_id, claim_type, raw_output, details)
+    repo.update_claim_status(
+        claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details, actor_id=actor_id
+    )
+    hours = sla_hours
+    due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    repo.update_claim_review_metadata(
+        claim_id,
+        priority="medium",
+        due_at=due_at,
+        review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    workflow_duration = (time.time() - workflow_start_time) * 1000
+    logger.log_event(
+        "claim_escalated",
+        reasons=["low_router_confidence"],
+        priority="medium",
+        duration_ms=workflow_duration,
+    )
+    _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+    metrics.end_claim(claim_id, status="escalated")
+    metrics.log_claim_summary(claim_id)
+
+
+def _escalate_low_router_confidence_response(
+    claim_id: str,
+    claim_type: str,
+    raw_output: str,
+    router_confidence: float,
+    confidence_threshold: float,
+    router_reasoning: str = "",
+) -> dict:
+    """Build response dict for low router confidence escalation."""
+    details = json.dumps({
+        "escalation_reasons": ["low_router_confidence"],
+        "priority": "medium",
+        "recommended_action": "Confirm routing classification. Router confidence below threshold.",
+        "fraud_indicators": [],
+        "router_confidence": router_confidence,
+        "router_confidence_threshold": confidence_threshold,
+        "router_claim_type": claim_type,
+        "router_reasoning": router_reasoning,
+    })
+    return {
+        "claim_id": claim_id,
+        "claim_type": claim_type,
+        "status": STATUS_NEEDS_REVIEW,
+        "needs_review": True,
+        "escalation_reasons": ["low_router_confidence"],
+        "priority": "medium",
+        "fraud_indicators": [],
+        "router_output": raw_output,
+        "workflow_output": details,
+        "summary": f"Escalated: router confidence {router_confidence:.2f} below threshold {confidence_threshold}",
+    }
+
+
+def _parse_router_output(result: Any, raw_output: str) -> tuple[str, float, str]:
+    """Parse router output into (claim_type, confidence, reasoning).
+
+    Prefers structured output (Pydantic or JSON). Falls back to legacy parsing.
+    """
+    # 1. Try Pydantic output from tasks_output
+    tasks_output = getattr(result, "tasks_output", None)
+    if tasks_output and isinstance(tasks_output, list) and len(tasks_output) > 0:
+        first_output = getattr(tasks_output[0], "output", None)
+        if isinstance(first_output, RouterOutput):
+            claim_type = normalize_claim_type(first_output.claim_type)
+            confidence = max(0.0, min(1.0, float(first_output.confidence)))
+            reasoning = (first_output.reasoning or "").strip()
+            return claim_type, confidence, reasoning
+
+    # 2. Try JSON parse from raw output
+    try:
+        # Handle JSON possibly wrapped in markdown code blocks
+        text = raw_output.strip()
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0].strip()
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            claim_type = normalize_claim_type(parsed.get("claim_type", ""))
+            conf_val = parsed.get("confidence")
+            if conf_val is not None:
+                try:
+                    confidence = max(0.0, min(1.0, float(conf_val)))
+                except (TypeError, ValueError):
+                    confidence = 0.0
+            else:
+                confidence = 0.0
+            reasoning = str(parsed.get("reasoning", "") or "").strip()
+            return claim_type, confidence, reasoning
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # 3. Fallback: legacy parsing (no explicit confidence)
+    claim_type = _parse_claim_type(raw_output)
+    confidence = _parse_router_confidence(raw_output)
+    reasoning = raw_output.strip().split("\n", 1)[-1].strip() if "\n" in raw_output else ""
+    return claim_type, confidence, reasoning
 
 
 def _kickoff_with_retry(crew: Any, inputs: dict[str, Any]) -> Any:
@@ -848,16 +989,95 @@ def run_claim_workflow(
             router_latency = (time.time() - router_start) * 1000
             raw_output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
             raw_output = str(raw_output)
-            claim_type = _parse_claim_type(raw_output)
+            claim_type, router_confidence, router_reasoning = _parse_router_output(result, raw_output)
 
             logger.set_claim_type(claim_type)
             logger.log_event(
                 "router_completed",
                 claim_type=claim_type,
+                confidence=router_confidence,
                 latency_ms=router_latency,
             )
 
             _check_token_budget(claim_id, metrics, llm)
+
+            # Step 1a: Router confidence threshold — escalate when confidence < threshold
+            router_config = get_router_config()
+            confidence_threshold = router_config["confidence_threshold"]
+            validation_enabled = router_config.get("validation_enabled", False)
+
+            if router_confidence < confidence_threshold:
+                # Optional validation: run second LLM call before escalating
+                if validation_enabled:
+                    try:
+                        val_json = validate_router_classification_impl(
+                            claim_data_with_id,
+                            claim_type,
+                            router_confidence,
+                            router_reasoning,
+                            metrics=metrics,
+                            claim_id=claim_id,
+                        )
+                        val_data = json.loads(val_json)
+                        val_claim_type = normalize_claim_type(val_data.get("claim_type", claim_type))
+                        val_confidence = max(0.0, min(1.0, float(val_data.get("confidence", 0))))
+                        val_agrees = val_data.get("validation_agrees", True)
+                        if val_confidence >= confidence_threshold:
+                            if not val_agrees:
+                                logger.log_event(
+                                    "router_reclassified",
+                                    original_claim_type=claim_type,
+                                    final_claim_type=val_claim_type,
+                                    validation_confidence=val_confidence,
+                                )
+                            claim_type = val_claim_type
+                            router_confidence = val_confidence
+                            router_reasoning = val_data.get("reasoning", router_reasoning)
+                            logger.set_claim_type(claim_type)
+                            # Persist combined audit record so stored router_output matches the
+                            # classification that actually drove the workflow.
+                            try:
+                                original_router_output = json.loads(raw_output)
+                            except (TypeError, ValueError):
+                                original_router_output = raw_output
+                            raw_output = json.dumps({
+                                "original_router_output": original_router_output,
+                                "validation": val_data,
+                            })
+                            _check_token_budget(claim_id, metrics, llm)
+                            # Proceed to Step 1b (skip escalation)
+                        else:
+                            # Validation also low confidence -> escalate
+                            _escalate_low_router_confidence(
+                                claim_id, claim_type, raw_output, router_confidence,
+                                confidence_threshold, router_reasoning,
+                                repo, logger, metrics, llm, workflow_start_time, _actor,
+                            )
+                            return _escalate_low_router_confidence_response(
+                                claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
+                                router_reasoning=router_reasoning,
+                            )
+                    except (json.JSONDecodeError, TypeError, ValueError) as e:
+                        logger.warning("Router validation parse failed: %s", e)
+                        _escalate_low_router_confidence(
+                            claim_id, claim_type, raw_output, router_confidence,
+                            confidence_threshold, router_reasoning,
+                            repo, logger, metrics, llm, workflow_start_time, _actor,
+                        )
+                        return _escalate_low_router_confidence_response(
+                            claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
+                            router_reasoning=router_reasoning,
+                        )
+                else:
+                    _escalate_low_router_confidence(
+                        claim_id, claim_type, raw_output, router_confidence,
+                        confidence_threshold, router_reasoning,
+                        repo, logger, metrics, llm, workflow_start_time, _actor,
+                    )
+                    return _escalate_low_router_confidence_response(
+                        claim_id, claim_type, raw_output, router_confidence, confidence_threshold,
+                        router_reasoning=router_reasoning,
+                    )
 
             # Step 1b: Escalation check (HITL) — skip for fraud so the fraud crew runs and performs its own assessment
             if claim_type != ClaimType.FRAUD.value:
@@ -866,6 +1086,7 @@ def run_claim_workflow(
                     raw_output,
                     similarity_score=similarity_score_for_escalation,
                     payout_amount=None,
+                    router_confidence=router_confidence,
                 )
                 escalation_result = json.loads(escalation_json)
                 if escalation_result.get("needs_review"):
