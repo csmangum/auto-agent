@@ -2,6 +2,7 @@
 
 import os
 
+from claim_agent.config.llm import get_llm
 from claim_agent.db.database import get_connection
 
 
@@ -43,10 +44,8 @@ def _check_database() -> bool:
 
 
 def _check_llm() -> bool:
-    """Verify LLM is configurable and reachable. Returns True if ok."""
+    """Verify LLM is configurable (get_llm returns a client). Does not call the LLM."""
     try:
-        from claim_agent.config.llm import get_llm
-
         llm = get_llm()
         return llm is not None
     except Exception:

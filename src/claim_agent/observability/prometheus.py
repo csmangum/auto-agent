@@ -4,19 +4,13 @@ from __future__ import annotations
 
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW, STATUS_PROCESSING
 from claim_agent.db.database import get_connection
-
-try:
-    from prometheus_client import (
-        Counter,
-        Gauge,
-        Histogram,
-        generate_latest,
-        REGISTRY,
-    )
-except ImportError:
-    REGISTRY = None
-    generate_latest = None
-    Counter = Gauge = Histogram = None  # type: ignore[misc, assignment]
+from prometheus_client import (
+    Counter,
+    Gauge,
+    Histogram,
+    REGISTRY,
+    generate_latest,
+)
 
 # Statuses that count as successful processing (not failed, not escalated)
 _PROCESSED_STATUSES = frozenset(
@@ -38,8 +32,6 @@ def _ensure_metrics() -> None:
     global _claim_processing_duration_seconds, _llm_tokens_total
     global _claims_in_progress, _review_queue_size
 
-    if Counter is None:
-        return
     if _claims_processed_total is not None:
         return
 
@@ -150,6 +142,4 @@ def generate_metrics() -> bytes:
     """Generate Prometheus text format. Updates gauges from DB before export."""
     _ensure_metrics()
     _update_gauges()
-    if generate_latest is None or REGISTRY is None:
-        return b""
     return generate_latest(REGISTRY)

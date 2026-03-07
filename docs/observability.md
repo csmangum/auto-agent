@@ -83,6 +83,8 @@ The server exposes Prometheus-format metrics at `GET /metrics` (no auth required
 | `claims_in_progress` | Gauge | Claims currently being processed |
 | `review_queue_size` | Gauge | Claims in review queue (needs_review) |
 
+When the database is unreachable, `claims_in_progress` and `review_queue_size` are set to `-1` to indicate unknown/error.
+
 See [Alerting](alerting.md) for recommended Prometheus alert rules and scrape configuration.
 
 ### Example (human format)

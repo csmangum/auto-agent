@@ -83,14 +83,14 @@ def _get_token(request: Request) -> str | None:
     return None
 
 
-_UNRATE_LIMITED_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
+_PUBLIC_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
 
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limit API routes: 100 req/min per IP."""
     path = request.url.path
-    if path.startswith("/api/") and path not in _UNRATE_LIMITED_PATHS:
+    if path.startswith("/api/") and path not in _PUBLIC_PATHS:
         ip = get_client_ip(request)
         if is_rate_limited(ip):
             return JSONResponse(
@@ -100,14 +100,11 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-_UNAUTH_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
-
-
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """Verify auth when configured. Set request.state.auth on success."""
     path = request.url.path
-    if not path.startswith("/api/") or path in _UNAUTH_PATHS:
+    if not path.startswith("/api/") or path in _PUBLIC_PATHS:
         return await call_next(request)
 
     if not is_auth_required():
