@@ -735,12 +735,12 @@ def run_claim_workflow(
                     )
                     # SLA: critical/high 24h, medium 48h, low 72h
                     hours = 24 if priority in ("critical", "high") else 48 if priority == "medium" else 72
-                    due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
                     repo.update_claim_review_metadata(
                         claim_id,
                         priority=priority,
                         due_at=due_at,
-                        review_started_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                     )
 
                     workflow_duration = (time.time() - workflow_start_time) * 1000
