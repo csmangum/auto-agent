@@ -577,7 +577,7 @@ class TestWorkflowCheckpoints:
 
         repo = ClaimRepository(db_path=temp_db)
         cps = repo.get_task_checkpoints(
-            result["claim_id"], result.get("workflow_run_id", ""),
+            result["claim_id"], result["workflow_run_id"],
         )
         assert cps == {}, "Checkpoints should be cleared after mid-workflow escalation"
 

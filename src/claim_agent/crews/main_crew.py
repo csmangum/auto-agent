@@ -805,6 +805,7 @@ def _handle_mid_workflow_escalation(
         "fraud_indicators": e.indicators,
         "router_output": raw_output,
         "workflow_output": saved_output,
+        "workflow_run_id": workflow_run_id,
         "summary": summary,
     }
 
@@ -1040,6 +1041,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 "status": STATUS_NEEDS_REVIEW,
                 "router_output": ctx.raw_output,
                 "workflow_output": details,
+                "workflow_run_id": ctx.workflow_run_id,
                 "summary": f"Escalated for review: {', '.join(reasons)}",
             }
 
