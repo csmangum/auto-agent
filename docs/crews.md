@@ -265,7 +265,7 @@ The Duplicate crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/total_loss_crew.py`
 
-Processes claims where the vehicle is unrepairable or repair cost exceeds 75% of value: assess damage, fetch vehicle value, calculate payout, and settle. This section is the **formal specification** for the Total Loss workflow.
+Processes claims where the vehicle is unrepairable or repair cost exceeds 75% of value: assess damage, fetch vehicle value, calculate payout, then hand off to the shared Settlement Crew. This section is the **formal specification** for the Total Loss workflow.
 
 ### Entry Conditions
 
@@ -280,8 +280,9 @@ Processes claims where the vehicle is unrepairable or repair cost exceeds 75% of
 ```mermaid
 flowchart TB
     subgraph TotalLoss["Total Loss Crew"]
-        A[1. Assess Damage] --> B[2. Valuation] --> C[3. Payout] --> D[4. Settlement]
+        A[1. Assess Damage] --> B[2. Valuation] --> C[3. Payout]
     end
+    C --> S[Settlement Crew]
     
     A -.- A1[evaluate_damage]
     A -.- A2[total_loss_candidate]
@@ -291,9 +292,6 @@ flowchart TB
     
     C -.- C1[calculate_payout]
     C -.- C2[Value - Deductible]
-    
-    D -.- D1[generate_report]
-    D -.- D2[status: closed]
 ```
 
 ### Step 1: Damage Assessment
@@ -327,21 +325,11 @@ flowchart TB
 | **Tools** | `calculate_payout` |
 | **Formula** | `Payout = Vehicle Market Value - Policy Deductible` |
 
-### Step 4: Settlement
-
-| Aspect | Specification |
-|--------|---------------|
-| **Agent** | Settlement Specialist |
-| **Input** | All prior outputs + claim_data |
-| **Action** | Generate report with claim_id, claim_type='total_loss', status='closed', payout_amount |
-| **Output** | Settlement report summary, claim closed confirmation |
-| **Tools** | `generate_claim_id`, `generate_report` |
-
 ### Exit Conditions
 
 | Outcome | Status | Notes |
 |---------|--------|-------|
-| Success | `closed` | Payout calculated, report generated |
+| Success | `processing` | Payout calculated; claim remains in PROCESSING until Settlement Crew completes, then becomes `settled` |
 | Escalated | `needs_review` | Returned before crew execution |
 | Failed | `failed` | Error during crew execution |
 
@@ -354,6 +342,7 @@ The Total Loss crew is invoked **after**:
 3. Router classification → `claim_type == "total_loss"`
 4. Escalation check (if not escalated)
 5. Economic total loss pre-check may populate `is_economic_total_loss`, `vehicle_value`, etc. in claim_data
+6. On success, main flow invokes Settlement Crew with the payout-ready workflow output
 
 **RAG:** Crew supports `state` (jurisdiction) and `use_rag` for policy/compliance context.
 
@@ -364,7 +353,6 @@ The Total Loss crew is invoked **after**:
 | Damage Assessor | [`evaluate_damage`](tools.md#evaluate_damage) |
 | Vehicle Valuation Specialist | [`fetch_vehicle_value`](tools.md#fetch_vehicle_value) |
 | Payout Calculator | [`calculate_payout`](tools.md#calculate_payout) |
-| Settlement Specialist | [`generate_claim_id`](tools.md#generate_claim_id), [`generate_report`](tools.md#generate_report) |
 
 ### Acceptance Criteria
 
@@ -372,9 +360,9 @@ The Total Loss crew is invoked **after**:
 - **AC2:** Valuation task calls `fetch_vehicle_value` with vehicle identifiers
 - **AC3:** Payout task calls `calculate_payout` with vehicle value and policy_number
 - **AC4:** Payout formula: value - deductible
-- **AC5:** Settlement task calls `generate_report` with claim_type='total_loss', status='closed', payout_amount
-- **AC6:** Final status is `closed` on success
-- **AC7:** Task context flows: Valuation receives damage; Payout receives damage + valuation; Settlement receives all
+- **AC5:** Total Loss crew ends at payout and hands off to Settlement Crew
+- **AC6:** Final claim status is set by Settlement Crew (`settled`) on success
+- **AC7:** Task context flows: Valuation receives damage; Payout receives damage + valuation
 - **AC8:** Documentation matches this specification
 
 ---
@@ -495,7 +483,7 @@ The Fraud crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/partial_loss_crew.py`
 
-Handles claims for repairable vehicle damage: assess damage, calculate repair estimate, assign repair shop, order parts, and generate repair authorization. This section is the **formal specification** for the Partial Loss workflow.
+Handles claims for repairable vehicle damage: assess damage, calculate repair estimate, assign repair shop, order parts, generate repair authorization, then hand off to the shared Settlement Crew. This section is the **formal specification** for the Partial Loss workflow.
 
 ### Entry Conditions
 
@@ -513,7 +501,7 @@ Handles claims for repairable vehicle damage: assess damage, calculate repair es
 | Repair Estimator | [`calculate_repair_estimate`](tools.md#calculate_repair_estimate), [`get_parts_catalog`](tools.md#get_parts_catalog) |
 | Repair Shop Coordinator | [`get_available_repair_shops`](tools.md#get_available_repair_shops), [`assign_repair_shop`](tools.md#assign_repair_shop) |
 | Parts Ordering Specialist | [`get_parts_catalog`](tools.md#get_parts_catalog), [`create_parts_order`](tools.md#create_parts_order) |
-| Repair Authorization Specialist | [`generate_repair_authorization`](tools.md#generate_repair_authorization), [`generate_report`](tools.md#generate_report) |
+| Repair Authorization Specialist | [`generate_repair_authorization`](tools.md#generate_repair_authorization) |
 
 ### Flow Sequence
 
@@ -522,6 +510,7 @@ flowchart TB
     subgraph PartialLoss["Partial Loss Crew"]
         A[1. Assess] --> B[2. Estimate] --> C[3. Assign Shop] --> D[4. Order Parts] --> E[5. Authorize]
     end
+    E --> S[Settlement Crew]
     
     A -.- A1[evaluate_damage]
     A -.- A2[fetch_vehicle_value]
@@ -536,7 +525,6 @@ flowchart TB
     D -.- D2[create_parts_order]
     
     E -.- E1[generate_repair_authorization]
-    E -.- E2[generate_report]
 ```
 
 ### Step 1: Damage Assessment
@@ -587,10 +575,10 @@ flowchart TB
 |--------|---------------|
 | **Agent** | Repair Authorization Specialist |
 | **Input** | All prior outputs |
-| **Action** | Generate repair authorization; generate final report |
-| **Output** | authorization_id, authorized amounts, claim report with payout |
-| **Tools** | `generate_repair_authorization`, `generate_report` |
-| **Report** | claim_type='partial_loss', status='approved', payout_amount=insurance_pays |
+| **Action** | Generate repair authorization and return settlement handoff details |
+| **Output** | authorization_id, authorized amounts, insurance_pays, settlement handoff summary |
+| **Tools** | `generate_repair_authorization` |
+| **Handoff** | Shared Settlement Crew uses this output to finalize documentation and payment distribution |
 
 ### Damage Severity → Repair Days
 
@@ -604,7 +592,7 @@ flowchart TB
 
 | Outcome | Status | Notes |
 |---------|--------|-------|
-| Success | `partial_loss` | Authorization issued, report generated |
+| Success | `processing` | Authorization issued; claim remains in PROCESSING until Settlement Crew completes, then becomes `settled` |
 | Escalated | `needs_review` | Returned before crew execution |
 | Failed | `failed` | Error during crew execution |
 
@@ -616,6 +604,7 @@ The Partial Loss crew is invoked **after**:
 2. Claim creation in SQLite (`repo.create_claim`)
 3. Router classification → `claim_type == "partial_loss"`
 4. Escalation check (if not escalated)
+5. On success, main flow invokes Settlement Crew with the authorization output
 
 ### Acceptance Criteria
 
@@ -623,11 +612,44 @@ The Partial Loss crew is invoked **after**:
 - **AC2:** Estimate task calls `calculate_repair_estimate`; outputs parts, labor, deductible, insurance_pays
 - **AC3:** Shop task calls `get_available_repair_shops` and `assign_repair_shop` with claim_id
 - **AC4:** Parts task calls `create_parts_order` with claim_id, shop_id, parts list
-- **AC5:** Authorization task calls `generate_repair_authorization` and `generate_report`
-- **AC6:** Report has claim_type='partial_loss', status='approved', payout_amount
-- **AC7:** Final status is `partial_loss` on success
+- **AC5:** Authorization task calls `generate_repair_authorization` and prepares settlement handoff details
+- **AC6:** Partial Loss hands off to Settlement Crew for formal settlement documentation
+- **AC7:** Final claim status is set by Settlement Crew (`settled`) on success
 - **AC8:** Task context flows correctly through all five steps
 - **AC9:** Documentation matches this specification
+
+---
+
+## Settlement Crew
+
+**Location**: `src/claim_agent/crews/settlement_crew.py`
+
+Runs as a shared post-workflow settlement phase for payout-ready Total Loss and Partial Loss claims. It standardizes settlement documentation, payment distribution, and closure.
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Settlement["Settlement Crew"]
+        A[1. Documentation] --> B[2. Payment Distribution] --> C[3. Closure]
+    end
+
+    A -.- A1[generate_report]
+    B -.- B1[calculate_payout verification]
+    B -.- B2[generate_report]
+    C -.- C1[generate_report]
+    C -.- C2[status: settled]
+```
+
+### Acceptance Criteria
+
+- **AC1:** Settlement Crew has 3 agents: Documentation, Payment Distribution, Closure
+- **AC2:** Entry input includes `claim_id`, `claim_type`, `claim_data`, and prior workflow output
+- **AC3:** Documentation task generates a settlement report with claim-type-specific sections
+- **AC4:** Payment Distribution task documents insured, lienholder, and repair shop breakdowns as applicable
+- **AC5:** Closure task generates the final settlement report with status `settled` and `next_steps`
+- **AC6:** Total Loss and Partial Loss invoke Settlement Crew from main flow instead of inline settlement/report finalization
+- **AC7:** Documentation matches this specification
 
 ---
 

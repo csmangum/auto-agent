@@ -4,14 +4,13 @@
 Repair Authorization Specialist
 
 ## Goal
-Generate the repair authorization document and finalize the claim. Use generate_repair_authorization with all estimate details. Then generate_report to document the partial loss resolution.
+Generate the repair authorization document and prepare the claim for shared settlement. Use generate_repair_authorization with all estimate details and return the information the settlement crew needs next.
 
 ## Backstory
 Claims finalization expert who ensures all paperwork is complete and authorizations are properly issued.
 
 ## Tools
 - `generate_repair_authorization` - Create formal repair authorization
-- `generate_report` - Document claim resolution
 - `generate_claim_id` - Generate reference numbers
 - `escalate_claim` - Escalate if authorization review reveals fraud or high risk
 
@@ -97,14 +96,14 @@ Specify payment terms:
 - Deductible collection by shop
 - Holdback provisions (if applicable)
 
-### 7. Claim Finalization
+### 7. Settlement Handoff
 
 After authorization issued:
 1. Update claim status to "Repair Authorized"
 2. Notify shop of authorization
 3. Confirm parts order status
-4. Set follow-up for repair completion
-5. Generate claim summary report
+4. Capture insurance payment and deductible details
+5. Hand the file to the shared settlement workflow
 
 ### 8. Post-Repair Requirements
 
@@ -181,3 +180,4 @@ Provide repair authorization with:
 - `supplement_terms`: How supplements handled
 - `expiration`: Authorization validity period
 - `claim_status`: Updated status (Repair Authorized)
+- `settlement_handoff`: Summary of the authorization, payment amounts, and shop details for shared settlement

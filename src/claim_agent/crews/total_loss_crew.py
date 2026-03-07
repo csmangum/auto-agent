@@ -10,10 +10,10 @@ from claim_agent.agents.total_loss import (
     create_damage_assessor_agent,
     create_valuation_agent,
     create_payout_agent,
-    create_settlement_agent,
 )
 from claim_agent.config.llm import get_llm
 from claim_agent.config.settings import get_crew_verbose
+from claim_agent.models.workflow_output import TotalLossWorkflowOutput
 
 
 def create_total_loss_crew(
@@ -21,7 +21,7 @@ def create_total_loss_crew(
     state: str = "California",
     use_rag: bool = True,
 ):
-    """Create the Total Loss Evaluator crew: assess damage -> valuation -> payout -> settlement.
+    """Create the Total Loss Evaluator crew: assess damage -> valuation -> payout.
     
     Args:
         llm: Language model to use (defaults to configured LLM)
@@ -35,7 +35,6 @@ def create_total_loss_crew(
     damage_agent = create_damage_assessor_agent(llm, state=state, use_rag=use_rag)
     valuation_agent = create_valuation_agent(llm, state=state, use_rag=use_rag)
     payout_agent = create_payout_agent(llm, state=state, use_rag=use_rag)
-    settlement_agent = create_settlement_agent(llm, state=state, use_rag=use_rag)
 
     assess_task = Task(
         description="""CLAIM DATA (JSON):
@@ -59,22 +58,16 @@ Use vin, vehicle_year, vehicle_make, vehicle_model from the claim_data.""",
         description="""If total loss: calculate payout using the calculate_payout tool.
 Pass vehicle value from the valuation step and the policy_number from claim_data.
 The tool will look up the deductible and compute payout (vehicle value minus deductible).
-Output the payout amount and calculation details.""",
-        expected_output="Payout amount in dollars and one-line calculation (e.g. value - deductible).",
+
+Return a structured output with payout_amount (from the tool), vehicle_value, deductible, and calculation from the calculate_payout tool result.""",
+        expected_output="Structured output: payout_amount (float), vehicle_value (float), deductible (float), calculation (str).",
         agent=payout_agent,
         context=[assess_task, valuation_task],
-    )
-
-    settlement_task = Task(
-        description="""Generate the settlement report and close the claim.
-Use generate_report with claim_id (generate one with generate_claim_id if not set), claim_type='total_loss', status='closed', summary (one paragraph of actions and payout), and payout_amount.""",
-        expected_output="Settlement report summary and claim closed confirmation with payout amount.",
-        agent=settlement_agent,
-        context=[assess_task, valuation_task, payout_task],
+        output_pydantic=TotalLossWorkflowOutput,
     )
 
     return Crew(
-        agents=[damage_agent, valuation_agent, payout_agent, settlement_agent],
-        tasks=[assess_task, valuation_task, payout_task, settlement_task],
+        agents=[damage_agent, valuation_agent, payout_agent],
+        tasks=[assess_task, valuation_task, payout_task],
         verbose=get_crew_verbose(),
     )

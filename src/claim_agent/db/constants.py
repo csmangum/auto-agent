@@ -1,8 +1,8 @@
 """Claim status constants.
 
-Statuses disputed, fraud_suspected, fraud_confirmed, partial_loss, under_investigation,
-denied, and settled are reserved for future workflows (e.g. fraud, dispute, partial-loss
-crews) and are not yet set by the main router/workflow.
+Statuses disputed, fraud_confirmed, partial_loss, under_investigation, and denied are
+reserved for future workflows. `fraud_suspected` and `settled` are actively used by the
+main router/workflow for fraud and post-settlement outcomes.
 """
 
 STATUS_PENDING = "pending"

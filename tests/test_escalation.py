@@ -466,3 +466,83 @@ def test_main_crew_handles_mid_workflow_escalation(_temp_claims_db):
     claim_id = result["claim_id"]
     claim = repo.get_claim(claim_id)
     assert claim["status"] == STATUS_NEEDS_REVIEW
+
+
+def test_settlement_crew_handles_mid_workflow_escalation(_temp_claims_db):
+    """When the settlement crew raises MidWorkflowEscalation, main_crew returns an escalation
+    response with stage='settlement' and persists STATUS_NEEDS_REVIEW."""
+    from unittest.mock import MagicMock, patch
+
+    from claim_agent.crews.main_crew import run_claim_workflow
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+    from claim_agent.exceptions import MidWorkflowEscalation
+    from claim_agent.tools.logic import escalate_claim_impl
+
+    claim_data = {
+        "policy_number": "POL-002",
+        "vin": "5YJSA1E26HF654321",
+        "vehicle_year": 2021,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model S",
+        "incident_date": "2025-02-10",
+        "incident_description": "Vehicle rolled over.",
+        "damage_description": "Total loss, vehicle destroyed.",
+        "estimated_damage": 45000.0,
+    }
+
+    def primary_crew_kickoff(inputs=None, **kwargs):
+        return MagicMock(raw="Primary workflow complete.")
+
+    def settlement_crew_kickoff(inputs=None, **kwargs):
+        if inputs and "claim_data" in inputs:
+            data = json.loads(inputs["claim_data"]) if isinstance(inputs["claim_data"], str) else inputs["claim_data"]
+            claim_id = data.get("claim_id")
+            if claim_id:
+                escalate_claim_impl(
+                    claim_id=claim_id,
+                    reason="settlement_compliance_issue",
+                    indicators=["missing_documentation"],
+                    priority="medium",
+                )
+        raise MidWorkflowEscalation(
+            reason="settlement_compliance_issue",
+            indicators=["missing_documentation"],
+            priority="medium",
+            claim_id="will-be-overridden",
+        )
+
+    no_escalation = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+
+    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
+        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
+            with patch("claim_agent.crews.main_crew.create_total_loss_crew") as mock_primary_crew:
+                with patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settlement_crew:
+                    with patch("claim_agent.crews.main_crew.evaluate_escalation_impl", return_value=no_escalation):
+                        mock_llm.return_value = MagicMock()
+                        mock_router.return_value.kickoff.return_value = MagicMock(
+                            raw="total_loss\nVehicle is a total loss."
+                        )
+                        mock_primary_crew.return_value.kickoff.side_effect = primary_crew_kickoff
+                        mock_settlement_crew.return_value.kickoff.side_effect = settlement_crew_kickoff
+
+                        result = run_claim_workflow(claim_data)
+
+    assert result["status"] == STATUS_NEEDS_REVIEW
+    assert result["needs_review"] is True
+    assert "settlement_compliance_issue" in result["escalation_reasons"]
+    assert result["priority"] == "medium"
+    assert "Escalated during settlement" in result["summary"]
+
+    # workflow_output is a combined text string: primary output + settlement escalation details.
+    # Confirm it contains the primary output and the settlement stage marker.
+    workflow_output = result["workflow_output"]
+    assert "Primary workflow complete." in workflow_output
+    assert "settlement" in workflow_output
+    assert "settlement_compliance_issue" in workflow_output
+
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ClaimRepository()
+    claim_id = result["claim_id"]
+    claim = repo.get_claim(claim_id)
+    assert claim["status"] == STATUS_NEEDS_REVIEW

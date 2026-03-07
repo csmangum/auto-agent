@@ -27,10 +27,14 @@ from claim_agent.agents.partial_loss import (
     create_repair_shop_coordinator_agent,
 )
 from claim_agent.agents.router import create_router_agent
+from claim_agent.agents.settlement import (
+    create_payment_distribution_agent,
+    create_settlement_closure_agent,
+    create_settlement_documentation_agent,
+)
 from claim_agent.agents.total_loss import (
     create_damage_assessor_agent,
     create_payout_agent,
-    create_settlement_agent,
     create_valuation_agent,
 )
 from claim_agent.config.llm import get_llm
@@ -133,11 +137,6 @@ class TestTotalLossAgents:
         assert agent is not None
         assert len(agent.tools) >= 1
 
-    def test_create_settlement_agent(self, mock_llm):
-        agent = create_settlement_agent(llm=mock_llm, use_rag=False)
-        assert agent is not None
-        assert len(agent.tools) >= 1
-
 
 @pytest.mark.skipif(SKIP_AGENTS, reason="OPENAI_API_KEY not set; skip agent creation tests")
 class TestFraudAgents:
@@ -189,5 +188,37 @@ class TestPartialLossAgents:
 
     def test_create_repair_authorization_agent(self, mock_llm):
         agent = create_repair_authorization_agent(llm=mock_llm)
+        assert agent is not None
+        assert len(agent.tools) >= 1
+
+
+@pytest.mark.skipif(SKIP_AGENTS, reason="OPENAI_API_KEY not set; skip agent creation tests")
+class TestSettlementAgents:
+    """Test shared settlement workflow agents."""
+
+    def test_create_settlement_documentation_agent(self, mock_llm):
+        agent = create_settlement_documentation_agent(
+            llm=mock_llm,
+            claim_type="total_loss",
+            use_rag=False,
+        )
+        assert agent is not None
+        assert len(agent.tools) >= 1
+
+    def test_create_payment_distribution_agent(self, mock_llm):
+        agent = create_payment_distribution_agent(
+            llm=mock_llm,
+            claim_type="partial_loss",
+            use_rag=False,
+        )
+        assert agent is not None
+        assert len(agent.tools) >= 1
+
+    def test_create_settlement_closure_agent(self, mock_llm):
+        agent = create_settlement_closure_agent(
+            llm=mock_llm,
+            claim_type="partial_loss",
+            use_rag=False,
+        )
         assert agent is not None
         assert len(agent.tools) >= 1

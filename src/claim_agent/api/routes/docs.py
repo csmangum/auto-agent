@@ -41,13 +41,18 @@ _SKILL_GROUPS = {
     "New Claim Workflow": ["intake", "policy_checker", "assignment"],
     "Duplicate Detection": ["search", "similarity", "resolution"],
     "Fraud Detection": ["pattern_analysis", "cross_reference", "fraud_assessment"],
-    "Total Loss": ["damage_assessor", "valuation", "payout", "settlement"],
+    "Total Loss": ["damage_assessor", "valuation", "payout"],
     "Partial Loss": [
         "partial_loss_damage_assessor",
         "repair_estimator",
         "repair_shop_coordinator",
         "parts_ordering",
         "repair_authorization",
+    ],
+    "Settlement Workflow": [
+        "settlement_documentation",
+        "payment_distribution",
+        "settlement_closure",
     ],
     "Escalation": ["escalation"],
 }

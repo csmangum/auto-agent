@@ -11,8 +11,6 @@ from claim_agent.tools import (
     evaluate_damage,
     escalate_claim,
     fetch_vehicle_value,
-    generate_claim_id,
-    generate_report,
     get_compliance_deadlines,
     get_total_loss_requirements,
     search_policy_compliance,
@@ -23,7 +21,6 @@ from claim_agent.skills import (
     DAMAGE_ASSESSOR,
     VALUATION,
     PAYOUT,
-    SETTLEMENT,
 )
 
 
@@ -120,41 +117,6 @@ def create_payout_agent(
         skill = load_skill(PAYOUT)
     
     tools = [calculate_payout, escalate_claim]
-    if use_rag:
-        tools.extend([get_compliance_deadlines, search_policy_compliance])
-    
-    return Agent(
-        role=skill["role"],
-        goal=skill["goal"],
-        backstory=skill["backstory"],
-        tools=tools,
-        verbose=True,
-        llm=llm,
-    )
-
-
-def create_settlement_agent(
-    llm=None,
-    state: str = "California",
-    use_rag: bool = True,
-):
-    """Settlement Specialist: generates report and closes claim.
-    
-    Args:
-        llm: Language model to use
-        state: State jurisdiction for RAG context
-        use_rag: Whether to enrich with RAG context
-    """
-    if use_rag:
-        skill = load_skill_with_context(
-            SETTLEMENT,
-            state=state,
-            claim_type="total_loss",
-        )
-    else:
-        skill = load_skill(SETTLEMENT)
-    
-    tools = [generate_report, generate_claim_id, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
     

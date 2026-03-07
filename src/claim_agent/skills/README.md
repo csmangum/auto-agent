@@ -43,7 +43,6 @@ These skill files serve as:
 | `damage_assessor.md` | Damage Assessor | Evaluates vehicle damage severity |
 | `valuation.md` | Vehicle Valuation Specialist | Fetches vehicle market value |
 | `payout.md` | Payout Calculator | Calculates total loss payout |
-| `settlement.md` | Settlement Specialist | Generates settlement reports |
 
 ### Partial Loss Workflow
 | File | Agent | Description |
@@ -52,7 +51,14 @@ These skill files serve as:
 | `repair_estimator.md` | Repair Estimator | Calculates repair costs |
 | `repair_shop_coordinator.md` | Repair Shop Coordinator | Assigns repair facilities |
 | `parts_ordering.md` | Parts Ordering Specialist | Orders required parts |
-| `repair_authorization.md` | Repair Authorization Specialist | Authorizes repairs |
+| `repair_authorization.md` | Repair Authorization Specialist | Authorizes repairs and prepares settlement handoff |
+
+### Settlement Workflow
+| File | Agent | Description |
+|------|-------|-------------|
+| `settlement_documentation.md` | Settlement Documentation Specialist | Generates claim-type-specific settlement documentation |
+| `payment_distribution.md` | Payment Distribution Specialist | Documents payment recipients and amounts |
+| `settlement_closure.md` | Settlement Closure Specialist | Finalizes settlement and records next steps |
 
 ### Escalation
 | File | Agent | Description |

@@ -54,6 +54,21 @@ settlement_agent:
   goal: Generate settlement reports and close claims
   backstory: Ensures proper documentation and claim closure
 
+settlement_documentation_agent:
+  role: Settlement Documentation Specialist
+  goal: Create the shared settlement documentation package for payout-ready claims
+  backstory: Standardizes settlement records across total loss and partial loss workflows
+
+payment_distribution_agent:
+  role: Payment Distribution Specialist
+  goal: Document who gets paid and how settlement funds are distributed
+  backstory: Specializes in insured, lienholder, and repair-shop payment breakdowns
+
+settlement_closure_agent:
+  role: Settlement Closure Specialist
+  goal: Finalize shared settlement and record post-settlement next steps
+  backstory: Closes settled claims with complete documentation and follow-up actions
+
 escalation_agent:
   role: Escalation Review Specialist
   goal: Evaluate claims against escalation criteria and flag cases needing human review
@@ -98,5 +113,5 @@ parts_ordering_agent:
 
 repair_authorization_agent:
   role: Repair Authorization Specialist
-  goal: Generate repair authorization documents and finalize claims
-  backstory: Claims finalization expert ensuring proper documentation
+  goal: Generate repair authorization documents and prepare the settlement handoff
+  backstory: Claims authorization expert ensuring repair-ready files are complete

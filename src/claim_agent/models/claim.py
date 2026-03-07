@@ -64,7 +64,7 @@ class ClaimOutput(BaseModel):
         default_factory=list, description="Summary of actions performed"
     )
     payout_amount: Optional[float] = Field(
-        default=None, description="Settlement amount if total loss"
+        default=None, description="Settlement or insurance payment amount for payout-ready claims"
     )
     message: Optional[str] = Field(default=None, description="Human-readable summary")
     raw_result: Optional[dict[str, Any]] = Field(
