@@ -14,7 +14,7 @@ from claim_agent.api.deps import require_role
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
-from claim_agent.db.constants import STATUS_FAILED
+from claim_agent.db.constants import STATUS_FAILED, STATUS_PENDING, STATUS_PROCESSING
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import Attachment, ClaimInput
@@ -377,7 +377,7 @@ def get_claim_workflows(claim_id: str):
 @router.post("/claims/process")
 async def process_claim(
     claim: str = Form(..., description="Claim data as JSON string"),
-    files: list[UploadFile] = File(default=[], description="Optional attachment files"),
+    files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
     auth: AuthContext = RequireAdjuster,
 ):
     """Submit a new claim for processing. Accepts claim JSON and optional file uploads.
@@ -401,7 +401,7 @@ async def process_claim(
 
 async def _process_claim_with_attachments(
     claim: str,
-    files: list[UploadFile],
+    files: Optional[list[UploadFile]],
     actor_id: str,
 ) -> tuple[str, dict]:
     """Shared helper for claim creation and attachment handling.
@@ -493,7 +493,7 @@ def _prepare_claim_for_workflow(
 @router.post("/claims/process/async")
 async def process_claim_async(
     claim: str = Form(..., description="Claim data as JSON string"),
-    files: list[UploadFile] = File(default=[], description="Optional attachment files"),
+    files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
     auth: AuthContext = RequireAdjuster,
 ):
     """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
@@ -585,7 +585,7 @@ async def _stream_claim_updates(claim_id: str):
         yield f"data: {json.dumps(payload)}\n\n"
 
         status = claim_dict.get("status") or ""
-        if status not in ("pending", "processing"):
+        if status not in (STATUS_PENDING, STATUS_PROCESSING):
             yield f"data: {json.dumps({'done': True, 'status': status})}\n\n"
             return
 
@@ -602,6 +602,9 @@ async def stream_claim_updates(
 ):
     """Server-Sent Events stream of claim status, audit log, and workflow runs.
     Polls every second until claim status is no longer pending/processing."""
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     return StreamingResponse(
         _stream_claim_updates(claim_id),
         media_type="text/event-stream",
