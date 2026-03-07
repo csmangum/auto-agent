@@ -143,12 +143,12 @@ def list_claims(
     conditions = []
     params: list = []
 
-    if not include_archived:
-        conditions.append("status != ?")
-        params.append(STATUS_ARCHIVED)
     if status:
         conditions.append("status = ?")
         params.append(status)
+    elif not include_archived:
+        conditions.append("status != ?")
+        params.append(STATUS_ARCHIVED)
     if claim_type:
         conditions.append("claim_type = ?")
         params.append(claim_type)

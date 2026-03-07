@@ -88,10 +88,10 @@ _DEFAULT_PII_KEYS = {"policy_number", "vin", "policy", "claimant_name", "claiman
 
 
 def _is_pii_key(key_lower: str, keys_to_mask: set[str]) -> bool:
-    """True if key should be treated as PII (exact match or contains policy/claimant, or vin)."""
+    """True if key should be treated as PII (exact match or contains policy/claimant/name, or vin)."""
     if key_lower in keys_to_mask:
         return True
-    return "policy" in key_lower or "claimant" in key_lower or key_lower == "vin"
+    return "policy" in key_lower or "claimant" in key_lower or "name" in key_lower or key_lower == "vin"
 
 
 def mask_dict(data: dict[str, Any], keys_to_mask: set[str] | None = None) -> dict[str, Any]:
