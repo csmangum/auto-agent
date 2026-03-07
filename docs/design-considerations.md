@@ -51,21 +51,64 @@ The architecture diagram shows both "SQLite" and "Mock Data" in the Data Layer. 
 
 The Mock DB is not an alternative to SQLite; it is supplementary reference data for the POC. SQLite holds the claim record; Mock DB provides lookup data for tools.
 
-## Reprocessing and Partial Failures
+## Reprocessing and Checkpointing
 
-### Current Behavior
+### Behavior
 
-`claim-agent reprocess <claim_id>` loads the claim from SQLite and re-runs the full workflow (router + escalation + workflow crew). Each run is appended to `workflow_runs`. There is no checkpointing or resume from a specific task.
+`claim-agent reprocess <claim_id>` re-runs the workflow for an existing claim.
+Each run is appended to `workflow_runs` and now also writes per-stage checkpoints
+to the `task_checkpoints` table so that future reprocessing can resume from the
+last successful stage.
 
-### Limitation
+### Checkpoint Schema
 
-If a crew fails partway through (e.g., task 2 of 4 succeeds, task 3 times out), the claim remains in `processing` or an intermediate state. Reprocess starts from scratch—no partial state recovery. Idempotency is at the "full run" level, not per-task.
+```
+task_checkpoints
+├── claim_id          TEXT NOT NULL  (FK → claims.id)
+├── workflow_run_id   TEXT NOT NULL  (groups checkpoints for one execution)
+├── stage_key         TEXT NOT NULL  (e.g. "router", "workflow:total_loss")
+├── output            TEXT NOT NULL  (JSON-serialised stage output)
+└── created_at        TEXT           (auto-populated)
+UNIQUE(claim_id, workflow_run_id, stage_key)
+```
 
-### Future Options
+### Stages
 
-- Task-level checkpoints
-- Idempotent task keys
-- Explicit "retry from task N" for long workflows
+The workflow is divided into four checkpoint stages, executed in order:
+
+| Stage key              | What is checkpointed |
+| ---------------------- | -------------------- |
+| `router`               | claim_type, confidence, reasoning, raw router output |
+| `escalation_check`     | Result of pre-workflow escalation evaluation (only saved when not escalated) |
+| `workflow:{claim_type}` | Primary crew output and extracted payout amount |
+| `settlement`           | Settlement crew output (only for total_loss / partial_loss) |
+
+### Resume Logic
+
+When `resume_run_id` is passed to `run_claim_workflow`:
+
+1. All checkpoints for `(claim_id, workflow_run_id)` are loaded.
+2. If `from_stage` is also given, checkpoints at and after that stage are deleted.
+3. For each stage, if a checkpoint exists the cached output is used; otherwise the stage runs normally and a checkpoint is written on success.
+4. Failed stages are **not** checkpointed, so reprocessing naturally retries them.
+
+### CLI
+
+```
+claim-agent reprocess <claim_id> --from-task <stage>
+```
+
+`--from-task` accepts one of: `router`, `escalation_check`, `workflow`, `settlement`.
+The CLI looks up the most recent `workflow_run_id` with checkpoints and resumes
+from the specified stage.
+
+### API
+
+```
+POST /api/claims/{claim_id}/reprocess?from_stage=workflow
+```
+
+Optional `from_stage` query parameter; same semantics as the CLI flag.
 
 ## Summary
 
@@ -75,6 +118,6 @@ If a crew fails partway through (e.g., task 2 of 4 succeeds, task 3 times out), 
 | Router     | Structured JSON (claim_type, confidence, reasoning); threshold + optional validation | — |
 | Escalation | Pre-workflow + mid-workflow (escalate_claim tool) | — |
 | Data       | SQLite (claims) + Mock JSON (reference) | Mock DB role not obvious from architecture diagram        |
-| Reprocess  | Full re-run, append to workflow_runs    | No partial recovery or resume                             |
+| Reprocess  | Per-stage checkpoints; resume via `--from-task` / `from_stage` | Checkpoints are at stage boundaries, not individual CrewAI tasks |
 
 

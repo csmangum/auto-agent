@@ -637,9 +637,22 @@ async def stream_claim_updates(
 @router.post("/claims/{claim_id}/reprocess")
 async def reprocess_claim(
     claim_id: str,
+    from_stage: Optional[str] = Query(None, description="Resume from this stage (router, escalation_check, workflow, settlement)"),
     auth: AuthContext = RequireSupervisor,
 ):
-    """Re-run workflow for an existing claim. Requires supervisor role."""
+    """Re-run workflow for an existing claim. Requires supervisor role.
+
+    Pass ``from_stage`` to resume from a specific stage using checkpoints from
+    the most recent workflow run.
+    """
+    from claim_agent.crews.main_crew import WORKFLOW_STAGES
+
+    if from_stage is not None and from_stage not in WORKFLOW_STAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"from_stage must be one of {', '.join(WORKFLOW_STAGES)}",
+        )
+
     repo = ClaimRepository(db_path=get_db_path())
     claim = repo.get_claim(claim_id)
     if claim is None:
@@ -651,10 +664,18 @@ async def reprocess_claim(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
 
+    resume_run_id: str | None = None
+    if from_stage is not None:
+        resume_run_id = repo.get_latest_workflow_run_id(claim_id)
+        if resume_run_id is None:
+            from_stage = None
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     result = run_claim_workflow(
         claim_data,
         existing_claim_id=claim_id,
         actor_id=actor_id,
+        resume_run_id=resume_run_id,
+        from_stage=from_stage,
     )
     return result

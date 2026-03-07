@@ -78,6 +78,20 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
+-- Task-level checkpoints for resumable workflows
+CREATE TABLE IF NOT EXISTS task_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    workflow_run_id TEXT NOT NULL,
+    stage_key TEXT NOT NULL,
+    output TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    UNIQUE(claim_id, workflow_run_id, stage_key)
+);
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_claim_run
+    ON task_checkpoints(claim_id, workflow_run_id);
+
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """
