@@ -453,6 +453,8 @@ class TestHealthEndpoint:
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
+
+class TestOpenAPIEndpoints:
     def test_openapi_spec_accessible(self, client):
         """OpenAPI spec is available at /api/openapi.json."""
         resp = client.get("/api/openapi.json")

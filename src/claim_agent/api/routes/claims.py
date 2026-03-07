@@ -433,11 +433,11 @@ async def create_claim(
     """Submit a new claim for processing. Accepts ClaimInput JSON body.
 
     Use for programmatic access: portals, batch ingestion, third-party integrations.
-    For file uploads, use POST /claims/process with multipart form.
+    For file uploads, use POST /api/claims/process with multipart form.
     """
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim_input.model_dump_json(), None, actor_id
+        claim_input, None, actor_id
     )
 
     if async_mode:
@@ -484,19 +484,25 @@ async def process_claim(
 
 
 async def _process_claim_with_attachments(
-    claim: str,
+    claim: str | ClaimInput,
     files: Optional[list[UploadFile]],
     actor_id: str,
 ) -> tuple[str, dict]:
     """Shared helper for claim creation and attachment handling.
-    
+
+    Accepts either a JSON string (from form uploads) or an already-validated ClaimInput
+    (from POST /api/claims JSON body). Sanitization and validation run once.
+
     Returns:
         tuple of (claim_id, claim_data_with_attachments)
     """
-    try:
-        claim_data = json.loads(claim)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
+    if isinstance(claim, ClaimInput):
+        claim_data = claim.model_dump()
+    else:
+        try:
+            claim_data = json.loads(claim)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
 
     sanitized = sanitize_claim_data(claim_data)
     try:

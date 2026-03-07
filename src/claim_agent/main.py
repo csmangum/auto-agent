@@ -467,7 +467,7 @@ def main() -> None:
     if first == "serve":
         port_str = _parse_opt_arg("--port") or "8000"
         host = _parse_opt_arg("--host") or "0.0.0.0"
-        reload = "--reload" in sys.argv
+        reload = "--reload" in options
         try:
             port = int(port_str)
         except ValueError:
