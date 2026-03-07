@@ -387,8 +387,21 @@ def test_escalate_claim_impl_raises_for_missing_reason():
         escalate_claim_impl(claim_id="CLM-12345678", reason="", indicators=[], priority="low")
 
 
+def test_escalate_claim_impl_raises_for_invalid_indicators():
+    """escalate_claim_impl raises ValueError when indicators is not a list or tuple."""
+    from claim_agent.tools.logic import escalate_claim_impl
+
+    with pytest.raises(ValueError, match="indicators must be a list or tuple"):
+        escalate_claim_impl(
+            claim_id="CLM-12345678",
+            reason="test",
+            indicators="not a list",  # type: ignore[arg-type]
+            priority="low",
+        )
+
+
 def test_main_crew_handles_mid_workflow_escalation(_temp_claims_db):
-    """When crew raises MidWorkflowEscalation, main_crew returns escalation response and saves partial output."""
+    """When crew raises MidWorkflowEscalation, main_crew returns escalation response and saves escalation details."""
     from unittest.mock import MagicMock, patch
 
     from claim_agent.crews.main_crew import run_claim_workflow

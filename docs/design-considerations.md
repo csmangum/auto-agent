@@ -33,7 +33,7 @@ See [Escalation Tools](tools.md#escalation-tools) and `evaluate_escalation_impl`
 
 ### Mid-Workflow Escalation
 
-Any workflow agent can call the `escalate_claim` tool during processing. When called, crew execution halts immediately, the claim status is set to `needs_review`, partial output is persisted, and the claim appears in the review queue. See [Agent Flow - Mid-Workflow Escalation](agent-flow.md#mid-workflow-escalation).
+Any workflow agent can call the `escalate_claim` tool during processing. When called, crew execution halts immediately, the claim status is set to `needs_review`, and the claim appears in the review queue. See [Agent Flow - Mid-Workflow Escalation](agent-flow.md#mid-workflow-escalation).
 
 ### Future Options
 

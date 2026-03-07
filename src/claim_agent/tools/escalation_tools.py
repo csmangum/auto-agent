@@ -82,6 +82,8 @@ def escalate_claim(
     if not claim_id:
         raise ValueError("claim_data must include claim_id for escalate_claim")
     claim_id = str(claim_id).strip()
+    claim_type = data.get("claim_type") if isinstance(data, dict) else None
+    claim_type = str(claim_type).strip() if claim_type else None
 
     ind_list = []
     if indicators and str(indicators).strip():
@@ -99,6 +101,7 @@ def escalate_claim(
         reason=normalized_reason,
         indicators=ind_list,
         priority=normalized_priority,
+        claim_type=claim_type,
     )
     raise MidWorkflowEscalation(
         reason=normalized_reason,

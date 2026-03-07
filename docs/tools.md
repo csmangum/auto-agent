@@ -291,7 +291,7 @@ Escalate a claim for human review mid-workflow. Halts crew execution immediately
 | `indicators` | string (optional) | JSON array of fraud/risk indicator strings |
 | `priority` | string (optional) | low, medium, high, or critical (default: medium) |
 
-**Behavior:** Writes escalation to DB, sets claim status to needs_review, then raises MidWorkflowEscalation to halt crew execution. Partial output is persisted; claim appears in review queue.
+**Behavior:** Writes escalation to DB, sets claim status to needs_review, then raises MidWorkflowEscalation to halt crew execution. The claim appears in the review queue.
 
 **Used by:** All workflow agents (New, Duplicate, Total Loss, Fraud, Partial Loss crews)
 

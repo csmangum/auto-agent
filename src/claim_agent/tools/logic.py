@@ -573,16 +573,18 @@ def escalate_claim_impl(
     if not reason or not isinstance(reason, str) or not reason.strip():
         raise ValueError("reason is required for escalate_claim")
     reason = reason.strip()
-    indicators = list(indicators) if indicators else []
+    if indicators is None:
+        indicators = []
+    elif isinstance(indicators, (list, tuple)):
+        indicators = [str(x) for x in indicators if x is not None]
+    else:
+        raise ValueError("indicators must be a list or tuple of strings for escalate_claim")
     valid_priorities = ("low", "medium", "high", "critical")
     priority = (priority or "medium").strip().lower()
     if priority not in valid_priorities:
         priority = "medium"
 
     repo = ClaimRepository()
-    if repo.get_claim(claim_id) is None:
-        raise ValueError(f"Claim not found: {claim_id}")
-
     details = json.dumps({
         "escalation": True,
         "mid_workflow": True,

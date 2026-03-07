@@ -799,7 +799,6 @@ def run_claim_workflow(
                     "reason": e.reason,
                     "indicators": e.indicators,
                     "priority": e.priority,
-                    "partial_output": e.partial_output,
                 })
                 repo.save_workflow_result(claim_id, claim_type, raw_output, escalation_details)
                 workflow_duration = (time.time() - workflow_start_time) * 1000
