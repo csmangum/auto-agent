@@ -6,7 +6,14 @@ cd "$(dirname "$0")/.."
 
 # Create .venv if missing
 if [[ ! -d .venv ]]; then
-  python3 -m venv .venv
+  if python3 -m venv .venv &>/dev/null; then
+    : # venv with pip created successfully
+  else
+    # ensurepip not available (e.g. minimal Ubuntu without python3-venv)
+    rm -rf .venv
+    python3 -m venv .venv --without-pip
+    curl -sS https://bootstrap.pypa.io/get-pip.py | .venv/bin/python3 -
+  fi
 fi
 
 # Install claim-agent with dev deps (pytest, pytest-cov, PyJWT)
