@@ -67,7 +67,7 @@ When running the API server (`claim-agent serve`), production health checks are 
 - **200** when database is connected
 - **503** when database is unreachable (critical dependency down)
 
-Set `HEALTH_CHECK_LLM=true` to include an optional LLM connectivity check. LLM failure marks `llm: degraded` but does not change the overall status (DB is the only critical dependency).
+Set `HEALTH_CHECK_LLM=true` to include an optional LLM configuration/client initialization check. LLM failure marks `llm: degraded` but does not change the overall status (DB is the only critical dependency).
 
 ## Prometheus Metrics
 

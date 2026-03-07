@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import threading
 
-from claim_agent.db.constants import STATUS_NEEDS_REVIEW, STATUS_PROCESSING
+from claim_agent.db.constants import (
+    STATUS_CLOSED,
+    STATUS_DUPLICATE,
+    STATUS_FRAUD_SUSPECTED,
+    STATUS_NEEDS_REVIEW,
+    STATUS_OPEN,
+    STATUS_PROCESSING,
+    STATUS_SETTLED,
+)
 from claim_agent.db.database import get_connection
 from prometheus_client import (
     Counter,
@@ -16,7 +24,7 @@ from prometheus_client import (
 
 # Statuses that count as successful processing (not failed, not escalated)
 _PROCESSED_STATUSES = frozenset(
-    {"open", "closed", "settled", "duplicate", "fraud_suspected"}
+    {STATUS_OPEN, STATUS_CLOSED, STATUS_SETTLED, STATUS_DUPLICATE, STATUS_FRAUD_SUSPECTED}
 )
 
 _claims_processed_total: Counter | None = None

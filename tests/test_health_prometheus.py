@@ -1,6 +1,5 @@
 """Tests for production health checks and Prometheus metrics."""
 
-import pytest
 from unittest.mock import patch
 
 from claim_agent.observability.health import check_health, is_healthy
@@ -110,6 +109,17 @@ class TestHealthEndpoints:
 
         client = TestClient(app)
         for path in ("/health", "/healthz"):
+            resp = client.get(path)
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "ok"
+
+    def test_health_trailing_slash(self):
+        """GET /api/health/ and /health/ work (path normalization for load balancers)."""
+        from fastapi.testclient import TestClient
+        from claim_agent.api.server import app
+
+        client = TestClient(app)
+        for path in ("/api/health/", "/health/"):
             resp = client.get(path)
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"

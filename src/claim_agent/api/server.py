@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from claim_agent.api.auth import is_auth_required, verify_token
-from claim_agent.observability.health import check_health, is_healthy
+from claim_agent.observability.health import check_health
 from claim_agent.observability.prometheus import generate_metrics
 from claim_agent.api.rate_limit import get_client_ip, is_rate_limited
 from claim_agent.api.routes.claims import router as claims_router
@@ -86,10 +86,15 @@ def _get_token(request: Request) -> str | None:
 _PUBLIC_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
 
 
+def _normalize_path(path: str) -> str:
+    """Strip trailing slash for consistent path matching (e.g. /api/health/ -> /api/health)."""
+    return path.rstrip("/") or "/"
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limit API routes: 100 req/min per IP."""
-    path = request.url.path
+    path = _normalize_path(request.url.path)
     if path.startswith("/api/") and path not in _PUBLIC_PATHS:
         ip = get_client_ip(request)
         if is_rate_limited(ip):
@@ -103,7 +108,7 @@ async def rate_limit_middleware(request: Request, call_next):
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """Verify auth when configured. Set request.state.auth on success."""
-    path = request.url.path
+    path = _normalize_path(request.url.path)
     if not path.startswith("/api/") or path in _PUBLIC_PATHS:
         return await call_next(request)
 
@@ -136,21 +141,25 @@ def _health_response():
 
 
 @app.get("/api/health")
+@app.get("/api/health/")
 async def health():
     """Production health check: DB (required), optional LLM. Returns 503 if DB down."""
     return _health_response()
 
 
 @app.get("/health")
+@app.get("/health/")
 @app.get("/healthz")
+@app.get("/healthz/")
 async def health_aliases():
     """Health check aliases for k8s/load balancers."""
     return _health_response()
 
 
 @app.get("/metrics")
-async def metrics():
-    """Prometheus metrics scrape endpoint."""
+@app.get("/metrics/")
+def metrics():
+    """Prometheus metrics scrape endpoint. Sync handler so SQLite queries run in threadpool."""
     return Response(
         content=generate_metrics(),
         media_type="text/plain; charset=utf-8",
