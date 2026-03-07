@@ -23,6 +23,7 @@ from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
+from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.config.llm import get_llm, get_model_name
 from claim_agent.config.settings import (
     get_crew_verbose,
@@ -36,8 +37,8 @@ from claim_agent.db.constants import (
     STATUS_FRAUD_SUSPECTED,
     STATUS_NEEDS_REVIEW,
     STATUS_OPEN,
-    STATUS_PARTIAL_LOSS,
     STATUS_PROCESSING,
+    STATUS_SETTLED,
 )
 from claim_agent.tools.logic import evaluate_escalation_impl, detect_fraud_indicators_impl
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
@@ -286,9 +287,26 @@ def _final_status(claim_type: str) -> str:
         return STATUS_DUPLICATE
     if claim_type == ClaimType.FRAUD.value:
         return STATUS_FRAUD_SUSPECTED
-    if claim_type == ClaimType.PARTIAL_LOSS.value:
-        return STATUS_PARTIAL_LOSS
+    if claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value):
+        return STATUS_SETTLED
     return STATUS_CLOSED
+
+
+def _requires_settlement(claim_type: str) -> bool:
+    """Return True when the workflow should hand off to the shared settlement crew."""
+    return claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value)
+
+
+def _combine_workflow_outputs(primary_output: str, settlement_output: str | None = None) -> str:
+    """Combine primary workflow and settlement outputs for persistence and summaries."""
+    if not settlement_output:
+        return primary_output
+    return (
+        "Primary workflow output:\n"
+        f"{primary_output}\n\n"
+        "Settlement workflow output:\n"
+        f"{settlement_output}"
+    )
 
 
 def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None) -> list[dict]:
@@ -836,12 +854,73 @@ def run_claim_workflow(
                 latency_ms=crew_latency,
             )
 
+            final_workflow_output = workflow_output
+            if _requires_settlement(claim_type):
+                _check_token_budget(claim_id, metrics, llm)
+                logger.log_event("crew_started", crew="settlement")
+                settlement_start = time.time()
+
+                settlement_crew = create_settlement_crew(
+                    llm,
+                    claim_type=claim_type,
+                )
+                settlement_inputs = {
+                    "claim_data": json.dumps({**claim_data_with_id, "claim_type": claim_type}),
+                    "workflow_output": workflow_output,
+                }
+
+                try:
+                    settlement_result = _kickoff_with_retry(settlement_crew, settlement_inputs)
+                except MidWorkflowEscalation as e:
+                    settlement_details = json.dumps({
+                        "escalation": True,
+                        "mid_workflow": True,
+                        "stage": "settlement",
+                        "reason": e.reason,
+                        "indicators": e.indicators,
+                        "priority": e.priority,
+                    })
+                    repo.save_workflow_result(claim_id, claim_type, raw_output, settlement_details)
+                    workflow_duration = (time.time() - workflow_start_time) * 1000
+                    logger.log_event(
+                        "claim_escalated",
+                        reasons=[e.reason],
+                        priority=e.priority,
+                        duration_ms=workflow_duration,
+                    )
+                    _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+                    metrics.end_claim(claim_id, status="escalated")
+                    metrics.log_claim_summary(claim_id)
+                    return {
+                        "claim_id": claim_id,
+                        "claim_type": claim_type,
+                        "status": STATUS_NEEDS_REVIEW,
+                        "needs_review": True,
+                        "escalation_reasons": [e.reason],
+                        "priority": e.priority,
+                        "fraud_indicators": e.indicators,
+                        "router_output": raw_output,
+                        "workflow_output": settlement_details,
+                        "summary": f"Escalated during settlement: {e.reason}",
+                    }
+
+                _check_token_budget(claim_id, metrics, llm)
+                settlement_latency = (time.time() - settlement_start) * 1000
+                settlement_output = getattr(settlement_result, "raw", None) or getattr(settlement_result, "output", None) or str(settlement_result)
+                settlement_output = str(settlement_output)
+                logger.log_event(
+                    "crew_completed",
+                    crew="settlement",
+                    latency_ms=settlement_latency,
+                )
+                final_workflow_output = _combine_workflow_outputs(workflow_output, settlement_output)
+
             final_status = _final_status(claim_type)
-            repo.save_workflow_result(claim_id, claim_type, raw_output, workflow_output)
+            repo.save_workflow_result(claim_id, claim_type, raw_output, final_workflow_output)
             repo.update_claim_status(
                 claim_id,
                 final_status,
-                details=workflow_output[:500] if len(workflow_output) > 500 else workflow_output,
+                details=final_workflow_output[:500] if len(final_workflow_output) > 500 else final_workflow_output,
                 claim_type=claim_type,
                 actor_id=_actor,
             )
@@ -864,8 +943,8 @@ def run_claim_workflow(
                 "claim_id": claim_id,
                 "claim_type": claim_type,
                 "router_output": raw_output,
-                "workflow_output": workflow_output,
-                "summary": workflow_output[:500] + "..." if len(workflow_output) > 500 else workflow_output,
+                "workflow_output": final_workflow_output,
+                "summary": final_workflow_output[:500] + "..." if len(final_workflow_output) > 500 else final_workflow_output,
             }
         except Exception as e:
             details = str(e)

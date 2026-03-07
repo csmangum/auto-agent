@@ -51,15 +51,14 @@ class TestClaimClassification:
             STATUS_OPEN,
             STATUS_DUPLICATE,
             STATUS_FRAUD_SUSPECTED,
-            STATUS_PARTIAL_LOSS,
-            STATUS_CLOSED,
+            STATUS_SETTLED,
         )
         
         assert _final_status("new") == STATUS_OPEN
         assert _final_status("duplicate") == STATUS_DUPLICATE
         assert _final_status("fraud") == STATUS_FRAUD_SUSPECTED
-        assert _final_status("partial_loss") == STATUS_PARTIAL_LOSS
-        assert _final_status("total_loss") == STATUS_CLOSED
+        assert _final_status("partial_loss") == STATUS_SETTLED
+        assert _final_status("total_loss") == STATUS_SETTLED
 
 
 # ============================================================================
@@ -101,7 +100,7 @@ class TestWorkflowWithMockedLLM:
     def test_workflow_routes_to_correct_crew(
         self, integration_db, sample_total_loss_claim, mock_router_response, mock_crew_response
     ):
-        """Test that claims are routed to the correct specialized crew."""
+        """Test that payout-ready total loss claims run workflow crew then settlement crew."""
         from claim_agent.crews.main_crew import run_claim_workflow
         
         # Use a claim that won't trigger escalation (low damage estimate)
@@ -110,21 +109,58 @@ class TestWorkflowWithMockedLLM:
         with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
             with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
                 with patch("claim_agent.crews.main_crew.create_total_loss_crew") as mock_crew:
-                    # Also mock escalation to return no escalation needed
-                    with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response(
-                            "total_loss", "Vehicle flooded - total destruction."
-                        )
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                            "Total loss confirmed. Vehicle value: $15,000."
-                        )
-                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
-                        
-                        result = run_claim_workflow(low_value_claim)
+                    with patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settlement:
+                        with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+                            mock_llm.return_value = MagicMock()
+                            mock_router.return_value.kickoff.return_value = mock_router_response(
+                                "total_loss", "Vehicle flooded - total destruction."
+                            )
+                            mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                "Total loss confirmed. Vehicle value: $15,000."
+                            )
+                            mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                "Settlement completed. Status: settled."
+                            )
+                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+
+                            result = run_claim_workflow(low_value_claim)
         
         assert result["claim_type"] == "total_loss"
         mock_crew.assert_called_once()
+        mock_settlement.assert_called_once()
+        assert "Settlement completed" in result["workflow_output"]
+
+    @pytest.mark.integration
+    def test_partial_loss_runs_shared_settlement_crew(
+        self, integration_db, sample_partial_loss_claim, mock_router_response, mock_crew_response
+    ):
+        """Test that partial loss workflow hands off to the shared settlement crew."""
+        from claim_agent.crews.main_crew import run_claim_workflow
+
+        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
+            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
+                with patch("claim_agent.crews.main_crew.create_partial_loss_crew") as mock_partial:
+                    with patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settlement:
+                        with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+                            mock_llm.return_value = MagicMock()
+                            mock_router.return_value.kickoff.return_value = mock_router_response(
+                                "partial_loss", "Repairable fender damage."
+                            )
+                            mock_partial.return_value.kickoff.return_value = mock_crew_response(
+                                "Repair authorization created. insurance_pays: $2,100."
+                            )
+                            mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                "Settlement completed. Status: settled."
+                            )
+                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+
+                            result = run_claim_workflow(sample_partial_loss_claim)
+
+        assert result["claim_type"] == "partial_loss"
+        mock_partial.assert_called_once()
+        mock_settlement.assert_called_once()
+        assert "Repair authorization created" in result["workflow_output"]
+        assert "Settlement completed" in result["workflow_output"]
     
     @pytest.mark.integration
     def test_workflow_records_audit_history(

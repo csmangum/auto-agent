@@ -31,12 +31,14 @@ src/claim_agent/skills/
 ├── damage_assessor.md       # Damage Assessor (Total Loss)
 ├── valuation.md             # Vehicle Valuation Specialist
 ├── payout.md                # Payout Calculator
-├── settlement.md            # Settlement Specialist
 ├── partial_loss_damage_assessor.md  # Partial Loss Damage Assessor
 ├── repair_estimator.md      # Repair Estimator
 ├── repair_shop_coordinator.md # Repair Shop Coordinator
 ├── parts_ordering.md        # Parts Ordering Specialist
 ├── repair_authorization.md  # Repair Authorization Specialist
+├── settlement_documentation.md # Settlement Documentation Specialist
+├── payment_distribution.md  # Payment Distribution Specialist
+├── settlement_closure.md    # Settlement Closure Specialist
 └── escalation.md            # Escalation Review Specialist
 ```
 
@@ -79,7 +81,6 @@ src/claim_agent/skills/
 | `damage_assessor.md` | Damage Assessor | Evaluate damage severity |
 | `valuation.md` | Vehicle Valuation Specialist | Fetch vehicle market value |
 | `payout.md` | Payout Calculator | Calculate settlement payout |
-| `settlement.md` | Settlement Specialist | Generate reports and close claims |
 
 ### Partial Loss Workflow
 
@@ -89,7 +90,15 @@ src/claim_agent/skills/
 | `repair_estimator.md` | Repair Estimator | Calculate repair costs |
 | `repair_shop_coordinator.md` | Repair Shop Coordinator | Assign repair facilities |
 | `parts_ordering.md` | Parts Ordering Specialist | Order required parts |
-| `repair_authorization.md` | Repair Authorization Specialist | Authorize repairs |
+| `repair_authorization.md` | Repair Authorization Specialist | Authorize repairs and prepare settlement handoff |
+
+### Settlement Workflow
+
+| Skill | Agent | Purpose |
+|-------|-------|---------|
+| `settlement_documentation.md` | Settlement Documentation Specialist | Create claim-type-specific settlement documentation |
+| `payment_distribution.md` | Payment Distribution Specialist | Document insured, lienholder, and shop payment splits |
+| `settlement_closure.md` | Settlement Closure Specialist | Finalize settlement and capture next steps |
 
 ### Escalation
 

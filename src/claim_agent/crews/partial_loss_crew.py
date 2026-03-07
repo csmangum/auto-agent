@@ -21,7 +21,7 @@ def create_partial_loss_crew(llm=None):
     2. Calculate repair estimate with parts and labor
     3. Find and assign a repair shop
     4. Order required parts
-    5. Generate repair authorization and close claim
+    5. Generate repair authorization and hand off to the shared settlement crew
     """
     llm = llm or get_llm()
     
@@ -118,12 +118,12 @@ Output the order confirmation with order ID, items, total cost, and delivery dat
         context=[assess_damage_task, estimate_task, shop_assignment_task],
     )
 
-    # Task 5: Generate authorization and close claim
+    # Task 5: Generate authorization and prepare settlement handoff
     authorization_task = Task(
         description="""CLAIM DATA (JSON):
 {claim_data}
 
-Generate the repair authorization and finalize the claim.
+Generate the repair authorization and prepare the claim for shared settlement.
 
 1. Use generate_repair_authorization with:
    - claim_id from claim_data (or generate one with generate_claim_id if not present)
@@ -131,15 +131,14 @@ Generate the repair authorization and finalize the claim.
    - Repair estimate amounts: total_estimate, parts_cost, labor_cost, deductible, customer_pays, insurance_pays
    - customer_approved: true
 
-2. Generate the final report using generate_report:
-   - claim_id: the claim ID
-   - claim_type: 'partial_loss'
-   - status: 'approved' 
-   - summary: One paragraph summarizing: damage, repair cost, shop assigned, parts ordered, authorization issued
-   - payout_amount: the insurance_pays amount
+2. Return a structured settlement handoff summary that includes:
+   - authorization_id
+   - assigned shop
+   - total_estimate, deductible, customer_pays, insurance_pays
+   - key repair scope details needed by the settlement crew
 
-Output the authorization details and claim summary.""",
-        expected_output="Repair authorization document with authorization_id, authorized amounts, terms, and final claim report with payout amount.",
+Do not generate the final claim report in this crew; that is handled by the shared settlement crew.""",
+        expected_output="Repair authorization document with authorization_id, authorized amounts, terms, and settlement handoff details including insurance_pays.",
         agent=authorization_agent,
         context=[assess_damage_task, estimate_task, shop_assignment_task, parts_order_task],
     )

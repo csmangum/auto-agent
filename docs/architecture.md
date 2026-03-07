@@ -117,7 +117,7 @@ flowchart TB
     end
 
     subgraph Total["Total Loss Crew"]
-        F1[Damage] --> F2[Valuation] --> F3[Payout] --> F4[Settlement]
+        F1[Damage] --> F2[Valuation] --> F3[Payout]
     end
 
     subgraph FraudCrew["Fraud Detection Crew"]
@@ -128,6 +128,10 @@ flowchart TB
         P1[Damage] --> P2[Estimate] --> P3[Shop] --> P4[Parts] --> P5[Auth]
     end
 
+    subgraph Settlement["Settlement Crew"]
+        S1[Documentation] --> S2[Payment Distribution] --> S3[Closure]
+    end
+
     H -->|new| D1
     H -->|duplicate| E1
     H -->|total_loss| F1
@@ -135,9 +139,10 @@ flowchart TB
     H -->|partial_loss| P1
     D3 --> G
     E3 --> G
-    F4 --> G
+    F3 --> S1
     FR3 --> G
-    P5 --> G
+    P5 --> S1
+    S3 --> G
 ```
 
 ## Directory Structure

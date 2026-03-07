@@ -99,7 +99,7 @@ _CREWS_CATALOG = [
     },
     {
         "name": "Total Loss Crew",
-        "description": "Processes claims where the vehicle is a total loss.",
+        "description": "Processes claims where the vehicle is a total loss and hands off payout-ready work to Settlement Crew.",
         "module": "crews/total_loss_crew.py",
         "agents": [
             {
@@ -119,12 +119,6 @@ _CREWS_CATALOG = [
                 "skill": "payout",
                 "tools": ["calculate_payout"],
                 "description": "Calculates settlement payout amount",
-            },
-            {
-                "name": "Settlement Specialist",
-                "skill": "settlement",
-                "tools": ["generate_claim_id", "generate_report"],
-                "description": "Generates reports and closes claims",
             },
         ],
     },
@@ -155,7 +149,7 @@ _CREWS_CATALOG = [
     },
     {
         "name": "Partial Loss Crew",
-        "description": "Handles claims for repairable vehicle damage.",
+        "description": "Handles repairable vehicle damage and hands off approved payouts to Settlement Crew.",
         "module": "crews/partial_loss_crew.py",
         "agents": [
             {
@@ -185,8 +179,33 @@ _CREWS_CATALOG = [
             {
                 "name": "Repair Authorization Specialist",
                 "skill": "repair_authorization",
-                "tools": ["generate_repair_authorization", "generate_report"],
-                "description": "Authorizes repairs and generates documentation",
+                "tools": ["generate_repair_authorization"],
+                "description": "Authorizes repairs and prepares the settlement handoff",
+            },
+        ],
+    },
+    {
+        "name": "Settlement Crew",
+        "description": "Shared final settlement phase for payout-ready total loss and partial loss claims.",
+        "module": "crews/settlement_crew.py",
+        "agents": [
+            {
+                "name": "Settlement Documentation Specialist",
+                "skill": "settlement_documentation",
+                "tools": ["generate_claim_id", "generate_report"],
+                "description": "Creates claim-type-specific settlement documentation",
+            },
+            {
+                "name": "Payment Distribution Specialist",
+                "skill": "payment_distribution",
+                "tools": ["calculate_payout", "generate_report"],
+                "description": "Documents insured, lienholder, and shop payment splits",
+            },
+            {
+                "name": "Settlement Closure Specialist",
+                "skill": "settlement_closure",
+                "tools": ["generate_claim_id", "generate_report"],
+                "description": "Finalizes settlement and records post-settlement next steps",
             },
         ],
     },

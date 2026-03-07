@@ -255,8 +255,9 @@ Generate a claim report/summary document.
 
 **Usage by Agents:**
 - Claim Assignment Specialist (New Claim Crew)
-- Settlement Specialist (Total Loss Crew)
-- Repair Authorization Specialist (Partial Loss Crew)
+- Settlement Documentation Specialist (Settlement Crew)
+- Payment Distribution Specialist (Settlement Crew)
+- Settlement Closure Specialist (Settlement Crew)
 
 ---
 
@@ -273,7 +274,8 @@ Generate a unique claim ID.
 
 **Usage by Agents:**
 - Claim Assignment Specialist (New Claim Crew)
-- Settlement Specialist (Total Loss Crew)
+- Settlement Documentation Specialist (Settlement Crew)
+- Settlement Closure Specialist (Settlement Crew)
 
 ---
 
