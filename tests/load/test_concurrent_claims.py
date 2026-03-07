@@ -1,6 +1,7 @@
 """Load tests: concurrent claim submissions with throughput and latency metrics."""
 
 import json
+import math
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -75,7 +76,7 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
 
     latencies_sorted = sorted(latencies)
     p50 = latencies_sorted[len(latencies_sorted) // 2] if latencies_sorted else 0
-    p99_idx = int(len(latencies_sorted) * 0.99) - 1
+    p99_idx = math.ceil(len(latencies_sorted) * 0.99) - 1
     p99 = latencies_sorted[p99_idx] if p99_idx >= 0 and latencies_sorted else 0
 
     report = {

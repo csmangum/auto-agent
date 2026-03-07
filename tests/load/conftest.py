@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,10 +28,13 @@ def mock_workflow_for_load(monkeypatch):
     import claim_agent.api.routes.claims as claims_mod
 
     call_count = [0]
+    lock = threading.Lock()
 
     def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None):
-        call_count[0] += 1
-        cid = existing_claim_id or f"CLM-LOAD-{call_count[0]:05d}"
+        with lock:
+            call_count[0] += 1
+            count = call_count[0]
+        cid = existing_claim_id or f"CLM-LOAD-{count:05d}"
         return {
             "claim_id": cid,
             "claim_type": "new",
