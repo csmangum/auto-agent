@@ -386,6 +386,65 @@ def get_claim_workflows(claim_id: str):
     return {"claim_id": claim_id, "workflows": [dict(r) for r in rows]}
 
 
+@router.post("/claims")
+async def create_claim(
+    claim_input: ClaimInput = Body(..., description="Claim data as JSON"),
+    async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Submit a new claim for processing. Accepts ClaimInput JSON body.
+
+    Use for programmatic access: portals, batch ingestion, third-party integrations.
+    For file uploads, use POST /claims/process with multipart form.
+    """
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    sanitized = sanitize_claim_data(claim_input.model_dump(mode="json"))
+    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+        json.dumps(sanitized), None, actor_id
+    )
+
+    if async_mode:
+        async def run_workflow_in_thread():
+            try:
+                await asyncio.to_thread(
+                    run_claim_workflow,
+                    claim_data_with_attachments,
+                    None,
+                    claim_id,
+                    actor_id=actor_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Unhandled exception in background workflow for claim_id %s", claim_id
+                )
+                try:
+                    _repo = ClaimRepository(db_path=get_db_path())
+                    _repo.update_claim_status(
+                        claim_id,
+                        STATUS_FAILED,
+                        details="Background workflow failed",
+                        actor_id=ACTOR_WORKFLOW,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to mark claim %s as failed after workflow error", claim_id
+                    )
+
+        task = asyncio.create_task(run_workflow_in_thread())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        return {"claim_id": claim_id}
+
+    result = await asyncio.to_thread(
+        run_claim_workflow,
+        claim_data_with_attachments,
+        None,
+        claim_id,
+        actor_id=actor_id,
+    )
+    return result
+
+
 @router.post("/claims/process")
 async def process_claim(
     claim: str = Form(..., description="Claim data as JSON string"),
