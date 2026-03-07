@@ -199,9 +199,9 @@ def _parse_claim_type(raw_output: str) -> str:
 def _normalize_claim_type(value: str) -> str:
     """Normalize claim_type string to canonical value."""
     v = (value or "").strip().lower().replace(" ", "_")
-    if v in ("total_loss", "total loss"):
+    if v == "total_loss":
         return ClaimType.TOTAL_LOSS.value
-    if v in ("partial_loss", "partial loss"):
+    if v == "partial_loss":
         return ClaimType.PARTIAL_LOSS.value
     if v == "new":
         return ClaimType.NEW.value

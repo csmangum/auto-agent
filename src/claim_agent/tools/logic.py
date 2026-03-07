@@ -400,7 +400,7 @@ Independently verify the classification. Return JSON only:
 {{"claim_type": "new"|"duplicate"|"total_loss"|"fraud"|"partial_loss", "confidence": 0.0-1.0, "reasoning": "brief explanation"}}"""
 
     try:
-        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
         resp = litellm.completion(model=model, messages=[{"role": "user", "content": prompt}])
         text = (resp.choices[0].message.content or "").strip()
         # Extract JSON
