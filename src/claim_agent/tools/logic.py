@@ -351,7 +351,12 @@ def calculate_payout_impl(vehicle_value: float, policy_number: str) -> str:
             })
         deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
     except (json.JSONDecodeError, KeyError) as e:
-        logger.error("Policy lookup failed for policy %s: %s", policy_number, e, exc_info=True)
+        logger.error(
+            "Policy lookup failed: %s",
+            e,
+            exc_info=True,
+            extra={"extra_data": {"policy_number": policy_number, "error": str(e)}},
+        )
         return json.dumps({
             "error": "Policy lookup failed. Please try again.",
             "payout_amount": 0.0,

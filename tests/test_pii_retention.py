@@ -53,6 +53,25 @@ class TestPIIMasking:
         assert masked["vin"] == "1HG***3456"
         assert masked["other"] == "keep"
 
+    def test_mask_text_vin(self):
+        """mask_text should mask VIN-like 17-char sequences in free text."""
+        from claim_agent.utils.pii_masking import mask_text
+
+        assert (
+            mask_text("VIN 1HGCM82633A123456 was processed")
+            == "VIN 1HG***3456 was processed"
+        )
+
+    def test_mask_text_policy_number(self):
+        """mask_text should mask policy-number-like patterns in free text."""
+        from claim_agent.utils.pii_masking import mask_text
+
+        assert (
+            mask_text("Policy POL-12345-001 failed")
+            == "Policy POL***001 failed"
+        )
+        assert mask_text("Ref ABC123XYZ") == "Ref ABC***XYZ"
+
 
 class TestPIIInLogger:
     """Tests for PII masking in log formatters."""
@@ -117,6 +136,32 @@ class TestPIIInLogger:
             finally:
                 _set_claim_context({})
 
+    def test_formatter_masks_policy_in_message_when_enabled(self):
+        """When CLAIM_AGENT_MASK_PII=true, message body with policy number is masked."""
+        import logging
+
+        from claim_agent.observability.logger import StructuredFormatter, _set_claim_context
+
+        with mock.patch("claim_agent.observability.logger.get_mask_pii", return_value=True):
+            formatter = StructuredFormatter()
+            record = logging.LogRecord(
+                name="test",
+                level=logging.INFO,
+                pathname="test.py",
+                lineno=1,
+                msg="Policy POL-12345-001 lookup failed",
+                args=(),
+                exc_info=None,
+            )
+            _set_claim_context({})
+            try:
+                output = formatter.format(record)
+                parsed = json.loads(output)
+                assert "POL***001" in parsed.get("message", "")
+                assert "POL-12345-001" not in parsed.get("message", "")
+            finally:
+                _set_claim_context({})
+
 
 class TestRetentionConfig:
     """Tests for retention config."""
@@ -129,12 +174,58 @@ class TestRetentionConfig:
             assert get_retention_period_years() == 7
 
     def test_get_retention_period_default(self):
-        """get_retention_period_years should default to 5 from compliance."""
+        """get_retention_period_years should default to 5 from compliance when env unset."""
         from claim_agent.config.settings import get_retention_period_years
 
         with mock.patch.dict(os.environ, {}, clear=True):
-            # Should get 5 from compliance config when RETENTION_PERIOD_YEARS is unset
-            assert get_retention_period_years() == 5
+            with mock.patch(
+                "claim_agent.tools.data_loader.load_california_compliance",
+                return_value={
+                    "electronic_claims_requirements": {
+                        "provisions": [
+                            {"id": "ECR-003", "retention_period_years": 5},
+                        ],
+                    },
+                },
+            ):
+                assert get_retention_period_years() == 5
+
+    def test_get_retention_period_fallback_when_compliance_missing(self):
+        """get_retention_period_years returns 5 when compliance returns None."""
+        from claim_agent.config.settings import get_retention_period_years
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch(
+                "claim_agent.tools.data_loader.load_california_compliance",
+                return_value=None,
+            ):
+                assert get_retention_period_years() == 5
+
+    def test_get_retention_period_fallback_when_ecr003_absent(self):
+        """get_retention_period_years returns 5 when ECR-003 not in provisions."""
+        from claim_agent.config.settings import get_retention_period_years
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch(
+                "claim_agent.tools.data_loader.load_california_compliance",
+                return_value={"electronic_claims_requirements": {"provisions": []}},
+            ):
+                assert get_retention_period_years() == 5
+
+    def test_get_retention_period_invalid_env_fallback(self):
+        """get_retention_period_years falls back when RETENTION_PERIOD_YEARS is invalid."""
+        from claim_agent.config.settings import get_retention_period_years
+
+        with mock.patch.dict(os.environ, {"RETENTION_PERIOD_YEARS": "x"}):
+            with mock.patch(
+                "claim_agent.tools.data_loader.load_california_compliance",
+                return_value={
+                    "electronic_claims_requirements": {
+                        "provisions": [{"id": "ECR-003", "retention_period_years": 5}],
+                    },
+                },
+            ):
+                assert get_retention_period_years() == 5
 
 
 class TestRetentionRepository:
@@ -153,6 +244,43 @@ class TestRetentionRepository:
             # Retention 100 years - no claims will be that old
             claims = repo.list_claims_for_retention(100)
             assert claims == []
+        finally:
+            os.unlink(db_path)
+
+    def test_list_claims_for_retention_includes_old_claim(self):
+        """list_claims_for_retention returns claims older than retention; archive removes them."""
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_input = ClaimInput(
+                policy_number="POL-1",
+                vin="1HGCM82633A123456",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date="2020-01-15",
+                incident_description="Test",
+                damage_description="Test",
+            )
+            claim_id = repo.create_claim(claim_input)
+            # Backdate created_at so claim is older than 5 years
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",
+                    (claim_id,),
+                )
+            claims = repo.list_claims_for_retention(5)
+            assert len(claims) == 1
+            assert claims[0]["id"] == claim_id
+            repo.archive_claim(claim_id)
+            claims_after = repo.list_claims_for_retention(5)
+            assert len(claims_after) == 0
         finally:
             os.unlink(db_path)
 

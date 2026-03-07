@@ -83,6 +83,17 @@ def mask_value(key: str, value: Any) -> Any:
     return value
 
 
+# Keys that identify PII fields (exact or substring match)
+_DEFAULT_PII_KEYS = {"policy_number", "vin", "policy", "claimant_name", "claimant"}
+
+
+def _is_pii_key(key_lower: str, keys_to_mask: set[str]) -> bool:
+    """True if key should be treated as PII (exact match or contains policy/claimant, or vin)."""
+    if key_lower in keys_to_mask:
+        return True
+    return "policy" in key_lower or "claimant" in key_lower or key_lower == "vin"
+
+
 def mask_dict(data: dict[str, Any], keys_to_mask: set[str] | None = None) -> dict[str, Any]:
     """Recursively mask PII fields in a dict.
 
@@ -90,13 +101,12 @@ def mask_dict(data: dict[str, Any], keys_to_mask: set[str] | None = None) -> dic
         data: Dict that may contain PII
         keys_to_mask: Optional set of keys to mask. Default: policy_number, vin, and name-like keys.
     """
-    default_keys = {"policy_number", "vin", "policy", "claimant_name", "claimant"}
-    mask_keys = keys_to_mask or default_keys
+    mask_keys = keys_to_mask or _DEFAULT_PII_KEYS
 
     result: dict[str, Any] = {}
     for k, v in data.items():
         k_lower = k.lower()
-        if k_lower in mask_keys or any(mk in k_lower for mk in ("policy", "claimant")) or k_lower == "vin":
+        if _is_pii_key(k_lower, mask_keys):
             result[k] = mask_value(k, v)
         elif isinstance(v, dict):
             result[k] = mask_dict(v, keys_to_mask)
@@ -113,11 +123,19 @@ def mask_dict(data: dict[str, Any], keys_to_mask: set[str] | None = None) -> dic
 # VIN pattern: 17 characters, excluding I, O, Q (standard VIN alphabet)
 _VIN_RE = re.compile(r"\b([A-HJ-NPR-Z0-9]{3})[A-HJ-NPR-Z0-9]{10}([A-HJ-NPR-Z0-9]{4})\b")
 
+# Policy number-like: at least 7 chars, first 3 and last 3 preserved; middle must contain digit or hyphen
+_POLICY_RE = re.compile(
+    r"\b([A-Za-z0-9]{3})(?=[-A-Za-z0-9]*[-0-9][-A-Za-z0-9]*)([-A-Za-z0-9]+)([A-Za-z0-9]{3})\b"
+)
+
 
 def mask_text(text: str) -> str:
-    """Mask PII patterns (VINs) found within a free-text string.
+    """Mask PII patterns (VINs, policy numbers) found within a free-text string.
 
-    Replaces VIN-like 17-character sequences with a masked form.
-    Example: "VIN 1HGCM82633A123456 was processed" -> "VIN 1HG***3456 was processed"
+    Replaces VIN-like 17-character sequences and policy-number-like sequences
+    with masked forms. Example: "VIN 1HGCM82633A123456" -> "VIN 1HG***3456";
+    "policy POL-12345-001" -> "policy POL***001".
     """
-    return _VIN_RE.sub(lambda m: f"{m.group(1)}***{m.group(2)}", text)
+    out = _VIN_RE.sub(lambda m: f"{m.group(1)}***{m.group(2)}", text)
+    out = _POLICY_RE.sub(lambda m: f"{m.group(1)}***{m.group(3)}", out)
+    return out

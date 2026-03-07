@@ -1,7 +1,10 @@
 """Centralized configuration from environment variables with defaults."""
 
+import logging
 import os
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 def _float(key: str, default: float) -> float:
@@ -176,7 +179,10 @@ def get_retention_period_years() -> int:
         try:
             return int(raw)
         except ValueError:
-            pass
+            _log.warning(
+                "RETENTION_PERIOD_YEARS is set but invalid (%r); using compliance/default.",
+                raw,
+            )
     # Fallback: try to load from compliance config
     try:
         from claim_agent.tools.data_loader import load_california_compliance
@@ -186,8 +192,11 @@ def get_retention_period_years() -> int:
             for p in ecr.get("provisions", []):
                 if p.get("id") == "ECR-003" and "retention_period_years" in p:
                     return int(p["retention_period_years"])
-    except Exception:
-        pass
+    except (ImportError, TypeError, ValueError, KeyError) as e:
+        _log.warning(
+            "Could not load retention period from compliance config: %s; using default 5 years.",
+            e,
+        )
     return 5
 
 

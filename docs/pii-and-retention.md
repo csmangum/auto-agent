@@ -14,7 +14,8 @@ Logs may contain policy numbers, VINs, and other PII. To comply with data protec
 |-------|--------|---------|
 | `policy_number` | First 3 + last 3 visible | `POL-12345-001` → `POL***001` |
 | `vin` | First 3 + last 4 visible | `1HGCM82633A123456` → `1HG***3456` |
-| `claimant_name` | First letter per word | `John Smith` → `J*** S***` |
+
+In structured `extra_data` (dicts), keys containing "claimant" or "name" are also masked (e.g. `claimant_name` → first letter per word).
 
 ### Configuration
 
