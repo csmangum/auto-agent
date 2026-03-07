@@ -11,6 +11,7 @@ from claim_agent.agents.partial_loss import (
 )
 from claim_agent.config.llm import get_llm
 from claim_agent.config.settings import get_crew_verbose
+from claim_agent.models.workflow_output import PartialLossWorkflowOutput
 
 
 def create_partial_loss_crew(llm=None):
@@ -131,16 +132,16 @@ Generate the repair authorization and prepare the claim for shared settlement.
    - Repair estimate amounts: total_estimate, parts_cost, labor_cost, deductible, customer_pays, insurance_pays
    - customer_approved: true
 
-2. Return a structured settlement handoff summary that includes:
-   - authorization_id
-   - assigned shop
-   - total_estimate, deductible, customer_pays, insurance_pays
-   - key repair scope details needed by the settlement crew
+2. Return a structured output with:
+   - payout_amount: the insurance_pays value (amount insurance will pay)
+   - authorization_id: from the generate_repair_authorization result
+   - total_estimate: total repair estimate from the estimate step
 
 Do not generate the final claim report in this crew; that is handled by the shared settlement crew.""",
-        expected_output="Repair authorization document with authorization_id, authorized amounts, terms, and settlement handoff details including insurance_pays.",
+        expected_output="Structured output: payout_amount (insurance_pays), authorization_id, total_estimate.",
         agent=authorization_agent,
         context=[assess_damage_task, estimate_task, shop_assignment_task, parts_order_task],
+        output_pydantic=PartialLossWorkflowOutput,
     )
 
     return Crew(

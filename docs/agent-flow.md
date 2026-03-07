@@ -125,13 +125,19 @@ elif claim_type == "partial_loss":
 else:
     crew = create_total_loss_crew(llm)
 
-workflow_result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+# Mirror run_claim_workflow: enrich claim_data with claim_id and claim_type (from steps 2–3)
+enriched_claim_data = {
+    **claim_data,
+    "claim_id": claim_id,
+    "claim_type": claim_type,
+}
+workflow_result = crew.kickoff(inputs={"claim_data": json.dumps(enriched_claim_data)})
 
 if claim_type in {"total_loss", "partial_loss"}:
     settlement_crew = create_settlement_crew(llm, claim_type=claim_type)
     workflow_result = settlement_crew.kickoff(
         inputs={
-            "claim_data": json.dumps(claim_data),
+            "claim_data": json.dumps(enriched_claim_data),
             "workflow_output": str(workflow_result),
         }
     )

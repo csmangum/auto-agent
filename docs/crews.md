@@ -329,7 +329,7 @@ flowchart TB
 
 | Outcome | Status | Notes |
 |---------|--------|-------|
-| Success | `settlement_ready` | Payout calculated and handed off to Settlement Crew |
+| Success | `processing` | Payout calculated; claim remains in PROCESSING until Settlement Crew completes, then becomes `settled` |
 | Escalated | `needs_review` | Returned before crew execution |
 | Failed | `failed` | Error during crew execution |
 
@@ -592,7 +592,7 @@ flowchart TB
 
 | Outcome | Status | Notes |
 |---------|--------|-------|
-| Success | `settlement_ready` | Authorization issued and handed off to Settlement Crew |
+| Success | `processing` | Authorization issued; claim remains in PROCESSING until Settlement Crew completes, then becomes `settled` |
 | Escalated | `needs_review` | Returned before crew execution |
 | Failed | `failed` | Error during crew execution |
 

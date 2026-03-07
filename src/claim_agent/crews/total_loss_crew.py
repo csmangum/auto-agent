@@ -13,6 +13,7 @@ from claim_agent.agents.total_loss import (
 )
 from claim_agent.config.llm import get_llm
 from claim_agent.config.settings import get_crew_verbose
+from claim_agent.models.workflow_output import TotalLossWorkflowOutput
 
 
 def create_total_loss_crew(
@@ -57,10 +58,12 @@ Use vin, vehicle_year, vehicle_make, vehicle_model from the claim_data.""",
         description="""If total loss: calculate payout using the calculate_payout tool.
 Pass vehicle value from the valuation step and the policy_number from claim_data.
 The tool will look up the deductible and compute payout (vehicle value minus deductible).
-Output the payout amount and calculation details.""",
-        expected_output="Payout amount in dollars and one-line calculation (e.g. value - deductible).",
+
+Return a structured output with payout_amount (from the tool), vehicle_value, deductible, and calculation from the calculate_payout tool result.""",
+        expected_output="Structured output: payout_amount (float), vehicle_value (float), deductible (float), calculation (str).",
         agent=payout_agent,
         context=[assess_task, valuation_task],
+        output_pydantic=TotalLossWorkflowOutput,
     )
 
     return Crew(

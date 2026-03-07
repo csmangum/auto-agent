@@ -309,6 +309,35 @@ def _combine_workflow_outputs(primary_output: str, settlement_output: str | None
     )
 
 
+def _extract_payout_from_workflow_result(result: Any, claim_type: str) -> float | None:
+    """Extract payout_amount from workflow crew result when output_pydantic was used.
+
+    For total_loss and partial_loss, the final task uses output_pydantic. The last
+    task's output may be a Pydantic model with payout_amount. Returns None if
+    extraction fails (Settlement Crew will infer from workflow_output text).
+    """
+    if claim_type not in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value):
+        return None
+    tasks_output = getattr(result, "tasks_output", None)
+    if not tasks_output or not isinstance(tasks_output, list):
+        return None
+    try:
+        last_task = tasks_output[-1]
+        output = getattr(last_task, "output", None)
+        if output is None:
+            return None
+        val = None
+        if hasattr(output, "payout_amount"):
+            val = getattr(output, "payout_amount")
+        elif isinstance(output, dict) and "payout_amount" in output:
+            val = output["payout_amount"]
+        if val is not None and isinstance(val, (int, float)) and val >= 0:
+            return float(val)
+    except (IndexError, TypeError, AttributeError, KeyError):
+        pass
+    return None
+
+
 def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None) -> list[dict]:
     """Search for existing claims with same VIN and similar incident date.
     
@@ -576,17 +605,22 @@ def _handle_mid_workflow_escalation(
     repo.save_workflow_result(claim_id, claim_type, raw_output, saved_output)
 
     if stage is not None:
-        repo.update_claim_status(
-            claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=escalation_details, actor_id=actor_id
-        )
-        hours = 24 if e.priority in ("critical", "high") else 48 if e.priority == "medium" else 72
-        due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
-        repo.update_claim_review_metadata(
-            claim_id,
-            priority=e.priority,
-            due_at=due_at,
-            review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        )
+        # When escalation came from escalate_claim tool, status is already needs_review;
+        # avoid duplicate status_change audit and overwriting review timestamps.
+        current_claim = repo.get_claim(claim_id)
+        current_status = current_claim.get("status") if current_claim else None
+        if current_status != STATUS_NEEDS_REVIEW:
+            repo.update_claim_status(
+                claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=escalation_details, actor_id=actor_id
+            )
+            hours = 24 if e.priority in ("critical", "high") else 48 if e.priority == "medium" else 72
+            due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+            repo.update_claim_review_metadata(
+                claim_id,
+                priority=e.priority,
+                due_at=due_at,
+                review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            )
 
     workflow_duration = (time.time() - workflow_start_time) * 1000
     logger.log_event(
@@ -930,6 +964,10 @@ def run_claim_workflow(
                 latency_ms=crew_latency,
             )
 
+            extracted_payout = _extract_payout_from_workflow_result(workflow_result, claim_type)
+            if extracted_payout is not None:
+                claim_data_with_id["payout_amount"] = extracted_payout
+
             final_workflow_output = workflow_output
             if _requires_settlement(claim_type):
                 _check_token_budget(claim_id, metrics, llm)
@@ -981,6 +1019,7 @@ def run_claim_workflow(
                 final_status,
                 details=final_workflow_output[:500] if len(final_workflow_output) > 500 else final_workflow_output,
                 claim_type=claim_type,
+                payout_amount=extracted_payout if extracted_payout is not None else None,
                 actor_id=_actor,
             )
 

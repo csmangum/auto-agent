@@ -49,7 +49,7 @@ WORKFLOW OUTPUT:
 Generate the settlement documentation for this payout-ready claim.
 Use generate_report with claim_id from claim_data (or generate one with generate_claim_id if missing),
 claim_type from claim_data, status='settlement_documented', a concise summary of the workflow outputs,
-and the payout_amount from the workflow output when available.
+and payout_amount from claim_data when present; otherwise extract from the workflow output.
 
 Claim-type-specific requirements:
 - total_loss: include valuation summary, ACV, deductible, and salvage/owner-retention considerations
@@ -89,7 +89,7 @@ WORKFLOW OUTPUT:
 
 Finalize settlement using the documentation and payment distribution context.
 Use generate_report with claim_id, claim_type, status='settled', summary covering the completed workflow
-and settlement steps, and payout_amount when available.
+and settlement steps, and payout_amount from claim_data when present; otherwise from workflow output.
 
 Document final status as settled, include next_steps for subrogation, salvage, or regulatory follow-up,
 and confirm the claim is ready for closure.""",

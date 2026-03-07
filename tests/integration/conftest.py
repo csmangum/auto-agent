@@ -194,10 +194,12 @@ def mock_router_response():
 @pytest.fixture
 def mock_crew_response():
     """Factory fixture for creating mock crew responses."""
-    def _create_response(output: str):
+    def _create_response(output: str, tasks_output=None):
         mock_result = MagicMock()
         mock_result.raw = output
         mock_result.output = output
+        if tasks_output is not None:
+            mock_result.tasks_output = tasks_output
         return mock_result
     return _create_response
 

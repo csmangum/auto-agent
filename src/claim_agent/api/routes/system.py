@@ -179,7 +179,7 @@ _CREWS_CATALOG = [
             {
                 "name": "Repair Authorization Specialist",
                 "skill": "repair_authorization",
-                "tools": ["generate_repair_authorization"],
+                "tools": ["generate_repair_authorization", "generate_claim_id", "escalate_claim"],
                 "description": "Authorizes repairs and prepares the settlement handoff",
             },
         ],
@@ -192,19 +192,19 @@ _CREWS_CATALOG = [
             {
                 "name": "Settlement Documentation Specialist",
                 "skill": "settlement_documentation",
-                "tools": ["generate_claim_id", "generate_report"],
+                "tools": ["generate_claim_id", "generate_report", "escalate_claim", "get_compliance_deadlines", "search_policy_compliance"],
                 "description": "Creates claim-type-specific settlement documentation",
             },
             {
                 "name": "Payment Distribution Specialist",
                 "skill": "payment_distribution",
-                "tools": ["calculate_payout", "generate_report"],
+                "tools": ["calculate_payout", "generate_report", "escalate_claim", "get_compliance_deadlines", "search_policy_compliance"],
                 "description": "Documents insured, lienholder, and shop payment splits",
             },
             {
                 "name": "Settlement Closure Specialist",
                 "skill": "settlement_closure",
-                "tools": ["generate_claim_id", "generate_report"],
+                "tools": ["generate_claim_id", "generate_report", "escalate_claim", "get_compliance_deadlines", "search_policy_compliance"],
                 "description": "Finalizes settlement and records post-settlement next steps",
             },
         ],

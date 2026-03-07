@@ -114,6 +114,10 @@ def test_total_loss_crew_acceptance_criteria():
         "AC6: Payout must receive damage + valuation"
     )
 
+    # Structured output: payout task uses output_pydantic for payout_amount extraction
+    from claim_agent.models.workflow_output import TotalLossWorkflowOutput
+    assert getattr(payout_task, "output_pydantic", None) is TotalLossWorkflowOutput
+
 
 def test_partial_loss_crew_acceptance_criteria():
     """Verify Partial Loss crew now hands off to the shared settlement crew."""
@@ -138,6 +142,43 @@ def test_partial_loss_crew_acceptance_criteria():
     assert assess_task in estimate_task.context
     assert assess_task in shop_task.context and estimate_task in shop_task.context
     assert all(task in authorization_task.context for task in [assess_task, estimate_task, shop_task, parts_task])
+
+    # Structured output: authorization task uses output_pydantic for payout_amount extraction
+    from claim_agent.models.workflow_output import PartialLossWorkflowOutput
+    assert getattr(authorization_task, "output_pydantic", None) is PartialLossWorkflowOutput
+
+
+def test_extract_payout_from_workflow_result():
+    """Verify _extract_payout_from_workflow_result extracts payout_amount from structured output."""
+    from claim_agent.crews.main_crew import _extract_payout_from_workflow_result
+    from claim_agent.models.workflow_output import TotalLossWorkflowOutput, PartialLossWorkflowOutput
+
+    # Pydantic model output
+    mock_task = MagicMock()
+    mock_task.output = TotalLossWorkflowOutput(
+        payout_amount=14500.0, vehicle_value=15000.0, deductible=500.0, calculation="15000 - 500"
+    )
+    mock_result = MagicMock()
+    mock_result.tasks_output = [MagicMock(), MagicMock(), mock_task]
+    assert _extract_payout_from_workflow_result(mock_result, "total_loss") == 14500.0
+
+    # Dict output (fallback)
+    mock_task_dict = MagicMock()
+    mock_task_dict.output = {"payout_amount": 2100.0, "authorization_id": "AUTH-001"}
+    mock_result_dict = MagicMock()
+    mock_result_dict.tasks_output = [mock_task_dict]
+    assert _extract_payout_from_workflow_result(mock_result_dict, "partial_loss") == 2100.0
+
+    # Non-payout claim types return None
+    assert _extract_payout_from_workflow_result(mock_result, "new") is None
+    assert _extract_payout_from_workflow_result(mock_result, "fraud") is None
+
+    # Missing or empty tasks_output returns None
+    empty_result = MagicMock()
+    empty_result.tasks_output = None
+    assert _extract_payout_from_workflow_result(empty_result, "total_loss") is None
+    empty_result.tasks_output = []
+    assert _extract_payout_from_workflow_result(empty_result, "total_loss") is None
 
 
 def test_settlement_crew_acceptance_criteria():
@@ -167,6 +208,9 @@ def test_settlement_crew_acceptance_criteria():
 
     assert documentation_task in payment_task.context
     assert documentation_task in closure_task.context and payment_task in closure_task.context
+
+    # AC2 (Issue #76): Settlement receives payout_amount from claim_data when present
+    assert "payout_amount from claim_data when present" in documentation_task.description
 
 
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
