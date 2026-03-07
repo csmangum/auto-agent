@@ -17,6 +17,24 @@ def test_get_escalation_config_returns_dict():
     assert "vin_claims_days" in config
 
 
+def test_get_router_config_returns_dict():
+    """get_router_config returns a dict with expected keys."""
+    config = settings.get_router_config()
+    assert isinstance(config, dict)
+    assert "confidence_threshold" in config
+    assert "validation_enabled" in config
+    assert config["confidence_threshold"] == 0.7
+    assert config["validation_enabled"] is False
+
+
+def test_get_router_config_respects_env():
+    """get_router_config reads ROUTER_CONFIDENCE_THRESHOLD and ROUTER_VALIDATION_ENABLED."""
+    with patch.dict(os.environ, {"ROUTER_CONFIDENCE_THRESHOLD": "0.5", "ROUTER_VALIDATION_ENABLED": "true"}):
+        config = settings.get_router_config()
+        assert config["confidence_threshold"] == 0.5
+        assert config["validation_enabled"] is True
+
+
 def test_get_fraud_config_returns_dict():
     """get_fraud_config returns a dict with expected keys."""
     config = settings.get_fraud_config()

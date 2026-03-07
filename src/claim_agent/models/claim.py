@@ -34,6 +34,25 @@ class ClaimType(str, Enum):
     PARTIAL_LOSS = "partial_loss"
 
 
+class RouterOutput(BaseModel):
+    """Structured router output: claim_type, confidence (0.0-1.0), reasoning."""
+
+    claim_type: str = Field(
+        ...,
+        description="Classification: new, duplicate, total_loss, fraud, or partial_loss",
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in classification from 0.0 (low) to 1.0 (high)",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Brief reasoning for the classification",
+    )
+
+
 class ClaimInput(BaseModel):
     """Input payload for claim processing."""
 
