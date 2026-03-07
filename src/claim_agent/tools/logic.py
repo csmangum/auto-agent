@@ -1005,6 +1005,14 @@ def perform_fraud_assessment_impl(
                 claim_id, result["fraud_indicators"]
             )
             result["siu_case_id"] = case_id
+            try:
+                ClaimRepository().update_claim_siu_case_id(claim_id, case_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to persist siu_case_id for claim %s: %s",
+                    claim_id,
+                    e,
+                )
         except NotImplementedError:
             logger.warning(
                 "SIU case creation not implemented (stub adapter); claim %s flagged for referral but no case_id",

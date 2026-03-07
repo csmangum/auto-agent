@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS claims (
     review_notes TEXT,
     due_at TEXT,
     priority TEXT,
+    siu_case_id TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

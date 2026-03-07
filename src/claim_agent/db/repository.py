@@ -19,6 +19,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_ESCALATE_TO_SIU,
     AUDIT_EVENT_REJECTION,
     AUDIT_EVENT_REQUEST_INFO,
+    AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
 )
 from claim_agent.db.constants import (
@@ -268,6 +269,29 @@ class ClaimRepository:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (claim_id, action, old_status, new_status, details or "", actor_id, before_state, after_state),
+            )
+
+    def update_claim_siu_case_id(
+        self,
+        claim_id: str,
+        siu_case_id: str,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Store SIU case ID on claim and log siu_case_created audit entry."""
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                """
+                UPDATE claims SET siu_case_id = ?, updated_at = datetime('now') WHERE id = ?
+                """,
+                (siu_case_id, claim_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_SIU_CASE_CREATED, f"SIU case created: {siu_case_id}", actor_id),
             )
 
     def update_claim_review_metadata(
