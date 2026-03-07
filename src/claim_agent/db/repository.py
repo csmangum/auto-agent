@@ -306,14 +306,20 @@ class ClaimRepository:
         *,
         actor_id: str = ACTOR_WORKFLOW,
     ) -> None:
-        """Assign claim to an adjuster. Sets review_started_at if not already set."""
+        """Assign claim to an adjuster. Sets review_started_at if not already set.
+        Only claims with status needs_review can be assigned."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT assignee FROM claims WHERE id = ?",
+                "SELECT assignee, status FROM claims WHERE id = ?",
                 (claim_id,),
             ).fetchone()
             if row is None:
                 raise ValueError(f"Claim not found: {claim_id}")
+            if row["status"] != STATUS_NEEDS_REVIEW:
+                raise ValueError(
+                    f"Claim {claim_id} is not in needs_review (status={row['status']}); "
+                    "only claims in the review queue can be assigned"
+                )
             old_assignee = row["assignee"]
             conn.execute(
                 """
@@ -354,6 +360,8 @@ class ClaimRepository:
         - reject: sets status to denied, inserts rejection audit
         - request_info: sets status to pending_info, inserts request_info audit
         - escalate_to_siu: sets status to under_investigation, inserts escalate_to_siu audit
+
+        All actions require the claim to be in needs_review status.
         """
         with get_connection(self._db_path) as conn:
             row = conn.execute(
@@ -363,12 +371,18 @@ class ClaimRepository:
                 raise ValueError(f"Claim not found: {claim_id}")
             old_status = row["status"]
 
+            if old_status != STATUS_NEEDS_REVIEW:
+                raise ValueError(
+                    f"Claim {claim_id} is not in needs_review (status={old_status}); "
+                    "adjuster actions only apply to claims in the review queue"
+                )
+
             if action == "approve":
                 self.insert_audit_entry(
                     claim_id,
                     AUDIT_EVENT_APPROVAL,
                     old_status=old_status,
-                    new_status=STATUS_NEEDS_REVIEW,
+                    new_status=None,
                     details="Approved for continued processing",
                     actor_id=actor_id,
                 )

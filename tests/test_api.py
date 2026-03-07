@@ -267,6 +267,60 @@ class TestReviewQueue:
         assert data["claim_id"] == "CLM-TEST002"
         assert data["status"] == "under_investigation"
 
+    def test_approve_reprocesses_claim(self, client, monkeypatch):
+        """Supervisor can approve claim and re-run workflow."""
+        import claim_agent.api.routes.claims as claims_mod
+
+        mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        resp = client.post("/api/claims/CLM-TEST004/review/approve")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST004"
+        assert data["status"] == "open"
+
+    def test_approve_requires_supervisor(self, client, monkeypatch):
+        """Adjuster gets 403 for approve (supervisor+ only)."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        resp = client.post(
+            "/api/claims/CLM-TEST004/review/approve",
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 403
+
+    def test_assign_not_needs_review_returns_400(self, client):
+        """Assign on claim not in needs_review returns 400."""
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/assign",
+            json={"assignee": "adjuster-1"},
+        )
+        assert resp.status_code == 400
+        assert "not in needs_review" in resp.json()["detail"]
+
+    def test_reject_not_needs_review_returns_400(self, client):
+        """Reject on claim not in needs_review returns 400."""
+        resp = client.post(
+            "/api/claims/CLM-TEST001/review/reject",
+            json={"reason": "Duplicate"},
+        )
+        assert resp.status_code == 400
+        assert "not in needs_review" in resp.json()["detail"]
+
+    def test_review_queue_invalid_priority_returns_400(self, client):
+        """Review queue with invalid priority returns 400."""
+        resp = client.get("/api/claims/review-queue?priority=invalid")
+        assert resp.status_code == 400
+        assert "Invalid priority" in resp.json()["detail"]
+
+    def test_assign_empty_assignee_returns_422(self, client):
+        """Assign with empty assignee returns 422 (validation error)."""
+        resp = client.patch(
+            "/api/claims/CLM-TEST004/assign",
+            json={"assignee": ""},
+        )
+        assert resp.status_code == 422
+
 
 # -------------------------------------------------------------------
 # Metrics endpoints

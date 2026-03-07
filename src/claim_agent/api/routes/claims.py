@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
@@ -29,6 +29,8 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin")
 RequireSupervisor = require_role("supervisor", "admin")
 
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+PRIORITY_VALUES = ("critical", "high", "medium", "low")
 
 
 def _resolve_attachment_urls(claim_dict: dict) -> dict:
@@ -168,6 +170,11 @@ def get_review_queue(
     offset: int = Query(0, ge=0),
 ):
     """List claims with status needs_review for the adjuster workflow."""
+    if priority is not None and priority not in PRIORITY_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid priority: {priority}. Must be one of: {', '.join(PRIORITY_VALUES)}",
+        )
     repo = ClaimRepository(db_path=get_db_path())
     claims, total = repo.list_claims_needing_review(
         assignee=assignee,
@@ -185,7 +192,7 @@ def get_review_queue(
 
 
 class AssignBody(BaseModel):
-    assignee: str
+    assignee: str = Field(..., min_length=1, description="Adjuster/user ID to assign")
 
 
 class RejectBody(BaseModel):
@@ -196,7 +203,7 @@ class RequestInfoBody(BaseModel):
     note: str = ""
 
 
-@router.patch("/claims/{claim_id}/assign", dependencies=[RequireAdjuster])
+@router.patch("/claims/{claim_id}/assign")
 def assign_claim(
     claim_id: str,
     body: AssignBody = Body(...),
@@ -214,7 +221,7 @@ def assign_claim(
     return {"claim_id": claim_id, "assignee": body.assignee}
 
 
-@router.post("/claims/{claim_id}/review/approve", dependencies=[RequireSupervisor])
+@router.post("/claims/{claim_id}/review/approve")
 async def approve_review(
     claim_id: str,
     auth: AuthContext = RequireSupervisor,
@@ -242,7 +249,7 @@ async def approve_review(
     return result
 
 
-@router.post("/claims/{claim_id}/review/reject", dependencies=[RequireAdjuster])
+@router.post("/claims/{claim_id}/review/reject")
 def reject_review(
     claim_id: str,
     body: RejectBody = Body(default=RejectBody()),
@@ -260,7 +267,7 @@ def reject_review(
     return {"claim_id": claim_id, "status": "denied"}
 
 
-@router.post("/claims/{claim_id}/review/request-info", dependencies=[RequireAdjuster])
+@router.post("/claims/{claim_id}/review/request-info")
 def request_info_review(
     claim_id: str,
     body: RequestInfoBody = Body(default=RequestInfoBody()),
@@ -278,7 +285,7 @@ def request_info_review(
     return {"claim_id": claim_id, "status": "pending_info"}
 
 
-@router.post("/claims/{claim_id}/review/escalate-to-siu", dependencies=[RequireAdjuster])
+@router.post("/claims/{claim_id}/review/escalate-to-siu")
 def escalate_to_siu(
     claim_id: str,
     auth: AuthContext = RequireAdjuster,
