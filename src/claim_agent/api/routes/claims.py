@@ -387,68 +387,9 @@ async def process_claim(
       attachments (optional list of {url, type, description}).
     - files: Optional multipart files (photos, PDFs, estimates). Stored via configured backend.
     """
-    try:
-        claim_data = json.loads(claim)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
-
-    sanitized = sanitize_claim_data(claim_data)
-    try:
-        claim_input = ClaimInput.model_validate(sanitized)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
-
-    repo = ClaimRepository(db_path=get_db_path())
-
-    # Validate and buffer all file uploads BEFORE creating the claim record so
-    # that a bad upload (oversized or empty) does not leave a dangling claim row.
-    buffered_files: list[tuple[str, bytes, str | None]] = []
-    if files:
-        for f in files:
-            if not f.filename:
-                continue
-            # Read in bounded chunks to enforce the size limit without loading
-            # an arbitrarily large file into memory.
-            chunks: list[bytes] = []
-            total_size = 0
-            chunk_size = 1024 * 1024  # 1 MB
-            while True:
-                chunk = await f.read(chunk_size)
-                if not chunk:
-                    break
-                total_size += len(chunk)
-                if total_size > _MAX_UPLOAD_SIZE_BYTES:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
-                    )
-                chunks.append(chunk)
-            buffered_files.append((f.filename, b"".join(chunks), f.content_type))
-
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    claim_id = repo.create_claim(claim_input, actor_id=actor_id)
-
-    # Store uploaded files now that the claim record exists.
-    all_attachments = list(claim_input.attachments)
-    if buffered_files:
-        storage = get_storage_adapter()
-        for filename, content, content_type in buffered_files:
-            stored_key = storage.save(
-                claim_id=claim_id,
-                filename=filename,
-                content=content,
-                content_type=content_type,
-            )
-            url = storage.get_url(claim_id, stored_key)
-            atype = infer_attachment_type(filename)
-            all_attachments.append(
-                Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
-            )
-        if all_attachments:
-            repo.update_claim_attachments(claim_id, all_attachments, actor_id=actor_id)
-
-    claim_data_with_attachments = _prepare_claim_for_workflow(
-        claim_id, sanitized, all_attachments
+    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+        claim, files, actor_id
     )
     result = run_claim_workflow(
         claim_data_with_attachments,
@@ -458,35 +399,16 @@ async def process_claim(
     return result
 
 
-def _prepare_claim_for_workflow(
-    claim_id: str,
-    sanitized: dict,
-    all_attachments: list,
-) -> dict:
-    """Build claim_data_with_attachments for run_claim_workflow."""
-    attachments_for_workflow = []
-    storage = get_storage_adapter()
-    for a in all_attachments:
-        url = a.url if hasattr(a, "url") else a.get("url", "")
-        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
-            ("http://", "https://", "file://")
-        ):
-            path = storage.get_path(claim_id, url)
-            if path.exists():
-                url = f"file://{path.resolve()}"
-        att = a.model_dump(mode="json") if hasattr(a, "model_dump") else a
-        attachments_for_workflow.append({**att, "url": url})
-    return {**sanitized, "attachments": attachments_for_workflow}
-
-
-@router.post("/claims/process/async")
-async def process_claim_async(
-    claim: str = Form(..., description="Claim data as JSON string"),
-    files: list[UploadFile] = File(default=[], description="Optional attachment files"),
-    auth: AuthContext = RequireAdjuster,
-):
-    """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
-    Use GET /claims/{claim_id}/stream to receive realtime updates."""
+async def _process_claim_with_attachments(
+    claim: str,
+    files: list[UploadFile],
+    actor_id: str,
+) -> tuple[str, dict]:
+    """Shared helper for claim creation and attachment handling.
+    
+    Returns:
+        tuple of (claim_id, claim_data_with_attachments)
+    """
     try:
         claim_data = json.loads(claim)
     except json.JSONDecodeError as e:
@@ -521,7 +443,6 @@ async def process_claim_async(
                 chunks.append(chunk)
             buffered_files.append((f.filename, b"".join(chunks), f.content_type))
 
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id = repo.create_claim(claim_input, actor_id=actor_id)
 
     all_attachments = list(claim_input.attachments)
@@ -544,6 +465,42 @@ async def process_claim_async(
 
     claim_data_with_attachments = _prepare_claim_for_workflow(
         claim_id, sanitized, all_attachments
+    )
+    return claim_id, claim_data_with_attachments
+
+
+def _prepare_claim_for_workflow(
+    claim_id: str,
+    sanitized: dict,
+    all_attachments: list,
+) -> dict:
+    """Build claim_data_with_attachments for run_claim_workflow."""
+    attachments_for_workflow = []
+    storage = get_storage_adapter()
+    for a in all_attachments:
+        url = a.url if hasattr(a, "url") else a.get("url", "")
+        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
+            ("http://", "https://", "file://")
+        ):
+            path = storage.get_path(claim_id, url)
+            if path.exists():
+                url = f"file://{path.resolve()}"
+        att = a.model_dump(mode="json") if hasattr(a, "model_dump") else a
+        attachments_for_workflow.append({**att, "url": url})
+    return {**sanitized, "attachments": attachments_for_workflow}
+
+
+@router.post("/claims/process/async")
+async def process_claim_async(
+    claim: str = Form(..., description="Claim data as JSON string"),
+    files: list[UploadFile] = File(default=[], description="Optional attachment files"),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
+    Use GET /claims/{claim_id}/stream to receive realtime updates."""
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+        claim, files, actor_id
     )
 
     async def run_workflow_in_thread():
