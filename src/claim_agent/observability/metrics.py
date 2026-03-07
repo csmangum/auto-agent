@@ -239,6 +239,14 @@ class ClaimMetrics:
                 self.start_claim(claim_id)
             self._claims[claim_id]["llm_calls"].append(metric)
 
+        # Prometheus export (best-effort, no hard dependency)
+        try:
+            from claim_agent.observability.prometheus import record_llm_tokens
+
+            record_llm_tokens(input_tokens, output_tokens)
+        except ImportError:
+            pass
+
         # Log the metric
         logger.info(
             "[llm_metric] claim_id=%s, model=%s, tokens=%d/%d, cost=$%.4f, latency=%.0fms, status=%s",
