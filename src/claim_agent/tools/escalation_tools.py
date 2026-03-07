@@ -91,16 +91,19 @@ def escalate_claim(
         except json.JSONDecodeError:
             ind_list = []
 
+    normalized_reason = reason.strip() or "mid_workflow_escalation"
+    normalized_priority = priority.strip() or "medium"
+
     escalate_claim_impl(
         claim_id=claim_id,
-        reason=reason.strip() or "mid_workflow_escalation",
+        reason=normalized_reason,
         indicators=ind_list,
-        priority=priority.strip() or "medium",
+        priority=normalized_priority,
     )
     raise MidWorkflowEscalation(
-        reason=reason,
+        reason=normalized_reason,
         indicators=ind_list,
-        priority=priority,
+        priority=normalized_priority,
         claim_id=claim_id,
     )
 

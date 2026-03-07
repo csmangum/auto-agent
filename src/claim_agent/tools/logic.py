@@ -575,9 +575,9 @@ def escalate_claim_impl(
     reason = reason.strip()
     indicators = list(indicators) if indicators else []
     valid_priorities = ("low", "medium", "high", "critical")
-    priority = (priority or "low").strip().lower()
+    priority = (priority or "medium").strip().lower()
     if priority not in valid_priorities:
-        priority = "low"
+        priority = "medium"
 
     repo = ClaimRepository()
     if repo.get_claim(claim_id) is None:
