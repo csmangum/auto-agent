@@ -48,6 +48,15 @@ def _seed_test_data(db_path: str):
              "2025-01-22", "Staged accident", "Front bumper destroyed", 35000.0,
              "fraud", "fraud_suspected"),
         )
+        conn.execute(
+            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
+            "vehicle_model, incident_date, incident_description, damage_description, "
+            "estimated_damage, claim_type, status, priority, due_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("CLM-TEST004", "POL-004", "2HGFG3B54CH123456", 2022, "Toyota", "Camry",
+             "2025-01-25", "Low confidence routing", "Minor scratch", 500.0,
+             "new", "needs_review", "high", "2025-01-26T12:00:00Z"),
+        )
 
         # Audit log entries (with actor_id, before_state, after_state for audit trail)
         conn.execute(
@@ -101,7 +110,7 @@ class TestClaimsStats:
         resp = client.get("/api/claims/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_claims"] == 3
+        assert data["total_claims"] == 4
         assert "by_status" in data
         assert "by_type" in data
         assert data["by_status"]["open"] == 1
@@ -114,8 +123,8 @@ class TestClaimsList:
         resp = client.get("/api/claims")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total"] == 3
-        assert len(data["claims"]) == 3
+        assert data["total"] == 4
+        assert len(data["claims"]) == 4
 
     def test_filter_by_status(self, client):
         resp = client.get("/api/claims?status=open")
@@ -133,7 +142,7 @@ class TestClaimsList:
         resp = client.get("/api/claims?limit=1&offset=0")
         data = resp.json()
         assert len(data["claims"]) == 1
-        assert data["total"] == 3
+        assert data["total"] == 4
 
 
 class TestClaimDetail:
@@ -183,6 +192,80 @@ class TestClaimWorkflows:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["workflows"]) == 0
+
+
+class TestReviewQueue:
+    """Test review queue and adjuster action endpoints."""
+
+    def test_review_queue_lists_needs_review(self, client):
+        resp = client.get("/api/claims/review-queue")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "claims" in data
+        assert "total" in data
+        assert data["total"] == 1
+        assert len(data["claims"]) == 1
+        assert data["claims"][0]["id"] == "CLM-TEST004"
+        assert data["claims"][0]["status"] == "needs_review"
+        assert data["claims"][0]["priority"] == "high"
+
+    def test_assign_claim(self, client):
+        resp = client.patch(
+            "/api/claims/CLM-TEST004/assign",
+            json={"assignee": "adjuster-1"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST004"
+        assert data["assignee"] == "adjuster-1"
+
+    def test_assign_not_found(self, client):
+        resp = client.patch(
+            "/api/claims/CLM-NOTEXIST/assign",
+            json={"assignee": "adjuster-1"},
+        )
+        assert resp.status_code == 404
+
+    def test_reject_claim(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST004/review/reject",
+            json={"reason": "Duplicate claim"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST004"
+        assert data["status"] == "denied"
+
+    def test_request_info(self, client):
+        from claim_agent.db.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
+                ("needs_review", "high", "2025-01-26T12:00:00Z", "CLM-TEST003"),
+            )
+        resp = client.post(
+            "/api/claims/CLM-TEST003/review/request-info",
+            json={"note": "Please provide damage photos"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST003"
+        assert data["status"] == "pending_info"
+
+    def test_escalate_to_siu(self, client):
+        from claim_agent.db.database import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
+                ("needs_review", "high", "2025-01-26T12:00:00Z", "CLM-TEST002"),
+            )
+        resp = client.post("/api/claims/CLM-TEST002/review/escalate-to-siu")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST002"
+        assert data["status"] == "under_investigation"
 
 
 # -------------------------------------------------------------------
@@ -285,7 +368,7 @@ class TestSystemHealth:
         data = resp.json()
         assert data["status"] == "healthy"
         assert data["database"] == "connected"
-        assert data["total_claims"] == 3
+        assert data["total_claims"] == 4
 
 
 class TestAgentsCatalog:

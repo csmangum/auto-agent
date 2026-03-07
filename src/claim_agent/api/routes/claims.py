@@ -4,8 +4,9 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
@@ -156,6 +157,142 @@ def list_claims(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/claims/review-queue", dependencies=[RequireAdjuster])
+def get_review_queue(
+    assignee: Optional[str] = Query(None, description="Filter by assignee"),
+    priority: Optional[str] = Query(None, description="Filter by priority"),
+    older_than_hours: Optional[float] = Query(None, description="Claims older than N hours in queue"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """List claims with status needs_review for the adjuster workflow."""
+    repo = ClaimRepository(db_path=get_db_path())
+    claims, total = repo.list_claims_needing_review(
+        assignee=assignee,
+        priority=priority,
+        older_than_hours=older_than_hours,
+        limit=limit,
+        offset=offset,
+    )
+    return {
+        "claims": [_resolve_attachment_urls(c) for c in claims],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+class AssignBody(BaseModel):
+    assignee: str
+
+
+class RejectBody(BaseModel):
+    reason: str = ""
+
+
+class RequestInfoBody(BaseModel):
+    note: str = ""
+
+
+@router.patch("/claims/{claim_id}/assign", dependencies=[RequireAdjuster])
+def assign_claim(
+    claim_id: str,
+    body: AssignBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Assign claim to an adjuster."""
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        repo.assign_claim(claim_id, body.assignee, actor_id=actor_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"claim_id": claim_id, "assignee": body.assignee}
+
+
+@router.post("/claims/{claim_id}/review/approve", dependencies=[RequireSupervisor])
+async def approve_review(
+    claim_id: str,
+    auth: AuthContext = RequireSupervisor,
+):
+    """Approve claim for continued processing and re-run workflow. Requires supervisor."""
+    repo = ClaimRepository(db_path=get_db_path())
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        repo.perform_adjuster_action(claim_id, "approve", actor_id=actor_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    claim_data = claim_data_from_row(claim)
+    try:
+        ClaimInput.model_validate(claim_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
+    result = run_claim_workflow(
+        claim_data,
+        existing_claim_id=claim_id,
+        actor_id=actor_id,
+    )
+    return result
+
+
+@router.post("/claims/{claim_id}/review/reject", dependencies=[RequireAdjuster])
+def reject_review(
+    claim_id: str,
+    body: RejectBody = Body(default=RejectBody()),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Reject claim with optional reason."""
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        repo.perform_adjuster_action(claim_id, "reject", actor_id=actor_id, reason=body.reason)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"claim_id": claim_id, "status": "denied"}
+
+
+@router.post("/claims/{claim_id}/review/request-info", dependencies=[RequireAdjuster])
+def request_info_review(
+    claim_id: str,
+    body: RequestInfoBody = Body(default=RequestInfoBody()),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Request more information from claimant."""
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        repo.perform_adjuster_action(claim_id, "request_info", actor_id=actor_id, note=body.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"claim_id": claim_id, "status": "pending_info"}
+
+
+@router.post("/claims/{claim_id}/review/escalate-to-siu", dependencies=[RequireAdjuster])
+def escalate_to_siu(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+):
+    """Escalate claim to Special Investigations Unit."""
+    repo = ClaimRepository(db_path=get_db_path())
+    if repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=actor_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"claim_id": claim_id, "status": "under_investigation"}
 
 
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
