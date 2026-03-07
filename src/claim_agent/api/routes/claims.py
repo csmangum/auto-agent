@@ -14,6 +14,7 @@ from claim_agent.api.deps import require_role
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
+from claim_agent.db.constants import STATUS_FAILED
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import Attachment, ClaimInput
@@ -546,13 +547,30 @@ async def process_claim_async(
     )
 
     async def run_workflow_in_thread():
-        await asyncio.to_thread(
-            run_claim_workflow,
-            claim_data_with_attachments,
-            None,  # llm
-            claim_id,  # existing_claim_id
-            actor_id=actor_id,
-        )
+        try:
+            await asyncio.to_thread(
+                run_claim_workflow,
+                claim_data_with_attachments,
+                None,  # llm
+                claim_id,  # existing_claim_id
+                actor_id=actor_id,
+            )
+        except Exception:
+            logger.exception(
+                "Unhandled exception in background workflow for claim_id %s", claim_id
+            )
+            try:
+                _repo = ClaimRepository(db_path=get_db_path())
+                _repo.update_claim_status(
+                    claim_id,
+                    STATUS_FAILED,
+                    details="Background workflow failed",
+                    actor_id=ACTOR_WORKFLOW,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to mark claim %s as failed after workflow error", claim_id
+                )
 
     task = asyncio.create_task(run_workflow_in_thread())
     _background_tasks.add(task)
@@ -562,19 +580,23 @@ async def process_claim_async(
 
 async def _stream_claim_updates(claim_id: str):
     """SSE generator: poll claim, history, workflows and yield updates."""
-    db_path = get_db_path()
     poll_interval = 1.0
     max_duration = 300  # 5 min timeout
     elapsed = 0.0
 
-    while elapsed < max_duration:
+    def _fetch_claim_snapshot():
+        """Fetch claim + audit log + workflow runs in one DB transaction.
+
+        Intended to be called via asyncio.to_thread so that SQLite access
+        does not block the event loop.
+        """
+        db_path = get_db_path()
         with get_connection(db_path) as conn:
             claim_row = conn.execute(
                 "SELECT * FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if claim_row is None:
-                yield f"data: {json.dumps({'error': 'Claim not found'})}\n\n"
-                return
+                return None, None, None
 
             claim_dict = dict(claim_row)
             _resolve_attachment_urls(claim_dict)
@@ -590,13 +612,20 @@ async def _stream_claim_updates(claim_id: str):
                 (claim_id,),
             ).fetchall()
 
+        return claim_dict, history_rows, wf_rows
+
+    while elapsed < max_duration:
+        claim_dict, history_rows, wf_rows = await asyncio.to_thread(_fetch_claim_snapshot)
+        if claim_dict is None:
+            yield f"data: {json.dumps({'error': 'Claim not found'})}\n\n"
+            return
+
         payload = {
             "claim": claim_dict,
             "history": [dict(r) for r in history_rows],
             "workflows": [dict(r) for r in wf_rows],
         }
-        data_line = f"data: {json.dumps(payload)}\n\n"
-        yield data_line
+        yield f"data: {json.dumps(payload)}\n\n"
 
         status = claim_dict.get("status") or ""
         if status not in ("pending", "processing"):
