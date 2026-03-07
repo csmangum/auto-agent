@@ -7,6 +7,8 @@ from claim_agent.tools import (
     escalate_claim,
     generate_claim_id,
     generate_report,
+    get_compliance_deadlines,
+    search_policy_compliance,
 )
 from claim_agent.skills import (
     PAYMENT_DISTRIBUTION,
@@ -33,11 +35,15 @@ def create_settlement_documentation_agent(
     else:
         skill = load_skill(SETTLEMENT_DOCUMENTATION)
 
+    tools = [generate_report, generate_claim_id, escalate_claim]
+    if use_rag:
+        tools.extend([get_compliance_deadlines, search_policy_compliance])
+
     return Agent(
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[generate_report, generate_claim_id, escalate_claim],
+        tools=tools,
         verbose=True,
         llm=llm,
     )
@@ -59,11 +65,15 @@ def create_payment_distribution_agent(
     else:
         skill = load_skill(PAYMENT_DISTRIBUTION)
 
+    tools = [calculate_payout, generate_report, escalate_claim]
+    if use_rag:
+        tools.extend([get_compliance_deadlines, search_policy_compliance])
+
     return Agent(
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[calculate_payout, generate_report, escalate_claim],
+        tools=tools,
         verbose=True,
         llm=llm,
     )
@@ -85,11 +95,15 @@ def create_settlement_closure_agent(
     else:
         skill = load_skill(SETTLEMENT_CLOSURE)
 
+    tools = [generate_report, generate_claim_id, escalate_claim]
+    if use_rag:
+        tools.extend([get_compliance_deadlines, search_policy_compliance])
+
     return Agent(
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[generate_report, generate_claim_id, escalate_claim],
+        tools=tools,
         verbose=True,
         llm=llm,
     )
