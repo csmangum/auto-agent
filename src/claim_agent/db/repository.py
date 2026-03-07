@@ -247,9 +247,12 @@ class ClaimRepository:
         workflow_run_id: str,
         stage_keys: list[str] | None = None,
     ) -> None:
-        """Delete checkpoints. If stage_keys given, only those; otherwise all for the run."""
+        """Delete checkpoints. If stage_keys given, only those; if None, all for the run.
+        Empty list deletes nothing."""
+        if stage_keys is not None and not stage_keys:
+            return
         with get_connection(self._db_path) as conn:
-            if stage_keys:
+            if stage_keys is not None:
                 placeholders = ",".join("?" for _ in stage_keys)
                 conn.execute(
                     f"""
@@ -267,7 +270,7 @@ class ClaimRepository:
                     (claim_id, workflow_run_id),
                 )
 
-    def get_latest_workflow_run_id(self, claim_id: str) -> str | None:
+    def get_latest_checkpointed_run_id(self, claim_id: str) -> str | None:
         """Return the most recent workflow_run_id that has checkpoints for this claim."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(

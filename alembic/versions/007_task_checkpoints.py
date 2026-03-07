@@ -39,6 +39,14 @@ def upgrade() -> None:
                 UNIQUE(claim_id, workflow_run_id, stage_key)
             )
         """))
+    # Ensure index exists even if table was created via SCHEMA_SQL
+    indexes = {
+        row[0]
+        for row in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='task_checkpoints'")
+        ).fetchall()
+    }
+    if "idx_task_checkpoints_claim_run" not in indexes:
         op.execute(text("""
             CREATE INDEX idx_task_checkpoints_claim_run
                 ON task_checkpoints(claim_id, workflow_run_id)

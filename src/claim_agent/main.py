@@ -217,7 +217,7 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
 
     resume_run_id: str | None = None
     if from_stage is not None:
-        resume_run_id = repo.get_latest_workflow_run_id(claim_id)
+        resume_run_id = repo.get_latest_checkpointed_run_id(claim_id)
         if resume_run_id is None:
             print(
                 f"Warning: No prior checkpoints for {claim_id}; running full workflow.",

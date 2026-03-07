@@ -856,14 +856,23 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
     ``ctx.router_reasoning``, and ``ctx.raw_output`` and returns ``None``.
     """
     if "router" in ctx.checkpoints:
-        router_cp = json.loads(ctx.checkpoints["router"])
-        ctx.claim_type = router_cp["claim_type"]
-        ctx.router_confidence = router_cp["router_confidence"]
-        ctx.router_reasoning = router_cp["router_reasoning"]
-        ctx.raw_output = router_cp["raw_output"]
-        logger.set_claim_type(ctx.claim_type)
-        logger.info("Restored router from checkpoint", extra={"claim_id": ctx.claim_id})
-        return None
+        try:
+            router_cp = json.loads(ctx.checkpoints["router"])
+            ctx.claim_type = router_cp["claim_type"]
+            ctx.router_confidence = router_cp["router_confidence"]
+            ctx.router_reasoning = router_cp["router_reasoning"]
+            ctx.raw_output = router_cp["raw_output"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Failed to restore router from checkpoint; discarding and re-running stage",
+                extra={"claim_id": ctx.claim_id},
+                exc_info=exc,
+            )
+            ctx.checkpoints.pop("router", None)
+        else:
+            logger.set_claim_type(ctx.claim_type)
+            logger.info("Restored router from checkpoint", extra={"claim_id": ctx.claim_id})
+            return None
 
     logger.log_event("router_started", step="classification")
     router_start = time.time()
@@ -1058,13 +1067,25 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     workflow_stage_key = f"workflow:{ctx.claim_type}"
 
     if workflow_stage_key in ctx.checkpoints:
-        wf_cp = json.loads(ctx.checkpoints[workflow_stage_key])
-        ctx.workflow_output = wf_cp["workflow_output"]
-        ctx.extracted_payout = wf_cp.get("extracted_payout")
-        if ctx.extracted_payout is not None:
-            ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
-        logger.info("Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": ctx.claim_id})
-        return None
+        try:
+            wf_cp = json.loads(ctx.checkpoints[workflow_stage_key])
+            if not isinstance(wf_cp, dict):
+                raise ValueError("workflow checkpoint is not a JSON object")
+            ctx.workflow_output = wf_cp["workflow_output"]
+            ctx.extracted_payout = wf_cp.get("extracted_payout")
+            if ctx.extracted_payout is not None:
+                ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to restore %s from checkpoint; invalidating and re-running stage: %s",
+                workflow_stage_key,
+                exc,
+                extra={"claim_id": ctx.claim_id},
+            )
+            ctx.checkpoints.pop(workflow_stage_key, None)
+        else:
+            logger.info("Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": ctx.claim_id})
+            return None
 
     _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
     logger.log_event("crew_started", crew=ctx.claim_type)
@@ -1136,11 +1157,22 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
         return None
 
     if "settlement" in ctx.checkpoints:
-        stl_cp = json.loads(ctx.checkpoints["settlement"])
-        settlement_output = stl_cp["settlement_output"]
-        ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
-        logger.info("Restored settlement from checkpoint", extra={"claim_id": ctx.claim_id})
-        return None
+        try:
+            stl_cp = json.loads(ctx.checkpoints["settlement"])
+            if not isinstance(stl_cp, dict):
+                raise ValueError("settlement checkpoint is not a JSON object")
+            settlement_output = stl_cp["settlement_output"]
+            ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to restore settlement from checkpoint; invalidating and re-running stage: %s",
+                exc,
+                extra={"claim_id": ctx.claim_id},
+            )
+            ctx.checkpoints.pop("settlement", None)
+        else:
+            logger.info("Restored settlement from checkpoint", extra={"claim_id": ctx.claim_id})
+            return None
 
     _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
     logger.log_event("crew_started", crew="settlement")

@@ -666,7 +666,7 @@ async def reprocess_claim(
 
     resume_run_id: str | None = None
     if from_stage is not None:
-        resume_run_id = repo.get_latest_workflow_run_id(claim_id)
+        resume_run_id = repo.get_latest_checkpointed_run_id(claim_id)
         if resume_run_id is None:
             from_stage = None
 

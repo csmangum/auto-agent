@@ -106,6 +106,16 @@ class TestCheckpointCRUD:
         cps = repo.get_task_checkpoints(claim_id, "run-1")
         assert list(cps.keys()) == ["router"]
 
+    def test_delete_empty_list_deletes_nothing(self, temp_db):
+        repo = _make_repo(temp_db)
+        claim_id = _make_claim(repo)
+
+        repo.save_task_checkpoint(claim_id, "run-1", "router", '"r"')
+        repo.delete_task_checkpoints(claim_id, "run-1", [])
+
+        cps = repo.get_task_checkpoints(claim_id, "run-1")
+        assert list(cps.keys()) == ["router"]
+
     def test_different_runs_isolated(self, temp_db):
         repo = _make_repo(temp_db)
         claim_id = _make_claim(repo)
@@ -116,17 +126,17 @@ class TestCheckpointCRUD:
         assert json.loads(repo.get_task_checkpoints(claim_id, "run-1")["router"]) == "run1"
         assert json.loads(repo.get_task_checkpoints(claim_id, "run-2")["router"]) == "run2"
 
-    def test_get_latest_workflow_run_id(self, temp_db):
+    def test_get_latest_checkpointed_run_id(self, temp_db):
         repo = _make_repo(temp_db)
         claim_id = _make_claim(repo)
 
-        assert repo.get_latest_workflow_run_id(claim_id) is None
+        assert repo.get_latest_checkpointed_run_id(claim_id) is None
 
         repo.save_task_checkpoint(claim_id, "run-A", "router", '"a"')
-        assert repo.get_latest_workflow_run_id(claim_id) == "run-A"
+        assert repo.get_latest_checkpointed_run_id(claim_id) == "run-A"
 
         repo.save_task_checkpoint(claim_id, "run-B", "router", '"b"')
-        latest = repo.get_latest_workflow_run_id(claim_id)
+        latest = repo.get_latest_checkpointed_run_id(claim_id)
         assert latest == "run-B"
 
     def test_task_checkpoints_table_exists(self, temp_db):
@@ -452,7 +462,7 @@ class TestWorkflowCheckpoints:
         assert row is not None
         claim_id = row["id"]
 
-        run_id = repo.get_latest_workflow_run_id(claim_id)
+        run_id = repo.get_latest_checkpointed_run_id(claim_id)
         assert run_id is not None
 
         cps = repo.get_task_checkpoints(claim_id, run_id)
