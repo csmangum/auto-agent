@@ -880,7 +880,19 @@ def run_claim_workflow(
                         "indicators": e.indicators,
                         "priority": e.priority,
                     })
-                    repo.save_workflow_result(claim_id, claim_type, raw_output, settlement_details)
+                    combined_output = _combine_workflow_outputs(workflow_output, settlement_details)
+                    repo.save_workflow_result(claim_id, claim_type, raw_output, combined_output)
+                    repo.update_claim_status(
+                        claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=settlement_details, actor_id=_actor
+                    )
+                    hours = 24 if e.priority in ("critical", "high") else 48 if e.priority == "medium" else 72
+                    due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+                    repo.update_claim_review_metadata(
+                        claim_id,
+                        priority=e.priority,
+                        due_at=due_at,
+                        review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    )
                     workflow_duration = (time.time() - workflow_start_time) * 1000
                     logger.log_event(
                         "claim_escalated",
@@ -900,7 +912,7 @@ def run_claim_workflow(
                         "priority": e.priority,
                         "fraud_indicators": e.indicators,
                         "router_output": raw_output,
-                        "workflow_output": settlement_details,
+                        "workflow_output": combined_output,
                         "summary": f"Escalated during settlement: {e.reason}",
                     }
 
