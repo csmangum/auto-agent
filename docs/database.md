@@ -51,6 +51,7 @@ erDiagram
         text review_notes
         text due_at
         text priority
+        text siu_case_id
         text created_at
         text updated_at
     }
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS claims (
     review_notes TEXT,
     due_at TEXT,
     priority TEXT,
+    siu_case_id TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -135,6 +137,7 @@ CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 | `review_notes` | TEXT | Adjuster notes |
 | `due_at` | TEXT | SLA target datetime (ISO) |
 | `priority` | TEXT | critical \| high \| medium \| low (from escalation) |
+| `siu_case_id` | TEXT | SIU case ID when fraud workflow creates a referral |
 | `created_at` | TEXT | Creation timestamp |
 | `updated_at` | TEXT | Last update timestamp |
 
@@ -187,6 +190,7 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim
 | `attachments_updated` | Attachments modified |
 | `request_info` | Adjuster requested more info from claimant |
 | `escalate_to_siu` | Escalated to Special Investigations Unit |
+| `siu_case_created` | SIU case created by fraud workflow (automated referral) |
 | `assign` | Claim assigned to adjuster |
 
 #### Actor Identity

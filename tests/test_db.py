@@ -6,6 +6,7 @@ import tempfile
 
 import pytest
 
+from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.database import get_db_path, get_connection, init_db
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
@@ -235,6 +236,63 @@ def test_repository_get_claim_history(temp_db):
     assert history[1].get("before_state") is not None
     assert history[1].get("after_state") is not None
     assert history[2]["new_status"] == "open"
+
+
+def test_repository_update_claim_siu_case_id(temp_db):
+    """ClaimRepository.update_claim_siu_case_id stores siu_case_id and logs audit."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="VIN1",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date="2025-01-10",
+        incident_description="Scratch.",
+        damage_description="Door scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.update_claim_siu_case_id(claim_id, "SIU-12345")
+
+    claim = repo.get_claim(claim_id)
+    assert claim["siu_case_id"] == "SIU-12345"
+
+    history = repo.get_claim_history(claim_id)
+    siu_entries = [h for h in history if h["action"] == AUDIT_EVENT_SIU_CASE_CREATED]
+    assert len(siu_entries) == 1
+    assert "SIU-12345" in siu_entries[0]["details"]
+
+
+def test_repository_update_claim_siu_case_id_overwrites(temp_db):
+    """Calling update_claim_siu_case_id twice overwrites siu_case_id; audit entries accumulate."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="VIN1",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date="2025-01-10",
+        incident_description="Scratch.",
+        damage_description="Door scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.update_claim_siu_case_id(claim_id, "SIU-11111")
+    repo.update_claim_siu_case_id(claim_id, "SIU-22222")
+
+    claim = repo.get_claim(claim_id)
+    assert claim["siu_case_id"] == "SIU-22222"
+
+    history = repo.get_claim_history(claim_id)
+    siu_entries = [h for h in history if h["action"] == AUDIT_EVENT_SIU_CASE_CREATED]
+    assert len(siu_entries) == 2
+
+
+def test_repository_update_claim_siu_case_id_nonexistent_claim(temp_db):
+    """update_claim_siu_case_id raises ValueError for nonexistent claim_id."""
+    repo = ClaimRepository(db_path=temp_db)
+    with pytest.raises(ValueError, match="Claim not found: CLM-NONEXIST"):
+        repo.update_claim_siu_case_id("CLM-NONEXIST", "SIU-12345")
 
 
 def test_repository_search_claims(temp_db):

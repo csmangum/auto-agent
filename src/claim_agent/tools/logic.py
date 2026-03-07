@@ -885,6 +885,9 @@ def perform_fraud_assessment_impl(
     - recommended_action: What to do next
     - should_block: Whether claim should be blocked
     - siu_referral: Whether to refer to SIU
+    - siu_case_id: SIU case ID when referral created a case (None if stub/no claim_id)
+    - siu_case_id_persisted: True if siu_case_id was stored on the claim; False if
+      persistence failed (DB error, claim deleted, etc.). Omitted when no case was created.
     """
     if not claim_data or not isinstance(claim_data, dict):
         result = {
@@ -1005,6 +1008,17 @@ def perform_fraud_assessment_impl(
                 claim_id, result["fraud_indicators"]
             )
             result["siu_case_id"] = case_id
+            try:
+                ClaimRepository().update_claim_siu_case_id(claim_id, case_id)
+                result["siu_case_id_persisted"] = True
+            except Exception as e:
+                result["siu_case_id_persisted"] = False
+                logger.warning(
+                    "Failed to persist siu_case_id for claim %s: %s",
+                    claim_id,
+                    e,
+                    extra={"siu_case_id_persist_failed": True, "claim_id": claim_id},
+                )
         except NotImplementedError:
             logger.warning(
                 "SIU case creation not implemented (stub adapter); claim %s flagged for referral but no case_id",

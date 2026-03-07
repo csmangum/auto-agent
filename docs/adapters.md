@@ -234,7 +234,7 @@ Tool implementation functions in `logic.py` call adapter methods instead of acce
 | `get_parts_catalog_impl` | `get_parts_adapter().get_catalog()` |
 | `create_parts_order_impl` | `get_parts_adapter().get_catalog()` |
 | `calculate_repair_estimate_impl` | `get_repair_shop_adapter()` + `get_parts_adapter()` |
-| `perform_fraud_assessment_impl` | `get_siu_adapter().create_case()` (when referral is needed) |
+| `perform_fraud_assessment_impl` | `get_siu_adapter().create_case()` (when referral is needed); then `ClaimRepository().update_claim_siu_case_id()` and `siu_case_created` audit |
 
 ## Testing
 
@@ -247,3 +247,12 @@ Adapter tests are in `tests/test_adapters.py` and cover:
 - `reset_adapters()` clears cached instances
 
 The `conftest.py` autouse fixture calls `reset_adapters()` before each test to prevent singleton leakage between tests.
+
+## SIU Integration
+
+When the fraud workflow sets `siu_referral=true`, `perform_fraud_assessment_impl` calls `get_siu_adapter().create_case()`. On success, it persists the case ID via `ClaimRepository().update_claim_siu_case_id()`, which:
+
+1. Updates `claims.siu_case_id`
+2. Inserts an audit log entry with action `siu_case_created` and details `"SIU case created: {case_id}"`
+
+The assessment result includes `siu_case_id_persisted: true` when persistence succeeds, or `siu_case_id_persisted: false` when it fails (DB error, claim deleted, etc.). Callers can use this to detect and handle inconsistent state.
