@@ -109,9 +109,9 @@ def test_total_loss_crew_acceptance_criteria():
     assert len(crew.tasks) == 3
 
     # AC6: Task context flows: Valuation receives damage; Payout receives damage + valuation
-    assert assess_task in valuation_task.context, "AC7: Valuation must receive damage assessment"
+    assert assess_task in valuation_task.context, "AC6: Valuation must receive damage assessment"
     assert assess_task in payout_task.context and valuation_task in payout_task.context, (
-        "AC7: Payout must receive damage + valuation"
+        "AC6: Payout must receive damage + valuation"
     )
 
 
