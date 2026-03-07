@@ -215,7 +215,7 @@ src/claim_agent/
 
 1. **Pluggability** - Swap mock data for real services (KBB, policy DB, SIU) without changing tool logic
 2. **Testability** - Mock adapters keep all tests self-contained; no external dependencies
-3. **Configuration** - Backend selection via env vars (`POLICY_ADAPTER=mock|stub|rest`)
+3. **Configuration** - Backend selection via env vars (`POLICY_ADAPTER=mock|stub`)
 4. **Consistency** - Mirrors the existing `StorageAdapter` pattern used for attachments
 
 See [Adapters](adapters.md) for interfaces, implementations, and integration guide.

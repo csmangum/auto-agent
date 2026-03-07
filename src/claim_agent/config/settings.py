@@ -170,4 +170,8 @@ VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub"})
 def get_adapter_backend(adapter_name: str) -> str:
     """Return the configured backend for *adapter_name* (default: ``mock``)."""
     env_key = ADAPTER_ENV_KEYS.get(adapter_name, f"{adapter_name.upper()}_ADAPTER")
-    return os.environ.get(env_key, "mock").strip().lower()
+    raw = os.environ.get(env_key)
+    if raw is None:
+        return "mock"
+    backend = raw.strip().lower()
+    return backend or "mock"

@@ -53,6 +53,14 @@ def test_get_adapter_backend_respects_env():
         assert settings.get_adapter_backend("policy") == "mock"
 
 
+def test_get_adapter_backend_blank_treated_as_unset():
+    """get_adapter_backend treats blank env var same as unset, returns mock."""
+    with patch.dict(os.environ, {"POLICY_ADAPTER": ""}, clear=False):
+        assert settings.get_adapter_backend("policy") == "mock"
+    with patch.dict(os.environ, {"POLICY_ADAPTER": "   "}, clear=False):
+        assert settings.get_adapter_backend("policy") == "mock"
+
+
 def test_get_crew_verbose_default():
     """get_crew_verbose returns bool."""
     result = settings.get_crew_verbose()

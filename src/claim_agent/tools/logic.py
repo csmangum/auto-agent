@@ -39,7 +39,22 @@ def query_policy_db_impl(policy_number: str) -> str:
     policy_number = policy_number.strip()
     if not policy_number:
         return json.dumps({"valid": False, "message": "Empty policy number"})
-    p = get_policy_adapter().get_policy(policy_number)
+    try:
+        p = get_policy_adapter().get_policy(policy_number)
+    except NotImplementedError as exc:
+        logger.warning("Policy adapter get_policy not implemented: %s", exc)
+        return json.dumps({
+            "valid": False,
+            "message": "Policy lookup is not supported by the configured adapter",
+            "error": "not_implemented",
+        })
+    except Exception:
+        logger.exception("Unexpected error while querying policy adapter")
+        return json.dumps({
+            "valid": False,
+            "message": "Error querying policy database",
+            "error": "adapter_error",
+        })
     if p is not None:
         status = p.get("status", "active")
         is_active = isinstance(status, str) and status.lower() == "active"
@@ -103,7 +118,13 @@ def fetch_vehicle_value_impl(vin: str, year: int, make: str, model: str) -> str:
     make = make.strip() if isinstance(make, str) else ""
     model = model.strip() if isinstance(model, str) else ""
     year_int = int(year) if isinstance(year, (int, float)) and year > 0 else 2020
-    v = get_valuation_adapter().get_vehicle_value(vin, year_int, make, model)
+    try:
+        v = get_valuation_adapter().get_vehicle_value(vin, year_int, make, model)
+    except NotImplementedError:
+        logger.warning(
+            "Valuation adapter is not implemented; falling back to default vehicle value",
+        )
+        v = None
     if v is not None:
         return json.dumps({
             "value": v.get("value", 15000),
@@ -909,18 +930,25 @@ def perform_fraud_assessment_impl(
             "Document any minor discrepancies."
         )
 
-    if result["siu_referral"]:
+    claim_id = result.get("claim_id")
+    if result["siu_referral"] and claim_id and isinstance(claim_id, str) and claim_id.strip():
         try:
             case_id = get_siu_adapter().create_case(
-                result["claim_id"], result["fraud_indicators"]
+                claim_id, result["fraud_indicators"]
             )
             result["siu_case_id"] = case_id
         except NotImplementedError:
             logger.warning(
                 "SIU case creation not implemented (stub adapter); claim %s flagged for referral but no case_id",
-                result["claim_id"],
+                claim_id,
             )
             result["siu_case_id"] = None
+    elif result["siu_referral"]:
+        logger.warning(
+            "SIU referral requested but no valid claim_id is available; skipping SIU case creation. Raw claim_id: %r",
+            claim_id,
+        )
+        result["siu_case_id"] = None
 
     return json.dumps(result)
 
@@ -928,8 +956,15 @@ def perform_fraud_assessment_impl(
 # --- Partial Loss Tools ---
 
 
-def _get_shop_labor_rate(shop_id: Optional[str], default: float = 75.0) -> float:
-    """Return labor rate for shop_id, or default if not found."""
+def _get_shop_labor_rate(
+    shop_id: Optional[str] = None,
+    default: float = 75.0,
+    shop: Optional[dict[str, Any]] = None,
+) -> float:
+    """Return labor rate for shop_id, or default if not found.
+    Pass pre-fetched shop to avoid redundant adapter calls."""
+    if shop is not None:
+        return shop.get("labor_rate_per_hour", default)
     if not shop_id:
         return default
     shop = get_repair_shop_adapter().get_shop(shop_id)
@@ -1037,7 +1072,7 @@ def assign_repair_shop_impl(
         "shop_name": shop.get("name", ""),
         "address": shop.get("address", ""),
         "phone": shop.get("phone", ""),
-        "labor_rate_per_hour": _get_shop_labor_rate(shop_id, 75.0),
+        "labor_rate_per_hour": _get_shop_labor_rate(shop=shop, default=75.0),
         "network": shop.get("network", "standard"),
         "estimated_start_date": start_date.strftime("%Y-%m-%d"),
         "estimated_completion_date": completion_date.strftime("%Y-%m-%d"),

@@ -177,12 +177,12 @@ class RestPolicyAdapter(PolicyAdapter):
         ...
 ```
 
-2. **Register the backend** in `registry.py`:
+2. **Register the backend** in `registry.py` (and add `rest` to `VALID_ADAPTER_BACKENDS` in `config/settings.py`):
 
 ```python
 def get_policy_adapter() -> PolicyAdapter:
     ...
-    backend = _resolve_backend("POLICY_ADAPTER")
+    backend = _resolve_backend("policy")
     if backend == "rest":
         from claim_agent.adapters.real_policy import RestPolicyAdapter
         _policy_adapter = RestPolicyAdapter(
