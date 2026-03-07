@@ -32,6 +32,9 @@ RequireSupervisor = require_role("supervisor", "admin")
 
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
+_STREAM_POLL_INTERVAL = 1.0  # seconds between DB polls
+_STREAM_MAX_DURATION = 300  # 5 min timeout
+
 PRIORITY_VALUES = ("critical", "high", "medium", "low")
 
 _background_tasks: set[asyncio.Task] = set()
@@ -391,9 +394,11 @@ async def process_claim(
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id
     )
-    result = run_claim_workflow(
+    result = await asyncio.to_thread(
+        run_claim_workflow,
         claim_data_with_attachments,
-        existing_claim_id=claim_id,
+        None,  # llm
+        claim_id,  # existing_claim_id
         actor_id=actor_id,
     )
     return result
@@ -422,14 +427,18 @@ async def _process_claim_with_attachments(
 
     repo = ClaimRepository(db_path=get_db_path())
 
+    # Validate and buffer all file uploads BEFORE creating the claim record so
+    # that a bad upload (oversized or empty) does not leave a dangling claim row.
     buffered_files: list[tuple[str, bytes, str | None]] = []
     if files:
         for f in files:
             if not f.filename:
                 continue
+            # Read in bounded chunks to enforce the size limit without loading
+            # an arbitrarily large file into memory.
             chunks: list[bytes] = []
             total_size = 0
-            chunk_size = 1024 * 1024
+            chunk_size = 1024 * 1024  # 1 MB
             while True:
                 chunk = await f.read(chunk_size)
                 if not chunk:
@@ -443,10 +452,12 @@ async def _process_claim_with_attachments(
                 chunks.append(chunk)
             buffered_files.append((f.filename, b"".join(chunks), f.content_type))
 
+    # Create claim record first, then store uploaded files.
     claim_id = repo.create_claim(claim_input, actor_id=actor_id)
 
     all_attachments = list(claim_input.attachments)
     if buffered_files:
+        # Store uploaded files now that the claim record exists.
         storage = get_storage_adapter()
         for filename, content, content_type in buffered_files:
             stored_key = storage.save(
@@ -537,8 +548,6 @@ async def process_claim_async(
 
 async def _stream_claim_updates(claim_id: str):
     """SSE generator: poll claim, history, workflows and yield updates."""
-    poll_interval = 1.0
-    max_duration = 300  # 5 min timeout
     elapsed = 0.0
 
     def _fetch_claim_snapshot():
@@ -571,7 +580,7 @@ async def _stream_claim_updates(claim_id: str):
 
         return claim_dict, history_rows, wf_rows
 
-    while elapsed < max_duration:
+    while elapsed < _STREAM_MAX_DURATION:
         claim_dict, history_rows, wf_rows = await asyncio.to_thread(_fetch_claim_snapshot)
         if claim_dict is None:
             yield f"data: {json.dumps({'error': 'Claim not found'})}\n\n"
@@ -589,8 +598,8 @@ async def _stream_claim_updates(claim_id: str):
             yield f"data: {json.dumps({'done': True, 'status': status})}\n\n"
             return
 
-        await asyncio.sleep(poll_interval)
-        elapsed += poll_interval
+        await asyncio.sleep(_STREAM_POLL_INTERVAL)
+        elapsed += _STREAM_POLL_INTERVAL
 
     yield f"data: {json.dumps({'error': 'Stream timeout', 'elapsed': elapsed})}\n\n"
 

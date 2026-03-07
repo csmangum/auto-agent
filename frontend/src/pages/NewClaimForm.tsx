@@ -9,7 +9,12 @@ import {
 } from '../api/client';
 import type { Claim, AuditEvent, WorkflowRun } from '../api/types';
 
-const INITIAL_FORM: ProcessClaimPayload = {
+/** Form state allows vehicle_year to be undefined when cleared (for validation). */
+type ClaimFormState = Omit<ProcessClaimPayload, 'vehicle_year'> & {
+  vehicle_year?: number;
+};
+
+const INITIAL_FORM: ClaimFormState = {
   policy_number: '',
   vin: '',
   vehicle_year: new Date().getFullYear(),
@@ -22,7 +27,7 @@ const INITIAL_FORM: ProcessClaimPayload = {
 };
 
 export default function NewClaimForm() {
-  const [form, setForm] = useState<ProcessClaimPayload>(INITIAL_FORM);
+  const [form, setForm] = useState<ClaimFormState>(INITIAL_FORM);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +39,7 @@ export default function NewClaimForm() {
   const abortStreamRef = useRef<(() => void) | null>(null);
 
   const updateField = useCallback(
-    <K extends keyof ProcessClaimPayload>(key: K, value: ProcessClaimPayload[K]) => {
+    <K extends keyof ClaimFormState>(key: K, value: ClaimFormState[K]) => {
       setForm((prev) => ({ ...prev, [key]: value }));
     },
     []
@@ -56,7 +61,11 @@ export default function NewClaimForm() {
     }
 
     try {
-      const { claim_id } = await processClaimAsync(form, files.length ? files : undefined);
+      const payload: ProcessClaimPayload = {
+        ...form,
+        vehicle_year: form.vehicle_year ?? new Date().getFullYear(),
+      };
+      const { claim_id } = await processClaimAsync(payload, files.length ? files : undefined);
       setClaimId(claim_id);
 
       const abort = streamClaimUpdates(
@@ -121,8 +130,11 @@ export default function NewClaimForm() {
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Policy Number</label>
+            <label htmlFor="policy_number" className="block text-sm font-medium text-gray-700 mb-1">
+              Policy Number
+            </label>
             <input
+              id="policy_number"
               type="text"
               value={form.policy_number}
               onChange={(e) => updateField('policy_number', e.target.value)}
@@ -132,8 +144,11 @@ export default function NewClaimForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">VIN</label>
+            <label htmlFor="vin" className="block text-sm font-medium text-gray-700 mb-1">
+              VIN
+            </label>
             <input
+              id="vin"
               type="text"
               value={form.vin}
               onChange={(e) => updateField('vin', e.target.value)}
@@ -143,11 +158,21 @@ export default function NewClaimForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Year</label>
+            <label htmlFor="vehicle_year" className="block text-sm font-medium text-gray-700 mb-1">
+              Vehicle Year
+            </label>
             <input
+              id="vehicle_year"
               type="number"
-              value={form.vehicle_year}
-              onChange={(e) => updateField('vehicle_year', parseInt(e.target.value, 10) || 0)}
+              value={form.vehicle_year ?? ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const num = parseInt(raw, 10);
+                updateField(
+                  'vehicle_year',
+                  raw === '' ? undefined : (Number.isNaN(num) ? form.vehicle_year : num)
+                );
+              }}
               required
               min={1900}
               max={2100}
@@ -155,8 +180,11 @@ export default function NewClaimForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Make</label>
+            <label htmlFor="vehicle_make" className="block text-sm font-medium text-gray-700 mb-1">
+              Vehicle Make
+            </label>
             <input
+              id="vehicle_make"
               type="text"
               value={form.vehicle_make}
               onChange={(e) => updateField('vehicle_make', e.target.value)}
@@ -166,8 +194,11 @@ export default function NewClaimForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Model</label>
+            <label htmlFor="vehicle_model" className="block text-sm font-medium text-gray-700 mb-1">
+              Vehicle Model
+            </label>
             <input
+              id="vehicle_model"
               type="text"
               value={form.vehicle_model}
               onChange={(e) => updateField('vehicle_model', e.target.value)}
@@ -177,8 +208,11 @@ export default function NewClaimForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Incident Date</label>
+            <label htmlFor="incident_date" className="block text-sm font-medium text-gray-700 mb-1">
+              Incident Date
+            </label>
             <input
+              id="incident_date"
               type="date"
               value={form.incident_date}
               onChange={(e) => updateField('incident_date', e.target.value)}
@@ -187,8 +221,11 @@ export default function NewClaimForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Damage ($)</label>
+            <label htmlFor="estimated_damage" className="block text-sm font-medium text-gray-700 mb-1">
+              Estimated Damage ($)
+            </label>
             <input
+              id="estimated_damage"
               type="number"
               value={form.estimated_damage ?? ''}
               onChange={(e) =>
@@ -206,8 +243,11 @@ export default function NewClaimForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Incident Description</label>
+          <label htmlFor="incident_description" className="block text-sm font-medium text-gray-700 mb-1">
+            Incident Description
+          </label>
           <textarea
+            id="incident_description"
             value={form.incident_description}
             onChange={(e) => updateField('incident_description', e.target.value)}
             required
@@ -218,8 +258,11 @@ export default function NewClaimForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Damage Description</label>
+          <label htmlFor="damage_description" className="block text-sm font-medium text-gray-700 mb-1">
+            Damage Description
+          </label>
           <textarea
+            id="damage_description"
             value={form.damage_description}
             onChange={(e) => updateField('damage_description', e.target.value)}
             required
@@ -230,8 +273,11 @@ export default function NewClaimForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Attachments (optional)</label>
+          <label htmlFor="attachments" className="block text-sm font-medium text-gray-700 mb-1">
+            Attachments (optional)
+          </label>
           <input
+            id="attachments"
             type="file"
             multiple
             accept="image/*,.pdf"
@@ -252,10 +298,10 @@ export default function NewClaimForm() {
         <div className="flex gap-3">
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (!!claimId && !done)}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Submitting...' : 'Submit Claim'}
+            {submitting ? 'Submitting...' : claimId && !done ? 'Processing...' : 'Submit Claim'}
           </button>
           {claimId && done && (
             <>

@@ -10,7 +10,9 @@ Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/* endpoi
 require auth. Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
 """
 
+import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -21,14 +23,25 @@ from fastapi.staticfiles import StaticFiles
 from claim_agent.api.auth import is_auth_required, verify_token
 from claim_agent.api.rate_limit import get_client_ip, is_rate_limited
 from claim_agent.api.routes.claims import router as claims_router
+from claim_agent.api.routes.claims import _background_tasks as claim_background_tasks
 from claim_agent.api.routes.metrics import router as metrics_router
 from claim_agent.api.routes.docs import router as docs_router
 from claim_agent.api.routes.system import router as system_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Shutdown: wait for in-flight claim workflow tasks to complete
+    if claim_background_tasks:
+        await asyncio.gather(*claim_background_tasks)
+
 
 app = FastAPI(
     title="Claims System Observability UI",
     description="API for the Agentic Claims Processing System dashboard",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS: use CORS_ORIGINS env var for production, default to localhost for dev
