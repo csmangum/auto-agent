@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS claims (
     due_at TEXT,
     priority TEXT,
     siu_case_id TEXT,
+    archived_at TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -88,12 +89,25 @@ def get_db_path() -> str:
     return path
 
 
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Run schema migrations for existing databases."""
+    # Migration: add archived_at column for retention (2025-03)
+    try:
+        cursor = conn.execute("PRAGMA table_info(claims)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "archived_at" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN archived_at TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+
 def _run_schema(db_path: str) -> None:
     """Create tables if they do not exist. Caller must manage _schema_initialized."""
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
+        _run_migrations(conn)
 
 
 def init_db(path: str | None = None) -> None:

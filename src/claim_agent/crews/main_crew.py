@@ -861,6 +861,7 @@ def run_claim_workflow(
     with claim_context(
         claim_id=claim_id,
         policy_number=claim_data.get("policy_number"),
+        vin=claim_data.get("vin"),
     ):
         # Both new and reprocessed claims set to PROCESSING for consistent workflow tracking
         repo.update_claim_status(claim_id, STATUS_PROCESSING, actor_id=_actor)

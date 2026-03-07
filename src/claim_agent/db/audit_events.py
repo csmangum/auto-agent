@@ -17,10 +17,12 @@ AUDIT_EVENT_REQUEST_INFO = "request_info"
 AUDIT_EVENT_ESCALATE_TO_SIU = "escalate_to_siu"
 AUDIT_EVENT_SIU_CASE_CREATED = "siu_case_created"
 AUDIT_EVENT_ASSIGN = "assign"
+AUDIT_EVENT_RETENTION = "retention_archived"
 
 # Actor identifiers for automated actions
 ACTOR_SYSTEM = "system"
 ACTOR_WORKFLOW = "workflow"
+ACTOR_RETENTION = "retention"
 
 # All event types (for validation/docs)
 AUDIT_EVENT_TYPES = (
@@ -36,4 +38,5 @@ AUDIT_EVENT_TYPES = (
     AUDIT_EVENT_ESCALATE_TO_SIU,
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_ASSIGN,
+    AUDIT_EVENT_RETENTION,
 )
