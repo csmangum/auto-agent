@@ -2,15 +2,16 @@
 
 This document describes the observability features built into the claim agent: structured logging with claim context, LLM call tracing (LangSmith and LiteLLM), and cost/latency metrics per claim.
 
-For configuration details, see [Configuration](configuration.md). For MCP observability tools, see [MCP Server](mcp-server.md#observability-tools).
+For configuration details, see [Configuration](configuration.md). For MCP observability tools, see [MCP Server](mcp-server.md#observability-tools). For production alerting, see [Alerting](alerting.md).
 
 ## Overview
 
 The observability module (`claim_agent.observability`) provides:
 
+- **Health checks** – Production health endpoint with DB connectivity (and optional LLM) checks. Returns 200 when healthy, 503 when critical dependencies are down.
 - **Structured logging** – Logs tagged with `claim_id`, `claim_type`, and optional policy/context. Output can be human-readable or JSON for log aggregators. PII (policy_number, vin) is masked when `CLAIM_AGENT_MASK_PII=true` (default).
 - **Tracing** – LangSmith integration for LLM traces and a LiteLLM callback so all LLM calls (via CrewAI) report real token usage and cost.
-- **Metrics** – Per-claim and global aggregates: LLM call count, tokens, estimated cost (USD), and latency (total, average, p50/p95/p99).
+- **Metrics** – Per-claim and global aggregates: LLM call count, tokens, estimated cost (USD), and latency (total, average, p50/p95/p99). Prometheus export at `/metrics` for production monitoring.
 
 ```mermaid
 flowchart LR
@@ -50,6 +51,41 @@ Controlled by `CLAIM_AGENT_LOG_FORMAT`:
 | `json`  | One JSON object per line with `level`, `logger`, `message`, `timestamp`, `claim_id`, `claim_type`, `correlation_id`, `source` (file/line/function), and optional `data` / `exception`. |
 
 CLI option `--json` overrides to JSON format for the run. `--debug` sets log level to DEBUG.
+
+## Health Endpoint
+
+When running the API server (`claim-agent serve`), production health checks are available at:
+
+| Path | Description |
+|------|-------------|
+| `GET /api/health` | Primary health check |
+| `GET /health` | Alias for k8s/load balancers |
+| `GET /healthz` | Alias for k8s/load balancers |
+
+**Response:** `{"status": "ok"|"degraded", "checks": {"database": "ok"|"error", "llm": "ok"|"degraded"|"skipped"}}`
+
+- **200** when database is connected
+- **503** when database is unreachable (critical dependency down)
+
+Set `HEALTH_CHECK_LLM=true` to include an optional LLM configuration/client initialization check. LLM failure marks `llm: degraded` but does not change the overall status (DB is the only critical dependency).
+
+## Prometheus Metrics
+
+The server exposes Prometheus-format metrics at `GET /metrics` (no auth required, suitable for scraping).
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `claims_processed_total` | Counter | Claims successfully processed |
+| `claims_failed_total` | Counter | Claims that failed processing |
+| `claims_escalated_total` | Counter | Claims escalated to human review |
+| `claim_processing_duration_seconds` | Histogram | Processing duration per claim |
+| `llm_tokens_total` | Counter | LLM tokens used (labels: `type=input|output`) |
+| `claims_in_progress` | Gauge | Claims currently being processed |
+| `review_queue_size` | Gauge | Claims in review queue (needs_review) |
+
+When the database is unreachable, `claims_in_progress` and `review_queue_size` are set to `-1` to indicate unknown/error.
+
+See [Alerting](alerting.md) for recommended Prometheus alert rules and scrape configuration.
 
 ### Example (human format)
 
@@ -203,6 +239,8 @@ If the observability module is not installed, the agent still runs; LangSmith se
 
 | Feature | Purpose |
 |--------|---------|
+| Health endpoint | `/api/health`, `/health`, `/healthz` – DB (and optional LLM) checks |
+| Prometheus metrics | `/metrics` – Counters, histograms, gauges for production monitoring |
 | Structured logging | Claim-scoped logs; JSON or human format |
 | ClaimLogger / claim_context | Attach claim_id and context to every log line |
 | LangSmith | Optional external trace storage and UI |

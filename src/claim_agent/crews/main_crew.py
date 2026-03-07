@@ -59,6 +59,7 @@ from claim_agent.observability import (
     claim_context,
     get_metrics,
 )
+from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.observability.tracing import LiteLLMTracingCallback
 from claim_agent.utils.retry import with_llm_retry
 from claim_agent.utils.sanitization import sanitize_claim_data
@@ -250,6 +251,9 @@ def _escalate_low_router_confidence(
     )
     _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
     metrics.end_claim(claim_id, status="escalated")
+    record_claim_outcome(
+        claim_id, "escalated", (time.time() - workflow_start_time)
+    )
     metrics.log_claim_summary(claim_id)
 
 
@@ -792,6 +796,9 @@ def _handle_mid_workflow_escalation(
     )
     _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
     metrics.end_claim(claim_id, status="escalated")
+    record_claim_outcome(
+        claim_id, "escalated", (time.time() - workflow_start_time)
+    )
     metrics.log_claim_summary(claim_id)
 
     summary = f"Escalated during {stage}: {e.reason}" if stage else f"Escalated mid-workflow: {e.reason}"
@@ -1042,6 +1049,9 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
             )
             _record_crew_llm_usage(claim_id=ctx.claim_id, llm=ctx.llm, metrics=ctx.metrics)
             ctx.metrics.end_claim(ctx.claim_id, status="escalated")
+            record_claim_outcome(
+                ctx.claim_id, "escalated", (time.time() - ctx.workflow_start_time)
+            )
             ctx.metrics.log_claim_summary(ctx.claim_id)
 
             return {
@@ -1474,6 +1484,9 @@ def run_claim_workflow(
             _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
 
             metrics.end_claim(claim_id, status=final_status)
+            record_claim_outcome(
+                claim_id, final_status, (time.time() - workflow_start_time)
+            )
             metrics.log_claim_summary(claim_id)
 
             return {
@@ -1504,6 +1517,9 @@ def run_claim_workflow(
 
             # End metrics tracking with error status
             metrics.end_claim(claim_id, status="error")
+            record_claim_outcome(
+                claim_id, "error", (time.time() - workflow_start_time)
+            )
             metrics.log_claim_summary(claim_id)
 
             raise

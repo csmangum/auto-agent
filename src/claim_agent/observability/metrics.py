@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from claim_agent.observability.prometheus import record_llm_tokens
+
 logger = logging.getLogger(__name__)
 
 
@@ -238,6 +240,8 @@ class ClaimMetrics:
                 # Since we're using RLock, we can safely call start_claim from within the lock
                 self.start_claim(claim_id)
             self._claims[claim_id]["llm_calls"].append(metric)
+
+        record_llm_tokens(input_tokens, output_tokens)
 
         # Log the metric
         logger.info(
