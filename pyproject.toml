@@ -9,6 +9,7 @@ dependencies = [
     "crewai-tools>=0.40.0",
     "mcp>=1.9.0",
     "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
     "tenacity>=8.0.0",
     # RAG dependencies
@@ -28,6 +29,8 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
     "PyJWT>=2.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.0.0",
 ]
 observability = [
     "langsmith>=0.1.0",
@@ -79,3 +82,20 @@ exclude_lines = [
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/conftest.py" = ["E402"]
+"src/claim_agent/rag/vector_store.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

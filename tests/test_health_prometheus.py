@@ -81,9 +81,9 @@ class TestPrometheus:
         output = generate_metrics().decode()
         # Prometheus format: lines are # comments or "name value" or "name{labels} value"
         assert output  # non-empty
-        lines = [l for l in output.splitlines() if l and not l.startswith("#")]
+        lines = [ln for ln in output.splitlines() if ln and not ln.startswith("#")]
         # Should have at least our metrics
-        metric_names = {l.split()[0].split("{")[0] for l in lines}
+        metric_names = {ln.split()[0].split("{")[0] for ln in lines}
         assert "claims_processed_total" in metric_names or "claims_in_progress" in metric_names
 
 

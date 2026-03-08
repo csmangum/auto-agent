@@ -2,37 +2,22 @@
 
 import os
 import sqlite3
-import tempfile
 
 import pytest
 
+from claim_agent.config import reload_settings
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
-from claim_agent.db.database import get_db_path, get_connection, init_db
+from claim_agent.db.database import get_db_path, get_connection
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
-
-
-@pytest.fixture
-def temp_db():
-    """Create a temporary SQLite database path and init schema."""
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    try:
-        init_db(path)
-        yield path
-    finally:
-        try:
-            os.unlink(path)
-        except OSError:
-            # Best-effort cleanup: ignore errors if the file was already removed
-            pass
 
 
 def test_get_db_path_default():
     """Default path is data/claims.db when env unset."""
     if "CLAIMS_DB_PATH" in os.environ:
         del os.environ["CLAIMS_DB_PATH"]
+    reload_settings()
     assert get_db_path() == "data/claims.db"
 
 
@@ -40,6 +25,7 @@ def test_get_db_path_env():
     """CLAIMS_DB_PATH env overrides default."""
     os.environ["CLAIMS_DB_PATH"] = "/tmp/custom.db"
     try:
+        reload_settings()
         assert get_db_path() == "/tmp/custom.db"
     finally:
         del os.environ["CLAIMS_DB_PATH"]

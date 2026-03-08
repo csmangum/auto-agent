@@ -58,7 +58,7 @@ class TestDatabaseInit:
     @pytest.mark.integration
     def test_reinit_db_is_idempotent(self, integration_db):
         """Verify re-initializing the database is safe."""
-        from claim_agent.db.database import init_db, get_connection
+        from claim_agent.db.database import init_db
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         
@@ -500,3 +500,44 @@ class TestConcurrentAccess:
         
         assert len(errors) == 0, f"Errors during concurrent creation: {errors}"
         assert len(set(created_ids)) == 5  # All unique IDs
+
+    @pytest.mark.integration
+    def test_concurrent_claim_status_updates(self, integration_db):
+        """Multiple threads updating the same claim's status; assert no lost updates."""
+        import threading
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        repo = ClaimRepository(db_path=integration_db)
+        claim_input = ClaimInput(
+            policy_number="POL-CONC",
+            vin="VIN1234567890",
+            vehicle_year=2021,
+            vehicle_make="Test",
+            vehicle_model="Model",
+            incident_date="2025-01-15",
+            incident_description="Concurrent update test",
+            damage_description="Test",
+        )
+        claim_id = repo.create_claim(claim_input)
+
+        errors = []
+        statuses = ["open", "processing", "needs_review", "closed"]
+
+        def update_status(idx):
+            try:
+                s = statuses[idx % len(statuses)]
+                repo.update_claim_status(claim_id, s, actor_id=f"thread-{idx}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=update_status, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Errors during concurrent updates: {errors}"
+        claim = repo.get_claim(claim_id)
+        assert claim is not None
+        assert claim["status"] in statuses

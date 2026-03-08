@@ -33,8 +33,9 @@ def generate_report_pdf_impl(
     payout_amount: float | None = None,
 ) -> str:
     """Generate a PDF report from claim data. Requires reportlab (pip install claim-agent[pdf])."""
-    import os
     from pathlib import Path
+
+    from claim_agent.config import get_settings
 
     result = {"pdf_path": None, "error": None}
     try:
@@ -47,7 +48,7 @@ def generate_report_pdf_impl(
         def _escape_field(value: object) -> str:
             return escape(str(value)) if value is not None else ""
 
-        out_dir = Path(os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")).parent / "reports"
+        out_dir = Path(get_settings().paths.attachment_storage_path).parent / "reports"
         out_dir.mkdir(parents=True, exist_ok=True)
         safe_claim_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(claim_id))
         pdf_path = out_dir / f"report_{safe_claim_id}_{uuid.uuid4().hex[:6]}.pdf"

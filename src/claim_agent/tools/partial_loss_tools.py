@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 
 from crewai.tools import tool
 

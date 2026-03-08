@@ -82,7 +82,9 @@ class TestPIIInLogger:
 
         from claim_agent.observability.logger import StructuredFormatter, _set_claim_context
 
-        with mock.patch("claim_agent.observability.logger.get_mask_pii", return_value=True):
+        mock_settings = mock.Mock()
+        mock_settings.logging.mask_pii = True
+        with mock.patch("claim_agent.observability.logger.get_settings", return_value=mock_settings):
             formatter = StructuredFormatter()
             record = logging.LogRecord(
                 name="test",
@@ -112,7 +114,9 @@ class TestPIIInLogger:
 
         from claim_agent.observability.logger import StructuredFormatter, _set_claim_context
 
-        with mock.patch("claim_agent.observability.logger.get_mask_pii", return_value=False):
+        mock_settings = mock.Mock()
+        mock_settings.logging.mask_pii = False
+        with mock.patch("claim_agent.observability.logger.get_settings", return_value=mock_settings):
             formatter = StructuredFormatter()
             record = logging.LogRecord(
                 name="test",
@@ -142,7 +146,9 @@ class TestPIIInLogger:
 
         from claim_agent.observability.logger import StructuredFormatter, _set_claim_context
 
-        with mock.patch("claim_agent.observability.logger.get_mask_pii", return_value=True):
+        mock_settings = mock.Mock()
+        mock_settings.logging.mask_pii = True
+        with mock.patch("claim_agent.observability.logger.get_settings", return_value=mock_settings):
             formatter = StructuredFormatter()
             record = logging.LogRecord(
                 name="test",
@@ -168,78 +174,76 @@ class TestRetentionConfig:
 
     def test_get_retention_period_from_env(self):
         """get_retention_period_years should use RETENTION_PERIOD_YEARS when set."""
+        from claim_agent.config import reload_settings
         from claim_agent.config.settings import get_retention_period_years
 
         with mock.patch.dict(os.environ, {"RETENTION_PERIOD_YEARS": "7"}):
+            reload_settings()
             assert get_retention_period_years() == 7
 
     def test_get_retention_period_default(self):
         """get_retention_period_years should default to 5 from compliance when env unset."""
+        from claim_agent.config import reload_settings
         from claim_agent.config.settings import get_retention_period_years
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch(
-                "claim_agent.data.loader.load_california_compliance",
-                return_value={
-                    "electronic_claims_requirements": {
-                        "provisions": [
-                            {"id": "ECR-003", "retention_period_years": 5},
-                        ],
-                    },
-                },
+                "claim_agent.config.settings_model.Settings._load_compliance_retention",
+                return_value=5,
             ):
+                reload_settings()
                 assert get_retention_period_years() == 5
 
     def test_get_retention_period_fallback_when_compliance_missing(self):
         """get_retention_period_years returns 5 when compliance returns None."""
+        from claim_agent.config import reload_settings
         from claim_agent.config.settings import get_retention_period_years
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch(
-                "claim_agent.data.loader.load_california_compliance",
+                "claim_agent.config.settings_model.Settings._load_compliance_retention",
                 return_value=None,
             ):
+                reload_settings()
                 assert get_retention_period_years() == 5
 
     def test_get_retention_period_fallback_when_ecr003_absent(self):
         """get_retention_period_years returns 5 when ECR-003 not in provisions."""
+        from claim_agent.config import reload_settings
         from claim_agent.config.settings import get_retention_period_years
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch(
-                "claim_agent.data.loader.load_california_compliance",
-                return_value={"electronic_claims_requirements": {"provisions": []}},
+                "claim_agent.config.settings_model.Settings._load_compliance_retention",
+                return_value=None,
             ):
+                reload_settings()
                 assert get_retention_period_years() == 5
 
     def test_get_retention_period_invalid_env_fallback(self):
         """get_retention_period_years falls back when RETENTION_PERIOD_YEARS is invalid."""
+        from claim_agent.config import reload_settings
         from claim_agent.config.settings import get_retention_period_years
 
         with mock.patch.dict(os.environ, {"RETENTION_PERIOD_YEARS": "x"}):
             with mock.patch(
-                "claim_agent.data.loader.load_california_compliance",
-                return_value={
-                    "electronic_claims_requirements": {
-                        "provisions": [{"id": "ECR-003", "retention_period_years": 5}],
-                    },
-                },
+                "claim_agent.config.settings_model.Settings._load_compliance_retention",
+                return_value=5,
             ):
+                reload_settings()
                 assert get_retention_period_years() == 5
 
     def test_get_retention_period_fallback_when_ecr003_invalid(self):
         """get_retention_period_years returns 5 when ECR-003 has invalid retention_period_years."""
+        from claim_agent.config import reload_settings
         from claim_agent.config.settings import get_retention_period_years
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch(
-                "claim_agent.data.loader.load_california_compliance",
-                return_value={
-                    "electronic_claims_requirements": {
-                        "provisions": [{"id": "ECR-003", "retention_period_years": 0}],
-                    },
-                },
+                "claim_agent.config.settings_model.Settings._load_compliance_retention",
+                return_value=None,
             ):
+                reload_settings()
                 assert get_retention_period_years() == 5
 
 

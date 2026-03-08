@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from claim_agent.models.claim import (
-    Attachment,
     AttachmentType,
     ClaimInput,
     ClaimOutput,

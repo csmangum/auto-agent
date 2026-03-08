@@ -1,6 +1,5 @@
 """SQLite connection and schema initialization."""
 
-import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -98,9 +97,10 @@ CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 
 
 def get_db_path() -> str:
-    """Return path to SQLite database from CLAIMS_DB_PATH env or default data/claims.db."""
-    path = os.environ.get("CLAIMS_DB_PATH", "data/claims.db")
-    return path
+    """Return path to SQLite database from settings."""
+    from claim_agent.config import get_settings
+
+    return get_settings().paths.claims_db_path
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:

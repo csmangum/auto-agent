@@ -1,8 +1,7 @@
 """Alembic environment for claims database migrations.
 
-Uses CLAIMS_DB_PATH env var (default: data/claims.db).
+Uses settings (CLAIMS_DB_PATH env or default data/claims.db).
 """
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import create_engine
@@ -19,8 +18,10 @@ target_metadata = None
 
 
 def get_url() -> str:
-    """Database URL from CLAIMS_DB_PATH env."""
-    path = os.environ.get("CLAIMS_DB_PATH", "data/claims.db")
+    """Database URL from settings."""
+    from claim_agent.config import get_settings
+
+    path = get_settings().paths.claims_db_path
     return f"sqlite:///{path}"
 
 

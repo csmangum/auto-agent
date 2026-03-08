@@ -30,7 +30,90 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 # Point to project data for mock_db
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
 
-from claim_agent.db.database import init_db
+from claim_agent.db.database import get_connection, init_db
+
+
+def _seed_test_data(db_path: str) -> None:
+    """Insert test claims, audit log entries, and workflow runs for API tests."""
+    with get_connection(db_path) as conn:
+        # Claims
+        conn.execute(
+            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
+            "vehicle_model, incident_date, incident_description, damage_description, "
+            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("CLM-TEST001", "POL-001", "1HGBH41JXMN109186", 2021, "Honda", "Accord",
+             "2025-01-15", "Rear-ended at stoplight", "Rear bumper damage", 2500.0,
+             "new", "open"),
+        )
+        conn.execute(
+            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
+            "vehicle_model, incident_date, incident_description, damage_description, "
+            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("CLM-TEST002", "POL-002", "5YJSA1E26HF123456", 2020, "Tesla", "Model 3",
+             "2025-01-20", "Flash flood", "Vehicle submerged", 45000.0,
+             "total_loss", "closed"),
+        )
+        conn.execute(
+            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
+            "vehicle_model, incident_date, incident_description, damage_description, "
+            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("CLM-TEST003", "POL-003", "3VWDX7AJ5DM999999", 2019, "Volkswagen", "Jetta",
+             "2025-01-22", "Staged accident", "Front bumper destroyed", 35000.0,
+             "fraud", "fraud_suspected"),
+        )
+        conn.execute(
+            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
+            "vehicle_model, incident_date, incident_description, damage_description, "
+            "estimated_damage, claim_type, status, priority, due_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("CLM-TEST004", "POL-004", "2HGFG3B54CH123456", 2022, "Toyota", "Camry",
+             "2025-01-25", "Low confidence routing", "Minor scratch", 500.0,
+             "new", "needs_review", "high", "2025-01-26T12:00:00Z"),
+        )
+
+        # Audit log entries (with actor_id, before_state, after_state for audit trail)
+        conn.execute(
+            "INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "CLM-TEST001",
+                "created",
+                "pending",
+                "Claim record created",
+                "workflow",
+                '{"status": "pending", "claim_type": null, "payout_amount": null}',
+            ),
+        )
+        conn.execute(
+            "INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "CLM-TEST001",
+                "status_change",
+                "pending",
+                "open",
+                "Processed successfully",
+                "workflow",
+                '{"status": "pending", "claim_type": null, "payout_amount": null}',
+                '{"status": "open", "claim_type": "new", "payout_amount": null}',
+            ),
+        )
+
+        # Workflow run
+        conn.execute(
+            "INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output) "
+            "VALUES (?, ?, ?, ?)",
+            ("CLM-TEST001", "new", "new\nFirst-time claim", "Claim assigned and opened"),
+        )
+
+
+@pytest.fixture(autouse=True)
+def _reset_settings():
+    """Reset the settings singleton so each test gets fresh config from env."""
+    import claim_agent.config as _cfg
+    _cfg._settings = None
+    yield
+    _cfg._settings = None
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +136,13 @@ def temp_db():
         except OSError:
             # Ignore errors when cleaning up the temporary DB file (e.g., if already removed).
             pass
+
+
+@pytest.fixture()
+def seeded_temp_db(temp_db):
+    """Temp DB with API-style seed data. Use for tests that need pre-populated claims."""
+    _seed_test_data(temp_db)
+    return temp_db
 
 
 @pytest.fixture(autouse=True)

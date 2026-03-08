@@ -7,7 +7,6 @@ import os
 import tempfile
 from unittest.mock import patch
 
-import pytest
 
 from claim_agent.config.settings import get_notification_config, get_webhook_config
 from tests.conftest import LogCaptureHandler

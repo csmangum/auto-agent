@@ -2,6 +2,10 @@
 
 import json
 import logging
+import os
+from urllib.parse import unquote, urlparse
+
+from claim_agent.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +16,6 @@ def analyze_damage_photo_impl(
 ) -> str:
     """Analyze a damage photo using a vision model."""
     import base64
-    import os
-    from urllib.parse import unquote, urlparse
 
     result = {
         "severity": "unknown",
@@ -28,7 +30,7 @@ def analyze_damage_photo_impl(
         try:
             path = os.path.realpath(unquote(urlparse(image_url).path))
             allowed_base = os.path.realpath(
-                os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")
+                get_settings().paths.attachment_storage_path
             )
             if not path.startswith(allowed_base + os.sep) and path != allowed_base:
                 result["error"] = "Access to this file path is not permitted"
@@ -55,7 +57,7 @@ def analyze_damage_photo_impl(
         import litellm
         import re
 
-        model = os.environ.get("OPENAI_VISION_MODEL", "gpt-4o").strip()
+        model = get_settings().llm.vision_model.strip() or "gpt-4o"
         prompt = """Analyze this vehicle damage photo. Return a JSON object with:
 - severity: "low" | "medium" | "high" | "total_loss"
 - parts_affected: list of damaged parts (e.g. bumper, fender, door)

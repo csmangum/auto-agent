@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 
 # Import via main_crew to avoid circular import (workflow -> orchestrator -> stages -> crews -> main_crew -> workflow).
 # Helpers live in claim_agent.workflow.claim_analysis and claim_agent.workflow.duplicate_detection.

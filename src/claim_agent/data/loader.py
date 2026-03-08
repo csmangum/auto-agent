@@ -1,14 +1,15 @@
 """Shared data access for mock database and compliance JSON files.
 
-- MOCK_DB_PATH env or default data/mock_db.json for policies/claims/vehicle_values.
-- CA_COMPLIANCE_PATH env or default data/california_auto_compliance.json for CA compliance reference.
+- MOCK_DB_PATH from settings for policies/claims/vehicle_values.
+- CA_COMPLIANCE_PATH from settings for CA compliance reference.
 """
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
+
+from claim_agent.config import get_settings
 
 _DEFAULT_DB = {
     "policies": {},
@@ -22,17 +23,13 @@ def _project_data_dir() -> Path:
 
 
 def _resolve_db_path() -> Path:
-    path = os.environ.get("MOCK_DB_PATH")
-    if path:
-        return Path(path)
-    return _project_data_dir() / "mock_db.json"
+    path = get_settings().paths.mock_db_path
+    return Path(path)
 
 
 def _resolve_ca_compliance_path() -> Path:
-    path = os.environ.get("CA_COMPLIANCE_PATH")
-    if path:
-        return Path(path)
-    return _project_data_dir() / "california_auto_compliance.json"
+    path = get_settings().paths.ca_compliance_path
+    return Path(path)
 
 
 def load_mock_db() -> dict[str, Any]:

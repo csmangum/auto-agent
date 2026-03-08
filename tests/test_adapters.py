@@ -1,7 +1,5 @@
 """Tests for the adapter layer: base ABCs, mock implementations, stubs, and registry."""
 
-import os
-import uuid
 
 import pytest
 
@@ -228,3 +226,37 @@ class TestRegistry:
         monkeypatch.setenv("POLICY_ADAPTER", "rest")
         with pytest.raises(ValueError, match="Unknown POLICY_ADAPTER backend.*rest"):
             get_policy_adapter()
+
+
+# ---------------------------------------------------------------------------
+# Adapter caller tests: logic that catches NotImplementedError from stubs
+# ---------------------------------------------------------------------------
+
+class TestValuationLogicStubFallback:
+    """When StubValuationAdapter raises, fetch_vehicle_value falls back to default."""
+
+    def test_stub_adapter_returns_default_value(self, monkeypatch):
+        from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
+
+        reset_adapters()
+        monkeypatch.setenv("VALUATION_ADAPTER", "stub")
+        result = fetch_vehicle_value_impl("VIN123", 2021, "Honda", "Civic")
+        import json
+        data = json.loads(result)
+        assert "value" in data
+        assert data["value"] >= 0
+        assert data["condition"] == "good"
+        assert "source" in data
+
+
+class TestPolicyLogicStubRaises:
+    """When StubPolicyAdapter raises NotImplementedError, query_policy_db_impl raises AdapterError."""
+
+    def test_stub_adapter_raises_adapter_error(self, monkeypatch):
+        from claim_agent.exceptions import AdapterError
+        from claim_agent.tools.policy_logic import query_policy_db_impl
+
+        reset_adapters()
+        monkeypatch.setenv("POLICY_ADAPTER", "stub")
+        with pytest.raises(AdapterError, match="not supported"):
+            query_policy_db_impl("POL-001")

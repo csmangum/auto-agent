@@ -51,7 +51,9 @@ class TestEmitClaimEvent:
 
     def test_emits_to_registered_listener(self):
         received: list[ClaimEvent] = []
-        listener = lambda e: received.append(e)
+
+        def listener(e):
+            received.append(e)
         register_claim_event_listener(listener)
         try:
             event = ClaimEvent(claim_id="CLM-789", status="processing", summary="Started")
@@ -75,7 +77,9 @@ class TestEmitClaimEvent:
     def test_failing_listener_does_not_block_others(self):
         """When one listener throws, other listeners still receive the event."""
         received: list[ClaimEvent] = []
-        good_listener = lambda e: received.append(e)
+
+        def good_listener(e):
+            received.append(e)
         bad_listener = MagicMock(side_effect=RuntimeError("listener failed"))
 
         register_claim_event_listener(bad_listener)

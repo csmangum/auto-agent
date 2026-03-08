@@ -114,7 +114,16 @@ OPENAI_MODEL_NAME=your-model-name
 
 ## Centralized Settings
 
-The module `src/claim_agent/config/settings.py` centralizes configuration from environment variables with sensible defaults. Use it instead of reading env vars directly:
+Configuration is loaded via a Pydantic Settings model at startup. All environment variables are validated and typed. Use `get_settings()` for direct access:
+
+```python
+from claim_agent.config import get_settings
+
+settings = get_settings()
+# Typed access: settings.router.confidence_threshold, settings.paths.claims_db_path, etc.
+```
+
+The module `src/claim_agent/config/settings.py` provides backward-compatible functions that delegate to `get_settings()`:
 
 | Function / Constant | Purpose |
 |---------------------|---------|

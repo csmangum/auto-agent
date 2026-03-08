@@ -1,31 +1,13 @@
 """Tests for AdjusterActionService."""
 
-import os
-import tempfile
-
 import pytest
 
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
-from claim_agent.db.database import get_connection, init_db
+from claim_agent.db.database import get_connection
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
 from claim_agent.services.adjuster_action_service import AdjusterActionService
-
-
-@pytest.fixture
-def temp_db():
-    """Create a temporary SQLite database path and init schema."""
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    try:
-        init_db(path)
-        yield path
-    finally:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
 
 
 @pytest.fixture

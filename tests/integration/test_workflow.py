@@ -236,7 +236,6 @@ class TestWorkflowWithMockedLLM:
     ):
         """Test that workflow failures are properly recorded."""
         from claim_agent.crews.main_crew import run_claim_workflow
-        from claim_agent.db.repository import ClaimRepository
         from claim_agent.db.database import get_connection
         
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
