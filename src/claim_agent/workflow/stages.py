@@ -21,6 +21,7 @@ from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
+from claim_agent.notifications.webhook import dispatch_repair_authorized_from_workflow_output
 from claim_agent.observability import get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.tools.escalation_logic import (
@@ -345,6 +346,9 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     ctx.extracted_payout = _extract_payout_from_workflow_result(workflow_result, ctx.claim_type)
     if ctx.extracted_payout is not None:
         ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
+
+    if ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
+        dispatch_repair_authorized_from_workflow_output(ctx.workflow_output, log=logger)
 
     ctx.repo.save_task_checkpoint(
         ctx.claim_id, ctx.workflow_run_id, workflow_stage_key,

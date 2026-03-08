@@ -188,7 +188,7 @@ def test_query_policy_db_inactive_returns_invalid():
 
 def test_mock_db_claim_vins_have_vehicle_values():
     """Every claim VIN in mock_db must exist in vehicle_values (regression guard)."""
-    from claim_agent.tools.data_loader import load_mock_db
+    from claim_agent.data.loader import load_mock_db
 
     db = load_mock_db()
     claims = db.get("claims", [])

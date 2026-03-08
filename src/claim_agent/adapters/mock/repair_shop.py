@@ -3,7 +3,7 @@
 from typing import Any
 
 from claim_agent.adapters.base import RepairShopAdapter
-from claim_agent.tools.data_loader import load_mock_db
+from claim_agent.data.loader import load_mock_db
 
 
 class MockRepairShopAdapter(RepairShopAdapter):

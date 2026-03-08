@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from claim_agent.tools.data_loader import load_california_compliance
+from claim_agent.data.loader import load_california_compliance
 
 
 def _json_contains_query(obj: object, query: str) -> bool:

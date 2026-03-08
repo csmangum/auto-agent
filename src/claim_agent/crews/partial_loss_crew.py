@@ -132,13 +132,15 @@ Generate the repair authorization and prepare the claim for shared settlement.
    - Repair estimate amounts: total_estimate, parts_cost, labor_cost, deductible, customer_pays, insurance_pays
    - customer_approved: true
 
-2. Return a structured output with:
+2. Return a structured output with all fields from the generate_repair_authorization result:
    - payout_amount: the insurance_pays value (amount insurance will pay)
-   - authorization_id: from the generate_repair_authorization result
+   - authorization_id, claim_id, shop_id, shop_name, shop_phone, authorized_amount, shop_webhook_url
    - total_estimate: total repair estimate from the estimate step
 
+Pass through the full generate_repair_authorization result so the settlement crew and webhooks receive complete data.
+
 Do not generate the final claim report in this crew; that is handled by the shared settlement crew.""",
-        expected_output="Structured output: payout_amount (insurance_pays), authorization_id, total_estimate.",
+        expected_output="Structured output: payout_amount, authorization_id, claim_id, shop_id, shop_name, shop_phone, authorized_amount, total_estimate, shop_webhook_url.",
         agent=authorization_agent,
         context=[assess_damage_task, estimate_task, shop_assignment_task, parts_order_task],
         output_pydantic=PartialLossWorkflowOutput,

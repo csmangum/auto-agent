@@ -200,6 +200,40 @@ def safe_dispatch_claim_event(
         logger.warning("Webhook dispatch failed (best-effort): %s", e)
 
 
+def dispatch_repair_authorized_from_workflow_output(
+    workflow_output: str,
+    *,
+    log: logging.Logger | logging.LoggerAdapter | None = None,
+) -> None:
+    """Best-effort dispatch of repair.authorized webhook from workflow output.
+
+    Parses the workflow output for authorization data (authorization_id,
+    shop_id, etc.) and fires the webhook if found.
+    """
+    _log = log or logger
+    try:
+        data = json.loads(workflow_output)
+    except (json.JSONDecodeError, TypeError):
+        return
+    if not isinstance(data, dict):
+        return
+    authorization_id = data.get("authorization_id")
+    if not authorization_id:
+        return
+    try:
+        dispatch_repair_authorized(
+            claim_id=data.get("claim_id") or "",
+            shop_id=data.get("shop_id") or "",
+            shop_name=data.get("shop_name") or "",
+            shop_phone=data.get("shop_phone") or "",
+            authorized_amount=float(data.get("authorized_amount") or 0),
+            authorization_id=authorization_id,
+            shop_webhook_url=data.get("shop_webhook_url"),
+        )
+    except Exception as e:
+        _log.warning("Repair authorization webhook dispatch failed (best-effort): %s", e)
+
+
 def dispatch_repair_authorized(
     claim_id: str,
     shop_id: str,

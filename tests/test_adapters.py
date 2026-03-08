@@ -85,7 +85,7 @@ class TestMockPolicyAdapter:
 class TestMockValuationAdapter:
     def test_known_vin(self):
         adapter = MockValuationAdapter()
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
         db = load_mock_db()
         vins = list(db.get("vehicle_values", {}).keys())
         if vins:

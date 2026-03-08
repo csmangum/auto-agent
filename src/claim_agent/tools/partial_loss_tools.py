@@ -6,7 +6,6 @@ import json
 
 from crewai.tools import tool
 
-from claim_agent.notifications.webhook import dispatch_repair_authorized
 from claim_agent.tools.partial_loss_logic import (
     get_available_repair_shops_impl,
     assign_repair_shop_impl,
@@ -177,22 +176,9 @@ def generate_repair_authorization(
         "customer_pays": customer_pays,
         "insurance_pays": insurance_pays,
     }
-    result_json = generate_repair_authorization_impl(
+    return generate_repair_authorization_impl(
         claim_id=claim_id,
         shop_id=shop_id,
         repair_estimate=repair_estimate,
         customer_approved=customer_approved,
     )
-    auth_data = json.loads(result_json)
-    authorized_amount = auth_data.get("authorized_amount", 0) or 0
-    dispatch_repair_authorized(
-        claim_id=claim_id,
-        shop_id=shop_id,
-        shop_name=auth_data.get("shop_name", ""),
-        shop_phone=auth_data.get("shop_phone", ""),
-        authorized_amount=float(authorized_amount),
-        authorization_id=auth_data.get("authorization_id", ""),
-        shop_webhook_url=auth_data.get("shop_webhook_url"),
-    )
-    auth_data.pop("shop_webhook_url", None)
-    return json.dumps(auth_data)

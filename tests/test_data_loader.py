@@ -10,7 +10,7 @@ class TestDataLoader:
 
     def test_load_mock_db_default_path(self):
         """Test load_mock_db uses default path when env not set."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         # Temporarily remove MOCK_DB_PATH if set
         original = os.environ.get("MOCK_DB_PATH")
@@ -29,7 +29,7 @@ class TestDataLoader:
 
     def test_load_mock_db_custom_path(self):
         """Test load_mock_db uses custom path from env."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         # Create a temp file with custom data
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -51,7 +51,7 @@ class TestDataLoader:
 
     def test_load_mock_db_invalid_json(self):
         """Test load_mock_db handles invalid JSON gracefully."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         # Create a temp file with invalid JSON
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -73,7 +73,7 @@ class TestDataLoader:
 
     def test_load_mock_db_missing_file(self):
         """Test load_mock_db handles missing file gracefully."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         original = os.environ.get("MOCK_DB_PATH")
         try:
@@ -89,7 +89,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_default_path(self):
         """Test load_california_compliance uses default path."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
@@ -105,7 +105,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_custom_path(self):
         """Test load_california_compliance uses custom path."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         # Create temp file with compliance data
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -127,7 +127,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_missing_file(self):
         """Test load_california_compliance returns None for missing file."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
@@ -142,7 +142,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_invalid_json(self):
         """Test load_california_compliance returns None for invalid JSON."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("invalid json {{{")
@@ -153,6 +153,114 @@ class TestDataLoader:
             os.environ["CA_COMPLIANCE_PATH"] = path
             data = load_california_compliance()
             assert data is None
+        finally:
+            if original is not None:
+                os.environ["CA_COMPLIANCE_PATH"] = original
+            elif "CA_COMPLIANCE_PATH" in os.environ:
+                del os.environ["CA_COMPLIANCE_PATH"]
+            os.unlink(path)
+
+
+class TestGetComplianceRetentionYears:
+    """Tests for get_compliance_retention_years."""
+
+    def test_returns_value_when_valid(self):
+        """Returns retention years when ECR-003 has valid value."""
+        from claim_agent.data.loader import get_compliance_retention_years
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({
+                "electronic_claims_requirements": {
+                    "provisions": [{"id": "ECR-003", "retention_period_years": 7}],
+                },
+            }, f)
+            path = f.name
+
+        original = os.environ.get("CA_COMPLIANCE_PATH")
+        try:
+            os.environ["CA_COMPLIANCE_PATH"] = path
+            assert get_compliance_retention_years() == 7
+        finally:
+            if original is not None:
+                os.environ["CA_COMPLIANCE_PATH"] = original
+            elif "CA_COMPLIANCE_PATH" in os.environ:
+                del os.environ["CA_COMPLIANCE_PATH"]
+            os.unlink(path)
+
+    def test_returns_none_when_compliance_missing(self):
+        """Returns None when compliance file is missing."""
+        from claim_agent.data.loader import get_compliance_retention_years
+
+        original = os.environ.get("CA_COMPLIANCE_PATH")
+        try:
+            os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/path.json"
+            assert get_compliance_retention_years() is None
+        finally:
+            if original is not None:
+                os.environ["CA_COMPLIANCE_PATH"] = original
+            elif "CA_COMPLIANCE_PATH" in os.environ:
+                del os.environ["CA_COMPLIANCE_PATH"]
+
+    def test_returns_none_when_ecr003_absent(self):
+        """Returns None when ECR-003 provision is not in compliance."""
+        from claim_agent.data.loader import get_compliance_retention_years
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({
+                "electronic_claims_requirements": {"provisions": []},
+            }, f)
+            path = f.name
+
+        original = os.environ.get("CA_COMPLIANCE_PATH")
+        try:
+            os.environ["CA_COMPLIANCE_PATH"] = path
+            assert get_compliance_retention_years() is None
+        finally:
+            if original is not None:
+                os.environ["CA_COMPLIANCE_PATH"] = original
+            elif "CA_COMPLIANCE_PATH" in os.environ:
+                del os.environ["CA_COMPLIANCE_PATH"]
+            os.unlink(path)
+
+    def test_returns_none_when_retention_invalid(self):
+        """Returns None when retention_period_years is 0 or negative."""
+        from claim_agent.data.loader import get_compliance_retention_years
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({
+                "electronic_claims_requirements": {
+                    "provisions": [{"id": "ECR-003", "retention_period_years": 0}],
+                },
+            }, f)
+            path = f.name
+
+        original = os.environ.get("CA_COMPLIANCE_PATH")
+        try:
+            os.environ["CA_COMPLIANCE_PATH"] = path
+            assert get_compliance_retention_years() is None
+        finally:
+            if original is not None:
+                os.environ["CA_COMPLIANCE_PATH"] = original
+            elif "CA_COMPLIANCE_PATH" in os.environ:
+                del os.environ["CA_COMPLIANCE_PATH"]
+            os.unlink(path)
+
+    def test_returns_none_when_retention_non_numeric(self):
+        """Returns None when retention_period_years is not a valid integer."""
+        from claim_agent.data.loader import get_compliance_retention_years
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({
+                "electronic_claims_requirements": {
+                    "provisions": [{"id": "ECR-003", "retention_period_years": "invalid"}],
+                },
+            }, f)
+            path = f.name
+
+        original = os.environ.get("CA_COMPLIANCE_PATH")
+        try:
+            os.environ["CA_COMPLIANCE_PATH"] = path
+            assert get_compliance_retention_years() is None
         finally:
             if original is not None:
                 os.environ["CA_COMPLIANCE_PATH"] = original
