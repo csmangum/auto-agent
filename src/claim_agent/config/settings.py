@@ -120,6 +120,36 @@ LABOR_HOURS_MIN = _float("PARTIAL_LOSS_LABOR_HOURS_MIN", 2.0)
 
 
 # ---------------------------------------------------------------------------
+# Duplicate detection
+# ---------------------------------------------------------------------------
+
+DUPLICATE_SIMILARITY_THRESHOLD = _int("DUPLICATE_SIMILARITY_THRESHOLD", 40)
+DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE = _int("DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE", 60)
+DUPLICATE_DAYS_WINDOW = _int("DUPLICATE_DAYS_WINDOW", 3)
+
+# ---------------------------------------------------------------------------
+# High-value claim thresholds
+# ---------------------------------------------------------------------------
+
+HIGH_VALUE_DAMAGE_THRESHOLD = _int("HIGH_VALUE_DAMAGE_THRESHOLD", 25_000)
+HIGH_VALUE_VEHICLE_THRESHOLD = _int("HIGH_VALUE_VEHICLE_THRESHOLD", 50_000)
+
+# ---------------------------------------------------------------------------
+# Pre-routing fraud
+# ---------------------------------------------------------------------------
+
+PRE_ROUTING_FRAUD_DAMAGE_RATIO = _float("PRE_ROUTING_FRAUD_DAMAGE_RATIO", 0.9)
+
+# ---------------------------------------------------------------------------
+# Escalation SLA hours (by priority)
+# ---------------------------------------------------------------------------
+
+ESCALATION_SLA_HOURS_CRITICAL = _int("ESCALATION_SLA_HOURS_CRITICAL", 24)
+ESCALATION_SLA_HOURS_HIGH = _int("ESCALATION_SLA_HOURS_HIGH", 24)
+ESCALATION_SLA_HOURS_MEDIUM = _int("ESCALATION_SLA_HOURS_MEDIUM", 48)
+ESCALATION_SLA_HOURS_LOW = _int("ESCALATION_SLA_HOURS_LOW", 72)
+
+# ---------------------------------------------------------------------------
 # Token budgets and rate limits
 # ---------------------------------------------------------------------------
 

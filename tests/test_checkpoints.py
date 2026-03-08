@@ -221,11 +221,11 @@ def _mock_crew_result(output_text="Crew output"):
 class TestWorkflowCheckpoints:
     """Test that run_claim_workflow saves and restores checkpoints."""
 
-    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
-    @patch("claim_agent.crews.main_crew.create_router_crew")
-    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
-    @patch("claim_agent.crews.main_crew.get_llm")
-    @patch("claim_agent.crews.main_crew.get_router_config")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
     def test_full_run_saves_checkpoints(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
         mock_escalation, temp_db,
@@ -273,11 +273,11 @@ class TestWorkflowCheckpoints:
         router_cp = json.loads(cps["router"])
         assert router_cp["claim_type"] == "new"
 
-    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
-    @patch("claim_agent.crews.main_crew.create_router_crew")
-    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
-    @patch("claim_agent.crews.main_crew.get_llm")
-    @patch("claim_agent.crews.main_crew.get_router_config")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
     def test_resume_skips_completed_stages(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
         mock_escalation, temp_db,
@@ -342,11 +342,11 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.assert_not_called()
         assert result2["claim_type"] == "new"
 
-    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
-    @patch("claim_agent.crews.main_crew.create_router_crew")
-    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
-    @patch("claim_agent.crews.main_crew.get_llm")
-    @patch("claim_agent.crews.main_crew.get_router_config")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
     def test_from_stage_reruns_invalidated_stages(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
         mock_escalation, temp_db,
@@ -414,11 +414,11 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.assert_called_once()
         assert "Run 2 output" in result2["workflow_output"]
 
-    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
-    @patch("claim_agent.crews.main_crew.create_router_crew")
-    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
-    @patch("claim_agent.crews.main_crew.get_llm")
-    @patch("claim_agent.crews.main_crew.get_router_config")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
     def test_failed_stage_not_checkpointed(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
         mock_escalation, temp_db,
@@ -471,11 +471,11 @@ class TestWorkflowCheckpoints:
         assert "escalation_check" in cps
         assert "workflow:new" not in cps
 
-    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
-    @patch("claim_agent.crews.main_crew.create_router_crew")
-    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
-    @patch("claim_agent.crews.main_crew.get_llm")
-    @patch("claim_agent.crews.main_crew.get_router_config")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
     def test_no_resume_params_runs_full_workflow(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
         mock_escalation, temp_db,
@@ -537,11 +537,11 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.assert_called_once()
         assert result1["workflow_run_id"] != result2["workflow_run_id"]
 
-    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
-    @patch("claim_agent.crews.main_crew.create_router_crew")
-    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
-    @patch("claim_agent.crews.main_crew.get_llm")
-    @patch("claim_agent.crews.main_crew.get_router_config")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
     def test_mid_workflow_escalation_cleans_checkpoints(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
         mock_escalation, temp_db,
@@ -591,11 +591,11 @@ class TestWorkflowCheckpoints:
         )
         assert cps == {}, "Checkpoints should be cleared after mid-workflow escalation"
 
-    @patch("claim_agent.crews.main_crew.evaluate_escalation_impl")
-    @patch("claim_agent.crews.main_crew.create_router_crew")
-    @patch("claim_agent.crews.main_crew.create_new_claim_crew")
-    @patch("claim_agent.crews.main_crew.get_llm")
-    @patch("claim_agent.crews.main_crew.get_router_config")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
     def test_from_stage_without_resume_run_id_runs_full(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
         mock_escalation, temp_db,

@@ -553,9 +553,9 @@ def test_workflow_failure_sets_status_failed():
     try:
         init_db(path)
         os.environ["CLAIMS_DB_PATH"] = path
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             mock_llm.return_value = None
-            with patch("claim_agent.crews.main_crew.create_router_crew") as m:
+            with patch("claim_agent.workflow.stages.create_router_crew") as m:
                 m.return_value.kickoff.side_effect = RuntimeError("simulated failure")
                 with pytest.raises(RuntimeError, match="simulated failure"):
                     run_claim_workflow(claim_data)
