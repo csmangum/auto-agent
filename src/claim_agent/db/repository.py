@@ -33,6 +33,7 @@ from claim_agent.db.constants import (
     STATUS_UNDER_INVESTIGATION,
 )
 from claim_agent.db.database import get_connection
+from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
 from claim_agent.notifications.webhook import safe_dispatch_claim_event
 
@@ -122,7 +123,7 @@ class ClaimRepository:
                 "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if row is None:
-                raise ValueError(f"Claim not found: {claim_id}")
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_status = row["status"]
             old_claim_type = row["claim_type"]
             old_payout = row["payout_amount"]
@@ -301,14 +302,14 @@ class ClaimRepository:
                 "SELECT attachments FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if row is None:
-                raise ValueError(f"Claim not found: {claim_id}")
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             before_attachments = row["attachments"] or "[]"
             cursor = conn.execute(
                 "UPDATE claims SET attachments = ?, updated_at = datetime('now') WHERE id = ?",
                 (attachments_json, claim_id),
             )
             if cursor.rowcount == 0:
-                raise ValueError(f"Claim not found: {claim_id}")
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             before_state = before_attachments  # already a serialized JSON array
             after_state = attachments_json      # already a serialized JSON array
             conn.execute(
@@ -385,7 +386,7 @@ class ClaimRepository:
                 (siu_case_id, claim_id),
             )
             if cursor.rowcount == 0:
-                raise ValueError(f"Claim not found: {claim_id}")
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             conn.execute(
                 """
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
@@ -438,7 +439,7 @@ class ClaimRepository:
                 (claim_id,),
             ).fetchone()
             if row is None:
-                raise ValueError(f"Claim not found: {claim_id}")
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             if row["status"] != STATUS_NEEDS_REVIEW:
                 raise ValueError(
                     f"Claim {claim_id} is not in needs_review (status={row['status']}); "
@@ -492,7 +493,7 @@ class ClaimRepository:
                 "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if row is None:
-                raise ValueError(f"Claim not found: {claim_id}")
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_status = row["status"]
 
             if old_status != STATUS_NEEDS_REVIEW:
@@ -768,7 +769,7 @@ class ClaimRepository:
                 (claim_id,),
             ).fetchone()
             if row is None:
-                raise ValueError(f"Claim not found: {claim_id}")
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_status = row["status"]
             if old_status == STATUS_ARCHIVED:
                 return

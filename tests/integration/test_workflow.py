@@ -388,12 +388,13 @@ class TestReprocessing:
     
     @pytest.mark.integration
     def test_reprocess_nonexistent_claim_raises(self, integration_db, sample_new_claim):
-        """Test that reprocessing a non-existent claim raises an error."""
+        """Test that reprocessing a non-existent claim raises ClaimNotFoundError."""
         from claim_agent.crews.main_crew import run_claim_workflow
-        
+        from claim_agent.exceptions import ClaimNotFoundError
+
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             mock_llm.return_value = MagicMock()
-            with pytest.raises(ValueError, match="Claim not found"):
+            with pytest.raises(ClaimNotFoundError, match="Claim not found"):
                 run_claim_workflow(sample_new_claim, existing_claim_id="CLM-NONEXIST")
 
 

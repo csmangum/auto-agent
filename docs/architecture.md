@@ -191,7 +191,7 @@ src/claim_agent/
 | Database | SQLite | [Database](database.md) |
 | Data Validation | Pydantic | [Claim Types](claim-types.md#required-fields) |
 | Python | ≥3.10 | `pyproject.toml` |
-| CLI | Custom (sys.argv) | `main.py` |
+| CLI | Typer | `main.py` |
 | MCP Server | FastMCP | [MCP Server](mcp-server.md) |
 | External Integrations | Adapter Pattern | [Adapters](adapters.md) |
 

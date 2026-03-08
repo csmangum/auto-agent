@@ -20,6 +20,7 @@ from claim_agent.config.settings import (
 )
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
 from claim_agent.models.claim import ClaimInput
 from claim_agent.observability import claim_context, get_logger
@@ -139,7 +140,7 @@ def run_claim_workflow(
     if existing_claim_id:
         claim_id = existing_claim_id
         if repo.get_claim(claim_id) is None:
-            raise ValueError(f"Claim not found: {claim_id}")
+            raise ClaimNotFoundError(f"Claim not found: {claim_id}")
         logger.info("Reprocessing existing claim", extra={"claim_id": claim_id})
     else:
         claim_id = repo.create_claim(claim_input, actor_id=_actor)

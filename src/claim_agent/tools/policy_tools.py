@@ -1,7 +1,10 @@
 """Policy database query tools."""
 
+import json
+
 from crewai.tools import tool
 
+from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.tools.policy_logic import query_policy_db_impl
 
 
@@ -14,4 +17,9 @@ def query_policy_db(policy_number: str) -> str:
     Returns:
         JSON string with valid (bool), coverage (str), deductible (int), and optional message.
     """
-    return query_policy_db_impl(policy_number)
+    try:
+        return query_policy_db_impl(policy_number)
+    except DomainValidationError as e:
+        return json.dumps({"valid": False, "message": str(e)})
+    except AdapterError as e:
+        return json.dumps({"valid": False, "message": str(e), "error": "adapter_error"})

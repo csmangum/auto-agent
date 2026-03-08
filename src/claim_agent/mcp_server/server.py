@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
 
 from claim_agent.context import ClaimContext
+from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.observability.metrics import get_metrics
 from claim_agent.tools.claims_logic import compute_similarity_impl, search_claims_db_impl
 from claim_agent.tools.compliance_logic import search_california_compliance_impl
@@ -43,7 +44,12 @@ def _get_ctx() -> ClaimContext:
 @mcp.tool()
 def query_policy_db(policy_number: str) -> str:
     """Query the policy database to validate policy and retrieve coverage details."""
-    return query_policy_db_impl(policy_number, ctx=_get_ctx())
+    try:
+        return query_policy_db_impl(policy_number, ctx=_get_ctx())
+    except DomainValidationError as e:
+        return json.dumps({"valid": False, "message": str(e)})
+    except AdapterError as e:
+        return json.dumps({"valid": False, "message": str(e), "error": "adapter_error"})
 
 
 @mcp.tool()

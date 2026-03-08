@@ -15,6 +15,7 @@ from claim_agent.config.settings import (
     MIN_PAYOUT_VEHICLE_VALUE,
     MIN_VEHICLE_VALUE,
 )
+from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.tools.policy_logic import query_policy_db_impl
 
 if TYPE_CHECKING:
@@ -103,7 +104,16 @@ def calculate_payout_impl(
 
     vehicle_value = round(vehicle_value, 2)
 
-    policy_result = query_policy_db_impl(policy_number, ctx=ctx)
+    try:
+        policy_result = query_policy_db_impl(policy_number, ctx=ctx)
+    except (DomainValidationError, AdapterError) as e:
+        return json.dumps({
+            "error": str(e),
+            "payout_amount": 0.0,
+            "vehicle_value": vehicle_value,
+            "deductible": 0,
+            "calculation": "Error: Unable to retrieve policy information",
+        })
     try:
         policy_data = json.loads(policy_result)
         if not policy_data.get("valid", False):

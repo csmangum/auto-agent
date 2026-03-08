@@ -354,52 +354,46 @@ class TestMain:
     """Tests for main function (CLI entry point)."""
 
     def test_main_no_args(self):
-        """Test main with no arguments shows usage."""
+        """Test main with no arguments shows usage (Typer exits 0 for help)."""
         with patch("sys.argv", ["claim-agent"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            
-            assert exc_info.value.code == 1
+            assert exc_info.value.code == 0
 
     def test_main_status_no_claim_id(self):
-        """Test main status without claim_id."""
+        """Test main status without claim_id (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "status"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            
-            assert exc_info.value.code == 1
+            assert exc_info.value.code == 2
 
     def test_main_history_no_claim_id(self):
-        """Test main history without claim_id."""
+        """Test main history without claim_id (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "history"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            
-            assert exc_info.value.code == 1
+            assert exc_info.value.code == 2
 
     def test_main_reprocess_no_claim_id(self):
-        """Test main reprocess without claim_id."""
+        """Test main reprocess without claim_id (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "reprocess"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            
-            assert exc_info.value.code == 1
+            assert exc_info.value.code == 2
 
     def test_main_process_no_file(self):
-        """Test main process without file path."""
+        """Test main process without file path (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "process"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            
-            assert exc_info.value.code == 1
+            assert exc_info.value.code == 2
 
     def test_main_unknown_command(self):
-        """Test main with unknown command."""
+        """Test main with unknown command (Typer exits 2)."""
         with patch("sys.argv", ["claim-agent", "unknown_command"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            
-            assert exc_info.value.code == 1
+            assert exc_info.value.code == 2
 
     def test_main_with_debug_flag(self, monkeypatch):
         """Test main accepts --debug flag without error."""
@@ -422,9 +416,13 @@ class TestMain:
                     damage_description="Test damage.",
                 )
             )
-            with patch("sys.argv", ["claim-agent", "status", claim_id, "--debug"]):
+            with patch("sys.argv", ["claim-agent", "--debug", "status", claim_id]):
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
+                    try:
+                        main()
+                    except SystemExit as e:
+                        if e.code != 0:
+                            raise
                     output = mock_stdout.getvalue()
             data = json.loads(output)
             assert data["id"] == claim_id
@@ -458,7 +456,11 @@ class TestMain:
             )
             with patch("sys.argv", ["claim-agent", "--json", "status", claim_id]):
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
+                    try:
+                        main()
+                    except SystemExit as e:
+                        if e.code != 0:
+                            raise
                     output = mock_stdout.getvalue()
             data = json.loads(output)
             assert data["id"] == claim_id
@@ -493,7 +495,11 @@ class TestMain:
             
             with patch("sys.argv", ["claim-agent", "status", claim_id]):
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
+                    try:
+                        main()
+                    except SystemExit as e:
+                        if e.code != 0:
+                            raise
                     output = mock_stdout.getvalue()
             
             data = json.loads(output)
@@ -529,7 +535,11 @@ class TestMain:
             
             with patch("sys.argv", ["claim-agent", "history", claim_id]):
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
+                    try:
+                        main()
+                    except SystemExit as e:
+                        if e.code != 0:
+                            raise
                     output = mock_stdout.getvalue()
             
             history = json.loads(output)
@@ -570,7 +580,11 @@ class TestMain:
                 with patch("claim_agent.main.run_claim_workflow") as mock_workflow:
                     mock_workflow.return_value = {"claim_id": "CLM-TEST", "status": "open"}
                     with patch("sys.stdout", new_callable=StringIO):
-                        main()
+                        try:
+                            main()
+                        except SystemExit as e:
+                            if e.code != 0:
+                                raise
                     
                     mock_workflow.assert_called_once()
         finally:
@@ -661,7 +675,11 @@ class TestMainMetrics:
     def test_main_metrics_no_claim_id(self, capsys):
         """Test main metrics command without claim_id."""
         with patch("sys.argv", ["claim-agent", "metrics"]):
-            main()
+            try:
+                main()
+            except SystemExit as e:
+                if e.code != 0:
+                    raise
         
         captured = capsys.readouterr()
         # With reset metrics, this should always show the no-claims message
@@ -678,7 +696,11 @@ class TestMainMetrics:
         metrics.end_claim(claim_id)
         
         with patch("sys.argv", ["claim-agent", "metrics", claim_id]):
-            main()
+            try:
+                main()
+            except SystemExit as e:
+                if e.code != 0:
+                    raise
         
         captured = capsys.readouterr()
         assert claim_id in captured.out
