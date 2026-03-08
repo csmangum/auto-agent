@@ -10,7 +10,7 @@ os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent
 
 def test_get_available_repair_shops():
     """Test getting list of available repair shops."""
-    from claim_agent.tools.logic import get_available_repair_shops_impl
+    from claim_agent.tools.partial_loss_logic import get_available_repair_shops_impl
 
     result = get_available_repair_shops_impl()
     data = json.loads(result)
@@ -31,7 +31,7 @@ def test_get_available_repair_shops():
 
 def test_get_available_repair_shops_filter_network():
     """Test filtering shops by network type."""
-    from claim_agent.tools.logic import get_available_repair_shops_impl
+    from claim_agent.tools.partial_loss_logic import get_available_repair_shops_impl
 
     result = get_available_repair_shops_impl(network_type="preferred")
     data = json.loads(result)
@@ -43,7 +43,7 @@ def test_get_available_repair_shops_filter_network():
 
 def test_get_available_repair_shops_sorted_by_rating():
     """Test that shops are sorted by rating (highest first)."""
-    from claim_agent.tools.logic import get_available_repair_shops_impl
+    from claim_agent.tools.partial_loss_logic import get_available_repair_shops_impl
 
     result = get_available_repair_shops_impl()
     data = json.loads(result)
@@ -54,7 +54,7 @@ def test_get_available_repair_shops_sorted_by_rating():
 
 def test_assign_repair_shop_success():
     """Test successful repair shop assignment."""
-    from claim_agent.tools.logic import assign_repair_shop_impl
+    from claim_agent.tools.partial_loss_logic import assign_repair_shop_impl
 
     result = assign_repair_shop_impl("CLM-TEST001", "SHOP-001", 5)
     data = json.loads(result)
@@ -73,7 +73,7 @@ def test_assign_repair_shop_success():
 
 def test_assign_repair_shop_not_found():
     """Test assignment with non-existent shop."""
-    from claim_agent.tools.logic import assign_repair_shop_impl
+    from claim_agent.tools.partial_loss_logic import assign_repair_shop_impl
 
     result = assign_repair_shop_impl("CLM-TEST001", "SHOP-999", 5)
     data = json.loads(result)
@@ -84,7 +84,7 @@ def test_assign_repair_shop_not_found():
 
 def test_assign_repair_shop_no_capacity():
     """Test assignment with shop that has no capacity (SHOP-006)."""
-    from claim_agent.tools.logic import assign_repair_shop_impl
+    from claim_agent.tools.partial_loss_logic import assign_repair_shop_impl
 
     result = assign_repair_shop_impl("CLM-TEST001", "SHOP-006", 5)
     data = json.loads(result)
@@ -95,7 +95,7 @@ def test_assign_repair_shop_no_capacity():
 
 def test_get_parts_catalog():
     """Test getting parts from catalog based on damage description."""
-    from claim_agent.tools.logic import get_parts_catalog_impl
+    from claim_agent.tools.partial_loss_logic import get_parts_catalog_impl
 
     result = get_parts_catalog_impl(
         damage_description="Front bumper damaged and headlight broken",
@@ -124,7 +124,7 @@ def test_get_parts_catalog():
 
 def test_get_parts_catalog_oem_preference():
     """Test OEM part preference returns OEM prices."""
-    from claim_agent.tools.logic import get_parts_catalog_impl
+    from claim_agent.tools.partial_loss_logic import get_parts_catalog_impl
 
     result_oem = get_parts_catalog_impl(
         damage_description="Rear bumper",
@@ -146,7 +146,7 @@ def test_get_parts_catalog_oem_preference():
 
 def test_create_parts_order():
     """Test creating a parts order."""
-    from claim_agent.tools.logic import create_parts_order_impl
+    from claim_agent.tools.partial_loss_logic import create_parts_order_impl
 
     parts = [
         {"part_id": "PART-BUMPER-FRONT", "quantity": 1, "part_type": "aftermarket"},
@@ -171,7 +171,7 @@ def test_create_parts_order():
 
 def test_create_parts_order_empty_parts():
     """Test creating order with no parts returns error."""
-    from claim_agent.tools.logic import create_parts_order_impl
+    from claim_agent.tools.partial_loss_logic import create_parts_order_impl
 
     result = create_parts_order_impl("CLM-TEST001", [], "SHOP-001")
     data = json.loads(result)
@@ -182,7 +182,7 @@ def test_create_parts_order_empty_parts():
 
 def test_calculate_repair_estimate():
     """Test calculating a complete repair estimate."""
-    from claim_agent.tools.logic import calculate_repair_estimate_impl
+    from claim_agent.tools.partial_loss_logic import calculate_repair_estimate_impl
 
     result = calculate_repair_estimate_impl(
         damage_description="Front bumper cracked, headlight broken",
@@ -211,7 +211,7 @@ def test_calculate_repair_estimate():
 
 def test_calculate_repair_estimate_uses_shop_rate():
     """Test that shop labor rate is used when shop_id is provided."""
-    from claim_agent.tools.logic import calculate_repair_estimate_impl
+    from claim_agent.tools.partial_loss_logic import calculate_repair_estimate_impl
 
     # SHOP-001 has rate 85, SHOP-004 has rate 55
     result_shop1 = calculate_repair_estimate_impl(
@@ -249,7 +249,7 @@ def test_calculate_repair_estimate_uses_shop_rate():
 
 def test_generate_repair_authorization():
     """Test generating repair authorization document."""
-    from claim_agent.tools.logic import generate_repair_authorization_impl
+    from claim_agent.tools.partial_loss_logic import generate_repair_authorization_impl
 
     repair_estimate = {
         "total_estimate": 2500.0,
@@ -283,7 +283,7 @@ def test_generate_repair_authorization():
 
 def test_generate_repair_authorization_pending():
     """Test authorization with pending customer approval."""
-    from claim_agent.tools.logic import generate_repair_authorization_impl
+    from claim_agent.tools.partial_loss_logic import generate_repair_authorization_impl
 
     repair_estimate = {
         "total_estimate": 3000.0,
@@ -308,7 +308,7 @@ def test_generate_repair_authorization_pending():
 
 def test_partial_loss_threshold():
     """Test that high repair costs flag as potential total loss."""
-    from claim_agent.tools.logic import calculate_repair_estimate_impl
+    from claim_agent.tools.partial_loss_logic import calculate_repair_estimate_impl
 
     # Use very severe damage that would exceed 75% threshold
     # This is a simplified test - actual threshold depends on vehicle value

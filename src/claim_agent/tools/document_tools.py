@@ -2,7 +2,7 @@
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import (
+from claim_agent.tools.document_logic import (
     generate_claim_id_impl,
     generate_report_impl,
     generate_report_pdf_impl,

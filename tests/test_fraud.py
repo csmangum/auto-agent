@@ -9,11 +9,11 @@ from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
-from claim_agent.tools.logic import (
+from claim_agent.tools.escalation_logic import KNOWN_FRAUD_PATTERNS
+from claim_agent.tools.fraud_logic import (
     analyze_claim_patterns_impl,
     cross_reference_fraud_indicators_impl,
     perform_fraud_assessment_impl,
-    KNOWN_FRAUD_PATTERNS,
 )
 from tests.conftest import LogCaptureHandler
 
@@ -270,13 +270,13 @@ class TestFraudAssessment:
             "estimated_damage": 50000,
         }
 
-        logic_logger = logging.getLogger("claim_agent.tools.logic")
+        logic_logger = logging.getLogger("claim_agent.tools.fraud_logic")
         cap = LogCaptureHandler()
         logic_logger.addHandler(cap)
         logic_logger.setLevel(logging.WARNING)
         try:
             with patch(
-                "claim_agent.tools.logic.ClaimRepository"
+                "claim_agent.tools.fraud_logic.ClaimRepository"
             ) as mock_repo_cls:
                 mock_instance = mock_repo_cls.return_value
                 mock_instance.update_claim_siu_case_id.side_effect = RuntimeError(

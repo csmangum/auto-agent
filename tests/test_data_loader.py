@@ -166,7 +166,7 @@ class TestLogicEdgeCases:
 
     def test_compute_similarity_identical(self):
         """Test compute_similarity with identical strings."""
-        from claim_agent.tools.logic import compute_similarity_impl
+        from claim_agent.tools.claims_logic import compute_similarity_impl
 
         result = json.loads(compute_similarity_impl("test", "test"))
         assert result["similarity_score"] == 100.0
@@ -174,7 +174,7 @@ class TestLogicEdgeCases:
 
     def test_compute_similarity_one_word_overlap(self):
         """Test compute_similarity with partial overlap."""
-        from claim_agent.tools.logic import compute_similarity_impl
+        from claim_agent.tools.claims_logic import compute_similarity_impl
 
         result = json.loads(compute_similarity_impl("a b c", "a d e"))
         # 1 common word (a), 5 total unique words (a,b,c,d,e)
@@ -183,7 +183,7 @@ class TestLogicEdgeCases:
 
     def test_fetch_vehicle_value_known_vin(self):
         """Test fetch_vehicle_value with a known VIN from mock_db."""
-        from claim_agent.tools.logic import fetch_vehicle_value_impl
+        from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
         # Use a VIN that exists in the mock database
         result = json.loads(fetch_vehicle_value_impl("1HGBH41JXMN109186", 2021, "Honda", "Accord"))
@@ -192,7 +192,7 @@ class TestLogicEdgeCases:
 
     def test_fetch_vehicle_value_unknown_vin(self):
         """Test fetch_vehicle_value with unknown VIN falls back to estimation."""
-        from claim_agent.tools.logic import fetch_vehicle_value_impl
+        from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
         result = json.loads(fetch_vehicle_value_impl("UNKNOWN_VIN", 2020, "Unknown", "Model"))
         assert "value" in result
@@ -200,7 +200,7 @@ class TestLogicEdgeCases:
 
     def test_fetch_vehicle_value_empty_inputs(self):
         """Test fetch_vehicle_value with empty inputs."""
-        from claim_agent.tools.logic import fetch_vehicle_value_impl
+        from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
         result = json.loads(fetch_vehicle_value_impl("", 0, "", ""))
         assert "value" in result
@@ -208,7 +208,7 @@ class TestLogicEdgeCases:
 
     def test_evaluate_damage_empty_description(self):
         """Test evaluate_damage with empty description."""
-        from claim_agent.tools.logic import evaluate_damage_impl
+        from claim_agent.tools.valuation_logic import evaluate_damage_impl
 
         result = json.loads(evaluate_damage_impl("", 1000))
         assert result["severity"] == "unknown"
@@ -216,7 +216,7 @@ class TestLogicEdgeCases:
 
     def test_evaluate_damage_keywords(self):
         """Test evaluate_damage with different severity keywords."""
-        from claim_agent.tools.logic import evaluate_damage_impl
+        from claim_agent.tools.valuation_logic import evaluate_damage_impl
 
         # Fire keyword
         result = json.loads(evaluate_damage_impl("Vehicle caught fire.", 5000))
@@ -233,21 +233,21 @@ class TestLogicEdgeCases:
 
     def test_generate_report_with_none_payout(self):
         """Test generate_report with None payout amount."""
-        from claim_agent.tools.logic import generate_report_impl
+        from claim_agent.tools.document_logic import generate_report_impl
 
         result = json.loads(generate_report_impl("CLM-001", "new", "open", "Summary", None))
         assert result["payout_amount"] is None
 
     def test_detect_fraud_indicators_empty_dict(self):
         """Test detect_fraud_indicators with empty claim data."""
-        from claim_agent.tools.logic import detect_fraud_indicators_impl
+        from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
 
         result = json.loads(detect_fraud_indicators_impl({}))
         assert result == []
 
     def test_detect_fraud_indicators_with_estimated_damage_string(self):
         """Test detect_fraud_indicators handles string estimated_damage."""
-        from claim_agent.tools.logic import detect_fraud_indicators_impl
+        from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
 
         result = json.loads(detect_fraud_indicators_impl({
             "incident_description": "Normal accident",
@@ -263,35 +263,35 @@ class TestLogicEdgeCases:
 
     def test_parse_router_confidence_empty(self):
         """Test _parse_router_confidence with empty input."""
-        from claim_agent.tools.logic import _parse_router_confidence
+        from claim_agent.tools.escalation_logic import _parse_router_confidence
 
         assert _parse_router_confidence("") == 0.5
         assert _parse_router_confidence(None) == 0.5
 
     def test_parse_router_confidence_high(self):
         """Test _parse_router_confidence with clear output."""
-        from claim_agent.tools.logic import _parse_router_confidence
+        from claim_agent.tools.escalation_logic import _parse_router_confidence
 
         result = _parse_router_confidence("new\nClear first-time submission.")
         assert result >= 0.9
 
     def test_evaluate_escalation_no_claim_data(self):
         """Test evaluate_escalation with None claim data."""
-        from claim_agent.tools.logic import evaluate_escalation_impl
+        from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
         result = json.loads(evaluate_escalation_impl(None, "new", None, None))
         assert "needs_review" in result
 
     def test_compute_escalation_priority_empty(self):
         """Test compute_escalation_priority with empty inputs."""
-        from claim_agent.tools.logic import compute_escalation_priority_impl
+        from claim_agent.tools.escalation_logic import compute_escalation_priority_impl
 
         result = json.loads(compute_escalation_priority_impl([], []))
         assert result["priority"] == "low"
 
     def test_analyze_claim_patterns_empty(self):
         """Test analyze_claim_patterns with empty data."""
-        from claim_agent.tools.logic import analyze_claim_patterns_impl
+        from claim_agent.tools.fraud_logic import analyze_claim_patterns_impl
 
         result = json.loads(analyze_claim_patterns_impl({}))
         assert result["patterns_detected"] == []
@@ -299,7 +299,7 @@ class TestLogicEdgeCases:
 
     def test_cross_reference_fraud_indicators_empty(self):
         """Test cross_reference_fraud_indicators with empty data."""
-        from claim_agent.tools.logic import cross_reference_fraud_indicators_impl
+        from claim_agent.tools.fraud_logic import cross_reference_fraud_indicators_impl
 
         result = json.loads(cross_reference_fraud_indicators_impl({}))
         assert result["fraud_keywords_found"] == []
@@ -307,14 +307,14 @@ class TestLogicEdgeCases:
 
     def test_perform_fraud_assessment_empty(self):
         """Test perform_fraud_assessment with empty data."""
-        from claim_agent.tools.logic import perform_fraud_assessment_impl
+        from claim_agent.tools.fraud_logic import perform_fraud_assessment_impl
 
         result = json.loads(perform_fraud_assessment_impl({}))
         assert "Invalid claim data" in result["recommended_action"]
 
     def test_get_available_repair_shops_with_filters(self):
         """Test get_available_repair_shops with various filters."""
-        from claim_agent.tools.logic import get_available_repair_shops_impl
+        from claim_agent.tools.partial_loss_logic import get_available_repair_shops_impl
 
         # Test with Tesla (EV) make
         result = json.loads(get_available_repair_shops_impl(vehicle_make="Tesla"))
@@ -326,7 +326,7 @@ class TestLogicEdgeCases:
 
     def test_calculate_repair_estimate_with_various_damage(self):
         """Test calculate_repair_estimate with different damage types."""
-        from claim_agent.tools.logic import calculate_repair_estimate_impl
+        from claim_agent.tools.partial_loss_logic import calculate_repair_estimate_impl
 
         # Damage with paint/scratch
         result = json.loads(calculate_repair_estimate_impl(
@@ -348,7 +348,7 @@ class TestLogicEdgeCases:
 
     def test_create_parts_order_invalid_parts(self):
         """Test create_parts_order with invalid part IDs."""
-        from claim_agent.tools.logic import create_parts_order_impl
+        from claim_agent.tools.partial_loss_logic import create_parts_order_impl
 
         parts = [{"part_id": "INVALID-PART", "quantity": 1, "part_type": "oem"}]
         result = json.loads(create_parts_order_impl("CLM-TEST", parts, "SHOP-001"))
@@ -357,7 +357,7 @@ class TestLogicEdgeCases:
 
     def test_json_contains_query_recursive(self):
         """Test _json_contains_query with nested structures."""
-        from claim_agent.tools.logic import _json_contains_query
+        from claim_agent.tools.compliance_logic import _json_contains_query
 
         # Test with nested dict
         data = {"level1": {"level2": {"text": "search target"}}}

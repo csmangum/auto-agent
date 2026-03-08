@@ -143,7 +143,7 @@ class TestCheckEconomicTotalLoss:
         assert result["damage_indicates_total_loss"] is False
 
     def test_economic_total_loss_with_high_ratio(self):
-        with patch("claim_agent.tools.logic.fetch_vehicle_value_impl") as mock_fetch:
+        with patch("claim_agent.tools.valuation_logic.fetch_vehicle_value_impl") as mock_fetch:
             mock_fetch.return_value = '{"value": 10000}'
             result = _check_economic_total_loss({
                 "vin": "1HGBH41JXMN109186",

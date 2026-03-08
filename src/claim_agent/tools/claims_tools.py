@@ -2,7 +2,7 @@
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import search_claims_db_impl, compute_similarity_impl
+from claim_agent.tools.claims_logic import search_claims_db_impl, compute_similarity_impl
 
 
 @tool("Search Claims Database")

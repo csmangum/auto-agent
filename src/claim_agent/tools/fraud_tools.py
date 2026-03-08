@@ -5,7 +5,7 @@ from typing import Union
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import (
+from claim_agent.tools.fraud_logic import (
     analyze_claim_patterns_impl,
     cross_reference_fraud_indicators_impl,
     perform_fraud_assessment_impl,

@@ -76,7 +76,7 @@ def _check_economic_total_loss(claim_data: dict) -> dict:
     - damage_is_repairable: True if damage describes repairable parts (doors, bumpers, etc.)
       and no total-loss keywords.
     """
-    from claim_agent.tools.logic import fetch_vehicle_value_impl
+    from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
     from claim_agent.config.settings import PARTIAL_LOSS_THRESHOLD
 
     damage_desc = claim_data.get("damage_description", "") or ""

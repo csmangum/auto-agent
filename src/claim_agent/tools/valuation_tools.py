@@ -2,7 +2,7 @@
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import fetch_vehicle_value_impl, evaluate_damage_impl, calculate_payout_impl
+from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl, evaluate_damage_impl, calculate_payout_impl
 
 
 @tool("Fetch Vehicle Value")

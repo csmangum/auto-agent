@@ -5,7 +5,7 @@ import json
 from crewai.tools import tool
 
 from claim_agent.exceptions import MidWorkflowEscalation
-from claim_agent.tools.logic import (
+from claim_agent.tools.escalation_logic import (
     detect_fraud_indicators_impl,
     escalate_claim_impl,
     evaluate_escalation_impl,

@@ -10,7 +10,7 @@ os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent
 
 
 def test_query_policy_db_found():
-    from claim_agent.tools.logic import query_policy_db_impl
+    from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-001")
     data = json.loads(result)
@@ -20,7 +20,7 @@ def test_query_policy_db_found():
 
 
 def test_query_policy_db_not_found():
-    from claim_agent.tools.logic import query_policy_db_impl
+    from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-999")
     data = json.loads(result)
@@ -32,7 +32,7 @@ def test_search_claims_db():
     from claim_agent.db.database import init_db
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
-    from claim_agent.tools.logic import search_claims_db_impl
+    from claim_agent.tools.claims_logic import search_claims_db_impl
 
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -67,7 +67,7 @@ def test_search_claims_db():
 def test_search_claims_db_empty():
     """Search with no matches returns [] using a temp DB to avoid test pollution."""
     from claim_agent.db.database import init_db
-    from claim_agent.tools.logic import search_claims_db_impl
+    from claim_agent.tools.claims_logic import search_claims_db_impl
 
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -83,7 +83,7 @@ def test_search_claims_db_empty():
 
 
 def test_compute_similarity_high():
-    from claim_agent.tools.logic import compute_similarity_impl
+    from claim_agent.tools.claims_logic import compute_similarity_impl
 
     a = "Rear-ended at stoplight. Damage to rear bumper and trunk."
     b = "Rear-ended at stoplight. Damage to rear bumper and trunk."
@@ -93,7 +93,7 @@ def test_compute_similarity_high():
 
 
 def test_compute_similarity_low():
-    from claim_agent.tools.logic import compute_similarity_impl
+    from claim_agent.tools.claims_logic import compute_similarity_impl
 
     a = "Parking lot scratch."
     b = "Total loss flood damage."
@@ -103,7 +103,7 @@ def test_compute_similarity_low():
 
 
 def test_fetch_vehicle_value():
-    from claim_agent.tools.logic import fetch_vehicle_value_impl
+    from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
     result = fetch_vehicle_value_impl("1HGBH41JXMN109186", 2021, "Honda", "Accord")
     data = json.loads(result)
@@ -113,7 +113,7 @@ def test_fetch_vehicle_value():
 
 
 def test_evaluate_damage_total_loss():
-    from claim_agent.tools.logic import evaluate_damage_impl
+    from claim_agent.tools.valuation_logic import evaluate_damage_impl
 
     result = evaluate_damage_impl("Vehicle totaled in flood. Water damage throughout.", 15000)
     data = json.loads(result)
@@ -122,7 +122,7 @@ def test_evaluate_damage_total_loss():
 
 
 def test_generate_claim_id():
-    from claim_agent.tools.logic import generate_claim_id_impl
+    from claim_agent.tools.document_logic import generate_claim_id_impl
 
     id1 = generate_claim_id_impl("CLM")
     id2 = generate_claim_id_impl("CLM")
@@ -132,7 +132,7 @@ def test_generate_claim_id():
 
 
 def test_generate_report():
-    from claim_agent.tools.logic import generate_report_impl
+    from claim_agent.tools.document_logic import generate_report_impl
 
     result = generate_report_impl("CLM-ABC123", "new", "open", "Claim validated and assigned.", None)
     data = json.loads(result)
@@ -144,7 +144,7 @@ def test_generate_report():
 
 def test_compute_similarity_symmetric():
     """Jaccard similarity is symmetric: sim(a, b) == sim(b, a)."""
-    from claim_agent.tools.logic import compute_similarity_impl
+    from claim_agent.tools.claims_logic import compute_similarity_impl
 
     a = "Rear-ended at stoplight. Damage to rear bumper."
     b = "Damage to rear bumper and trunk. Rear-ended."
@@ -155,7 +155,7 @@ def test_compute_similarity_symmetric():
 
 
 def test_compute_similarity_empty_strings():
-    from claim_agent.tools.logic import compute_similarity_impl
+    from claim_agent.tools.claims_logic import compute_similarity_impl
 
     result = json.loads(compute_similarity_impl("", "something"))
     assert result["similarity_score"] == 0.0
@@ -166,7 +166,7 @@ def test_compute_similarity_empty_strings():
 
 
 def test_query_policy_db_invalid_input():
-    from claim_agent.tools.logic import query_policy_db_impl
+    from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = json.loads(query_policy_db_impl(""))
     assert result["valid"] is False
@@ -178,7 +178,7 @@ def test_query_policy_db_invalid_input():
 
 def test_query_policy_db_inactive_returns_invalid():
     """Inactive policy (e.g. POL-021) must return valid False."""
-    from claim_agent.tools.logic import query_policy_db_impl
+    from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-021")
     data = json.loads(result)
@@ -202,7 +202,7 @@ def test_mock_db_claim_vins_have_vehicle_values():
 
 
 def test_search_claims_db_empty_vin_returns_empty():
-    from claim_agent.tools.logic import search_claims_db_impl
+    from claim_agent.tools.claims_logic import search_claims_db_impl
 
     result = search_claims_db_impl("", "2025-01-15")
     assert json.loads(result) == []
@@ -212,7 +212,7 @@ def test_search_claims_db_empty_vin_returns_empty():
 
 
 def test_evaluate_damage_empty_description():
-    from claim_agent.tools.logic import evaluate_damage_impl
+    from claim_agent.tools.valuation_logic import evaluate_damage_impl
 
     result = json.loads(evaluate_damage_impl("", 1000))
     assert result["severity"] == "unknown"
@@ -221,7 +221,7 @@ def test_evaluate_damage_empty_description():
 
 
 def test_search_california_compliance_empty_returns_summary():
-    from claim_agent.tools.logic import search_california_compliance_impl
+    from claim_agent.tools.compliance_logic import search_california_compliance_impl
 
     result = search_california_compliance_impl("")
     data = json.loads(result)
@@ -231,7 +231,7 @@ def test_search_california_compliance_empty_returns_summary():
 
 
 def test_search_california_compliance_query_returns_matches():
-    from claim_agent.tools.logic import search_california_compliance_impl
+    from claim_agent.tools.compliance_logic import search_california_compliance_impl
 
     result = search_california_compliance_impl("total loss")
     data = json.loads(result)
@@ -241,7 +241,7 @@ def test_search_california_compliance_query_returns_matches():
 
 
 def test_search_california_compliance_ccr_reference():
-    from claim_agent.tools.logic import search_california_compliance_impl
+    from claim_agent.tools.compliance_logic import search_california_compliance_impl
 
     result = search_california_compliance_impl("2695.5")
     data = json.loads(result)
@@ -250,7 +250,7 @@ def test_search_california_compliance_ccr_reference():
 
 
 def test_search_california_compliance_missing_file_returns_error():
-    from claim_agent.tools.logic import search_california_compliance_impl
+    from claim_agent.tools.compliance_logic import search_california_compliance_impl
 
     os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/california_auto_compliance.json"
     try:
@@ -264,7 +264,7 @@ def test_search_california_compliance_missing_file_returns_error():
 
 def test_calculate_payout_valid_policy():
     """Test payout calculation with valid policy."""
-    from claim_agent.tools.logic import calculate_payout_impl
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
 
     result = calculate_payout_impl(12000, "POL-001")
     data = json.loads(result)
@@ -277,7 +277,7 @@ def test_calculate_payout_valid_policy():
 
 def test_calculate_payout_high_deductible():
     """Test payout calculation with high deductible policy."""
-    from claim_agent.tools.logic import calculate_payout_impl
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
 
     result = calculate_payout_impl(12000, "POL-012")
     data = json.loads(result)
@@ -287,7 +287,7 @@ def test_calculate_payout_high_deductible():
 
 def test_calculate_payout_invalid_policy():
     """Test payout calculation with invalid policy returns error."""
-    from claim_agent.tools.logic import calculate_payout_impl
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
 
     result = calculate_payout_impl(12000, "POL-999")
     data = json.loads(result)
@@ -297,7 +297,7 @@ def test_calculate_payout_invalid_policy():
 
 def test_calculate_payout_zero_vehicle_value():
     """Test payout calculation with zero vehicle value."""
-    from claim_agent.tools.logic import calculate_payout_impl
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
 
     result = calculate_payout_impl(0, "POL-001")
     data = json.loads(result)
@@ -307,7 +307,7 @@ def test_calculate_payout_zero_vehicle_value():
 
 def test_calculate_payout_negative_vehicle_value():
     """Test payout calculation with negative vehicle value."""
-    from claim_agent.tools.logic import calculate_payout_impl
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
 
     result = calculate_payout_impl(-1000, "POL-001")
     data = json.loads(result)
@@ -317,7 +317,7 @@ def test_calculate_payout_negative_vehicle_value():
 
 def test_calculate_payout_deductible_exceeds_value():
     """Test payout calculation where deductible exceeds vehicle value."""
-    from claim_agent.tools.logic import calculate_payout_impl
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
 
     result = calculate_payout_impl(1000, "POL-012")
     data = json.loads(result)

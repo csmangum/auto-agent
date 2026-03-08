@@ -2,7 +2,7 @@
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import analyze_damage_photo_impl
+from claim_agent.tools.vision_logic import analyze_damage_photo_impl
 
 
 @tool("Analyze damage photo")

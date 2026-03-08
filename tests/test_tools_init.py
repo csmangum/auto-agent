@@ -373,3 +373,4 @@ class TestPartialLossToolsWrapper:
         )
         data = json.loads(result)
         assert data["authorization_status"] == "approved"
+        assert "shop_webhook_url" not in data
