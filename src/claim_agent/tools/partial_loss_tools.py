@@ -176,12 +176,9 @@ def generate_repair_authorization(
         "customer_pays": customer_pays,
         "insurance_pays": insurance_pays,
     }
-    result_json = generate_repair_authorization_impl(
+    return generate_repair_authorization_impl(
         claim_id=claim_id,
         shop_id=shop_id,
         repair_estimate=repair_estimate,
         customer_approved=customer_approved,
     )
-    auth_data = json.loads(result_json)
-    auth_data.pop("shop_webhook_url", None)
-    return json.dumps(auth_data)
