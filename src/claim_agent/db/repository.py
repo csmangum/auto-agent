@@ -394,7 +394,7 @@ class ClaimRepository:
                 SELECT id, claim_id, note, actor_id, created_at
                 FROM claim_notes
                 WHERE claim_id = ?
-                ORDER BY created_at ASC
+                ORDER BY id ASC
                 """,
                 (claim_id,),
             ).fetchall()
