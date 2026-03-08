@@ -1,9 +1,9 @@
 """Dependency injection context for claim processing.
 
 Provides ``ClaimContext`` -- a container holding all shared dependencies
-(repository, adapters, metrics, LLM) that is threaded through the workflow
-pipeline, tool functions, and entry points instead of relying on inline
-instantiation and global singletons.
+(repository, adjuster_service, adapters, metrics, LLM) that is threaded
+through the workflow pipeline, tool functions, and entry points instead of
+relying on inline instantiation and global singletons.
 """
 
 from __future__ import annotations
@@ -58,6 +58,7 @@ class AdapterRegistry:
 class ClaimContext:
     """Container for all shared dependencies in claim processing.
 
+    Holds repository, adjuster_service, adapters, metrics, and optional llm.
     Pass this through the workflow pipeline and tool functions instead of
     calling global factories directly.  ``llm`` is optional -- tool functions
     never need it, and creating it requires ``OPENAI_API_KEY``.

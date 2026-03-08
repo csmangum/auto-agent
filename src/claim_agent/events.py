@@ -50,8 +50,15 @@ def emit_claim_event(event: ClaimEvent) -> None:
             )
 
 
+_webhook_listener_registered = False
+
+
 def _register_webhook_listener() -> None:
-    """Register the default webhook dispatch listener."""
+    """Register the default webhook dispatch listener (idempotent)."""
+    global _webhook_listener_registered
+    if _webhook_listener_registered:
+        return
+
     from claim_agent.notifications.webhook import safe_dispatch_claim_event
 
     def dispatch(event: ClaimEvent) -> None:
@@ -64,6 +71,7 @@ def _register_webhook_listener() -> None:
         )
 
     register_claim_event_listener(dispatch)
+    _webhook_listener_registered = True
 
 
 _register_webhook_listener()
