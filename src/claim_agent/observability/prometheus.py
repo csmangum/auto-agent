@@ -38,7 +38,10 @@ _metrics_lock = threading.Lock()
 
 
 def _ensure_metrics() -> None:
-    """Lazily create Prometheus metrics on first use."""
+    """Lazily create Prometheus metrics on first use.
+
+    Thread-safe: _metrics_lock protects the double-checked initialization.
+    """
     global _claims_processed_total, _claims_failed_total, _claims_escalated_total
     global _claim_processing_duration_seconds, _llm_tokens_total
     global _claims_in_progress, _review_queue_size

@@ -1,9 +1,9 @@
 """Dependency injection context for claim processing.
 
 Provides ``ClaimContext`` -- a container holding all shared dependencies
-(repository, adapters, metrics, LLM) that is threaded through the workflow
-pipeline, tool functions, and entry points instead of relying on inline
-instantiation and global singletons.
+(repository, adjuster_service, adapters, metrics, LLM) that is threaded
+through the workflow pipeline, tool functions, and entry points instead of
+relying on inline instantiation and global singletons.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from claim_agent.adapters.base import (
 )
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.observability.metrics import ClaimMetrics
+from claim_agent.services.adjuster_action_service import AdjusterActionService
 
 
 @dataclass
@@ -57,12 +58,14 @@ class AdapterRegistry:
 class ClaimContext:
     """Container for all shared dependencies in claim processing.
 
+    Holds repository, adjuster_service, adapters, metrics, and optional llm.
     Pass this through the workflow pipeline and tool functions instead of
     calling global factories directly.  ``llm`` is optional -- tool functions
     never need it, and creating it requires ``OPENAI_API_KEY``.
     """
 
     repo: ClaimRepository
+    adjuster_service: AdjusterActionService
     adapters: AdapterRegistry
     metrics: ClaimMetrics
     llm: Any = None
@@ -87,8 +90,10 @@ class ClaimContext:
         """
         from claim_agent.observability import get_metrics
 
+        repo = ClaimRepository(db_path=db_path)
         return cls(
-            repo=ClaimRepository(db_path=db_path),
+            repo=repo,
+            adjuster_service=AdjusterActionService(repo=repo),
             adapters=AdapterRegistry.from_defaults(),
             metrics=get_metrics(),
             llm=llm,
