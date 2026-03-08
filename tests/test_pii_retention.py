@@ -366,7 +366,7 @@ class TestRetentionCLI:
 
     def test_retention_enforce_exits_1_when_archive_fails(self):
         """retention-enforce exits with code 1 when any archive fails."""
-        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.database import init_db
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
 
@@ -386,22 +386,22 @@ class TestRetentionCLI:
                 damage_description="Test",
             )
             claim_id = repo.create_claim(claim_input)
-            with get_connection(db_path) as conn:
-                conn.execute(
-                    "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",
-                    (claim_id,),
-                )
 
             with mock.patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
                 with mock.patch.object(
                     ClaimRepository,
-                    "archive_claim",
-                    side_effect=ValueError("Claim not found: " + claim_id),
+                    "list_claims_for_retention",
+                    return_value=[{"id": claim_id}],
                 ):
-                    from claim_agent.main import cmd_retention_enforce
+                    with mock.patch.object(
+                        ClaimRepository,
+                        "archive_claim",
+                        side_effect=ValueError("Claim not found: " + claim_id),
+                    ):
+                        from claim_agent.main import cmd_retention_enforce
 
-                    with pytest.raises(SystemExit) as exc_info:
-                        cmd_retention_enforce(dry_run=False)
-                    assert exc_info.value.code == 1
+                        with pytest.raises(SystemExit) as exc_info:
+                            cmd_retention_enforce(dry_run=False)
+                        assert exc_info.value.code == 1
         finally:
             os.unlink(db_path)
