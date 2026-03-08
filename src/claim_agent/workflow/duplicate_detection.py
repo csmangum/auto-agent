@@ -5,7 +5,6 @@ from datetime import date, datetime
 
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.observability import get_logger
-from claim_agent.workflow.claim_analysis import _has_catastrophic_event_keywords
 
 logger = get_logger(__name__)
 
