@@ -126,29 +126,29 @@ class TestLLMConfig:
         import claim_agent.config.llm as llm_module
 
         llm_module._langsmith_initialized = False
+        try:
+            setup_count = 0
+            count_lock = threading.Lock()
 
-        setup_count = 0
-        count_lock = threading.Lock()
+            def mock_setup():
+                nonlocal setup_count
+                with count_lock:
+                    setup_count += 1
+                return False
 
-        def mock_setup():
-            nonlocal setup_count
-            with count_lock:
-                setup_count += 1
-            return False
+            with patch(
+                "claim_agent.observability.tracing.setup_langsmith",
+                side_effect=mock_setup,
+            ):
+                threads = [threading.Thread(target=llm_module.setup_observability) for _ in range(10)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
 
-        with patch(
-            "claim_agent.observability.tracing.setup_langsmith",
-            side_effect=mock_setup,
-        ):
-            threads = [threading.Thread(target=llm_module.setup_observability) for _ in range(10)]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
-
-            assert setup_count == 1
-
-        llm_module._langsmith_initialized = True
+                assert setup_count == 1
+        finally:
+            llm_module._langsmith_initialized = True
 
     def test_get_llm_returns_llm_object(self):
         """Test that get_llm returns an LLM object with valid API key."""
