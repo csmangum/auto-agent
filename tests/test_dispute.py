@@ -410,6 +410,48 @@ class TestDisputeOrchestrator:
         assert _extract_adjusted_amount("revised payout: $8,250.50") == 8250.50
         assert _extract_adjusted_amount("No adjustment needed") is None
 
+    def test_extract_adjusted_amount_edge_cases(self):
+        from claim_agent.workflow.dispute_orchestrator import _extract_adjusted_amount
+
+        # Missing keywords: no match
+        assert _extract_adjusted_amount("The amount is 5000 dollars.") is None
+        assert _extract_adjusted_amount("") is None
+        # First matching pattern wins (adjusted_amount before new_amount in text)
+        assert _extract_adjusted_amount("Adjusted amount: $100. New amount: $200.") == 100.0
+        # Integer-like string
+        assert _extract_adjusted_amount("adjusted amount: 9999") == 9999.0
+        # Non-ASCII in surrounding text should not break regex
+        assert _extract_adjusted_amount("Montant ajusté: adjusted amount: $1,234.56") == 1234.56
+
+    def test_infer_resolution_type_edge_cases(self):
+        from claim_agent.workflow.dispute_orchestrator import _infer_resolution_type
+        from claim_agent.models.dispute import DisputeType
+
+        # Empty or missing keywords: fallback to dispute type
+        assert _infer_resolution_type("", DisputeType.VALUATION_DISAGREEMENT) == "auto_resolved"
+        assert _infer_resolution_type("", DisputeType.LIABILITY_DETERMINATION) == "escalated"
+        # Variant spellings
+        assert _infer_resolution_type("Resolution: auto-resolved.", DisputeType.REPAIR_ESTIMATE) == "auto_resolved"
+        assert _infer_resolution_type("Escalation required.", DisputeType.LIABILITY_DETERMINATION) == "escalated"
+        # Human review keyword
+        assert _infer_resolution_type("Sent for human review.", DisputeType.DEDUCTIBLE_APPLICATION) == "escalated"
+
+    def test_parse_structured_resolution(self):
+        from claim_agent.workflow.dispute_orchestrator import _parse_structured_resolution
+
+        # Valid JSON block
+        out = 'Summary text.\n```json\n{"resolution_type": "auto_resolved", "adjusted_amount": 15500}\n```'
+        assert _parse_structured_resolution(out) == ("auto_resolved", 15500.0)
+        # Escalated without amount
+        out2 = '```json\n{"resolution_type": "escalated"}\n```'
+        assert _parse_structured_resolution(out2) == ("escalated", None)
+        # No code block: returns None
+        assert _parse_structured_resolution("Just prose. resolution_type: auto_resolved.") is None
+        # Invalid JSON in block: returns None
+        assert _parse_structured_resolution("```json\n{invalid}\n```") is None
+        # Invalid resolution_type value: returns None
+        assert _parse_structured_resolution('```json\n{"resolution_type": "unknown"}\n```') is None
+
     def test_run_dispute_workflow_claim_not_found(self):
         from claim_agent.exceptions import ClaimNotFoundError
         from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
@@ -449,6 +491,35 @@ class TestDisputeOrchestrator:
         repo = ClaimRepository(db_path=seeded_temp_db)
         claim = repo.get_claim("CLM-TEST001")
         assert claim["status"] == STATUS_DISPUTE_RESOLVED
+
+    def test_run_dispute_workflow_uses_structured_output_when_present(self, seeded_temp_db):
+        """When crew output contains a JSON block, orchestrator uses it for resolution_type/amount."""
+        from claim_agent.db.constants import STATUS_DISPUTE_RESOLVED
+        from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
+
+        mock_result = MagicMock()
+        mock_result.raw = (
+            "Summary of analysis.\n"
+            "```json\n"
+            '{"resolution_type": "auto_resolved", "adjusted_amount": 17250.5}\n'
+            "```\n"
+            "End of report."
+        )
+
+        with patch("claim_agent.workflow.dispute_orchestrator.create_dispute_crew") as mock_crew_fn:
+            mock_crew = MagicMock()
+            mock_crew.kickoff.return_value = mock_result
+            mock_crew_fn.return_value = mock_crew
+
+            result = run_dispute_workflow({
+                "claim_id": "CLM-TEST001",
+                "dispute_type": "valuation_disagreement",
+                "dispute_description": "ACV too low",
+            })
+
+        assert result["resolution_type"] == "auto_resolved"
+        assert result["adjusted_amount"] == 17250.5
+        assert result["status"] == STATUS_DISPUTE_RESOLVED
 
     def test_run_dispute_workflow_escalate(self, seeded_temp_db):
         from claim_agent.db.constants import STATUS_NEEDS_REVIEW
@@ -494,6 +565,13 @@ class TestDisputeConstants:
         assert STATUS_DISPUTE_RESOLVED == "dispute_resolved"
         assert STATUS_DISPUTED in CLAIM_STATUSES
         assert STATUS_DISPUTE_RESOLVED in CLAIM_STATUSES
+
+    def test_disputable_statuses(self):
+        from claim_agent.db.constants import DISPUTABLE_STATUSES, STATUS_OPEN, STATUS_SETTLED
+
+        assert STATUS_SETTLED in DISPUTABLE_STATUSES
+        assert STATUS_OPEN in DISPUTABLE_STATUSES
+        assert len(DISPUTABLE_STATUSES) == 2
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,17 @@
 """Dispute workflow orchestration: run_dispute_workflow entry point.
 
-This is a standalone workflow for policyholder disputes on existing claims.
-It is invoked separately from the main claim pipeline.
+Standalone workflow for policyholder disputes on existing claims (invoked
+separately from the main claim pipeline). Flow: intake (retrieve claim +
+classify dispute) -> policy/compliance analysis -> resolution. Resolution
+either auto-resolves (valuation, repair estimate, deductible) or escalates
+(liability / complex cases) to human adjusters. Final status is
+dispute_resolved or needs_review accordingly.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -24,6 +29,13 @@ from claim_agent.observability import get_logger
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
+
+# Regex patterns for extracting adjusted amount from crew output (fallback when no structured block)
+_ADJUSTED_AMOUNT_PATTERNS = (
+    re.compile(r"adjusted[_ ]amount[:\s]*\$?([\d,]+\.?\d*)", re.IGNORECASE),
+    re.compile(r"new[_ ]amount[:\s]*\$?([\d,]+\.?\d*)", re.IGNORECASE),
+    re.compile(r"revised[_ ](?:payout|amount)[:\s]*\$?([\d,]+\.?\d*)", re.IGNORECASE),
+)
 
 
 def run_dispute_workflow(
@@ -112,8 +124,12 @@ def run_dispute_workflow(
         or str(result)
     )
 
-    resolution_type = _infer_resolution_type(workflow_output, dispute_input.dispute_type)
-    adjusted_amount = _extract_adjusted_amount(workflow_output)
+    parsed = _parse_structured_resolution(workflow_output)
+    if parsed is not None:
+        resolution_type, adjusted_amount = parsed
+    else:
+        resolution_type = _infer_resolution_type(workflow_output, dispute_input.dispute_type)
+        adjusted_amount = _extract_adjusted_amount(workflow_output)
 
     if resolution_type == "auto_resolved":
         final_status = STATUS_DISPUTE_RESOLVED
@@ -161,6 +177,37 @@ def run_dispute_workflow(
     }
 
 
+def _parse_structured_resolution(workflow_output: str) -> tuple[str, float | None] | None:
+    """Try to parse resolution_type and adjusted_amount from a JSON block in the output.
+
+    Looks for ```json ... ``` or ``` ... ``` containing resolution_type (and
+    optionally adjusted_amount). Returns (resolution_type, adjusted_amount) or
+    None if no valid structured block is found.
+    """
+    # Code block: ```json ... ``` or ``` ... ``` (content may span lines)
+    code_block = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.DOTALL)
+    match = code_block.search(workflow_output)
+    if match:
+        blob = match.group(1).strip()
+        try:
+            data = json.loads(blob)
+            if not isinstance(data, dict):
+                return None
+            rt = data.get("resolution_type")
+            if rt not in ("auto_resolved", "escalated"):
+                return None
+            adj = data.get("adjusted_amount")
+            if adj is not None:
+                try:
+                    adj = float(adj)
+                except (TypeError, ValueError):
+                    adj = None
+            return (rt, adj)
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def _get_latest_workflow_output(repo: Any, claim_id: str) -> str | None:
     """Retrieve the most recent workflow_output for a claim."""
     try:
@@ -192,15 +239,9 @@ def _infer_resolution_type(workflow_output: str, dispute_type: DisputeType) -> s
 
 def _extract_adjusted_amount(workflow_output: str) -> float | None:
     """Best-effort extraction of adjusted amount from crew output."""
-    import re
-    patterns = [
-        r"adjusted[_ ]amount[:\s]*\$?([\d,]+\.?\d*)",
-        r"new[_ ]amount[:\s]*\$?([\d,]+\.?\d*)",
-        r"revised[_ ](?:payout|amount)[:\s]*\$?([\d,]+\.?\d*)",
-    ]
     lower = workflow_output.lower()
-    for pattern in patterns:
-        match = re.search(pattern, lower)
+    for pattern in _ADJUSTED_AMOUNT_PATTERNS:
+        match = pattern.search(lower)
         if match:
             try:
                 return float(match.group(1).replace(",", ""))

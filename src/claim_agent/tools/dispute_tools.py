@@ -1,4 +1,13 @@
-"""Dispute handling tools: claim lookup, classification, and report generation."""
+"""Dispute handling tools: claim lookup, classification, and report generation.
+
+When these tools are invoked by the dispute crew, CrewAI passes only the
+declared tool parameters (e.g. claim_id). No request-scoped ClaimContext
+is available, so lookup_original_claim uses the process-default database
+(ClaimRepository() with env db_path). All dispute crew tools therefore
+use the process-default DB for reads; the orchestrator still uses the
+injected ctx.repo for writes. Multi-DB or per-request DB is not supported
+for crew-invoked tools.
+"""
 
 import json
 from typing import Union

@@ -23,6 +23,9 @@ STATUS_NEEDS_REVIEW = "needs_review"
 STATUS_PENDING_INFO = "pending_info"
 STATUS_ARCHIVED = "archived"
 
+# Statuses that allow filing a policyholder dispute (must have completed workflow)
+DISPUTABLE_STATUSES = (STATUS_SETTLED, STATUS_OPEN)
+
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
     STATUS_PENDING,

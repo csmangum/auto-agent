@@ -1,5 +1,6 @@
 """Tests for the FastAPI backend API endpoints."""
 
+import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -254,6 +255,52 @@ class TestReviewQueue:
             json={"assignee": ""},
         )
         assert resp.status_code == 422
+
+    def test_file_dispute_status_not_disputable_returns_409(self, client):
+        """Filing a dispute on a claim not in settled/open returns 409."""
+        # CLM-TEST002 has status "closed"
+        resp = client.post(
+            "/api/claims/CLM-TEST002/dispute",
+            json={
+                "dispute_type": "valuation_disagreement",
+                "dispute_description": "ACV too low",
+            },
+        )
+        assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
+        assert "closed" in data["detail"] or "cannot be disputed" in data["detail"].lower()
+
+    def test_file_dispute_success_returns_response_model(self, client, monkeypatch):
+        """Filing a dispute on an open claim returns 200 and DisputeResponse shape."""
+        import claim_agent.api.routes.claims as claims_mod
+
+        mock_result = {
+            "claim_id": "CLM-TEST001",
+            "dispute_type": "valuation_disagreement",
+            "resolution_type": "auto_resolved",
+            "status": "dispute_resolved",
+            "workflow_output": "Resolution: AUTO_RESOLVED. Adjusted amount: $15,500.",
+            "adjusted_amount": 15500.0,
+            "summary": "Resolution: AUTO_RESOLVED. Adjusted amount: $15,500.",
+        }
+        monkeypatch.setattr(claims_mod, "run_dispute_workflow", lambda *a, **kw: mock_result)
+        resp = client.post(
+            "/api/claims/CLM-TEST001/dispute",
+            json={
+                "dispute_type": "valuation_disagreement",
+                "dispute_description": "ACV is too low",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["dispute_type"] == "valuation_disagreement"
+        assert data["resolution_type"] == "auto_resolved"
+        assert data["status"] == "dispute_resolved"
+        assert "workflow_output" in data
+        assert data["adjusted_amount"] == 15500.0
+        assert "summary" in data
 
 
 # -------------------------------------------------------------------
@@ -783,7 +830,6 @@ class TestProcessClaimEndpoint:
         """Valid claim JSON without file attachments returns a workflow result."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         self._mock_workflow(monkeypatch)
-        import json
 
         resp = client.post(
             "/api/claims/process",
@@ -806,7 +852,6 @@ class TestProcessClaimEndpoint:
     def test_validation_failure_in_claim_data(self, client, monkeypatch):
         """Claim data failing Pydantic validation returns 400."""
         self._mock_workflow(monkeypatch)
-        import json
 
         bad_claim = {**VALID_CLAIM_PAYLOAD, "vehicle_year": "not-a-year"}
         resp = client.post(
@@ -820,7 +865,6 @@ class TestProcessClaimEndpoint:
         """Valid claim with an uploaded file stores the file and includes it in result."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         self._mock_workflow(monkeypatch)
-        import json
 
         file_content = b"fake image data"
         resp = client.post(
@@ -834,7 +878,6 @@ class TestProcessClaimEndpoint:
         """A file exceeding the 50 MB limit returns HTTP 413."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         self._mock_workflow(monkeypatch)
-        import json
         from claim_agent.api.routes import claims as claims_module
 
         # Temporarily lower the limit to make the test fast
@@ -854,7 +897,6 @@ class TestProcessClaimEndpoint:
         """Process claim with file upload creates exactly one claim and stores attachment."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         self._mock_workflow(monkeypatch)
-        import json
 
         with get_connection() as conn:
             count_before = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
@@ -878,7 +920,6 @@ class TestProcessClaimEndpoint:
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         import claim_agent.storage.factory as factory_mod
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        import json
 
         resp = client.post(
             "/api/claims/process",
@@ -942,7 +983,6 @@ class TestProcessClaimAsyncEndpoint:
     def test_async_returns_claim_id_immediately(self, client, monkeypatch, tmp_path):
         """Async process returns claim_id immediately without waiting for workflow."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
-        import json
 
         resp = client.post(
             "/api/claims/process/async",
@@ -959,7 +999,6 @@ class TestProcessClaimAsyncEndpoint:
         import claim_agent.storage.factory as factory_mod
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
         import claim_agent.api.routes.claims as claims_mod
-        import json
 
         # Mock workflow to return the actual claim_id (from existing_claim_id) and
         # update the DB to a terminal status so the SSE stream terminates promptly.
@@ -999,7 +1038,6 @@ class TestProcessClaimAsyncEndpoint:
         import claim_agent.storage.factory as factory_mod
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
         import claim_agent.api.routes.claims as claims_mod
-        import json
 
         def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **_kw):
             if existing_claim_id:

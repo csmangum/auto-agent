@@ -41,6 +41,10 @@ def lookup_original_claim_impl(
 ) -> str:
     """Retrieve original claim record, workflow result, and settlement details.
 
+    When ctx is None (e.g. when invoked by the crew with only tool args),
+    uses the process-default ClaimRepository. Crew-invoked tools do not
+    receive request-scoped context.
+
     Returns JSON with claim data, workflow output, and payout information.
     """
     repo = ctx.repo if ctx else ClaimRepository()
@@ -49,7 +53,7 @@ def lookup_original_claim_impl(
     if claim is None:
         return json.dumps({"error": f"Claim not found: {claim_id}"})
 
-    workflow_runs = _get_workflow_runs(repo, claim_id)
+    workflow_runs = repo.get_workflow_runs(claim_id)
 
     result = {
         "claim_id": claim_id,
@@ -70,22 +74,6 @@ def lookup_original_claim_impl(
         "workflow_runs": workflow_runs,
     }
     return json.dumps(result)
-
-
-def _get_workflow_runs(repo: ClaimRepository, claim_id: str) -> list[dict[str, Any]]:
-    """Fetch workflow run records for a claim."""
-    try:
-        from claim_agent.db.database import get_connection
-        with get_connection(repo._db_path) as conn:
-            rows = conn.execute(
-                "SELECT claim_type, router_output, workflow_output, created_at "
-                "FROM workflow_runs WHERE claim_id = ? ORDER BY created_at DESC LIMIT 5",
-                (claim_id,),
-            ).fetchall()
-        return [dict(r) for r in rows]
-    except Exception as exc:
-        logger.debug("Could not fetch workflow runs for %s: %s", claim_id, exc)
-        return []
 
 
 def classify_dispute_impl(
