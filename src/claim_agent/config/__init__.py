@@ -22,6 +22,26 @@ from claim_agent.config.settings_model import (
     WebhookConfig,
 )
 
+__all__ = [
+    "ADAPTER_ENV_KEYS",
+    "AuthConfig",
+    "EscalationConfig",
+    "FraudConfig",
+    "LLMConfig",
+    "LoggingConfig",
+    "NotificationConfig",
+    "PathsConfig",
+    "PartialLossConfig",
+    "RouterConfig",
+    "Settings",
+    "TracingConfig",
+    "VALID_ADAPTER_BACKENDS",
+    "ValuationConfig",
+    "WebhookConfig",
+    "get_settings",
+    "reload_settings",
+]
+
 _settings: Settings | None = None
 _settings_lock = threading.Lock()
 
