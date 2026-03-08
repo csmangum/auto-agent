@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from claim_agent.config.llm import get_model_name
 from claim_agent.config.settings import get_escalation_config
 from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
@@ -147,7 +147,7 @@ Independently verify the classification. Return JSON only:
 {{"claim_type": "new"|"duplicate"|"total_loss"|"fraud"|"partial_loss", "confidence": 0.0-1.0, "reasoning": "brief explanation"}}"""
 
     try:
-        model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+        model = get_model_name()
         resp = litellm.completion(model=model, messages=[{"role": "user", "content": prompt}])
         text = (resp.choices[0].message.content or "").strip()
         parsed = _extract_json_from_text(text)

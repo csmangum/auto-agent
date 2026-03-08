@@ -11,7 +11,6 @@ require auth. Pass via X-API-Key header or Authorization: Bearer <key>. Leave un
 """
 
 import asyncio
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -29,10 +28,12 @@ from claim_agent.api.routes.claims import _background_tasks as claim_background_
 from claim_agent.api.routes.metrics import router as metrics_router
 from claim_agent.api.routes.docs import router as docs_router
 from claim_agent.api.routes.system import router as system_router
+from claim_agent.config import get_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    get_settings()  # Validate config at startup
     yield
     # Shutdown: wait for in-flight claim workflow tasks to complete
     if claim_background_tasks:
@@ -49,23 +50,9 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# CORS: use CORS_ORIGINS env var for production, default to localhost for dev
-_default_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
-_cors_origins_str = os.environ.get("CORS_ORIGINS", "")
-CORS_ORIGINS = (
-    [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
-    if _cors_origins_str
-    else _default_origins
-)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=get_settings().auth.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

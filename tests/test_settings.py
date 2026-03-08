@@ -1,9 +1,9 @@
 """Tests for centralized configuration (settings)."""
 
-import importlib
 import os
 from unittest.mock import patch
 
+from claim_agent.config import reload_settings
 from claim_agent.config import settings
 
 
@@ -30,6 +30,7 @@ def test_get_router_config_returns_dict():
 def test_get_router_config_respects_env():
     """get_router_config reads ROUTER_CONFIDENCE_THRESHOLD and ROUTER_VALIDATION_ENABLED."""
     with patch.dict(os.environ, {"ROUTER_CONFIDENCE_THRESHOLD": "0.5", "ROUTER_VALIDATION_ENABLED": "true"}):
+        reload_settings()
         config = settings.get_router_config()
         assert config["confidence_threshold"] == 0.5
         assert config["validation_enabled"] is True
@@ -60,22 +61,27 @@ def test_token_budget_constants_positive():
 def test_get_adapter_backend_default():
     """get_adapter_backend returns 'mock' when env is mock or unset."""
     with patch.dict(os.environ, {"POLICY_ADAPTER": "mock"}):
+        reload_settings()
         assert settings.get_adapter_backend("policy") == "mock"
 
 
 def test_get_adapter_backend_respects_env():
     """get_adapter_backend reads env and normalizes value."""
     with patch.dict(os.environ, {"POLICY_ADAPTER": "stub"}):
+        reload_settings()
         assert settings.get_adapter_backend("policy") == "stub"
     with patch.dict(os.environ, {"POLICY_ADAPTER": "  MOCK  "}):
+        reload_settings()
         assert settings.get_adapter_backend("policy") == "mock"
 
 
 def test_get_adapter_backend_blank_treated_as_unset():
     """get_adapter_backend treats blank env var same as unset, returns mock."""
     with patch.dict(os.environ, {"POLICY_ADAPTER": ""}, clear=False):
+        reload_settings()
         assert settings.get_adapter_backend("policy") == "mock"
     with patch.dict(os.environ, {"POLICY_ADAPTER": "   "}, clear=False):
+        reload_settings()
         assert settings.get_adapter_backend("policy") == "mock"
 
 
@@ -88,8 +94,10 @@ def test_get_crew_verbose_default():
 def test_get_crew_verbose_respects_env():
     """get_crew_verbose respects CREWAI_VERBOSE env."""
     with patch.dict(os.environ, {"CREWAI_VERBOSE": "false"}):
+        reload_settings()
         assert settings.get_crew_verbose() is False
     with patch.dict(os.environ, {"CREWAI_VERBOSE": "true"}):
+        reload_settings()
         assert settings.get_crew_verbose() is True
 
 
@@ -116,16 +124,19 @@ class TestEscalationConfigEnvOverrides:
 
     def test_confidence_threshold_override(self):
         with patch.dict(os.environ, {"ESCALATION_CONFIDENCE_THRESHOLD": "0.5"}):
+            reload_settings()
             config = settings.get_escalation_config()
             assert config["confidence_threshold"] == 0.5
 
     def test_high_value_threshold_override(self):
         with patch.dict(os.environ, {"ESCALATION_HIGH_VALUE_THRESHOLD": "25000"}):
+            reload_settings()
             config = settings.get_escalation_config()
             assert config["high_value_threshold"] == 25000.0
 
     def test_invalid_float_uses_default(self):
         with patch.dict(os.environ, {"ESCALATION_CONFIDENCE_THRESHOLD": "not-a-number"}):
+            reload_settings()
             config = settings.get_escalation_config()
             assert config["confidence_threshold"] == 0.7
 
@@ -135,16 +146,19 @@ class TestFraudConfigEnvOverrides:
 
     def test_multiple_claims_days_override(self):
         with patch.dict(os.environ, {"FRAUD_MULTIPLE_CLAIMS_DAYS": "60"}):
+            reload_settings()
             config = settings.get_fraud_config()
             assert config["multiple_claims_days"] == 60
 
     def test_high_risk_threshold_override(self):
         with patch.dict(os.environ, {"FRAUD_HIGH_RISK_THRESHOLD": "40"}):
+            reload_settings()
             config = settings.get_fraud_config()
             assert config["high_risk_threshold"] == 40
 
     def test_invalid_int_uses_default(self):
         with patch.dict(os.environ, {"FRAUD_MULTIPLE_CLAIMS_DAYS": "invalid"}):
+            reload_settings()
             config = settings.get_fraud_config()
             assert config["multiple_claims_days"] == 90
 
@@ -154,33 +168,29 @@ class TestSimilarityAmbiguousRange:
 
     def test_valid_tuple_override(self):
         with patch.dict(os.environ, {"ESCALATION_SIMILARITY_AMBIGUOUS_RANGE": "40,90"}):
+            reload_settings()
             config = settings.get_escalation_config()
             assert config["similarity_ambiguous_range"] == (40.0, 90.0)
 
     def test_invalid_tuple_uses_default(self):
         with patch.dict(os.environ, {"ESCALATION_SIMILARITY_AMBIGUOUS_RANGE": "single"}):
+            reload_settings()
             config = settings.get_escalation_config()
             assert config["similarity_ambiguous_range"] == (50.0, 80.0)
 
 
 class TestTokenBudgetEnvOverrides:
-    """Test token budget constants read env (requires module reload)."""
+    """Test token budget constants read env."""
 
     def test_max_tokens_override(self):
-        try:
-            with patch.dict(os.environ, {"CLAIM_AGENT_MAX_TOKENS_PER_CLAIM": "200000"}):
-                importlib.reload(settings)
-                assert settings.MAX_TOKENS_PER_CLAIM == 200000
-        finally:
-            importlib.reload(settings)
+        with patch.dict(os.environ, {"CLAIM_AGENT_MAX_TOKENS_PER_CLAIM": "200000"}):
+            reload_settings()
+            assert settings.MAX_TOKENS_PER_CLAIM == 200000
 
     def test_max_llm_calls_override(self):
-        try:
-            with patch.dict(os.environ, {"CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM": "100"}):
-                importlib.reload(settings)
-                assert settings.MAX_LLM_CALLS_PER_CLAIM == 100
-        finally:
-            importlib.reload(settings)
+        with patch.dict(os.environ, {"CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM": "100"}):
+            reload_settings()
+            assert settings.MAX_LLM_CALLS_PER_CLAIM == 100
 
 
 class TestDuplicateAndHighValueConfig:
@@ -193,21 +203,18 @@ class TestDuplicateAndHighValueConfig:
         assert settings.DUPLICATE_DAYS_WINDOW == 3
 
     def test_duplicate_config_respects_env(self):
-        try:
-            with patch.dict(
-                os.environ,
-                {
-                    "DUPLICATE_SIMILARITY_THRESHOLD": "50",
-                    "DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE": "70",
-                    "DUPLICATE_DAYS_WINDOW": "5",
-                },
-            ):
-                importlib.reload(settings)
-                assert settings.DUPLICATE_SIMILARITY_THRESHOLD == 50
-                assert settings.DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE == 70
-                assert settings.DUPLICATE_DAYS_WINDOW == 5
-        finally:
-            importlib.reload(settings)
+        with patch.dict(
+            os.environ,
+            {
+                "DUPLICATE_SIMILARITY_THRESHOLD": "50",
+                "DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE": "70",
+                "DUPLICATE_DAYS_WINDOW": "5",
+            },
+        ):
+            reload_settings()
+            assert settings.DUPLICATE_SIMILARITY_THRESHOLD == 50
+            assert settings.DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE == 70
+            assert settings.DUPLICATE_DAYS_WINDOW == 5
 
     def test_high_value_thresholds_defaults(self):
         assert settings.HIGH_VALUE_DAMAGE_THRESHOLD == 25_000

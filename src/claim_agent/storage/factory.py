@@ -3,6 +3,7 @@
 import os
 import threading
 
+from claim_agent.config import get_settings
 from claim_agent.storage.base import StorageAdapter
 from claim_agent.storage.local import LocalStorageAdapter
 
@@ -45,7 +46,7 @@ def get_storage_adapter() -> StorageAdapter:
                     "S3 storage requires the optional S3 dependencies. Install with: pip install 'claim-agent[s3]'"
                 ) from e
         else:
-            base_path = os.environ.get("ATTACHMENT_STORAGE_PATH", "data/attachments")
+            base_path = get_settings().paths.attachment_storage_path
             _storage_instance = LocalStorageAdapter(base_path=base_path)
 
         return _storage_instance

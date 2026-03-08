@@ -5,6 +5,7 @@ import sqlite3
 
 import pytest
 
+from claim_agent.config import reload_settings
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.database import get_db_path, get_connection
 from claim_agent.db.repository import ClaimRepository
@@ -16,6 +17,7 @@ def test_get_db_path_default():
     """Default path is data/claims.db when env unset."""
     if "CLAIMS_DB_PATH" in os.environ:
         del os.environ["CLAIMS_DB_PATH"]
+    reload_settings()
     assert get_db_path() == "data/claims.db"
 
 
@@ -23,6 +25,7 @@ def test_get_db_path_env():
     """CLAIMS_DB_PATH env overrides default."""
     os.environ["CLAIMS_DB_PATH"] = "/tmp/custom.db"
     try:
+        reload_settings()
         assert get_db_path() == "/tmp/custom.db"
     finally:
         del os.environ["CLAIMS_DB_PATH"]

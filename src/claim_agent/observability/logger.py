@@ -9,7 +9,6 @@ This module provides:
 
 import json
 import logging
-import os
 import sys
 import threading
 import uuid
@@ -17,7 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-from claim_agent.config.settings import get_mask_pii
+from claim_agent.config import get_settings
 from claim_agent.utils.pii_masking import mask_policy_number, mask_vin, mask_dict, mask_text
 
 # Thread-local storage for claim context
@@ -43,7 +42,7 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON with claim context."""
-        mask_pii = get_mask_pii()
+        mask_pii = get_settings().logging.mask_pii
         raw_message = record.getMessage()
         log_data: dict[str, Any] = {
             "level": record.levelname,
@@ -99,7 +98,7 @@ class HumanReadableFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format log record with claim context prefix."""
-        mask_pii = get_mask_pii()
+        mask_pii = get_settings().logging.mask_pii
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         
         # Build context prefix
@@ -223,21 +222,19 @@ def get_logger(
     
     # Only configure if not already configured
     if not logger.handlers:
+        log_cfg = get_settings().logging
         if structured is None:
-            log_format = os.environ.get("CLAIM_AGENT_LOG_FORMAT", "human").lower()
-            structured = log_format == "json"
-        
+            structured = log_cfg.log_format.lower() == "json"
+
         handler = logging.StreamHandler(sys.stdout)
         if structured:
             handler.setFormatter(StructuredFormatter())
         else:
             handler.setFormatter(HumanReadableFormatter())
-        
+
         logger.addHandler(handler)
-        
-        # Set log level from environment
-        log_level = os.environ.get("CLAIM_AGENT_LOG_LEVEL", "INFO").upper()
-        logger.setLevel(getattr(logging, log_level, logging.INFO))
+
+        logger.setLevel(getattr(logging, log_cfg.log_level.upper(), logging.INFO))
         
         # Prevent duplicate logs from propagating to parent handlers
         logger.propagate = False

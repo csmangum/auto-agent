@@ -9,6 +9,7 @@ dependencies = [
     "crewai-tools>=0.40.0",
     "mcp>=1.9.0",
     "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
     "tenacity>=8.0.0",
     # RAG dependencies

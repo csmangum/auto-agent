@@ -14,41 +14,37 @@ from datetime import datetime, timezone
 from typing import Any
 import logging
 
-from dotenv import load_dotenv
-
-load_dotenv()
+from claim_agent.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TracingConfig:
-    """Configuration for tracing backends."""
+    """Configuration for tracing backends (dataclass for TracingCallback compatibility)."""
 
-    # LangSmith settings
     langsmith_enabled: bool = False
     langsmith_api_key: str = ""
     langsmith_project: str = "claim-agent"
     langsmith_endpoint: str = "https://api.smith.langchain.com"
-
-    # General tracing settings
     trace_llm_calls: bool = True
     trace_tool_calls: bool = True
-    log_prompts: bool = False  # Set to True to log full prompts (may contain PII)
-    log_responses: bool = False  # Set to True to log full responses
+    log_prompts: bool = False
+    log_responses: bool = False
 
     @classmethod
     def from_env(cls) -> "TracingConfig":
-        """Create config from environment variables."""
+        """Create config from Settings (backward compat)."""
+        t = get_settings().tracing
         return cls(
-            langsmith_enabled=os.environ.get("LANGSMITH_TRACING", "").lower() in ("true", "1", "yes"),
-            langsmith_api_key=os.environ.get("LANGSMITH_API_KEY", ""),
-            langsmith_project=os.environ.get("LANGSMITH_PROJECT", "claim-agent"),
-            langsmith_endpoint=os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
-            trace_llm_calls=os.environ.get("CLAIM_AGENT_TRACE_LLM", "true").lower() in ("true", "1", "yes"),
-            trace_tool_calls=os.environ.get("CLAIM_AGENT_TRACE_TOOLS", "true").lower() in ("true", "1", "yes"),
-            log_prompts=os.environ.get("CLAIM_AGENT_LOG_PROMPTS", "false").lower() in ("true", "1", "yes"),
-            log_responses=os.environ.get("CLAIM_AGENT_LOG_RESPONSES", "false").lower() in ("true", "1", "yes"),
+            langsmith_enabled=t.langsmith_enabled,
+            langsmith_api_key=t.langsmith_api_key,
+            langsmith_project=t.langsmith_project,
+            langsmith_endpoint=t.langsmith_endpoint,
+            trace_llm_calls=t.trace_llm_calls,
+            trace_tool_calls=t.trace_tool_calls,
+            log_prompts=t.log_prompts,
+            log_responses=t.log_responses,
         )
 
 
@@ -277,7 +273,7 @@ def setup_langsmith() -> bool:
 
     Returns True if LangSmith was successfully configured.
     """
-    config = TracingConfig.from_env()
+    config = get_settings().tracing
 
     if not config.langsmith_enabled:
         logger.debug("LangSmith tracing is disabled")

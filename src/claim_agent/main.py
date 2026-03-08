@@ -17,6 +17,7 @@ import typer
 import uvicorn
 from pydantic import ValidationError
 
+from claim_agent.config import get_settings
 from claim_agent.config.settings import get_retention_period_years
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
@@ -62,6 +63,7 @@ def _setup_logging(debug: bool = False, json_format: bool = False) -> None:
         os.environ["CLAIM_AGENT_LOG_FORMAT"] = "json"
     if debug:
         os.environ["CLAIM_AGENT_LOG_LEVEL"] = "DEBUG"
+    get_settings()  # Validate config at startup
     get_logger("claim_agent")
     logging.getLogger("claim_agent").setLevel(
         logging.DEBUG if debug else logging.INFO

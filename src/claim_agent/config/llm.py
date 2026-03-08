@@ -6,12 +6,9 @@ This module configures the LLM with:
 """
 
 import logging
-import os
 import threading
 
-from dotenv import load_dotenv
-
-load_dotenv()
+from claim_agent.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +62,13 @@ def get_llm():
     except ImportError:
         return None
 
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    llm_cfg = get_settings().llm
+    api_key = llm_cfg.api_key.strip()
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable is required")
 
-    base = os.environ.get("OPENAI_API_BASE", "").strip()
-    model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini").strip()
+    base = llm_cfg.api_base.strip()
+    model = llm_cfg.model_name.strip() or "gpt-4o-mini"
 
     # Log LLM configuration
     logger.debug(
@@ -86,4 +84,4 @@ def get_llm():
 
 def get_model_name() -> str:
     """Get the configured model name."""
-    return os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini").strip()
+    return get_settings().llm.model_name.strip() or "gpt-4o-mini"
