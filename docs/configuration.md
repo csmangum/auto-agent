@@ -130,7 +130,7 @@ The module `src/claim_agent/config/settings.py` centralizes configuration from e
 | `DEFAULT_BASE_VALUE`, `DEPRECIATION_PER_YEAR`, etc. | Valuation and partial-loss defaults |
 | `get_adapter_backend(name)` | Configured adapter backend for a given adapter name |
 
-Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATION_ENABLED` (default false), `ROUTER_ESCALATION_SLA_HOURS` (default 48). When `ROUTER_VALIDATION_ENABLED=true`, the optional second-pass validation LLM call uses `OPENAI_MODEL_NAME` (the same variable that controls all other LLM calls; default `gpt-4o-mini`).
+Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATION_ENABLED` (default false). When `ROUTER_VALIDATION_ENABLED=true`, the optional second-pass validation LLM call uses `OPENAI_MODEL_NAME` (the same variable that controls all other LLM calls; default `gpt-4o-mini`).
 
 Duplicate detection: `DUPLICATE_SIMILARITY_THRESHOLD` (default 40), `DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE` (default 60), `DUPLICATE_DAYS_WINDOW` (default 3). These control when claims with the same VIN are considered duplicates for routing.
 

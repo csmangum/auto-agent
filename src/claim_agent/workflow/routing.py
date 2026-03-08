@@ -108,10 +108,10 @@ def _parse_claim_type(raw_output: str) -> str:
     lines = raw_output.strip().split("\n")
     for line in lines:
         normalized = line.strip().lower().replace("_", " ").replace("-", " ")
-        if normalized in ("new", "duplicate", "total loss", "total_loss", "partial loss", "partial_loss", "fraud"):
-            if normalized in ("total loss", "total_loss"):
+        if normalized in ("new", "duplicate", "total loss", "partial loss", "fraud"):
+            if normalized == "total loss":
                 return ClaimType.TOTAL_LOSS.value
-            if normalized in ("partial loss", "partial_loss"):
+            if normalized == "partial loss":
                 return ClaimType.PARTIAL_LOSS.value
             if normalized == "new":
                 return ClaimType.NEW.value
@@ -122,9 +122,9 @@ def _parse_claim_type(raw_output: str) -> str:
             return normalized
         if normalized.startswith("fraud"):
             return ClaimType.FRAUD.value
-        if normalized.startswith("partial loss") or normalized.startswith("partial_loss"):
+        if normalized.startswith("partial loss"):
             return ClaimType.PARTIAL_LOSS.value
-        if normalized.startswith("total loss") or normalized.startswith("total_loss"):
+        if normalized.startswith("total loss"):
             return ClaimType.TOTAL_LOSS.value
         if normalized.startswith("duplicate"):
             return ClaimType.DUPLICATE.value

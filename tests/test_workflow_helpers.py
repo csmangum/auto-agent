@@ -4,7 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-# Import via main_crew to avoid circular import (workflow -> stages -> crews -> main_crew -> workflow)
+# Import via main_crew to avoid circular import (workflow -> orchestrator -> stages -> crews -> main_crew -> workflow).
+# Helpers live in claim_agent.workflow.claim_analysis and claim_agent.workflow.duplicate_detection.
 from claim_agent.crews.main_crew import (
     _check_economic_total_loss,
     _damage_tags_overlap,

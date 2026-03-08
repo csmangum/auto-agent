@@ -225,16 +225,21 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 "fraud_indicators": fraud_indicators,
             })
             ctx.repo.save_workflow_result(ctx.claim_id, ctx.claim_type, ctx.raw_output, details)
-            ctx.repo.update_claim_status(
-                ctx.claim_id, STATUS_NEEDS_REVIEW, claim_type=ctx.claim_type,
-                details=details, actor_id=ctx.actor_id,
-            )
-            hours = _sla_hours_for_priority(priority)
-            due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
-            ctx.repo.update_claim_review_metadata(
-                ctx.claim_id, priority=priority, due_at=due_at,
-                review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            )
+            # Avoid overwriting review metadata / creating duplicate status-change events
+            # when a resumed/retried workflow still results in needs_review.
+            current_claim = ctx.repo.get_claim(ctx.claim_id)
+            current_status = current_claim.get("status") if current_claim else None
+            if current_status != STATUS_NEEDS_REVIEW:
+                ctx.repo.update_claim_status(
+                    ctx.claim_id, STATUS_NEEDS_REVIEW, claim_type=ctx.claim_type,
+                    details=details, actor_id=ctx.actor_id,
+                )
+                hours = _sla_hours_for_priority(priority)
+                due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+                ctx.repo.update_claim_review_metadata(
+                    ctx.claim_id, priority=priority, due_at=due_at,
+                    review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                )
 
             workflow_duration = (time.time() - ctx.workflow_start_time) * 1000
             logger.log_event(
