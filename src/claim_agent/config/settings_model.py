@@ -27,7 +27,12 @@ def _default_project_data_dir() -> Path:
 
 
 class RouterConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="ROUTER_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="ROUTER_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     confidence_threshold: float = 0.7
     validation_enabled: bool = False
@@ -53,7 +58,12 @@ def _parse_similarity_range_str(s: str) -> tuple[float, float]:
 
 
 class EscalationConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="ESCALATION_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="ESCALATION_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     confidence_threshold: float = 0.7
     high_value_threshold: float = 10000.0
@@ -84,7 +94,12 @@ class EscalationConfig(BaseSettings):
 
 
 class FraudConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="FRAUD_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="FRAUD_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     multiple_claims_days: int = 90
     multiple_claims_threshold: int = 2
@@ -107,7 +122,12 @@ class FraudConfig(BaseSettings):
 
 
 class ValuationConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="VALUATION_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="VALUATION_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     default_base_value: float = 12000
     depreciation_per_year: float = 500
@@ -117,7 +137,12 @@ class ValuationConfig(BaseSettings):
 
 
 class PartialLossConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PARTIAL_LOSS_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="PARTIAL_LOSS_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     threshold: float = 0.75
     labor_hours_rni_per_part: float = 1.5
@@ -126,7 +151,12 @@ class PartialLossConfig(BaseSettings):
 
 
 class WebhookConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="WEBHOOK_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="WEBHOOK_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     urls_raw: str = Field(default="", validation_alias="WEBHOOK_URLS")
     url: str = ""
@@ -146,7 +176,12 @@ class WebhookConfig(BaseSettings):
 
 
 class NotificationConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="NOTIFICATION_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="NOTIFICATION_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     email_enabled: bool = False
     sms_enabled: bool = False
@@ -157,6 +192,8 @@ class TracingConfig(BaseSettings):
         extra="ignore",
         env_prefix="",
         env_nested_delimiter="__",
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
     langsmith_enabled: bool = Field(default=False, validation_alias="LANGSMITH_TRACING")
@@ -182,7 +219,12 @@ class TracingConfig(BaseSettings):
 
 
 class LoggingConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="CLAIM_AGENT_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="CLAIM_AGENT_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     log_format: str = "human"
     log_level: str = "INFO"
@@ -190,7 +232,11 @@ class LoggingConfig(BaseSettings):
 
 
 class PathsConfig(BaseSettings):
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     claims_db_path: str = Field(
         default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
@@ -208,7 +254,11 @@ class PathsConfig(BaseSettings):
 
 
 class LLMConfig(BaseSettings):
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
     api_base: str = Field(default="", validation_alias="OPENAI_API_BASE")
@@ -225,7 +275,11 @@ _DEFAULT_CORS_ORIGINS = [
 
 
 class AuthConfig(BaseSettings):
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
     claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
