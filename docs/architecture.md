@@ -150,9 +150,13 @@ flowchart TB
 ```
 src/claim_agent/
 ├── main.py              # CLI entry point
+├── context.py           # ClaimContext for CLI/API
+├── events.py            # Event handling
+├── api/                 # REST API (FastAPI routes, auth, deps)
 ├── config/              # LLM and configuration
 │   ├── llm.py           # LLM configuration
 │   ├── settings.py      # Centralized settings (escalation, fraud, valuation, token budgets)
+│   ├── settings_model.py # Pydantic settings models
 │   ├── agents.yaml      # CrewAI agent role/goal/backstory definitions
 │   └── tasks.yaml       # CrewAI task description and expected output definitions
 ├── adapters/            # Pluggable external-system adapters
@@ -162,21 +166,31 @@ src/claim_agent/
 │   └── mock/            # Mock adapters backed by mock_db.json
 ├── agents/              # Agent factory functions
 ├── crews/               # Crew definitions
+├── workflow/            # Orchestration, routing, escalation (run_claim_workflow)
+├── services/            # Business logic services (e.g. adjuster actions)
+├── data/                # Data loaders
 ├── skills/              # Agent prompt definitions (markdown)
 │   ├── __init__.py      # Skill loading utilities
 │   └── *.md             # Individual agent skills
 ├── tools/               # CrewAI tools
-│   ├── logic.py         # Core implementation (uses adapters for data access)
+│   ├── *_logic.py       # Core implementation (policy_logic, claims_logic, valuation_logic, etc.; uses adapters)
 │   └── *_tools.py       # Tool wrappers
+├── storage/             # Local and S3 storage for attachments
+├── notifications/       # Webhooks and claimant notifications
 ├── utils/               # Shared utilities
 │   ├── sanitization.py  # Input sanitization for claim data
-│   └── retry.py         # LLM retry with exponential backoff
+│   ├── retry.py         # LLM retry with exponential backoff
+│   └── attachments.py   # Attachment type inference
 ├── db/                  # Database layer
 │   ├── database.py      # SQLite connection (schema init once per path)
 │   ├── repository.py    # CRUD operations (parameterized queries)
-│   └── constants.py     # Status constants
+│   ├── constants.py     # Status constants
+│   ├── audit_events.py  # Audit event recording
+│   └── claim_data.py    # Claim data helpers
 ├── models/              # Pydantic models
-│   └── claim.py         # ClaimInput, ClaimOutput, ClaimType, etc.
+│   ├── claim.py         # ClaimInput, ClaimOutput, ClaimType, etc.
+│   └── workflow_output.py # Structured workflow outputs
+├── rag/                 # RAG pipeline (policy/compliance search)
 ├── observability/       # Logging, tracing, metrics
 └── mcp_server/          # Optional MCP server
 ```

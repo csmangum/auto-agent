@@ -11,7 +11,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Router](#router-crew) | 1 | Classify incoming claims |
 | [New Claim](#new-claim-crew) | 3 | Process first-time claims |
 | [Duplicate](#duplicate-crew) | 3 | Handle potential duplicates |
-| [Total Loss](#total-loss-crew) | 4 | Process total loss claims |
+| [Total Loss](#total-loss-crew) | 3 | Process total loss claims |
 | [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
 | [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
 

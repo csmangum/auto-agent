@@ -18,7 +18,14 @@ flowchart LR
     end
     
     subgraph Logic["Implementation"]
-        F[logic.py]
+        L1[policy_logic]
+        L2[claims_logic]
+        L3[valuation_logic]
+        L4[fraud_logic]
+        L5[partial_loss_logic]
+        L6[escalation_logic]
+        L7[compliance_logic]
+        L8[document_logic]
     end
 
     subgraph Adapters["Adapter Layer"]
