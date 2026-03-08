@@ -1,6 +1,5 @@
-"""Top-level conftest for pytest.
+"""Top-level conftest for pytest."""
 
-pytest_plugins must be defined here (not in subdir conftests) per pytest deprecation.
-"""
-
-pytest_plugins = ["tests.integration.conftest"]  # noqa: F401
+# Do NOT add pytest_plugins = ["tests.integration.conftest"] here.
+# That causes double registration: pytest auto-loads tests/integration/conftest.py
+# when collecting tests in that directory, so explicit loading duplicates the plugin.
