@@ -435,15 +435,39 @@ def metrics(
 
 def _main() -> None:
     """Entry point: handle legacy file path, then invoke Typer app."""
-    argv = [a for a in sys.argv[1:] if not a.startswith("--")]
-    options = [a for a in sys.argv[1:] if a.startswith("--")]
-
-    # Legacy: single non-option arg that looks like a file path
-    if len(argv) == 1:
-        path = Path(argv[0])
+    # Parse args to detect legacy file-path invocation
+    args = sys.argv[1:]
+    
+    # Separate global options from other args and track actual positional args
+    global_opts = []
+    other_args = []
+    positional = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--debug", "--json"):
+            global_opts.append(arg)
+            i += 1
+        elif arg.startswith("--"):
+            # Option that may have a value
+            other_args.append(arg)
+            i += 1
+            # If next arg exists and doesn't start with --, it's the option value
+            if i < len(args) and not args[i].startswith("-"):
+                other_args.append(args[i])
+                i += 1
+        else:
+            # Positional argument (not an option or option value)
+            other_args.append(arg)
+            positional.append(arg)
+            i += 1
+    
+    # Legacy: single positional arg that looks like a file path
+    if len(positional) == 1:
+        path = Path(positional[0])
         if path.suffix and path.exists():
-            # Transform to: process <path> [--attachment ...]
-            new_argv = ["process", argv[0]] + options
+            # Transform to: [global_opts] + process <path> [command_opts]
+            new_argv = global_opts + ["process"] + other_args
             sys.argv = [sys.argv[0]] + new_argv
 
     app()
