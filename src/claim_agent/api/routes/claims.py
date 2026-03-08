@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
@@ -382,15 +382,11 @@ def escalate_to_siu(
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
 def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     """Get a single claim by ID. Includes claim notes for cross-crew context."""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT * FROM claims WHERE id = ?", (claim_id,)
-        ).fetchone()
-
+    row = ctx.repo.get_claim(claim_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
-    result = _resolve_attachment_urls(dict(row))
+    result = _resolve_attachment_urls(row)
     result["notes"] = ctx.repo.get_notes(claim_id)
     return result
 
@@ -432,6 +428,14 @@ def get_claim_history(claim_id: str, ctx: ClaimContext = Depends(get_claim_conte
 class AddNoteBody(BaseModel):
     note: str = Field(..., min_length=1, description="Note content")
     actor_id: str = Field(..., min_length=1, description="Crew name, agent identifier, or 'workflow'")
+
+    @field_validator("note", "actor_id", mode="after")
+    @classmethod
+    def strip_and_validate_not_blank(cls, v: str, info) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError(f"{info.field_name} cannot be blank")
+        return stripped
 
 
 @router.get("/claims/{claim_id}/notes", dependencies=[RequireAdjuster])

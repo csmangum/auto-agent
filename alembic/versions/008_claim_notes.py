@@ -5,7 +5,7 @@ Revises: 007
 Create Date: 2026-03-08
 
 Implements GitHub issue #131: Claim notes system for agents and crews.
-- claim_notes: append-only notes from workflow, crews, or agents
+- claim_notes: notes from workflow, crews, or agents
 """
 from alembic import op
 from sqlalchemy import text
