@@ -11,7 +11,7 @@ const STATUS_COLORS: Record<string, string> = {
   fraud_suspected: 'bg-red-100 text-red-800',
   fraud_confirmed: 'bg-red-200 text-red-900',
   needs_review: 'bg-purple-100 text-purple-800',
-  pending_info: 'bg-amber-100 text-amber-800',
+  pending_info: 'bg-yellow-200 text-yellow-900',
   partial_loss: 'bg-teal-100 text-teal-800',
   under_investigation: 'bg-amber-100 text-amber-800',
   denied: 'bg-red-100 text-red-700',

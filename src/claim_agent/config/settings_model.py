@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -317,6 +316,11 @@ class Settings(BaseSettings):
     max_llm_calls_per_claim: int = Field(default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM")
     crew_verbose: bool = Field(default=True, validation_alias="CREWAI_VERBOSE")
     retention_period_years: int = 5
+    policy_adapter: str = Field(default="mock", validation_alias="POLICY_ADAPTER")
+    valuation_adapter: str = Field(default="mock", validation_alias="VALUATION_ADAPTER")
+    repair_shop_adapter: str = Field(default="mock", validation_alias="REPAIR_SHOP_ADAPTER")
+    parts_adapter: str = Field(default="mock", validation_alias="PARTS_ADAPTER")
+    siu_adapter: str = Field(default="mock", validation_alias="SIU_ADAPTER")
 
     @field_validator("retention_period_years", mode="before")
     @classmethod
@@ -334,19 +338,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _resolve_retention(self) -> "Settings":
-        raw = os.environ.get("RETENTION_PERIOD_YEARS", "").strip()
-        if raw:
-            try:
-                v = int(raw)
-                if v >= 1:
-                    object.__setattr__(self, "retention_period_years", v)
-                    return self
-            except ValueError:
-                pass
-            _log.warning(
-                "RETENTION_PERIOD_YEARS is set but invalid (%r); using compliance/default.",
-                raw,
-            )
+        if self.retention_period_years != 5:
+            return self
         years = self._load_compliance_retention()
         if years is not None:
             object.__setattr__(self, "retention_period_years", years)
@@ -375,8 +368,8 @@ class Settings(BaseSettings):
         return None
 
     def get_adapter_backend(self, adapter_name: str) -> str:
-        env_key = ADAPTER_ENV_KEYS.get(adapter_name, f"{adapter_name.upper()}_ADAPTER")
-        raw = os.environ.get(env_key)
+        adapter_field = f"{adapter_name}_adapter"
+        raw = getattr(self, adapter_field, None)
         if raw is None:
             return "mock"
         backend = raw.strip().lower()
