@@ -1,6 +1,6 @@
 """Tests for claim event emission and listener invocation."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -39,6 +39,16 @@ class TestClaimEvent:
 class TestEmitClaimEvent:
     """Tests for emit_claim_event and listener registration."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_webhook(self):
+        """Patch webhook config so event tests do not trigger real webhook delivery."""
+        disabled_config = {"enabled": False, "urls": []}
+        with patch(
+            "claim_agent.notifications.webhook.get_webhook_config",
+            return_value=disabled_config,
+        ):
+            yield
+
     def test_emits_to_registered_listener(self):
         received: list[ClaimEvent] = []
         listener = lambda e: received.append(e)
@@ -61,3 +71,21 @@ class TestEmitClaimEvent:
             mock.assert_called_once()
         finally:
             unregister_claim_event_listener(mock)
+
+    def test_failing_listener_does_not_block_others(self):
+        """When one listener throws, other listeners still receive the event."""
+        received: list[ClaimEvent] = []
+        good_listener = lambda e: received.append(e)
+        bad_listener = MagicMock(side_effect=RuntimeError("listener failed"))
+
+        register_claim_event_listener(bad_listener)
+        register_claim_event_listener(good_listener)
+        try:
+            event = ClaimEvent(claim_id="CLM-Y", status="settled", summary="Done")
+            emit_claim_event(event)
+            assert len(received) == 1
+            assert received[0].claim_id == "CLM-Y"
+            bad_listener.assert_called_once()
+        finally:
+            unregister_claim_event_listener(bad_listener)
+            unregister_claim_event_listener(good_listener)

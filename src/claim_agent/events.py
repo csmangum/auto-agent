@@ -1,9 +1,14 @@
 """Claim event emission for decoupled side effects (webhooks, analytics, etc.)."""
 
+import logging
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
+logger = logging.getLogger(__name__)
+
 _listeners: list[Callable[["ClaimEvent"], None]] = []
+_listeners_lock = threading.Lock()
 
 
 @dataclass
@@ -19,26 +24,28 @@ class ClaimEvent:
 
 def register_claim_event_listener(callback: Callable[[ClaimEvent], None]) -> None:
     """Register a listener to be invoked when claim events are emitted."""
-    _listeners.append(callback)
+    with _listeners_lock:
+        _listeners.append(callback)
 
 
 def unregister_claim_event_listener(callback: Callable[[ClaimEvent], None]) -> None:
     """Remove a listener. Used for test cleanup."""
-    try:
-        _listeners.remove(callback)
-    except ValueError:
-        pass
+    with _listeners_lock:
+        try:
+            _listeners.remove(callback)
+        except ValueError:
+            pass
 
 
 def emit_claim_event(event: ClaimEvent) -> None:
     """Emit a claim event to all registered listeners."""
-    for listener in _listeners:
+    with _listeners_lock:
+        listeners = list(_listeners)
+    for listener in listeners:
         try:
             listener(event)
         except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Claim event listener failed (best-effort): %s", e
             )
 

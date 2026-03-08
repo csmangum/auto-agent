@@ -1,8 +1,12 @@
 """Tests for AdjusterActionService."""
 
+import os
+import tempfile
+
 import pytest
 
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+from claim_agent.db.database import get_connection, init_db
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
@@ -12,11 +16,6 @@ from claim_agent.services.adjuster_action_service import AdjusterActionService
 @pytest.fixture
 def temp_db():
     """Create a temporary SQLite database path and init schema."""
-    import os
-    import tempfile
-
-    from claim_agent.db.database import init_db
-
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
@@ -41,8 +40,6 @@ def service(repo):
 
 def test_assign_delegates_to_repo(service, repo):
     """Assign delegates to repo.assign_claim."""
-    from claim_agent.db.database import get_connection
-
     claim_input = ClaimInput(
         policy_number="POL-A",
         vin="VIN-A",
@@ -102,8 +99,6 @@ def test_reject_delegates_to_repo(service, repo, temp_db):
         damage_description="Test",
     )
     claim_id = repo.create_claim(claim_input)
-    from claim_agent.db.database import get_connection
-
     with get_connection(repo._db_path) as conn:
         conn.execute(
             "UPDATE claims SET status = ? WHERE id = ?",
@@ -134,8 +129,6 @@ def test_request_info_delegates_to_repo(service, repo, temp_db):
         damage_description="Test",
     )
     claim_id = repo.create_claim(claim_input)
-    from claim_agent.db.database import get_connection
-
     with get_connection(repo._db_path) as conn:
         conn.execute(
             "UPDATE claims SET status = ? WHERE id = ?",
@@ -160,8 +153,6 @@ def test_escalate_to_siu_delegates_to_repo(service, repo, temp_db):
         damage_description="Test",
     )
     claim_id = repo.create_claim(claim_input)
-    from claim_agent.db.database import get_connection
-
     with get_connection(repo._db_path) as conn:
         conn.execute(
             "UPDATE claims SET status = ? WHERE id = ?",
@@ -186,8 +177,6 @@ def test_approve_delegates_to_repo(service, repo, temp_db):
         damage_description="Test",
     )
     claim_id = repo.create_claim(claim_input)
-    from claim_agent.db.database import get_connection
-
     with get_connection(repo._db_path) as conn:
         conn.execute(
             "UPDATE claims SET status = ? WHERE id = ?",
