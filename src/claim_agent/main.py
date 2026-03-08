@@ -297,7 +297,7 @@ def approve(
             ctx=ctx,
         )
         typer.echo(json.dumps(result, indent=2))
-    except (ClaimAgentError, ValueError, Exception) as e:
+    except (ClaimAgentError, ValueError) as e:
         typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
@@ -478,6 +478,11 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
 def cmd_metrics(claim_id: str | None = None) -> None:
     """Display metrics for claims. Used by tests."""
     metrics(claim_id)
+
+
+def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> None:
+    """Archive claims older than retention period. Used by tests."""
+    retention_enforce(dry_run, years)
 
 
 if __name__ == "__main__":

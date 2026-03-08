@@ -9,6 +9,7 @@ import pytest
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.database import get_db_path, get_connection, init_db
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
 
 
@@ -289,9 +290,9 @@ def test_repository_update_claim_siu_case_id_overwrites(temp_db):
 
 
 def test_repository_update_claim_siu_case_id_nonexistent_claim(temp_db):
-    """update_claim_siu_case_id raises ValueError for nonexistent claim_id."""
+    """update_claim_siu_case_id raises ClaimNotFoundError for nonexistent claim_id."""
     repo = ClaimRepository(db_path=temp_db)
-    with pytest.raises(ValueError, match="Claim not found: CLM-NONEXIST"):
+    with pytest.raises(ClaimNotFoundError, match="Claim not found: CLM-NONEXIST"):
         repo.update_claim_siu_case_id("CLM-NONEXIST", "SIU-12345")
 
 
