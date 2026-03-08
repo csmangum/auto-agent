@@ -16,6 +16,12 @@ export interface Claim {
   payout_amount?: number;
   created_at?: string;
   updated_at?: string;
+  /** Review queue fields */
+  priority?: string; // critical | high | medium | low
+  due_at?: string; // ISO datetime
+  assignee?: string; // adjuster/user ID
+  siu_case_id?: string; // SIU case ID when escalated
+  review_started_at?: string; // ISO datetime when entered needs_review
 }
 
 export interface ClaimsStats {
