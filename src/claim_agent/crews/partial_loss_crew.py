@@ -1,22 +1,19 @@
 """Partial loss workflow crew for repairable vehicle damage."""
 
-from crewai import Crew, Task
-
 from claim_agent.agents.partial_loss import (
+    create_parts_ordering_agent,
     create_partial_loss_damage_assessor_agent,
+    create_repair_authorization_agent,
     create_repair_estimator_agent,
     create_repair_shop_coordinator_agent,
-    create_parts_ordering_agent,
-    create_repair_authorization_agent,
 )
-from claim_agent.config.llm import get_llm
-from claim_agent.config.settings import get_crew_verbose
+from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 from claim_agent.models.workflow_output import PartialLossWorkflowOutput
 
 
 def create_partial_loss_crew(llm=None):
     """Create the Partial Loss crew: damage assess -> estimate -> shop assignment -> parts order -> authorization.
-    
+
     This crew handles repairable vehicle damage claims:
     1. Assess damage and confirm it's repairable (not total loss)
     2. Calculate repair estimate with parts and labor
@@ -24,18 +21,17 @@ def create_partial_loss_crew(llm=None):
     4. Order required parts
     5. Generate repair authorization and hand off to the shared settlement crew
     """
-    llm = llm or get_llm()
-    
-    # Create agents
-    damage_assessor = create_partial_loss_damage_assessor_agent(llm)
-    repair_estimator = create_repair_estimator_agent(llm)
-    shop_coordinator = create_repair_shop_coordinator_agent(llm)
-    parts_ordering = create_parts_ordering_agent(llm)
-    authorization_agent = create_repair_authorization_agent(llm)
-
-    # Task 1: Assess damage (claim_data injected so agent can pass it to tools)
-    assess_damage_task = Task(
-        description="""CLAIM DATA (JSON):
+    return create_crew(
+        agents_config=[
+            AgentConfig(create_partial_loss_damage_assessor_agent),
+            AgentConfig(create_repair_estimator_agent),
+            AgentConfig(create_repair_shop_coordinator_agent),
+            AgentConfig(create_parts_ordering_agent),
+            AgentConfig(create_repair_authorization_agent),
+        ],
+        tasks_config=[
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 Evaluate the damage_description from claim_data above to assess the repair scope.
@@ -48,13 +44,11 @@ Determine:
 - List of damaged components that need repair/replacement
 
 If estimated repair cost would exceed 75% of vehicle value, flag as potential total loss.""",
-        expected_output="Damage assessment with severity, list of damaged parts, vehicle value, and confirmation that this is a partial loss (repairable) claim.",
-        agent=damage_assessor,
-    )
-
-    # Task 2: Calculate repair estimate
-    estimate_task = Task(
-        description="""CLAIM DATA (JSON):
+                expected_output="Damage assessment with severity, list of damaged parts, vehicle value, and confirmation that this is a partial loss (repairable) claim.",
+                agent_index=0,
+            ),
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 Calculate a complete repair estimate using calculate_repair_estimate tool.
@@ -68,14 +62,12 @@ The estimate should include:
 - Amount customer pays vs insurance pays
 
 Use get_parts_catalog if you need more details on specific parts.""",
-        expected_output="Complete repair estimate with parts list, labor hours, total cost, deductible, customer responsibility, and insurance payment amount.",
-        agent=repair_estimator,
-        context=[assess_damage_task],
-    )
-
-    # Task 3: Find and assign repair shop
-    shop_assignment_task = Task(
-        description="""CLAIM DATA (JSON):
+                expected_output="Complete repair estimate with parts list, labor hours, total cost, deductible, customer responsibility, and insurance payment amount.",
+                agent_index=1,
+                context_task_indices=[0],
+            ),
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 Find available repair shops and assign the best one for this claim.
@@ -93,14 +85,12 @@ Find available repair shops and assign the best one for this claim.
    - Estimate repair days based on damage severity (minor: 3, moderate: 5, severe: 7)
 
 Output the shop assignment details including start and completion dates.""",
-        expected_output="Repair shop assignment with shop name, address, phone, confirmation number, estimated start date, and estimated completion date.",
-        agent=shop_coordinator,
-        context=[assess_damage_task, estimate_task],
-    )
-
-    # Task 4: Order parts
-    parts_order_task = Task(
-        description="""CLAIM DATA (JSON):
+                expected_output="Repair shop assignment with shop name, address, phone, confirmation number, estimated start date, and estimated completion date.",
+                agent_index=2,
+                context_task_indices=[0, 1],
+            ),
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 Order all required parts for the repair.
@@ -114,14 +104,12 @@ Order all required parts for the repair.
    - Include shop_id for delivery
 
 Output the order confirmation with order ID, items, total cost, and delivery date.""",
-        expected_output="Parts order confirmation with order_id, list of parts ordered, total parts cost, and estimated delivery date.",
-        agent=parts_ordering,
-        context=[assess_damage_task, estimate_task, shop_assignment_task],
-    )
-
-    # Task 5: Generate authorization and prepare settlement handoff
-    authorization_task = Task(
-        description="""CLAIM DATA (JSON):
+                expected_output="Parts order confirmation with order_id, list of parts ordered, total parts cost, and estimated delivery date.",
+                agent_index=3,
+                context_task_indices=[0, 1, 2],
+            ),
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 Generate the repair authorization and prepare the claim for shared settlement.
@@ -140,26 +128,11 @@ Generate the repair authorization and prepare the claim for shared settlement.
 Pass through the full generate_repair_authorization result so the settlement crew and webhooks receive complete data.
 
 Do not generate the final claim report in this crew; that is handled by the shared settlement crew.""",
-        expected_output="Structured output: payout_amount, authorization_id, claim_id, shop_id, shop_name, shop_phone, authorized_amount, total_estimate, shop_webhook_url.",
-        agent=authorization_agent,
-        context=[assess_damage_task, estimate_task, shop_assignment_task, parts_order_task],
-        output_pydantic=PartialLossWorkflowOutput,
-    )
-
-    return Crew(
-        agents=[
-            damage_assessor,
-            repair_estimator,
-            shop_coordinator,
-            parts_ordering,
-            authorization_agent,
+                expected_output="Structured output: payout_amount, authorization_id, claim_id, shop_id, shop_name, shop_phone, authorized_amount, total_estimate, shop_webhook_url.",
+                agent_index=4,
+                context_task_indices=[0, 1, 2, 3],
+                output_pydantic=PartialLossWorkflowOutput,
+            ),
         ],
-        tasks=[
-            assess_damage_task,
-            estimate_task,
-            shop_assignment_task,
-            parts_order_task,
-            authorization_task,
-        ],
-        verbose=get_crew_verbose(),
+        llm=llm,
     )

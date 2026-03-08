@@ -25,6 +25,142 @@ def _kickoff_with_retry(crew, inputs):
     return _call()
 
 
+# --- Factory unit tests ---
+
+
+def _mock_agent_factory(llm=None, **kwargs):
+    """Minimal agent factory for factory tests."""
+    from crewai import Agent
+
+    return Agent(role="Test", goal="Test", backstory="Test", llm=llm)
+
+
+def test_create_crew_with_agent_kwargs():
+    """create_crew passes agent_kwargs to agent factories."""
+    from crewai import LLM
+    from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
+
+    received_kwargs = {}
+
+    def capturing_factory(llm=None, **kwargs):
+        received_kwargs.clear()
+        received_kwargs.update(kwargs)
+        return _mock_agent_factory(llm=llm)
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_crew(
+        agents_config=[AgentConfig(capturing_factory)],
+        tasks_config=[
+            TaskConfig(
+                description="Do X",
+                expected_output="X done",
+                agent_index=0,
+            ),
+        ],
+        llm=mock_llm,
+        agent_kwargs={"state": "Texas", "claim_type": "total_loss", "use_rag": False},
+    )
+    assert received_kwargs == {"state": "Texas", "claim_type": "total_loss", "use_rag": False}
+    assert len(crew.agents) == 1
+    assert len(crew.tasks) == 1
+
+
+def test_create_crew_with_context_task_indices_and_output_pydantic():
+    """create_crew wires context and output_pydantic correctly."""
+    from crewai import LLM
+    from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
+    from claim_agent.models.workflow_output import TotalLossWorkflowOutput
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_crew(
+        agents_config=[
+            AgentConfig(_mock_agent_factory),
+            AgentConfig(_mock_agent_factory),
+        ],
+        tasks_config=[
+            TaskConfig("Task 1", "Output 1", agent_index=0),
+            TaskConfig(
+                "Task 2",
+                "Output 2",
+                agent_index=1,
+                context_task_indices=[0],
+                output_pydantic=TotalLossWorkflowOutput,
+            ),
+        ],
+        llm=mock_llm,
+    )
+    assert len(crew.tasks) == 2
+    task2 = crew.tasks[1]
+    assert crew.tasks[0] in task2.context
+    assert getattr(task2, "output_pydantic", None) is TotalLossWorkflowOutput
+
+
+def test_create_crew_invalid_agent_index_raises():
+    """create_crew raises ValueError for out-of-range agent_index."""
+    from crewai import LLM
+    from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    with pytest.raises(ValueError, match="agent_index 5 out of range"):
+        create_crew(
+            agents_config=[AgentConfig(_mock_agent_factory)] * 3,
+            tasks_config=[
+                TaskConfig("Task", "Output", agent_index=5),
+            ],
+            llm=mock_llm,
+        )
+
+
+def test_create_crew_invalid_context_task_indices_raises():
+    """create_crew raises ValueError for invalid context_task_indices."""
+    from crewai import LLM
+    from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    with pytest.raises(ValueError, match="invalid context_task_indices"):
+        create_crew(
+            agents_config=[
+                AgentConfig(_mock_agent_factory),
+                AgentConfig(_mock_agent_factory),
+            ],
+            tasks_config=[
+                TaskConfig("Task 1", "Output 1", agent_index=0),
+                TaskConfig(
+                    "Task 2",
+                    "Output 2",
+                    agent_index=1,
+                    context_task_indices=[1],
+                ),
+            ],
+            llm=mock_llm,
+        )
+
+
+def test_create_crew_context_task_indices_negative_raises():
+    """create_crew raises ValueError for negative context_task_indices."""
+    from crewai import LLM
+    from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    with pytest.raises(ValueError, match="invalid context_task_indices"):
+        create_crew(
+            agents_config=[
+                AgentConfig(_mock_agent_factory),
+                AgentConfig(_mock_agent_factory),
+            ],
+            tasks_config=[
+                TaskConfig("Task 1", "Output 1", agent_index=0),
+                TaskConfig(
+                    "Task 2",
+                    "Output 2",
+                    agent_index=1,
+                    context_task_indices=[-1],
+                ),
+            ],
+            llm=mock_llm,
+        )
+
+
 def test_new_claim_crew_acceptance_criteria():
     """Verify New Claim crew structure matches formal specification (Issue #64)."""
     from crewai import LLM

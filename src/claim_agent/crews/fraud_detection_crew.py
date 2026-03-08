@@ -6,37 +6,34 @@ This crew analyzes claims for potential fraud through:
 3. Comprehensive fraud assessment and recommendation
 """
 
-from crewai import Crew, Task
-
 from claim_agent.agents.fraud import (
-    create_pattern_analysis_agent,
     create_cross_reference_agent,
     create_fraud_assessment_agent,
+    create_pattern_analysis_agent,
 )
-from claim_agent.config.llm import get_llm
-from claim_agent.config.settings import get_crew_verbose
+from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
 def create_fraud_detection_crew(llm=None):
     """Create the Fraud Detection crew: pattern analysis -> cross-reference -> assessment.
-    
+
     This crew processes claims flagged for potential fraud and performs:
     - Pattern analysis: Checks for multiple claims, suspicious timing, staged accident indicators
     - Cross-reference: Matches against known fraud indicators database
     - Assessment: Combines results into fraud likelihood score and recommendations
-    
+
     Returns:
         Crew configured for fraud detection workflow.
     """
-    llm = llm or get_llm()
-    
-    pattern_agent = create_pattern_analysis_agent(llm)
-    crossref_agent = create_cross_reference_agent(llm)
-    assessment_agent = create_fraud_assessment_agent(llm)
-
-    # Task 1: Pattern Analysis (claim_data injected so agent can pass it to tools)
-    pattern_task = Task(
-        description="""CLAIM DATA (JSON):
+    return create_crew(
+        agents_config=[
+            AgentConfig(create_pattern_analysis_agent),
+            AgentConfig(create_cross_reference_agent),
+            AgentConfig(create_fraud_assessment_agent),
+        ],
+        tasks_config=[
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 Analyze the claim for suspicious patterns using the claim_data above.
@@ -50,16 +47,14 @@ Steps:
    - Claim frequency anomalies
 
 Output the pattern analysis results including patterns_detected, timing_flags, and risk_factors.""",
-        expected_output=(
-            "Pattern analysis results with patterns_detected list, timing_flags, "
-            "claim_history, risk_factors, and pattern_score."
-        ),
-        agent=pattern_agent,
-    )
-
-    # Task 2: Cross-Reference Fraud Indicators (receives pattern_task output via context)
-    crossref_task = Task(
-        description="""Cross-reference the claim against known fraud indicators using claim_data and the pattern analysis from the previous task.
+                expected_output=(
+                    "Pattern analysis results with patterns_detected list, timing_flags, "
+                    "claim_history, risk_factors, and pattern_score."
+                ),
+                agent_index=0,
+            ),
+            TaskConfig(
+                description="""Cross-reference the claim against known fraud indicators using claim_data and the pattern analysis from the previous task.
 
 Steps:
 1. Use cross_reference_fraud_indicators with the claim_data JSON.
@@ -70,17 +65,15 @@ Steps:
    - Prior fraud flags on this VIN or policy
 
 Combine results and output the cross-reference findings.""",
-        expected_output=(
-            "Cross-reference results with fraud_keywords_found, database_matches, "
-            "risk_level, cross_reference_score, and recommendations."
-        ),
-        agent=crossref_agent,
-        context=[pattern_task],
-    )
-
-    # Task 3: Fraud Assessment
-    assessment_task = Task(
-        description="""Perform comprehensive fraud assessment using pattern analysis and cross-reference results.
+                expected_output=(
+                    "Cross-reference results with fraud_keywords_found, database_matches, "
+                    "risk_level, cross_reference_score, and recommendations."
+                ),
+                agent_index=1,
+                context_task_indices=[0],
+            ),
+            TaskConfig(
+                description="""Perform comprehensive fraud assessment using pattern analysis and cross-reference results.
 
 Steps:
 1. Use perform_fraud_assessment with claim_data and the results from previous tasks.
@@ -96,16 +89,13 @@ Steps:
    - recommended_action, siu_referral, should_block
 
 Output the final fraud assessment report.""",
-        expected_output=(
-            "Formatted fraud assessment report with fraud_likelihood, fraud_score, "
-            "fraud_indicators, recommended_action, siu_referral flag, and should_block flag."
-        ),
-        agent=assessment_agent,
-        context=[pattern_task, crossref_task],
-    )
-
-    return Crew(
-        agents=[pattern_agent, crossref_agent, assessment_agent],
-        tasks=[pattern_task, crossref_task, assessment_task],
-        verbose=get_crew_verbose(),
+                expected_output=(
+                    "Formatted fraud assessment report with fraud_likelihood, fraud_score, "
+                    "fraud_indicators, recommended_action, siu_referral flag, and should_block flag."
+                ),
+                agent_index=2,
+                context_task_indices=[0, 1],
+            ),
+        ],
+        llm=llm,
     )

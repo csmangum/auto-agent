@@ -1,14 +1,11 @@
 """Shared settlement workflow crew."""
 
-from crewai import Crew, Task
-
 from claim_agent.agents.settlement import (
     create_payment_distribution_agent,
     create_settlement_closure_agent,
     create_settlement_documentation_agent,
 )
-from claim_agent.config.llm import get_llm
-from claim_agent.config.settings import get_crew_verbose
+from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
 def create_settlement_crew(
@@ -18,29 +15,15 @@ def create_settlement_crew(
     use_rag: bool = True,
 ):
     """Create the shared settlement crew for payout-ready claims."""
-    llm = llm or get_llm()
-
-    documentation_agent = create_settlement_documentation_agent(
-        llm,
-        state=state,
-        claim_type=claim_type,
-        use_rag=use_rag,
-    )
-    payment_agent = create_payment_distribution_agent(
-        llm,
-        state=state,
-        claim_type=claim_type,
-        use_rag=use_rag,
-    )
-    closure_agent = create_settlement_closure_agent(
-        llm,
-        state=state,
-        claim_type=claim_type,
-        use_rag=use_rag,
-    )
-
-    documentation_task = Task(
-        description="""CLAIM DATA (JSON):
+    return create_crew(
+        agents_config=[
+            AgentConfig(create_settlement_documentation_agent),
+            AgentConfig(create_payment_distribution_agent),
+            AgentConfig(create_settlement_closure_agent),
+        ],
+        tasks_config=[
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 WORKFLOW OUTPUT:
@@ -56,12 +39,11 @@ Claim-type-specific requirements:
 - partial_loss: include repair estimate, assigned shop, authorization reference, and insurance payment summary
 
 Output a structured settlement documentation summary and release agreement notes.""",
-        expected_output="Settlement report summary with claim-type-specific documentation and release notes.",
-        agent=documentation_agent,
-    )
-
-    payment_task = Task(
-        description="""CLAIM DATA (JSON):
+                expected_output="Settlement report summary with claim-type-specific documentation and release notes.",
+                agent_index=0,
+            ),
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 WORKFLOW OUTPUT:
@@ -75,13 +57,12 @@ For partial_loss, derive payment recipients from the repair estimate and authori
 including insured, lienholder, and repair shop when applicable.
 
 Use generate_report if needed to capture the payment breakdown section.""",
-        expected_output="Payment distribution table with recipients, amounts, and ordering rationale.",
-        agent=payment_agent,
-        context=[documentation_task],
-    )
-
-    closure_task = Task(
-        description="""CLAIM DATA (JSON):
+                expected_output="Payment distribution table with recipients, amounts, and ordering rationale.",
+                agent_index=1,
+                context_task_indices=[0],
+            ),
+            TaskConfig(
+                description="""CLAIM DATA (JSON):
 {claim_data}
 
 WORKFLOW OUTPUT:
@@ -93,13 +74,11 @@ and settlement steps, and payout_amount from claim_data when present; otherwise 
 
 Document final status as settled, include next_steps for subrogation, salvage, or regulatory follow-up,
 and confirm the claim is ready for closure.""",
-        expected_output="Final settlement report with status settled and documented next steps.",
-        agent=closure_agent,
-        context=[documentation_task, payment_task],
-    )
-
-    return Crew(
-        agents=[documentation_agent, payment_agent, closure_agent],
-        tasks=[documentation_task, payment_task, closure_task],
-        verbose=get_crew_verbose(),
+                expected_output="Final settlement report with status settled and documented next steps.",
+                agent_index=2,
+                context_task_indices=[0, 1],
+            ),
+        ],
+        llm=llm,
+        agent_kwargs={"state": state, "claim_type": claim_type, "use_rag": use_rag},
     )
