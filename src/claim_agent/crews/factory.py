@@ -45,6 +45,20 @@ def create_crew(
 ) -> Crew:
     llm = llm or get_llm()
     agent_kwargs = agent_kwargs or {}
+
+    n_agents = len(agents_config)
+    for i, cfg in enumerate(tasks_config):
+        if cfg.agent_index < 0 or cfg.agent_index >= n_agents:
+            raise ValueError(
+                f"Task {i}: agent_index {cfg.agent_index} out of range [0, {n_agents})"
+            )
+        for j in cfg.context_task_indices or []:
+            if j < 0 or j >= i:
+                raise ValueError(
+                    f"Task {i}: invalid context_task_indices {cfg.context_task_indices}; "
+                    f"context must reference earlier tasks (indices in [0, {i}))"
+                )
+
     agents = [cfg.factory(llm, **agent_kwargs) for cfg in agents_config]
     tasks = []
     for cfg in tasks_config:
