@@ -17,6 +17,7 @@ from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import (
+    DISPUTABLE_STATUSES,
     STATUS_ARCHIVED,
     STATUS_FAILED,
     STATUS_PENDING,
@@ -24,10 +25,12 @@ from claim_agent.db.constants import (
 )
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type
 from claim_agent.utils.sanitization import sanitize_claim_data
+from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -707,6 +710,75 @@ async def stream_claim_updates(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class DisputeBody(BaseModel):
+    dispute_type: str = Field(..., description="Dispute type: liability_determination, valuation_disagreement, repair_estimate, or deductible_application")
+    dispute_description: str = Field(..., description="Policyholder's description of the dispute")
+    policyholder_evidence: Optional[str] = Field(default=None, description="Optional supporting evidence references")
+
+
+class DisputeResponse(BaseModel):
+    """Response from filing a policyholder dispute."""
+
+    claim_id: str = Field(..., description="Claim ID")
+    dispute_type: str = Field(..., description="Dispute category")
+    resolution_type: str = Field(..., description="auto_resolved or escalated")
+    status: str = Field(..., description="Final claim status after dispute workflow")
+    workflow_output: str = Field(..., description="Raw workflow output from dispute crew")
+    adjusted_amount: Optional[float] = Field(default=None, description="Revised payout if auto-resolved and adjusted")
+    summary: str = Field(..., description="Short summary of the resolution")
+
+
+@router.post("/claims/{claim_id}/dispute", response_model=DisputeResponse)
+async def file_dispute(
+    claim_id: str,
+    body: DisputeBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """File a policyholder dispute on an existing claim.
+
+    Runs the dispute resolution workflow which auto-resolves simple disputes
+    (valuation, repair estimate, deductible) and escalates complex ones
+    (liability) to human adjusters.
+    """
+    claim = ctx.repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    claim_status = claim.get("status")
+    if claim_status not in DISPUTABLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Claim cannot be disputed in status {claim_status!r}. "
+                f"Disputes are allowed only for claims with status: {', '.join(DISPUTABLE_STATUSES)}."
+            ),
+        )
+
+    try:
+        DisputeType(body.dispute_type)
+    except ValueError:
+        valid = [t.value for t in DisputeType]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid dispute_type. Must be one of: {', '.join(valid)}",
+        )
+
+    dispute_data = {
+        "claim_id": claim_id,
+        "dispute_type": body.dispute_type,
+        "dispute_description": body.dispute_description,
+        "policyholder_evidence": body.policyholder_evidence,
+    }
+
+    result = await asyncio.to_thread(
+        run_dispute_workflow,
+        dispute_data,
+        ctx=ctx,
+    )
+    return result
 
 
 @router.post("/claims/{claim_id}/reprocess")

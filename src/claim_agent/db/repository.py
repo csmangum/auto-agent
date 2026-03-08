@@ -212,6 +212,25 @@ class ClaimRepository:
                 (claim_id, claim_type, router_output, workflow_output),
             )
 
+    def get_workflow_runs(
+        self,
+        claim_id: str,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Fetch workflow run records for a claim, most recent first."""
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT claim_type, router_output, workflow_output, created_at
+                FROM workflow_runs
+                WHERE claim_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (claim_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def save_task_checkpoint(
         self,
         claim_id: str,

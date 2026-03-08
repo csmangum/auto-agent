@@ -44,6 +44,10 @@ __all__ = [
     "generate_repair_authorization",
     # Vision tools
     "analyze_damage_photo",
+    # Dispute tools
+    "lookup_original_claim",
+    "classify_dispute",
+    "generate_dispute_report",
     # RAG tools
     "search_policy_compliance",
     "get_compliance_deadlines",
@@ -160,6 +164,19 @@ def __getattr__(name: str):
         from claim_agent.tools.vision_tools import analyze_damage_photo
         setattr(mod, "analyze_damage_photo", analyze_damage_photo)
         return analyze_damage_photo
+    # Dispute tools
+    if name == "lookup_original_claim":
+        from claim_agent.tools.dispute_tools import lookup_original_claim
+        setattr(mod, "lookup_original_claim", lookup_original_claim)
+        return lookup_original_claim
+    if name == "classify_dispute":
+        from claim_agent.tools.dispute_tools import classify_dispute
+        setattr(mod, "classify_dispute", classify_dispute)
+        return classify_dispute
+    if name == "generate_dispute_report":
+        from claim_agent.tools.dispute_tools import generate_dispute_report
+        setattr(mod, "generate_dispute_report", generate_dispute_report)
+        return generate_dispute_report
     # RAG tools
     if name == "search_policy_compliance":
         from claim_agent.tools.rag_tools import search_policy_compliance
