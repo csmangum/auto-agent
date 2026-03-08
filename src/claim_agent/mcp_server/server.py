@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
 
 from claim_agent.context import ClaimContext
+from claim_agent.observability.metrics import get_metrics
 from claim_agent.tools.claims_logic import compute_similarity_impl, search_claims_db_impl
 from claim_agent.tools.compliance_logic import search_california_compliance_impl
 from claim_agent.tools.document_logic import generate_claim_id_impl, generate_report_impl
@@ -121,7 +122,7 @@ def get_claim_metrics(claim_id: str | None = None) -> str:
         - avg_latency_ms: Average latency per call
         - status: Current claim status
     """
-    metrics = _get_ctx().metrics
+    metrics = get_metrics()
 
     if claim_id:
         summary = metrics.get_claim_summary(claim_id)
