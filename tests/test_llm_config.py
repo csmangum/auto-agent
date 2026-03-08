@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from claim_agent.config import reload_settings
+
 
 class TestLLMConfig:
     """Tests for config/llm.py."""
@@ -17,16 +19,17 @@ class TestLLMConfig:
         # Save original value
         original_key = os.environ.get("OPENAI_API_KEY")
         try:
-            # Clear the API key
-            if "OPENAI_API_KEY" in os.environ:
-                del os.environ["OPENAI_API_KEY"]
-            
+            # Clear the API key (set to empty so pydantic-settings loads it)
+            os.environ["OPENAI_API_KEY"] = ""
+            reload_settings()
+
             with pytest.raises(ValueError, match="OPENAI_API_KEY"):
                 get_llm()
         finally:
-            # Restore original value
             if original_key is not None:
                 os.environ["OPENAI_API_KEY"] = original_key
+            elif "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
 
     def test_get_llm_with_api_key(self):
         """Test get_llm returns LLM when API key is set."""
@@ -36,10 +39,9 @@ class TestLLMConfig:
         
         try:
             os.environ["OPENAI_API_KEY"] = "test-api-key"
-            if "OPENAI_API_BASE" in os.environ:
-                del os.environ["OPENAI_API_BASE"]
-            if "OPENAI_MODEL_NAME" in os.environ:
-                del os.environ["OPENAI_MODEL_NAME"]
+            os.environ["OPENAI_API_BASE"] = ""
+            os.environ["OPENAI_MODEL_NAME"] = ""
+            reload_settings()
             
             with patch("crewai.LLM") as mock_llm:
                 mock_llm.return_value = MagicMock()
@@ -48,15 +50,18 @@ class TestLLMConfig:
                 mock_llm.assert_called_once_with(model="gpt-4o-mini", api_key="test-api-key")
                 assert result is not None
         finally:
-            # Restore original values
             if original_key is not None:
                 os.environ["OPENAI_API_KEY"] = original_key
             elif "OPENAI_API_KEY" in os.environ:
                 del os.environ["OPENAI_API_KEY"]
             if original_base is not None:
                 os.environ["OPENAI_API_BASE"] = original_base
+            elif "OPENAI_API_BASE" in os.environ:
+                del os.environ["OPENAI_API_BASE"]
             if original_model is not None:
                 os.environ["OPENAI_MODEL_NAME"] = original_model
+            elif "OPENAI_MODEL_NAME" in os.environ:
+                del os.environ["OPENAI_MODEL_NAME"]
 
     def test_get_llm_with_custom_model(self):
         """Test get_llm uses custom model name from env."""
@@ -67,8 +72,8 @@ class TestLLMConfig:
         try:
             os.environ["OPENAI_API_KEY"] = "test-api-key"
             os.environ["OPENAI_MODEL_NAME"] = "gpt-4-turbo"
-            if "OPENAI_API_BASE" in os.environ:
-                del os.environ["OPENAI_API_BASE"]
+            os.environ["OPENAI_API_BASE"] = ""
+            reload_settings()
             
             with patch("crewai.LLM") as mock_llm:
                 mock_llm.return_value = MagicMock()
@@ -86,6 +91,8 @@ class TestLLMConfig:
                 del os.environ["OPENAI_MODEL_NAME"]
             if original_base is not None:
                 os.environ["OPENAI_API_BASE"] = original_base
+            elif "OPENAI_API_BASE" in os.environ:
+                del os.environ["OPENAI_API_BASE"]
 
     def test_get_llm_with_openrouter(self):
         """Test get_llm configures OpenRouter when base URL is set."""
@@ -97,6 +104,7 @@ class TestLLMConfig:
             os.environ["OPENAI_API_KEY"] = "test-api-key"
             os.environ["OPENAI_API_BASE"] = "https://openrouter.ai/api/v1"
             os.environ["OPENAI_MODEL_NAME"] = "anthropic/claude-3"
+            reload_settings()
             
             with patch("crewai.LLM") as mock_llm:
                 mock_llm.return_value = MagicMock()
