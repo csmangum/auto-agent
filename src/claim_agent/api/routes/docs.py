@@ -54,6 +54,11 @@ _SKILL_GROUPS = {
         "payment_distribution",
         "settlement_closure",
     ],
+    "Subrogation": [
+        "liability_investigator",
+        "demand_specialist",
+        "recovery_tracker",
+    ],
     "Escalation": ["escalation"],
 }
 

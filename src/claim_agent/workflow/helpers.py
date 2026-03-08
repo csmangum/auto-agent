@@ -13,7 +13,7 @@ from claim_agent.models.claim import ClaimType
 from claim_agent.utils.retry import with_llm_retry
 
 
-WORKFLOW_STAGES = ("router", "escalation_check", "workflow", "settlement")
+WORKFLOW_STAGES = ("router", "escalation_check", "workflow", "settlement", "subrogation")
 
 
 def _final_status(claim_type: str) -> str:

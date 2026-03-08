@@ -349,6 +349,33 @@ def test_settlement_crew_acceptance_criteria():
     assert "payout_amount from claim_data when present" in documentation_task.description
 
 
+def test_subrogation_crew_structure():
+    """Verify Subrogation crew structure: 3 agents, 4 tasks, correct tools."""
+    from crewai import LLM
+    from claim_agent.crews.subrogation_crew import create_subrogation_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_subrogation_crew(llm=mock_llm, use_rag=False)
+
+    liability_agent, demand_agent, recovery_agent = crew.agents
+    assert len(crew.tasks) == 4
+    assert len(crew.agents) == 3
+
+    liability_tool_names = [getattr(t, "name", str(t)) for t in (liability_agent.tools or [])]
+    demand_tool_names = [getattr(t, "name", str(t)) for t in (demand_agent.tools or [])]
+    recovery_tool_names = [getattr(t, "name", str(t)) for t in (recovery_agent.tools or [])]
+
+    assert any("assess" in n.lower() and "liability" in n.lower() for n in liability_tool_names)
+    assert any("build" in n.lower() and "subrogation" in n.lower() for n in demand_tool_names)
+    assert any("demand" in n.lower() or "send" in n.lower() for n in demand_tool_names)
+    assert any("record" in n.lower() and "recovery" in n.lower() for n in recovery_tool_names)
+
+    task0, task1, task2, task3 = crew.tasks
+    assert "{claim_data}" in task0.description and "{workflow_output}" in task0.description
+    assert task0 in task1.context
+    assert task1 in task2.context and task2 in task3.context
+
+
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_new_claim_crew_kickoff():
     """Run new claim crew on sample input (requires LLM)."""

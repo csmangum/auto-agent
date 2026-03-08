@@ -56,6 +56,11 @@ __all__ = [
     "get_total_loss_requirements",
     "get_fraud_detection_guidance",
     "get_repair_standards",
+    # Subrogation tools
+    "assess_liability",
+    "build_subrogation_case",
+    "send_demand_letter",
+    "record_recovery",
 ]
 
 
@@ -206,4 +211,21 @@ def __getattr__(name: str):
         from claim_agent.tools.rag_tools import get_repair_standards
         setattr(mod, "get_repair_standards", get_repair_standards)
         return get_repair_standards
+    # Subrogation tools
+    if name == "assess_liability":
+        from claim_agent.tools.subrogation_tools import assess_liability
+        setattr(mod, "assess_liability", assess_liability)
+        return assess_liability
+    if name == "build_subrogation_case":
+        from claim_agent.tools.subrogation_tools import build_subrogation_case
+        setattr(mod, "build_subrogation_case", build_subrogation_case)
+        return build_subrogation_case
+    if name == "send_demand_letter":
+        from claim_agent.tools.subrogation_tools import send_demand_letter
+        setattr(mod, "send_demand_letter", send_demand_letter)
+        return send_demand_letter
+    if name == "record_recovery":
+        from claim_agent.tools.subrogation_tools import record_recovery
+        setattr(mod, "record_recovery", record_recovery)
+        return record_recovery
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

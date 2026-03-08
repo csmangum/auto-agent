@@ -416,12 +416,13 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 7
+        assert len(crews) == 8
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names
         assert "Fraud Detection Crew" in crew_names
         assert "Settlement Crew" in crew_names
+        assert "Subrogation Crew" in crew_names
         # Check agents within a crew
         router_crew = next(c for c in crews if c["name"] == "Router Crew")
         assert len(router_crew["agents"]) == 1

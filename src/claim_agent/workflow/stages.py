@@ -17,6 +17,7 @@ from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
+from claim_agent.crews.subrogation_crew import create_subrogation_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
@@ -427,5 +428,76 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
     ctx.context.repo.save_task_checkpoint(
         ctx.claim_id, ctx.workflow_run_id, "settlement",
         json.dumps({"settlement_output": settlement_output}),
+    )
+    return None
+
+
+def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the subrogation crew after settlement when required by claim type.
+
+    Populates ``ctx.workflow_output`` with the combined subrogation output.
+    """
+    if not _requires_settlement(ctx.claim_type):
+        return None
+
+    if "subrogation" in ctx.checkpoints:
+        try:
+            sub_cp = json.loads(ctx.checkpoints["subrogation"])
+            if not isinstance(sub_cp, dict):
+                raise ValueError("subrogation checkpoint is not a JSON object")
+            subrogation_output = sub_cp["subrogation_output"]
+            ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, subrogation_output)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to restore subrogation from checkpoint; invalidating and re-running stage: %s",
+                exc,
+                extra={"claim_id": ctx.claim_id},
+            )
+            ctx.checkpoints.pop("subrogation", None)
+        else:
+            logger.info("Restored subrogation from checkpoint", extra={"claim_id": ctx.claim_id})
+            return None
+
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    logger.log_event("crew_started", crew="subrogation")
+    subrogation_start = time.time()
+
+    subrogation_crew = create_subrogation_crew(ctx.context.llm)
+    subrogation_inputs = {
+        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
+        "workflow_output": ctx.workflow_output,
+    }
+
+    try:
+        subrogation_result = _kickoff_with_retry(subrogation_crew, subrogation_inputs)
+    except MidWorkflowEscalation as e:
+        return _handle_mid_workflow_escalation(
+            e,
+            claim_id=ctx.claim_id,
+            claim_type=ctx.claim_type,
+            raw_output=ctx.raw_output,
+            context=ctx.context,
+            workflow_logger=logger,
+            workflow_start_time=ctx.workflow_start_time,
+            prior_workflow_output=ctx.workflow_output,
+            actor_id=ctx.actor_id,
+            stage="subrogation",
+            payout_amount=ctx.extracted_payout,
+            workflow_run_id=ctx.workflow_run_id,
+        )
+
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    subrogation_latency = (time.time() - subrogation_start) * 1000
+    subrogation_output = str(
+        getattr(subrogation_result, "raw", None)
+        or getattr(subrogation_result, "output", None)
+        or str(subrogation_result)
+    )
+    logger.log_event("crew_completed", crew="subrogation", latency_ms=subrogation_latency)
+    ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, subrogation_output)
+
+    ctx.context.repo.save_task_checkpoint(
+        ctx.claim_id, ctx.workflow_run_id, "subrogation",
+        json.dumps({"subrogation_output": subrogation_output}),
     )
     return None

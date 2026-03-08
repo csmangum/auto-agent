@@ -13,6 +13,7 @@ from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 from claim_agent.crews.escalation_crew import create_escalation_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
+from claim_agent.crews.subrogation_crew import create_subrogation_crew
 
 __all__ = [
     "AgentConfig",
@@ -28,4 +29,5 @@ __all__ = [
     "create_partial_loss_crew",
     "create_escalation_crew",
     "create_settlement_crew",
+    "create_subrogation_crew",
 ]

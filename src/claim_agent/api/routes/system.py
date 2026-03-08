@@ -209,6 +209,31 @@ _CREWS_CATALOG = [
             },
         ],
     },
+    {
+        "name": "Subrogation Crew",
+        "description": "Recovers payments from at-fault parties after settlement. Assess fault, build case, send demand, track recovery.",
+        "module": "crews/subrogation_crew.py",
+        "agents": [
+            {
+                "name": "Liability Investigator",
+                "skill": "liability_investigator",
+                "tools": ["assess_liability", "escalate_claim", "get_compliance_deadlines", "search_policy_compliance"],
+                "description": "Assesses fault from incident description for subrogation eligibility",
+            },
+            {
+                "name": "Demand Specialist",
+                "skill": "demand_specialist",
+                "tools": ["build_subrogation_case", "send_demand_letter", "generate_report", "escalate_claim", "get_compliance_deadlines", "search_policy_compliance"],
+                "description": "Builds recovery case and sends demand letter to at-fault party",
+            },
+            {
+                "name": "Recovery Tracker",
+                "skill": "recovery_tracker",
+                "tools": ["record_recovery", "generate_report", "escalate_claim", "get_compliance_deadlines", "search_policy_compliance"],
+                "description": "Tracks recovery status and records next steps",
+            },
+        ],
+    },
 ]
 
 
