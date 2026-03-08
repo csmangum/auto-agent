@@ -413,7 +413,7 @@ def test_parse_router_output_pydantic_from_tasks_output():
 
 def test_normalize_claim_type():
     """normalize_claim_type maps variants to canonical values."""
-    from claim_agent.tools.logic import normalize_claim_type
+    from claim_agent.tools.escalation_logic import normalize_claim_type
 
     assert normalize_claim_type("total_loss") == "total_loss"
     assert normalize_claim_type("total loss") == "total_loss"

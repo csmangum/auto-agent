@@ -23,7 +23,7 @@ from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
 from claim_agent.observability import get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
-from claim_agent.tools.logic import (
+from claim_agent.tools.escalation_logic import (
     evaluate_escalation_impl,
     normalize_claim_type,
     validate_router_classification_impl,

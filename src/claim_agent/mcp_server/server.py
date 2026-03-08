@@ -8,16 +8,14 @@ from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
-from claim_agent.tools.logic import (
-    query_policy_db_impl,
-    search_claims_db_impl,
-    compute_similarity_impl,
-    fetch_vehicle_value_impl,
-    evaluate_damage_impl,
+from claim_agent.tools.claims_logic import compute_similarity_impl, search_claims_db_impl
+from claim_agent.tools.compliance_logic import search_california_compliance_impl
+from claim_agent.tools.document_logic import generate_claim_id_impl, generate_report_impl
+from claim_agent.tools.policy_logic import query_policy_db_impl
+from claim_agent.tools.valuation_logic import (
     calculate_payout_impl,
-    generate_report_impl,
-    generate_claim_id_impl,
-    search_california_compliance_impl,
+    evaluate_damage_impl,
+    fetch_vehicle_value_impl,
 )
 from claim_agent.observability import get_metrics
 

@@ -2,7 +2,7 @@
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import search_california_compliance_impl
+from claim_agent.tools.compliance_logic import search_california_compliance_impl
 
 
 @tool("Search California Auto Compliance")

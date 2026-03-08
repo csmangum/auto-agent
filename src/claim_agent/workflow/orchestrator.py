@@ -26,7 +26,7 @@ from claim_agent.models.claim import ClaimInput
 from claim_agent.observability import claim_context, get_logger, get_metrics
 from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.observability.tracing import LiteLLMTracingCallback
-from claim_agent.tools.logic import detect_fraud_indicators_impl
+from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
 from claim_agent.utils.sanitization import sanitize_claim_data
 from claim_agent.workflow.budget import _record_crew_llm_usage
 from claim_agent.workflow.claim_analysis import (
@@ -231,7 +231,7 @@ def run_claim_workflow(
             existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id)
             similarity_score_for_escalation = None
             if existing_claims:
-                from claim_agent.tools.logic import compute_similarity_score_impl
+                from claim_agent.tools.claims_logic import compute_similarity_score_impl
                 current_incident = claim_data.get("incident_description", "") or ""
                 current_damage = claim_data.get("damage_description", "") or ""
                 current_combined = f"{current_incident} {current_damage}"

@@ -28,7 +28,7 @@ def _temp_claims_db(tmp_path, monkeypatch):
 
 def test_escalation_high_value_triggers():
     """High-value claim (estimated_damage >= threshold) triggers escalation."""
-    from claim_agent.tools.logic import evaluate_escalation_impl
+    from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
     claim_data = {
         "policy_number": "POL-001",
@@ -51,7 +51,7 @@ def test_escalation_high_value_triggers():
 
 def test_escalation_low_confidence_triggers():
     """Low-confidence routing (uncertainty language in router output) triggers escalation."""
-    from claim_agent.tools.logic import evaluate_escalation_impl
+    from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
     # Use descriptions with enough word overlap to avoid fraud "incident_damage_description_mismatch"
     claim_data = {
@@ -75,7 +75,7 @@ def test_escalation_low_confidence_triggers():
 
 def test_escalation_fraud_indicators_triggers():
     """Fraud-related keywords in description trigger fraud_suspected escalation."""
-    from claim_agent.tools.logic import evaluate_escalation_impl
+    from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
     claim_data = {
         "policy_number": "POL-001",
@@ -98,7 +98,7 @@ def test_escalation_fraud_indicators_triggers():
 
 def test_escalation_ambiguous_similarity_triggers():
     """Similarity score in ambiguous range (50-80%) triggers escalation."""
-    from claim_agent.tools.logic import evaluate_escalation_impl
+    from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
     claim_data = {
         "policy_number": "POL-001",
@@ -120,7 +120,7 @@ def test_escalation_ambiguous_similarity_triggers():
 
 def test_escalation_priority_multiple_reasons():
     """Multiple escalation reasons yield higher priority."""
-    from claim_agent.tools.logic import compute_escalation_priority_impl
+    from claim_agent.tools.escalation_logic import compute_escalation_priority_impl
 
     # 1 reason -> low
     r = json.loads(compute_escalation_priority_impl(["high_value"], []))
@@ -145,7 +145,7 @@ def test_escalation_priority_multiple_reasons():
 
 def test_escalation_normal_claim_no_escalation():
     """Normal claim (low value, clear routing, no fraud) does not escalate."""
-    from claim_agent.tools.logic import evaluate_escalation_impl
+    from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
     # Unique VIN so no multiple_claims_same_vin; shared words so no incident_damage_description_mismatch
     claim_data = {
@@ -170,7 +170,7 @@ def test_escalation_normal_claim_no_escalation():
 
 def test_detect_fraud_indicators_keywords():
     """detect_fraud_indicators returns indicators for fraud-related keywords."""
-    from claim_agent.tools.logic import detect_fraud_indicators_impl
+    from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
 
     claim_data = {
         "incident_description": "Staged accident with multiple occupants.",
@@ -187,7 +187,7 @@ def test_detect_fraud_indicators_keywords():
 def test_detect_fraud_indicators_accepts_date_object():
     """detect_fraud_indicators handles date-typed incident_date."""
     from datetime import date
-    from claim_agent.tools.logic import detect_fraud_indicators_impl
+    from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
 
     claim_data = {
         "incident_description": "Minor bump in parking lot.",
@@ -203,7 +203,7 @@ def test_detect_fraud_indicators_accepts_date_object():
 def test_detect_fraud_indicators_accepts_datetime_object():
     """detect_fraud_indicators handles datetime-typed incident_date."""
     from datetime import datetime
-    from claim_agent.tools.logic import detect_fraud_indicators_impl
+    from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
 
     claim_data = {
         "incident_description": "Minor bump in parking lot.",
@@ -218,7 +218,7 @@ def test_detect_fraud_indicators_accepts_datetime_object():
 
 def test_parse_router_confidence():
     """Router confidence decreases with uncertainty language."""
-    from claim_agent.tools.logic import _parse_router_confidence
+    from claim_agent.tools.escalation_logic import _parse_router_confidence
 
     high = _parse_router_confidence("new\nFirst-time submission.")
     assert high >= 0.9
@@ -229,7 +229,7 @@ def test_parse_router_confidence():
 
 def test_escalation_output_structure():
     """evaluate_escalation_impl returns expected keys."""
-    from claim_agent.tools.logic import evaluate_escalation_impl
+    from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
     claim_data = {
         "policy_number": "POL-001",
@@ -253,7 +253,7 @@ def test_escalation_output_structure():
 
 def test_extract_json_handles_braces_in_reasoning():
     """_extract_json_from_text handles JSON with braces in string values (e.g. reasoning)."""
-    from claim_agent.tools.logic import _extract_json_from_text
+    from claim_agent.tools.escalation_logic import _extract_json_from_text
 
     text = 'Here is the result: {"claim_type": "partial_loss", "confidence": 0.9, "reasoning": "Damage is {severe}."}'
     parsed = _extract_json_from_text(text)
@@ -265,7 +265,7 @@ def test_extract_json_handles_braces_in_reasoning():
 
 def test_evaluate_escalation_uses_explicit_router_confidence():
     """When router_confidence is passed, it overrides keyword inference."""
-    from claim_agent.tools.logic import evaluate_escalation_impl
+    from claim_agent.tools.escalation_logic import evaluate_escalation_impl
 
     claim_data = {
         "policy_number": "POL-001",
@@ -601,7 +601,7 @@ def test_escalate_claim_impl_updates_db(_temp_claims_db):
     """escalate_claim_impl sets status to needs_review and persists escalation details."""
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
-    from claim_agent.tools.logic import escalate_claim_impl
+    from claim_agent.tools.escalation_logic import escalate_claim_impl
     from claim_agent.db.constants import STATUS_NEEDS_REVIEW
     from datetime import date
 
@@ -672,7 +672,7 @@ def test_escalate_claim_tool_raises_mid_workflow_escalation(_temp_claims_db):
 
 def test_escalate_claim_impl_raises_for_missing_claim_id():
     """escalate_claim_impl raises ValueError when claim_id is empty."""
-    from claim_agent.tools.logic import escalate_claim_impl
+    from claim_agent.tools.escalation_logic import escalate_claim_impl
 
     with pytest.raises(ValueError, match="claim_id is required"):
         escalate_claim_impl(claim_id="", reason="test", indicators=[], priority="low")
@@ -683,7 +683,7 @@ def test_escalate_claim_impl_raises_for_missing_claim_id():
 
 def test_escalate_claim_impl_raises_for_missing_reason():
     """escalate_claim_impl raises ValueError when reason is empty."""
-    from claim_agent.tools.logic import escalate_claim_impl
+    from claim_agent.tools.escalation_logic import escalate_claim_impl
 
     with pytest.raises(ValueError, match="reason is required"):
         escalate_claim_impl(claim_id="CLM-12345678", reason="", indicators=[], priority="low")
@@ -691,7 +691,7 @@ def test_escalate_claim_impl_raises_for_missing_reason():
 
 def test_escalate_claim_impl_raises_for_invalid_indicators():
     """escalate_claim_impl raises ValueError when indicators is not a list or tuple."""
-    from claim_agent.tools.logic import escalate_claim_impl
+    from claim_agent.tools.escalation_logic import escalate_claim_impl
 
     with pytest.raises(ValueError, match="indicators must be a list or tuple"):
         escalate_claim_impl(
@@ -709,7 +709,7 @@ def test_main_crew_handles_mid_workflow_escalation(_temp_claims_db):
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.constants import STATUS_NEEDS_REVIEW
     from claim_agent.exceptions import MidWorkflowEscalation
-    from claim_agent.tools.logic import escalate_claim_impl
+    from claim_agent.tools.escalation_logic import escalate_claim_impl
 
     claim_data = {
         "policy_number": "POL-001",
@@ -778,7 +778,7 @@ def test_settlement_crew_handles_mid_workflow_escalation(_temp_claims_db):
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.constants import STATUS_NEEDS_REVIEW
     from claim_agent.exceptions import MidWorkflowEscalation
-    from claim_agent.tools.logic import escalate_claim_impl
+    from claim_agent.tools.escalation_logic import escalate_claim_impl
 
     claim_data = {
         "policy_number": "POL-002",

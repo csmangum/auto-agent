@@ -101,7 +101,7 @@ def test_has_repairable_damage_keywords_false_when_no_repairable_keywords():
 # --- Economic total loss (_check_economic_total_loss) ---
 
 
-@patch("claim_agent.tools.logic.fetch_vehicle_value_impl")
+@patch("claim_agent.tools.valuation_logic.fetch_vehicle_value_impl")
 def test_check_economic_total_loss_strictly_cost_based_no_damage_keyword_override(mock_fetch):
     """is_economic_total_loss is True only when cost >= threshold; damage keywords do not set it True."""
     from claim_agent.crews.main_crew import _check_economic_total_loss
@@ -123,7 +123,7 @@ def test_check_economic_total_loss_strictly_cost_based_no_damage_keyword_overrid
     assert out["is_catastrophic_event"] is False
 
 
-@patch("claim_agent.tools.logic.fetch_vehicle_value_impl")
+@patch("claim_agent.tools.valuation_logic.fetch_vehicle_value_impl")
 def test_check_economic_total_loss_true_when_cost_exceeds_threshold(mock_fetch):
     """is_economic_total_loss True when estimated_damage >= 75% of vehicle value."""
     from claim_agent.crews.main_crew import _check_economic_total_loss
@@ -144,7 +144,7 @@ def test_check_economic_total_loss_true_when_cost_exceeds_threshold(mock_fetch):
     assert out["damage_to_value_ratio"] == 0.8
 
 
-@patch("claim_agent.tools.logic.fetch_vehicle_value_impl")
+@patch("claim_agent.tools.valuation_logic.fetch_vehicle_value_impl")
 def test_check_economic_total_loss_repairable_parts_high_cost_ratio_below_100(mock_fetch):
     """When damage is repairable-only and ratio < 100%, is_economic_total_loss is False."""
     from claim_agent.crews.main_crew import _check_economic_total_loss
@@ -166,7 +166,7 @@ def test_check_economic_total_loss_repairable_parts_high_cost_ratio_below_100(mo
     assert out["is_economic_total_loss"] is False
 
 
-@patch("claim_agent.tools.logic.fetch_vehicle_value_impl")
+@patch("claim_agent.tools.valuation_logic.fetch_vehicle_value_impl")
 def test_check_economic_total_loss_repairable_parts_ratio_100_or_more_still_true(mock_fetch):
     """When cost >= 100% of value, is_economic_total_loss True even if damage is repairable-only."""
     from claim_agent.crews.main_crew import _check_economic_total_loss

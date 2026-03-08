@@ -2,7 +2,7 @@
 
 from crewai.tools import tool
 
-from claim_agent.tools.logic import query_policy_db_impl
+from claim_agent.tools.policy_logic import query_policy_db_impl
 
 
 @tool("Query Policy Database")
