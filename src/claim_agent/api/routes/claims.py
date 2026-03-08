@@ -500,7 +500,7 @@ async def _process_claim_with_attachments(
     files: Optional[list[UploadFile]],
     actor_id: str,
     *,
-    ctx: ClaimContext | None = None,
+    ctx: ClaimContext,
 ) -> tuple[str, dict]:
     """Shared helper for claim creation and attachment handling.
 
@@ -524,7 +524,7 @@ async def _process_claim_with_attachments(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
 
-    repo = ctx.repo if ctx else ClaimContext.from_defaults(db_path=get_db_path()).repo
+    repo = ctx.repo
 
     # Validate and buffer all file uploads BEFORE creating the claim record so
     # that a bad upload (oversized or empty) does not leave a dangling claim row.
