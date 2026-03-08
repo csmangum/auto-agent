@@ -106,9 +106,9 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
         print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
         sys.exit(1)
 
+    from claim_agent.context import ClaimContext
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import Attachment
     from claim_agent.storage import get_storage_adapter
     from claim_agent.storage.local import LocalStorageAdapter
@@ -116,7 +116,8 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
 
     sanitized = sanitize_claim_data(claim_data)
     claim_input = ClaimInput.model_validate(sanitized)
-    repo = ClaimRepository(db_path=get_db_path())
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    repo = ctx.repo
     claim_id = repo.create_claim(claim_input)
 
     all_attachments = list(claim_input.attachments)
@@ -158,7 +159,7 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
         "attachments": attachments_for_workflow,
     }
     try:
-        result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id)
+        result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id, ctx=ctx)
         print(json.dumps(result, indent=2))
     except Exception as e:
         print(f"Error: Claim processing failed: {e}", file=sys.stderr)
@@ -167,11 +168,11 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
 
 def cmd_status(claim_id: str) -> None:
     """Print claim status."""
+    from claim_agent.context import ClaimContext
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(claim_id)
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
@@ -180,24 +181,24 @@ def cmd_status(claim_id: str) -> None:
 
 def cmd_history(claim_id: str) -> None:
     """Print claim audit log."""
+    from claim_agent.context import ClaimContext
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(claim_id)
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
-    history = repo.get_claim_history(claim_id)
+    history = ctx.repo.get_claim_history(claim_id)
     print(json.dumps(history, indent=2))
 
 
 def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
     """Re-run workflow for an existing claim, optionally resuming from a stage."""
+    from claim_agent.context import ClaimContext
     from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
     from claim_agent.db.claim_data import claim_data_from_row
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
 
     if from_stage is not None and from_stage not in WORKFLOW_STAGES:
@@ -207,8 +208,8 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
         )
         sys.exit(1)
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(claim_id)
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
@@ -222,7 +223,7 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
 
     resume_run_id: str | None = None
     if from_stage is not None:
-        resume_run_id = repo.get_latest_checkpointed_run_id(claim_id)
+        resume_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
         if resume_run_id is None:
             print(
                 f"Warning: No prior checkpoints for {claim_id}; running full workflow.",
@@ -236,6 +237,7 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
             existing_claim_id=claim_id,
             resume_run_id=resume_run_id,
             from_stage=from_stage,
+            ctx=ctx,
         )
         print(json.dumps(result, indent=2))
     except ValueError as e:
@@ -245,11 +247,11 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
 
 def cmd_review_queue(assignee: str | None = None, priority: str | None = None) -> None:
     """List claims needing review."""
+    from claim_agent.context import ClaimContext
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claims, total = repo.list_claims_needing_review(
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    claims, total = ctx.repo.list_claims_needing_review(
         assignee=assignee,
         priority=priority,
     )
@@ -258,16 +260,16 @@ def cmd_review_queue(assignee: str | None = None, priority: str | None = None) -
 
 def cmd_assign(claim_id: str, assignee: str) -> None:
     """Assign claim to adjuster."""
+    from claim_agent.context import ClaimContext
     from claim_agent.db.audit_events import ACTOR_WORKFLOW
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
     try:
-        repo.assign_claim(claim_id, assignee, actor_id=ACTOR_WORKFLOW)
+        ctx.repo.assign_claim(claim_id, assignee, actor_id=ACTOR_WORKFLOW)
         print(json.dumps({"claim_id": claim_id, "assignee": assignee}, indent=2))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -276,15 +278,15 @@ def cmd_assign(claim_id: str, assignee: str) -> None:
 
 def cmd_approve(claim_id: str) -> None:
     """Approve claim and re-run workflow."""
+    from claim_agent.context import ClaimContext
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.audit_events import ACTOR_WORKFLOW
     from claim_agent.db.claim_data import claim_data_from_row
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(claim_id)
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
@@ -296,11 +298,12 @@ def cmd_approve(claim_id: str) -> None:
         print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
         sys.exit(1)
     try:
-        repo.perform_adjuster_action(claim_id, "approve", actor_id=ACTOR_WORKFLOW)
+        ctx.repo.perform_adjuster_action(claim_id, "approve", actor_id=ACTOR_WORKFLOW)
         result = run_claim_workflow(
             claim_data,
             existing_claim_id=claim_id,
             actor_id=ACTOR_WORKFLOW,
+            ctx=ctx,
         )
         print(json.dumps(result, indent=2))
     except (ValueError, Exception) as e:
@@ -310,16 +313,16 @@ def cmd_approve(claim_id: str) -> None:
 
 def cmd_reject(claim_id: str, reason: str = "") -> None:
     """Reject claim."""
+    from claim_agent.context import ClaimContext
     from claim_agent.db.audit_events import ACTOR_WORKFLOW
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
     try:
-        repo.perform_adjuster_action(claim_id, "reject", actor_id=ACTOR_WORKFLOW, reason=reason)
+        ctx.repo.perform_adjuster_action(claim_id, "reject", actor_id=ACTOR_WORKFLOW, reason=reason)
         print(json.dumps({"claim_id": claim_id, "status": "denied"}, indent=2))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -328,16 +331,16 @@ def cmd_reject(claim_id: str, reason: str = "") -> None:
 
 def cmd_request_info(claim_id: str, note: str = "") -> None:
     """Request more information from claimant."""
+    from claim_agent.context import ClaimContext
     from claim_agent.db.audit_events import ACTOR_WORKFLOW
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
     try:
-        repo.perform_adjuster_action(claim_id, "request_info", actor_id=ACTOR_WORKFLOW, note=note)
+        ctx.repo.perform_adjuster_action(claim_id, "request_info", actor_id=ACTOR_WORKFLOW, note=note)
         print(json.dumps({"claim_id": claim_id, "status": "pending_info"}, indent=2))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -346,16 +349,16 @@ def cmd_request_info(claim_id: str, note: str = "") -> None:
 
 def cmd_escalate_siu(claim_id: str) -> None:
     """Escalate claim to SIU."""
+    from claim_agent.context import ClaimContext
     from claim_agent.db.audit_events import ACTOR_WORKFLOW
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
         sys.exit(1)
     try:
-        repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=ACTOR_WORKFLOW)
+        ctx.repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=ACTOR_WORKFLOW)
         print(json.dumps({"claim_id": claim_id, "status": "under_investigation"}, indent=2))
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -365,11 +368,12 @@ def cmd_escalate_siu(claim_id: str) -> None:
 def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> None:
     """Archive claims older than retention period. Logs actions to audit."""
     from claim_agent.config.settings import get_retention_period_years
+    from claim_agent.context import ClaimContext
     from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
 
     retention_years = years if years is not None else get_retention_period_years()
-    repo = ClaimRepository(db_path=get_db_path())
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    repo = ctx.repo
     claims = repo.list_claims_for_retention(retention_years)
 
     if dry_run:

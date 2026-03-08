@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from claim_agent.config.settings import get_router_config
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
@@ -79,7 +79,7 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
     logger.log_event("router_started", step="classification")
     router_start = time.time()
 
-    router_crew = create_router_crew(ctx.llm)
+    router_crew = create_router_crew(ctx.context.llm)
     result = _kickoff_with_retry(router_crew, ctx.inputs)
 
     router_latency = (time.time() - router_start) * 1000
@@ -98,7 +98,7 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
         latency_ms=router_latency,
     )
 
-    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
 
     router_config = get_router_config()
     confidence_threshold = router_config["confidence_threshold"]
@@ -112,7 +112,7 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
                     ctx.claim_type,
                     ctx.router_confidence,
                     ctx.router_reasoning,
-                    metrics=ctx.metrics,
+                    metrics=ctx.context.metrics,
                     claim_id=ctx.claim_id,
                 )
                 val_data = json.loads(val_json)
@@ -139,12 +139,12 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
                         "original_router_output": original_router_output,
                         "validation": val_data,
                     })
-                    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+                    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
                 else:
                     _escalate_low_router_confidence(
                         ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
                         confidence_threshold, ctx.router_reasoning,
-                        ctx.repo, logger, ctx.metrics, ctx.llm, ctx.workflow_start_time,
+                        ctx.context, logger, ctx.workflow_start_time,
                         ctx.actor_id,
                     )
                     return _escalate_low_router_confidence_response(
@@ -156,7 +156,7 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
                 _escalate_low_router_confidence(
                     ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
                     confidence_threshold, ctx.router_reasoning,
-                    ctx.repo, logger, ctx.metrics, ctx.llm, ctx.workflow_start_time,
+                    ctx.context, logger, ctx.workflow_start_time,
                     ctx.actor_id,
                 )
                 return _escalate_low_router_confidence_response(
@@ -167,7 +167,7 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
             _escalate_low_router_confidence(
                 ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
                 confidence_threshold, ctx.router_reasoning,
-                ctx.repo, logger, ctx.metrics, ctx.llm, ctx.workflow_start_time,
+                ctx.context, logger, ctx.workflow_start_time,
                 ctx.actor_id,
             )
             return _escalate_low_router_confidence_response(
@@ -175,7 +175,7 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
                 confidence_threshold, router_reasoning=ctx.router_reasoning,
             )
 
-    ctx.repo.save_task_checkpoint(
+    ctx.context.repo.save_task_checkpoint(
         ctx.claim_id, ctx.workflow_run_id, "router",
         json.dumps({
             "claim_type": ctx.claim_type,
@@ -225,19 +225,19 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 "recommended_action": recommended_action,
                 "fraud_indicators": fraud_indicators,
             })
-            ctx.repo.save_workflow_result(ctx.claim_id, ctx.claim_type, ctx.raw_output, details)
+            ctx.context.repo.save_workflow_result(ctx.claim_id, ctx.claim_type, ctx.raw_output, details)
             # Avoid overwriting review metadata / creating duplicate status-change events
             # when a resumed/retried workflow still results in needs_review.
-            current_claim = ctx.repo.get_claim(ctx.claim_id)
+            current_claim = ctx.context.repo.get_claim(ctx.claim_id)
             current_status = current_claim.get("status") if current_claim else None
             if current_status != STATUS_NEEDS_REVIEW:
-                ctx.repo.update_claim_status(
+                ctx.context.repo.update_claim_status(
                     ctx.claim_id, STATUS_NEEDS_REVIEW, claim_type=ctx.claim_type,
                     details=details, actor_id=ctx.actor_id,
                 )
                 hours = _sla_hours_for_priority(priority)
                 due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
-                ctx.repo.update_claim_review_metadata(
+                ctx.context.repo.update_claim_review_metadata(
                     ctx.claim_id, priority=priority, due_at=due_at,
                     review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 )
@@ -247,12 +247,12 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 "claim_escalated", reasons=reasons, priority=priority,
                 duration_ms=workflow_duration,
             )
-            _record_crew_llm_usage(claim_id=ctx.claim_id, llm=ctx.llm, metrics=ctx.metrics)
-            ctx.metrics.end_claim(ctx.claim_id, status="escalated")
+            _record_crew_llm_usage(claim_id=ctx.claim_id, llm=ctx.context.llm, metrics=ctx.context.metrics)
+            ctx.context.metrics.end_claim(ctx.claim_id, status="escalated")
             record_claim_outcome(
                 ctx.claim_id, "escalated", (time.time() - ctx.workflow_start_time)
             )
-            ctx.metrics.log_claim_summary(ctx.claim_id)
+            ctx.context.metrics.log_claim_summary(ctx.claim_id)
 
             return {
                 **escalation_output.model_dump(),
@@ -264,7 +264,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 "summary": f"Escalated for review: {', '.join(reasons)}",
             }
 
-    ctx.repo.save_task_checkpoint(ctx.claim_id, ctx.workflow_run_id, "escalation_check", "{}")
+    ctx.context.repo.save_task_checkpoint(ctx.claim_id, ctx.workflow_run_id, "escalation_check", "{}")
     return None
 
 
@@ -297,20 +297,20 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             logger.info("Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": ctx.claim_id})
             return None
 
-    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     logger.log_event("crew_started", crew=ctx.claim_type)
     crew_start = time.time()
 
     if ctx.claim_type == ClaimType.NEW.value:
-        crew = create_new_claim_crew(ctx.llm)
+        crew = create_new_claim_crew(ctx.context.llm)
     elif ctx.claim_type == ClaimType.DUPLICATE.value:
-        crew = create_duplicate_crew(ctx.llm)
+        crew = create_duplicate_crew(ctx.context.llm)
     elif ctx.claim_type == ClaimType.FRAUD.value:
-        crew = create_fraud_detection_crew(ctx.llm)
+        crew = create_fraud_detection_crew(ctx.context.llm)
     elif ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
-        crew = create_partial_loss_crew(ctx.llm)
+        crew = create_partial_loss_crew(ctx.context.llm)
     else:
-        crew = create_total_loss_crew(ctx.llm)
+        crew = create_total_loss_crew(ctx.context.llm)
 
     crew_inputs = {
         "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
@@ -324,15 +324,13 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             claim_id=ctx.claim_id,
             claim_type=ctx.claim_type,
             raw_output=ctx.raw_output,
-            repo=ctx.repo,
-            logger=logger,
-            metrics=ctx.metrics,
-            llm=ctx.llm,
+            context=ctx.context,
+            workflow_logger=logger,
             workflow_start_time=ctx.workflow_start_time,
             workflow_run_id=ctx.workflow_run_id,
         )
 
-    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     crew_latency = (time.time() - crew_start) * 1000
 
     ctx.workflow_output = str(
@@ -350,7 +348,7 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     if ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
         dispatch_repair_authorized_from_workflow_output(ctx.workflow_output, log=logger)
 
-    ctx.repo.save_task_checkpoint(
+    ctx.context.repo.save_task_checkpoint(
         ctx.claim_id, ctx.workflow_run_id, workflow_stage_key,
         json.dumps({
             "workflow_output": ctx.workflow_output,
@@ -387,11 +385,11 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
             logger.info("Restored settlement from checkpoint", extra={"claim_id": ctx.claim_id})
             return None
 
-    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     logger.log_event("crew_started", crew="settlement")
     settlement_start = time.time()
 
-    settlement_crew = create_settlement_crew(ctx.llm, claim_type=ctx.claim_type)
+    settlement_crew = create_settlement_crew(ctx.context.llm, claim_type=ctx.claim_type)
     settlement_inputs = {
         "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
         "workflow_output": ctx.workflow_output,
@@ -405,10 +403,8 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
             claim_id=ctx.claim_id,
             claim_type=ctx.claim_type,
             raw_output=ctx.raw_output,
-            repo=ctx.repo,
-            logger=logger,
-            metrics=ctx.metrics,
-            llm=ctx.llm,
+            context=ctx.context,
+            workflow_logger=logger,
             workflow_start_time=ctx.workflow_start_time,
             prior_workflow_output=ctx.workflow_output,
             actor_id=ctx.actor_id,
@@ -417,7 +413,7 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
             workflow_run_id=ctx.workflow_run_id,
         )
 
-    _check_token_budget(ctx.claim_id, ctx.metrics, ctx.llm)
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     settlement_latency = (time.time() - settlement_start) * 1000
     settlement_output = str(
         getattr(settlement_result, "raw", None)
@@ -427,7 +423,7 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
     logger.log_event("crew_completed", crew="settlement", latency_ms=settlement_latency)
     ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
 
-    ctx.repo.save_task_checkpoint(
+    ctx.context.repo.save_task_checkpoint(
         ctx.claim_id, ctx.workflow_run_id, "settlement",
         json.dumps({"settlement_output": settlement_output}),
     )

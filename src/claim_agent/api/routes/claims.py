@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
+from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
@@ -21,7 +22,6 @@ from claim_agent.db.constants import (
     STATUS_PROCESSING,
 )
 from claim_agent.db.database import get_connection, get_db_path
-from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import Attachment, ClaimInput
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
@@ -29,6 +29,11 @@ from claim_agent.utils import infer_attachment_type
 from claim_agent.utils.sanitization import sanitize_claim_data
 
 logger = logging.getLogger(__name__)
+
+
+def get_claim_context() -> ClaimContext:
+    """FastAPI dependency providing a per-request ClaimContext."""
+    return ClaimContext.from_defaults(db_path=get_db_path())
 
 router = APIRouter(tags=["claims"])
 
@@ -49,8 +54,11 @@ def _run_workflow_background(
     claim_id: str,
     claim_data_with_attachments: dict,
     actor_id: str,
+    ctx: ClaimContext | None = None,
 ) -> asyncio.Task:
     """Run claim workflow in background. Returns task for tracking."""
+    bg_ctx = ctx or ClaimContext.from_defaults(db_path=get_db_path())
+
     async def run_in_thread():
         try:
             await asyncio.to_thread(
@@ -59,14 +67,14 @@ def _run_workflow_background(
                 None,
                 claim_id,
                 actor_id=actor_id,
+                ctx=bg_ctx,
             )
         except Exception:
             logger.exception(
                 "Unhandled exception in background workflow for claim_id %s", claim_id
             )
             try:
-                _repo = ClaimRepository(db_path=get_db_path())
-                _repo.update_claim_status(
+                bg_ctx.repo.update_claim_status(
                     claim_id,
                     STATUS_FAILED,
                     details="Background workflow failed",
@@ -222,6 +230,7 @@ def get_review_queue(
     older_than_hours: Optional[float] = Query(None, ge=0, description="Claims older than N hours in queue"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """List claims with status needs_review for the adjuster workflow."""
     if priority is not None and priority not in PRIORITY_VALUES:
@@ -229,8 +238,7 @@ def get_review_queue(
             status_code=400,
             detail=f"Invalid priority: {priority}. Must be one of: {', '.join(PRIORITY_VALUES)}",
         )
-    repo = ClaimRepository(db_path=get_db_path())
-    claims, total = repo.list_claims_needing_review(
+    claims, total = ctx.repo.list_claims_needing_review(
         assignee=assignee,
         priority=priority,
         older_than_hours=older_than_hours,
@@ -262,14 +270,14 @@ def assign_claim(
     claim_id: str,
     body: AssignBody = Body(...),
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Assign claim to an adjuster."""
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
-        repo.assign_claim(claim_id, body.assignee, actor_id=actor_id)
+        ctx.repo.assign_claim(claim_id, body.assignee, actor_id=actor_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "assignee": body.assignee}
@@ -279,10 +287,10 @@ def assign_claim(
 async def approve_review(
     claim_id: str,
     auth: AuthContext = RequireSupervisor,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Approve claim for continued processing and re-run workflow. Requires supervisor."""
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(claim_id)
+    claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     claim_data = claim_data_from_row(claim)
@@ -292,13 +300,14 @@ async def approve_review(
         raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
-        repo.perform_adjuster_action(claim_id, "approve", actor_id=actor_id)
+        ctx.repo.perform_adjuster_action(claim_id, "approve", actor_id=actor_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     result = run_claim_workflow(
         claim_data,
         existing_claim_id=claim_id,
         actor_id=actor_id,
+        ctx=ctx,
     )
     return result
 
@@ -308,14 +317,14 @@ def reject_review(
     claim_id: str,
     body: RejectBody = Body(default=RejectBody()),
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Reject claim with optional reason."""
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
-        repo.perform_adjuster_action(claim_id, "reject", actor_id=actor_id, reason=body.reason)
+        ctx.repo.perform_adjuster_action(claim_id, "reject", actor_id=actor_id, reason=body.reason)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "status": "denied"}
@@ -326,14 +335,14 @@ def request_info_review(
     claim_id: str,
     body: RequestInfoBody = Body(default=RequestInfoBody()),
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Request more information from claimant."""
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
-        repo.perform_adjuster_action(claim_id, "request_info", actor_id=actor_id, note=body.note)
+        ctx.repo.perform_adjuster_action(claim_id, "request_info", actor_id=actor_id, note=body.note)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "status": "pending_info"}
@@ -343,14 +352,14 @@ def request_info_review(
 def escalate_to_siu(
     claim_id: str,
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Escalate claim to Special Investigations Unit."""
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
-        repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=actor_id)
+        ctx.repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=actor_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "status": "under_investigation"}
@@ -395,13 +404,12 @@ def get_claim_attachment(claim_id: str, key: str):
 
 
 @router.get("/claims/{claim_id}/history", dependencies=[RequireAdjuster])
-def get_claim_history(claim_id: str):
+def get_claim_history(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     """Get audit log entries for a claim."""
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(claim_id)
+    claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    history = repo.get_claim_history(claim_id)
+    history = ctx.repo.get_claim_history(claim_id)
     return {"claim_id": claim_id, "history": history}
 
 
@@ -429,6 +437,7 @@ async def create_claim(
     claim_input: ClaimInput = Body(..., description="Claim data as JSON"),
     async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Submit a new claim for processing. Accepts ClaimInput JSON body.
 
@@ -437,12 +446,12 @@ async def create_claim(
     """
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim_input, None, actor_id
+        claim_input, None, actor_id, ctx=ctx,
     )
 
     if async_mode:
         _run_workflow_background(
-            claim_id, claim_data_with_attachments, actor_id
+            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
         )
         return {"claim_id": claim_id}
 
@@ -452,6 +461,7 @@ async def create_claim(
         None,
         claim_id,
         actor_id=actor_id,
+        ctx=ctx,
     )
     return result
 
@@ -461,6 +471,7 @@ async def process_claim(
     claim: str = Form(..., description="Claim data as JSON string"),
     files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Submit a new claim for processing. Accepts claim JSON and optional file uploads.
 
@@ -471,7 +482,7 @@ async def process_claim(
     """
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim, files, actor_id
+        claim, files, actor_id, ctx=ctx,
     )
     result = await asyncio.to_thread(
         run_claim_workflow,
@@ -479,6 +490,7 @@ async def process_claim(
         None,  # llm
         claim_id,  # existing_claim_id
         actor_id=actor_id,
+        ctx=ctx,
     )
     return result
 
@@ -487,6 +499,8 @@ async def _process_claim_with_attachments(
     claim: str | ClaimInput,
     files: Optional[list[UploadFile]],
     actor_id: str,
+    *,
+    ctx: ClaimContext | None = None,
 ) -> tuple[str, dict]:
     """Shared helper for claim creation and attachment handling.
 
@@ -510,7 +524,7 @@ async def _process_claim_with_attachments(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
 
-    repo = ClaimRepository(db_path=get_db_path())
+    repo = ctx.repo if ctx else ClaimContext.from_defaults(db_path=get_db_path()).repo
 
     # Validate and buffer all file uploads BEFORE creating the claim record so
     # that a bad upload (oversized or empty) does not leave a dangling claim row.
@@ -591,15 +605,16 @@ async def process_claim_async(
     claim: str = Form(..., description="Claim data as JSON string"),
     files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
     Use GET /claims/{claim_id}/stream to receive realtime updates."""
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim, files, actor_id
+        claim, files, actor_id, ctx=ctx,
     )
     _run_workflow_background(
-        claim_id, claim_data_with_attachments, actor_id
+        claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
     )
     return {"claim_id": claim_id}
 
@@ -666,11 +681,11 @@ async def _stream_claim_updates(claim_id: str):
 async def stream_claim_updates(
     claim_id: str,
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Server-Sent Events stream of claim status, audit log, and workflow runs.
     Polls every second until claim status is no longer pending/processing."""
-    repo = ClaimRepository(db_path=get_db_path())
-    if repo.get_claim(claim_id) is None:
+    if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     return StreamingResponse(
         _stream_claim_updates(claim_id),
@@ -702,8 +717,8 @@ async def reprocess_claim(
             detail=f"from_stage must be one of {', '.join(WORKFLOW_STAGES)}",
         )
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(claim_id)
+    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
@@ -715,7 +730,7 @@ async def reprocess_claim(
 
     resume_run_id: str | None = None
     if from_stage is not None:
-        resume_run_id = repo.get_latest_checkpointed_run_id(claim_id)
+        resume_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
         if resume_run_id is None:
             from_stage = None
 
@@ -726,5 +741,6 @@ async def reprocess_claim(
         actor_id=actor_id,
         resume_run_id=resume_run_id,
         from_stage=from_stage,
+        ctx=ctx,
     )
     return result

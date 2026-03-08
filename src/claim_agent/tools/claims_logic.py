@@ -1,21 +1,27 @@
 """Claims database search and similarity logic."""
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 from claim_agent.db.repository import ClaimRepository
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 
 def search_claims_db_impl(
     vin: str,
     incident_date: str,
     *,
-    repo: ClaimRepository | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     if not vin or not isinstance(vin, str) or not vin.strip():
         return json.dumps([])
     if not incident_date or not isinstance(incident_date, str) or not incident_date.strip():
         return json.dumps([])
-    repo = repo or ClaimRepository()
+    repo = ctx.repo if ctx else ClaimRepository()
     matches = repo.search_claims(vin=vin.strip(), incident_date=incident_date.strip())
     out = [
         {

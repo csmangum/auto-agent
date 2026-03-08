@@ -3,11 +3,15 @@
 This server includes observability endpoints for metrics and tracing.
 """
 
+from __future__ import annotations
+
 import json
+import threading
 from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
+from claim_agent.context import ClaimContext
 from claim_agent.tools.claims_logic import compute_similarity_impl, search_claims_db_impl
 from claim_agent.tools.compliance_logic import search_california_compliance_impl
 from claim_agent.tools.document_logic import generate_claim_id_impl, generate_report_impl
@@ -17,21 +21,34 @@ from claim_agent.tools.valuation_logic import (
     evaluate_damage_impl,
     fetch_vehicle_value_impl,
 )
-from claim_agent.observability import get_metrics
 
 mcp = FastMCP("claim-tools", json_response=True)
+
+_ctx: ClaimContext | None = None
+_ctx_lock = threading.Lock()
+
+
+def _get_ctx() -> ClaimContext:
+    """Lazily create the shared MCP tool context (no LLM required)."""
+    global _ctx
+    if _ctx is not None:
+        return _ctx
+    with _ctx_lock:
+        if _ctx is None:
+            _ctx = ClaimContext.from_defaults()
+        return _ctx
 
 
 @mcp.tool()
 def query_policy_db(policy_number: str) -> str:
     """Query the policy database to validate policy and retrieve coverage details."""
-    return query_policy_db_impl(policy_number)
+    return query_policy_db_impl(policy_number, ctx=_get_ctx())
 
 
 @mcp.tool()
 def search_claims_db(vin: str, incident_date: str) -> str:
     """Search existing claims by VIN and incident date for potential duplicates."""
-    return search_claims_db_impl(vin, incident_date)
+    return search_claims_db_impl(vin, incident_date, ctx=_get_ctx())
 
 
 @mcp.tool()
@@ -43,7 +60,7 @@ def compute_similarity(description_a: str, description_b: str) -> str:
 @mcp.tool()
 def fetch_vehicle_value(vin: str, year: int, make: str, model: str) -> str:
     """Fetch current market value for a vehicle (mock KBB API)."""
-    return fetch_vehicle_value_impl(vin, year, make, model)
+    return fetch_vehicle_value_impl(vin, year, make, model, ctx=_get_ctx())
 
 
 @mcp.tool()
@@ -55,7 +72,7 @@ def evaluate_damage(damage_description: str, estimated_repair_cost: float | None
 @mcp.tool()
 def calculate_payout(vehicle_value: float, policy_number: str) -> str:
     """Calculate total loss payout by subtracting policy deductible from vehicle value."""
-    return calculate_payout_impl(vehicle_value, policy_number)
+    return calculate_payout_impl(vehicle_value, policy_number, ctx=_get_ctx())
 
 
 @mcp.tool()
@@ -104,7 +121,7 @@ def get_claim_metrics(claim_id: str | None = None) -> str:
         - avg_latency_ms: Average latency per call
         - status: Current claim status
     """
-    metrics = get_metrics()
+    metrics = _get_ctx().metrics
 
     if claim_id:
         summary = metrics.get_claim_summary(claim_id)

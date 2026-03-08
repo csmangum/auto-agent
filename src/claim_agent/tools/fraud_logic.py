@@ -1,16 +1,20 @@
 """Fraud detection logic: pattern analysis, cross-reference, and assessment."""
 
+from __future__ import annotations
+
 import json
 import logging
 from datetime import date, datetime, timedelta
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from claim_agent.adapters.base import SIUAdapter
 from claim_agent.adapters.registry import get_siu_adapter
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.escalation_logic import KNOWN_FRAUD_PATTERNS
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +23,7 @@ def analyze_claim_patterns_impl(
     claim_data: dict[str, Any],
     vin: Optional[str] = None,
     *,
-    repo: ClaimRepository | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Analyze claim for suspicious patterns."""
     if not claim_data or not isinstance(claim_data, dict):
@@ -55,7 +59,7 @@ def analyze_claim_patterns_impl(
 
     if vin:
         try:
-            _repo = repo or ClaimRepository()
+            _repo = ctx.repo if ctx else ClaimRepository()
             all_claims = _repo.search_claims(vin=vin, incident_date=None)
 
             window_days = get_fraud_config()["multiple_claims_days"]
@@ -118,7 +122,7 @@ def analyze_claim_patterns_impl(
 def cross_reference_fraud_indicators_impl(
     claim_data: dict[str, Any],
     *,
-    repo: ClaimRepository | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Cross-reference claim against known fraud indicators database."""
     result = {
@@ -161,7 +165,7 @@ def cross_reference_fraud_indicators_impl(
 
         if year and make and model:
             try:
-                val_result = fetch_vehicle_value_impl(vin, year, make, model)
+                val_result = fetch_vehicle_value_impl(vin, year, make, model, ctx=ctx)
                 val_data = json.loads(val_result)
                 vehicle_value = val_data.get("value")
 
@@ -186,7 +190,7 @@ def cross_reference_fraud_indicators_impl(
     vin = claim_data.get("vin", "").strip()
     if vin:
         try:
-            _repo = repo or ClaimRepository()
+            _repo = ctx.repo if ctx else ClaimRepository()
             prior_claims = _repo.search_claims(vin=vin, incident_date=None)
             fraud_history = [
                 c for c in prior_claims
@@ -220,8 +224,7 @@ def perform_fraud_assessment_impl(
     pattern_analysis: Optional[dict[str, Any]] = None,
     cross_reference: Optional[dict[str, Any]] = None,
     *,
-    repo: ClaimRepository | None = None,
-    siu_adapter: SIUAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Perform comprehensive fraud assessment combining pattern analysis and cross-reference results."""
     if not claim_data or not isinstance(claim_data, dict):
@@ -255,14 +258,14 @@ def perform_fraud_assessment_impl(
 
     if pattern_analysis is None:
         try:
-            pattern_json = analyze_claim_patterns_impl(claim_data, repo=repo)
+            pattern_json = analyze_claim_patterns_impl(claim_data, ctx=ctx)
             pattern_analysis = json.loads(pattern_json)
         except (json.JSONDecodeError, TypeError):
             pattern_analysis = {}
 
     if cross_reference is None:
         try:
-            xref_json = cross_reference_fraud_indicators_impl(claim_data, repo=repo)
+            xref_json = cross_reference_fraud_indicators_impl(claim_data, ctx=ctx)
             cross_reference = json.loads(xref_json)
         except (json.JSONDecodeError, TypeError):
             cross_reference = {}
@@ -332,12 +335,12 @@ def perform_fraud_assessment_impl(
 
     claim_id = result.get("claim_id")
     if result["siu_referral"] and claim_id and isinstance(claim_id, str) and claim_id.strip():
-        _siu = siu_adapter or get_siu_adapter()
+        _siu = ctx.adapters.siu if ctx else get_siu_adapter()
         try:
             case_id = _siu.create_case(claim_id, result["fraud_indicators"])
             result["siu_case_id"] = case_id
             try:
-                _repo = repo or ClaimRepository()
+                _repo = ctx.repo if ctx else ClaimRepository()
                 _repo.update_claim_siu_case_id(claim_id, case_id)
                 result["siu_case_id_persisted"] = True
             except Exception as e:

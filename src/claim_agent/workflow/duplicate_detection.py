@@ -1,10 +1,16 @@
 """Duplicate claim detection: VIN search, damage tag extraction, similarity scoring."""
 
+from __future__ import annotations
+
 import re
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.observability import get_logger
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 logger = get_logger(__name__)
 
@@ -42,7 +48,12 @@ def _damage_tags_overlap(tags_a: set[str], tags_b: set[str]) -> bool:
     return not tags_a.isdisjoint(tags_b)
 
 
-def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None) -> list[dict]:
+def _check_for_duplicates(
+    claim_data: dict,
+    current_claim_id: str | None = None,
+    *,
+    ctx: ClaimContext | None = None,
+) -> list[dict]:
     """Search for existing claims with same VIN and similar incident date.
 
     Returns list of potential duplicate claims (excluding the current claim if provided).
@@ -59,7 +70,7 @@ def _check_for_duplicates(claim_data: dict, current_claim_id: str | None = None)
     if not vin:
         return []
 
-    repo = ClaimRepository()
+    repo = ctx.repo if ctx else ClaimRepository()
     matches = repo.search_claims(vin=vin, incident_date=None)
 
     if current_claim_id:
