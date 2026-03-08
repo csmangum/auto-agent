@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 
+
 # Use timezone-aware UTC for datetime (datetime.utcnow is deprecated)
 def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
@@ -33,9 +34,9 @@ _NOT_AT_FAULT_KEYWORDS = [
 ]
 
 _AT_FAULT_KEYWORDS = [
-    "I hit",
-    "I struck",
-    "I ran",
+    "i hit",
+    "i struck",
+    "i ran",
     "my fault",
     "at fault",
     "rear-ended someone",
@@ -128,7 +129,9 @@ def build_subrogation_case_impl(
     claim_data = {}
     if claim_data_json:
         try:
-            claim_data = json.loads(claim_data_json) if isinstance(claim_data_json, str) else claim_data_json
+            claim_data = (
+                json.loads(claim_data_json) if isinstance(claim_data_json, str) else claim_data_json
+            )
         except json.JSONDecodeError:
             pass
 

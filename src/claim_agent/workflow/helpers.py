@@ -34,16 +34,19 @@ def _requires_settlement(claim_type: str) -> bool:
     return claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value)
 
 
-def _combine_workflow_outputs(primary_output: str, settlement_output: str | None = None) -> str:
+def _combine_workflow_outputs(
+    primary_output: str,
+    settlement_output: str | None = None,
+    label: str = "Settlement workflow output",
+) -> str:
     """Combine primary workflow and settlement outputs for persistence and summaries."""
     if not settlement_output:
         return primary_output
-    return (
-        "Primary workflow output:\n"
-        f"{primary_output}\n\n"
-        "Settlement workflow output:\n"
-        f"{settlement_output}"
-    )
+
+    if "Primary workflow output:\n" in primary_output:
+        return f"{primary_output}\n\n{label}:\n{settlement_output}"
+
+    return f"Primary workflow output:\n{primary_output}\n\n{label}:\n{settlement_output}"
 
 
 def _extract_payout_from_workflow_result(result: Any, claim_type: str) -> float | None:
@@ -77,6 +80,7 @@ def _extract_payout_from_workflow_result(result: Any, claim_type: str) -> float 
 
 def _kickoff_with_retry(crew: Any, inputs: dict[str, Any]) -> Any:
     """Run crew.kickoff with retry on transient failures."""
+
     @with_llm_retry()
     def _call() -> Any:
         return crew.kickoff(inputs=inputs)
@@ -92,6 +96,5 @@ def _checkpoint_keys_to_invalidate(from_stage: str, checkpoints: dict[str, str])
         return []
     stages_to_drop = set(WORKFLOW_STAGES[idx:])
     return [
-        key for key in checkpoints
-        if (key.split(":")[0] if ":" in key else key) in stages_to_drop
+        key for key in checkpoints if (key.split(":")[0] if ":" in key else key) in stages_to_drop
     ]

@@ -136,54 +136,90 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
                         original_router_output = json.loads(ctx.raw_output)
                     except (TypeError, ValueError):
                         original_router_output = ctx.raw_output
-                    ctx.raw_output = json.dumps({
-                        "original_router_output": original_router_output,
-                        "validation": val_data,
-                    })
+                    ctx.raw_output = json.dumps(
+                        {
+                            "original_router_output": original_router_output,
+                            "validation": val_data,
+                        }
+                    )
                     _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
                 else:
                     _escalate_low_router_confidence(
-                        ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
-                        confidence_threshold, ctx.router_reasoning,
-                        ctx.context, logger, ctx.workflow_start_time,
+                        ctx.claim_id,
+                        ctx.claim_type,
+                        ctx.raw_output,
+                        ctx.router_confidence,
+                        confidence_threshold,
+                        ctx.router_reasoning,
+                        ctx.context,
+                        logger,
+                        ctx.workflow_start_time,
                         ctx.actor_id,
                     )
                     return _escalate_low_router_confidence_response(
-                        ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
-                        confidence_threshold, router_reasoning=ctx.router_reasoning,
+                        ctx.claim_id,
+                        ctx.claim_type,
+                        ctx.raw_output,
+                        ctx.router_confidence,
+                        confidence_threshold,
+                        router_reasoning=ctx.router_reasoning,
                     )
             except (json.JSONDecodeError, TypeError, ValueError) as e:
                 logger.warning("Router validation parse failed: %s", e)
                 _escalate_low_router_confidence(
-                    ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
-                    confidence_threshold, ctx.router_reasoning,
-                    ctx.context, logger, ctx.workflow_start_time,
+                    ctx.claim_id,
+                    ctx.claim_type,
+                    ctx.raw_output,
+                    ctx.router_confidence,
+                    confidence_threshold,
+                    ctx.router_reasoning,
+                    ctx.context,
+                    logger,
+                    ctx.workflow_start_time,
                     ctx.actor_id,
                 )
                 return _escalate_low_router_confidence_response(
-                    ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
-                    confidence_threshold, router_reasoning=ctx.router_reasoning,
+                    ctx.claim_id,
+                    ctx.claim_type,
+                    ctx.raw_output,
+                    ctx.router_confidence,
+                    confidence_threshold,
+                    router_reasoning=ctx.router_reasoning,
                 )
         else:
             _escalate_low_router_confidence(
-                ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
-                confidence_threshold, ctx.router_reasoning,
-                ctx.context, logger, ctx.workflow_start_time,
+                ctx.claim_id,
+                ctx.claim_type,
+                ctx.raw_output,
+                ctx.router_confidence,
+                confidence_threshold,
+                ctx.router_reasoning,
+                ctx.context,
+                logger,
+                ctx.workflow_start_time,
                 ctx.actor_id,
             )
             return _escalate_low_router_confidence_response(
-                ctx.claim_id, ctx.claim_type, ctx.raw_output, ctx.router_confidence,
-                confidence_threshold, router_reasoning=ctx.router_reasoning,
+                ctx.claim_id,
+                ctx.claim_type,
+                ctx.raw_output,
+                ctx.router_confidence,
+                confidence_threshold,
+                router_reasoning=ctx.router_reasoning,
             )
 
     ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id, ctx.workflow_run_id, "router",
-        json.dumps({
-            "claim_type": ctx.claim_type,
-            "router_confidence": ctx.router_confidence,
-            "router_reasoning": ctx.router_reasoning,
-            "raw_output": ctx.raw_output,
-        }),
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        "router",
+        json.dumps(
+            {
+                "claim_type": ctx.claim_type,
+                "router_confidence": ctx.router_confidence,
+                "router_reasoning": ctx.router_reasoning,
+                "raw_output": ctx.raw_output,
+            }
+        ),
     )
     return None
 
@@ -221,39 +257,50 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 recommended_action=recommended_action,
                 fraud_indicators=fraud_indicators,
             )
-            details = json.dumps({
-                "escalation_reasons": reasons,
-                "priority": priority,
-                "recommended_action": recommended_action,
-                "fraud_indicators": fraud_indicators,
-            })
-            ctx.context.repo.save_workflow_result(ctx.claim_id, ctx.claim_type, ctx.raw_output, details)
+            details = json.dumps(
+                {
+                    "escalation_reasons": reasons,
+                    "priority": priority,
+                    "recommended_action": recommended_action,
+                    "fraud_indicators": fraud_indicators,
+                }
+            )
+            ctx.context.repo.save_workflow_result(
+                ctx.claim_id, ctx.claim_type, ctx.raw_output, details
+            )
             # Avoid overwriting review metadata / creating duplicate status-change events
             # when a resumed/retried workflow still results in needs_review.
             current_claim = ctx.context.repo.get_claim(ctx.claim_id)
             current_status = current_claim.get("status") if current_claim else None
             if current_status != STATUS_NEEDS_REVIEW:
                 ctx.context.repo.update_claim_status(
-                    ctx.claim_id, STATUS_NEEDS_REVIEW, claim_type=ctx.claim_type,
-                    details=details, actor_id=ctx.actor_id,
+                    ctx.claim_id,
+                    STATUS_NEEDS_REVIEW,
+                    claim_type=ctx.claim_type,
+                    details=details,
+                    actor_id=ctx.actor_id,
                 )
                 hours = _sla_hours_for_priority(priority)
                 due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
                 ctx.context.repo.update_claim_review_metadata(
-                    ctx.claim_id, priority=priority, due_at=due_at,
+                    ctx.claim_id,
+                    priority=priority,
+                    due_at=due_at,
                     review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
             workflow_duration = (time.time() - ctx.workflow_start_time) * 1000
             logger.log_event(
-                "claim_escalated", reasons=reasons, priority=priority,
+                "claim_escalated",
+                reasons=reasons,
+                priority=priority,
                 duration_ms=workflow_duration,
             )
-            _record_crew_llm_usage(claim_id=ctx.claim_id, llm=ctx.context.llm, metrics=ctx.context.metrics)
-            ctx.context.metrics.end_claim(ctx.claim_id, status="escalated")
-            record_claim_outcome(
-                ctx.claim_id, "escalated", (time.time() - ctx.workflow_start_time)
+            _record_crew_llm_usage(
+                claim_id=ctx.claim_id, llm=ctx.context.llm, metrics=ctx.context.metrics
             )
+            ctx.context.metrics.end_claim(ctx.claim_id, status="escalated")
+            record_claim_outcome(ctx.claim_id, "escalated", (time.time() - ctx.workflow_start_time))
             ctx.context.metrics.log_claim_summary(ctx.claim_id)
 
             return {
@@ -266,7 +313,9 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 "summary": f"Escalated for review: {', '.join(reasons)}",
             }
 
-    ctx.context.repo.save_task_checkpoint(ctx.claim_id, ctx.workflow_run_id, "escalation_check", "{}")
+    ctx.context.repo.save_task_checkpoint(
+        ctx.claim_id, ctx.workflow_run_id, "escalation_check", "{}"
+    )
     return None
 
 
@@ -296,7 +345,9 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             )
             ctx.checkpoints.pop(workflow_stage_key, None)
         else:
-            logger.info("Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": ctx.claim_id})
+            logger.info(
+                "Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": ctx.claim_id}
+            )
             return None
 
     _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
@@ -351,11 +402,15 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         dispatch_repair_authorized_from_workflow_output(ctx.workflow_output, log=logger)
 
     ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id, ctx.workflow_run_id, workflow_stage_key,
-        json.dumps({
-            "workflow_output": ctx.workflow_output,
-            "extracted_payout": ctx.extracted_payout,
-        }),
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        workflow_stage_key,
+        json.dumps(
+            {
+                "workflow_output": ctx.workflow_output,
+                "extracted_payout": ctx.extracted_payout,
+            }
+        ),
     )
     return None
 
@@ -426,7 +481,9 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
     ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
 
     ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id, ctx.workflow_run_id, "settlement",
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        "settlement",
         json.dumps({"settlement_output": settlement_output}),
     )
     return None
@@ -446,7 +503,9 @@ def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
             if not isinstance(sub_cp, dict):
                 raise ValueError("subrogation checkpoint is not a JSON object")
             subrogation_output = sub_cp["subrogation_output"]
-            ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, subrogation_output)
+            ctx.workflow_output = _combine_workflow_outputs(
+                ctx.workflow_output, subrogation_output, label="Subrogation workflow output"
+            )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             logger.warning(
                 "Failed to restore subrogation from checkpoint; invalidating and re-running stage: %s",
@@ -494,10 +553,14 @@ def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
         or str(subrogation_result)
     )
     logger.log_event("crew_completed", crew="subrogation", latency_ms=subrogation_latency)
-    ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, subrogation_output)
+    ctx.workflow_output = _combine_workflow_outputs(
+        ctx.workflow_output, subrogation_output, label="Subrogation workflow output"
+    )
 
     ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id, ctx.workflow_run_id, "subrogation",
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        "subrogation",
         json.dumps({"subrogation_output": subrogation_output}),
     )
     return None
