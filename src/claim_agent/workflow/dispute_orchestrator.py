@@ -210,18 +210,8 @@ def _parse_structured_resolution(workflow_output: str) -> tuple[str, float | Non
 
 def _get_latest_workflow_output(repo: Any, claim_id: str) -> str | None:
     """Retrieve the most recent workflow_output for a claim."""
-    try:
-        from claim_agent.db.database import get_connection
-        with get_connection(repo._db_path) as conn:
-            row = conn.execute(
-                "SELECT workflow_output FROM workflow_runs "
-                "WHERE claim_id = ? ORDER BY created_at DESC LIMIT 1",
-                (claim_id,),
-            ).fetchone()
-        return row["workflow_output"] if row else None
-    except Exception as exc:
-        logger.debug("Could not fetch workflow output for %s: %s", claim_id, exc)
-        return None
+    runs = repo.get_workflow_runs(claim_id, limit=1)
+    return runs[0]["workflow_output"] if runs else None
 
 
 def _infer_resolution_type(workflow_output: str, dispute_type: DisputeType) -> str:
