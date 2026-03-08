@@ -43,6 +43,32 @@ def create_crew(
     llm=None,
     agent_kwargs: dict | None = None,
 ) -> Crew:
+    """Create a Crew instance from agent and task configurations.
+
+    This function instantiates agents using the provided ``agents_config`` and
+    constructs tasks from ``tasks_config``, wiring each task to the appropriate
+    agent and optional context tasks. If no LLM is provided, the default LLM
+    from :func:`claim_agent.config.llm.get_llm` is used. Additional keyword
+    arguments in ``agent_kwargs`` are passed to each agent factory.
+
+    Args:
+        agents_config: Ordered list of :class:`AgentConfig` objects used to
+            create the agents for the crew.
+        tasks_config: Ordered list of :class:`TaskConfig` objects describing
+            the tasks to be executed by the crew.
+        llm: Optional LLM instance to use when creating agents. If ``None``,
+            the default LLM returned by :func:`get_llm` is used.
+        agent_kwargs: Optional mapping of keyword arguments forwarded to each
+            agent factory in ``agents_config``.
+
+    Returns:
+        Crew: A :class:`Crew` instance with the configured agents and tasks.
+
+    Raises:
+        ValueError: If any task references an agent index outside the range of
+            ``agents_config``, or if a task's ``context_task_indices`` contains
+            a negative index or an index that does not refer to an earlier task.
+    """
     llm = llm or get_llm()
     agent_kwargs = agent_kwargs or {}
 
