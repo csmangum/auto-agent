@@ -456,12 +456,14 @@ class TestDisputeOrchestrator:
         from claim_agent.exceptions import ClaimNotFoundError
         from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 
-        with pytest.raises(ClaimNotFoundError):
-            run_dispute_workflow({
-                "claim_id": "CLM-NONEXISTENT",
-                "dispute_type": "valuation_disagreement",
-                "dispute_description": "ACV too low",
-            })
+        with patch("claim_agent.workflow.dispute_orchestrator.get_llm") as mock_get_llm:
+            mock_get_llm.return_value = LLM(model="gpt-4o-mini", api_key="fake-key-for-test")
+            with pytest.raises(ClaimNotFoundError):
+                run_dispute_workflow({
+                    "claim_id": "CLM-NONEXISTENT",
+                    "dispute_type": "valuation_disagreement",
+                    "dispute_description": "ACV too low",
+                })
 
     def test_run_dispute_workflow_auto_resolve(self, seeded_temp_db):
         from claim_agent.db.constants import STATUS_DISPUTE_RESOLVED
@@ -471,16 +473,18 @@ class TestDisputeOrchestrator:
         mock_result = MagicMock()
         mock_result.raw = "Resolution: AUTO_RESOLVED. Adjusted amount: $16,000.00. Findings: ACV recalculated."
 
-        with patch("claim_agent.workflow.dispute_orchestrator.create_dispute_crew") as mock_crew_fn:
-            mock_crew = MagicMock()
-            mock_crew.kickoff.return_value = mock_result
-            mock_crew_fn.return_value = mock_crew
+        with patch("claim_agent.workflow.dispute_orchestrator.get_llm") as mock_get_llm:
+            mock_get_llm.return_value = LLM(model="gpt-4o-mini", api_key="fake-key-for-test")
+            with patch("claim_agent.workflow.dispute_orchestrator.create_dispute_crew") as mock_crew_fn:
+                mock_crew = MagicMock()
+                mock_crew.kickoff.return_value = mock_result
+                mock_crew_fn.return_value = mock_crew
 
-            result = run_dispute_workflow({
-                "claim_id": "CLM-TEST001",
-                "dispute_type": "valuation_disagreement",
-                "dispute_description": "ACV is too low",
-            })
+                result = run_dispute_workflow({
+                    "claim_id": "CLM-TEST001",
+                    "dispute_type": "valuation_disagreement",
+                    "dispute_description": "ACV is too low",
+                })
 
         assert result["claim_id"] == "CLM-TEST001"
         assert result["dispute_type"] == "valuation_disagreement"
@@ -506,16 +510,18 @@ class TestDisputeOrchestrator:
             "End of report."
         )
 
-        with patch("claim_agent.workflow.dispute_orchestrator.create_dispute_crew") as mock_crew_fn:
-            mock_crew = MagicMock()
-            mock_crew.kickoff.return_value = mock_result
-            mock_crew_fn.return_value = mock_crew
+        with patch("claim_agent.workflow.dispute_orchestrator.get_llm") as mock_get_llm:
+            mock_get_llm.return_value = LLM(model="gpt-4o-mini", api_key="fake-key-for-test")
+            with patch("claim_agent.workflow.dispute_orchestrator.create_dispute_crew") as mock_crew_fn:
+                mock_crew = MagicMock()
+                mock_crew.kickoff.return_value = mock_result
+                mock_crew_fn.return_value = mock_crew
 
-            result = run_dispute_workflow({
-                "claim_id": "CLM-TEST001",
-                "dispute_type": "valuation_disagreement",
-                "dispute_description": "ACV too low",
-            })
+                result = run_dispute_workflow({
+                    "claim_id": "CLM-TEST001",
+                    "dispute_type": "valuation_disagreement",
+                    "dispute_description": "ACV too low",
+                })
 
         assert result["resolution_type"] == "auto_resolved"
         assert result["adjusted_amount"] == 17250.5
@@ -529,16 +535,18 @@ class TestDisputeOrchestrator:
         mock_result = MagicMock()
         mock_result.raw = "Claim escalated for human review. Liability disputed."
 
-        with patch("claim_agent.workflow.dispute_orchestrator.create_dispute_crew") as mock_crew_fn:
-            mock_crew = MagicMock()
-            mock_crew.kickoff.return_value = mock_result
-            mock_crew_fn.return_value = mock_crew
+        with patch("claim_agent.workflow.dispute_orchestrator.get_llm") as mock_get_llm:
+            mock_get_llm.return_value = LLM(model="gpt-4o-mini", api_key="fake-key-for-test")
+            with patch("claim_agent.workflow.dispute_orchestrator.create_dispute_crew") as mock_crew_fn:
+                mock_crew = MagicMock()
+                mock_crew.kickoff.return_value = mock_result
+                mock_crew_fn.return_value = mock_crew
 
-            result = run_dispute_workflow({
-                "claim_id": "CLM-TEST001",
-                "dispute_type": "liability_determination",
-                "dispute_description": "Other driver at fault",
-            })
+                result = run_dispute_workflow({
+                    "claim_id": "CLM-TEST001",
+                    "dispute_type": "liability_determination",
+                    "dispute_description": "Other driver at fault",
+                })
 
         assert result["resolution_type"] == "escalated"
         assert result["status"] == STATUS_NEEDS_REVIEW
