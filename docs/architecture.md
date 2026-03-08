@@ -8,12 +8,13 @@ The Agentic Claim Representative is a proof-of-concept AI system for processing 
 flowchart TB
     subgraph Entry["Entry Layer"]
         CLI[CLI main.py]
+        API[REST API]
     end
-    
+
     subgraph Processing["Processing Layer"]
         Router[Router Crew]
         Escalation[Escalation Check]
-        
+
         subgraph Workflows["Workflow Crews"]
             New[New Claim]
             Dup[Duplicate]
@@ -22,27 +23,32 @@ flowchart TB
             PL[Partial Loss]
         end
     end
-    
+
     subgraph Tools["Tools Layer"]
         Policy[Policy Tools]
         Claims[Claims Tools]
         Valuation[Valuation Tools]
         FraudTools[Fraud Tools]
         PLTools[Partial Loss Tools]
+        EscalationTools[Escalation Tools]
+        RAGTools[RAG Tools]
+        ComplianceTools[Compliance Tools]
     end
 
     subgraph Adapters["Adapter Layer"]
         AdapterRegistry[Registry]
     end
-    
+
     subgraph Data["Data Layer"]
         SQLite[(SQLite DB)]
         MockDB[(Mock Data)]
     end
-    
+
     ClaimResult[Claim Result]
 
-    CLI --> Router --> Escalation
+    CLI --> Router
+    API --> Router
+    Router --> Escalation
     Escalation -->|Escalated| ClaimResult
     Escalation -->|Not Escalated| Workflows
     Workflows --> ClaimResult
@@ -50,6 +56,8 @@ flowchart TB
     Tools --> Adapters
     Adapters --> Data
 ```
+
+**Data Layer:** SQLite stores claims, audit logs, and workflow runs. Mock Data provides reference data (policies, vehicle values, fraud indicators) for tool lookups; it is supplementary, not an alternative to SQLite. Additional tool groups: Document, Vision.
 
 ## Core Architectural Patterns
 
@@ -107,6 +115,7 @@ flowchart TB
     D --> E{needs_review?}
     E -->|yes| G[Return with Escalation Details]
     E -->|no| H{claim_type?}
+    ClaimResult[Claim Result]
 
     subgraph New["New Claim Crew"]
         D1[Intake] --> D2[Policy Check] --> D3[Assignment]
@@ -137,12 +146,12 @@ flowchart TB
     H -->|total_loss| F1
     H -->|fraud| FR1
     H -->|partial_loss| P1
-    D3 --> G
-    E3 --> G
+    D3 --> ClaimResult
+    E3 --> ClaimResult
     F3 --> S1
-    FR3 --> G
+    FR3 --> ClaimResult
     P5 --> S1
-    S3 --> G
+    S3 --> ClaimResult
 ```
 
 ## Directory Structure
