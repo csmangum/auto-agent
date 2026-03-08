@@ -33,6 +33,8 @@ flowchart TB
         EscalationTools[Escalation Tools]
         RAGTools[RAG Tools]
         ComplianceTools[Compliance Tools]
+        DocumentTools[Document Tools]
+        VisionTools[Vision Tools]
     end
 
     subgraph Adapters["Adapter Layer"]

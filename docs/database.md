@@ -246,6 +246,8 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
 
 Task-level checkpoints for resumable workflows. Stores output per stage so reprocessing can resume from a specific point.
 
+**Relationship to workflow_runs:** `workflow_run_id` is a logical run identifier (UUID hex string, e.g. `uuid.uuid4().hex`) generated per workflow execution. It is *not* a foreign key to `workflow_runs.id`—those tables track runs independently. `workflow_runs` stores router/workflow output with an autoincrement `id`; `task_checkpoints` groups stage outputs by `workflow_run_id`. When resuming, the orchestrator loads checkpoints for a given `(claim_id, workflow_run_id)` and can skip completed stages.
+
 ```sql
 CREATE TABLE IF NOT EXISTS task_checkpoints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -264,7 +266,7 @@ CREATE INDEX IF NOT EXISTS idx_task_checkpoints_claim_run ON task_checkpoints(cl
 |--------|------|-------------|
 | `id` | INTEGER | Auto-increment primary key |
 | `claim_id` | TEXT | Foreign key to claims.id |
-| `workflow_run_id` | TEXT | Identifies the workflow run |
+| `workflow_run_id` | TEXT | Logical run identifier (UUID hex); groups checkpoints for one execution. Not a FK to workflow_runs.id. |
 | `stage_key` | TEXT | Stage identifier (e.g. router, escalation_check, workflow, settlement) |
 | `output` | TEXT | Serialized output from that stage |
 | `created_at` | TEXT | Timestamp |
