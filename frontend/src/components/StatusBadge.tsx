@@ -17,6 +17,7 @@ const STATUS_COLORS: Record<string, string> = {
   denied: 'bg-red-100 text-red-700',
   settled: 'bg-emerald-100 text-emerald-800',
   disputed: 'bg-pink-100 text-pink-800',
+  dispute_resolved: 'bg-teal-100 text-teal-800',
   failed: 'bg-red-200 text-red-900',
   unknown: 'bg-gray-100 text-gray-600',
 };

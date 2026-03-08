@@ -43,6 +43,7 @@ _STATUS_TO_EVENT: dict[str, str] = {
     "under_investigation": "claim.under_investigation",
     "archived": "claim.archived",
     "disputed": "claim.disputed",
+    "dispute_resolved": "claim.dispute_resolved",
     "partial_loss": "claim.partial_loss",
 }
 

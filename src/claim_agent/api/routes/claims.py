@@ -709,6 +709,56 @@ async def stream_claim_updates(
     )
 
 
+class DisputeBody(BaseModel):
+    dispute_type: str = Field(..., description="Dispute type: liability_determination, valuation_disagreement, repair_estimate, or deductible_application")
+    dispute_description: str = Field(..., description="Policyholder's description of the dispute")
+    policyholder_evidence: Optional[str] = Field(default=None, description="Optional supporting evidence references")
+
+
+@router.post("/claims/{claim_id}/dispute")
+async def file_dispute(
+    claim_id: str,
+    body: DisputeBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """File a policyholder dispute on an existing claim.
+
+    Runs the dispute resolution workflow which auto-resolves simple disputes
+    (valuation, repair estimate, deductible) and escalates complex ones
+    (liability) to human adjusters.
+    """
+    from claim_agent.models.dispute import DisputeType
+    from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
+
+    claim = ctx.repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    try:
+        DisputeType(body.dispute_type)
+    except ValueError:
+        valid = [t.value for t in DisputeType]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid dispute_type. Must be one of: {', '.join(valid)}",
+        )
+
+    dispute_data = {
+        "claim_id": claim_id,
+        "dispute_type": body.dispute_type,
+        "dispute_description": body.dispute_description,
+        "policyholder_evidence": body.policyholder_evidence,
+    }
+
+    result = await asyncio.to_thread(
+        run_dispute_workflow,
+        dispute_data,
+        ctx=ctx,
+    )
+    return result
+
+
 @router.post("/claims/{claim_id}/reprocess")
 async def reprocess_claim(
     claim_id: str,
