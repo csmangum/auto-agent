@@ -31,6 +31,7 @@ dev = [
     "PyJWT>=2.0.0",
     "ruff>=0.8.0",
     "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
 ]
 observability = [
     "langsmith>=0.1.0",

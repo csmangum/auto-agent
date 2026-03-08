@@ -10,17 +10,8 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
-# Re-export integration fixtures (avoids pytest_plugins in non-top-level conftest)
-from tests.integration.conftest import (
-    integration_db,
-    mock_crew_response,
-    mock_router_response,
-    sample_duplicate_claim,
-    sample_fraud_claim,
-    sample_new_claim,
-    sample_partial_loss_claim,
-    sample_total_loss_claim,
-)
+# Load integration fixtures so e2e tests can use them
+pytest_plugins = ["tests.integration.conftest"]
 
 
 @pytest.fixture(autouse=True)
