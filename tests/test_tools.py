@@ -5,6 +5,8 @@ import os
 import tempfile
 from pathlib import Path
 
+import pytest
+
 # Point to project data for mock_db
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
 
@@ -166,14 +168,13 @@ def test_compute_similarity_empty_strings():
 
 
 def test_query_policy_db_invalid_input():
+    from claim_agent.exceptions import ValidationError
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
-    result = json.loads(query_policy_db_impl(""))
-    assert result["valid"] is False
-    assert "message" in result
-
-    result2 = json.loads(query_policy_db_impl("   "))
-    assert result2["valid"] is False
+    with pytest.raises(ValidationError):
+        query_policy_db_impl("")
+    with pytest.raises(ValidationError):
+        query_policy_db_impl("   ")
 
 
 def test_query_policy_db_inactive_returns_invalid():

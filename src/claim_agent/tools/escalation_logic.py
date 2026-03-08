@@ -251,8 +251,8 @@ def detect_fraud_indicators_impl(
             ]
             if len(same_vin_in_window) >= 1:
                 indicators.append("multiple_claims_same_vin")
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as e:
+            logger.debug("VIN lookup skipped for fraud indicators: %s", e)
 
     if estimated_damage is not None and isinstance(estimated_damage, (int, float)) and estimated_damage > 0:
         year = claim_data.get("vehicle_year")
@@ -266,8 +266,8 @@ def detect_fraud_indicators_impl(
                 if isinstance(vehicle_value, (int, float)) and vehicle_value > 0:
                     if estimated_damage >= get_escalation_config()["fraud_damage_vs_value_ratio"] * vehicle_value:
                         indicators.append("damage_near_or_above_vehicle_value")
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.debug("Vehicle value parse skipped for fraud indicators: %s", e)
 
     overlap_threshold = get_escalation_config()["description_overlap_threshold"]
     if incident and damage:

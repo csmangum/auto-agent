@@ -11,7 +11,9 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Annotated, Optional
 
+import typer
 import uvicorn
 from pydantic import ValidationError
 
@@ -21,6 +23,7 @@ from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.database import get_db_path
+from claim_agent.exceptions import ClaimAgentError
 from claim_agent.models.claim import Attachment, ClaimInput
 from claim_agent.observability import get_logger, get_metrics
 from claim_agent.storage import get_storage_adapter
@@ -31,110 +34,105 @@ from claim_agent.utils import infer_attachment_type, sanitize_claim_data
 if __name__ == "__main__" and str(Path(__file__).resolve().parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-def _setup_logging() -> None:
-    """Configure logging for CLI usage."""
-    # Initialize root logger with observability configuration
-    get_logger("claim_agent")
-    # Also configure the root to capture all claim_agent.* logs
-    logging.getLogger("claim_agent").setLevel(
-        logging.DEBUG if "--debug" in sys.argv else logging.INFO
-    )
+app = typer.Typer(
+    name="claim-agent",
+    help="Claim agent CLI: process claims, view status, manage review queue.",
+    no_args_is_help=True,
+)
+
+
+def _get_cli_ctx() -> ClaimContext:
+    """Shared context for CLI commands."""
+    return ClaimContext.from_defaults(db_path=get_db_path())
 
 
 def _usage() -> str:
-    return """Usage:
-  claim-agent serve [--reload] [--port <port>] [--host <host>]   Start REST API server
-  claim-agent process <claim.json> [--attachment <file> ...]   Process a new claim
-  claim-agent status <claim_id>      Get claim status
-  claim-agent history <claim_id>     Get claim audit log
-  claim-agent reprocess <claim_id> [--from-stage <stage>]   Re-run workflow (optionally resume from stage)
-  claim-agent metrics [claim_id]     Show metrics (optionally for specific claim)
-  claim-agent review-queue [--assignee X] [--priority P]  List claims needing review
-  claim-agent assign <claim_id> <assignee>   Assign claim to adjuster
-  claim-agent approve <claim_id>     Approve and reprocess (supervisor)
-  claim-agent reject <claim_id> [--reason "..."]   Reject claim
-  claim-agent request-info <claim_id> [--note "..."]   Request more info
-  claim-agent escalate-siu <claim_id>   Escalate to SIU
-  claim-agent retention-enforce [--dry-run] [--years N]   Archive claims older than retention period
-  claim-agent <claim.json>           Same as process (legacy)
-
-Options:
-  --reload                           Enable auto-reload for development (serve)
-  --port <port>                      API server port (default: 8000)
-  --host <host>                      API server host (default: 0.0.0.0)
-  --attachment <file>                Attach file (photo, PDF, estimate). May be repeated.
-  --assignee <id>                    Filter review queue by assignee
-  --priority <level>                 Filter review queue by priority
-  --reason <text>                    Rejection reason
-  --note <text>                      Note for request-info
-  --from-stage <stage>               Resume reprocess from stage (router, escalation_check, workflow, settlement)
-  --dry-run                          Show what would be archived without making changes (retention-enforce)
-  --years <n>                        Override retention period in years (retention-enforce)
-  --debug                            Enable debug logging
-  --json                             Use JSON log format
-"""
+    """Return usage string (for tests)."""
+    return (
+        "Usage: claim-agent [OPTIONS] COMMAND [ARGS]...\n\n"
+        "Commands: serve, process, status, history, reprocess, metrics, review-queue, "
+        "assign, approve, reject, request-info, escalate-siu, retention-enforce.\n"
+        "Run claim-agent --help for full help."
+    )
 
 
-def _parse_opt_arg(name: str, default: str = "") -> str:
-    """Parse --name value from sys.argv. Returns default if not found."""
-    argv = sys.argv[1:]
-    for i, arg in enumerate(argv):
-        if arg == name and i + 1 < len(argv) and not argv[i + 1].startswith("--"):
-            return argv[i + 1]
-    return default
+def _setup_logging(debug: bool = False, json_format: bool = False) -> None:
+    """Configure logging for CLI usage."""
+    if json_format:
+        os.environ["CLAIM_AGENT_LOG_FORMAT"] = "json"
+    if debug:
+        os.environ["CLAIM_AGENT_LOG_LEVEL"] = "DEBUG"
+    get_logger("claim_agent")
+    logging.getLogger("claim_agent").setLevel(
+        logging.DEBUG if debug else logging.INFO
+    )
 
 
-def _parse_attachment_args() -> list[Path]:
-    """Parse --attachment arguments from sys.argv."""
-    attachment_paths = []
-    raw = sys.argv[1:]
-    i = 0
-    while i < len(raw):
-        if raw[i] == "--attachment" and i + 1 < len(raw):
-            attachment_paths.append(Path(raw[i + 1]))
-            i += 2
-        else:
-            i += 1
-    return attachment_paths
+@app.callback()
+def _global_options(
+    ctx: typer.Context,
+    debug: Annotated[bool, typer.Option("--debug", help="Enable debug logging")] = False,
+    json_format: Annotated[bool, typer.Option("--json", help="Use JSON log format")] = False,
+) -> None:
+    """Global options applied before any command."""
+    _setup_logging(debug=debug, json_format=json_format)
 
 
-def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) -> None:
-    """Process a claim from a JSON file, optionally with file attachments."""
+@app.command()
+def serve(
+    reload: Annotated[bool, typer.Option("--reload", help="Enable auto-reload for development")] = False,
+    port: Annotated[int, typer.Option("--port", help="API server port")] = 8000,
+    host: Annotated[str, typer.Option("--host", help="API server host")] = "0.0.0.0",
+) -> None:
+    """Start REST API server."""
+    uvicorn.run(
+        "claim_agent.api.server:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
+
+
+@app.command()
+def process(
+    claim_path: Annotated[Path, typer.Argument(help="Path to claim JSON file")],
+    attachment: Annotated[
+        Optional[list[Path]],
+        typer.Option("--attachment", "-a", help="Attach file (photo, PDF, estimate). May be repeated."),
+    ] = None,
+) -> None:
+    """Process a new claim from a JSON file."""
     if not claim_path.exists():
-        print(f"Error: File not found: {claim_path}", file=sys.stderr)
+        typer.echo(f"Error: File not found: {claim_path}", err=True)
         sys.exit(1)
     try:
         with open(claim_path, encoding="utf-8") as f:
             claim_data = json.load(f)
     except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in {claim_path}: {e}", file=sys.stderr)
+        typer.echo(f"Error: Invalid JSON in {claim_path}: {e}", err=True)
         sys.exit(1)
     try:
         ClaimInput.model_validate(claim_data)
     except ValidationError as e:
-        print("Error: Invalid claim data:", file=sys.stderr)
-        print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
+        typer.echo("Error: Invalid claim data:", err=True)
+        typer.echo(e.json() if hasattr(e, "json") else str(e), err=True)
         sys.exit(1)
 
     sanitized = sanitize_claim_data(claim_data)
     claim_input = ClaimInput.model_validate(sanitized)
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    ctx = _get_cli_ctx()
     repo = ctx.repo
     claim_id = repo.create_claim(claim_input)
 
     all_attachments = list(claim_input.attachments)
-    if attachment_paths:
+    if attachment:
         storage = get_storage_adapter()
-        for ap in attachment_paths:
+        for ap in attachment:
             if not ap.exists():
-                print(f"Warning: Attachment not found: {ap}", file=sys.stderr)
+                typer.echo(f"Warning: Attachment not found: {ap}", err=True)
                 continue
             content = ap.read_bytes()
-            stored_key = storage.save(
-                claim_id=claim_id,
-                filename=ap.name,
-                content=content,
-            )
+            stored_key = storage.save(claim_id=claim_id, filename=ap.name, content=content)
             url = storage.get_url(claim_id, stored_key)
             atype = infer_attachment_type(ap.name)
             all_attachments.append(
@@ -143,7 +141,6 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
         if all_attachments:
             repo.update_claim_attachments(claim_id, all_attachments)
 
-    # Use file:// URLs for local storage so vision tool can read
     storage = get_storage_adapter()
     attachments_for_workflow = []
     for a in all_attachments:
@@ -156,68 +153,78 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
                 url = f"file://{path.resolve()}"
         attachments_for_workflow.append({**a.model_dump(mode="json"), "url": url})
 
-    claim_data_with_attachments = {
-        **sanitized,
-        "attachments": attachments_for_workflow,
-    }
+    claim_data_with_attachments = {**sanitized, "attachments": attachments_for_workflow}
     try:
         result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id, ctx=ctx)
-        print(json.dumps(result, indent=2))
+        typer.echo(json.dumps(result, indent=2))
     except Exception as e:
-        print(f"Error: Claim processing failed: {e}", file=sys.stderr)
+        typer.echo(f"Error: Claim processing failed: {e}", err=True)
         sys.exit(1)
 
 
-def cmd_status(claim_id: str) -> None:
-    """Print claim status."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+@app.command()
+def status(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+) -> None:
+    """Get claim status."""
+    ctx = _get_cli_ctx()
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
-    print(json.dumps(claim, indent=2))
+    typer.echo(json.dumps(claim, indent=2))
 
 
-def cmd_history(claim_id: str) -> None:
-    """Print claim audit log."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+@app.command()
+def history(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+) -> None:
+    """Get claim audit log."""
+    ctx = _get_cli_ctx()
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     history = ctx.repo.get_claim_history(claim_id)
-    print(json.dumps(history, indent=2))
+    typer.echo(json.dumps(history, indent=2))
 
 
-def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
+@app.command()
+def reprocess(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+    from_stage: Annotated[
+        Optional[str],
+        typer.Option("--from-stage", help="Resume from stage (router, escalation_check, workflow, settlement)"),
+    ] = None,
+) -> None:
     """Re-run workflow for an existing claim, optionally resuming from a stage."""
     if from_stage is not None and from_stage not in WORKFLOW_STAGES:
-        print(
+        typer.echo(
             f"Error: --from-stage must be one of {', '.join(WORKFLOW_STAGES)}",
-            file=sys.stderr,
+            err=True,
         )
         sys.exit(1)
 
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    ctx = _get_cli_ctx()
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     claim_data = claim_data_from_row(claim)
     try:
         ClaimInput.model_validate(claim_data)
     except ValidationError as e:
-        print("Error: Invalid claim data for reprocess:", file=sys.stderr)
-        print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
+        typer.echo("Error: Invalid claim data for reprocess:", err=True)
+        typer.echo(e.json() if hasattr(e, "json") else str(e), err=True)
         sys.exit(1)
 
     resume_run_id: str | None = None
     if from_stage is not None:
         resume_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
         if resume_run_id is None:
-            print(
+            typer.echo(
                 f"Warning: No prior checkpoints for {claim_id}; running full workflow.",
-                file=sys.stderr,
+                err=True,
             )
             from_stage = None
 
@@ -229,49 +236,57 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
             from_stage=from_stage,
             ctx=ctx,
         )
-        print(json.dumps(result, indent=2))
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        typer.echo(json.dumps(result, indent=2))
+    except (ClaimAgentError, ValueError) as e:
+        typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
-def cmd_review_queue(assignee: str | None = None, priority: str | None = None) -> None:
+@app.command("review-queue")
+def review_queue(
+    assignee: Annotated[Optional[str], typer.Option("--assignee", help="Filter by assignee")] = None,
+    priority: Annotated[Optional[str], typer.Option("--priority", help="Filter by priority")] = None,
+) -> None:
     """List claims needing review."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
-    claims, total = ctx.repo.list_claims_needing_review(
-        assignee=assignee,
-        priority=priority,
-    )
-    print(json.dumps({"claims": claims, "total": total}, indent=2))
+    ctx = _get_cli_ctx()
+    claims, total = ctx.repo.list_claims_needing_review(assignee=assignee, priority=priority)
+    typer.echo(json.dumps({"claims": claims, "total": total}, indent=2))
 
 
-def cmd_assign(claim_id: str, assignee: str) -> None:
+@app.command()
+def assign(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+    assignee: Annotated[str, typer.Argument(help="Assignee ID")],
+) -> None:
     """Assign claim to adjuster."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    ctx = _get_cli_ctx()
     if ctx.repo.get_claim(claim_id) is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
         ctx.repo.assign_claim(claim_id, assignee, actor_id=ACTOR_WORKFLOW)
-        print(json.dumps({"claim_id": claim_id, "assignee": assignee}, indent=2))
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        typer.echo(json.dumps({"claim_id": claim_id, "assignee": assignee}, indent=2))
+    except (ClaimAgentError, ValueError) as e:
+        typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
-def cmd_approve(claim_id: str) -> None:
-    """Approve claim and re-run workflow."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+@app.command()
+def approve(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+) -> None:
+    """Approve claim and re-run workflow (supervisor)."""
+    ctx = _get_cli_ctx()
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     claim_data = claim_data_from_row(claim)
     try:
         ClaimInput.model_validate(claim_data)
     except ValidationError as e:
-        print("Error: Invalid claim data for reprocess:", file=sys.stderr)
-        print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
+        typer.echo("Error: Invalid claim data for reprocess:", err=True)
+        typer.echo(e.json() if hasattr(e, "json") else str(e), err=True)
         sys.exit(1)
     try:
         ctx.repo.perform_adjuster_action(claim_id, "approve", actor_id=ACTOR_WORKFLOW)
@@ -281,63 +296,81 @@ def cmd_approve(claim_id: str) -> None:
             actor_id=ACTOR_WORKFLOW,
             ctx=ctx,
         )
-        print(json.dumps(result, indent=2))
-    except (ValueError, Exception) as e:
-        print(f"Error: {e}", file=sys.stderr)
+        typer.echo(json.dumps(result, indent=2))
+    except (ClaimAgentError, ValueError, Exception) as e:
+        typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
-def cmd_reject(claim_id: str, reason: str = "") -> None:
+@app.command()
+def reject(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+    reason: Annotated[str, typer.Option("--reason", help="Rejection reason")] = "",
+) -> None:
     """Reject claim."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    ctx = _get_cli_ctx()
     if ctx.repo.get_claim(claim_id) is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
         ctx.repo.perform_adjuster_action(claim_id, "reject", actor_id=ACTOR_WORKFLOW, reason=reason)
-        print(json.dumps({"claim_id": claim_id, "status": "denied"}, indent=2))
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        typer.echo(json.dumps({"claim_id": claim_id, "status": "denied"}, indent=2))
+    except (ClaimAgentError, ValueError) as e:
+        typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
-def cmd_request_info(claim_id: str, note: str = "") -> None:
+@app.command("request-info")
+def request_info(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+    note: Annotated[str, typer.Option("--note", help="Note for request")] = "",
+) -> None:
     """Request more information from claimant."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    ctx = _get_cli_ctx()
     if ctx.repo.get_claim(claim_id) is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
         ctx.repo.perform_adjuster_action(claim_id, "request_info", actor_id=ACTOR_WORKFLOW, note=note)
-        print(json.dumps({"claim_id": claim_id, "status": "pending_info"}, indent=2))
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        typer.echo(json.dumps({"claim_id": claim_id, "status": "pending_info"}, indent=2))
+    except (ClaimAgentError, ValueError) as e:
+        typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
-def cmd_escalate_siu(claim_id: str) -> None:
+@app.command("escalate-siu")
+def escalate_siu(
+    claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+) -> None:
     """Escalate claim to SIU."""
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    ctx = _get_cli_ctx()
     if ctx.repo.get_claim(claim_id) is None:
-        print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
+        typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
         ctx.repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=ACTOR_WORKFLOW)
-        print(json.dumps({"claim_id": claim_id, "status": "under_investigation"}, indent=2))
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        typer.echo(json.dumps({"claim_id": claim_id, "status": "under_investigation"}, indent=2))
+    except (ClaimAgentError, ValueError) as e:
+        typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 
-def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> None:
-    """Archive claims older than retention period. Logs actions to audit."""
+@app.command("retention-enforce")
+def retention_enforce(
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Show what would be archived")] = False,
+    years: Annotated[
+        Optional[int],
+        typer.Option("--years", "-y", help="Override retention period in years"),
+    ] = None,
+) -> None:
+    """Archive claims older than retention period."""
     retention_years = years if years is not None else get_retention_period_years()
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
+    ctx = _get_cli_ctx()
     repo = ctx.repo
     claims = repo.list_claims_for_retention(retention_years)
 
     if dry_run:
-        print(json.dumps({
+        typer.echo(json.dumps({
             "dry_run": True,
             "retention_period_years": retention_years,
             "claims_to_archive": len(claims),
@@ -352,11 +385,11 @@ def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> No
         try:
             repo.archive_claim(claim_id)
             archived.append(claim_id)
-        except ValueError as e:
-            print(f"Warning: Could not archive {claim_id}: {e}", file=sys.stderr)
+        except (ClaimAgentError, ValueError) as e:
+            typer.echo(f"Warning: Could not archive {claim_id}: {e}", err=True)
             failed.append(claim_id)
 
-    print(json.dumps({
+    typer.echo(json.dumps({
         "retention_period_years": retention_years,
         "archived_count": len(archived),
         "archived_claim_ids": archived,
@@ -368,174 +401,83 @@ def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> No
         sys.exit(1)
 
 
-def cmd_metrics(claim_id: str | None = None) -> None:
-    """Display metrics for claims.
-
-    Args:
-        claim_id: Optional claim ID. If provided, shows metrics for that claim.
-                 Otherwise, shows global metrics summary.
-    """
-    metrics = get_metrics()
+@app.command()
+def metrics(
+    claim_id: Annotated[Optional[str], typer.Argument(help="Optional claim ID for per-claim metrics")] = None,
+) -> None:
+    """Display metrics for claims."""
+    metrics_obj = get_metrics()
 
     if claim_id:
-        summary = metrics.get_claim_summary(claim_id)
+        summary = metrics_obj.get_claim_summary(claim_id)
         if summary is None:
-            print(f"No metrics found for claim: {claim_id}", file=sys.stderr)
-            print("Note: Metrics are only available for claims processed in the current session.")
+            typer.echo(f"No metrics found for claim: {claim_id}", err=True)
+            typer.echo("Note: Metrics are only available for claims processed in the current session.", err=True)
             sys.exit(1)
-        print(json.dumps(summary.to_dict(), indent=2, default=str))
+        typer.echo(json.dumps(summary.to_dict(), indent=2, default=str))
     else:
-        global_stats = metrics.get_global_stats()
+        global_stats = metrics_obj.get_global_stats()
         if global_stats["total_claims"] == 0:
-            print("No claims have been processed in the current session.")
-            print("Process some claims first to see metrics.")
+            typer.echo("No claims have been processed in the current session.")
+            typer.echo("Process some claims first to see metrics.")
             return
-        print("Global Metrics Summary:")
-        print(json.dumps(global_stats, indent=2, default=str))
-        print("\nPer-Claim Summaries:")
-        for summary in metrics.get_all_summaries():
-            print(f"\n  {summary.claim_id}:")
-            print(f"    LLM Calls: {summary.total_llm_calls}")
-            print(f"    Tokens: {summary.total_tokens}")
-            print(f"    Cost: ${summary.total_cost_usd:.4f}")
-            print(f"    Latency: {summary.total_latency_ms:.0f}ms (avg: {summary.avg_latency_ms:.0f}ms)")
-            print(f"    Status: {summary.status}")
+        typer.echo("Global Metrics Summary:")
+        typer.echo(json.dumps(global_stats, indent=2, default=str))
+        typer.echo("\nPer-Claim Summaries:")
+        for summary in metrics_obj.get_all_summaries():
+            typer.echo(f"\n  {summary.claim_id}:")
+            typer.echo(f"    LLM Calls: {summary.total_llm_calls}")
+            typer.echo(f"    Tokens: {summary.total_tokens}")
+            typer.echo(f"    Cost: ${summary.total_cost_usd:.4f}")
+            typer.echo(f"    Latency: {summary.total_latency_ms:.0f}ms (avg: {summary.avg_latency_ms:.0f}ms)")
+            typer.echo(f"    Status: {summary.status}")
+
+
+def _main() -> None:
+    """Entry point: handle legacy file path, then invoke Typer app."""
+    argv = [a for a in sys.argv[1:] if not a.startswith("--")]
+    options = [a for a in sys.argv[1:] if a.startswith("--")]
+
+    # Legacy: single non-option arg that looks like a file path
+    if len(argv) == 1:
+        path = Path(argv[0])
+        if path.suffix and path.exists():
+            # Transform to: process <path> [--attachment ...]
+            new_argv = ["process", argv[0]] + options
+            sys.argv = [sys.argv[0]] + new_argv
+
+    app()
 
 
 def main() -> None:
-    """Run the claim agent: process, status, history, reprocess, or metrics."""
-    # Handle global options
-    argv = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
-    options = [arg for arg in sys.argv[1:] if arg.startswith("--")]
+    """Run the claim agent CLI."""
+    _main()
 
-    # Set log format from options
-    if "--json" in options:
-        os.environ["CLAIM_AGENT_LOG_FORMAT"] = "json"
-    if "--debug" in options:
-        os.environ["CLAIM_AGENT_LOG_LEVEL"] = "DEBUG"
 
-    # Initialize logging
-    _setup_logging()
+# Exports for tests (cmd_* call into Typer command logic)
+def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) -> None:
+    """Process a claim from a JSON file. Used by tests."""
+    process(claim_path, attachment_paths)
 
-    if not argv:
-        print(_usage(), file=sys.stderr)
-        sys.exit(1)
 
-    first = argv[0].lower()
+def cmd_status(claim_id: str) -> None:
+    """Print claim status. Used by tests."""
+    status(claim_id)
 
-    # Serve command: start REST API server
-    if first == "serve":
-        port_str = _parse_opt_arg("--port") or "8000"
-        host = _parse_opt_arg("--host") or "0.0.0.0"
-        reload = "--reload" in options
-        try:
-            port = int(port_str)
-        except ValueError:
-            print(f"Error: --port must be an integer, got {port_str!r}", file=sys.stderr)
-            sys.exit(1)
-        uvicorn.run(
-            "claim_agent.api.server:app",
-            host=host,
-            port=port,
-            reload=reload,
-        )
-        return
 
-    # Commands that require a claim_id argument
-    if first in ("status", "history", "reprocess"):
-        if len(argv) < 2:
-            print(f"Error: {first} requires <claim_id>", file=sys.stderr)
-            print(_usage(), file=sys.stderr)
-            sys.exit(1)
-        claim_id = argv[1]
-        if first == "status":
-            cmd_status(claim_id)
-        elif first == "history":
-            cmd_history(claim_id)
-        else:
-            from_stage = _parse_opt_arg("--from-stage") or None
-            cmd_reprocess(claim_id, from_stage=from_stage)
-        return
+def cmd_history(claim_id: str) -> None:
+    """Print claim audit log. Used by tests."""
+    history(claim_id)
 
-    # Review queue command
-    if first == "review-queue":
-        assignee = _parse_opt_arg("--assignee") or None
-        priority = _parse_opt_arg("--priority") or None
-        cmd_review_queue(assignee=assignee, priority=priority)
-        return
 
-    # Assign command (claim_id, assignee)
-    if first == "assign":
-        if len(argv) < 3:
-            print("Error: assign requires <claim_id> <assignee>", file=sys.stderr)
-            print(_usage(), file=sys.stderr)
-            sys.exit(1)
-        cmd_assign(argv[1], argv[2])
-        return
+def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
+    """Re-run workflow for an existing claim. Used by tests."""
+    reprocess(claim_id, from_stage)
 
-    # Adjuster action commands (claim_id required)
-    if first in ("approve", "reject", "request-info", "escalate-siu"):
-        if len(argv) < 2:
-            print(f"Error: {first} requires <claim_id>", file=sys.stderr)
-            print(_usage(), file=sys.stderr)
-            sys.exit(1)
-        claim_id = argv[1]
-        if first == "approve":
-            cmd_approve(claim_id)
-        elif first == "reject":
-            cmd_reject(claim_id, reason=_parse_opt_arg("--reason"))
-        elif first == "request-info":
-            cmd_request_info(claim_id, note=_parse_opt_arg("--note"))
-        else:
-            cmd_escalate_siu(claim_id)
-        return
 
-    # Metrics command (optional claim_id)
-    if first == "metrics":
-        claim_id = argv[1] if len(argv) > 1 else None
-        cmd_metrics(claim_id)
-        return
-
-    # Retention enforce command
-    if first == "retention-enforce":
-        dry_run = "--dry-run" in options
-        years_arg = _parse_opt_arg("--years")
-        years = None
-        if years_arg:
-            try:
-                years = int(years_arg)
-            except ValueError:
-                print("Error: --years must be an integer", file=sys.stderr)
-                print(_usage(), file=sys.stderr)
-                sys.exit(1)
-            if years <= 0:
-                print("Error: --years must be a positive integer", file=sys.stderr)
-                print(_usage(), file=sys.stderr)
-                sys.exit(1)
-        cmd_retention_enforce(dry_run=dry_run, years=years)
-        return
-
-    # Process command
-    if first == "process":
-        if len(argv) < 2:
-            print("Error: process requires <claim.json>", file=sys.stderr)
-            print(_usage(), file=sys.stderr)
-            sys.exit(1)
-        path = Path(argv[1])
-        attachment_paths = _parse_attachment_args()
-        cmd_process(path, attachment_paths if attachment_paths else None)
-        return
-
-    # Legacy: single argument is a file path (process)
-    path = Path(argv[0])
-    if path.suffix and path.exists():
-        attachment_paths = _parse_attachment_args()
-        cmd_process(path, attachment_paths if attachment_paths else None)
-        return
-
-    print(f"Error: Unknown command or file not found: {first}", file=sys.stderr)
-    print(_usage(), file=sys.stderr)
-    sys.exit(1)
+def cmd_metrics(claim_id: str | None = None) -> None:
+    """Display metrics for claims. Used by tests."""
+    metrics(claim_id)
 
 
 if __name__ == "__main__":

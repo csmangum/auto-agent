@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from claim_agent.adapters.registry import get_policy_adapter
+from claim_agent.exceptions import AdapterError, ValidationError
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -20,27 +21,19 @@ def query_policy_db_impl(
     ctx: ClaimContext | None = None,
 ) -> str:
     if not policy_number or not isinstance(policy_number, str):
-        return json.dumps({"valid": False, "message": "Invalid policy number"})
+        raise ValidationError("Invalid policy number")
     policy_number = policy_number.strip()
     if not policy_number:
-        return json.dumps({"valid": False, "message": "Empty policy number"})
+        raise ValidationError("Empty policy number")
     adapter = ctx.adapters.policy if ctx else get_policy_adapter()
     try:
         p = adapter.get_policy(policy_number)
     except NotImplementedError as exc:
         logger.warning("Policy adapter get_policy not implemented: %s", exc)
-        return json.dumps({
-            "valid": False,
-            "message": "Policy lookup is not supported by the configured adapter",
-            "error": "not_implemented",
-        })
-    except Exception:
+        raise AdapterError("Policy lookup is not supported by the configured adapter") from exc
+    except Exception as exc:
         logger.exception("Unexpected error while querying policy adapter")
-        return json.dumps({
-            "valid": False,
-            "message": "Error querying policy database",
-            "error": "adapter_error",
-        })
+        raise AdapterError("Error querying policy database") from exc
     if p is not None:
         status = p.get("status", "active")
         is_active = isinstance(status, str) and status.lower() == "active"
