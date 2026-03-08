@@ -4,13 +4,11 @@ import json
 import logging
 from unittest.mock import patch
 
-import pytest
-
 from claim_agent.notifications.webhook import dispatch_repair_authorized_from_workflow_output
 
 
 class TestDispatchRepairAuthorizedFromWorkflowOutput:
-    """Tests for _dispatch_repair_authorization_webhook."""
+    """Tests for dispatch_repair_authorized_from_workflow_output."""
 
     def test_dispatches_when_full_payload_present(self):
         """Webhook is called with correct payload when workflow output has all fields."""

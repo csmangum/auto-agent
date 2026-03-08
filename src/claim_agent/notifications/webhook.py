@@ -203,7 +203,7 @@ def safe_dispatch_claim_event(
 def dispatch_repair_authorized_from_workflow_output(
     workflow_output: str,
     *,
-    log: logging.Logger | None = None,
+    log: logging.Logger | logging.LoggerAdapter | None = None,
 ) -> None:
     """Best-effort dispatch of repair.authorized webhook from workflow output.
 
