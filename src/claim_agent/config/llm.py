@@ -5,8 +5,9 @@ This module configures the LLM with:
 - LiteLLM callbacks for token/cost tracking
 """
 
-import os
 import logging
+import os
+import threading
 
 from dotenv import load_dotenv
 
@@ -14,31 +15,37 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Track whether LangSmith has been set up
+# Track whether LangSmith has been set up (thread-safe check-and-set)
 _langsmith_initialized = False
+_langsmith_lock = threading.Lock()
 
 
 def setup_observability() -> None:
     """Set up observability features (LangSmith, callbacks).
 
-    This function should be called once at startup.
+    This function should be called once at startup. Thread-safe for
+    concurrent claim processing.
     """
     global _langsmith_initialized
 
     if _langsmith_initialized:
         return
 
-    try:
-        from claim_agent.observability.tracing import setup_langsmith
+    with _langsmith_lock:
+        if _langsmith_initialized:
+            return
 
-        if setup_langsmith():
-            logger.info("LangSmith tracing enabled")
-        else:
-            logger.debug("LangSmith tracing not enabled (check LANGSMITH_TRACING env var)")
-    except ImportError:
-        logger.debug("Observability module not available")
+        try:
+            from claim_agent.observability.tracing import setup_langsmith
 
-    _langsmith_initialized = True
+            if setup_langsmith():
+                logger.info("LangSmith tracing enabled")
+            else:
+                logger.debug("LangSmith tracing not enabled (check LANGSMITH_TRACING env var)")
+        except ImportError:
+            logger.debug("Observability module not available")
+
+        _langsmith_initialized = True
 
 
 def get_llm():

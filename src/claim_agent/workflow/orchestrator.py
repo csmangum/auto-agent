@@ -52,6 +52,9 @@ from claim_agent.workflow.stages import (
 
 logger = get_logger(__name__)
 
+# Protects append/remove of litellm.callbacks. We replace the list (never mutate
+# in place), so litellm's iteration during LLM calls continues on the list it
+# captured; risk of iteration races is low.
 _callbacks_lock = threading.Lock()
 
 
@@ -170,7 +173,7 @@ def run_claim_workflow(
             claim_id=claim_id,
             metrics_collector=metrics,
         )
-        with _callbacks_lock:
+        with _callbacks_lock:  # protects list replacement, not litellm's iteration
             prev_litellm_callbacks = list(getattr(litellm, "callbacks", None) or [])
             litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
 
@@ -373,6 +376,6 @@ def run_claim_workflow(
 
             raise
         finally:
-            with _callbacks_lock:
+            with _callbacks_lock:  # protects list replacement, not litellm's iteration
                 current_callbacks = list(getattr(litellm, "callbacks", None) or [])
                 litellm.callbacks = [cb for cb in current_callbacks if cb is not litellm_callback]
