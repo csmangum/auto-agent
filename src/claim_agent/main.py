@@ -264,7 +264,7 @@ def assign(
         typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
-        ctx.repo.assign_claim(claim_id, assignee, actor_id=ACTOR_WORKFLOW)
+        ctx.adjuster_service.assign(claim_id, assignee, actor_id=ACTOR_WORKFLOW)
         typer.echo(json.dumps({"claim_id": claim_id, "assignee": assignee}, indent=2))
     except (ClaimAgentError, ValueError) as e:
         typer.echo(f"Error: {e}", err=True)
@@ -289,7 +289,7 @@ def approve(
         typer.echo(e.json() if hasattr(e, "json") else str(e), err=True)
         sys.exit(1)
     try:
-        ctx.repo.perform_adjuster_action(claim_id, "approve", actor_id=ACTOR_WORKFLOW)
+        ctx.adjuster_service.approve(claim_id, actor_id=ACTOR_WORKFLOW)
         result = run_claim_workflow(
             claim_data,
             existing_claim_id=claim_id,
@@ -313,7 +313,7 @@ def reject(
         typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
-        ctx.repo.perform_adjuster_action(claim_id, "reject", actor_id=ACTOR_WORKFLOW, reason=reason)
+        ctx.adjuster_service.reject(claim_id, actor_id=ACTOR_WORKFLOW, reason=reason)
         typer.echo(json.dumps({"claim_id": claim_id, "status": "denied"}, indent=2))
     except (ClaimAgentError, ValueError) as e:
         typer.echo(f"Error: {e}", err=True)
@@ -331,7 +331,7 @@ def request_info(
         typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
-        ctx.repo.perform_adjuster_action(claim_id, "request_info", actor_id=ACTOR_WORKFLOW, note=note)
+        ctx.adjuster_service.request_info(claim_id, actor_id=ACTOR_WORKFLOW, note=note)
         typer.echo(json.dumps({"claim_id": claim_id, "status": "pending_info"}, indent=2))
     except (ClaimAgentError, ValueError) as e:
         typer.echo(f"Error: {e}", err=True)
@@ -348,7 +348,7 @@ def escalate_siu(
         typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
     try:
-        ctx.repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=ACTOR_WORKFLOW)
+        ctx.adjuster_service.escalate_to_siu(claim_id, actor_id=ACTOR_WORKFLOW)
         typer.echo(json.dumps({"claim_id": claim_id, "status": "under_investigation"}, indent=2))
     except (ClaimAgentError, ValueError) as e:
         typer.echo(f"Error: {e}", err=True)

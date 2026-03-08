@@ -1,0 +1,62 @@
+"""Claim event emission for decoupled side effects (webhooks, analytics, etc.)."""
+
+from dataclasses import dataclass
+from typing import Callable
+
+_listeners: list[Callable[["ClaimEvent"], None]] = []
+
+
+@dataclass
+class ClaimEvent:
+    """Event emitted when claim status or state changes."""
+
+    claim_id: str
+    status: str
+    summary: str | None = None
+    claim_type: str | None = None
+    payout_amount: float | None = None
+
+
+def register_claim_event_listener(callback: Callable[[ClaimEvent], None]) -> None:
+    """Register a listener to be invoked when claim events are emitted."""
+    _listeners.append(callback)
+
+
+def unregister_claim_event_listener(callback: Callable[[ClaimEvent], None]) -> None:
+    """Remove a listener. Used for test cleanup."""
+    try:
+        _listeners.remove(callback)
+    except ValueError:
+        pass
+
+
+def emit_claim_event(event: ClaimEvent) -> None:
+    """Emit a claim event to all registered listeners."""
+    for listener in _listeners:
+        try:
+            listener(event)
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Claim event listener failed (best-effort): %s", e
+            )
+
+
+def _register_webhook_listener() -> None:
+    """Register the default webhook dispatch listener."""
+    from claim_agent.notifications.webhook import safe_dispatch_claim_event
+
+    def dispatch(event: ClaimEvent) -> None:
+        safe_dispatch_claim_event(
+            event.claim_id,
+            event.status,
+            summary=event.summary,
+            claim_type=event.claim_type,
+            payout_amount=event.payout_amount,
+        )
+
+    register_claim_event_listener(dispatch)
+
+
+_register_webhook_listener()

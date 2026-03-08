@@ -20,6 +20,7 @@ from claim_agent.adapters.base import (
 )
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.observability.metrics import ClaimMetrics
+from claim_agent.services.adjuster_action_service import AdjusterActionService
 
 
 @dataclass
@@ -63,6 +64,7 @@ class ClaimContext:
     """
 
     repo: ClaimRepository
+    adjuster_service: AdjusterActionService
     adapters: AdapterRegistry
     metrics: ClaimMetrics
     llm: Any = None
@@ -87,8 +89,10 @@ class ClaimContext:
         """
         from claim_agent.observability import get_metrics
 
+        repo = ClaimRepository(db_path=db_path)
         return cls(
-            repo=ClaimRepository(db_path=db_path),
+            repo=repo,
+            adjuster_service=AdjusterActionService(repo=repo),
             adapters=AdapterRegistry.from_defaults(),
             metrics=get_metrics(),
             llm=llm,

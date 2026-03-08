@@ -136,7 +136,13 @@ def run_claim_workflow(
         ctx = ClaimContext.from_defaults(llm=_llm)
     elif ctx.llm is None or llm is not None:
         # Apply _llm: fill in when ctx has none, or override when explicit llm was passed
-        ctx = ClaimContext(repo=ctx.repo, adapters=ctx.adapters, metrics=ctx.metrics, llm=_llm)
+        ctx = ClaimContext(
+            repo=ctx.repo,
+            adjuster_service=ctx.adjuster_service,
+            adapters=ctx.adapters,
+            metrics=ctx.metrics,
+            llm=_llm,
+        )
     repo = ctx.repo
     metrics = ctx.metrics
 

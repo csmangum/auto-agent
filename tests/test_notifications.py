@@ -349,13 +349,14 @@ class TestNotifyClaimant:
 
 
 class TestRepositoryWebhookIntegration:
-    """Tests that repository triggers webhooks on create and status update."""
+    """Tests that repository emits claim events (which trigger webhooks via listener)."""
 
-    def test_create_claim_dispatches_submitted(self):
+    def test_create_claim_emits_submitted(self):
         from claim_agent.db.repository import ClaimRepository
+        from claim_agent.events import ClaimEvent
         from claim_agent.models.claim import ClaimInput
 
-        with patch("claim_agent.db.repository.safe_dispatch_claim_event") as mock:
+        with patch("claim_agent.db.repository.emit_claim_event") as mock:
             repo = ClaimRepository()
             claim_input = ClaimInput(
                 policy_number="POL-001",
@@ -369,11 +370,14 @@ class TestRepositoryWebhookIntegration:
             )
             claim_id = repo.create_claim(claim_input)
             mock.assert_called_once()
-            assert mock.call_args[0][0] == claim_id
-            assert mock.call_args[0][1] == "pending"
+            event = mock.call_args[0][0]
+            assert isinstance(event, ClaimEvent)
+            assert event.claim_id == claim_id
+            assert event.status == "pending"
 
-    def test_update_claim_status_dispatches_event(self):
+    def test_update_claim_status_emits_event(self):
         from claim_agent.db.repository import ClaimRepository
+        from claim_agent.events import ClaimEvent
         from claim_agent.models.claim import ClaimInput
 
         repo = ClaimRepository()
@@ -389,16 +393,19 @@ class TestRepositoryWebhookIntegration:
         )
         claim_id = repo.create_claim(claim_input)
 
-        with patch("claim_agent.db.repository.safe_dispatch_claim_event") as mock:
+        with patch("claim_agent.db.repository.emit_claim_event") as mock:
             mock.reset_mock()
             repo.update_claim_status(claim_id, "processing", details="Started")
             mock.assert_called_once()
-            assert mock.call_args[0][0] == claim_id
-            assert mock.call_args[0][1] == "processing"
+            event = mock.call_args[0][0]
+            assert isinstance(event, ClaimEvent)
+            assert event.claim_id == claim_id
+            assert event.status == "processing"
 
-    def test_archive_claim_dispatches_archived(self):
+    def test_archive_claim_emits_archived(self):
         from claim_agent.db.database import get_connection, init_db
         from claim_agent.db.repository import ClaimRepository
+        from claim_agent.events import ClaimEvent
         from claim_agent.models.claim import ClaimInput
 
         fd, db_path = tempfile.mkstemp(suffix=".db")
@@ -423,11 +430,13 @@ class TestRepositoryWebhookIntegration:
                     (claim_id,),
                 )
 
-            with patch("claim_agent.db.repository.safe_dispatch_claim_event") as mock:
+            with patch("claim_agent.db.repository.emit_claim_event") as mock:
                 repo.archive_claim(claim_id)
                 mock.assert_called_once()
-                assert mock.call_args[0][0] == claim_id
-                assert mock.call_args[0][1] == "archived"
-                assert mock.call_args[1]["summary"] == "Archived for retention"
+                event = mock.call_args[0][0]
+                assert isinstance(event, ClaimEvent)
+                assert event.claim_id == claim_id
+                assert event.status == "archived"
+                assert event.summary == "Archived for retention"
         finally:
             os.unlink(db_path)
