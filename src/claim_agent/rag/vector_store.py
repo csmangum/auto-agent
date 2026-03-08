@@ -13,7 +13,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-from claim_agent.rag.chunker import Chunk, ChunkMetadata
+from claim_agent.rag.chunker import Chunk
 from claim_agent.rag.embeddings import EmbeddingProvider, get_embedding_provider
 
 

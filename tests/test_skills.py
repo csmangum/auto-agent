@@ -199,7 +199,7 @@ class TestSkillConstants:
 
     def test_skill_constants_match_files(self):
         """Test that skill constants correspond to actual skill files."""
-        from claim_agent.skills import ROUTER, INTAKE, list_skills, load_skill
+        from claim_agent.skills import ROUTER, INTAKE, load_skill
         
         # Verify these skills can be loaded
         router_skill = load_skill(ROUTER)

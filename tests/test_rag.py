@@ -60,7 +60,7 @@ class TestDocumentChunker:
     
     def test_chunk_metadata(self):
         """Test chunk metadata extraction."""
-        from claim_agent.rag.chunker import DocumentChunker, ChunkMetadata
+        from claim_agent.rag.chunker import ChunkMetadata
         
         metadata = ChunkMetadata(
             source_file="test.json",
@@ -79,7 +79,7 @@ class TestDocumentChunker:
         
         assert meta_dict["state"] == "California"
         assert meta_dict["provision_id"] == "TL-001"
-        assert meta_dict["is_state_specific"] == True
+        assert meta_dict["is_state_specific"] is True
     
     def test_chunk_policy_data_function(self):
         """Test the chunk_policy_data convenience function."""
@@ -154,6 +154,29 @@ class TestDocumentChunker:
         hash_part = parts_a[1]
         assert len(hash_part) == 16
         assert all(c in "0123456789abcdef" for c in hash_part)
+
+    def test_chunk_json_document_malformed_raises(self, tmp_path):
+        """Malformed JSON raises JSONDecodeError (documented behavior)."""
+        import json
+        from claim_agent.rag.chunker import DocumentChunker
+
+        bad_file = tmp_path / "bad.json"
+        bad_file.write_text("{invalid json")
+        chunker = DocumentChunker()
+        with pytest.raises(json.JSONDecodeError):
+            chunker.chunk_json_document(bad_file)
+
+    def test_chunk_policy_data_empty_dir_returns_empty(self, tmp_path):
+        """Empty directory with no policy files returns empty list."""
+        from claim_agent.rag.chunker import chunk_policy_data
+
+        assert chunk_policy_data(tmp_path) == []
+
+    def test_chunk_compliance_data_empty_dir_returns_empty(self, tmp_path):
+        """Empty directory with no compliance files returns empty list."""
+        from claim_agent.rag.chunker import chunk_compliance_data
+
+        assert chunk_compliance_data(tmp_path) == []
 
 
 class TestEmbeddings:
@@ -649,8 +672,8 @@ class TestRAGContext:
     def test_rag_context_provider(self):
         """Test the RAG context provider class."""
         from claim_agent.rag.context import RAGContextProvider
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
+
+        with tempfile.TemporaryDirectory():
             provider = RAGContextProvider(
                 data_dir=DATA_DIR,
                 default_state="California",

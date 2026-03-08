@@ -287,7 +287,7 @@ def test_partial_loss_crew_acceptance_criteria():
 def test_extract_payout_from_workflow_result():
     """Verify _extract_payout_from_workflow_result extracts payout_amount from structured output."""
     from claim_agent.crews.main_crew import _extract_payout_from_workflow_result
-    from claim_agent.models.workflow_output import TotalLossWorkflowOutput, PartialLossWorkflowOutput
+    from claim_agent.models.workflow_output import TotalLossWorkflowOutput
 
     # Pydantic model output
     mock_task = MagicMock()

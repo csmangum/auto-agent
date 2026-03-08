@@ -449,12 +449,10 @@ class TestMCPWorkflowIntegration:
         from claim_agent.mcp_server.server import (
             query_policy_db as mcp_query,
             fetch_vehicle_value as mcp_value,
-            evaluate_damage as mcp_damage,
         )
         from claim_agent.tools.policy_tools import query_policy_db as tool_query
         from claim_agent.tools.valuation_tools import (
             fetch_vehicle_value as tool_value,
-            evaluate_damage as tool_damage,
         )
         
         # Compare policy query results

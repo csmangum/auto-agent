@@ -3,95 +3,13 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from claim_agent.db.database import init_db, get_connection
+from claim_agent.db.database import get_connection
 
 
 @pytest.fixture(autouse=True)
-def _use_temp_db(tmp_path, monkeypatch):
-    """Use a temporary database for all tests."""
-    db_path = str(tmp_path / "test_claims.db")
-    monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
-    # Reset the schema init cache so the new path is picked up
-    from claim_agent.db import database
-    database._schema_initialized.clear()
-    init_db(db_path)
-    # Seed some test data
-    _seed_test_data(db_path)
+def _use_seeded_db(seeded_temp_db):
+    """Use seeded temp DB for all API tests."""
     yield
-
-
-def _seed_test_data(db_path: str):
-    """Insert test claims, audit log entries, and workflow runs."""
-    with get_connection(db_path) as conn:
-        # Claims
-        conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST001", "POL-001", "1HGBH41JXMN109186", 2021, "Honda", "Accord",
-             "2025-01-15", "Rear-ended at stoplight", "Rear bumper damage", 2500.0,
-             "new", "open"),
-        )
-        conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST002", "POL-002", "5YJSA1E26HF123456", 2020, "Tesla", "Model 3",
-             "2025-01-20", "Flash flood", "Vehicle submerged", 45000.0,
-             "total_loss", "closed"),
-        )
-        conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST003", "POL-003", "3VWDX7AJ5DM999999", 2019, "Volkswagen", "Jetta",
-             "2025-01-22", "Staged accident", "Front bumper destroyed", 35000.0,
-             "fraud", "fraud_suspected"),
-        )
-        conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status, priority, due_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST004", "POL-004", "2HGFG3B54CH123456", 2022, "Toyota", "Camry",
-             "2025-01-25", "Low confidence routing", "Minor scratch", 500.0,
-             "new", "needs_review", "high", "2025-01-26T12:00:00Z"),
-        )
-
-        # Audit log entries (with actor_id, before_state, after_state for audit trail)
-        conn.execute(
-            "INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                "CLM-TEST001",
-                "created",
-                "pending",
-                "Claim record created",
-                "workflow",
-                '{"status": "pending", "claim_type": null, "payout_amount": null}',
-            ),
-        )
-        conn.execute(
-            "INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                "CLM-TEST001",
-                "status_change",
-                "pending",
-                "open",
-                "Processed successfully",
-                "workflow",
-                '{"status": "pending", "claim_type": null, "payout_amount": null}',
-                '{"status": "open", "claim_type": "new", "payout_amount": null}',
-            ),
-        )
-
-        # Workflow run
-        conn.execute(
-            "INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output) "
-            "VALUES (?, ?, ?, ?)",
-            ("CLM-TEST001", "new", "new\nFirst-time claim", "Claim assigned and opened"),
-        )
 
 
 @pytest.fixture
@@ -143,6 +61,26 @@ class TestClaimsList:
         data = resp.json()
         assert len(data["claims"]) == 1
         assert data["total"] == 4
+
+    def test_pagination_limit_zero_returns_422(self, client):
+        resp = client.get("/api/claims?limit=0")
+        assert resp.status_code == 422
+
+    def test_pagination_limit_negative_returns_422(self, client):
+        resp = client.get("/api/claims?limit=-1")
+        assert resp.status_code == 422
+
+    def test_pagination_offset_negative_returns_422(self, client):
+        resp = client.get("/api/claims?offset=-1")
+        assert resp.status_code == 422
+
+    def test_pagination_limit_over_max_returns_422(self, client):
+        resp = client.get("/api/claims?limit=1001")
+        assert resp.status_code == 422
+
+    def test_review_queue_limit_zero_returns_422(self, client):
+        resp = client.get("/api/claims/review-queue?limit=0")
+        assert resp.status_code == 422
 
 
 class TestClaimDetail:
@@ -237,8 +175,6 @@ class TestReviewQueue:
         assert data["status"] == "denied"
 
     def test_request_info(self, client):
-        from claim_agent.db.database import get_connection
-
         with get_connection() as conn:
             conn.execute(
                 "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
@@ -254,8 +190,6 @@ class TestReviewQueue:
         assert data["status"] == "pending_info"
 
     def test_escalate_to_siu(self, client):
-        from claim_agent.db.database import get_connection
-
         with get_connection() as conn:
             conn.execute(
                 "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
@@ -1097,3 +1031,12 @@ class TestProcessClaimAsyncEndpoint:
         assert "data:" in content
         assert claim_id in content
         assert '"done":true' in content or '"done": true' in content
+
+    def test_stream_returns_sse_for_existing_claim(self, client):
+        """Stream endpoint returns SSE for existing claim (CLM-TEST001 has status open)."""
+        stream_resp = client.get("/api/claims/CLM-TEST001/stream")
+        assert stream_resp.status_code == 200
+        assert stream_resp.headers.get("content-type", "").startswith("text/event-stream")
+        content = stream_resp.text
+        assert "data:" in content
+        assert "CLM-TEST001" in content

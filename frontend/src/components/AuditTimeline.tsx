@@ -9,21 +9,25 @@ interface AuditTimelineProps {
 
 function StateDiff({ label, jsonStr }: { label: string; jsonStr?: string }) {
   if (!jsonStr) return null;
+  let displayStr: string | null = null;
   try {
     const obj = JSON.parse(jsonStr) as Record<string, unknown>;
     const hasNonNull = Object.values(obj).some((v) => v != null);
-    if (!hasNonNull) return null;
-    return (
-      <div className="mt-2 text-xs">
-        <span className="font-medium text-gray-500">{label}:</span>
-        <pre className="mt-0.5 rounded bg-gray-50 p-2 font-mono text-gray-600 overflow-x-auto">
-          {JSON.stringify(obj, null, 2)}
-        </pre>
-      </div>
-    );
+    if (hasNonNull) {
+      displayStr = JSON.stringify(obj, null, 2);
+    }
   } catch {
     return null;
   }
+  if (!displayStr) return null;
+  return (
+    <div className="mt-2 text-xs">
+      <span className="font-medium text-gray-500">{label}:</span>
+      <pre className="mt-0.5 rounded bg-gray-50 p-2 font-mono text-gray-600 overflow-x-auto">
+        {displayStr}
+      </pre>
+    </div>
+  );
 }
 
 export default function AuditTimeline({ events }: AuditTimelineProps) {

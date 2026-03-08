@@ -812,7 +812,7 @@ class ClaimRepository:
                     AUDIT_EVENT_RETENTION,
                     old_status,
                     STATUS_ARCHIVED,
-                    f"Archived for retention (claim older than retention period)",
+                    "Archived for retention (claim older than retention period)",
                     actor_id,
                 ),
             )

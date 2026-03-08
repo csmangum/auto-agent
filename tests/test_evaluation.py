@@ -22,7 +22,6 @@ os.environ.setdefault(
 
 from evaluate_claim_processing import (
     ALL_SCENARIOS,
-    EvaluationReport,
     EvaluationResult,
     EvaluationScenario,
     compare_reports,
