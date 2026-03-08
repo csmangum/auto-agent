@@ -1,9 +1,11 @@
 """Escalation handling: low-confidence routing and mid-workflow escalations."""
 
+from __future__ import annotations
+
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from claim_agent.config.settings import (
     ESCALATION_SLA_HOURS_CRITICAL,
@@ -17,6 +19,9 @@ from claim_agent.observability import get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.workflow.budget import _record_crew_llm_usage
 from claim_agent.workflow.helpers import _combine_workflow_outputs
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 logger = get_logger(__name__)
 
@@ -65,10 +70,8 @@ def _escalate_low_router_confidence(
     router_confidence: float,
     confidence_threshold: float,
     router_reasoning: str,
-    repo: Any,
-    logger,
-    metrics,
-    llm,
+    context: ClaimContext,
+    workflow_logger: Any,
     workflow_start_time: float,
     actor_id: str,
 ) -> None:
@@ -77,6 +80,8 @@ def _escalate_low_router_confidence(
     Low-confidence escalations are always medium priority; SLA hours come from
     ESCALATION_SLA_HOURS_MEDIUM (same as mid-workflow medium-priority escalations).
     """
+    repo = context.repo
+    metrics = context.metrics
     sla_hours = _sla_hours_for_priority("medium")
     details = _build_low_confidence_escalation_details(
         router_confidence, confidence_threshold, claim_type, router_reasoning,
@@ -93,13 +98,13 @@ def _escalate_low_router_confidence(
         review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
     )
     workflow_duration = (time.time() - workflow_start_time) * 1000
-    logger.log_event(
+    workflow_logger.log_event(
         "claim_escalated",
         reasons=["low_router_confidence"],
         priority="medium",
         duration_ms=workflow_duration,
     )
-    _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+    _record_crew_llm_usage(claim_id=claim_id, llm=context.llm, metrics=metrics)
     metrics.end_claim(claim_id, status="escalated")
     record_claim_outcome(
         claim_id, "escalated", (time.time() - workflow_start_time)
@@ -139,10 +144,8 @@ def _handle_mid_workflow_escalation(
     claim_id: str,
     claim_type: str,
     raw_output: str,
-    repo: Any,
-    logger,
-    metrics,
-    llm,
+    context: ClaimContext,
+    workflow_logger: Any,
     workflow_start_time: float,
     prior_workflow_output: str | None = None,
     actor_id: str | None = None,
@@ -160,6 +163,8 @@ def _handle_mid_workflow_escalation(
     Cleans up any checkpoints for *workflow_run_id* so that a future resume
     does not reuse stale cached outputs from a run that ended in escalation.
     """
+    repo = context.repo
+    metrics = context.metrics
     if workflow_run_id:
         repo.delete_task_checkpoints(claim_id, workflow_run_id)
     details_payload: dict[str, Any] = {
@@ -203,13 +208,13 @@ def _handle_mid_workflow_escalation(
             )
 
     workflow_duration = (time.time() - workflow_start_time) * 1000
-    logger.log_event(
+    workflow_logger.log_event(
         "claim_escalated",
         reasons=[e.reason],
         priority=e.priority,
         duration_ms=workflow_duration,
     )
-    _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+    _record_crew_llm_usage(claim_id=claim_id, llm=context.llm, metrics=metrics)
     metrics.end_claim(claim_id, status="escalated")
     record_claim_outcome(
         claim_id, "escalated", (time.time() - workflow_start_time)

@@ -1,11 +1,13 @@
 """Vehicle valuation and payout calculation logic."""
 
+from __future__ import annotations
+
 import json
 import logging
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from claim_agent.adapters.base import PolicyAdapter, ValuationAdapter
-from claim_agent.adapters.registry import get_policy_adapter, get_valuation_adapter
+from claim_agent.adapters.registry import get_valuation_adapter
 from claim_agent.config.settings import (
     DEFAULT_BASE_VALUE,
     DEFAULT_DEDUCTIBLE,
@@ -14,6 +16,9 @@ from claim_agent.config.settings import (
     MIN_VEHICLE_VALUE,
 )
 from claim_agent.tools.policy_logic import query_policy_db_impl
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +29,13 @@ def fetch_vehicle_value_impl(
     make: str,
     model: str,
     *,
-    valuation_adapter: ValuationAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     vin = vin.strip() if isinstance(vin, str) else ""
     make = make.strip() if isinstance(make, str) else ""
     model = model.strip() if isinstance(model, str) else ""
     year_int = int(year) if isinstance(year, (int, float)) and year > 0 else 2020
-    adapter = valuation_adapter or get_valuation_adapter()
+    adapter = ctx.adapters.valuation if ctx else get_valuation_adapter()
     try:
         v = adapter.get_vehicle_value(vin, year_int, make, model)
     except NotImplementedError:
@@ -84,7 +89,7 @@ def calculate_payout_impl(
     vehicle_value: float,
     policy_number: str,
     *,
-    policy_adapter: PolicyAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Calculate total loss payout by subtracting deductible from vehicle value."""
     if not isinstance(vehicle_value, (int, float)) or vehicle_value < MIN_PAYOUT_VEHICLE_VALUE:
@@ -98,7 +103,7 @@ def calculate_payout_impl(
 
     vehicle_value = round(vehicle_value, 2)
 
-    policy_result = query_policy_db_impl(policy_number, policy_adapter=policy_adapter)
+    policy_result = query_policy_db_impl(policy_number, ctx=ctx)
     try:
         policy_data = json.loads(policy_result)
         if not policy_data.get("valid", False):

@@ -71,12 +71,18 @@ def reset_global_metrics():
         from claim_agent.observability.metrics import reset_metrics
         reset_metrics()
     except ImportError:
-        # Metrics module is optional in some test environments; proceed without resetting.
         pass
     yield
     try:
         from claim_agent.observability.metrics import reset_metrics
         reset_metrics()
     except ImportError:
-        # Metrics module is optional in some test environments; proceed without resetting.
         pass
+
+
+@pytest.fixture()
+def claim_context(temp_db):
+    """Provide a ClaimContext wired to the per-test temp DB."""
+    from claim_agent.context import ClaimContext
+
+    return ClaimContext.from_defaults(db_path=temp_db)

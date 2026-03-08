@@ -6,7 +6,6 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
 
 import litellm
 
@@ -19,11 +18,11 @@ from claim_agent.config.settings import (
     HIGH_VALUE_VEHICLE_THRESHOLD,
     PRE_ROUTING_FRAUD_DAMAGE_RATIO,
 )
+from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
-from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
-from claim_agent.observability import claim_context, get_logger, get_metrics
+from claim_agent.observability import claim_context, get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.observability.tracing import LiteLLMTracingCallback
 from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
@@ -76,9 +75,7 @@ class _WorkflowCtx:
     claim_data_with_id: dict
     inputs: dict
     similarity_score_for_escalation: float | None
-    repo: ClaimRepository
-    metrics: Any
-    llm: Any
+    context: ClaimContext
     workflow_run_id: str
     workflow_start_time: float
     actor_id: str
@@ -100,6 +97,7 @@ def run_claim_workflow(
     actor_id: str | None = None,
     resume_run_id: str | None = None,
     from_stage: str | None = None,
+    ctx: ClaimContext | None = None,
 ) -> dict:
     """Run the full claim workflow: classify with router crew, then run the appropriate workflow crew.
 
@@ -113,12 +111,13 @@ def run_claim_workflow(
     Args:
         claim_data: dict with policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                    incident_date, incident_description, damage_description, estimated_damage (optional).
-        llm: Optional LLM instance. If None, uses default from config.
+        llm: Optional LLM instance (legacy). Prefer passing via *ctx*.
         existing_claim_id: if set, re-run workflow for this claim (no new claim created).
         actor_id: Actor to record in audit log entries.
         resume_run_id: Reuse checkpoints from this workflow run (resume mode).
         from_stage: When resuming, invalidate checkpoints at and after this stage
             and re-execute from here.  One of ``WORKFLOW_STAGES``.
+        ctx: Dependency-injection context. When ``None``, one is built from defaults.
 
     Returns:
         dict with claim_id, claim_type, status, summary, workflow_output, and
@@ -127,10 +126,15 @@ def run_claim_workflow(
     workflow_start_time = time.time()
     _actor = actor_id if actor_id is not None else ACTOR_WORKFLOW
 
-    llm = llm or get_llm()
+    _llm = llm or (ctx.llm if ctx else None) or get_llm()
     claim_input, claim_data = _normalize_claim_data(claim_data)
-    repo = ClaimRepository()
-    metrics = get_metrics()
+    if ctx is None:
+        ctx = ClaimContext.from_defaults(llm=_llm)
+    elif ctx.llm is None or llm is not None:
+        # Apply _llm: fill in when ctx has none, or override when explicit llm was passed
+        ctx = ClaimContext(repo=ctx.repo, adapters=ctx.adapters, metrics=ctx.metrics, llm=_llm)
+    repo = ctx.repo
+    metrics = ctx.metrics
 
     if existing_claim_id:
         claim_id = existing_claim_id
@@ -208,7 +212,7 @@ def run_claim_workflow(
             damage_indicates_total = economic_check.get("damage_indicates_total_loss", False)
 
             if (economic_check.get("damage_to_value_ratio") or 0) > PRE_ROUTING_FRAUD_DAMAGE_RATIO and not is_catastrophic and not damage_indicates_total:
-                fraud_result = detect_fraud_indicators_impl(claim_data)
+                fraud_result = detect_fraud_indicators_impl(claim_data, ctx=ctx)
                 try:
                     fraud_data = json.loads(fraud_result)
                 except (json.JSONDecodeError, TypeError):
@@ -228,7 +232,7 @@ def run_claim_workflow(
             if is_high_value:
                 claim_data_with_id["high_value_claim"] = True
 
-            existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id)
+            existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id, ctx=ctx)
             similarity_score_for_escalation = None
             if existing_claims:
                 from claim_agent.tools.claims_logic import compute_similarity_score_impl
@@ -291,15 +295,13 @@ def run_claim_workflow(
                 len(claim_data_with_id.get("existing_claims_for_vin") or []),
             )
 
-            ctx = _WorkflowCtx(
+            wf_ctx = _WorkflowCtx(
                 claim_id=claim_id,
                 claim_data=claim_data,
                 claim_data_with_id=claim_data_with_id,
                 inputs=inputs,
                 similarity_score_for_escalation=similarity_score_for_escalation,
-                repo=repo,
-                metrics=metrics,
-                llm=llm,
+                context=ctx,
                 workflow_run_id=workflow_run_id,
                 workflow_start_time=workflow_start_time,
                 actor_id=_actor,
@@ -307,18 +309,18 @@ def run_claim_workflow(
             )
 
             for stage_fn in (_stage_router, _stage_escalation_check, _stage_workflow_crew, _stage_settlement):
-                early_return = stage_fn(ctx)
+                early_return = stage_fn(wf_ctx)
                 if early_return is not None:
                     return early_return
 
-            final_status = _final_status(ctx.claim_type)
-            repo.save_workflow_result(claim_id, ctx.claim_type, ctx.raw_output, ctx.workflow_output)
+            final_status = _final_status(wf_ctx.claim_type)
+            repo.save_workflow_result(claim_id, wf_ctx.claim_type, wf_ctx.raw_output, wf_ctx.workflow_output)
             repo.update_claim_status(
                 claim_id,
                 final_status,
-                details=ctx.workflow_output[:500] if len(ctx.workflow_output) > 500 else ctx.workflow_output,
-                claim_type=ctx.claim_type,
-                payout_amount=ctx.extracted_payout,
+                details=wf_ctx.workflow_output[:500] if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
+                claim_type=wf_ctx.claim_type,
+                payout_amount=wf_ctx.extracted_payout,
                 actor_id=_actor,
             )
 
@@ -329,7 +331,7 @@ def run_claim_workflow(
                 duration_ms=workflow_duration,
             )
 
-            _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+            _record_crew_llm_usage(claim_id=claim_id, llm=ctx.llm, metrics=metrics)
 
             metrics.end_claim(claim_id, status=final_status)
             record_claim_outcome(
@@ -339,12 +341,12 @@ def run_claim_workflow(
 
             return {
                 "claim_id": claim_id,
-                "claim_type": ctx.claim_type,
+                "claim_type": wf_ctx.claim_type,
                 "status": final_status,
-                "router_output": ctx.raw_output,
-                "workflow_output": ctx.workflow_output,
+                "router_output": wf_ctx.raw_output,
+                "workflow_output": wf_ctx.workflow_output,
                 "workflow_run_id": workflow_run_id,
-                "summary": ctx.workflow_output[:500] + "..." if len(ctx.workflow_output) > 500 else ctx.workflow_output,
+                "summary": wf_ctx.workflow_output[:500] + "..." if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
             }
         except Exception as e:
             details = str(e)
@@ -360,7 +362,7 @@ def run_claim_workflow(
                 level=logging.ERROR,
             )
 
-            _record_crew_llm_usage(claim_id=claim_id, llm=llm, metrics=metrics)
+            _record_crew_llm_usage(claim_id=claim_id, llm=ctx.llm, metrics=metrics)
 
             metrics.end_claim(claim_id, status="error")
             record_claim_outcome(

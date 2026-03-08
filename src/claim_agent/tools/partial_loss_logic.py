@@ -1,12 +1,13 @@
 """Partial loss workflow logic: repair shops, parts, estimates, authorization."""
 
+from __future__ import annotations
+
 import json
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from claim_agent.adapters.base import PartsAdapter, RepairShopAdapter
 from claim_agent.adapters.registry import get_parts_adapter, get_repair_shop_adapter
 from claim_agent.config.settings import (
     DEFAULT_DEDUCTIBLE,
@@ -18,6 +19,9 @@ from claim_agent.config.settings import (
 from claim_agent.tools.policy_logic import query_policy_db_impl
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,14 +30,14 @@ def _get_shop_labor_rate(
     default: float = 75.0,
     shop: Optional[dict[str, Any]] = None,
     *,
-    repair_shop_adapter: RepairShopAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> float:
     """Return labor rate for shop_id, or default if not found."""
     if shop is not None:
         return shop.get("labor_rate_per_hour", default)
     if not shop_id:
         return default
-    adapter = repair_shop_adapter or get_repair_shop_adapter()
+    adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
     shop = adapter.get_shop(shop_id)
     if shop is None:
         return default
@@ -45,10 +49,10 @@ def get_available_repair_shops_impl(
     vehicle_make: Optional[str] = None,
     network_type: Optional[str] = None,
     *,
-    repair_shop_adapter: RepairShopAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Get list of available repair shops, optionally filtered."""
-    adapter = repair_shop_adapter or get_repair_shop_adapter()
+    adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
     shops = adapter.get_shops()
 
     available_shops = []
@@ -89,10 +93,10 @@ def assign_repair_shop_impl(
     shop_id: str,
     estimated_repair_days: Optional[int] = None,
     *,
-    repair_shop_adapter: RepairShopAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Assign a repair shop to a partial loss claim."""
-    adapter = repair_shop_adapter or get_repair_shop_adapter()
+    adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
     shop = adapter.get_shop(shop_id)
 
     if shop is None:
@@ -135,10 +139,10 @@ def get_parts_catalog_impl(
     vehicle_make: str,
     part_type_preference: str = "aftermarket",
     *,
-    parts_adapter: PartsAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Get recommended parts from catalog based on damage description."""
-    adapter = parts_adapter or get_parts_adapter()
+    adapter = ctx.adapters.parts if ctx else get_parts_adapter()
     parts_catalog = adapter.get_catalog()
 
     damage_to_parts = {
@@ -236,7 +240,7 @@ def create_parts_order_impl(
     parts: list[dict],
     shop_id: str | None = None,
     *,
-    parts_adapter: PartsAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Create a parts order for a partial loss claim."""
     if not parts or not isinstance(parts, list):
@@ -245,7 +249,7 @@ def create_parts_order_impl(
             "error": "No parts specified for order",
         })
 
-    adapter = parts_adapter or get_parts_adapter()
+    adapter = ctx.adapters.parts if ctx else get_parts_adapter()
     parts_catalog = adapter.get_catalog()
 
     order_items = []
@@ -321,18 +325,17 @@ def calculate_repair_estimate_impl(
     shop_id: Optional[str] = None,
     part_type_preference: str = "aftermarket",
     *,
-    repair_shop_adapter: RepairShopAdapter | None = None,
-    parts_adapter: PartsAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Calculate a complete repair estimate for a partial loss claim."""
-    shop_adapter = repair_shop_adapter or get_repair_shop_adapter()
+    shop_adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
 
-    parts_result = get_parts_catalog_impl(damage_description, vehicle_make, part_type_preference, parts_adapter=parts_adapter)
+    parts_result = get_parts_catalog_impl(damage_description, vehicle_make, part_type_preference, ctx=ctx)
     parts_data = json.loads(parts_result)
     parts_cost = parts_data.get("total_parts_cost", 0.0)
     parts_list = parts_data.get("parts", [])
 
-    labor_rate = _get_shop_labor_rate(shop_id, 75.0, repair_shop_adapter=shop_adapter)
+    labor_rate = _get_shop_labor_rate(shop_id, 75.0, ctx=ctx)
 
     labor_operations = shop_adapter.get_labor_operations()
     base_labor_hours = 0.0
@@ -362,7 +365,7 @@ def calculate_repair_estimate_impl(
     labor_cost = round(base_labor_hours * labor_rate, 2)
     total_estimate = round(parts_cost + labor_cost, 2)
 
-    policy_result = query_policy_db_impl(policy_number)
+    policy_result = query_policy_db_impl(policy_number, ctx=ctx)
     policy_data = json.loads(policy_result)
     deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE) if policy_data.get("valid") else DEFAULT_DEDUCTIBLE
 
@@ -370,7 +373,7 @@ def calculate_repair_estimate_impl(
     insurance_pays = max(0, total_estimate - deductible)
 
     vin = ""
-    vehicle_value_result = fetch_vehicle_value_impl(vin, vehicle_year, vehicle_make, "")
+    vehicle_value_result = fetch_vehicle_value_impl(vin, vehicle_year, vehicle_make, "", ctx=ctx)
     vehicle_value_data = json.loads(vehicle_value_result)
     vehicle_value = vehicle_value_data.get("value", 15000)
 
@@ -406,14 +409,14 @@ def generate_repair_authorization_impl(
     repair_estimate: dict[str, Any],
     customer_approved: bool = True,
     *,
-    repair_shop_adapter: RepairShopAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Generate a repair authorization document for a partial loss claim.
 
     Returns JSON with authorization details. Does NOT dispatch webhooks;
     the caller (tool wrapper) is responsible for notification side-effects.
     """
-    adapter = repair_shop_adapter or get_repair_shop_adapter()
+    adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
     shop = adapter.get_shop(shop_id) or {}
 
     authorization = {

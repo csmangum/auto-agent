@@ -1,10 +1,12 @@
 """Escalation (HITL) logic: evaluate escalation, detect fraud indicators, router helpers."""
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from claim_agent.config.settings import get_escalation_config
 from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
@@ -12,6 +14,9 @@ from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimType
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 try:
     import litellm
@@ -197,7 +202,7 @@ def _parse_router_confidence(router_output: str) -> float:
 def detect_fraud_indicators_impl(
     claim_data: dict[str, Any],
     *,
-    repo: ClaimRepository | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Check claim for fraud indicators. Returns JSON list of indicator strings."""
     indicators: list[str] = []
@@ -234,11 +239,11 @@ def detect_fraud_indicators_impl(
 
     if vin and incident_date:
         try:
-            _repo = repo or ClaimRepository()
+            repo = ctx.repo if ctx else ClaimRepository()
             dt_obj = datetime.strptime(incident_date, "%Y-%m-%d")
             start = (dt_obj - timedelta(days=get_escalation_config()["vin_claims_days"])).strftime("%Y-%m-%d")
             end = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
-            matches = _repo.search_claims(vin=vin, incident_date=None)
+            matches = repo.search_claims(vin=vin, incident_date=None)
             same_vin = [m for m in matches if m.get("vin") == vin and m.get("incident_date") != incident_date]
             same_vin_in_window = [
                 m for m in same_vin
@@ -254,7 +259,7 @@ def detect_fraud_indicators_impl(
         make = claim_data.get("make") or claim_data.get("vehicle_make") or ""
         model = claim_data.get("model") or claim_data.get("vehicle_model") or ""
         if year and make and model:
-            val_res = fetch_vehicle_value_impl(vin or "", year, make, model)
+            val_res = fetch_vehicle_value_impl(vin or "", year, make, model, ctx=ctx)
             try:
                 val_data = json.loads(val_res)
                 vehicle_value = val_data.get("value")
@@ -302,7 +307,7 @@ def evaluate_escalation_impl(
     payout_amount: float | None = None,
     *,
     router_confidence: float | None = None,
-    repo: ClaimRepository | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     """Evaluate claim for escalation."""
     reasons: list[str] = []
@@ -331,7 +336,7 @@ def evaluate_escalation_impl(
     if similarity_score is not None and low_sim <= similarity_score <= high_sim:
         reasons.append("ambiguous_similarity")
 
-    fraud_json = detect_fraud_indicators_impl(claim_data or {}, repo=repo)
+    fraud_json = detect_fraud_indicators_impl(claim_data or {}, ctx=ctx)
     try:
         fraud_indicators = json.loads(fraud_json)
     except (json.JSONDecodeError, TypeError):
@@ -376,7 +381,7 @@ def escalate_claim_impl(
     *,
     claim_type: str | None = None,
     actor_id: str = ACTOR_WORKFLOW,
-    repo: ClaimRepository | None = None,
+    ctx: ClaimContext | None = None,
 ) -> None:
     """Persist mid-workflow escalation: set status to needs_review, save details, audit log."""
     if not claim_id or not isinstance(claim_id, str) or not claim_id.strip():
@@ -396,7 +401,7 @@ def escalate_claim_impl(
     if priority not in valid_priorities:
         priority = "medium"
 
-    _repo = repo or ClaimRepository()
+    _repo = ctx.repo if ctx else ClaimRepository()
     details = json.dumps({
         "escalation": True,
         "mid_workflow": True,

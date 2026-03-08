@@ -710,7 +710,7 @@ class TestReprocessCLIFromStage:
         repo = ClaimRepository(db_path=temp_db)
         claim_id = _make_claim(repo)
 
-        with patch("claim_agent.crews.main_crew.run_claim_workflow") as mock_wf:
+        with patch("claim_agent.main.run_claim_workflow") as mock_wf:
             mock_wf.return_value = {"claim_id": claim_id, "status": "open"}
             cmd_reprocess(claim_id, from_stage="router")
 

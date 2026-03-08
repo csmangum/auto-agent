@@ -1,10 +1,15 @@
 """Policy database lookup logic."""
 
+from __future__ import annotations
+
 import json
 import logging
+from typing import TYPE_CHECKING
 
-from claim_agent.adapters.base import PolicyAdapter
 from claim_agent.adapters.registry import get_policy_adapter
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +17,14 @@ logger = logging.getLogger(__name__)
 def query_policy_db_impl(
     policy_number: str,
     *,
-    policy_adapter: PolicyAdapter | None = None,
+    ctx: ClaimContext | None = None,
 ) -> str:
     if not policy_number or not isinstance(policy_number, str):
         return json.dumps({"valid": False, "message": "Invalid policy number"})
     policy_number = policy_number.strip()
     if not policy_number:
         return json.dumps({"valid": False, "message": "Empty policy number"})
-    adapter = policy_adapter or get_policy_adapter()
+    adapter = ctx.adapters.policy if ctx else get_policy_adapter()
     try:
         p = adapter.get_policy(policy_number)
     except NotImplementedError as exc:
