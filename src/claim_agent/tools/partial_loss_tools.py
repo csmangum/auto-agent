@@ -194,4 +194,5 @@ def generate_repair_authorization(
         authorization_id=auth_data.get("authorization_id", ""),
         shop_webhook_url=auth_data.get("shop_webhook_url"),
     )
-    return result_json
+    auth_data.pop("shop_webhook_url", None)
+    return json.dumps(auth_data)
