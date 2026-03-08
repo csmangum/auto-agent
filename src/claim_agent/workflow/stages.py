@@ -204,6 +204,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
             similarity_score=ctx.similarity_score_for_escalation,
             payout_amount=None,
             router_confidence=ctx.router_confidence,
+            ctx=ctx.context,
         )
         escalation_result = json.loads(escalation_json)
         if escalation_result.get("needs_review"):
