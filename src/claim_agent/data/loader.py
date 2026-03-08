@@ -5,6 +5,7 @@
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,9 @@ def load_california_compliance() -> dict[str, Any] | None:
         return None
 
 
+_log = logging.getLogger(__name__)
+
+
 def get_compliance_retention_years() -> int | None:
     """Extract retention period from California compliance ECR-003 provision.
 
@@ -69,7 +73,18 @@ def get_compliance_retention_years() -> int | None:
         ecr = data.get("electronic_claims_requirements", {})
         for p in ecr.get("provisions", []):
             if p.get("id") == "ECR-003" and "retention_period_years" in p:
-                value = int(p["retention_period_years"])
+                try:
+                    value = int(p["retention_period_years"])
+                except (ValueError, TypeError):
+                    _log.warning(
+                        "Compliance ECR-003 retention_period_years is not a valid integer; ignoring."
+                    )
+                    return None
                 if value >= 1:
                     return value
+                _log.warning(
+                    "Compliance ECR-003 retention_period_years must be >= 1 (got %s); ignoring.",
+                    value,
+                )
+                return None
     return None

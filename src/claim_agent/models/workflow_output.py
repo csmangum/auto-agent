@@ -32,3 +32,21 @@ class PartialLossWorkflowOutput(BaseModel):
     total_estimate: float | None = Field(
         default=None, description="Total repair estimate"
     )
+    claim_id: str | None = Field(
+        default=None, description="Claim ID (from generate_repair_authorization)"
+    )
+    shop_id: str | None = Field(
+        default=None, description="Repair shop ID (from generate_repair_authorization)"
+    )
+    shop_name: str | None = Field(
+        default=None, description="Repair shop name (from generate_repair_authorization)"
+    )
+    shop_phone: str | None = Field(
+        default=None, description="Repair shop phone (from generate_repair_authorization)"
+    )
+    authorized_amount: float | None = Field(
+        default=None, description="Authorized repair amount (from generate_repair_authorization)"
+    )
+    shop_webhook_url: str | None = Field(
+        default=None, description="Shop-specific webhook URL for notifications"
+    )

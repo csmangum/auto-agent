@@ -46,7 +46,7 @@ The architecture diagram shows both "SQLite" and "Mock Data" in the Data Layer. 
 | Store       | Purpose                                                                                                                                                    | Location                                                                                                     |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | **SQLite**  | Persistent storage for claims, audit logs, and workflow runs. Used for claim lifecycle, status, and reprocessing.                                          | `claim_agent.db.database`, `claim_agent.db.repository`; path via `CLAIMS_DB_PATH` (default `data/claims.db`) |
-| **Mock DB** | JSON file containing reference data—policies, historical claims for lookup, vehicle values. Tools (policy lookup, valuation, fraud checks) read from this. | `claim_agent.data.loader`; path via `MOCK_DB_PATH` (default `data/mock_db.json`)                       |
+| **Mock DB** | JSON file containing reference data—policies, historical claims for lookup, vehicle values. Tools (policy lookup, valuation, fraud checks) read from this. | `claim_agent.data.loader`; path via `MOCK_DB_PATH` (default `data/mock_db.json`) |
 
 
 The Mock DB is not an alternative to SQLite; it is supplementary reference data for the POC. SQLite holds the claim record; Mock DB provides lookup data for tools.
