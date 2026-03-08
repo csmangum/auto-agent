@@ -5,10 +5,14 @@ crews to benefit from observations made by earlier crews.
 """
 
 import json
+import logging
 
 from crewai.tools import tool
 
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.exceptions import ClaimNotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 @tool("Add Claim Note")
@@ -40,8 +44,11 @@ def add_claim_note(claim_id: str, note: str, actor_id: str) -> str:
     try:
         ClaimRepository().add_note(claim_id, note, actor_id)
         return json.dumps({"success": True, "message": "Note added"})
+    except ClaimNotFoundError:
+        return json.dumps({"success": False, "message": f"Claim not found: {claim_id}"})
     except Exception as e:
-        return json.dumps({"success": False, "message": str(e)})
+        logger.exception("Unexpected error adding note to claim %s", claim_id)
+        return json.dumps({"success": False, "message": "An unexpected error occurred while adding the note"})
 
 
 @tool("Get Claim Notes")
@@ -60,7 +67,7 @@ def get_claim_notes(claim_id: str) -> str:
     """
     claim_id = str(claim_id).strip()
     if not claim_id:
-        return json.dumps([])
+        return json.dumps({"error": "claim_id is required"})
     try:
         notes = ClaimRepository().get_notes(claim_id)
         out = [
@@ -73,5 +80,8 @@ def get_claim_notes(claim_id: str) -> str:
             for n in notes
         ]
         return json.dumps(out)
+    except ClaimNotFoundError:
+        return json.dumps({"error": f"Claim not found: {claim_id}"})
     except Exception:
-        return json.dumps([])
+        logger.exception("Unexpected error retrieving notes for claim %s", claim_id)
+        return json.dumps({"error": "An unexpected error occurred while retrieving notes"})

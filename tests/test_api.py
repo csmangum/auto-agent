@@ -199,6 +199,23 @@ class TestClaimNotes:
         )
         assert resp.status_code == 422
 
+    def test_add_note_whitespace_only_rejected(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/notes",
+            json={"note": "   ", "actor_id": "workflow"},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert any("blank" in str(e.get("msg", "")).lower() for e in body.get("detail", []))
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/notes",
+            json={"note": "Valid note", "actor_id": "   "},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert any("blank" in str(e.get("msg", "")).lower() for e in body.get("detail", []))
+
 
 class TestReviewQueue:
     """Test review queue and adjuster action endpoints."""
