@@ -1,4 +1,4 @@
-"""Load mock database and compliance data for tools.
+"""Shared data access for mock database and compliance JSON files.
 
 - MOCK_DB_PATH env or default data/mock_db.json for policies/claims/vehicle_values.
 - CA_COMPLIANCE_PATH env or default data/california_auto_compliance.json for CA compliance reference.
@@ -56,3 +56,20 @@ def load_california_compliance() -> dict[str, Any] | None:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def get_compliance_retention_years() -> int | None:
+    """Extract retention period from California compliance ECR-003 provision.
+
+    Returns the retention_period_years value if valid (>= 1), or None
+    if compliance data is unavailable or the provision is not found.
+    """
+    data = load_california_compliance()
+    if data:
+        ecr = data.get("electronic_claims_requirements", {})
+        for p in ecr.get("provisions", []):
+            if p.get("id") == "ECR-003" and "retention_period_years" in p:
+                value = int(p["retention_period_years"])
+                if value >= 1:
+                    return value
+    return None

@@ -10,7 +10,7 @@ class TestDataLoader:
 
     def test_load_mock_db_default_path(self):
         """Test load_mock_db uses default path when env not set."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         # Temporarily remove MOCK_DB_PATH if set
         original = os.environ.get("MOCK_DB_PATH")
@@ -29,7 +29,7 @@ class TestDataLoader:
 
     def test_load_mock_db_custom_path(self):
         """Test load_mock_db uses custom path from env."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         # Create a temp file with custom data
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -51,7 +51,7 @@ class TestDataLoader:
 
     def test_load_mock_db_invalid_json(self):
         """Test load_mock_db handles invalid JSON gracefully."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         # Create a temp file with invalid JSON
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -73,7 +73,7 @@ class TestDataLoader:
 
     def test_load_mock_db_missing_file(self):
         """Test load_mock_db handles missing file gracefully."""
-        from claim_agent.tools.data_loader import load_mock_db
+        from claim_agent.data.loader import load_mock_db
 
         original = os.environ.get("MOCK_DB_PATH")
         try:
@@ -89,7 +89,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_default_path(self):
         """Test load_california_compliance uses default path."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
@@ -105,7 +105,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_custom_path(self):
         """Test load_california_compliance uses custom path."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         # Create temp file with compliance data
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -127,7 +127,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_missing_file(self):
         """Test load_california_compliance returns None for missing file."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
@@ -142,7 +142,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_invalid_json(self):
         """Test load_california_compliance returns None for invalid JSON."""
-        from claim_agent.tools.data_loader import load_california_compliance
+        from claim_agent.data.loader import load_california_compliance
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("invalid json {{{")

@@ -21,6 +21,7 @@ from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
+from claim_agent.notifications.webhook import dispatch_repair_authorized
 from claim_agent.observability import get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.tools.escalation_logic import (
@@ -267,6 +268,35 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
     return None
 
 
+def _dispatch_repair_authorization_webhook(workflow_output: str, log: Any) -> None:
+    """Best-effort dispatch of repair.authorized webhook from workflow output.
+
+    Parses the workflow output for authorization data (authorization_id,
+    shop_id, etc.) and fires the webhook if found.
+    """
+    try:
+        data = json.loads(workflow_output)
+    except (json.JSONDecodeError, TypeError):
+        return
+    if not isinstance(data, dict):
+        return
+    authorization_id = data.get("authorization_id")
+    if not authorization_id:
+        return
+    try:
+        dispatch_repair_authorized(
+            claim_id=data.get("claim_id", ""),
+            shop_id=data.get("shop_id", ""),
+            shop_name=data.get("shop_name", ""),
+            shop_phone=data.get("shop_phone", ""),
+            authorized_amount=float(data.get("authorized_amount", 0) or 0),
+            authorization_id=authorization_id,
+            shop_webhook_url=data.get("shop_webhook_url"),
+        )
+    except Exception as e:
+        log.warning("Repair authorization webhook dispatch failed (best-effort): %s", e)
+
+
 def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     """Run (or restore) the primary workflow crew.
 
@@ -345,6 +375,9 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     ctx.extracted_payout = _extract_payout_from_workflow_result(workflow_result, ctx.claim_type)
     if ctx.extracted_payout is not None:
         ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
+
+    if ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
+        _dispatch_repair_authorization_webhook(ctx.workflow_output, logger)
 
     ctx.repo.save_task_checkpoint(
         ctx.claim_id, ctx.workflow_run_id, workflow_stage_key,

@@ -179,7 +179,7 @@ class TestRetentionConfig:
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch(
-                "claim_agent.tools.data_loader.load_california_compliance",
+                "claim_agent.data.loader.load_california_compliance",
                 return_value={
                     "electronic_claims_requirements": {
                         "provisions": [
@@ -196,7 +196,7 @@ class TestRetentionConfig:
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch(
-                "claim_agent.tools.data_loader.load_california_compliance",
+                "claim_agent.data.loader.load_california_compliance",
                 return_value=None,
             ):
                 assert get_retention_period_years() == 5
@@ -207,7 +207,7 @@ class TestRetentionConfig:
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch(
-                "claim_agent.tools.data_loader.load_california_compliance",
+                "claim_agent.data.loader.load_california_compliance",
                 return_value={"electronic_claims_requirements": {"provisions": []}},
             ):
                 assert get_retention_period_years() == 5
@@ -218,7 +218,7 @@ class TestRetentionConfig:
 
         with mock.patch.dict(os.environ, {"RETENTION_PERIOD_YEARS": "x"}):
             with mock.patch(
-                "claim_agent.tools.data_loader.load_california_compliance",
+                "claim_agent.data.loader.load_california_compliance",
                 return_value={
                     "electronic_claims_requirements": {
                         "provisions": [{"id": "ECR-003", "retention_period_years": 5}],

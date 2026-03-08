@@ -327,7 +327,7 @@ def test_partial_loss_threshold():
 
 def test_mock_db_has_repair_shops():
     """Test that mock database includes repair shops."""
-    from claim_agent.tools.data_loader import load_mock_db
+    from claim_agent.data.loader import load_mock_db
 
     db = load_mock_db()
     assert "repair_shops" in db
@@ -336,7 +336,7 @@ def test_mock_db_has_repair_shops():
 
 def test_mock_db_has_parts_catalog():
     """Test that mock database includes parts catalog."""
-    from claim_agent.tools.data_loader import load_mock_db
+    from claim_agent.data.loader import load_mock_db
 
     db = load_mock_db()
     assert "parts_catalog" in db
@@ -345,7 +345,7 @@ def test_mock_db_has_parts_catalog():
 
 def test_mock_db_has_labor_operations():
     """Test that mock database includes labor operations."""
-    from claim_agent.tools.data_loader import load_mock_db
+    from claim_agent.data.loader import load_mock_db
 
     db = load_mock_db()
     assert "labor_operations" in db

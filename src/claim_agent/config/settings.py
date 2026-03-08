@@ -202,7 +202,7 @@ def get_mask_pii() -> bool:
 # ---------------------------------------------------------------------------
 
 def get_retention_period_years() -> int:
-    """Retention period in years from compliance config or RETENTION_PERIOD_YEARS env. Default: 5."""
+    """Retention period in years from env, compliance config, or default (5)."""
     raw = os.environ.get("RETENTION_PERIOD_YEARS", "").strip()
     if raw:
         try:
@@ -219,22 +219,12 @@ def get_retention_period_years() -> int:
                 "RETENTION_PERIOD_YEARS is set but invalid (%r); using compliance/default.",
                 raw,
             )
-    # Fallback: try to load from compliance config
     try:
-        from claim_agent.tools.data_loader import load_california_compliance
-        data = load_california_compliance()
-        if data:
-            ecr = data.get("electronic_claims_requirements", {})
-            for p in ecr.get("provisions", []):
-                if p.get("id") == "ECR-003" and "retention_period_years" in p:
-                    value = int(p["retention_period_years"])
-                    if value >= 1:
-                        return value
-                    _log.warning(
-                        "Compliance retention_period_years must be >= 1 (got %s); using default 5.",
-                        value,
-                    )
-                    break
+        from claim_agent.data.loader import get_compliance_retention_years
+
+        compliance_years = get_compliance_retention_years()
+        if compliance_years is not None:
+            return compliance_years
     except (ImportError, TypeError, ValueError, KeyError) as e:
         _log.warning(
             "Could not load retention period from compliance config: %s; using default 5 years.",
