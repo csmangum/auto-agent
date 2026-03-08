@@ -35,6 +35,7 @@ class AdapterRegistry:
     @classmethod
     def from_defaults(cls) -> AdapterRegistry:
         """Build from the existing thread-safe singleton factories."""
+        # Inline import to avoid circular dependency with adapters.registry
         from claim_agent.adapters.registry import (
             get_parts_adapter,
             get_policy_adapter,

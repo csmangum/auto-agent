@@ -8,11 +8,24 @@ This module provides the command-line interface with full observability:
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
 import uvicorn
 from pydantic import ValidationError
+
+from claim_agent.config.settings import get_retention_period_years
+from claim_agent.context import ClaimContext
+from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.db.claim_data import claim_data_from_row
+from claim_agent.db.database import get_db_path
+from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.observability import get_logger, get_metrics
+from claim_agent.storage import get_storage_adapter
+from claim_agent.storage.local import LocalStorageAdapter
+from claim_agent.utils import infer_attachment_type, sanitize_claim_data
 
 # Ensure src is on path when run as script
 if __name__ == "__main__" and str(Path(__file__).resolve().parent.parent) not in sys.path:
@@ -20,8 +33,6 @@ if __name__ == "__main__" and str(Path(__file__).resolve().parent.parent) not in
 
 def _setup_logging() -> None:
     """Configure logging for CLI usage."""
-    from claim_agent.observability import get_logger
-
     # Initialize root logger with observability configuration
     get_logger("claim_agent")
     # Also configure the root to capture all claim_agent.* logs
@@ -99,20 +110,11 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
         print(f"Error: Invalid JSON in {claim_path}: {e}", file=sys.stderr)
         sys.exit(1)
     try:
-        from claim_agent.models.claim import ClaimInput
         ClaimInput.model_validate(claim_data)
     except ValidationError as e:
         print("Error: Invalid claim data:", file=sys.stderr)
         print(e.json() if hasattr(e, "json") else str(e), file=sys.stderr)
         sys.exit(1)
-
-    from claim_agent.context import ClaimContext
-    from claim_agent.crews.main_crew import run_claim_workflow
-    from claim_agent.db.database import get_db_path
-    from claim_agent.models.claim import Attachment
-    from claim_agent.storage import get_storage_adapter
-    from claim_agent.storage.local import LocalStorageAdapter
-    from claim_agent.utils import infer_attachment_type, sanitize_claim_data
 
     sanitized = sanitize_claim_data(claim_data)
     claim_input = ClaimInput.model_validate(sanitized)
@@ -168,9 +170,6 @@ def cmd_process(claim_path: Path, attachment_paths: list[Path] | None = None) ->
 
 def cmd_status(claim_id: str) -> None:
     """Print claim status."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.database import get_db_path
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
@@ -181,9 +180,6 @@ def cmd_status(claim_id: str) -> None:
 
 def cmd_history(claim_id: str) -> None:
     """Print claim audit log."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.database import get_db_path
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
@@ -195,12 +191,6 @@ def cmd_history(claim_id: str) -> None:
 
 def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
     """Re-run workflow for an existing claim, optionally resuming from a stage."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
-    from claim_agent.db.claim_data import claim_data_from_row
-    from claim_agent.db.database import get_db_path
-    from claim_agent.models.claim import ClaimInput
-
     if from_stage is not None and from_stage not in WORKFLOW_STAGES:
         print(
             f"Error: --from-stage must be one of {', '.join(WORKFLOW_STAGES)}",
@@ -247,9 +237,6 @@ def cmd_reprocess(claim_id: str, from_stage: str | None = None) -> None:
 
 def cmd_review_queue(assignee: str | None = None, priority: str | None = None) -> None:
     """List claims needing review."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.database import get_db_path
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     claims, total = ctx.repo.list_claims_needing_review(
         assignee=assignee,
@@ -260,10 +247,6 @@ def cmd_review_queue(assignee: str | None = None, priority: str | None = None) -
 
 def cmd_assign(claim_id: str, assignee: str) -> None:
     """Assign claim to adjuster."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.audit_events import ACTOR_WORKFLOW
-    from claim_agent.db.database import get_db_path
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
@@ -278,13 +261,6 @@ def cmd_assign(claim_id: str, assignee: str) -> None:
 
 def cmd_approve(claim_id: str) -> None:
     """Approve claim and re-run workflow."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.crews.main_crew import run_claim_workflow
-    from claim_agent.db.audit_events import ACTOR_WORKFLOW
-    from claim_agent.db.claim_data import claim_data_from_row
-    from claim_agent.db.database import get_db_path
-    from claim_agent.models.claim import ClaimInput
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
@@ -313,10 +289,6 @@ def cmd_approve(claim_id: str) -> None:
 
 def cmd_reject(claim_id: str, reason: str = "") -> None:
     """Reject claim."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.audit_events import ACTOR_WORKFLOW
-    from claim_agent.db.database import get_db_path
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
@@ -331,10 +303,6 @@ def cmd_reject(claim_id: str, reason: str = "") -> None:
 
 def cmd_request_info(claim_id: str, note: str = "") -> None:
     """Request more information from claimant."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.audit_events import ACTOR_WORKFLOW
-    from claim_agent.db.database import get_db_path
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
@@ -349,10 +317,6 @@ def cmd_request_info(claim_id: str, note: str = "") -> None:
 
 def cmd_escalate_siu(claim_id: str) -> None:
     """Escalate claim to SIU."""
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.audit_events import ACTOR_WORKFLOW
-    from claim_agent.db.database import get_db_path
-
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     if ctx.repo.get_claim(claim_id) is None:
         print(f"Error: Claim not found: {claim_id}", file=sys.stderr)
@@ -367,10 +331,6 @@ def cmd_escalate_siu(claim_id: str) -> None:
 
 def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> None:
     """Archive claims older than retention period. Logs actions to audit."""
-    from claim_agent.config.settings import get_retention_period_years
-    from claim_agent.context import ClaimContext
-    from claim_agent.db.database import get_db_path
-
     retention_years = years if years is not None else get_retention_period_years()
     ctx = ClaimContext.from_defaults(db_path=get_db_path())
     repo = ctx.repo
@@ -415,8 +375,6 @@ def cmd_metrics(claim_id: str | None = None) -> None:
         claim_id: Optional claim ID. If provided, shows metrics for that claim.
                  Otherwise, shows global metrics summary.
     """
-    from claim_agent.observability import get_metrics
-
     metrics = get_metrics()
 
     if claim_id:
@@ -446,8 +404,6 @@ def cmd_metrics(claim_id: str | None = None) -> None:
 
 def main() -> None:
     """Run the claim agent: process, status, history, reprocess, or metrics."""
-    import os
-
     # Handle global options
     argv = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
     options = [arg for arg in sys.argv[1:] if arg.startswith("--")]

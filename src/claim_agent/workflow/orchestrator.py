@@ -211,7 +211,7 @@ def run_claim_workflow(
             damage_indicates_total = economic_check.get("damage_indicates_total_loss", False)
 
             if (economic_check.get("damage_to_value_ratio") or 0) > PRE_ROUTING_FRAUD_DAMAGE_RATIO and not is_catastrophic and not damage_indicates_total:
-                fraud_result = detect_fraud_indicators_impl(claim_data)
+                fraud_result = detect_fraud_indicators_impl(claim_data, ctx=ctx)
                 try:
                     fraud_data = json.loads(fraud_result)
                 except (json.JSONDecodeError, TypeError):

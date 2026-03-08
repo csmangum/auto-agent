@@ -270,7 +270,7 @@ class TestCmdProcess:
                 repo.update_claim_status(claim_id, "open")
                 return {"claim_id": claim_id, "claim_type": "new", "workflow_output": "Processed."}
 
-            with patch("claim_agent.crews.main_crew.run_claim_workflow", side_effect=fake_run_workflow):
+            with patch("claim_agent.main.run_claim_workflow", side_effect=fake_run_workflow):
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                     cmd_process(claim_file)
                     output = mock_stdout.getvalue()
@@ -567,7 +567,7 @@ class TestMain:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
             with patch("sys.argv", ["claim-agent", claim_path]):
-                with patch("claim_agent.crews.main_crew.run_claim_workflow") as mock_workflow:
+                with patch("claim_agent.main.run_claim_workflow") as mock_workflow:
                     mock_workflow.return_value = {"claim_id": "CLM-TEST", "status": "open"}
                     with patch("sys.stdout", new_callable=StringIO):
                         main()

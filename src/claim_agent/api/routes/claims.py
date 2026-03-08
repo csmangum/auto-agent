@@ -703,6 +703,7 @@ async def reprocess_claim(
     claim_id: str,
     from_stage: Optional[str] = Query(None, description="Resume from this stage (router, escalation_check, workflow, settlement)"),
     auth: AuthContext = RequireSupervisor,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Re-run workflow for an existing claim. Requires supervisor role.
 
@@ -717,7 +718,6 @@ async def reprocess_claim(
             detail=f"from_stage must be one of {', '.join(WORKFLOW_STAGES)}",
         )
 
-    ctx = ClaimContext.from_defaults(db_path=get_db_path())
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
