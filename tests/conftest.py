@@ -108,6 +108,15 @@ def _seed_test_data(db_path: str) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reset_settings():
+    """Reset the settings singleton so each test gets fresh config from env."""
+    import claim_agent.config as _cfg
+    _cfg._settings = None
+    yield
+    _cfg._settings = None
+
+
+@pytest.fixture(autouse=True)
 def temp_db():
     """Use a temporary SQLite DB for tests."""
     fd, path = tempfile.mkstemp(suffix=".db")

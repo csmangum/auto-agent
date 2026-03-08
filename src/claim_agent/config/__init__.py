@@ -1,5 +1,7 @@
 """Configuration for claim agent."""
 
+import threading
+
 from claim_agent.config.settings_model import (
     ADAPTER_ENV_KEYS,
     VALID_ADAPTER_BACKENDS,
@@ -21,24 +23,22 @@ from claim_agent.config.settings_model import (
 )
 
 _settings: Settings | None = None
+_settings_lock = threading.Lock()
 
 
 def get_settings() -> Settings:
     """Return the cached Settings instance. Loads from env on first call."""
     global _settings
     if _settings is None:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-        _settings = Settings()
+        with _settings_lock:
+            if _settings is None:
+                _settings = Settings()
     return _settings
 
 
 def reload_settings() -> Settings:
     """Reload settings from environment. For tests that need fresh config."""
     global _settings
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    _settings = Settings()
+    with _settings_lock:
+        _settings = Settings()
     return _settings

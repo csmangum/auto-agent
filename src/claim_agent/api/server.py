@@ -32,31 +32,41 @@ from claim_agent.config import get_settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    get_settings()  # Validate config at startup
+async def lifespan(_app: FastAPI):
     yield
-    # Shutdown: wait for in-flight claim workflow tasks to complete
     if claim_background_tasks:
         await asyncio.gather(*claim_background_tasks)
 
 
-app = FastAPI(
-    title="Claims System Observability UI",
-    description="API for the Agentic Claims Processing System dashboard",
-    version="1.0.0",
-    lifespan=lifespan,
-    docs_url="/api/openapi/docs",
-    redoc_url="/api/openapi/redoc",
-    openapi_url="/api/openapi.json",
-)
+def create_app() -> FastAPI:
+    """Build the FastAPI application.
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=get_settings().auth.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    Usable as a uvicorn factory: ``uvicorn claim_agent.api.server:create_app --factory``
+    """
+    settings = get_settings()
+
+    _app = FastAPI(
+        title="Claims System Observability UI",
+        description="API for the Agentic Claims Processing System dashboard",
+        version="1.0.0",
+        lifespan=lifespan,
+        docs_url="/api/openapi/docs",
+        redoc_url="/api/openapi/redoc",
+        openapi_url="/api/openapi.json",
+    )
+
+    _app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.auth.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    return _app
+
+
+app = create_app()
 
 
 def _get_token(request: Request) -> str | None:

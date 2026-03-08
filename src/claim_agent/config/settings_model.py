@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Self
+from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -89,14 +89,6 @@ class FraudConfig(BaseSettings):
 
     multiple_claims_days: int = 90
     multiple_claims_threshold: int = 2
-
-    @field_validator("multiple_claims_days", mode="before")
-    @classmethod
-    def _coerce_multiple_claims_days(cls, v: Any) -> int:
-        try:
-            return int(v)
-        except (ValueError, TypeError):
-            return 90
     fraud_keyword_score: int = 20
     multiple_claims_score: int = 25
     timing_anomaly_score: int = 15
@@ -105,6 +97,14 @@ class FraudConfig(BaseSettings):
     medium_risk_threshold: int = 30
     critical_risk_threshold: int = 75
     critical_indicator_count: int = 5
+
+    @field_validator("multiple_claims_days", mode="before")
+    @classmethod
+    def _coerce_multiple_claims_days(cls, v: Any) -> int:
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return 90
 
 
 class ValuationConfig(BaseSettings):
@@ -129,25 +129,21 @@ class PartialLossConfig(BaseSettings):
 class WebhookConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="WEBHOOK_", extra="ignore")
 
-    urls: list[str] = Field(default_factory=list)
+    urls_raw: str = Field(default="", validation_alias="WEBHOOK_URLS")
+    url: str = ""
     secret: str = ""
     max_retries: int = 5
     enabled: bool = True
     shop_url: str | None = None
     dead_letter_path: str | None = None
 
-    @field_validator("urls", mode="before")
-    @classmethod
-    def _parse_urls(cls, v: Any) -> list[str]:
-        if isinstance(v, list):
-            return [u.strip() for u in v if u and str(u).strip()]
-        if isinstance(v, str):
-            urls_raw = v.strip() or os.environ.get("WEBHOOK_URL", "").strip()
-        else:
-            urls_raw = os.environ.get("WEBHOOK_URLS", "").strip() or os.environ.get("WEBHOOK_URL", "").strip()
-        if urls_raw:
-            return [u.strip() for u in urls_raw.split(",") if u.strip()]
-        return []
+    @property
+    def urls(self) -> list[str]:
+        """Parsed URL list from WEBHOOK_URLS, falling back to WEBHOOK_URL."""
+        raw = self.urls_raw or self.url
+        if not raw or not raw.strip():
+            return []
+        return [u.strip() for u in raw.split(",") if u.strip()]
 
 
 class NotificationConfig(BaseSettings):
@@ -197,80 +193,77 @@ class LoggingConfig(BaseSettings):
 class PathsConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    claims_db_path: str = "data/claims.db"
-    mock_db_path: str = "data/mock_db.json"
-    ca_compliance_path: str = "data/california_auto_compliance.json"
-    attachment_storage_path: str = "data/attachments"
-
-    @classmethod
-    def model_construct(cls, **kwargs: Any) -> "PathsConfig":
-        return cls(
-            claims_db_path=os.environ.get("CLAIMS_DB_PATH", kwargs.get("claims_db_path", "data/claims.db")),
-            mock_db_path=os.environ.get("MOCK_DB_PATH", kwargs.get("mock_db_path", "data/mock_db.json")),
-            ca_compliance_path=os.environ.get("CA_COMPLIANCE_PATH", kwargs.get("ca_compliance_path", "data/california_auto_compliance.json")),
-            attachment_storage_path=os.environ.get("ATTACHMENT_STORAGE_PATH", kwargs.get("attachment_storage_path", "data/attachments")),
-        )
+    claims_db_path: str = Field(
+        default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
+    )
+    mock_db_path: str = Field(
+        default="data/mock_db.json", validation_alias="MOCK_DB_PATH"
+    )
+    ca_compliance_path: str = Field(
+        default="data/california_auto_compliance.json",
+        validation_alias="CA_COMPLIANCE_PATH",
+    )
+    attachment_storage_path: str = Field(
+        default="data/attachments", validation_alias="ATTACHMENT_STORAGE_PATH"
+    )
 
 
 class LLMConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    api_key: str = ""
-    api_base: str = ""
-    model_name: str = "gpt-4o-mini"
-    vision_model: str = "gpt-4o"
+    api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    api_base: str = Field(default="", validation_alias="OPENAI_API_BASE")
+    model_name: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL_NAME")
+    vision_model: str = Field(default="gpt-4o", validation_alias="OPENAI_VISION_MODEL")
 
-    @classmethod
-    def model_construct(cls, **kwargs: Any) -> "LLMConfig":
-        return cls(
-            api_key=os.environ.get("OPENAI_API_KEY", kwargs.get("api_key", "")),
-            api_base=os.environ.get("OPENAI_API_BASE", kwargs.get("api_base", "")),
-            model_name=os.environ.get("OPENAI_MODEL_NAME", kwargs.get("model_name", "gpt-4o-mini")),
-            vision_model=os.environ.get("OPENAI_VISION_MODEL", kwargs.get("vision_model", "gpt-4o")),
-        )
+
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
 
 
 class AuthConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
-    api_keys: dict[str, str] = Field(default_factory=dict)
-    jwt_secret: str | None = None
-    cors_origins: list[str] = Field(default_factory=list)
+    api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
+    claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
+    jwt_secret_raw: str = Field(default="", validation_alias="JWT_SECRET")
+    cors_origins_raw: str = Field(default="", validation_alias="CORS_ORIGINS")
 
-    @classmethod
-    def model_construct(cls, **kwargs: Any) -> "AuthConfig":
-        api_keys: dict[str, str] = {}
-        api_keys_raw = os.environ.get("API_KEYS", "").strip()
-        if api_keys_raw:
-            for part in api_keys_raw.split(","):
+    @property
+    def api_keys(self) -> dict[str, str]:
+        raw = self.api_keys_raw.strip()
+        if raw:
+            result: dict[str, str] = {}
+            for part in raw.split(","):
                 part = part.strip()
                 if not part:
                     continue
                 if ":" in part:
                     key, role = part.split(":", 1)
-                    api_keys[key.strip()] = role.strip()
+                    result[key.strip()] = role.strip()
                 else:
-                    api_keys[part] = "admin"
-        else:
-            claims_key = os.environ.get("CLAIMS_API_KEY", "").strip()
-            if claims_key:
-                api_keys[claims_key] = "admin"
+                    result[part] = "admin"
+            return result
+        key = self.claims_api_key.strip()
+        if key:
+            return {key: "admin"}
+        return {}
 
-        jwt_raw = os.environ.get("JWT_SECRET", "").strip()
-        jwt_secret = jwt_raw if jwt_raw else None
+    @property
+    def jwt_secret(self) -> str | None:
+        raw = self.jwt_secret_raw.strip()
+        return raw if raw else None
 
-        cors_raw = os.environ.get("CORS_ORIGINS", "")
-        if cors_raw.strip():
-            cors_origins = [o.strip() for o in cors_raw.split(",") if o.strip()]
-        else:
-            cors_origins = [
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:8000",
-                "http://127.0.0.1:8000",
-            ]
-
-        return cls(api_keys=api_keys, jwt_secret=jwt_secret, cors_origins=cors_origins)
+    @property
+    def cors_origins(self) -> list[str]:
+        raw = self.cors_origins_raw.strip()
+        if raw:
+            return [o.strip() for o in raw.split(",") if o.strip()]
+        return list(_DEFAULT_CORS_ORIGINS)
 
 
 # ---------------------------------------------------------------------------
@@ -309,9 +302,9 @@ class Settings(BaseSettings):
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
     tracing: TracingConfig = Field(default_factory=TracingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    paths: PathsConfig = Field(default_factory=PathsConfig.model_construct)
-    llm: LLMConfig = Field(default_factory=LLMConfig.model_construct)
-    auth: AuthConfig = Field(default_factory=AuthConfig.model_construct)
+    paths: PathsConfig = Field(default_factory=PathsConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40
@@ -339,13 +332,8 @@ class Settings(BaseSettings):
                 pass
         return 5  # fallback, model_validator will override from compliance if needed
 
-    @model_validator(mode="before")
-    @classmethod
-    def _set_env_prefixes(cls, data: Any) -> Any:
-        return data
-
     @model_validator(mode="after")
-    def _resolve_retention(self) -> Self:
+    def _resolve_retention(self) -> "Settings":
         raw = os.environ.get("RETENTION_PERIOD_YEARS", "").strip()
         if raw:
             try:
