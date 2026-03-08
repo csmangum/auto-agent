@@ -3,10 +3,12 @@
 from crewai import Agent
 
 from claim_agent.tools import (
+    add_claim_note,
     calculate_payout,
     escalate_claim,
     generate_claim_id,
     generate_report,
+    get_claim_notes,
     get_compliance_deadlines,
     search_policy_compliance,
 )
@@ -35,7 +37,7 @@ def create_settlement_documentation_agent(
     else:
         skill = load_skill(SETTLEMENT_DOCUMENTATION)
 
-    tools = [generate_report, generate_claim_id, escalate_claim]
+    tools = [add_claim_note, generate_report, generate_claim_id, get_claim_notes, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
 
@@ -65,7 +67,7 @@ def create_payment_distribution_agent(
     else:
         skill = load_skill(PAYMENT_DISTRIBUTION)
 
-    tools = [calculate_payout, generate_report, escalate_claim]
+    tools = [add_claim_note, calculate_payout, generate_report, get_claim_notes, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
 
@@ -95,7 +97,7 @@ def create_settlement_closure_agent(
     else:
         skill = load_skill(SETTLEMENT_CLOSURE)
 
-    tools = [generate_report, generate_claim_id, escalate_claim]
+    tools = [add_claim_note, generate_report, generate_claim_id, get_claim_notes, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
 

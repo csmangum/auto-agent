@@ -380,8 +380,8 @@ def escalate_to_siu(
 
 
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
-def get_claim(claim_id: str):
-    """Get a single claim by ID."""
+def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+    """Get a single claim by ID. Includes claim notes for cross-crew context."""
     with get_connection() as conn:
         row = conn.execute(
             "SELECT * FROM claims WHERE id = ?", (claim_id,)
@@ -390,7 +390,9 @@ def get_claim(claim_id: str):
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
-    return _resolve_attachment_urls(dict(row))
+    result = _resolve_attachment_urls(dict(row))
+    result["notes"] = ctx.repo.get_notes(claim_id)
+    return result
 
 
 @router.get("/claims/{claim_id}/attachments/{key}", dependencies=[RequireAdjuster])
@@ -425,6 +427,34 @@ def get_claim_history(claim_id: str, ctx: ClaimContext = Depends(get_claim_conte
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     history = ctx.repo.get_claim_history(claim_id)
     return {"claim_id": claim_id, "history": history}
+
+
+class AddNoteBody(BaseModel):
+    note: str = Field(..., min_length=1, description="Note content")
+    actor_id: str = Field(..., min_length=1, description="Crew name, agent identifier, or 'workflow'")
+
+
+@router.get("/claims/{claim_id}/notes", dependencies=[RequireAdjuster])
+def get_claim_notes(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+    """List notes for a claim, ordered by created_at."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    notes = ctx.repo.get_notes(claim_id)
+    return {"claim_id": claim_id, "notes": notes}
+
+
+@router.post("/claims/{claim_id}/notes", dependencies=[RequireAdjuster])
+def add_claim_note(
+    claim_id: str,
+    body: AddNoteBody = Body(...),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Add a note to a claim."""
+    try:
+        ctx.repo.add_note(claim_id, body.note, body.actor_id)
+    except ClaimNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
+    return {"claim_id": claim_id, "actor_id": body.actor_id}
 
 
 @router.get("/claims/{claim_id}/workflows", dependencies=[RequireAdjuster])

@@ -91,6 +91,17 @@ CREATE TABLE IF NOT EXISTS task_checkpoints (
 CREATE INDEX IF NOT EXISTS idx_task_checkpoints_claim_run
     ON task_checkpoints(claim_id, workflow_run_id);
 
+-- Claim notes for cross-crew communication (agents/crews read and write notes)
+CREATE TABLE IF NOT EXISTS claim_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    note TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_notes_claim_id ON claim_notes(claim_id);
+
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """

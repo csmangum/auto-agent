@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
+    "add_claim_note",
+    "get_claim_notes",
     "query_policy_db",
     "search_claims_db",
     "compute_similarity",
@@ -61,6 +63,14 @@ __all__ = [
 
 def __getattr__(name: str):
     mod = sys.modules[__name__]
+    if name == "add_claim_note":
+        from claim_agent.tools.claim_notes_tools import add_claim_note
+        setattr(mod, "add_claim_note", add_claim_note)
+        return add_claim_note
+    if name == "get_claim_notes":
+        from claim_agent.tools.claim_notes_tools import get_claim_notes
+        setattr(mod, "get_claim_notes", get_claim_notes)
+        return get_claim_notes
     if name == "query_policy_db":
         from claim_agent.tools.policy_tools import query_policy_db
         setattr(mod, "query_policy_db", query_policy_db)

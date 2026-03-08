@@ -203,6 +203,26 @@ class TestToolsLazyLoading:
         data = json.loads(result)
         assert "authorization_id" in data
 
+    def test_add_claim_note_lazy_load(self, seeded_temp_db):
+        """Test lazy loading of add_claim_note."""
+        from claim_agent.tools import add_claim_note
+
+        result = add_claim_note.run(
+            claim_id="CLM-TEST001",
+            note="Test note from tool",
+            actor_id="TestAgent",
+        )
+        data = json.loads(result)
+        assert data["success"] is True
+
+    def test_get_claim_notes_lazy_load(self, seeded_temp_db):
+        """Test lazy loading of get_claim_notes."""
+        from claim_agent.tools import get_claim_notes
+
+        result = get_claim_notes.run(claim_id="CLM-TEST001")
+        notes = json.loads(result)
+        assert isinstance(notes, list)
+
     def test_invalid_attribute_raises(self):
         """Test that invalid attribute raises AttributeError."""
         with pytest.raises(AttributeError, match="nonexistent_tool"):

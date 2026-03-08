@@ -8,7 +8,7 @@ from claim_agent.tools.fraud_tools import (
     perform_fraud_assessment,
     generate_fraud_report,
 )
-from claim_agent.tools import detect_fraud_indicators, escalate_claim, search_claims_db
+from claim_agent.tools import add_claim_note, detect_fraud_indicators, escalate_claim, get_claim_notes, search_claims_db
 from claim_agent.skills import load_skill, PATTERN_ANALYSIS, CROSS_REFERENCE, FRAUD_ASSESSMENT
 
 
@@ -19,7 +19,7 @@ def create_pattern_analysis_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[analyze_claim_patterns, search_claims_db, escalate_claim],
+        tools=[add_claim_note, analyze_claim_patterns, get_claim_notes, search_claims_db, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -32,7 +32,7 @@ def create_cross_reference_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[cross_reference_fraud_indicators, detect_fraud_indicators, escalate_claim],
+        tools=[add_claim_note, cross_reference_fraud_indicators, detect_fraud_indicators, get_claim_notes, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -45,7 +45,7 @@ def create_fraud_assessment_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[perform_fraud_assessment, generate_fraud_report, escalate_claim],
+        tools=[add_claim_note, perform_fraud_assessment, generate_fraud_report, get_claim_notes, escalate_claim],
         verbose=True,
         llm=llm,
     )
