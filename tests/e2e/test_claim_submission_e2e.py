@@ -32,10 +32,10 @@ def test_e2e_submit_new_claim_via_api(
 ):
     """Submit new claim via POST /api/claims; assert claim_id, status, history."""
     factory_mod._storage_instance = None
-    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-            with patch("claim_agent.crews.main_crew.create_new_claim_crew") as mock_crew:
-                with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+            with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
+                with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = mock_router_response("new")
                     mock_crew.return_value.kickoff.return_value = mock_crew_response(
@@ -76,10 +76,10 @@ def test_e2e_submit_duplicate_claim_via_api(
 ):
     """Submit duplicate claim via POST /api/claims; assert claim_id, status, history."""
     factory_mod._storage_instance = None
-    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-            with patch("claim_agent.crews.main_crew.create_duplicate_crew") as mock_crew:
-                with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+            with patch("claim_agent.workflow.stages.create_duplicate_crew") as mock_crew:
+                with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = mock_router_response(
                         "duplicate", "Matches existing claim."
@@ -131,11 +131,11 @@ def test_e2e_submit_total_loss_claim_via_api(
     workflow_tasks_output = [MagicMock(), MagicMock(), mock_task]
 
     factory_mod._storage_instance = None
-    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-            with patch("claim_agent.crews.main_crew.create_total_loss_crew") as mock_crew:
-                with patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settlement:
-                    with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+            with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_crew:
+                with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                         mock_llm.return_value = MagicMock()
                         mock_router.return_value.kickoff.return_value = mock_router_response(
                             "total_loss", "Vehicle flooded - total destruction."
@@ -179,10 +179,10 @@ def test_e2e_submit_fraud_claim_via_api(
 ):
     """Submit fraud claim via POST /api/claims; assert claim_id, status, history."""
     factory_mod._storage_instance = None
-    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-            with patch("claim_agent.crews.main_crew.create_fraud_detection_crew") as mock_crew:
-                with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+            with patch("claim_agent.workflow.stages.create_fraud_detection_crew") as mock_crew:
+                with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = mock_router_response(
                         "fraud", "Suspicious indicators."
@@ -230,11 +230,11 @@ def test_e2e_submit_partial_loss_claim_via_api(
     workflow_tasks_output = [mock_task]
 
     factory_mod._storage_instance = None
-    with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-        with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-            with patch("claim_agent.crews.main_crew.create_partial_loss_crew") as mock_partial:
-                with patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settlement:
-                    with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+            with patch("claim_agent.workflow.stages.create_partial_loss_crew") as mock_partial:
+                with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                         mock_llm.return_value = MagicMock()
                         mock_router.return_value.kickoff.return_value = mock_router_response(
                             "partial_loss", "Repairable fender damage."

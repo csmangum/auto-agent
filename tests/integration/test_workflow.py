@@ -77,9 +77,9 @@ class TestWorkflowWithMockedLLM:
         from claim_agent.crews.main_crew import run_claim_workflow
         from claim_agent.db.repository import ClaimRepository
         
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-                with patch("claim_agent.crews.main_crew.create_new_claim_crew") as mock_crew:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+                with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = mock_router_response("new")
                     mock_crew.return_value.kickoff.return_value = mock_crew_response(
@@ -115,11 +115,11 @@ class TestWorkflowWithMockedLLM:
         )
         workflow_tasks_output = [MagicMock(), MagicMock(), mock_task]
 
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-                with patch("claim_agent.crews.main_crew.create_total_loss_crew") as mock_crew:
-                    with patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settlement:
-                        with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+                with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_crew:
+                    with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                             mock_llm.return_value = MagicMock()
                             mock_router.return_value.kickoff.return_value = mock_router_response(
                                 "total_loss", "Vehicle flooded - total destruction."
@@ -167,11 +167,11 @@ class TestWorkflowWithMockedLLM:
         )
         workflow_tasks_output = [mock_task]
 
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-                with patch("claim_agent.crews.main_crew.create_partial_loss_crew") as mock_partial:
-                    with patch("claim_agent.crews.main_crew.create_settlement_crew") as mock_settlement:
-                        with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+                with patch("claim_agent.workflow.stages.create_partial_loss_crew") as mock_partial:
+                    with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                             mock_llm.return_value = MagicMock()
                             mock_router.return_value.kickoff.return_value = mock_router_response(
                                 "partial_loss", "Repairable fender damage."
@@ -212,9 +212,9 @@ class TestWorkflowWithMockedLLM:
         from claim_agent.crews.main_crew import run_claim_workflow
         from claim_agent.db.repository import ClaimRepository
         
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-                with patch("claim_agent.crews.main_crew.create_new_claim_crew") as mock_crew:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+                with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = mock_router_response("new")
                     mock_crew.return_value.kickoff.return_value = mock_crew_response("Success")
@@ -239,8 +239,8 @@ class TestWorkflowWithMockedLLM:
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.db.database import get_connection
         
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 mock_llm.return_value = MagicMock()
                 mock_router.return_value.kickoff.side_effect = RuntimeError("LLM unavailable")
                 
@@ -262,11 +262,11 @@ class TestWorkflowWithMockedLLM:
         from claim_agent.crews.main_crew import run_claim_workflow
         from claim_agent.db.database import get_connection
         
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-                with patch("claim_agent.crews.main_crew.create_new_claim_crew") as mock_crew:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+                with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     # Also mock escalation to return no escalation needed
-                    with patch("claim_agent.crews.main_crew.evaluate_escalation_impl") as mock_esc:
+                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                         mock_llm.return_value = MagicMock()
                         mock_router.return_value.kickoff.return_value = mock_router_response("new")
                         mock_crew.return_value.kickoff.return_value = mock_crew_response("Processed!")
@@ -314,8 +314,8 @@ class TestEscalation:
             "estimated_damage": 100000,  # Very high value
         }
         
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 mock_llm.return_value = MagicMock()
                 mock_router.return_value.kickoff.return_value = mock_router_response("new")
                 
@@ -333,9 +333,9 @@ class TestEscalation:
         """Test that fraud claims go to fraud crew, not escalation."""
         from claim_agent.crews.main_crew import run_claim_workflow
         
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-                with patch("claim_agent.crews.main_crew.create_fraud_detection_crew") as mock_fraud:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+                with patch("claim_agent.workflow.stages.create_fraud_detection_crew") as mock_fraud:
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = mock_router_response("fraud")
                     mock_fraud.return_value.kickoff.return_value = mock_crew_response(
@@ -371,9 +371,9 @@ class TestReprocessing:
         claim_id = repo.create_claim(claim_input)
         
         # Reprocess it
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
-            with patch("claim_agent.crews.main_crew.create_router_crew") as mock_router:
-                with patch("claim_agent.crews.main_crew.create_new_claim_crew") as mock_crew:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+            with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+                with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = mock_router_response("new")
                     mock_crew.return_value.kickoff.return_value = mock_crew_response("Reprocessed!")
@@ -391,7 +391,7 @@ class TestReprocessing:
         """Test that reprocessing a non-existent claim raises an error."""
         from claim_agent.crews.main_crew import run_claim_workflow
         
-        with patch("claim_agent.crews.main_crew.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             mock_llm.return_value = MagicMock()
             with pytest.raises(ValueError, match="Claim not found"):
                 run_claim_workflow(sample_new_claim, existing_claim_id="CLM-NONEXIST")

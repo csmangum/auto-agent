@@ -181,3 +181,43 @@ class TestTokenBudgetEnvOverrides:
                 assert settings.MAX_LLM_CALLS_PER_CLAIM == 100
         finally:
             importlib.reload(settings)
+
+
+class TestDuplicateAndHighValueConfig:
+    """Test duplicate detection and high-value thresholds read env."""
+
+    def test_duplicate_similarity_threshold_defaults(self):
+        """Defaults: 40, 60, 3."""
+        assert settings.DUPLICATE_SIMILARITY_THRESHOLD == 40
+        assert settings.DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE == 60
+        assert settings.DUPLICATE_DAYS_WINDOW == 3
+
+    def test_duplicate_config_respects_env(self):
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "DUPLICATE_SIMILARITY_THRESHOLD": "50",
+                    "DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE": "70",
+                    "DUPLICATE_DAYS_WINDOW": "5",
+                },
+            ):
+                importlib.reload(settings)
+                assert settings.DUPLICATE_SIMILARITY_THRESHOLD == 50
+                assert settings.DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE == 70
+                assert settings.DUPLICATE_DAYS_WINDOW == 5
+        finally:
+            importlib.reload(settings)
+
+    def test_high_value_thresholds_defaults(self):
+        assert settings.HIGH_VALUE_DAMAGE_THRESHOLD == 25_000
+        assert settings.HIGH_VALUE_VEHICLE_THRESHOLD == 50_000
+
+    def test_escalation_sla_hours_defaults(self):
+        assert settings.ESCALATION_SLA_HOURS_CRITICAL == 24
+        assert settings.ESCALATION_SLA_HOURS_HIGH == 24
+        assert settings.ESCALATION_SLA_HOURS_MEDIUM == 48
+        assert settings.ESCALATION_SLA_HOURS_LOW == 72
+
+    def test_pre_routing_fraud_ratio_default(self):
+        assert settings.PRE_ROUTING_FRAUD_DAMAGE_RATIO == 0.9

@@ -53,7 +53,7 @@ def test_check_token_budget_raises_when_tokens_exceeded():
     )
     metrics.end_claim("CLM-TEST", status="open")
 
-    with patch("claim_agent.crews.main_crew.MAX_TOKENS_PER_CLAIM", 100):
+    with patch("claim_agent.workflow.budget.MAX_TOKENS_PER_CLAIM", 100):
         with pytest.raises(TokenBudgetExceeded) as exc_info:
             _check_token_budget("CLM-TEST", metrics)
     assert "Token budget exceeded" in str(exc_info.value)
@@ -141,11 +141,11 @@ def test_check_token_budget_uses_llm_fallback_when_metrics_empty():
     )
 
     # Under limit: should not raise
-    with patch("claim_agent.crews.main_crew.MAX_TOKENS_PER_CLAIM", 100):
+    with patch("claim_agent.workflow.budget.MAX_TOKENS_PER_CLAIM", 100):
         _check_token_budget("CLM-FALLBACK", metrics, llm=stub_llm)
 
     # Over limit: should raise
-    with patch("claim_agent.crews.main_crew.MAX_TOKENS_PER_CLAIM", 50):
+    with patch("claim_agent.workflow.budget.MAX_TOKENS_PER_CLAIM", 50):
         with pytest.raises(TokenBudgetExceeded) as exc_info:
             _check_token_budget("CLM-FALLBACK", metrics, llm=stub_llm)
     assert "Token budget exceeded" in str(exc_info.value)

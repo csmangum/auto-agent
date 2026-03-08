@@ -130,9 +130,15 @@ The module `src/claim_agent/config/settings.py` centralizes configuration from e
 | `DEFAULT_BASE_VALUE`, `DEPRECIATION_PER_YEAR`, etc. | Valuation and partial-loss defaults |
 | `get_adapter_backend(name)` | Configured adapter backend for a given adapter name |
 
-Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATION_ENABLED` (default false), `ROUTER_ESCALATION_SLA_HOURS` (default 48). When `ROUTER_VALIDATION_ENABLED=true`, the optional second-pass validation LLM call uses `OPENAI_MODEL_NAME` (the same variable that controls all other LLM calls; default `gpt-4o-mini`).
+Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATION_ENABLED` (default false). When `ROUTER_VALIDATION_ENABLED=true`, the optional second-pass validation LLM call uses `OPENAI_MODEL_NAME` (the same variable that controls all other LLM calls; default `gpt-4o-mini`).
 
-Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_THRESHOLD`, `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`, `ESCALATION_FRAUD_DAMAGE_VS_VALUE_RATIO`, `ESCALATION_VIN_CLAIMS_DAYS`, `ESCALATION_CONFIDENCE_DECREMENT_PER_PATTERN`, `ESCALATION_DESCRIPTION_OVERLAP_THRESHOLD`.
+Duplicate detection: `DUPLICATE_SIMILARITY_THRESHOLD` (default 40), `DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE` (default 60), `DUPLICATE_DAYS_WINDOW` (default 3). These control when claims with the same VIN are considered duplicates for routing.
+
+High-value thresholds: `HIGH_VALUE_DAMAGE_THRESHOLD` (default 25000), `HIGH_VALUE_VEHICLE_THRESHOLD` (default 50000). Claims exceeding these use stricter duplicate similarity thresholds.
+
+Pre-routing fraud: `PRE_ROUTING_FRAUD_DAMAGE_RATIO` (default 0.9). When damage-to-value ratio exceeds this and damage is not catastrophic, pre-routing fraud indicators are evaluated.
+
+Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_THRESHOLD`, `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`, `ESCALATION_FRAUD_DAMAGE_VS_VALUE_RATIO`, `ESCALATION_VIN_CLAIMS_DAYS`, `ESCALATION_CONFIDENCE_DECREMENT_PER_PATTERN`, `ESCALATION_DESCRIPTION_OVERLAP_THRESHOLD`. Mid-workflow escalation SLA hours: `ESCALATION_SLA_HOURS_CRITICAL` (24), `ESCALATION_SLA_HOURS_HIGH` (24), `ESCALATION_SLA_HOURS_MEDIUM` (48), `ESCALATION_SLA_HOURS_LOW` (72). Low-confidence router escalations (always medium priority) use `ESCALATION_SLA_HOURS_MEDIUM`. `ROUTER_ESCALATION_SLA_HOURS` is deprecated in favor of the unified `ESCALATION_SLA_HOURS_*` constants.
 
 Fraud variables: `FRAUD_MULTIPLE_CLAIMS_DAYS`, `FRAUD_MULTIPLE_CLAIMS_THRESHOLD`, `FRAUD_*_SCORE`, `FRAUD_*_THRESHOLD`, `FRAUD_CRITICAL_INDICATOR_COUNT`.
 
