@@ -10,7 +10,6 @@ from claim_agent.config.settings import (
     ESCALATION_SLA_HOURS_HIGH,
     ESCALATION_SLA_HOURS_LOW,
     ESCALATION_SLA_HOURS_MEDIUM,
-    get_router_config,
 )
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
@@ -22,8 +21,17 @@ from claim_agent.workflow.helpers import _combine_workflow_outputs
 logger = get_logger(__name__)
 
 
+_KNOWN_PRIORITIES = frozenset({"critical", "high", "medium", "low"})
+
+
 def _sla_hours_for_priority(priority: str) -> int:
     """Return SLA hours for the given escalation priority."""
+    if priority not in _KNOWN_PRIORITIES:
+        logger.warning(
+            "Unknown escalation priority %r; using ESCALATION_SLA_HOURS_LOW",
+            priority,
+            extra={"known_priorities": list(_KNOWN_PRIORITIES)},
+        )
     if priority in ("critical", "high"):
         return ESCALATION_SLA_HOURS_CRITICAL if priority == "critical" else ESCALATION_SLA_HOURS_HIGH
     if priority == "medium":
@@ -64,9 +72,12 @@ def _escalate_low_router_confidence(
     workflow_start_time: float,
     actor_id: str,
 ) -> None:
-    """Persist low router confidence escalation to DB."""
-    router_config = get_router_config()
-    sla_hours = router_config.get("escalation_sla_hours", 48)
+    """Persist low router confidence escalation to DB.
+
+    Low-confidence escalations are always medium priority; SLA hours come from
+    ESCALATION_SLA_HOURS_MEDIUM (same as mid-workflow medium-priority escalations).
+    """
+    sla_hours = _sla_hours_for_priority("medium")
     details = _build_low_confidence_escalation_details(
         router_confidence, confidence_threshold, claim_type, router_reasoning,
     )
