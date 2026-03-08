@@ -4,7 +4,7 @@ import json
 
 from crewai.tools import tool
 
-from claim_agent.exceptions import AdapterError, ValidationError
+from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.tools.policy_logic import query_policy_db_impl
 
 
@@ -19,7 +19,7 @@ def query_policy_db(policy_number: str) -> str:
     """
     try:
         return query_policy_db_impl(policy_number)
-    except ValidationError as e:
+    except DomainValidationError as e:
         return json.dumps({"valid": False, "message": str(e)})
     except AdapterError as e:
         return json.dumps({"valid": False, "message": str(e), "error": "adapter_error"})

@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from claim_agent.adapters.registry import get_policy_adapter
-from claim_agent.exceptions import AdapterError, ValidationError
+from claim_agent.exceptions import AdapterError, DomainValidationError
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -21,10 +21,10 @@ def query_policy_db_impl(
     ctx: ClaimContext | None = None,
 ) -> str:
     if not policy_number or not isinstance(policy_number, str):
-        raise ValidationError("Invalid policy number")
+        raise DomainValidationError("Invalid policy number")
     policy_number = policy_number.strip()
     if not policy_number:
-        raise ValidationError("Empty policy number")
+        raise DomainValidationError("Empty policy number")
     adapter = ctx.adapters.policy if ctx else get_policy_adapter()
     try:
         p = adapter.get_policy(policy_number)

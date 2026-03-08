@@ -279,8 +279,8 @@ def assign_claim(
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.assign_claim(claim_id, body.assignee, actor_id=actor_id)
-    except ClaimNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "assignee": body.assignee}
@@ -304,8 +304,8 @@ async def approve_review(
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.perform_adjuster_action(claim_id, "approve", actor_id=actor_id)
-    except ClaimNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     result = run_claim_workflow(
@@ -330,8 +330,8 @@ def reject_review(
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.perform_adjuster_action(claim_id, "reject", actor_id=actor_id, reason=body.reason)
-    except ClaimNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "status": "denied"}
@@ -350,8 +350,8 @@ def request_info_review(
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.perform_adjuster_action(claim_id, "request_info", actor_id=actor_id, note=body.note)
-    except ClaimNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "status": "pending_info"}
@@ -369,8 +369,8 @@ def escalate_to_siu(
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=actor_id)
-    except ClaimNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "status": "under_investigation"}

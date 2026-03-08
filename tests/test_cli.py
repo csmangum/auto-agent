@@ -358,43 +358,42 @@ class TestMain:
         with patch("sys.argv", ["claim-agent"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            # Typer shows help and exits 0 when no command given
-            assert exc_info.value.code in (0, 1)
+            assert exc_info.value.code == 0
 
     def test_main_status_no_claim_id(self):
         """Test main status without claim_id (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "status"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            assert exc_info.value.code in (1, 2)
+            assert exc_info.value.code == 2
 
     def test_main_history_no_claim_id(self):
         """Test main history without claim_id (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "history"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            assert exc_info.value.code in (1, 2)
+            assert exc_info.value.code == 2
 
     def test_main_reprocess_no_claim_id(self):
         """Test main reprocess without claim_id (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "reprocess"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            assert exc_info.value.code in (1, 2)
+            assert exc_info.value.code == 2
 
     def test_main_process_no_file(self):
         """Test main process without file path (Typer exits 2 for missing arg)."""
         with patch("sys.argv", ["claim-agent", "process"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            assert exc_info.value.code in (1, 2)
+            assert exc_info.value.code == 2
 
     def test_main_unknown_command(self):
         """Test main with unknown command (Typer exits 2)."""
         with patch("sys.argv", ["claim-agent", "unknown_command"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            assert exc_info.value.code in (1, 2)
+            assert exc_info.value.code == 2
 
     def test_main_with_debug_flag(self, monkeypatch):
         """Test main accepts --debug flag without error."""

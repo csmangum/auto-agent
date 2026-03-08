@@ -15,7 +15,7 @@ from claim_agent.config.settings import (
     MIN_PAYOUT_VEHICLE_VALUE,
     MIN_VEHICLE_VALUE,
 )
-from claim_agent.exceptions import AdapterError, ValidationError
+from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.tools.policy_logic import query_policy_db_impl
 
 if TYPE_CHECKING:
@@ -106,7 +106,7 @@ def calculate_payout_impl(
 
     try:
         policy_result = query_policy_db_impl(policy_number, ctx=ctx)
-    except (ValidationError, AdapterError) as e:
+    except (DomainValidationError, AdapterError) as e:
         return json.dumps({
             "error": str(e),
             "payout_amount": 0.0,

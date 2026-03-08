@@ -9,7 +9,7 @@ class AdapterError(ClaimAgentError):
     """Policy/valuation/repair adapter failure or not implemented."""
 
 
-class ValidationError(ClaimAgentError):
+class DomainValidationError(ClaimAgentError):
     """Invalid input (domain validation, distinct from Pydantic ValidationError)."""
 
 

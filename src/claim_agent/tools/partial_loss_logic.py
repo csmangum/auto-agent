@@ -16,7 +16,7 @@ from claim_agent.config.settings import (
     LABOR_HOURS_RNI_PER_PART,
     PARTIAL_LOSS_THRESHOLD,
 )
-from claim_agent.exceptions import AdapterError, ValidationError
+from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.tools.policy_logic import query_policy_db_impl
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
@@ -368,7 +368,7 @@ def calculate_repair_estimate_impl(
 
     try:
         policy_result = query_policy_db_impl(policy_number, ctx=ctx)
-    except (ValidationError, AdapterError):
+    except (DomainValidationError, AdapterError):
         deductible = DEFAULT_DEDUCTIBLE
     else:
         policy_data = json.loads(policy_result)

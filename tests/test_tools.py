@@ -168,12 +168,12 @@ def test_compute_similarity_empty_strings():
 
 
 def test_query_policy_db_invalid_input():
-    from claim_agent.exceptions import ValidationError
+    from claim_agent.exceptions import DomainValidationError
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(DomainValidationError):
         query_policy_db_impl("")
-    with pytest.raises(ValidationError):
+    with pytest.raises(DomainValidationError):
         query_policy_db_impl("   ")
 
 
