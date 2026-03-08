@@ -52,9 +52,12 @@ erDiagram
         text due_at
         text priority
         text siu_case_id
+        text archived_at
         text created_at
         text updated_at
     }
+    
+    claims ||--o{ task_checkpoints : "has"
     
     claim_audit_log {
         int id PK
@@ -75,6 +78,15 @@ erDiagram
         text claim_type
         text router_output
         text workflow_output
+        text created_at
+    }
+    
+    task_checkpoints {
+        int id PK
+        text claim_id FK
+        text workflow_run_id
+        text stage_key
+        text output
         text created_at
     }
 ```
@@ -107,6 +119,7 @@ CREATE TABLE IF NOT EXISTS claims (
     due_at TEXT,
     priority TEXT,
     siu_case_id TEXT,
+    archived_at TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -138,6 +151,7 @@ CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 | `due_at` | TEXT | SLA target datetime (ISO) |
 | `priority` | TEXT | critical \| high \| medium \| low (from escalation) |
 | `siu_case_id` | TEXT | SIU case ID when fraud workflow creates a referral |
+| `archived_at` | TEXT | When claim was archived (retention enforcement) |
 | `created_at` | TEXT | Creation timestamp |
 | `updated_at` | TEXT | Last update timestamp |
 
@@ -227,6 +241,35 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
 | `router_output` | TEXT | Raw output from router crew |
 | `workflow_output` | TEXT | Output from workflow crew |
 | `created_at` | TEXT | Timestamp of run |
+
+### task_checkpoints
+
+Task-level checkpoints for resumable workflows. Stores output per stage so reprocessing can resume from a specific point.
+
+**Relationship to workflow_runs:** `workflow_run_id` is a logical run identifier (UUID hex string, e.g. `uuid.uuid4().hex`) generated per workflow execution. It is *not* a foreign key to `workflow_runs.id`—those tables track runs independently. `workflow_runs` stores router/workflow output with an autoincrement `id`; `task_checkpoints` groups stage outputs by `workflow_run_id`. When resuming, the orchestrator loads checkpoints for a given `(claim_id, workflow_run_id)` and can skip completed stages.
+
+```sql
+CREATE TABLE IF NOT EXISTS task_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    workflow_run_id TEXT NOT NULL,
+    stage_key TEXT NOT NULL,
+    output TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    UNIQUE(claim_id, workflow_run_id, stage_key)
+);
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_claim_run ON task_checkpoints(claim_id, workflow_run_id);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Auto-increment primary key |
+| `claim_id` | TEXT | Foreign key to claims.id |
+| `workflow_run_id` | TEXT | Logical run identifier (UUID hex); groups checkpoints for one execution. Not a FK to workflow_runs.id. |
+| `stage_key` | TEXT | Stage identifier (e.g. router, escalation_check, workflow, settlement) |
+| `output` | TEXT | Serialized output from that stage |
+| `created_at` | TEXT | Timestamp |
 
 ## Status Constants
 

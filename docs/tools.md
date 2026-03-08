@@ -15,10 +15,19 @@ flowchart LR
         D[fraud_tools.py]
         E[partial_loss_tools.py]
         R[rag_tools.py]
+        V[vision_tools.py]
     end
     
     subgraph Logic["Implementation"]
-        F[logic.py]
+        L1[policy_logic.py]
+        L2[claims_logic.py]
+        L3[valuation_logic.py]
+        L4[fraud_logic.py]
+        L5[partial_loss_logic.py]
+        L6[escalation_logic.py]
+        L7[compliance_logic.py]
+        L8[document_logic.py]
+        L9[vision_logic.py]
     end
 
     subgraph Adapters["Adapter Layer"]

@@ -29,7 +29,7 @@ def mock_workflow_for_load(monkeypatch):
     call_count = [0]
     lock = threading.Lock()
 
-    def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None):
+    def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **kwargs):
         with lock:
             call_count[0] += 1
             count = call_count[0]

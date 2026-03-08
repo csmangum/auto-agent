@@ -12,8 +12,8 @@ flowchart LR
         CrewAI["CrewAI @tool wrappers"]
         MCP["MCP @mcp.tool wrappers"]
     end
-    subgraph logic [logic.py]
-        impls["*_impl functions"]
+    subgraph logic [Logic modules]
+        impls["*_logic.py (*_impl functions)"]
     end
     subgraph adapters [Adapter Layer]
         registry["registry.py"]

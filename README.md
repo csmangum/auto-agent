@@ -25,18 +25,19 @@ flowchart TB
     B --> C{Escalation?}
     C -->|Yes| D[needs_review]
     C -->|No| E{claim_type}
-    
+
     E -->|new| F[New Claim Crew]
     E -->|duplicate| G[Duplicate Crew]
     E -->|total_loss| H[Total Loss Crew]
     E -->|fraud| I[Fraud Crew]
     E -->|partial_loss| J[Partial Loss Crew]
-    
+
     F --> K[Output]
     G --> K
-    H --> K
+    H --> S[Settlement Crew]
     I --> K
-    J --> K
+    J --> S
+    S --> K
     D --> K
 ```
 

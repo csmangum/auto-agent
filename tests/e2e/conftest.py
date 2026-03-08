@@ -10,8 +10,8 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
-# Load integration conftest to reuse integration_db, sample_*_claim, mock_* fixtures
-pytest_plugins = ["tests.integration.conftest"]
+# Load integration fixtures so e2e tests can use them (pytest reads pytest_plugins at collection)
+pytest_plugins = ["tests.integration.conftest"]  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
