@@ -30,6 +30,7 @@ class TestLLMConfig:
                 os.environ["OPENAI_API_KEY"] = original_key
             elif "OPENAI_API_KEY" in os.environ:
                 del os.environ["OPENAI_API_KEY"]
+            reload_settings()
 
     def test_get_llm_with_api_key(self):
         """Test get_llm returns LLM when API key is set."""
@@ -62,6 +63,7 @@ class TestLLMConfig:
                 os.environ["OPENAI_MODEL_NAME"] = original_model
             elif "OPENAI_MODEL_NAME" in os.environ:
                 del os.environ["OPENAI_MODEL_NAME"]
+            reload_settings()
 
     def test_get_llm_with_custom_model(self):
         """Test get_llm uses custom model name from env."""
@@ -93,6 +95,7 @@ class TestLLMConfig:
                 os.environ["OPENAI_API_BASE"] = original_base
             elif "OPENAI_API_BASE" in os.environ:
                 del os.environ["OPENAI_API_BASE"]
+            reload_settings()
 
     def test_get_llm_with_openrouter(self):
         """Test get_llm configures OpenRouter when base URL is set."""
@@ -128,6 +131,7 @@ class TestLLMConfig:
                 os.environ["OPENAI_MODEL_NAME"] = original_model
             elif "OPENAI_MODEL_NAME" in os.environ:
                 del os.environ["OPENAI_MODEL_NAME"]
+            reload_settings()
 
     def test_setup_observability_thread_safe(self):
         """Concurrent setup_observability() runs LangSmith setup only once."""
@@ -167,6 +171,7 @@ class TestLLMConfig:
             os.environ["OPENAI_API_KEY"] = "sk-test-key-12345"
             if "OPENAI_API_BASE" in os.environ:
                 del os.environ["OPENAI_API_BASE"]
+            reload_settings()
             
             from claim_agent.config.llm import get_llm
             result = get_llm()
@@ -179,3 +184,4 @@ class TestLLMConfig:
                 del os.environ["OPENAI_API_KEY"]
             if original_base is not None:
                 os.environ["OPENAI_API_BASE"] = original_base
+            reload_settings()
