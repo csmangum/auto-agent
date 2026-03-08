@@ -3,15 +3,15 @@
 import json
 import logging
 import os
-import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from claim_agent.config.settings import get_escalation_config, get_fraud_config
+from claim_agent.config.settings import get_escalation_config
 from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimType
+from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 try:
     import litellm
@@ -250,8 +250,6 @@ def detect_fraud_indicators_impl(
             pass
 
     if estimated_damage is not None and isinstance(estimated_damage, (int, float)) and estimated_damage > 0:
-        from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
-
         year = claim_data.get("vehicle_year")
         make = claim_data.get("make") or claim_data.get("vehicle_make") or ""
         model = claim_data.get("model") or claim_data.get("vehicle_model") or ""

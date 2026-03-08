@@ -682,7 +682,7 @@ All tools follow a consistent pattern:
 ```python
 # In tools/<category>_tools.py
 from crewai.tools import tool
-from claim_agent.tools.logic import <tool>_impl
+from claim_agent.tools.<category>_logic import <tool>_impl
 
 @tool("<Tool Name>")
 def tool_function(param1: str, param2: int = 0) -> str:
@@ -697,7 +697,7 @@ def tool_function(param1: str, param2: int = 0) -> str:
 ```
 
 ```python
-# In tools/logic.py
+# In tools/<category>_logic.py (e.g. policy_logic, claims_logic, valuation_logic)
 def <tool>_impl(param1: str, param2: int) -> str:
     """Core implementation logic."""
     adapter = get_policy_adapter()  # or other adapter

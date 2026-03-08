@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from claim_agent.adapters.base import SIUAdapter
@@ -43,7 +43,15 @@ def analyze_claim_patterns_impl(
     }
 
     vin = vin or claim_data.get("vin", "").strip()
-    incident_date = claim_data.get("incident_date", "").strip()
+    incident_date_raw = claim_data.get("incident_date")
+    if isinstance(incident_date_raw, datetime):
+        incident_date = incident_date_raw.strftime("%Y-%m-%d")
+    elif isinstance(incident_date_raw, date):
+        incident_date = incident_date_raw.isoformat()
+    elif isinstance(incident_date_raw, str):
+        incident_date = (incident_date_raw or "").strip()
+    else:
+        incident_date = ""
 
     if vin:
         try:
