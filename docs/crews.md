@@ -18,7 +18,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Settlement](#settlement-crew) | 3 | Shared final settlement for payout-ready claims |
 | [Subrogation](#subrogation-crew) | 3 | Post-settlement recovery from at-fault parties |
 | [Salvage](#salvage-crew) | 3 | Total-loss vehicle disposition (runs after Settlement and Subrogation for total_loss only) |
-| [Denial / Coverage Dispute](#denial-coverage-crew) | 3 | Handle denials and coverage disputes (sub-workflow) |
+| [Denial / Coverage Dispute](#denial--coverage-dispute-crew) | 3 | Handle denials and coverage disputes (sub-workflow) |
 | [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
 
 ---
