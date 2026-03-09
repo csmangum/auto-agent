@@ -8,6 +8,7 @@ This module provides the command-line interface with full observability:
 
 import json
 import logging
+import math
 import os
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from claim_agent.config import get_settings
 from claim_agent.config.settings import get_retention_period_years
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
+from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.database import get_db_path
@@ -30,6 +32,7 @@ from claim_agent.observability import get_logger, get_metrics
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type, sanitize_claim_data
+from claim_agent.utils.sanitization import MAX_PAYOUT
 
 # Ensure src is on path when run as script
 if __name__ == "__main__" and str(Path(__file__).resolve().parent.parent) not in sys.path:
@@ -276,8 +279,20 @@ def assign(
 @app.command()
 def approve(
     claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+    confirmed_claim_type: Annotated[
+        Optional[str],
+        typer.Option("--confirmed-claim-type", help="Reviewer-confirmed claim type"),
+    ] = None,
+    confirmed_payout: Annotated[
+        Optional[float],
+        typer.Option("--confirmed-payout", help="Reviewer-confirmed payout amount"),
+    ] = None,
+    notes: Annotated[
+        Optional[str],
+        typer.Option("--notes", help="Reviewer notes for handback"),
+    ] = None,
 ) -> None:
-    """Approve claim and re-run workflow (supervisor)."""
+    """Approve claim and run Human Review Handback crew, then workflow (supervisor)."""
     ctx = _get_cli_ctx()
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
@@ -291,10 +306,25 @@ def approve(
         typer.echo(e.json() if hasattr(e, "json") else str(e), err=True)
         sys.exit(1)
     try:
+        if confirmed_payout is not None and (
+            not math.isfinite(confirmed_payout) or confirmed_payout < 0 or confirmed_payout > MAX_PAYOUT
+        ):
+            typer.echo(
+                f"Error: confirmed_payout must be 0 <= x <= {MAX_PAYOUT:,.0f}",
+                err=True,
+            )
+            sys.exit(1)
         ctx.adjuster_service.approve(claim_id, actor_id=ACTOR_WORKFLOW)
-        result = run_claim_workflow(
-            claim_data,
-            existing_claim_id=claim_id,
+        reviewer_decision = None
+        if confirmed_claim_type is not None or confirmed_payout is not None or notes is not None:
+            reviewer_decision = {
+                "confirmed_claim_type": confirmed_claim_type,
+                "confirmed_payout": confirmed_payout,
+                "notes": notes,
+            }
+        result = run_handback_workflow(
+            claim_id,
+            reviewer_decision=reviewer_decision,
             actor_id=ACTOR_WORKFLOW,
             ctx=ctx,
         )

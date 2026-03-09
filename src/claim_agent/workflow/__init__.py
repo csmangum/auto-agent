@@ -37,23 +37,32 @@ from claim_agent.workflow.helpers import (
     _kickoff_with_retry,
     _requires_settlement,
 )
-from claim_agent.workflow.orchestrator import (
-    _WorkflowCtx,
-    _normalize_claim_data,
-    run_claim_workflow,
-)
 from claim_agent.workflow.routing import (
     _parse_claim_type,
     _parse_router_output,
     create_main_crew,
     create_router_crew,
 )
-from claim_agent.workflow.stages import (
-    _stage_escalation_check,
-    _stage_router,
-    _stage_settlement,
-    _stage_workflow_crew,
-)
+
+
+def __getattr__(name: str):
+    """Lazy import of orchestrator/stages to avoid circular import with crews.main_crew."""
+    if name in ("_WorkflowCtx", "_normalize_claim_data", "run_claim_workflow"):
+        from claim_agent.workflow.orchestrator import (
+            _WorkflowCtx,
+            _normalize_claim_data,
+            run_claim_workflow,
+        )
+        return {"_WorkflowCtx": _WorkflowCtx, "_normalize_claim_data": _normalize_claim_data, "run_claim_workflow": run_claim_workflow}[name]
+    if name in ("_stage_escalation_check", "_stage_router", "_stage_settlement", "_stage_workflow_crew"):
+        from claim_agent.workflow.stages import (
+            _stage_escalation_check,
+            _stage_router,
+            _stage_settlement,
+            _stage_workflow_crew,
+        )
+        return {"_stage_escalation_check": _stage_escalation_check, "_stage_router": _stage_router, "_stage_settlement": _stage_settlement, "_stage_workflow_crew": _stage_workflow_crew}[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "WORKFLOW_STAGES",

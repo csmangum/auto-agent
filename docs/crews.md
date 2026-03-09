@@ -20,6 +20,37 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Salvage](#salvage-crew) | 3 | Total-loss vehicle disposition (runs after Settlement and Subrogation for total_loss only) |
 | [Denial / Coverage Dispute](#denial--coverage-dispute-crew) | 3 | Handle denials and coverage disputes (sub-workflow) |
 | [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
+| [Human Review Handback](#human-review-handback-crew) | 1 | Process claims returned from human review with a decision (post-escalation) |
+
+---
+
+## Human Review Handback Crew
+
+**Location**: `src/claim_agent/crews/human_review_handback_crew.py`
+
+Processes claims returned from human review with an approval decision. Handles the needs_review → processing transition.
+
+### Flow
+
+```mermaid
+flowchart LR
+    A[Reviewer Decision] --> B[Parse Decision] --> C[Update Claim] --> D[Route to Next Step]
+    D --> E[Settlement]
+    D --> F[Subrogation]
+    D --> G[Workflow]
+```
+
+### Integration
+
+- **Post-escalation**: Runs when a supervisor approves a claim via `POST /claims/{claim_id}/review/approve` or `claim-agent approve`
+- **Optional reviewer decision**: Pass `reviewer_decision` with `confirmed_claim_type` and/or `confirmed_payout` to apply overrides
+- **Tools**: `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision`
+
+### Agent
+
+| Agent | Role | Tools |
+|-------|------|-------|
+| Human Review Handback Specialist | Process post-escalation handback | `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision` |
 
 ---
 

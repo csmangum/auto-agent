@@ -84,6 +84,49 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
             logger.info("Restored router from checkpoint", extra={"claim_id": ctx.claim_id})
             return None
 
+    # When resuming, trust claim_type from the persisted claim record (e.g., reviewer override).
+    # When not resuming (fresh reprocess), always run the router so the full workflow re-executes.
+    # Do not trust ctx.claim_data['claim_type'] from user input; it could bypass classification.
+    if ctx.is_resume_run:
+        persisted_claim = ctx.context.repo.get_claim(ctx.claim_id)
+        persisted_claim_type = (
+            persisted_claim.get("claim_type") if persisted_claim else None
+        )
+    else:
+        persisted_claim_type = None
+    if persisted_claim_type and str(persisted_claim_type).strip():
+        normalized = normalize_claim_type(str(persisted_claim_type).strip())
+        valid_types = {ct.value for ct in ClaimType}
+        if normalized in valid_types:
+            ctx.claim_type = normalized
+            ctx.router_confidence = 1.0
+            ctx.router_reasoning = "Using pre-determined claim type (reviewer override)"
+            ctx.raw_output = f"claim_type: {ctx.claim_type}"
+            logger.set_claim_type(ctx.claim_type)
+            logger.info(
+                "Skipping router classification; using claim_type from database",
+                extra={"claim_id": ctx.claim_id, "claim_type": ctx.claim_type},
+            )
+            # Save this as checkpoint so it's consistent with normal router flow
+            ctx.context.repo.save_task_checkpoint(
+                ctx.claim_id,
+                ctx.workflow_run_id,
+                "router",
+                json.dumps({
+                    "claim_type": ctx.claim_type,
+                    "router_confidence": ctx.router_confidence,
+                    "router_reasoning": ctx.router_reasoning,
+                    "raw_output": ctx.raw_output,
+                }),
+            )
+            ctx.checkpoints["router"] = json.dumps({
+                "claim_type": ctx.claim_type,
+                "router_confidence": ctx.router_confidence,
+                "router_reasoning": ctx.router_reasoning,
+                "raw_output": ctx.raw_output,
+            })
+            return None
+
     logger.log_event("router_started", step="classification")
     router_start = time.time()
 

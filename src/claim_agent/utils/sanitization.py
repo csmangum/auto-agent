@@ -17,6 +17,9 @@ MAX_POLICYHOLDER_EVIDENCE = 8192
 MAX_REOPENING_REASON = 1000
 MAX_PRIOR_CLAIM_ID = 64
 
+# Maximum payout amount (dollars) for reviewer-confirmed payout validation
+MAX_PAYOUT = 50_000_000
+
 # Patterns that may indicate prompt injection attempts
 INJECTION_PATTERNS = [
     re.compile(r"ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions?", re.I),
@@ -132,6 +135,9 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
         elif key in ("vehicle_year", "estimated_damage", "claim_id", "incident_date"):
             # Pass through; validated by Pydantic or business logic
             out[key] = value
+        elif key == "claim_type":
+            # Strip from intake; only trusted when set via DB (reviewer/supervisor paths)
+            continue
         elif key == "attachments":
             # Sanitize attachment list: url, type (photo|pdf|estimate|other), description
             if isinstance(value, list):

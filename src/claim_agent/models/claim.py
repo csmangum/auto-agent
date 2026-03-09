@@ -73,6 +73,10 @@ class ClaimInput(BaseModel):
         default_factory=list,
         description="Optional attachments (photos, PDFs, estimates)",
     )
+    claim_type: Optional[Literal["new", "duplicate", "total_loss", "partial_loss", "bodily_injury", "fraud", "reopened"]] = Field(
+        default=None,
+        description="Pre-determined claim type (e.g., from reviewer override). Only trusted when set via supervisor/reviewer paths; intake endpoints should not accept this.",
+    )
 
 
 class ClaimOutput(BaseModel):

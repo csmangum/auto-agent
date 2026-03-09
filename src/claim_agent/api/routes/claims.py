@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
@@ -14,6 +15,7 @@ from claim_agent.api.deps import require_role
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
+from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import (
@@ -21,6 +23,7 @@ from claim_agent.db.constants import (
     DISPUTABLE_STATUSES,
     STATUS_ARCHIVED,
     STATUS_FAILED,
+    STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
     STATUS_PROCESSING,
     SUPPLEMENTABLE_STATUSES,
@@ -35,6 +38,7 @@ from claim_agent.rag.constants import normalize_state
 from claim_agent.utils.sanitization import (
     MAX_ACTOR_ID,
     MAX_DENIAL_REASON,
+    MAX_PAYOUT,
     MAX_POLICYHOLDER_EVIDENCE,
     sanitize_claim_data,
 )
@@ -62,6 +66,24 @@ _STREAM_MAX_DURATION = 300  # 5 min timeout
 PRIORITY_VALUES = ("critical", "high", "medium", "low")
 
 _background_tasks: set[asyncio.Task] = set()
+
+# Per-claim locks to prevent concurrent approve requests from racing (same claim_id).
+# Note: In multi-process deployments, use a distributed lock (e.g. Redis) instead.
+# LRU eviction prevents unbounded memory growth in long-running processes.
+_approve_locks: dict[str, asyncio.Lock] = {}
+_approve_locks_lock = asyncio.Lock()
+_MAX_APPROVE_LOCKS = 10000
+
+
+async def _get_approve_lock(claim_id: str) -> asyncio.Lock:
+    """Get or create a lock for the given claim_id."""
+    async with _approve_locks_lock:
+        if claim_id not in _approve_locks:
+            if len(_approve_locks) >= _MAX_APPROVE_LOCKS:
+                # Evict oldest entry (FIFO eviction for simplicity)
+                _approve_locks.pop(next(iter(_approve_locks)))
+            _approve_locks[claim_id] = asyncio.Lock()
+        return _approve_locks[claim_id]
 
 
 def _run_workflow_background(
@@ -279,6 +301,45 @@ class RequestInfoBody(BaseModel):
     note: str = ""
 
 
+class ReviewerDecisionBody(BaseModel):
+    """Optional reviewer decision for handback when approving a claim."""
+
+    confirmed_claim_type: Optional[
+        Literal["new", "duplicate", "total_loss", "partial_loss", "bodily_injury", "fraud"]
+    ] = Field(
+        default=None,
+        description="Reviewer-confirmed claim type. Must be one of: new, duplicate, total_loss, partial_loss, bodily_injury, fraud.",
+    )
+    confirmed_payout: Optional[float] = Field(
+        default=None,
+        description="Reviewer-confirmed payout amount",
+    )
+    notes: Optional[str] = Field(default=None, description="Reviewer notes")
+
+    @field_validator("confirmed_payout")
+    @classmethod
+    def validate_payout(cls, v: Optional[float]) -> Optional[float]:
+        """Reject NaN, inf, negative, or excessive payout amounts."""
+        if v is None:
+            return v
+        if not math.isfinite(v):
+            raise ValueError("confirmed_payout cannot be NaN or infinite")
+        if v < 0:
+            raise ValueError("confirmed_payout must be non-negative")
+        if v > MAX_PAYOUT:
+            raise ValueError(f"confirmed_payout must be <= {MAX_PAYOUT:,.0f}")
+        return v
+
+
+class ApproveBody(BaseModel):
+    """Optional body for approve endpoint to pass reviewer decision for handback."""
+
+    reviewer_decision: Optional[ReviewerDecisionBody] = Field(
+        default=None,
+        description="Reviewer decision for handback processing",
+    )
+
+
 @router.patch("/claims/{claim_id}/assign")
 def assign_claim(
     claim_id: str,
@@ -302,31 +363,64 @@ def assign_claim(
 @router.post("/claims/{claim_id}/review/approve")
 async def approve_review(
     claim_id: str,
+    body: ApproveBody = Body(default=ApproveBody()),
     auth: AuthContext = RequireSupervisor,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
-    """Approve claim for continued processing and re-run workflow. Requires supervisor."""
+    """Approve claim for continued processing. Runs Human Review Handback crew to parse
+    reviewer decision, update claim, then routes to next step (settlement, subrogation, etc).
+    Requires supervisor.
+
+    Uses a per-claim lock to prevent concurrent approve requests from racing. In multi-process
+    deployments, use a distributed lock (e.g. Redis) instead.
+    """
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    claim_data = claim_data_from_row(claim)
-    try:
-        ClaimInput.model_validate(claim_data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        ctx.adjuster_service.approve(claim_id, actor_id=actor_id)
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    result = run_claim_workflow(
-        claim_data,
-        existing_claim_id=claim_id,
-        actor_id=actor_id,
-        ctx=ctx,
-    )
+    if claim.get("status") != STATUS_NEEDS_REVIEW:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Claim {claim_id} is not in needs_review (status={claim.get('status')}); cannot approve.",
+        )
+
+    lock = await _get_approve_lock(claim_id)
+    async with lock:
+        claim = await asyncio.to_thread(ctx.repo.get_claim, claim_id)
+        if claim is None:
+            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+        if claim.get("status") != STATUS_NEEDS_REVIEW:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Claim {claim_id} is not in needs_review (status={claim.get('status')}); already processed.",
+            )
+        claim_data = claim_data_from_row(claim)
+        try:
+            ClaimInput.model_validate(claim_data)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+        try:
+            await asyncio.to_thread(ctx.adjuster_service.approve, claim_id, actor_id=actor_id)
+        except ClaimNotFoundError as e:
+            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        reviewer_decision = None
+        if body.reviewer_decision:
+            reviewer_decision = {
+                "confirmed_claim_type": body.reviewer_decision.confirmed_claim_type,
+                "confirmed_payout": body.reviewer_decision.confirmed_payout,
+                "notes": body.reviewer_decision.notes,
+            }
+
+        result = await asyncio.to_thread(
+            run_handback_workflow,
+            claim_id,
+            reviewer_decision=reviewer_decision,
+            actor_id=actor_id,
+            ctx=ctx,
+        )
     return result
 
 

@@ -325,7 +325,7 @@ class TestReviewQueue:
         import claim_agent.api.routes.claims as claims_mod
 
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
         resp = client.post("/api/claims/CLM-TEST004/review/approve")
         assert resp.status_code == 200
         data = resp.json()
@@ -341,6 +341,26 @@ class TestReviewQueue:
             headers={"X-API-Key": "sk-adj"},
         )
         assert resp.status_code == 403
+
+    def test_approve_not_needs_review_returns_409(self, client):
+        """Approve on claim not in needs_review returns 409."""
+        # CLM-TEST001 has status "open"
+        resp = client.post("/api/claims/CLM-TEST001/review/approve")
+        assert resp.status_code == 409
+        assert "not in needs_review" in resp.json()["detail"]
+
+    def test_approve_invalid_payout_returns_422(self, client, monkeypatch):
+        """ReviewerDecisionBody rejects invalid confirmed_payout (negative, etc)."""
+        import claim_agent.api.routes.claims as claims_mod
+
+        monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: {})
+        resp = client.post(
+            "/api/claims/CLM-TEST004/review/approve",
+            json={"reviewer_decision": {"confirmed_payout": -100}},
+        )
+        assert resp.status_code == 422
+        detail = str(resp.json()).lower()
+        assert "confirmed_payout" in detail or "non-negative" in detail
 
     def test_assign_not_needs_review_returns_400(self, client):
         """Assign on claim not in needs_review returns 400."""
