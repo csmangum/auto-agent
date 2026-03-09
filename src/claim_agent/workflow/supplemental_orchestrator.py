@@ -145,7 +145,7 @@ def run_supplemental_workflow(
             supplemental_input.claim_id,
             claim_status,
             details=workflow_output[:500],
-            payout_amount=combined_insurance_pays or supplemental_amount,
+            payout_amount=combined_insurance_pays if combined_insurance_pays is not None else supplemental_amount,
         )
 
     repo.save_workflow_result(

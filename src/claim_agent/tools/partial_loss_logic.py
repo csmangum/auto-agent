@@ -587,6 +587,9 @@ def calculate_supplemental_estimate_impl(
         return estimate_json
     estimate["supplemental_damage_description"] = supplemental_damage_description
     estimate["is_supplemental"] = True
+    total_estimate = estimate.get("total_estimate", 0)
+    estimate["customer_pays"] = 0
+    estimate["insurance_pays"] = total_estimate
     return json.dumps(estimate)
 
 
