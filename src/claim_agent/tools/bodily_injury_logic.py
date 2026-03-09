@@ -2,7 +2,8 @@
 
 Mock implementations for query_medical_records, assess_injury_severity, and
 calculate_bi_settlement. Real implementations would integrate with medical
-records systems, injury assessment models, and policy BI limits.
+records systems (e.g., HIEs, provider portals), injury assessment models, and
+policy BI limits. TODO: Add MedicalRecordsAdapter interface for production.
 """
 
 from __future__ import annotations
@@ -22,6 +23,20 @@ logger = logging.getLogger(__name__)
 DEFAULT_BI_LIMIT_PER_PERSON = 250_000.0
 DEFAULT_BI_LIMIT_PER_ACCIDENT = 500_000.0
 
+# Charge thresholds for severity adjustment from medical records
+SEVERE_CHARGE_THRESHOLD = 50_000.0
+MODERATE_CHARGE_THRESHOLD = 10_000.0
+
+# Settlement range (low, high) by severity for mock assess_injury_severity
+SEVERITY_RANGES: dict[str, tuple[int, int]] = {
+    "minor": (500, 5_000),
+    "moderate": (5_000, 25_000),
+    "severe": (25_000, 150_000),
+    "catastrophic": (150_000, 1_000_000),
+}
+
+VALID_SEVERITIES = frozenset(("minor", "moderate", "severe", "catastrophic"))
+
 
 def query_medical_records_impl(
     claim_id: str,
@@ -31,8 +46,9 @@ def query_medical_records_impl(
 ) -> str:
     """Query medical records associated with a bodily injury claim.
 
-    Returns mock medical records summary. Real implementation would integrate
-    with medical records systems (e.g., HIEs, provider portals).
+    Returns mock medical records summary. MOCK: Returns deterministic data
+    varied by claim_id hash for test realism; production would integrate with
+    medical records systems (e.g., HIEs, provider portals).
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -43,7 +59,10 @@ def query_medical_records_impl(
                 "treatment_summary": None,
             }
         )
-    # Mock response: typical BI claim medical records structure
+    # Mock response: vary total_charges by claim_id for test realism
+    claim_hash = hash(claim_id) % 1000
+    base_charges = 3750.0
+    total_charges = base_charges + (claim_hash % 5) * 500
     return json.dumps(
         {
             "claim_id": claim_id,
@@ -64,7 +83,7 @@ def query_medical_records_impl(
                     "treatment": "Office visit, physical therapy referral",
                 },
             ],
-            "total_charges": 3750.00,
+            "total_charges": total_charges,
             "treatment_summary": "Initial ER visit for cervical strain/whiplash; follow-up with PCP. No surgery or hospitalization.",
         }
     )
@@ -117,18 +136,11 @@ def assess_injury_severity_impl(
         factors.append("Soft tissue / moderate injury indicators")
     if total_charges is not None:
         factors.append(f"Total medical charges: ${total_charges:,.2f}")
-        if total_charges > 50000:
+        if total_charges > SEVERE_CHARGE_THRESHOLD:
             severity = "severe" if severity != "catastrophic" else severity
-        elif total_charges > 10000:
+        elif total_charges > MODERATE_CHARGE_THRESHOLD:
             severity = "moderate" if severity == "minor" else severity
-    # Suggested settlement ranges (mock)
-    ranges = {
-        "minor": (500, 5000),
-        "moderate": (5000, 25000),
-        "severe": (25000, 150000),
-        "catastrophic": (150000, 1000000),
-    }
-    low, high = ranges.get(severity, (5000, 25000))
+    low, high = SEVERITY_RANGES.get(severity, (5_000, 25_000))
     return json.dumps(
         {
             "severity": severity,
@@ -173,7 +185,8 @@ def calculate_bi_settlement_impl(
                 "policy_bi_limit_per_accident": None,
             }
         )
-    # Get policy BI limits
+    # Get policy BI limits. CrewAI tools do not receive ctx, so get_policy_adapter()
+    # is used when invoked from agents; ctx is only set when impl is called directly.
     policy_number = (policy_number or "").strip()
     bi_per_person = DEFAULT_BI_LIMIT_PER_PERSON
     bi_per_accident = DEFAULT_BI_LIMIT_PER_ACCIDENT
@@ -186,8 +199,14 @@ def calculate_bi_settlement_impl(
                 if isinstance(bi, dict):
                     bi_per_person = float(bi.get("per_person", bi_per_person))
                     bi_per_accident = float(bi.get("per_accident", bi_per_accident))
-        except Exception as exc:
+        except (ValueError, KeyError, TypeError) as exc:
             logger.warning("Policy lookup failed for BI limits: %s", exc)
+    if injury_severity and injury_severity.lower() not in VALID_SEVERITIES:
+        logger.warning(
+            "Unexpected injury_severity %r; expected one of %s",
+            injury_severity,
+            sorted(VALID_SEVERITIES),
+        )
     # Pain and suffering (multiplier on medicals)
     pain_suffering = medical_charges * pain_suffering_multiplier
     total_demand = medical_charges + pain_suffering

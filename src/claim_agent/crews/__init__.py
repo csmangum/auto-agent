@@ -18,6 +18,7 @@ from claim_agent.crews.subrogation_crew import create_subrogation_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.supplemental_crew import create_supplemental_crew
 from claim_agent.crews.rental_crew import create_rental_crew
+from claim_agent.crews.reopened_crew import create_reopened_crew
 
 __all__ = [
     "create_bodily_injury_crew",
@@ -38,4 +39,5 @@ __all__ = [
     "create_salvage_crew",
     "create_supplemental_crew",
     "create_rental_crew",
+    "create_reopened_crew",
 ]

@@ -79,6 +79,8 @@ def normalize_claim_type(value: str) -> str:
         return ClaimType.FRAUD.value
     if v == "bodily_injury":
         return ClaimType.BODILY_INJURY.value
+    if v == "reopened":
+        return ClaimType.REOPENED.value
     return ClaimType.NEW.value
 
 

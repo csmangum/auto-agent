@@ -223,3 +223,7 @@ SETTLEMENT_NEGOTIATOR = "settlement_negotiator"
 COVERAGE_ANALYST = "coverage_analyst"
 DENIAL_LETTER_SPECIALIST = "denial_letter_specialist"
 APPEAL_REVIEWER = "appeal_reviewer"
+# Reopened claims
+REOPENED_VALIDATOR = "reopened_validator"
+PRIOR_CLAIM_LOADER = "prior_claim_loader"
+REOPENED_ROUTER = "reopened_router"
