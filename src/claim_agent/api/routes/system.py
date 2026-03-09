@@ -210,6 +210,31 @@ _CREWS_CATALOG = [
         ],
     },
     {
+        "name": "Denial / Coverage Dispute Crew",
+        "description": "Handles denials and coverage disputes. Reviews denial reason, verifies coverage/exclusions, generates denial letter or routes to appeal. Sub-workflow via POST /claims/{id}/denial-coverage. Requires STATUS_DENIED.",
+        "module": "crews/denial_coverage_crew.py",
+        "agents": [
+            {
+                "name": "Coverage Analyst",
+                "skill": "coverage_analyst",
+                "tools": ["lookup_original_claim", "query_policy_db", "get_coverage_exclusions", "search_policy_compliance"],
+                "description": "Reviews denial reason and verifies coverage/exclusions",
+            },
+            {
+                "name": "Denial Letter Specialist",
+                "skill": "denial_letter_specialist",
+                "tools": ["generate_denial_letter", "get_required_disclosures", "get_compliance_deadlines", "search_policy_compliance"],
+                "description": "Generates compliant denial letters",
+            },
+            {
+                "name": "Appeal Reviewer",
+                "skill": "appeal_reviewer",
+                "tools": ["route_to_appeal", "escalate_claim", "generate_report", "get_compliance_deadlines"],
+                "description": "Decides uphold vs route to appeal",
+            },
+        ],
+    },
+    {
         "name": "Supplemental Crew",
         "description": "Handles additional damage discovered during repair on partial loss claims. Sub-workflow via POST /claims/{id}/supplemental.",
         "module": "crews/supplemental_crew.py",

@@ -17,6 +17,7 @@ from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import (
+    DENIAL_COVERAGE_STATUSES,
     DISPUTABLE_STATUSES,
     STATUS_ARCHIVED,
     STATUS_FAILED,
@@ -30,7 +31,8 @@ from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type
-from claim_agent.utils.sanitization import MAX_ACTOR_ID, sanitize_claim_data
+from claim_agent.utils.sanitization import MAX_ACTOR_ID, sanitize_claim_data, sanitize_denial_reason, sanitize_policyholder_evidence
+from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
 
@@ -848,6 +850,74 @@ async def file_dispute(
     result = await asyncio.to_thread(
         run_dispute_workflow,
         dispute_data,
+        ctx=ctx,
+    )
+    return result
+
+
+class DenialCoverageBody(BaseModel):
+    """Request body for denial/coverage dispute workflow."""
+
+    denial_reason: str = Field(
+        ...,
+        max_length=2000,
+        description="Stated reason for the denial",
+    )
+    policyholder_evidence: Optional[str] = Field(
+        default=None,
+        max_length=2000,
+        description="Optional evidence or argument from policyholder",
+    )
+
+
+class DenialCoverageResponse(BaseModel):
+    """Response from denial/coverage workflow."""
+
+    claim_id: str = Field(..., description="Claim ID")
+    outcome: str = Field(
+        ...,
+        description="outcome: uphold_denial, route_to_appeal, or escalated",
+    )
+    status: str = Field(..., description="Claim status after workflow")
+    workflow_output: str = Field(..., description="Raw workflow output")
+    summary: str = Field(..., description="Short summary")
+
+
+@router.post("/claims/{claim_id}/denial-coverage", response_model=DenialCoverageResponse)
+async def run_denial_coverage(
+    claim_id: str,
+    body: DenialCoverageBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Run denial/coverage dispute workflow on a denied claim.
+
+    Reviews denial reason, verifies coverage/exclusions, and either generates
+    a denial letter (uphold) or routes to appeal.
+    """
+    claim = ctx.repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    claim_status = claim.get("status")
+    if claim_status not in DENIAL_COVERAGE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Claim cannot run denial/coverage workflow in status {claim_status!r}. "
+                f"Allowed statuses: {', '.join(DENIAL_COVERAGE_STATUSES)}."
+            ),
+        )
+
+    denial_data = {
+        "claim_id": claim_id,
+        "denial_reason": sanitize_denial_reason(body.denial_reason),
+        "policyholder_evidence": sanitize_policyholder_evidence(body.policyholder_evidence),
+    }
+
+    result = await asyncio.to_thread(
+        run_denial_coverage_workflow,
+        denial_data,
         ctx=ctx,
     )
     return result
