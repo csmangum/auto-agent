@@ -275,9 +275,11 @@ class RequestInfoBody(BaseModel):
 class ReviewerDecisionBody(BaseModel):
     """Optional reviewer decision for handback when approving a claim."""
 
-    confirmed_claim_type: Optional[str] = Field(
+    confirmed_claim_type: Optional[
+        Literal["new", "duplicate", "total_loss", "partial_loss", "bodily_injury", "fraud"]
+    ] = Field(
         default=None,
-        description="Reviewer-confirmed claim type (e.g. partial_loss, total_loss)",
+        description="Reviewer-confirmed claim type. Must be one of: new, duplicate, total_loss, partial_loss, bodily_injury, fraud.",
     )
     confirmed_payout: Optional[float] = Field(
         default=None,
