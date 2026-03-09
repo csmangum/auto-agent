@@ -93,6 +93,7 @@ class _WorkflowCtx:
     workflow_start_time: float
     actor_id: str
     checkpoints: dict[str, str] = field(default_factory=dict)
+    is_resume_run: bool = False
 
     claim_type: str = ""
     router_confidence: float = 0.0
@@ -325,6 +326,7 @@ def run_claim_workflow(
                 workflow_start_time=workflow_start_time,
                 actor_id=_actor,
                 checkpoints=checkpoints,
+                is_resume_run=resume_run_id is not None,
             )
 
             for stage_fn in (_stage_router, _stage_escalation_check, _stage_workflow_crew, _stage_rental, _stage_settlement, _stage_subrogation, _stage_salvage):

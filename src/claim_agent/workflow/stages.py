@@ -84,12 +84,16 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
             logger.info("Restored router from checkpoint", extra={"claim_id": ctx.claim_id})
             return None
 
-    # Only trust claim_type from the persisted claim record (e.g., reviewer override).
+    # When resuming, trust claim_type from the persisted claim record (e.g., reviewer override).
+    # When not resuming (fresh reprocess), always run the router so the full workflow re-executes.
     # Do not trust ctx.claim_data['claim_type'] from user input; it could bypass classification.
-    persisted_claim = ctx.context.repo.get_claim(ctx.claim_id)
-    persisted_claim_type = (
-        persisted_claim.get("claim_type") if persisted_claim else None
-    )
+    if ctx.is_resume_run:
+        persisted_claim = ctx.context.repo.get_claim(ctx.claim_id)
+        persisted_claim_type = (
+            persisted_claim.get("claim_type") if persisted_claim else None
+        )
+    else:
+        persisted_claim_type = None
     if persisted_claim_type and str(persisted_claim_type).strip():
         normalized = normalize_claim_type(str(persisted_claim_type).strip())
         valid_types = {ct.value for ct in ClaimType}
