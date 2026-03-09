@@ -34,6 +34,7 @@ from claim_agent.db.constants import (
 )
 from claim_agent.db.database import get_connection
 from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.utils.sanitization import sanitize_note
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 
@@ -383,7 +384,7 @@ class ClaimRepository:
                 INSERT INTO claim_notes (claim_id, note, actor_id)
                 VALUES (?, ?, ?)
                 """,
-                (claim_id, note.strip(), actor_id.strip()),
+                (claim_id, sanitize_note(note), actor_id.strip()),
             )
 
     def get_notes(self, claim_id: str) -> list[dict[str, Any]]:
@@ -399,7 +400,7 @@ class ClaimRepository:
                 SELECT id, claim_id, note, actor_id, created_at
                 FROM claim_notes
                 WHERE claim_id = ?
-                ORDER BY id ASC
+                ORDER BY created_at ASC
                 """,
                 (claim_id,),
             ).fetchall()
