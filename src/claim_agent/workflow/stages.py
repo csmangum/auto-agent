@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from claim_agent.config.settings import get_router_config
@@ -331,12 +331,12 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                     actor_id=ctx.actor_id,
                 )
                 hours = _sla_hours_for_priority(priority)
-                due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+                due_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
                 ctx.context.repo.update_claim_review_metadata(
                     ctx.claim_id,
                     priority=priority,
                     due_at=due_at,
-                    review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    review_started_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
             workflow_duration = (time.time() - ctx.workflow_start_time) * 1000

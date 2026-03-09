@@ -47,6 +47,9 @@ from claim_agent.workflow.routing import (
 
 def __getattr__(name: str):
     """Lazy import of orchestrator/stages to avoid circular import with crews.main_crew."""
+    if name == "stages":
+        import claim_agent.workflow.stages as stages
+        return stages
     if name in ("_WorkflowCtx", "_normalize_claim_data", "run_claim_workflow"):
         from claim_agent.workflow.orchestrator import (
             _WorkflowCtx,
