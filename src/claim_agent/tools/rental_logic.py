@@ -33,7 +33,8 @@ def check_rental_coverage_impl(
     Uses policy rental_reimbursement or transportation_expenses when present;
     otherwise infers from coverage type (comprehensive/collision/full_coverage = eligible).
     """
-    if not policy_number or not isinstance(policy_number, str):
+    policy_number = policy_number.strip() if isinstance(policy_number, str) else ""
+    if not policy_number:
         return json.dumps(
             {
                 "eligible": False,
@@ -42,7 +43,6 @@ def check_rental_coverage_impl(
                 "message": "Invalid policy number",
             }
         )
-    policy_number = policy_number.strip()
     adapter = ctx.adapters.policy if ctx else get_policy_adapter()
     try:
         policy = adapter.get_policy(policy_number)
@@ -80,13 +80,19 @@ def check_rental_coverage_impl(
     if rental and isinstance(rental, dict):
         daily = rental.get("daily_limit")
         aggregate = rental.get("aggregate_limit")
+        try:
+            daily_val = float(daily) if daily is not None else DEFAULT_DAILY_LIMIT
+        except (TypeError, ValueError):
+            daily_val = DEFAULT_DAILY_LIMIT
+        try:
+            aggregate_val = float(aggregate) if aggregate is not None else DEFAULT_AGGREGATE_LIMIT
+        except (TypeError, ValueError):
+            aggregate_val = DEFAULT_AGGREGATE_LIMIT
         return json.dumps(
             {
                 "eligible": True,
-                "daily_limit": float(daily) if daily is not None else DEFAULT_DAILY_LIMIT,
-                "aggregate_limit": float(aggregate)
-                if aggregate is not None
-                else DEFAULT_AGGREGATE_LIMIT,
+                "daily_limit": daily_val,
+                "aggregate_limit": aggregate_val,
                 "message": "Rental reimbursement coverage found",
             }
         )
@@ -119,7 +125,8 @@ def get_rental_limits_impl(
     Returns daily_limit, aggregate_limit, and optional max_days.
     Falls back to compliance defaults when not specified.
     """
-    if not policy_number or not isinstance(policy_number, str):
+    policy_number = policy_number.strip() if isinstance(policy_number, str) else ""
+    if not policy_number:
         return json.dumps(
             {
                 "daily_limit": DEFAULT_DAILY_LIMIT,
@@ -127,7 +134,6 @@ def get_rental_limits_impl(
                 "max_days": DEFAULT_MAX_DAYS,
             }
         )
-    policy_number = policy_number.strip()
     adapter = ctx.adapters.policy if ctx else get_policy_adapter()
     try:
         policy = adapter.get_policy(policy_number)
@@ -153,13 +159,23 @@ def get_rental_limits_impl(
         daily = rental.get("daily_limit")
         aggregate = rental.get("aggregate_limit")
         max_days = rental.get("max_days")
+        try:
+            daily_val = float(daily) if daily is not None else DEFAULT_DAILY_LIMIT
+        except (TypeError, ValueError):
+            daily_val = DEFAULT_DAILY_LIMIT
+        try:
+            aggregate_val = float(aggregate) if aggregate is not None else DEFAULT_AGGREGATE_LIMIT
+        except (TypeError, ValueError):
+            aggregate_val = DEFAULT_AGGREGATE_LIMIT
+        try:
+            max_days_val = int(max_days) if max_days is not None else DEFAULT_MAX_DAYS
+        except (TypeError, ValueError):
+            max_days_val = DEFAULT_MAX_DAYS
         return json.dumps(
             {
-                "daily_limit": float(daily) if daily is not None else DEFAULT_DAILY_LIMIT,
-                "aggregate_limit": float(aggregate)
-                if aggregate is not None
-                else DEFAULT_AGGREGATE_LIMIT,
-                "max_days": int(max_days) if max_days is not None else DEFAULT_MAX_DAYS,
+                "daily_limit": daily_val,
+                "aggregate_limit": aggregate_val,
+                "max_days": max_days_val,
             }
         )
     coverage = policy.get("coverage", "")

@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from claim_agent.tools.rental_logic import (
     check_rental_coverage_impl,
     get_rental_limits_impl,
@@ -45,6 +43,13 @@ class TestCheckRentalCoverage:
         assert data["eligible"] is False
         assert data["message"] == "Invalid policy number"
 
+    def test_whitespace_only_policy_number(self):
+        """Whitespace-only policy number returns not eligible."""
+        result = check_rental_coverage_impl("   ")
+        data = json.loads(result)
+        assert data["eligible"] is False
+        assert data["message"] == "Invalid policy number"
+
     def test_policy_not_found(self):
         """Non-existent policy returns not eligible."""
         result = check_rental_coverage_impl("POL-NONEXISTENT")
@@ -69,6 +74,14 @@ class TestGetRentalLimits:
         data = json.loads(result)
         assert data["daily_limit"] == 40.0
         assert data["aggregate_limit"] == 1200.0
+
+    def test_whitespace_only_policy_number(self):
+        """Whitespace-only policy number returns default limits."""
+        result = get_rental_limits_impl("   ")
+        data = json.loads(result)
+        assert data["daily_limit"] == 35.0
+        assert data["aggregate_limit"] == 1050.0
+        assert data["max_days"] == 30
 
     def test_policy_without_rental_returns_defaults(self):
         """Policy without rental returns compliance defaults."""
