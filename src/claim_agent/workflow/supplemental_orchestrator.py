@@ -10,6 +10,7 @@ and authorization of supplemental payment when additional damage is discovered.
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -25,10 +26,17 @@ from claim_agent.workflow.helpers import _kickoff_with_retry
 logger = get_logger(__name__)
 
 
-def _get_latest_workflow_output(repo: Any, claim_id: str) -> str | None:
-    """Retrieve the most recent workflow_output for a claim."""
-    runs = repo.get_workflow_runs(claim_id, limit=1)
-    return runs[0]["workflow_output"] if runs else None
+def _get_latest_partial_loss_workflow_output(repo: Any, claim_id: str) -> str | None:
+    """Retrieve the most recent partial_loss workflow_output for a claim.
+
+    Filters by claim_type so that multiple supplementals on the same claim
+    always receive the original partial loss output, not a prior supplemental.
+    """
+    runs = repo.get_workflow_runs(claim_id, limit=20)
+    for run in runs:
+        if run.get("claim_type") == "partial_loss":
+            return run.get("workflow_output")
+    return None
 
 
 def run_supplemental_workflow(
@@ -110,7 +118,9 @@ def run_supplemental_workflow(
         "status": claim.get("status"),
     }
 
-    original_workflow_output = _get_latest_workflow_output(repo, supplemental_input.claim_id)
+    original_workflow_output = _get_latest_partial_loss_workflow_output(
+        repo, supplemental_input.claim_id
+    )
 
     crew_inputs = {
         "claim_data": json.dumps(claim_data_for_crew),
@@ -167,8 +177,6 @@ def run_supplemental_workflow(
 
 def _extract_supplemental_amount(workflow_output: str) -> float | None:
     """Best-effort extraction of supplemental amount from crew output."""
-    import re
-
     patterns = [
         r"supplemental_total[:\s]*\$?([\d,]+\.?\d*)",
         r"supplemental_insurance_pays[:\s]*\$?([\d,]+\.?\d*)",
@@ -186,8 +194,6 @@ def _extract_supplemental_amount(workflow_output: str) -> float | None:
 
 def _extract_combined_insurance_pays(workflow_output: str) -> float | None:
     """Best-effort extraction of combined insurance pays from crew output."""
-    import re
-
     m = re.search(
         r"combined_insurance_pays[:\s]*\$?([\d,]+\.?\d*)",
         workflow_output,

@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -776,9 +776,10 @@ class SupplementalBody(BaseModel):
 
     supplemental_damage_description: str = Field(
         ...,
+        max_length=2000,
         description="Description of the additional damage discovered during repair",
     )
-    reported_by: Optional[str] = Field(
+    reported_by: Optional[Literal["shop", "adjuster", "policyholder"]] = Field(
         default=None,
         description="Who reported: shop, adjuster, or policyholder",
     )
@@ -899,6 +900,8 @@ async def file_supplemental(
             ctx=ctx,
         )
         return result
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

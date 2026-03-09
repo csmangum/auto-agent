@@ -611,6 +611,12 @@ def update_repair_authorization_impl(
     Creates a supplemental authorization record and returns combined totals.
     Original deductible is not re-applied to supplemental; insurance pays
     the supplemental amount.
+
+    Note: The supplemental authorization (RA-SUP-xxx) is computed and returned
+    in workflow output but not persisted to a dedicated table. Same as
+    generate_repair_authorization. The orchestrator updates claim payout_amount
+    from extracted values. For auditability, consider extending workflow_runs
+    or adding an authorizations table in future.
     """
     adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
     shop = adapter.get_shop(shop_id) or {}

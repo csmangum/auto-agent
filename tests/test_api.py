@@ -444,6 +444,16 @@ class TestSupplemental:
         assert resp.status_code == 409
         assert "cannot receive supplemental" in resp.json()["detail"].lower()
 
+    def test_file_supplemental_invalid_reported_by_returns_422(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST005/supplemental",
+            json={
+                "supplemental_damage_description": "Frame damage",
+                "reported_by": "invalid",
+            },
+        )
+        assert resp.status_code == 422
+
     def test_file_supplemental_success_returns_response_model(self, client, monkeypatch):
         import claim_agent.api.routes.claims as claims_mod
 
