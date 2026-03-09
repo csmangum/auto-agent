@@ -18,6 +18,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Settlement](#settlement-crew) | 3 | Shared final settlement for payout-ready claims |
 | [Subrogation](#subrogation-crew) | 3 | Post-settlement recovery from at-fault parties |
 | [Salvage](#salvage-crew) | 3 | Total-loss vehicle disposition (runs after Settlement and Subrogation for total_loss only) |
+| [Denial / Coverage Dispute](#denial--coverage-dispute-crew) | 3 | Handle denials and coverage disputes (sub-workflow) |
 | [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
 
 ---
@@ -704,6 +705,42 @@ flowchart TB
 ### Integration with Main Flow
 
 The Rental crew runs **after** Partial Loss crew and **before** Settlement crew when `claim_type == "partial_loss"`. Output is combined with Partial Loss output and passed to Settlement.
+
+---
+
+## Denial / Coverage Dispute Crew
+
+**Location**: `src/claim_agent/crews/denial_coverage_crew.py`
+
+Handles denials and coverage disputes. Flow: review denial reason → verify coverage/exclusions → generate denial letter or route to appeal.
+
+### Entry Conditions
+
+- **Claim status:** `denied` (STATUS_DENIED)
+- **Trigger:** `POST /claims/{claim_id}/denial-coverage` with `{ "denial_reason": "...", "policyholder_evidence": "..." }`
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Coverage Analyst | `lookup_original_claim`, `query_policy_db`, `get_coverage_exclusions`, `search_policy_compliance` |
+| Denial Letter Specialist | `generate_denial_letter`, `get_required_disclosures`, `get_compliance_deadlines`, `search_policy_compliance` |
+| Appeal Reviewer | `route_to_appeal`, `escalate_claim`, `generate_report`, `get_compliance_deadlines` |
+
+### Flow
+
+```mermaid
+flowchart TB
+    subgraph DenialCoverage["Denial / Coverage Crew"]
+        A[1. Coverage Analyst: Review denial] --> B[2. Denial Letter: Generate or skip] --> C[3. Appeal Reviewer: Uphold or Route]
+    end
+```
+
+### Outcomes
+
+- **uphold_denial**: Denial letter generated, status remains `denied`
+- **route_to_appeal**: Claim routed to appeal, status set to `needs_review`
+- **escalated**: Complex case escalated for human review, status set to `needs_review`
 
 ---
 

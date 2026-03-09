@@ -649,7 +649,9 @@ class TestReprocessAPIFromStage:
     def test_reprocess_invalid_from_stage_returns_400(self, temp_db):
         from fastapi.testclient import TestClient
         from claim_agent.api.server import app
+        from claim_agent.api.rate_limit import clear_rate_limit_buckets
 
+        clear_rate_limit_buckets()
         client = TestClient(app)
         import os
         os.environ["API_KEYS"] = "sk-sup:supervisor"
