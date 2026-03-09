@@ -344,7 +344,13 @@ def _parse_reopened_output(result) -> str:
         if "target_claim_type" in raw.lower():
             m = re.search(r'"target_claim_type"\s*:\s*"([^"]+)"', raw, re.I)
             if m:
-                return normalize_claim_type(m.group(1))
+                target = normalize_claim_type(m.group(1))
+                if target in (
+                    ClaimType.PARTIAL_LOSS.value,
+                    ClaimType.TOTAL_LOSS.value,
+                    ClaimType.BODILY_INJURY.value,
+                ):
+                    return target
     except (TypeError, AttributeError):
         pass
     return ClaimType.PARTIAL_LOSS.value
