@@ -72,6 +72,9 @@ class ClaimInput(BaseModel):
         default_factory=list,
         description="Optional attachments (photos, PDFs, estimates)",
     )
+    claim_type: Optional[str] = Field(
+        default=None, description="Pre-determined claim type (e.g., from reviewer override)"
+    )
 
 
 class ClaimOutput(BaseModel):
