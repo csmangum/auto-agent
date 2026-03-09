@@ -7,10 +7,12 @@ parameters to include relevant policy and compliance regulations in prompts.
 from crewai import Agent
 
 from claim_agent.tools import (
+    add_claim_note,
     calculate_payout,
     evaluate_damage,
     escalate_claim,
     fetch_vehicle_value,
+    get_claim_notes,
     get_compliance_deadlines,
     get_total_loss_requirements,
     search_policy_compliance,
@@ -46,7 +48,7 @@ def create_damage_assessor_agent(
         skill = load_skill(DAMAGE_ASSESSOR)
     
     # Include RAG tools for dynamic queries
-    tools = [evaluate_damage, escalate_claim]
+    tools = [add_claim_note, evaluate_damage, get_claim_notes, escalate_claim]
     if use_rag:
         tools.extend([get_total_loss_requirements, search_policy_compliance])
     
@@ -81,7 +83,7 @@ def create_valuation_agent(
     else:
         skill = load_skill(VALUATION)
     
-    tools = [fetch_vehicle_value, escalate_claim]
+    tools = [add_claim_note, fetch_vehicle_value, get_claim_notes, escalate_claim]
     if use_rag:
         tools.extend([get_total_loss_requirements, search_policy_compliance])
     
@@ -116,7 +118,7 @@ def create_payout_agent(
     else:
         skill = load_skill(PAYOUT)
     
-    tools = [calculate_payout, escalate_claim]
+    tools = [add_claim_note, calculate_payout, get_claim_notes, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
     

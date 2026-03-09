@@ -3,6 +3,7 @@
 from crewai import Agent
 
 from claim_agent.tools import (
+    add_claim_note,
     assign_repair_shop,
     calculate_repair_estimate,
     create_parts_order,
@@ -12,6 +13,7 @@ from claim_agent.tools import (
     generate_claim_id,
     generate_repair_authorization,
     get_available_repair_shops,
+    get_claim_notes,
     get_parts_catalog,
     query_policy_db,
 )
@@ -32,7 +34,7 @@ def create_partial_loss_damage_assessor_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[evaluate_damage, fetch_vehicle_value, escalate_claim],
+        tools=[add_claim_note, evaluate_damage, fetch_vehicle_value, get_claim_notes, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -45,7 +47,7 @@ def create_repair_estimator_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[calculate_repair_estimate, get_parts_catalog, query_policy_db, escalate_claim],
+        tools=[add_claim_note, calculate_repair_estimate, get_parts_catalog, get_claim_notes, query_policy_db, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -58,7 +60,7 @@ def create_repair_shop_coordinator_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[get_available_repair_shops, assign_repair_shop, escalate_claim],
+        tools=[add_claim_note, get_available_repair_shops, assign_repair_shop, get_claim_notes, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -71,7 +73,7 @@ def create_parts_ordering_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[get_parts_catalog, create_parts_order, escalate_claim],
+        tools=[add_claim_note, get_parts_catalog, create_parts_order, get_claim_notes, escalate_claim],
         verbose=True,
         llm=llm,
     )
@@ -84,7 +86,7 @@ def create_repair_authorization_agent(llm=None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[generate_repair_authorization, generate_claim_id, escalate_claim],
+        tools=[add_claim_note, generate_repair_authorization, generate_claim_id, get_claim_notes, escalate_claim],
         verbose=True,
         llm=llm,
     )
