@@ -15,7 +15,7 @@ from claim_agent.config.llm import get_llm
 from claim_agent.context import ClaimContext
 from claim_agent.crews.denial_coverage_crew import create_denial_coverage_crew
 from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, MidWorkflowEscalation
 from claim_agent.models.denial import DenialInput
 from claim_agent.observability import get_logger
 from claim_agent.utils.sanitization import sanitize_denial_reason, sanitize_policyholder_evidence
@@ -29,6 +29,7 @@ def run_denial_coverage_workflow(
     *,
     llm: Any | None = None,
     ctx: ClaimContext | None = None,
+    state: str = "California",
 ) -> dict[str, Any]:
     """Run the denial/coverage dispute workflow for a denied claim.
 
@@ -93,14 +94,38 @@ def run_denial_coverage_workflow(
         }),
     }
 
-    denial_crew = create_denial_coverage_crew(_llm)
-    result = _kickoff_with_retry(denial_crew, crew_inputs)
+    denial_crew = create_denial_coverage_crew(_llm, state=state)
+    try:
+        result = _kickoff_with_retry(denial_crew, crew_inputs)
+    except MidWorkflowEscalation as e:
+        # escalate_claim already updated DB (status, review metadata, audit)
+        workflow_output = f"Escalated: {e.reason}"
+        outcome = "escalated"
+        final_status = STATUS_NEEDS_REVIEW
+        repo.save_workflow_result(
+            denial_input.claim_id,
+            "denial_coverage",
+            json.dumps(denial_input.model_dump(mode="json")),
+            workflow_output,
+        )
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "Denial/coverage workflow escalated",
+            extra={
+                "claim_id": denial_input.claim_id,
+                "outcome": outcome,
+                "elapsed_ms": elapsed_ms,
+            },
+        )
+        return {
+            "claim_id": denial_input.claim_id,
+            "outcome": outcome,
+            "status": final_status,
+            "workflow_output": workflow_output,
+            "summary": f"Escalated for review: {e.reason}",
+        }
 
-    workflow_output = str(
-        getattr(result, "raw", None)
-        or getattr(result, "output", None)
-        or str(result)
-    )
+    workflow_output = _build_workflow_output(result)
 
     outcome = _parse_outcome(workflow_output)
 
@@ -147,6 +172,26 @@ def run_denial_coverage_workflow(
         "workflow_output": workflow_output,
         "summary": workflow_output[:500] + "..." if len(workflow_output) > 500 else workflow_output,
     }
+
+
+def _build_workflow_output(result: Any) -> str:
+    """Build workflow output from crew result, including denial letter from task 1."""
+    tasks_output = getattr(result, "tasks_output", None)
+    if tasks_output and isinstance(tasks_output, list) and len(tasks_output) >= 3:
+        parts = []
+        labels = ["Coverage Analysis", "Denial Letter / Appeal Note", "Final Determination"]
+        for i, task in enumerate(tasks_output):
+            output = getattr(task, "output", None)
+            if output is not None:
+                label = labels[i] if i < len(labels) else f"Task {i + 1}"
+                parts.append(f"{label}:\n{str(output).strip()}")
+        if parts:
+            return "\n\n".join(parts)
+    return str(
+        getattr(result, "raw", None)
+        or getattr(result, "output", None)
+        or str(result)
+    )
 
 
 def _parse_outcome(workflow_output: str) -> str:

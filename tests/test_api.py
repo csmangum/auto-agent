@@ -505,6 +505,18 @@ class TestDenialCoverage:
         data = resp.json()
         assert "allowed statuses" in data["detail"].lower()
 
+    def test_denial_coverage_empty_denial_reason_returns_422(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": ""},
+        )
+        assert resp.status_code == 422
+
     def test_denial_coverage_success_returns_response_model(self, client, monkeypatch):
         import claim_agent.api.routes.claims as claims_mod
         from claim_agent.db.repository import ClaimRepository
@@ -537,6 +549,34 @@ class TestDenialCoverage:
         assert data["status"] == "denied"
         assert "workflow_output" in data
         assert "summary" in data
+
+    def test_denial_coverage_escalation_outcome_returns_200(self, client, monkeypatch):
+        """When workflow returns outcome=escalated, API returns 200 with correct body."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        mock_result = {
+            "claim_id": "CLM-TEST001",
+            "outcome": "escalated",
+            "status": "needs_review",
+            "workflow_output": "Escalated: ambiguous_policy_language",
+            "summary": "Escalated for review: ambiguous_policy_language",
+        }
+        import claim_agent.api.routes.claims as claims_mod
+
+        monkeypatch.setattr(
+            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+        )
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": "Policy exclusion applied"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["outcome"] == "escalated"
+        assert data["status"] == "needs_review"
 
 
 # -------------------------------------------------------------------

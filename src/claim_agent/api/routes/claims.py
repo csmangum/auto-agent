@@ -860,13 +860,18 @@ class DenialCoverageBody(BaseModel):
 
     denial_reason: str = Field(
         ...,
-        max_length=2000,
+        min_length=1,
+        max_length=4096,
         description="Stated reason for the denial",
     )
     policyholder_evidence: Optional[str] = Field(
         default=None,
-        max_length=2000,
+        max_length=8192,
         description="Optional evidence or argument from policyholder",
+    )
+    state: Optional[str] = Field(
+        default="California",
+        description="State jurisdiction for compliance (California, Texas, Florida, New York)",
     )
 
 
@@ -914,11 +919,13 @@ async def run_denial_coverage(
         "denial_reason": sanitize_denial_reason(body.denial_reason),
         "policyholder_evidence": sanitize_policyholder_evidence(body.policyholder_evidence),
     }
+    state = body.state or "California"
 
     result = await asyncio.to_thread(
         run_denial_coverage_workflow,
         denial_data,
         ctx=ctx,
+        state=state,
     )
     return result
 

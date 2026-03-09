@@ -1,7 +1,7 @@
 """Denial and coverage dispute logic: letter generation and appeal routing."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def generate_denial_letter_impl(
@@ -19,7 +19,7 @@ def generate_denial_letter_impl(
         "=" * 60,
         "",
         f"Claim ID: {claim_id}",
-        f"Date: {datetime.utcnow().strftime('%Y-%m-%d')}",
+        f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
         "",
         "Dear Policyholder,",
         "",
@@ -66,7 +66,7 @@ def route_to_appeal_impl(
         "claim_id": claim_id,
         "routed_to_appeal": True,
         "appeal_reason": appeal_reason,
-        "routed_at": datetime.utcnow().isoformat(),
+        "routed_at": datetime.now(timezone.utc).isoformat(),
     }
     if policyholder_evidence:
         result["policyholder_evidence"] = policyholder_evidence
