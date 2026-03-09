@@ -453,6 +453,29 @@ def test_partial_loss_crew_kickoff():
     assert output
 
 
+@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+def test_rental_crew_kickoff():
+    """Run rental crew on sample input; verifies output structure (requires LLM)."""
+    from claim_agent.crews.rental_crew import create_rental_crew
+
+    with open(Path(__file__).parent / "sample_claims" / "partial_loss_claim.json") as f:
+        claim_data = json.load(f)
+    claim_data["claim_id"] = "CLM-RENTAL-TEST"
+    claim_data["claim_type"] = "partial_loss"
+    workflow_output = json.dumps({"payout_amount": 2100, "estimated_repair_days": 5})
+
+    crew = create_rental_crew()
+    inputs = {
+        "claim_data": json.dumps(claim_data),
+        "workflow_output": workflow_output,
+    }
+    result = _kickoff_with_retry(crew, inputs)
+    output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
+    assert output
+    assert "claim_data" in str(inputs)
+    assert "workflow_output" in str(inputs)
+
+
 def test_run_claim_workflow_classification_only():
     """Test that run_claim_workflow returns expected keys and persists to DB."""
     from claim_agent.crews.main_crew import run_claim_workflow

@@ -1,4 +1,8 @@
-"""Rental reimbursement logic: coverage check, limits, and reimbursement processing."""
+"""Rental reimbursement logic: coverage check, limits, and reimbursement processing.
+
+Tools use get_policy_adapter() when ClaimContext is not provided (CrewAI tools
+are not request-scoped). When ctx is passed, ctx.adapters.policy is used.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +25,29 @@ DEFAULT_MAX_DAYS = 30
 
 # Coverage types that typically include rental reimbursement (Part D / physical damage)
 RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
+
+# In-memory idempotency cache for mock: (claim_id, amount, rental_days) -> reimbursement_id.
+# TODO: Real implementation must persist to repository and enforce idempotency in DB.
+_IDEMPOTENCY_CACHE: dict[tuple[str, float, int], str] = {}
+
+
+def _parse_rental_limits(rental: dict | None) -> tuple[float, float, int]:
+    """Extract daily_limit, aggregate_limit, max_days from policy rental block."""
+    if not rental or not isinstance(rental, dict):
+        return DEFAULT_DAILY_LIMIT, DEFAULT_AGGREGATE_LIMIT, DEFAULT_MAX_DAYS
+    try:
+        daily = float(rental["daily_limit"]) if rental.get("daily_limit") is not None else DEFAULT_DAILY_LIMIT
+    except (TypeError, ValueError):
+        daily = DEFAULT_DAILY_LIMIT
+    try:
+        agg = float(rental["aggregate_limit"]) if rental.get("aggregate_limit") is not None else DEFAULT_AGGREGATE_LIMIT
+    except (TypeError, ValueError):
+        agg = DEFAULT_AGGREGATE_LIMIT
+    try:
+        days = int(rental["max_days"]) if rental.get("max_days") is not None else DEFAULT_MAX_DAYS
+    except (TypeError, ValueError):
+        days = DEFAULT_MAX_DAYS
+    return daily, agg, days
 
 
 def check_rental_coverage_impl(
@@ -78,21 +105,13 @@ def check_rental_coverage_impl(
     rental = policy.get("rental_reimbursement") or policy.get("transportation_expenses")
     coverage = policy.get("coverage", "")
     if rental and isinstance(rental, dict):
-        daily = rental.get("daily_limit")
-        aggregate = rental.get("aggregate_limit")
-        try:
-            daily_val = float(daily) if daily is not None else DEFAULT_DAILY_LIMIT
-        except (TypeError, ValueError):
-            daily_val = DEFAULT_DAILY_LIMIT
-        try:
-            aggregate_val = float(aggregate) if aggregate is not None else DEFAULT_AGGREGATE_LIMIT
-        except (TypeError, ValueError):
-            aggregate_val = DEFAULT_AGGREGATE_LIMIT
+        daily_val, agg_val, max_days_val = _parse_rental_limits(rental)
         return json.dumps(
             {
                 "eligible": True,
                 "daily_limit": daily_val,
-                "aggregate_limit": aggregate_val,
+                "aggregate_limit": agg_val,
+                "max_days": max_days_val,
                 "message": "Rental reimbursement coverage found",
             }
         )
@@ -102,6 +121,7 @@ def check_rental_coverage_impl(
                 "eligible": True,
                 "daily_limit": DEFAULT_DAILY_LIMIT,
                 "aggregate_limit": DEFAULT_AGGREGATE_LIMIT,
+                "max_days": DEFAULT_MAX_DAYS,
                 "message": f"Coverage type '{coverage}' typically includes rental; using default limits",
             }
         )
@@ -115,6 +135,18 @@ def check_rental_coverage_impl(
     )
 
 
+def _error_limits(error: str) -> str:
+    """Return error structure for get_rental_limits (invalid/missing policy)."""
+    return json.dumps(
+        {
+            "error": error,
+            "daily_limit": None,
+            "aggregate_limit": None,
+            "max_days": None,
+        }
+    )
+
+
 def get_rental_limits_impl(
     policy_number: str,
     *,
@@ -122,59 +154,28 @@ def get_rental_limits_impl(
 ) -> str:
     """Get rental reimbursement limits for a policy.
 
-    Returns daily_limit, aggregate_limit, and optional max_days.
-    Falls back to compliance defaults when not specified.
+    Returns daily_limit, aggregate_limit, and max_days when policy is valid.
+    Returns error structure (daily_limit/aggregate_limit/max_days = None) for
+    invalid policy number, policy not found, or lookup failure.
     """
     policy_number = policy_number.strip() if isinstance(policy_number, str) else ""
     if not policy_number:
-        return json.dumps(
-            {
-                "daily_limit": DEFAULT_DAILY_LIMIT,
-                "aggregate_limit": DEFAULT_AGGREGATE_LIMIT,
-                "max_days": DEFAULT_MAX_DAYS,
-            }
-        )
+        return _error_limits("Invalid policy number")
     adapter = ctx.adapters.policy if ctx else get_policy_adapter()
     try:
         policy = adapter.get_policy(policy_number)
     except Exception as exc:
         logger.warning("Policy lookup failed for rental limits: %s", exc)
-        return json.dumps(
-            {
-                "daily_limit": DEFAULT_DAILY_LIMIT,
-                "aggregate_limit": DEFAULT_AGGREGATE_LIMIT,
-                "max_days": DEFAULT_MAX_DAYS,
-            }
-        )
+        return _error_limits("Policy lookup failed")
     if policy is None:
-        return json.dumps(
-            {
-                "daily_limit": DEFAULT_DAILY_LIMIT,
-                "aggregate_limit": DEFAULT_AGGREGATE_LIMIT,
-                "max_days": DEFAULT_MAX_DAYS,
-            }
-        )
+        return _error_limits("Policy not found")
     rental = policy.get("rental_reimbursement") or policy.get("transportation_expenses")
     if rental and isinstance(rental, dict):
-        daily = rental.get("daily_limit")
-        aggregate = rental.get("aggregate_limit")
-        max_days = rental.get("max_days")
-        try:
-            daily_val = float(daily) if daily is not None else DEFAULT_DAILY_LIMIT
-        except (TypeError, ValueError):
-            daily_val = DEFAULT_DAILY_LIMIT
-        try:
-            aggregate_val = float(aggregate) if aggregate is not None else DEFAULT_AGGREGATE_LIMIT
-        except (TypeError, ValueError):
-            aggregate_val = DEFAULT_AGGREGATE_LIMIT
-        try:
-            max_days_val = int(max_days) if max_days is not None else DEFAULT_MAX_DAYS
-        except (TypeError, ValueError):
-            max_days_val = DEFAULT_MAX_DAYS
+        daily_val, agg_val, max_days_val = _parse_rental_limits(rental)
         return json.dumps(
             {
                 "daily_limit": daily_val,
-                "aggregate_limit": aggregate_val,
+                "aggregate_limit": agg_val,
                 "max_days": max_days_val,
             }
         )
@@ -207,7 +208,10 @@ def process_rental_reimbursement_impl(
     """Process rental reimbursement for an approved rental.
 
     Validates amount against limits from get_rental_limits_impl.
-    Mock implementation: generates reimbursement_id and returns confirmation.
+    Idempotent: repeated calls with same (claim_id, amount, rental_days) return
+    the same reimbursement_id (in-memory cache for mock).
+    TODO: Real implementation must persist to repository and enforce
+    idempotency in DB.
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -255,8 +259,28 @@ def process_rental_reimbursement_impl(
         limits = json.loads(limits_json)
     except json.JSONDecodeError:
         limits = {}
-    daily_limit = float(limits.get("daily_limit", DEFAULT_DAILY_LIMIT))
-    aggregate_limit = float(limits.get("aggregate_limit", DEFAULT_AGGREGATE_LIMIT))
+    if limits.get("error") or limits.get("daily_limit") is None:
+        return json.dumps(
+            {
+                "reimbursement_id": "",
+                "amount": 0.0,
+                "status": "failed",
+                "message": limits.get("error", "Could not retrieve policy limits"),
+            }
+        )
+    idempotency_key = (claim_id, float(amount), rental_days)
+    if idempotency_key in _IDEMPOTENCY_CACHE:
+        rid = _IDEMPOTENCY_CACHE[idempotency_key]
+        return json.dumps(
+            {
+                "reimbursement_id": rid,
+                "amount": float(amount),
+                "status": "approved",
+                "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
+            }
+        )
+    daily_limit = float(limits["daily_limit"])
+    aggregate_limit = float(limits["aggregate_limit"])
     max_days = limits.get("max_days")
     if max_days is not None and rental_days > int(max_days):
         return json.dumps(
@@ -278,6 +302,7 @@ def process_rental_reimbursement_impl(
             }
         )
     reimbursement_id = f"RENT-{uuid.uuid4().hex[:8].upper()}"
+    _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
     return json.dumps(
         {
             "reimbursement_id": reimbursement_id,

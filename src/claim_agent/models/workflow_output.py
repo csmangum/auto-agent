@@ -50,3 +50,7 @@ class PartialLossWorkflowOutput(BaseModel):
     shop_webhook_url: str | None = Field(
         default=None, description="Shop-specific webhook URL for notifications"
     )
+    estimated_repair_days: int | None = Field(
+        default=None,
+        description="Estimated repair duration from shop assignment (for rental crew)",
+    )

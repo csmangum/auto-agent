@@ -19,6 +19,7 @@ class TestCheckRentalCoverage:
         assert data["eligible"] is True
         assert data["daily_limit"] == 35.0
         assert data["aggregate_limit"] == 1050.0
+        assert data["max_days"] == 30
 
     def test_policy_without_rental_liability_only(self):
         """Liability-only policy returns not eligible."""
@@ -35,6 +36,7 @@ class TestCheckRentalCoverage:
         assert data["eligible"] is True
         assert data["daily_limit"] == 35.0
         assert data["aggregate_limit"] == 1050.0
+        assert data["max_days"] == 30
 
     def test_invalid_policy_number(self):
         """Invalid policy number returns not eligible."""
@@ -53,6 +55,19 @@ class TestCheckRentalCoverage:
     def test_policy_not_found(self):
         """Non-existent policy returns not eligible."""
         result = check_rental_coverage_impl("POL-NONEXISTENT")
+        data = json.loads(result)
+        assert data["eligible"] is False
+
+    def test_inactive_policy_returns_not_eligible(self):
+        """Inactive policy returns not eligible."""
+        result = check_rental_coverage_impl("POL-021")
+        data = json.loads(result)
+        assert data["eligible"] is False
+        assert "not active" in data["message"].lower() or "inactive" in data["message"].lower()
+
+    def test_expired_policy_returns_not_eligible(self):
+        """Expired policy returns not eligible."""
+        result = check_rental_coverage_impl("POL-023")
         data = json.loads(result)
         assert data["eligible"] is False
 
@@ -75,13 +90,23 @@ class TestGetRentalLimits:
         assert data["daily_limit"] == 40.0
         assert data["aggregate_limit"] == 1200.0
 
-    def test_whitespace_only_policy_number(self):
-        """Whitespace-only policy number returns default limits."""
+    def test_whitespace_only_policy_number_returns_error(self):
+        """Whitespace-only policy number returns error, not defaults."""
         result = get_rental_limits_impl("   ")
         data = json.loads(result)
-        assert data["daily_limit"] == 35.0
-        assert data["aggregate_limit"] == 1050.0
-        assert data["max_days"] == 30
+        assert data["error"] == "Invalid policy number"
+        assert data["daily_limit"] is None
+        assert data["aggregate_limit"] is None
+        assert data["max_days"] is None
+
+    def test_policy_not_found_returns_error(self):
+        """Non-existent policy returns error, not defaults."""
+        result = get_rental_limits_impl("POL-NONEXISTENT")
+        data = json.loads(result)
+        assert data["error"] == "Policy not found"
+        assert data["daily_limit"] is None
+        assert data["aggregate_limit"] is None
+        assert data["max_days"] is None
 
     def test_policy_without_rental_returns_defaults(self):
         """Policy without rental returns compliance defaults."""
@@ -107,6 +132,27 @@ class TestProcessRentalReimbursement:
         assert data["status"] == "approved"
         assert data["amount"] == 175.0
         assert data["reimbursement_id"].startswith("RENT-")
+
+    def test_idempotent_duplicate_returns_same_reimbursement_id(self):
+        """Duplicate call with same params returns same reimbursement_id."""
+        result1 = process_rental_reimbursement_impl(
+            claim_id="CLM-IDEM",
+            amount=105.0,
+            rental_days=3,
+            policy_number="POL-001",
+        )
+        result2 = process_rental_reimbursement_impl(
+            claim_id="CLM-IDEM",
+            amount=105.0,
+            rental_days=3,
+            policy_number="POL-001",
+        )
+        data1 = json.loads(result1)
+        data2 = json.loads(result2)
+        assert data1["status"] == "approved"
+        assert data2["status"] == "approved"
+        assert data1["reimbursement_id"] == data2["reimbursement_id"]
+        assert "idempotent" in data2["message"].lower()
 
     def test_amount_exceeds_daily_limit_fails(self):
         """Amount exceeding daily_limit * days fails."""

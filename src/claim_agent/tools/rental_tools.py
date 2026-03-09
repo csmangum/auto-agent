@@ -1,4 +1,8 @@
-"""Rental reimbursement workflow tools."""
+"""Rental reimbursement workflow tools.
+
+CrewAI tools call *_impl with ctx=None; get_policy_adapter() is used when
+ClaimContext is not provided. See rental_logic module docstring.
+"""
 
 from __future__ import annotations
 
