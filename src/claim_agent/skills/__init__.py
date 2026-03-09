@@ -219,3 +219,7 @@ AUCTION_LIAISON = "auction_liaison"
 BI_INTAKE_SPECIALIST = "bi_intake_specialist"
 MEDICAL_RECORDS_REVIEWER = "medical_records_reviewer"
 SETTLEMENT_NEGOTIATOR = "settlement_negotiator"
+# Reopened claims
+REOPENED_VALIDATOR = "reopened_validator"
+PRIOR_CLAIM_LOADER = "prior_claim_loader"
+REOPENED_ROUTER = "reopened_router"
