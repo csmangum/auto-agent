@@ -10,7 +10,7 @@ import json
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from claim_agent.config.settings import (
     DUPLICATE_DAYS_WINDOW,
@@ -201,6 +201,135 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
     )
 
     return None
+
+
+def _run_stage(
+    ctx: _WorkflowCtx,
+    stage_key: str,
+    *,
+    restore: Callable[["_WorkflowCtx", dict], None],
+    run: Callable[["_WorkflowCtx"], dict | None],
+    get_checkpoint_data: Callable[["_WorkflowCtx"], dict],
+) -> dict | None:
+    """Generic checkpoint wrapper: check/restore, run body, save checkpoint.
+
+    If stage_key is in checkpoints: parse JSON, validate dict, call restore(ctx, cp).
+    On success: log and return None. On exception: log warning, pop checkpoint, fall through.
+    Call run(ctx); if it returns a non-None dict (early return), propagate it.
+    Otherwise save checkpoint and return None.
+    """
+    if stage_key in ctx.checkpoints:
+        try:
+            cp = json.loads(ctx.checkpoints[stage_key])
+            if not isinstance(cp, dict):
+                raise ValueError(f"{stage_key} checkpoint is not a JSON object")
+            restore(ctx, cp)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to restore %s from checkpoint; invalidating and re-running stage: %s",
+                stage_key,
+                exc,
+                extra={"claim_id": ctx.claim_id},
+            )
+            ctx.checkpoints.pop(stage_key, None)
+        else:
+            logger.info(
+                "Restored %s from checkpoint", stage_key, extra={"claim_id": ctx.claim_id}
+            )
+            return None
+
+    early_return = run(ctx)
+    if early_return is not None:
+        return early_return
+
+    ctx.context.repo.save_task_checkpoint(
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        stage_key,
+        json.dumps(get_checkpoint_data(ctx)),
+    )
+    return None
+
+
+def _run_crew_stage_body(
+    ctx: _WorkflowCtx,
+    crew_name: str,
+    output_key: str,
+    create_crew: Callable[["_WorkflowCtx"], object],
+    get_inputs: Callable[["_WorkflowCtx"], dict],
+    combine_label: str | None,
+) -> dict | None:
+    """Execute crew and combine output. Sets ctx._last_stage_output for checkpoint."""
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    logger.log_event("crew_started", crew=crew_name)
+    start = time.time()
+    crew = create_crew(ctx)
+    inputs = get_inputs(ctx)
+    try:
+        result = _kickoff_with_retry(crew, inputs)
+    except MidWorkflowEscalation as e:
+        return _handle_mid_workflow_escalation(
+            e,
+            claim_id=ctx.claim_id,
+            claim_type=ctx.claim_type,
+            raw_output=ctx.raw_output,
+            context=ctx.context,
+            workflow_logger=logger,
+            workflow_start_time=ctx.workflow_start_time,
+            prior_workflow_output=ctx.workflow_output,
+            actor_id=ctx.actor_id,
+            stage=crew_name,
+            payout_amount=ctx.extracted_payout,
+            workflow_run_id=ctx.workflow_run_id,
+        )
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    output_str = str(
+        getattr(result, "raw", None)
+        or getattr(result, "output", None)
+        or str(result)
+    )
+    logger.log_event(
+        "crew_completed", crew=crew_name, latency_ms=(time.time() - start) * 1000
+    )
+    ctx._last_stage_output = output_str
+    if combine_label:
+        ctx.workflow_output = _combine_workflow_outputs(
+            ctx.workflow_output, output_str, label=combine_label
+        )
+    else:
+        ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, output_str)
+    return None
+
+
+def _run_crew_stage(
+    ctx: _WorkflowCtx,
+    stage_key: str,
+    crew_name: str,
+    output_key: str,
+    *,
+    create_crew: Callable[["_WorkflowCtx"], object],
+    get_inputs: Callable[["_WorkflowCtx"], dict],
+    combine_label: str | None = None,
+) -> dict | None:
+    """Run a crew stage with checkpoint restore/run/save via _run_stage."""
+    def restore(c: _WorkflowCtx, cp: dict) -> None:
+        output = cp[output_key]
+        if combine_label:
+            c.workflow_output = _combine_workflow_outputs(
+                c.workflow_output, output, label=combine_label
+            )
+        else:
+            c.workflow_output = _combine_workflow_outputs(c.workflow_output, output)
+
+    return _run_stage(
+        ctx,
+        stage_key,
+        restore=restore,
+        run=lambda c: _run_crew_stage_body(
+            c, crew_name, output_key, create_crew, get_inputs, combine_label
+        ),
+        get_checkpoint_data=lambda c: {output_key: getattr(c, "_last_stage_output", "")},
+    )
 
 
 def _stage_router(ctx: _WorkflowCtx) -> dict | None:
@@ -553,134 +682,119 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     """
     workflow_stage_key = f"workflow:{ctx.claim_type}"
 
-    if workflow_stage_key in ctx.checkpoints:
-        try:
-            wf_cp = json.loads(ctx.checkpoints[workflow_stage_key])
-            if not isinstance(wf_cp, dict):
-                raise ValueError("workflow checkpoint is not a JSON object")
-            ctx.workflow_output = wf_cp["workflow_output"]
-            ctx.extracted_payout = wf_cp.get("extracted_payout")
-            if ctx.extracted_payout is not None:
-                ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
-            if wf_cp.get("target_claim_type"):
-                ctx.claim_type = wf_cp["target_claim_type"]
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            logger.warning(
-                "Failed to restore %s from checkpoint; invalidating and re-running stage: %s",
-                workflow_stage_key,
-                exc,
-                extra={"claim_id": ctx.claim_id},
+    def restore(c: _WorkflowCtx, cp: dict) -> None:
+        c.workflow_output = cp["workflow_output"]
+        c.extracted_payout = cp.get("extracted_payout")
+        if c.extracted_payout is not None:
+            c.claim_data_with_id["payout_amount"] = c.extracted_payout
+        if cp.get("target_claim_type"):
+            c.claim_type = cp["target_claim_type"]
+
+    def run(c: _WorkflowCtx) -> dict | None:
+        _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
+        logger.log_event("crew_started", crew=c.claim_type)
+        crew_start = time.time()
+        crew_inputs = {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+        }
+        reopened_output = ""
+
+        if c.claim_type == ClaimType.REOPENED.value:
+            reopened_crew = create_reopened_crew(c.context.llm)
+            try:
+                reopened_result = _kickoff_with_retry(reopened_crew, crew_inputs)
+            except MidWorkflowEscalation as e:
+                return _handle_mid_workflow_escalation(
+                    e,
+                    claim_id=c.claim_id,
+                    claim_type=c.claim_type,
+                    raw_output=c.raw_output,
+                    context=c.context,
+                    workflow_logger=logger,
+                    workflow_start_time=c.workflow_start_time,
+                    workflow_run_id=c.workflow_run_id,
+                )
+            reopened_output = str(
+                getattr(reopened_result, "raw", None)
+                or getattr(reopened_result, "output", None)
+                or str(reopened_result)
             )
-            ctx.checkpoints.pop(workflow_stage_key, None)
+            c.claim_type = _parse_reopened_output(reopened_result)
+            crew_inputs["claim_data"] = json.dumps(
+                {**c.claim_data_with_id, "claim_type": c.claim_type}
+            )
+
+        if c.claim_type == ClaimType.NEW.value:
+            crew = create_new_claim_crew(c.context.llm)
+        elif c.claim_type == ClaimType.DUPLICATE.value:
+            crew = create_duplicate_crew(c.context.llm)
+        elif c.claim_type == ClaimType.FRAUD.value:
+            crew = create_fraud_detection_crew(c.context.llm)
+        elif c.claim_type == ClaimType.BODILY_INJURY.value:
+            crew = create_bodily_injury_crew(c.context.llm)
+        elif c.claim_type == ClaimType.PARTIAL_LOSS.value:
+            crew = create_partial_loss_crew(c.context.llm)
         else:
-            logger.info(
-                "Restored %s from checkpoint", workflow_stage_key, extra={"claim_id": ctx.claim_id}
-            )
-            return None
+            crew = create_total_loss_crew(c.context.llm)
 
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    logger.log_event("crew_started", crew=ctx.claim_type)
-    crew_start = time.time()
-
-    crew_inputs = {
-        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
-    }
-
-    reopened_output = ""
-
-    if ctx.claim_type == ClaimType.REOPENED.value:
-        reopened_crew = create_reopened_crew(ctx.context.llm)
         try:
-            reopened_result = _kickoff_with_retry(reopened_crew, crew_inputs)
+            workflow_result = _kickoff_with_retry(crew, crew_inputs)
         except MidWorkflowEscalation as e:
             return _handle_mid_workflow_escalation(
                 e,
-                claim_id=ctx.claim_id,
-                claim_type=ctx.claim_type,
-                raw_output=ctx.raw_output,
-                context=ctx.context,
+                claim_id=c.claim_id,
+                claim_type=c.claim_type,
+                raw_output=c.raw_output,
+                context=c.context,
                 workflow_logger=logger,
-                workflow_start_time=ctx.workflow_start_time,
-                workflow_run_id=ctx.workflow_run_id,
+                workflow_start_time=c.workflow_start_time,
+                workflow_run_id=c.workflow_run_id,
             )
-        reopened_output = str(
-            getattr(reopened_result, "raw", None)
-            or getattr(reopened_result, "output", None)
-            or str(reopened_result)
-        )
-        ctx.claim_type = _parse_reopened_output(reopened_result)
-        crew_inputs["claim_data"] = json.dumps(
-            {**ctx.claim_data_with_id, "claim_type": ctx.claim_type}
-        )
 
-    if ctx.claim_type == ClaimType.NEW.value:
-        crew = create_new_claim_crew(ctx.context.llm)
-    elif ctx.claim_type == ClaimType.DUPLICATE.value:
-        crew = create_duplicate_crew(ctx.context.llm)
-    elif ctx.claim_type == ClaimType.FRAUD.value:
-        crew = create_fraud_detection_crew(ctx.context.llm)
-    elif ctx.claim_type == ClaimType.BODILY_INJURY.value:
-        crew = create_bodily_injury_crew(ctx.context.llm)
-    elif ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
-        crew = create_partial_loss_crew(ctx.context.llm)
-    else:
-        crew = create_total_loss_crew(ctx.context.llm)
-
-    try:
-        workflow_result = _kickoff_with_retry(crew, crew_inputs)
-    except MidWorkflowEscalation as e:
-        return _handle_mid_workflow_escalation(
-            e,
-            claim_id=ctx.claim_id,
-            claim_type=ctx.claim_type,
-            raw_output=ctx.raw_output,
-            context=ctx.context,
-            workflow_logger=logger,
-            workflow_start_time=ctx.workflow_start_time,
-            workflow_run_id=ctx.workflow_run_id,
+        _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
+        crew_latency = (time.time() - crew_start) * 1000
+        routed_output = str(
+            getattr(workflow_result, "raw", None)
+            or getattr(workflow_result, "output", None)
+            or str(workflow_result)
         )
 
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    crew_latency = (time.time() - crew_start) * 1000
+        if workflow_stage_key == f"workflow:{ClaimType.REOPENED.value}":
+            c.workflow_output = _combine_workflow_outputs(
+                reopened_output,
+                routed_output,
+                label="Routed workflow output",
+            )
+        else:
+            c.workflow_output = routed_output
 
-    routed_output = str(
-        getattr(workflow_result, "raw", None)
-        or getattr(workflow_result, "output", None)
-        or str(workflow_result)
-    )
-
-    if workflow_stage_key == f"workflow:{ClaimType.REOPENED.value}":
-        ctx.workflow_output = _combine_workflow_outputs(
-            reopened_output,
-            routed_output,
-            label="Routed workflow output",
+        logger.log_event("crew_completed", crew=c.claim_type, latency_ms=crew_latency)
+        c.extracted_payout = _extract_payout_from_workflow_result(
+            workflow_result, c.claim_type
         )
-    else:
-        ctx.workflow_output = routed_output
+        if c.extracted_payout is not None:
+            c.claim_data_with_id["payout_amount"] = c.extracted_payout
 
-    logger.log_event("crew_completed", crew=ctx.claim_type, latency_ms=crew_latency)
+        if c.claim_type == ClaimType.PARTIAL_LOSS.value:
+            dispatch_repair_authorized_from_workflow_output(c.workflow_output, log=logger)
+        return None
 
-    ctx.extracted_payout = _extract_payout_from_workflow_result(workflow_result, ctx.claim_type)
-    if ctx.extracted_payout is not None:
-        ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
+    def get_checkpoint_data(c: _WorkflowCtx) -> dict:
+        cp_data: dict = {
+            "workflow_output": c.workflow_output,
+            "extracted_payout": c.extracted_payout,
+        }
+        if workflow_stage_key == f"workflow:{ClaimType.REOPENED.value}":
+            cp_data["target_claim_type"] = c.claim_type
+        return cp_data
 
-    if ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
-        dispatch_repair_authorized_from_workflow_output(ctx.workflow_output, log=logger)
-
-    cp_data = {
-        "workflow_output": ctx.workflow_output,
-        "extracted_payout": ctx.extracted_payout,
-    }
-    if workflow_stage_key == f"workflow:{ClaimType.REOPENED.value}":
-        cp_data["target_claim_type"] = ctx.claim_type
-
-    ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id,
-        ctx.workflow_run_id,
+    return _run_stage(
+        ctx,
         workflow_stage_key,
-        json.dumps(cp_data),
+        restore=restore,
+        run=run,
+        get_checkpoint_data=get_checkpoint_data,
     )
-    return None
 
 
 def _stage_rental(ctx: _WorkflowCtx) -> dict | None:
@@ -691,74 +805,18 @@ def _stage_rental(ctx: _WorkflowCtx) -> dict | None:
     """
     if ctx.claim_type != ClaimType.PARTIAL_LOSS.value:
         return None
-
-    if "rental" in ctx.checkpoints:
-        try:
-            rental_cp = json.loads(ctx.checkpoints["rental"])
-            if not isinstance(rental_cp, dict):
-                raise ValueError("rental checkpoint is not a JSON object")
-            rental_output = rental_cp["rental_output"]
-            ctx.workflow_output = _combine_workflow_outputs(
-                ctx.workflow_output, rental_output, label="Rental workflow output"
-            )
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            logger.warning(
-                "Failed to restore rental from checkpoint; invalidating and re-running stage: %s",
-                exc,
-                extra={"claim_id": ctx.claim_id},
-            )
-            ctx.checkpoints.pop("rental", None)
-        else:
-            logger.info("Restored rental from checkpoint", extra={"claim_id": ctx.claim_id})
-            return None
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    logger.log_event("crew_started", crew="rental")
-    rental_start = time.time()
-
-    rental_crew = create_rental_crew(ctx.context.llm)
-    rental_inputs = {
-        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
-        "workflow_output": ctx.workflow_output,
-    }
-
-    try:
-        rental_result = _kickoff_with_retry(rental_crew, rental_inputs)
-    except MidWorkflowEscalation as e:
-        return _handle_mid_workflow_escalation(
-            e,
-            claim_id=ctx.claim_id,
-            claim_type=ctx.claim_type,
-            raw_output=ctx.raw_output,
-            context=ctx.context,
-            workflow_logger=logger,
-            workflow_start_time=ctx.workflow_start_time,
-            prior_workflow_output=ctx.workflow_output,
-            actor_id=ctx.actor_id,
-            stage="rental",
-            payout_amount=ctx.extracted_payout,
-            workflow_run_id=ctx.workflow_run_id,
-        )
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    rental_latency = (time.time() - rental_start) * 1000
-    rental_output = str(
-        getattr(rental_result, "raw", None)
-        or getattr(rental_result, "output", None)
-        or str(rental_result)
-    )
-    logger.log_event("crew_completed", crew="rental", latency_ms=rental_latency)
-    ctx.workflow_output = _combine_workflow_outputs(
-        ctx.workflow_output, rental_output, label="Rental workflow output"
-    )
-
-    ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id,
-        ctx.workflow_run_id,
+    return _run_crew_stage(
+        ctx,
         "rental",
-        json.dumps({"rental_output": rental_output}),
+        "rental",
+        "rental_output",
+        create_crew=lambda c: create_rental_crew(c.context.llm),
+        get_inputs=lambda c: {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "workflow_output": c.workflow_output,
+        },
+        combine_label="Rental workflow output",
     )
-    return None
 
 
 def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
@@ -769,70 +827,17 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
     """
     if not _requires_settlement(ctx.claim_type):
         return None
-
-    if "settlement" in ctx.checkpoints:
-        try:
-            stl_cp = json.loads(ctx.checkpoints["settlement"])
-            if not isinstance(stl_cp, dict):
-                raise ValueError("settlement checkpoint is not a JSON object")
-            settlement_output = stl_cp["settlement_output"]
-            ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            logger.warning(
-                "Failed to restore settlement from checkpoint; invalidating and re-running stage: %s",
-                exc,
-                extra={"claim_id": ctx.claim_id},
-            )
-            ctx.checkpoints.pop("settlement", None)
-        else:
-            logger.info("Restored settlement from checkpoint", extra={"claim_id": ctx.claim_id})
-            return None
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    logger.log_event("crew_started", crew="settlement")
-    settlement_start = time.time()
-
-    settlement_crew = create_settlement_crew(ctx.context.llm, claim_type=ctx.claim_type)
-    settlement_inputs = {
-        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
-        "workflow_output": ctx.workflow_output,
-    }
-
-    try:
-        settlement_result = _kickoff_with_retry(settlement_crew, settlement_inputs)
-    except MidWorkflowEscalation as e:
-        return _handle_mid_workflow_escalation(
-            e,
-            claim_id=ctx.claim_id,
-            claim_type=ctx.claim_type,
-            raw_output=ctx.raw_output,
-            context=ctx.context,
-            workflow_logger=logger,
-            workflow_start_time=ctx.workflow_start_time,
-            prior_workflow_output=ctx.workflow_output,
-            actor_id=ctx.actor_id,
-            stage="settlement",
-            payout_amount=ctx.extracted_payout,
-            workflow_run_id=ctx.workflow_run_id,
-        )
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    settlement_latency = (time.time() - settlement_start) * 1000
-    settlement_output = str(
-        getattr(settlement_result, "raw", None)
-        or getattr(settlement_result, "output", None)
-        or str(settlement_result)
-    )
-    logger.log_event("crew_completed", crew="settlement", latency_ms=settlement_latency)
-    ctx.workflow_output = _combine_workflow_outputs(ctx.workflow_output, settlement_output)
-
-    ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id,
-        ctx.workflow_run_id,
+    return _run_crew_stage(
+        ctx,
         "settlement",
-        json.dumps({"settlement_output": settlement_output}),
+        "settlement",
+        "settlement_output",
+        create_crew=lambda c: create_settlement_crew(c.context.llm, claim_type=c.claim_type),
+        get_inputs=lambda c: {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "workflow_output": c.workflow_output,
+        },
     )
-    return None
 
 
 def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
@@ -842,74 +847,18 @@ def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
     """
     if not _requires_settlement(ctx.claim_type):
         return None
-
-    if "subrogation" in ctx.checkpoints:
-        try:
-            sub_cp = json.loads(ctx.checkpoints["subrogation"])
-            if not isinstance(sub_cp, dict):
-                raise ValueError("subrogation checkpoint is not a JSON object")
-            subrogation_output = sub_cp["subrogation_output"]
-            ctx.workflow_output = _combine_workflow_outputs(
-                ctx.workflow_output, subrogation_output, label="Subrogation workflow output"
-            )
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            logger.warning(
-                "Failed to restore subrogation from checkpoint; invalidating and re-running stage: %s",
-                exc,
-                extra={"claim_id": ctx.claim_id},
-            )
-            ctx.checkpoints.pop("subrogation", None)
-        else:
-            logger.info("Restored subrogation from checkpoint", extra={"claim_id": ctx.claim_id})
-            return None
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    logger.log_event("crew_started", crew="subrogation")
-    subrogation_start = time.time()
-
-    subrogation_crew = create_subrogation_crew(ctx.context.llm)
-    subrogation_inputs = {
-        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
-        "workflow_output": ctx.workflow_output,
-    }
-
-    try:
-        subrogation_result = _kickoff_with_retry(subrogation_crew, subrogation_inputs)
-    except MidWorkflowEscalation as e:
-        return _handle_mid_workflow_escalation(
-            e,
-            claim_id=ctx.claim_id,
-            claim_type=ctx.claim_type,
-            raw_output=ctx.raw_output,
-            context=ctx.context,
-            workflow_logger=logger,
-            workflow_start_time=ctx.workflow_start_time,
-            prior_workflow_output=ctx.workflow_output,
-            actor_id=ctx.actor_id,
-            stage="subrogation",
-            payout_amount=ctx.extracted_payout,
-            workflow_run_id=ctx.workflow_run_id,
-        )
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    subrogation_latency = (time.time() - subrogation_start) * 1000
-    subrogation_output = str(
-        getattr(subrogation_result, "raw", None)
-        or getattr(subrogation_result, "output", None)
-        or str(subrogation_result)
-    )
-    logger.log_event("crew_completed", crew="subrogation", latency_ms=subrogation_latency)
-    ctx.workflow_output = _combine_workflow_outputs(
-        ctx.workflow_output, subrogation_output, label="Subrogation workflow output"
-    )
-
-    ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id,
-        ctx.workflow_run_id,
+    return _run_crew_stage(
+        ctx,
         "subrogation",
-        json.dumps({"subrogation_output": subrogation_output}),
+        "subrogation",
+        "subrogation_output",
+        create_crew=lambda c: create_subrogation_crew(c.context.llm),
+        get_inputs=lambda c: {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "workflow_output": c.workflow_output,
+        },
+        combine_label="Subrogation workflow output",
     )
-    return None
 
 
 def _stage_salvage(ctx: _WorkflowCtx) -> dict | None:
@@ -919,75 +868,15 @@ def _stage_salvage(ctx: _WorkflowCtx) -> dict | None:
     """
     if not _requires_salvage(ctx.claim_type):
         return None
-
-    if "salvage" in ctx.checkpoints:
-        try:
-            salv_cp = json.loads(ctx.checkpoints["salvage"])
-            if not isinstance(salv_cp, dict):
-                raise ValueError("salvage checkpoint is not a JSON object")
-            salvage_output = salv_cp["salvage_output"]
-            ctx.workflow_output = _combine_workflow_outputs(
-                ctx.workflow_output,
-                salvage_output,
-                label="Salvage workflow output",
-            )
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            logger.warning(
-                "Failed to restore salvage from checkpoint; invalidating and re-running stage: %s",
-                exc,
-                extra={"claim_id": ctx.claim_id},
-            )
-            ctx.checkpoints.pop("salvage", None)
-        else:
-            logger.info("Restored salvage from checkpoint", extra={"claim_id": ctx.claim_id})
-            return None
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    logger.log_event("crew_started", crew="salvage")
-    salvage_start = time.time()
-
-    salvage_crew = create_salvage_crew(ctx.context.llm)
-    salvage_inputs = {
-        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
-        "workflow_output": ctx.workflow_output,
-    }
-
-    try:
-        salvage_result = _kickoff_with_retry(salvage_crew, salvage_inputs)
-    except MidWorkflowEscalation as e:
-        return _handle_mid_workflow_escalation(
-            e,
-            claim_id=ctx.claim_id,
-            claim_type=ctx.claim_type,
-            raw_output=ctx.raw_output,
-            context=ctx.context,
-            workflow_logger=logger,
-            workflow_start_time=ctx.workflow_start_time,
-            prior_workflow_output=ctx.workflow_output,
-            actor_id=ctx.actor_id,
-            stage="salvage",
-            payout_amount=ctx.extracted_payout,
-            workflow_run_id=ctx.workflow_run_id,
-        )
-
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
-    salvage_latency = (time.time() - salvage_start) * 1000
-    salvage_output = str(
-        getattr(salvage_result, "raw", None)
-        or getattr(salvage_result, "output", None)
-        or str(salvage_result)
-    )
-    logger.log_event("crew_completed", crew="salvage", latency_ms=salvage_latency)
-    ctx.workflow_output = _combine_workflow_outputs(
-        ctx.workflow_output,
-        salvage_output,
-        label="Salvage workflow output",
-    )
-
-    ctx.context.repo.save_task_checkpoint(
-        ctx.claim_id,
-        ctx.workflow_run_id,
+    return _run_crew_stage(
+        ctx,
         "salvage",
-        json.dumps({"salvage_output": salvage_output}),
+        "salvage",
+        "salvage_output",
+        create_crew=lambda c: create_salvage_crew(c.context.llm),
+        get_inputs=lambda c: {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "workflow_output": c.workflow_output,
+        },
+        combine_label="Salvage workflow output",
     )
-    return None
