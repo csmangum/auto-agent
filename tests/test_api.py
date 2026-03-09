@@ -517,6 +517,20 @@ class TestDenialCoverage:
         )
         assert resp.status_code == 422
 
+    def test_denial_coverage_unsupported_state_returns_422(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": "Policy exclusion", "state": "Nevada"},
+        )
+        assert resp.status_code == 422
+        data = resp.json()
+        assert "unsupported" in data["detail"].lower() or "supported" in data["detail"].lower()
+
     def test_denial_coverage_success_returns_response_model(self, client, monkeypatch):
         import claim_agent.api.routes.claims as claims_mod
         from claim_agent.db.repository import ClaimRepository

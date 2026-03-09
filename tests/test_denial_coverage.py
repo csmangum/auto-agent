@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
-
+import pytest
 from crewai import LLM
 
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
@@ -14,10 +14,11 @@ os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent
 
 def _load_denial_orchestrator():
     """Load denial_coverage_orchestrator without triggering workflow package circular imports."""
-    spec = importlib.util.spec_from_file_location(
-        "denial_coverage_orchestrator",
-        Path(__file__).resolve().parent.parent / "src" / "claim_agent" / "workflow" / "denial_coverage_orchestrator.py",
-    )
+    import claim_agent
+
+    pkg_dir = Path(claim_agent.__file__).resolve().parent
+    orche_path = pkg_dir / "workflow" / "denial_coverage_orchestrator.py"
+    spec = importlib.util.spec_from_file_location("denial_coverage_orchestrator", orche_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -35,6 +36,17 @@ def _mock_llm():
 
 class TestDenialCoverageLogic:
     """Tests for denial_coverage_logic module."""
+
+    def test_denial_input_rejects_empty_denial_reason(self):
+        """DenialInput enforces min_length=1 when orchestrator is called directly."""
+        from pydantic import ValidationError
+
+        from claim_agent.models.denial import DenialInput
+
+        with pytest.raises(ValidationError):
+            DenialInput.model_validate(
+                {"claim_id": "CLM-001", "denial_reason": ""}
+            )
 
     def test_generate_denial_letter_impl_minimal(self):
         from claim_agent.tools.denial_coverage_logic import generate_denial_letter_impl

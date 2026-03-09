@@ -31,7 +31,13 @@ from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type
-from claim_agent.utils.sanitization import MAX_ACTOR_ID, sanitize_claim_data
+from claim_agent.rag.constants import normalize_state
+from claim_agent.utils.sanitization import (
+    MAX_ACTOR_ID,
+    MAX_DENIAL_REASON,
+    MAX_POLICYHOLDER_EVIDENCE,
+    sanitize_claim_data,
+)
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
@@ -861,12 +867,12 @@ class DenialCoverageBody(BaseModel):
     denial_reason: str = Field(
         ...,
         min_length=1,
-        max_length=4096,
+        max_length=MAX_DENIAL_REASON,
         description="Stated reason for the denial",
     )
     policyholder_evidence: Optional[str] = Field(
         default=None,
-        max_length=8192,
+        max_length=MAX_POLICYHOLDER_EVIDENCE,
         description="Optional evidence or argument from policyholder",
     )
     state: Optional[str] = Field(
@@ -919,7 +925,10 @@ async def run_denial_coverage(
         "denial_reason": body.denial_reason,
         "policyholder_evidence": body.policyholder_evidence,
     }
-    state = body.state or "California"
+    try:
+        state = normalize_state(body.state or "California")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     result = await asyncio.to_thread(
         run_denial_coverage_workflow,
