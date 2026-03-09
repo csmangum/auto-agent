@@ -485,6 +485,60 @@ class TestSupplemental:
         assert "summary" in data
 
 
+class TestDenialCoverage:
+    """Tests for POST /claims/{claim_id}/denial-coverage."""
+
+    def test_denial_coverage_claim_not_found_returns_404(self, client):
+        resp = client.post(
+            "/api/claims/CLM-NOTEXIST/denial-coverage",
+            json={"denial_reason": "Policy exclusion applied"},
+        )
+        assert resp.status_code == 404
+
+    def test_denial_coverage_wrong_status_returns_409(self, client):
+        # CLM-TEST001 has status "open", not "denied"
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": "Policy exclusion applied"},
+        )
+        assert resp.status_code == 409
+        data = resp.json()
+        assert "allowed statuses" in data["detail"].lower()
+
+    def test_denial_coverage_success_returns_response_model(self, client, monkeypatch):
+        import claim_agent.api.routes.claims as claims_mod
+        from claim_agent.db.repository import ClaimRepository
+
+        # Put CLM-TEST001 in denied status
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        mock_result = {
+            "claim_id": "CLM-TEST001",
+            "outcome": "uphold_denial",
+            "status": "denied",
+            "workflow_output": "Denial upheld. Letter generated.",
+            "summary": "Denial upheld. Letter generated.",
+        }
+        monkeypatch.setattr(
+            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+        )
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={
+                "denial_reason": "Coverage exclusion: pre-existing damage",
+                "policyholder_evidence": "Repair estimate from prior shop",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["outcome"] == "uphold_denial"
+        assert data["status"] == "denied"
+        assert "workflow_output" in data
+        assert "summary" in data
+
+
 # -------------------------------------------------------------------
 # Metrics endpoints
 # -------------------------------------------------------------------

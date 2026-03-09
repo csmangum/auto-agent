@@ -12,6 +12,8 @@ MAX_POLICY_NUMBER = 64
 MAX_VIN = 32
 MAX_VEHICLE_MAKE = 64
 MAX_VEHICLE_MODEL = 128
+MAX_DENIAL_REASON = 4096
+MAX_POLICYHOLDER_EVIDENCE = 8192
 
 # Patterns that may indicate prompt injection attempts
 INJECTION_PATTERNS = [
@@ -59,6 +61,24 @@ def sanitize_supplemental_damage_description(text: str | None) -> str:
         return ""
     t = _sanitize_text(text, MAX_DAMAGE_DESCRIPTION)
     return _remove_injection_patterns(t)
+
+
+def sanitize_denial_reason(text: str | None) -> str:
+    """Sanitize denial reason for prompt injection before passing to LLM."""
+    if text is None or not isinstance(text, str):
+        return ""
+    t = _sanitize_text(text, MAX_DENIAL_REASON)
+    return _remove_injection_patterns(t)
+
+
+def sanitize_policyholder_evidence(text: str | None) -> str | None:
+    """Sanitize policyholder evidence for prompt injection before passing to LLM."""
+    if text is None:
+        return None
+    if not isinstance(text, str):
+        return None
+    t = _sanitize_text(text, MAX_POLICYHOLDER_EVIDENCE)
+    return _remove_injection_patterns(t) or None
 
 
 def _remove_injection_patterns(text: str) -> str:

@@ -18,6 +18,7 @@ from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.denial import DenialInput
 from claim_agent.observability import get_logger
+from claim_agent.utils.sanitization import sanitize_denial_reason, sanitize_policyholder_evidence
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
@@ -80,9 +81,16 @@ def run_denial_coverage_workflow(
         "status": claim.get("status"),
     }
 
+    sanitized_denial_reason = sanitize_denial_reason(denial_input.denial_reason)
+    sanitized_evidence = sanitize_policyholder_evidence(denial_input.policyholder_evidence)
+
     crew_inputs = {
         "claim_data": json.dumps(claim_data_for_crew),
-        "denial_data": json.dumps(denial_input.model_dump(mode="json")),
+        "denial_data": json.dumps({
+            "claim_id": denial_input.claim_id,
+            "denial_reason": sanitized_denial_reason,
+            "policyholder_evidence": sanitized_evidence,
+        }),
     }
 
     denial_crew = create_denial_coverage_crew(_llm)
@@ -143,8 +151,44 @@ def run_denial_coverage_workflow(
 
 def _parse_outcome(workflow_output: str) -> str:
     """Extract outcome from crew output."""
+    # First, try to parse structured JSON output and inspect known keys.
+    try:
+        parsed = json.loads(workflow_output)
+    except (TypeError, json.JSONDecodeError, ValueError):
+        parsed = None
+
+    if isinstance(parsed, dict):
+        def _truthy(value: Any) -> bool:
+            if value is True:
+                return True
+            if isinstance(value, str):
+                return value.strip().lower() in {"true", "yes", "1"}
+            if isinstance(value, (int, float)):
+                return value == 1
+            return False
+
+        routed_to_appeal = parsed.get("routed_to_appeal")
+        route_to_appeal = parsed.get("route_to_appeal")
+        if _truthy(routed_to_appeal) or _truthy(route_to_appeal):
+            return "route_to_appeal"
+
+        outcome_field = parsed.get("outcome")
+        if isinstance(outcome_field, str):
+            outcome_lower = outcome_field.lower()
+            if "appeal" in outcome_lower:
+                return "route_to_appeal"
+            if "escalat" in outcome_lower:
+                return "escalated"
+            if "uphold" in outcome_lower or "denial" in outcome_lower:
+                return "uphold_denial"
+
+    # Fallback: heuristic text search for outcome hints.
     lower = workflow_output.lower()
-    if "route_to_appeal" in lower or "routed to appeal" in lower:
+    if (
+        "route_to_appeal" in lower
+        or "routed_to_appeal" in lower
+        or "routed to appeal" in lower
+    ):
         return "route_to_appeal"
     if "escalated" in lower or "escalation" in lower:
         return "escalated"
