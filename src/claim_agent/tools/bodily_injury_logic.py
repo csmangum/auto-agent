@@ -197,6 +197,7 @@ def calculate_bi_settlement_impl(
         {
             "claim_id": claim_id,
             "medical_charges": float(medical_charges),
+            "injury_severity": injury_severity,
             "pain_suffering": round(pain_suffering, 2),
             "total_demand": round(total_demand, 2),
             "proposed_settlement": round(proposed, 2),
