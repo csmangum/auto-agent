@@ -21,6 +21,7 @@ from claim_agent.db.constants import SUPPLEMENTABLE_STATUSES
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.supplemental import SupplementalInput
 from claim_agent.observability import get_logger
+from claim_agent.utils.sanitization import sanitize_supplemental_damage_description
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
@@ -63,17 +64,8 @@ def run_supplemental_workflow(
 
     supplemental_input = SupplementalInput.model_validate(supplemental_data)
 
-    _llm = llm or (ctx.llm if ctx else None) or get_llm()
     if ctx is None:
-        ctx = ClaimContext.from_defaults(llm=_llm)
-    elif ctx.llm is None or llm is not None:
-        ctx = ClaimContext(
-            repo=ctx.repo,
-            adjuster_service=ctx.adjuster_service,
-            adapters=ctx.adapters,
-            metrics=ctx.metrics,
-            llm=_llm,
-        )
+        ctx = ClaimContext.from_defaults(llm=None)
     repo = ctx.repo
 
     claim = repo.get_claim(supplemental_input.claim_id)
@@ -92,6 +84,16 @@ def run_supplemental_workflow(
         raise ValueError(
             f"Claim {supplemental_input.claim_id} cannot receive supplemental in status {claim_status!r}. "
             f"Allowed statuses: {', '.join(SUPPLEMENTABLE_STATUSES)}."
+        )
+
+    _llm = llm or (ctx.llm if ctx else None) or get_llm()
+    if ctx.llm is None or llm is not None:
+        ctx = ClaimContext(
+            repo=ctx.repo,
+            adjuster_service=ctx.adjuster_service,
+            adapters=ctx.adapters,
+            metrics=ctx.metrics,
+            llm=_llm,
         )
 
     logger.info(
@@ -122,9 +124,14 @@ def run_supplemental_workflow(
         repo, supplemental_input.claim_id
     )
 
+    supplemental_for_crew = supplemental_input.model_dump(mode="json")
+    supplemental_for_crew["supplemental_damage_description"] = sanitize_supplemental_damage_description(
+        supplemental_input.supplemental_damage_description
+    )
+
     crew_inputs = {
         "claim_data": json.dumps(claim_data_for_crew),
-        "supplemental_data": json.dumps(supplemental_input.model_dump(mode="json")),
+        "supplemental_data": json.dumps(supplemental_for_crew),
         "original_workflow_output": original_workflow_output or "No prior workflow output available.",
     }
 
@@ -141,11 +148,15 @@ def run_supplemental_workflow(
     combined_insurance_pays = _extract_combined_insurance_pays(workflow_output)
 
     if supplemental_amount is not None or combined_insurance_pays is not None:
+        update_kwargs: dict[str, Any] = {
+            "details": workflow_output[:500],
+        }
+        if combined_insurance_pays is not None:
+            update_kwargs["payout_amount"] = combined_insurance_pays
         repo.update_claim_status(
             supplemental_input.claim_id,
             claim_status,
-            details=workflow_output[:500],
-            payout_amount=combined_insurance_pays if combined_insurance_pays is not None else supplemental_amount,
+            **update_kwargs,
         )
 
     repo.save_workflow_result(

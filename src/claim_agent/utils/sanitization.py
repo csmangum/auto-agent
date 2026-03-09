@@ -53,6 +53,14 @@ def sanitize_note(note: str | None) -> str:
     return _remove_injection_patterns(t)
 
 
+def sanitize_supplemental_damage_description(text: str | None) -> str:
+    """Sanitize supplemental damage description for prompt injection before passing to LLM."""
+    if text is None or not isinstance(text, str):
+        return ""
+    t = _sanitize_text(text, MAX_DAMAGE_DESCRIPTION)
+    return _remove_injection_patterns(t)
+
+
 def _remove_injection_patterns(text: str) -> str:
     """Remove or neutralize instruction-like patterns that could manipulate the LLM."""
     if not text:

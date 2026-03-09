@@ -588,6 +588,9 @@ def calculate_supplemental_estimate_impl(
     estimate["supplemental_damage_description"] = supplemental_damage_description
     estimate["is_supplemental"] = True
     total_estimate = estimate.get("total_estimate", 0)
+    # For supplemental estimates, no additional deductible should be applied.
+    # Override any deductible/customer_pays set by calculate_repair_estimate_impl.
+    estimate["deductible"] = 0
     estimate["customer_pays"] = 0
     estimate["insurance_pays"] = total_estimate
     return json.dumps(estimate)

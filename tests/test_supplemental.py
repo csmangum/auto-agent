@@ -4,9 +4,15 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from crewai import LLM
 
 from claim_agent.db.constants import SUPPLEMENTABLE_STATUSES
 from claim_agent.exceptions import ClaimNotFoundError
+
+
+def _mock_llm():
+    """Minimal LLM for structural validation (no API calls)."""
+    return LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
 
 
 class TestSupplementalLogic:
@@ -53,6 +59,11 @@ class TestSupplementalLogic:
         assert result.get("is_supplemental") is True
         assert "total_estimate" in result
         assert "supplemental_damage_description" in result
+        # Supplemental estimates have no additional deductible; insurance pays full supplemental total.
+        total = result.get("total_estimate", 0)
+        assert result.get("deductible") == 0
+        assert result.get("customer_pays") == 0
+        assert result.get("insurance_pays") == total
 
     def test_update_repair_authorization_impl(self):
         from claim_agent.tools.partial_loss_logic import update_repair_authorization_impl
@@ -98,6 +109,9 @@ class TestSupplementalTools:
         )
         data = json.loads(result)
         assert data.get("is_supplemental") is True
+        assert data.get("deductible") == 0
+        assert data.get("customer_pays") == 0
+        assert data.get("insurance_pays") == data.get("total_estimate", 0)
 
     def test_update_repair_authorization_tool(self):
         from claim_agent.tools.supplemental_tools import update_repair_authorization
@@ -124,14 +138,14 @@ class TestSupplementalCrew:
     def test_supplemental_crew_has_three_agents(self):
         from claim_agent.crews.supplemental_crew import create_supplemental_crew
 
-        crew = create_supplemental_crew()
+        crew = create_supplemental_crew(llm=_mock_llm())
         assert len(crew.agents) == 3
         assert len(crew.tasks) == 3
 
     def test_supplemental_crew_task_inputs(self):
         from claim_agent.crews.supplemental_crew import create_supplemental_crew
 
-        crew = create_supplemental_crew()
+        crew = create_supplemental_crew(llm=_mock_llm())
         task_descs = [t.description for t in crew.tasks]
         for desc in task_descs:
             assert "{claim_data}" in desc
@@ -205,6 +219,37 @@ class TestSupplementalOrchestrator:
         assert "summary" in result
         assert result["supplemental_amount"] == 450.0
         assert result["combined_insurance_pays"] == 2050.0
+
+    def test_run_supplemental_workflow_no_payout_overwrite_when_only_supplemental(self, seeded_temp_db):
+        """When only supplemental_total is extracted (no combined_insurance_pays), payout_amount is not overwritten."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
+
+        mock_result = MagicMock()
+        mock_result.raw = "Supplemental processed. supplemental_total: 450.00"
+        # No combined_insurance_pays in output - should not pass payout_amount to update
+
+        with patch("claim_agent.workflow.supplemental_orchestrator.get_llm"):
+            with patch(
+                "claim_agent.workflow.supplemental_orchestrator.create_supplemental_crew"
+            ) as mock_crew_fn:
+                mock_crew = MagicMock()
+                mock_crew.kickoff.return_value = mock_result
+                mock_crew_fn.return_value = mock_crew
+
+                ctx = ClaimContext.from_defaults(db_path=seeded_temp_db)
+                with patch.object(ctx.repo, "update_claim_status") as mock_update:
+                    run_supplemental_workflow(
+                        {
+                            "claim_id": "CLM-TEST005",
+                            "supplemental_damage_description": "Frame damage",
+                            "reported_by": "shop",
+                        },
+                        ctx=ctx,
+                    )
+                    mock_update.assert_called_once()
+                    call_kwargs = mock_update.call_args[1]
+                    assert "payout_amount" not in call_kwargs
 
 
 class TestSupplementalExtractors:
