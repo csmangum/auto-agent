@@ -120,24 +120,28 @@ class TestWorkflowWithMockedLLM:
                 with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_crew:
                     with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
                         with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
-                            with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                mock_llm.return_value = MagicMock()
-                                mock_router.return_value.kickoff.return_value = mock_router_response(
-                                    "total_loss", "Vehicle flooded - total destruction."
-                                )
-                                mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                                    "Total loss confirmed. Vehicle value: $15,000.",
-                                    tasks_output=workflow_tasks_output,
-                                )
-                                mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                    "Settlement completed. Status: settled."
-                                )
-                                mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                    "Subrogation assessment complete. No recovery opportunity."
-                                )
-                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                            with patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
+                                with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                                    mock_llm.return_value = MagicMock()
+                                    mock_router.return_value.kickoff.return_value = mock_router_response(
+                                        "total_loss", "Vehicle flooded - total destruction."
+                                    )
+                                    mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                        "Total loss confirmed. Vehicle value: $15,000.",
+                                        tasks_output=workflow_tasks_output,
+                                    )
+                                    mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                        "Settlement completed. Status: settled."
+                                    )
+                                    mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                        "Subrogation assessment complete. No recovery opportunity."
+                                    )
+                                    mock_salvage.return_value.kickoff.return_value = mock_crew_response(
+                                        "Salvage disposition complete."
+                                    )
+                                    mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
 
-                                result = run_claim_workflow(low_value_claim)
+                                    result = run_claim_workflow(low_value_claim)
 
         assert result["claim_type"] == "total_loss"
         mock_crew.assert_called_once()

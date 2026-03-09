@@ -71,6 +71,10 @@ __all__ = [
     "build_subrogation_case",
     "send_demand_letter",
     "record_recovery",
+    # Salvage tools
+    "get_salvage_value",
+    "initiate_title_transfer",
+    "record_salvage_disposition",
 ]
 
 
@@ -272,4 +276,17 @@ def __getattr__(name: str):
         from claim_agent.tools.subrogation_tools import record_recovery
         setattr(mod, "record_recovery", record_recovery)
         return record_recovery
+    # Salvage tools
+    if name == "get_salvage_value":
+        from claim_agent.tools.salvage_tools import get_salvage_value
+        setattr(mod, "get_salvage_value", get_salvage_value)
+        return get_salvage_value
+    if name == "initiate_title_transfer":
+        from claim_agent.tools.salvage_tools import initiate_title_transfer
+        setattr(mod, "initiate_title_transfer", initiate_title_transfer)
+        return initiate_title_transfer
+    if name == "record_salvage_disposition":
+        from claim_agent.tools.salvage_tools import record_salvage_disposition
+        setattr(mod, "record_salvage_disposition", record_salvage_disposition)
+        return record_salvage_disposition
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

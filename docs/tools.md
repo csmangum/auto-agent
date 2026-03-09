@@ -61,6 +61,7 @@ Logic functions access external data (policies, valuations, repair shops, parts,
 | Fraud | `fraud_tools.py` | analyze_claim_patterns, cross_reference_fraud_indicators, perform_fraud_assessment, generate_fraud_report |
 | Partial Loss | `partial_loss_tools.py` | get_available_repair_shops, assign_repair_shop, get_parts_catalog, create_parts_order, calculate_repair_estimate, generate_repair_authorization |
 | Rental | `rental_tools.py` | check_rental_coverage, get_rental_limits, process_rental_reimbursement |
+| Salvage | `salvage_tools.py` | get_salvage_value, initiate_title_transfer, record_salvage_disposition |
 | Supplemental | `supplemental_tools.py` | get_original_repair_estimate, calculate_supplemental_estimate, update_repair_authorization |
 | Compliance | `compliance_tools.py` | search_california_compliance |
 | RAG | `rag_tools.py` | search_policy_compliance, get_compliance_deadlines, get_required_disclosures, get_coverage_exclusions, get_total_loss_requirements, get_fraud_detection_guidance, get_repair_standards |
@@ -733,6 +734,59 @@ Process rental reimbursement for an approved rental. Validates amount against po
   "message": "Rental reimbursement RENT-ABC12345 processed for claim CLM-123"
 }
 ```
+
+---
+
+## Salvage Tools
+
+**Used by:** [Salvage Crew](crews.md#salvage-crew) (total_loss only, runs after Settlement and Subrogation).
+
+### get_salvage_value
+
+Estimate salvage value from vehicle data and damage description. Uses vehicle_value from workflow when available; otherwise estimates. Salvage is typically 15–25% of ACV depending on damage severity.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `vin` | string | Vehicle identification number |
+| `vehicle_year` | integer | Year of vehicle |
+| `make` | string | Vehicle manufacturer |
+| `model` | string | Vehicle model |
+| `damage_description` | string | Description of vehicle damage |
+| `vehicle_value` | float (optional) | ACV from workflow when available |
+
+**Returns:** JSON with salvage_value, vehicle_value_used, salvage_pct, disposition_recommendation (auction|owner_retention|scrap), reasoning.
+
+### initiate_title_transfer
+
+Initiate DMV title transfer or salvage certificate for total loss vehicle.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | The claim ID |
+| `vin` | string | Vehicle identification number |
+| `vehicle_year` | integer | Year of vehicle |
+| `make` | string | Vehicle manufacturer |
+| `model` | string | Vehicle model |
+| `disposition_type` | string | auction, owner_retention, or scrap |
+
+**Returns:** JSON with transfer_id, status, dmv_reference, initiated_at.
+
+### record_salvage_disposition
+
+Record salvage disposition outcome and auction/recovery status.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | The claim ID |
+| `disposition_type` | string | auction, owner_retention, or scrap |
+| `salvage_amount` | float (optional) | Amount recovered from salvage |
+| `status` | string | pending, auction_scheduled, auction_complete, owner_retained, or scrapped |
+| `notes` | string | Optional notes about disposition |
+
+**Returns:** JSON with recorded disposition details.
 
 ---
 
