@@ -648,7 +648,7 @@ def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
 
 
 def _stage_salvage(ctx: _WorkflowCtx) -> dict | None:
-    """Run (or restore) the salvage crew after settlement when claim is total_loss.
+    """Run (or restore) the salvage crew after subrogation when claim is total_loss.
 
     Populates ``ctx.workflow_output`` with the combined salvage output.
     """

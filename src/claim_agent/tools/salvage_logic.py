@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime.datetime:
-    return datetime.datetime.now(datetime.UTC)
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 # Salvage value as percentage of ACV by damage type (higher damage = lower salvage)
@@ -30,7 +30,7 @@ def get_salvage_value_impl(
 ) -> str:
     """Estimate salvage value from vehicle data and damage.
 
-    Uses vehicle_value when provided; otherwise returns estimated range.
+    Uses vehicle_value when provided; otherwise estimates ACV from vehicle year and applies a damage-based salvage percentage.
     Salvage is typically 15-25% of ACV depending on damage severity.
 
     Returns JSON with:

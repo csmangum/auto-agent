@@ -598,7 +598,7 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 10
+        assert len(crews) == 11
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names

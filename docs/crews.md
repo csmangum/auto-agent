@@ -17,7 +17,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Rental Reimbursement](#rental-reimbursement-crew) | 3 | Manage loss-of-use / rental coverage (runs after Partial Loss) |
 | [Settlement](#settlement-crew) | 3 | Shared final settlement for payout-ready claims |
 | [Subrogation](#subrogation-crew) | 3 | Post-settlement recovery from at-fault parties |
-| [Salvage](#salvage-crew) | 3 | Total-loss vehicle disposition (runs after Settlement for total_loss only) |
+| [Salvage](#salvage-crew) | 3 | Total-loss vehicle disposition (runs after Settlement and Subrogation for total_loss only) |
 | [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
 
 ---
