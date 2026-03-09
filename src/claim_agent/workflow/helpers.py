@@ -24,14 +24,22 @@ def _final_status(claim_type: str) -> str:
         return STATUS_DUPLICATE
     if claim_type == ClaimType.FRAUD.value:
         return STATUS_FRAUD_SUSPECTED
-    if claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value):
+    if claim_type in (
+        ClaimType.PARTIAL_LOSS.value,
+        ClaimType.TOTAL_LOSS.value,
+        ClaimType.BODILY_INJURY.value,
+    ):
         return STATUS_SETTLED
     return STATUS_CLOSED
 
 
 def _requires_settlement(claim_type: str) -> bool:
     """Return True when the workflow should hand off to the shared settlement crew."""
-    return claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value)
+    return claim_type in (
+        ClaimType.PARTIAL_LOSS.value,
+        ClaimType.TOTAL_LOSS.value,
+        ClaimType.BODILY_INJURY.value,
+    )
 
 
 def _requires_salvage(claim_type: str) -> bool:
@@ -61,7 +69,11 @@ def _extract_payout_from_workflow_result(result: Any, claim_type: str) -> float 
     task's output may be a Pydantic model with payout_amount. Returns None if
     extraction fails (Settlement Crew will infer from workflow_output text).
     """
-    if claim_type not in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value):
+    if claim_type not in (
+        ClaimType.PARTIAL_LOSS.value,
+        ClaimType.TOTAL_LOSS.value,
+        ClaimType.BODILY_INJURY.value,
+    ):
         return None
     tasks_output = getattr(result, "tasks_output", None)
     if not tasks_output or not isinstance(tasks_output, list):

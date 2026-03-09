@@ -215,3 +215,7 @@ RENTAL_REIMBURSEMENT_PROCESSOR = "rental_reimbursement_processor"
 SALVAGE_COORDINATOR = "salvage_coordinator"
 TITLE_SPECIALIST = "title_specialist"
 AUCTION_LIAISON = "auction_liaison"
+# Bodily injury
+BI_INTAKE_SPECIALIST = "bi_intake_specialist"
+MEDICAL_RECORDS_REVIEWER = "medical_records_reviewer"
+SETTLEMENT_NEGOTIATOR = "settlement_negotiator"

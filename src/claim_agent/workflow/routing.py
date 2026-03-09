@@ -30,7 +30,7 @@ def create_router_crew(llm=None):
 CLAIM DATA:
 {{claim_data}}
 
-Classify this claim as exactly one of: new, duplicate, total_loss, fraud, or partial_loss.
+Classify this claim as exactly one of: new, duplicate, total_loss, fraud, partial_loss, or bodily_injury.
 
 CLASSIFICATION RULES (in priority order):
 
@@ -54,14 +54,19 @@ CLASSIFICATION RULES (in priority order):
    - EXCEPTION: If damage text contains catastrophic keywords (flood, fire, rollover, submerged), classify as total_loss, NOT fraud
    - High damage-to-value ratio alone is NOT fraud if the damage description supports total loss
 
-4. **partial_loss**: Damage is repairable:
+4. **bodily_injury**: Classify as bodily_injury if the claim involves injury to persons:
+   - Incident or damage description mentions: injured, injury, whiplash, broken bone, fracture, hospital, medical treatment, back pain, neck pain, concussion, soft tissue, laceration, ambulance, ER visit, bodily harm, passenger injured, driver injured
+   - "injury_related" or "bodily_injury" is true in claim data when present
+   - When injury to people is a significant component (not just vehicle damage), use bodily_injury
+
+5. **partial_loss**: Damage is repairable:
    - Bumper, fender, door, mirror, dent, scratch, light, windshield damage
    - No catastrophic keywords in damage description
    - "damage_is_repairable": true indicates damage to replaceable parts
    - If damage_is_repairable is true AND is_economic_total_loss is false -> partial_loss
    - Even with high damage cost, if only repairable parts are mentioned (doors, panels, etc.) -> partial_loss
 
-5. **new**: First-time claim, unclear damage, or needs assessment. Use only if none of the above apply.
+6. **new**: First-time claim, unclear damage, or needs assessment. Use only if none of the above apply.
 
 EDGE CASE HINTS:
 - Very old vehicles (15+ years) with repair cost > 75% of value are typically total_loss.
@@ -69,6 +74,7 @@ EDGE CASE HINTS:
 
 KEY DECISION POINTS:
 - If definitive_duplicate is true -> duplicate (MUST)
+- If injury to persons is mentioned (injured, whiplash, hospital, etc.) -> bodily_injury
 - If damage says "totaled", "destroyed", "total loss", "beyond repair" -> total_loss (NOT fraud)
 - If rollover, fire, or flood mentioned in damage -> total_loss (NOT fraud)
 - If incident says "minor bump"/"barely tapped"/"staged"/"no witnesses" and damage claims major damage or pre_routing_fraud_indicators present -> fraud (unless damage has catastrophic keywords)
@@ -76,7 +82,7 @@ KEY DECISION POINTS:
 - For duplicates: Look at both days_difference AND description_similarity_score
 
 Reply with a JSON object containing:
-- claim_type: exactly one of new, duplicate, total_loss, fraud, or partial_loss
+- claim_type: exactly one of new, duplicate, total_loss, fraud, partial_loss, or bodily_injury
 - confidence: a number from 0.0 to 1.0 indicating your confidence in this classification (1.0 = certain, 0.5 = uncertain)
 - reasoning: one sentence explaining your classification""".format(
         duplicate_threshold=DUPLICATE_SIMILARITY_THRESHOLD,
@@ -108,7 +114,7 @@ def _parse_claim_type(raw_output: str) -> str:
     lines = raw_output.strip().split("\n")
     for line in lines:
         normalized = line.strip().lower().replace("_", " ").replace("-", " ")
-        if normalized in ("new", "duplicate", "total loss", "partial loss", "fraud"):
+        if normalized in ("new", "duplicate", "total loss", "partial loss", "fraud", "bodily injury"):
             if normalized == "total loss":
                 return ClaimType.TOTAL_LOSS.value
             if normalized == "partial loss":
@@ -119,7 +125,11 @@ def _parse_claim_type(raw_output: str) -> str:
                 return ClaimType.DUPLICATE.value
             if normalized == "fraud":
                 return ClaimType.FRAUD.value
+            if normalized == "bodily injury":
+                return ClaimType.BODILY_INJURY.value
             return normalized
+        if normalized.startswith("bodily injury"):
+            return ClaimType.BODILY_INJURY.value
         if normalized.startswith("fraud"):
             return ClaimType.FRAUD.value
         if normalized.startswith("partial loss"):

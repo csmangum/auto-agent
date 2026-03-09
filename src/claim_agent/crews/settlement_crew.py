@@ -37,6 +37,7 @@ and payout_amount from claim_data when present; otherwise extract from the workf
 Claim-type-specific requirements:
 - total_loss: include valuation summary, ACV, deductible, and salvage/owner-retention considerations
 - partial_loss: include repair estimate, assigned shop, authorization reference, and insurance payment summary
+- bodily_injury: include medical records summary, injury severity, pain/suffering component, and BI settlement breakdown
 
 Output a structured settlement documentation summary and release agreement notes.""",
                 expected_output="Settlement report summary with claim-type-specific documentation and release notes.",

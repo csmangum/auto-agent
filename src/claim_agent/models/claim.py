@@ -32,6 +32,7 @@ class ClaimType(str, Enum):
     TOTAL_LOSS = "total_loss"
     FRAUD = "fraud"
     PARTIAL_LOSS = "partial_loss"
+    BODILY_INJURY = "bodily_injury"
 
 
 class RouterOutput(BaseModel):
@@ -39,7 +40,7 @@ class RouterOutput(BaseModel):
 
     claim_type: str = Field(
         ...,
-        description="Classification: new, duplicate, total_loss, fraud, or partial_loss",
+        description="Classification: new, duplicate, total_loss, fraud, partial_loss, or bodily_injury",
     )
     confidence: float = Field(
         ...,

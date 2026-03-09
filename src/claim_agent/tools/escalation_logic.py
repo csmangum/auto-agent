@@ -77,6 +77,8 @@ def normalize_claim_type(value: str) -> str:
         return ClaimType.DUPLICATE.value
     if v == "fraud":
         return ClaimType.FRAUD.value
+    if v == "bodily_injury":
+        return ClaimType.BODILY_INJURY.value
     return ClaimType.NEW.value
 
 
@@ -144,7 +146,7 @@ def validate_router_classification_impl(
 Claim data (excerpt): {claim_str}
 
 Independently verify the classification. Return JSON only:
-{{"claim_type": "new"|"duplicate"|"total_loss"|"fraud"|"partial_loss", "confidence": 0.0-1.0, "reasoning": "brief explanation"}}"""
+{{"claim_type": "new"|"duplicate"|"total_loss"|"fraud"|"partial_loss"|"bodily_injury", "confidence": 0.0-1.0, "reasoning": "brief explanation"}}"""
 
     try:
         model = get_model_name()
