@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from claim_agent.config.settings import get_router_config
+from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
@@ -363,6 +364,8 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         crew = create_duplicate_crew(ctx.context.llm)
     elif ctx.claim_type == ClaimType.FRAUD.value:
         crew = create_fraud_detection_crew(ctx.context.llm)
+    elif ctx.claim_type == ClaimType.BODILY_INJURY.value:
+        crew = create_bodily_injury_crew(ctx.context.llm)
     elif ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
         crew = create_partial_loss_crew(ctx.context.llm)
     else:

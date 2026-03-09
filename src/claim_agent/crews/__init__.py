@@ -1,5 +1,6 @@
 """Crews for claim workflows."""
 
+from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 from claim_agent.crews.main_crew import (
     create_main_crew,
@@ -19,6 +20,7 @@ from claim_agent.crews.supplemental_crew import create_supplemental_crew
 from claim_agent.crews.rental_crew import create_rental_crew
 
 __all__ = [
+    "create_bodily_injury_crew",
     "AgentConfig",
     "TaskConfig",
     "create_crew",

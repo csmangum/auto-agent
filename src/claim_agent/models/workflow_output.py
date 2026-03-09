@@ -54,3 +54,27 @@ class PartialLossWorkflowOutput(BaseModel):
         default=None,
         description="Estimated repair duration from shop assignment (for rental crew)",
     )
+
+
+class BIWorkflowOutput(BaseModel):
+    """Structured output from Bodily Injury crew final task."""
+
+    payout_amount: float = Field(
+        ..., description="Proposed BI settlement amount (insurance payment)"
+    )
+    medical_charges: float | None = Field(
+        default=None, description="Total medical specials"
+    )
+    pain_suffering: float | None = Field(
+        default=None, description="Pain and suffering component"
+    )
+    injury_severity: str | None = Field(
+        default=None, description="Severity classification"
+    )
+    claim_id: str | None = Field(default=None, description="Claim ID")
+    policy_bi_limit_per_person: float | None = Field(
+        default=None, description="Policy BI per-person limit"
+    )
+    policy_bi_limit_per_accident: float | None = Field(
+        default=None, description="Policy BI per-accident limit"
+    )

@@ -17,7 +17,12 @@
       "status": "active",
       "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
     },
-    "POL-004": { "coverage": "collision", "deductible": 500, "status": "active" },
+    "POL-004": {
+      "coverage": "collision",
+      "deductible": 500,
+      "status": "active",
+      "bodily_injury": { "per_person": 250000, "per_accident": 500000 }
+    },
     "POL-005": {
       "coverage": "comprehensive",
       "deductible": 250,

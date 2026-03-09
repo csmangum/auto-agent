@@ -305,6 +305,20 @@ def test_extract_payout_from_workflow_result():
     mock_result_dict.tasks_output = [mock_task_dict]
     assert _extract_payout_from_workflow_result(mock_result_dict, "partial_loss") == 2100.0
 
+    # BIWorkflowOutput (bodily_injury)
+    from claim_agent.models.workflow_output import BIWorkflowOutput
+
+    mock_bi_task = MagicMock()
+    mock_bi_task.output = BIWorkflowOutput(
+        payout_amount=8500.0,
+        medical_charges=3750.0,
+        pain_suffering=5625.0,
+        injury_severity="moderate",
+    )
+    mock_bi_result = MagicMock()
+    mock_bi_result.tasks_output = [mock_bi_task]
+    assert _extract_payout_from_workflow_result(mock_bi_result, "bodily_injury") == 8500.0
+
     # Non-payout claim types return None
     assert _extract_payout_from_workflow_result(mock_result, "new") is None
     assert _extract_payout_from_workflow_result(mock_result, "fraud") is None
@@ -347,6 +361,20 @@ def test_settlement_crew_acceptance_criteria():
 
     # AC2 (Issue #76): Settlement receives payout_amount from claim_data when present
     assert "payout_amount from claim_data when present" in documentation_task.description
+
+
+def test_settlement_crew_bodily_injury_documentation():
+    """Settlement crew documentation task includes BI-specific requirements."""
+    from crewai import LLM
+    from claim_agent.crews.settlement_crew import create_settlement_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_settlement_crew(llm=mock_llm, claim_type="bodily_injury", use_rag=False)
+    documentation_task = crew.tasks[0]
+    assert "bodily_injury" in documentation_task.description
+    assert "medical records" in documentation_task.description.lower()
+    assert "injury severity" in documentation_task.description.lower()
+    assert "pain" in documentation_task.description.lower() and "suffering" in documentation_task.description.lower()
 
 
 def test_subrogation_crew_structure():
@@ -513,6 +541,8 @@ def test_parse_claim_type_exact():
     assert _parse_claim_type("fraud") == "fraud"
     assert _parse_claim_type("partial_loss") == "partial_loss"
     assert _parse_claim_type("partial loss") == "partial_loss"
+    assert _parse_claim_type("bodily_injury") == "bodily_injury"
+    assert _parse_claim_type("bodily injury") == "bodily_injury"
 
 
 def test_parse_claim_type_with_reasoning():
@@ -536,6 +566,7 @@ def test_parse_claim_type_starts_with():
     assert _parse_claim_type("fraud - suspicious indicators") == "fraud"
     assert _parse_claim_type("partial loss - bumper repair") == "partial_loss"
     assert _parse_claim_type("partial_loss: fender damage repairable") == "partial_loss"
+    assert _parse_claim_type("bodily injury - whiplash claim") == "bodily_injury"
 
 
 def test_parse_claim_type_default():

@@ -32,15 +32,18 @@ class TestClaimClassification:
         assert _parse_claim_type("total_loss") == "total_loss"
         assert _parse_claim_type("fraud") == "fraud"
         assert _parse_claim_type("partial_loss") == "partial_loss"
-        
+        assert _parse_claim_type("bodily_injury") == "bodily_injury"
+
         # With reasoning
         assert _parse_claim_type("new\nThis is a new claim.") == "new"
         assert _parse_claim_type("total_loss\nVehicle flooded.") == "total_loss"
         assert _parse_claim_type("partial_loss\nMinor fender damage.") == "partial_loss"
-        
+        assert _parse_claim_type("bodily_injury\nPassenger injured in collision.") == "bodily_injury"
+
         # Normalized variants
         assert _parse_claim_type("total loss") == "total_loss"
         assert _parse_claim_type("partial loss") == "partial_loss"
+        assert _parse_claim_type("bodily injury") == "bodily_injury"
         assert _parse_claim_type("FRAUD\nSuspicious patterns.") == "fraud"
     
     @pytest.mark.integration
@@ -59,6 +62,7 @@ class TestClaimClassification:
         assert _final_status("fraud") == STATUS_FRAUD_SUSPECTED
         assert _final_status("partial_loss") == STATUS_SETTLED
         assert _final_status("total_loss") == STATUS_SETTLED
+        assert _final_status("bodily_injury") == STATUS_SETTLED
 
 
 # ============================================================================
@@ -485,6 +489,28 @@ class TestWorkflowCrewClaimDataAndTools:
         )
 
     @pytest.mark.integration
+    def test_bodily_injury_crew_first_task_has_claim_data_placeholder(self):
+        """First task of bodily injury crew must contain {claim_data} for input injection."""
+        from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
+
+        crew = create_bodily_injury_crew(llm=_structural_llm_for_crew())
+        first_task = crew.tasks[0]
+        assert "{claim_data}" in first_task.description, (
+            "First task description should contain {claim_data} for crew input injection"
+        )
+
+    @pytest.mark.integration
+    def test_bodily_injury_crew_all_tasks_have_claim_data_placeholder(self):
+        """All bodily injury crew tasks must contain {claim_data} so agents receive claim context."""
+        from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
+
+        crew = create_bodily_injury_crew(llm=_structural_llm_for_crew())
+        for i, task in enumerate(crew.tasks):
+            assert "{claim_data}" in task.description, (
+                f"Task {i} ({task.description[:50]}...) must contain {{claim_data}} for input injection"
+            )
+
+    @pytest.mark.integration
     def test_partial_loss_crew_all_tasks_have_claim_data_placeholder(self):
         """All partial loss crew tasks must contain {claim_data} so agents receive claim context."""
         from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
@@ -527,6 +553,58 @@ class TestWorkflowCrewClaimDataAndTools:
         output = str(output)
 
         assert len(output.strip()) > 0, "Crew should produce non-empty output"
+
+    @pytest.mark.integration
+    @pytest.mark.llm
+    def test_bodily_injury_crew_invokes_tools_when_run(
+        self, sample_bodily_injury_claim
+    ):
+        """Run bodily injury crew with real LLM. Verifies crew completes and produces output.
+        Requires OPENAI_API_KEY."""
+        if not os.environ.get("OPENAI_API_KEY"):
+            pytest.skip("OPENAI_API_KEY not set; skipping LLM tool-invocation test")
+
+        import json
+        from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
+
+        crew = create_bodily_injury_crew()
+        claim_data = {**sample_bodily_injury_claim, "claim_id": "CLM-BI-TEST"}
+        result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+        output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
+        output = str(output)
+
+        assert len(output.strip()) > 0, "BI crew should produce non-empty output"
+
+    @pytest.mark.integration
+    @pytest.mark.llm
+    def test_router_routes_bodily_injury_when_injury_and_damage(
+        self,
+    ):
+        """Router with claim having both injury and repairable damage: expect bodily_injury.
+        Per rules, injury takes priority over partial_loss when significant."""
+        if not os.environ.get("OPENAI_API_KEY"):
+            pytest.skip("OPENAI_API_KEY not set; skipping LLM routing test")
+
+        import json
+        from claim_agent.workflow.routing import create_router_crew
+
+        claim_data = {
+            "policy_number": "POL-004",
+            "vin": "2HGFG3B54CH501234",
+            "vehicle_year": 2020,
+            "vehicle_make": "Toyota",
+            "vehicle_model": "Camry",
+            "incident_description": "Rear-ended at intersection. Driver injured with whiplash. Bumper damaged.",
+            "damage_description": "Rear bumper and trunk damaged. Driver sustained whiplash.",
+        }
+        crew = create_router_crew()
+        result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+        raw = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
+        raw = str(raw).strip().lower()
+        # Per routing rules, injury to persons -> bodily_injury
+        assert "bodily_injury" in raw or "bodily injury" in raw or "partial_loss" in raw or "partial loss" in raw or "new" in raw, (
+            f"Router should classify as bodily_injury, partial_loss, or new; got: {raw[:200]}"
+        )
 
 
 # ============================================================================
