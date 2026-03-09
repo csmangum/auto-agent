@@ -18,6 +18,9 @@ VALID_CLAIM_TYPES = frozenset(
     ct.value for ct in ClaimType if ct != ClaimType.REOPENED
 )
 
+# Allowed next_step values for parse_reviewer_decision
+VALID_NEXT_STEPS = frozenset({"settlement", "denial", "subrogation", "workflow"})
+
 logger = logging.getLogger(__name__)
 
 
@@ -101,6 +104,11 @@ def get_escalation_context(claim_id: str) -> str:
         elif "escalation" in workflow_output.lower() or "mid_workflow" in workflow_output.lower():
             mid_workflow = True
 
+    # Sanitize prior_workflow_output before returning; it is fed into LLM prompts
+    # and must be safe from prompt-injection patterns and control characters.
+    raw_output = workflow_output[:2000] + "..." if len(workflow_output) > 2000 else workflow_output
+    prior_workflow_output = sanitize_note(raw_output) if raw_output else ""
+
     return json.dumps({
         "claim_id": claim_id,
         "claim_type": claim.get("claim_type"),
@@ -109,7 +117,7 @@ def get_escalation_context(claim_id: str) -> str:
         "escalation_stage": escalation_stage,
         "escalation_reasons": escalation_reasons,
         "mid_workflow": mid_workflow,
-        "prior_workflow_output": workflow_output[:2000] + "..." if len(workflow_output) > 2000 else workflow_output,
+        "prior_workflow_output": prior_workflow_output,
     })
 
 
@@ -155,7 +163,9 @@ def apply_reviewer_decision(
             claim_type,
         )
 
-    if confirmed_payout and str(confirmed_payout).strip():
+    # Use explicit None/blank check so 0.0 is accepted (falsy but valid).
+    payout_str = str(confirmed_payout).strip() if confirmed_payout is not None else ""
+    if payout_str:
         try:
             val = float(confirmed_payout)
             if math.isfinite(val) and 0 <= val <= MAX_PAYOUT:
@@ -212,7 +222,10 @@ def parse_reviewer_decision(
             if isinstance(data, dict):
                 result["confirmed_claim_type"] = data.get("confirmed_claim_type")
                 result["confirmed_payout"] = data.get("confirmed_payout")
-                result["next_step"] = data.get("next_step", "workflow")
+                raw_next = data.get("next_step", "workflow")
+                result["next_step"] = (
+                    raw_next if raw_next in VALID_NEXT_STEPS else "workflow"
+                )
         except (json.JSONDecodeError, TypeError):
             pass
 

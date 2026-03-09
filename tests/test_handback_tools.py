@@ -187,6 +187,23 @@ class TestApplyReviewerDecision:
         # confirmed_claim_type is empty so claim_type unchanged
         assert result["updated_claim_type"] == "total_loss"
 
+    def test_zero_payout_is_accepted(self):
+        """confirmed_payout of "0" or "0.0" must be applied (falsy-looking but valid)."""
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.tools.handback_tools import apply_reviewer_decision
+
+        claim_id = _seed_claim(status="needs_review", claim_type="partial_loss")
+        repo = ClaimRepository()
+        repo.update_claim_status(claim_id, "needs_review", claim_type="partial_loss", payout_amount=5000.0)
+
+        for zero_val in ("0", "0.0"):
+            result = json.loads(apply_reviewer_decision.run(
+                claim_id=claim_id,
+                confirmed_claim_type="",
+                confirmed_payout=zero_val,
+            ))
+            assert result["updated_payout_amount"] == 0.0
+
     def test_status_transitions_to_processing(self):
         from claim_agent.db.constants import STATUS_PROCESSING
         from claim_agent.tools.handback_tools import apply_reviewer_decision
@@ -291,6 +308,17 @@ class TestParseReviewerDecision:
         # Graceful fallback: structured parse failed, defaults preserved
         assert result["confirmed_claim_type"] is None
         assert "Reviewer notes" in result["reasoning"]
+
+    def test_invalid_next_step_defaults_to_workflow(self):
+        """next_step outside allowed set must default to 'workflow'."""
+        from claim_agent.tools.handback_tools import parse_reviewer_decision
+
+        structured = json.dumps({"next_step": "invalid_step"})
+        result = json.loads(parse_reviewer_decision.run(
+            reviewer_notes="",
+            structured_decision=structured,
+        ))
+        assert result["next_step"] == "workflow"
 
     def test_empty_inputs_return_defaults(self):
         from claim_agent.tools.handback_tools import parse_reviewer_decision
