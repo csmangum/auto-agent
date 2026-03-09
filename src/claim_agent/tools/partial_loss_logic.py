@@ -451,3 +451,207 @@ def generate_repair_authorization_impl(
     }
 
     return json.dumps(authorization)
+
+
+def get_original_repair_estimate_impl(
+    claim_id: str,
+    *,
+    ctx: ClaimContext | None = None,
+) -> str:
+    """Retrieve the original repair estimate from the claim's partial loss workflow.
+
+    Parses the most recent partial_loss workflow run to extract estimate fields.
+    Returns JSON with total_estimate, parts_cost, labor_cost, authorization_id,
+    shop_id, and related fields. Returns error JSON if claim not found or no
+    partial loss workflow exists.
+    """
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ctx.repo if ctx else ClaimRepository()
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        return json.dumps({"error": f"Claim not found: {claim_id}"})
+
+    runs = repo.get_workflow_runs(claim_id, limit=10)
+    for run in runs:
+        if run.get("claim_type") != "partial_loss":
+            continue
+        wf_output = run.get("workflow_output") or ""
+        parsed = _parse_partial_loss_workflow_output(wf_output)
+        if parsed:
+            parsed["claim_id"] = claim_id
+            parsed["original_damage_description"] = claim.get("damage_description")
+            return json.dumps(parsed)
+
+    return json.dumps({
+        "error": f"No partial loss workflow found for claim {claim_id}",
+        "claim_id": claim_id,
+    })
+
+
+def _parse_partial_loss_workflow_output(wf_output: str) -> dict[str, Any] | None:
+    """Extract estimate and authorization fields from partial loss workflow output."""
+    import re
+
+    result: dict[str, Any] = {}
+    # Try parsing entire output as JSON first (e.g. from workflow_runs storage)
+    wf_stripped = wf_output.strip()
+    if wf_stripped.startswith("{") and wf_stripped.endswith("}"):
+        try:
+            data = json.loads(wf_output)
+            if isinstance(data, dict):
+                for key in (
+                    "total_estimate", "authorized_amount", "parts_cost", "labor_cost",
+                    "deductible", "customer_pays", "insurance_pays", "payout_amount",
+                    "authorization_id", "shop_id", "shop_name", "shop_phone",
+                ):
+                    if key in data and data[key] is not None:
+                        result[key] = data[key]
+                if result:
+                    return result
+        except json.JSONDecodeError:
+            pass
+
+    # Try JSON block in markdown
+    code_block = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.DOTALL)
+    for match in code_block.finditer(wf_output):
+        try:
+            data = json.loads(match.group(1).strip())
+            if isinstance(data, dict):
+                for key in (
+                    "total_estimate", "authorized_amount", "parts_cost", "labor_cost",
+                    "deductible", "customer_pays", "insurance_pays", "payout_amount",
+                    "authorization_id", "shop_id", "shop_name", "shop_phone",
+                ):
+                    if key in data and data[key] is not None:
+                        result[key] = data[key]
+                if result:
+                    return result
+        except json.JSONDecodeError:
+            continue
+
+    # Fallback: regex for common patterns
+    patterns = [
+        (r"total_estimate[:\s]*(\d+\.?\d*)", "total_estimate"),
+        (r"authorized_amount[:\s]*(\d+\.?\d*)", "authorized_amount"),
+        (r"parts_cost[:\s]*(\d+\.?\d*)", "parts_cost"),
+        (r"labor_cost[:\s]*(\d+\.?\d*)", "labor_cost"),
+        (r"insurance_pays[:\s]*(\d+\.?\d*)", "insurance_pays"),
+        (r"payout_amount[:\s]*(\d+\.?\d*)", "payout_amount"),
+        (r"authorization_id[:\s]*['\"]?([A-Za-z0-9\-]+)['\"]?", "authorization_id"),
+        (r"shop_id[:\s]*['\"]?([A-Za-z0-9\-]+)['\"]?", "shop_id"),
+    ]
+    numeric_keys = {"total_estimate", "authorized_amount", "parts_cost", "labor_cost", "insurance_pays", "payout_amount", "deductible", "customer_pays"}
+    for pattern, key in patterns:
+        m = re.search(pattern, wf_output, re.IGNORECASE)
+        if m:
+            val = m.group(1)
+            if key in numeric_keys:
+                try:
+                    result[key] = float(val.replace(",", ""))
+                except (ValueError, AttributeError):
+                    result[key] = val
+            else:
+                result[key] = val
+
+    return result if result else None
+
+
+def calculate_supplemental_estimate_impl(
+    supplemental_damage_description: str,
+    vehicle_make: str,
+    vehicle_year: int,
+    policy_number: str,
+    shop_id: Optional[str] = None,
+    part_type_preference: str = "aftermarket",
+    *,
+    ctx: ClaimContext | None = None,
+) -> str:
+    """Calculate repair estimate for supplemental (additional) damage only.
+
+    Reuses calculate_repair_estimate_impl with the supplemental damage description.
+    Deductible is typically already applied to the original estimate; supplemental
+    insurance_pays is usually the full supplemental amount (no additional deductible).
+    """
+    estimate_json = calculate_repair_estimate_impl(
+        damage_description=supplemental_damage_description,
+        vehicle_make=vehicle_make,
+        vehicle_year=vehicle_year,
+        policy_number=policy_number,
+        shop_id=shop_id,
+        part_type_preference=part_type_preference,
+        ctx=ctx,
+    )
+    estimate = json.loads(estimate_json)
+    if "error" in estimate:
+        return estimate_json
+    estimate["supplemental_damage_description"] = supplemental_damage_description
+    estimate["is_supplemental"] = True
+    total_estimate = estimate.get("total_estimate", 0)
+    # For supplemental estimates, no additional deductible should be applied.
+    # Override any deductible/customer_pays set by calculate_repair_estimate_impl.
+    estimate["deductible"] = 0
+    estimate["customer_pays"] = 0
+    estimate["insurance_pays"] = total_estimate
+    return json.dumps(estimate)
+
+
+def update_repair_authorization_impl(
+    claim_id: str,
+    shop_id: str,
+    original_total: float,
+    original_parts: float,
+    original_labor: float,
+    original_insurance_pays: float,
+    supplemental_total: float,
+    supplemental_parts: float,
+    supplemental_labor: float,
+    supplemental_insurance_pays: float,
+    authorization_id: Optional[str] = None,
+    customer_approved: bool = True,
+    *,
+    ctx: ClaimContext | None = None,
+) -> str:
+    """Update repair authorization with supplemental amounts.
+
+    Creates a supplemental authorization record and returns combined totals.
+    Original deductible is not re-applied to supplemental; insurance pays
+    the supplemental amount.
+
+    Note: The supplemental authorization (RA-SUP-xxx) is computed and returned
+    in workflow output but not persisted to a dedicated table. Same as
+    generate_repair_authorization. The orchestrator updates claim payout_amount
+    from extracted values. For auditability, consider extending workflow_runs
+    or adding an authorizations table in future.
+    """
+    adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
+    shop = adapter.get_shop(shop_id) or {}
+
+    combined_total = original_total + supplemental_total
+    combined_parts = original_parts + supplemental_parts
+    combined_labor = original_labor + supplemental_labor
+    combined_insurance_pays = original_insurance_pays + supplemental_insurance_pays
+
+    supplemental_auth_id = f"RA-SUP-{uuid.uuid4().hex[:8].upper()}"
+
+    result = {
+        "success": True,
+        "claim_id": claim_id,
+        "shop_id": shop_id,
+        "original_authorization_id": authorization_id,
+        "supplemental_authorization_id": supplemental_auth_id,
+        "original_total": original_total,
+        "supplemental_total": supplemental_total,
+        "combined_total": round(combined_total, 2),
+        "combined_parts": round(combined_parts, 2),
+        "combined_labor": round(combined_labor, 2),
+        "supplemental_insurance_pays": supplemental_insurance_pays,
+        "combined_insurance_pays": round(combined_insurance_pays, 2),
+        "shop_name": shop.get("name", "Unknown Shop"),
+        "shop_phone": shop.get("phone", ""),
+        "authorization_status": "approved" if customer_approved else "pending_approval",
+        "authorization_date": datetime.now().strftime("%Y-%m-%d"),
+        "valid_until": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
+        "shop_webhook_url": shop.get("webhook_url"),
+    }
+    return json.dumps(result)

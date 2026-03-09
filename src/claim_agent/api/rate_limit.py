@@ -27,6 +27,11 @@ def is_rate_limited(ip: str) -> bool:
     return False
 
 
+def clear_rate_limit_buckets() -> None:
+    """Clear all rate limit buckets. For testing only."""
+    _buckets.clear()
+
+
 def get_client_ip(request) -> str:
     """Extract client IP, respecting X-Forwarded-For when behind a proxy."""
     forwarded = request.headers.get("X-Forwarded-For")

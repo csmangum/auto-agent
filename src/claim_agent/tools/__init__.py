@@ -44,6 +44,10 @@ __all__ = [
     "create_parts_order",
     "calculate_repair_estimate",
     "generate_repair_authorization",
+    # Supplemental tools
+    "get_original_repair_estimate",
+    "calculate_supplemental_estimate",
+    "update_repair_authorization",
     # Vision tools
     "analyze_damage_photo",
     # Dispute tools
@@ -174,6 +178,19 @@ def __getattr__(name: str):
         from claim_agent.tools.partial_loss_tools import generate_repair_authorization
         setattr(mod, "generate_repair_authorization", generate_repair_authorization)
         return generate_repair_authorization
+    # Supplemental tools
+    if name == "get_original_repair_estimate":
+        from claim_agent.tools.supplemental_tools import get_original_repair_estimate
+        setattr(mod, "get_original_repair_estimate", get_original_repair_estimate)
+        return get_original_repair_estimate
+    if name == "calculate_supplemental_estimate":
+        from claim_agent.tools.supplemental_tools import calculate_supplemental_estimate
+        setattr(mod, "calculate_supplemental_estimate", calculate_supplemental_estimate)
+        return calculate_supplemental_estimate
+    if name == "update_repair_authorization":
+        from claim_agent.tools.supplemental_tools import update_repair_authorization
+        setattr(mod, "update_repair_authorization", update_repair_authorization)
+        return update_repair_authorization
     # Vision tools
     if name == "analyze_damage_photo":
         from claim_agent.tools.vision_tools import analyze_damage_photo

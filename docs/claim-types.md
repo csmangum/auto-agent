@@ -228,6 +228,19 @@ Insurance Pays = Total - Customer Pays
 | Aftermarket | Third-party | Lower |
 | Refurbished | Reconditioned | Lowest |
 
+### Supplemental (Sub-Workflow)
+
+When additional damage is discovered during repair, the [Supplemental Crew](crews.md#supplemental-crew) handles it as a sub-workflow. Invoke via `POST /claims/{claim_id}/supplemental` with:
+
+```json
+{
+  "supplemental_damage_description": "Hidden frame damage discovered during bumper removal",
+  "reported_by": "shop"
+}
+```
+
+Allowed claim statuses: `processing`, `settled`. California CCR 2695.8 requires prompt inspection and authorization.
+
 ### Example
 
 ```json

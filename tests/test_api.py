@@ -29,7 +29,7 @@ class TestClaimsStats:
         resp = client.get("/api/claims/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_claims"] == 4
+        assert data["total_claims"] == 5
         assert "by_status" in data
         assert "by_type" in data
         assert data["by_status"]["open"] == 1
@@ -42,8 +42,8 @@ class TestClaimsList:
         resp = client.get("/api/claims")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total"] == 4
-        assert len(data["claims"]) == 4
+        assert data["total"] == 5
+        assert len(data["claims"]) == 5
 
     def test_filter_by_status(self, client):
         resp = client.get("/api/claims?status=open")
@@ -61,7 +61,7 @@ class TestClaimsList:
         resp = client.get("/api/claims?limit=1&offset=0")
         data = resp.json()
         assert len(data["claims"]) == 1
-        assert data["total"] == 4
+        assert data["total"] == 5
 
     def test_pagination_limit_zero_returns_422(self, client):
         resp = client.get("/api/claims?limit=0")
@@ -413,6 +413,78 @@ class TestReviewQueue:
         assert "summary" in data
 
 
+class TestSupplemental:
+    """Tests for POST /claims/{claim_id}/supplemental."""
+
+    def test_file_supplemental_claim_not_found_returns_404(self, client):
+        resp = client.post(
+            "/api/claims/CLM-NOTEXIST/supplemental",
+            json={"supplemental_damage_description": "Frame damage"},
+        )
+        assert resp.status_code == 404
+
+    def test_file_supplemental_wrong_claim_type_returns_400(self, client):
+        # CLM-TEST001 is new, not partial_loss
+        resp = client.post(
+            "/api/claims/CLM-TEST001/supplemental",
+            json={"supplemental_damage_description": "Frame damage"},
+        )
+        assert resp.status_code == 400
+        assert "partial_loss" in resp.json()["detail"].lower()
+
+    def test_file_supplemental_wrong_status_returns_409(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST005", "needs_review", details="Test")
+        resp = client.post(
+            "/api/claims/CLM-TEST005/supplemental",
+            json={"supplemental_damage_description": "Frame damage"},
+        )
+        assert resp.status_code == 409
+        assert "cannot receive supplemental" in resp.json()["detail"].lower()
+
+    def test_file_supplemental_invalid_reported_by_returns_422(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST005/supplemental",
+            json={
+                "supplemental_damage_description": "Frame damage",
+                "reported_by": "invalid",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_file_supplemental_success_returns_response_model(self, client, monkeypatch):
+        import claim_agent.api.routes.claims as claims_mod
+
+        mock_result = {
+            "claim_id": "CLM-TEST005",
+            "status": "processing",
+            "supplemental_amount": 450.0,
+            "combined_insurance_pays": 2050.0,
+            "workflow_output": "Supplemental processed.",
+            "summary": "Supplemental processed.",
+        }
+        monkeypatch.setattr(
+            claims_mod, "run_supplemental_workflow", lambda *a, **kw: mock_result
+        )
+        resp = client.post(
+            "/api/claims/CLM-TEST005/supplemental",
+            json={
+                "supplemental_damage_description": "Hidden frame damage",
+                "reported_by": "shop",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST005"
+        assert data["status"] == "processing"
+        assert data["supplemental_amount"] == 450.0
+        assert data["combined_insurance_pays"] == 2050.0
+        assert "workflow_output" in data
+        assert "summary" in data
+
+
 # -------------------------------------------------------------------
 # Metrics endpoints
 # -------------------------------------------------------------------
@@ -516,7 +588,7 @@ class TestSystemHealth:
         data = resp.json()
         assert data["status"] == "healthy"
         assert data["database"] == "connected"
-        assert data["total_claims"] == 4
+        assert data["total_claims"] == 5
 
 
 class TestAgentsCatalog:
@@ -526,7 +598,7 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 8
+        assert len(crews) == 9
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names
