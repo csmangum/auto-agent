@@ -254,7 +254,6 @@ def _run_stage(
 def _run_crew_stage_body(
     ctx: _WorkflowCtx,
     crew_name: str,
-    output_key: str,
     create_crew: Callable[["_WorkflowCtx"], object],
     get_inputs: Callable[["_WorkflowCtx"], dict],
     combine_label: str | None,
@@ -326,7 +325,7 @@ def _run_crew_stage(
         stage_key,
         restore=restore,
         run=lambda c: _run_crew_stage_body(
-            c, crew_name, output_key, create_crew, get_inputs, combine_label
+            c, crew_name, create_crew, get_inputs, combine_label
         ),
         get_checkpoint_data=lambda c: {output_key: getattr(c, "_last_stage_output", "")},
     )
