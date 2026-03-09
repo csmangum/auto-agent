@@ -60,15 +60,22 @@ logger = get_logger(__name__)
 _callbacks_lock = threading.Lock()
 
 
+REOPENED_EXTRA_FIELDS = ("prior_claim_id", "reopening_reason", "is_reopened")
+
+
 def _normalize_claim_data(claim_data: dict) -> tuple[ClaimInput, dict]:
     """Sanitize and validate claim data, returning model + JSON-safe dict.
 
     This ensures numeric fields are coerced and extra fields are dropped before
-    we pass data to LLM prompts or business logic.
+    we pass data to LLM prompts or business logic. Preserves reopened-related
+    fields (prior_claim_id, reopening_reason, is_reopened) for router recognition.
     """
     sanitized = sanitize_claim_data(claim_data)
     claim_input = ClaimInput.model_validate(sanitized)
     normalized = claim_input.model_dump(mode="json")
+    for key in REOPENED_EXTRA_FIELDS:
+        if key in sanitized and sanitized[key] is not None:
+            normalized[key] = sanitized[key]
     return claim_input, normalized
 
 
