@@ -151,6 +151,20 @@ SKILL_CONTEXT_QUERIES = {
         "queries": ["escalation human review high value low confidence"],
         "sections": ["good_faith_requirements"],
     },
+
+    # Subrogation
+    "liability_investigator": {
+        "queries": ["fault liability third party subrogation"],
+        "sections": ["subrogation_rules"],
+    },
+    "demand_specialist": {
+        "queries": ["demand letter subrogation recovery"],
+        "sections": ["subrogation_rules"],
+    },
+    "recovery_tracker": {
+        "queries": ["recovery tracking subrogation"],
+        "sections": ["subrogation_rules"],
+    },
 }
 
 
