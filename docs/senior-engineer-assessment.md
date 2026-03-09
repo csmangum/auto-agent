@@ -10,14 +10,20 @@ This is a well-architected proof-of-concept for AI-driven insurance claim proces
 
 | Metric | Value |
 |---|---|
-| Source files | 159 Python files |
-| Source LOC | ~22,157 |
-| Test files | 58 Python files |
-| Test LOC | ~19,693 |
-| Test:Source ratio | ~0.89:1 |
-| Unit tests | 991 (990 pass, 1 fail) |
-| Code coverage | 83% |
-| Lint (ruff) | Clean pass |
+| Backend source files | 159 Python files |
+| Backend source LOC | ~22,157 |
+| Backend test files | 58 Python files |
+| Backend test LOC | ~19,693 |
+| Backend test:source ratio | ~0.89:1 |
+| Backend unit tests | 991 (990 pass, 1 fail) |
+| Backend code coverage | 83% |
+| Backend lint (ruff) | Clean pass |
+| Frontend source files | 27 TypeScript/TSX files |
+| Frontend source LOC | ~2,510 |
+| Frontend component tests | 12 (Vitest, all pass) |
+| Frontend E2E tests | 6 smoke specs (Playwright) |
+| Frontend lint (ESLint) | Clean pass |
+| Frontend build | Successful (1.3 MB main chunk) |
 | CI jobs | 5 (unit, integration, e2e, lint, frontend) |
 
 ---
@@ -225,7 +231,103 @@ The `llm` parameter is typed as `Any` everywhere. Since it's always a CrewAI LLM
 
 ## Frontend Assessment
 
-The React 19 + Vite 7 frontend is a standard dashboard application with pages for claims list, claim detail, documentation, skills, agents, and system config. It uses Tailwind CSS and includes component-level tests (Vitest) and E2E smoke tests (Playwright). The frontend is competently built but not the primary focus of the assessment.
+### Quantitative Overview
+
+| Metric | Value |
+|---|---|
+| Files | 27 TypeScript/TSX files |
+| LOC | ~2,510 |
+| Component tests | 12 (Vitest + Testing Library) |
+| E2E tests | 6 smoke specs (Playwright) |
+| Lint (ESLint) | Clean pass |
+| Build | Successful (Vite 7) |
+| Production bundle | ~1.3 MB main chunk (375 KB gzipped) |
+
+### Technology Stack
+
+React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.6 (strict mode). Charting via Recharts, markdown rendering via react-markdown with remark-gfm, and Mermaid diagram support. Modern toolchain with proper ESLint config (typescript-eslint, react-hooks, react-refresh rules).
+
+### Architecture
+
+**Pages:** Dashboard, ClaimsList, ClaimDetail, NewClaimForm, Documentation, Skills, SkillDetail, Agents, SystemConfig
+
+**Components:** Layout (sidebar + responsive nav), ClaimTable, StatusBadge, StatCard, AuditTimeline, MarkdownRenderer, MermaidDiagram
+
+**API Layer:** Typed client (`api/client.ts`) with `fetchJSON<T>` generic, automatic 5xx retry, SSE stream consumer for realtime claim updates
+
+### Strengths
+
+**1. Typed API Client (Very Good)**
+`api/client.ts` provides a clean, fully-typed API layer. The generic `fetchJSON<T>` function handles error formatting, 5xx retry, and response parsing in one place. All response types are defined in `api/types.ts` with proper interfaces. The SSE stream consumer (`streamClaimUpdates`) correctly handles chunked parsing, abort controllers, and cleanup.
+
+**2. Realtime Claim Submission (Good)**
+`NewClaimForm.tsx` implements async claim submission with SSE streaming -- the user submits a claim, gets a claim ID immediately, then watches routing and resolution happen live with a pulsing "Live" indicator. The `abortStreamRef` pattern correctly cleans up on unmount and form reset. This is a genuinely useful UX pattern for demonstrating the agentic workflow.
+
+**3. Component Design (Good)**
+Components are small, focused, and reusable. `StatusBadge` maps 15+ claim statuses to distinct color schemes. `StatCard` accepts a color prop with a well-defined palette. `AuditTimeline` renders a vertical timeline with expandable before/after state diffs. `ClaimTable` supports a `compact` mode for dashboard embedding.
+
+**4. Security-Conscious Markdown Rendering (Good)**
+`MarkdownRenderer` sanitizes link hrefs against an allowlist of safe URL schemes (`http:`, `https:`, `mailto:`), preventing `javascript:` XSS. Mermaid diagrams use `securityLevel: 'strict'`. External links get `rel="noopener noreferrer"`.
+
+**5. Responsive Layout (Good)**
+The `Layout` component implements a responsive sidebar with mobile overlay, hamburger menu, and proper `aria-label`/`aria-expanded` attributes. The transition from off-canvas to static sidebar at the `lg` breakpoint is clean.
+
+**6. Loading States (Good)**
+Every page has skeleton loading states with Tailwind's `animate-pulse` -- stat cards shimmer, tables show placeholder rows, and detail pages show content-shaped placeholders. Error states are consistently rendered with red alert boxes.
+
+### Concerns
+
+**1. No Global State Management**
+Each page fetches its own data in `useEffect` with local `useState`. There's no shared state, no caching, and no request deduplication. Navigating from the Dashboard to the Claims list re-fetches claims. For a POC this is acceptable, but production should use React Query or SWR for caching, deduplication, background refetching, and optimistic updates.
+
+**2. No Error Boundary**
+There's no React error boundary wrapping the application. An uncaught render error in any component will crash the entire app with a white screen. A top-level `ErrorBoundary` component with a fallback UI is standard practice.
+
+**3. No API Key / Auth Handling in the Client**
+The API client sends `credentials: 'include'` on form posts but doesn't attach API keys or JWT tokens. When the backend has auth enabled, the frontend will get 401s on every request. There's no login page, no token storage, and no auth context provider.
+
+**4. Bundle Size Warning**
+The production build generates a 1.28 MB main JS chunk (375 KB gzipped). Vite warns about chunks exceeding 500 KB. The primary culprits are Mermaid (which pulls in cytoscape, katex, and numerous diagram renderers) and Recharts. Mermaid should be lazy-loaded since only the Documentation page uses it. Similarly, Recharts could be code-split since only the Dashboard uses charts.
+
+**5. No Pagination on Claims List**
+`ClaimsList` fetches `limit: 200` claims and renders them all. There's no "Load More" button, no infinite scroll, and no page controls. The API supports `offset`-based pagination but the frontend ignores it. With a large number of claims, this will cause slow renders and high memory usage.
+
+**6. `dangerouslySetInnerHTML` in MermaidDiagram**
+`MermaidDiagram` renders SVG output from Mermaid's `render()` via `dangerouslySetInnerHTML`. While Mermaid runs with `securityLevel: 'strict'`, injecting raw HTML is always a risk vector. The Mermaid library's own sanitization is the only defense here.
+
+**7. Hardcoded Status/Type Lists**
+`ClaimsList.tsx` hardcodes the filter options for statuses and claim types. These lists are out of sync with the backend -- the frontend's `TYPES` array is missing `bodily_injury` and `reopened`. These values should be fetched from the API or shared from a common source.
+
+**8. No 404 / Catch-All Route**
+The router in `App.tsx` has no catch-all route. Navigating to `/nonexistent` renders a blank page inside the layout. Should show a "Page Not Found" component.
+
+**9. Limited Test Coverage**
+Only 4 component test files covering 12 tests total. The test files cover `StatCard`, `StatusBadge`, `ClaimTable`, and `MarkdownRenderer` with basic rendering assertions. No tests for pages, no tests for the API client, no tests for the SSE stream consumer, and no interaction tests (clicks, form submission). The E2E smoke tests (6 specs) only verify that pages load without errors.
+
+**10. `MermaidDiagram` ID Counter Is Not Stable**
+The module-level `idCounter` increments on every render, producing non-deterministic IDs (`mermaid-1`, `mermaid-2`, ...) that depend on render order. This breaks React's strict mode (which double-renders in development), could cause ID collisions in concurrent rendering, and makes snapshot testing unreliable. Should use `useId()` or `useRef` for stable IDs.
+
+### Recommendations (Frontend-Specific)
+
+#### High Priority
+1. **Add React Query or SWR** for data fetching, caching, and deduplication
+2. **Add an error boundary** at the app root
+3. **Add auth context** with token storage and automatic header injection
+4. **Lazy-load Mermaid and Recharts** to reduce initial bundle size
+5. **Add pagination controls** to the Claims list page
+
+#### Medium Priority
+6. **Add a 404 catch-all route** to App.tsx
+7. **Fetch status/type filter values** from the API instead of hardcoding
+8. **Add page-level tests** (at least Dashboard, ClaimDetail, NewClaimForm)
+9. **Fix MermaidDiagram ID generation** with `useId()` for React 18+ stability
+10. **Add API client tests** with MSW (Mock Service Worker) for the fetch layer
+
+#### Low Priority
+11. **Add dark mode support** (Tailwind 4 makes this straightforward)
+12. **Add keyboard navigation** for the claims table (arrow keys, Enter to open)
+13. **Add toast notifications** for async operations (claim submitted, error occurred)
+14. **Add a claimant-facing view** separate from the adjuster dashboard
 
 ---
 
@@ -252,12 +354,19 @@ The React 19 + Vite 7 frontend is a standard dashboard application with pages fo
 14. **Configure `X-Forwarded-For` trust** via settings
 15. **Enforce JWT minimum key length** in settings validation
 
+### Frontend
+16. **Add React Query or SWR** for data fetching, caching, and deduplication
+17. **Add error boundary** and 404 catch-all route
+18. **Add auth context** with token storage for API key / JWT
+19. **Lazy-load Mermaid and Recharts** to cut initial bundle from 1.3 MB to ~400 KB
+20. **Add pagination** to the claims list page
+
 ### Low Priority (Nice to Have)
-16. **Add Dockerfile and docker-compose** for reproducible deployments
-17. **Add OpenTelemetry tracing** alongside LangSmith
-18. **Add pagination to audit log queries** for large claims
-19. **Decompose fraud detection** into pluggable indicator detectors
-20. **Remove module-level side effects** in `events.py`
+21. **Add Dockerfile and docker-compose** for reproducible deployments
+22. **Add OpenTelemetry tracing** alongside LangSmith
+23. **Add pagination to audit log queries** for large claims
+24. **Decompose fraud detection** into pluggable indicator detectors
+25. **Remove module-level side effects** in `events.py`
 
 ---
 
