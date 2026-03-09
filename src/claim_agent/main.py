@@ -21,6 +21,7 @@ from claim_agent.config import get_settings
 from claim_agent.config.settings import get_retention_period_years
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
+from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.database import get_db_path
@@ -276,8 +277,16 @@ def assign(
 @app.command()
 def approve(
     claim_id: Annotated[str, typer.Argument(help="Claim ID")],
+    confirmed_claim_type: Annotated[
+        Optional[str],
+        typer.Option("--confirmed-claim-type", help="Reviewer-confirmed claim type"),
+    ] = None,
+    confirmed_payout: Annotated[
+        Optional[float],
+        typer.Option("--confirmed-payout", help="Reviewer-confirmed payout amount"),
+    ] = None,
 ) -> None:
-    """Approve claim and re-run workflow (supervisor)."""
+    """Approve claim and run Human Review Handback crew, then workflow (supervisor)."""
     ctx = _get_cli_ctx()
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
@@ -292,9 +301,15 @@ def approve(
         sys.exit(1)
     try:
         ctx.adjuster_service.approve(claim_id, actor_id=ACTOR_WORKFLOW)
-        result = run_claim_workflow(
-            claim_data,
-            existing_claim_id=claim_id,
+        reviewer_decision = None
+        if confirmed_claim_type is not None or confirmed_payout is not None:
+            reviewer_decision = {
+                "confirmed_claim_type": confirmed_claim_type,
+                "confirmed_payout": confirmed_payout,
+            }
+        result = run_handback_workflow(
+            claim_id,
+            reviewer_decision=reviewer_decision,
             actor_id=ACTOR_WORKFLOW,
             ctx=ctx,
         )
