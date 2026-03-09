@@ -86,6 +86,7 @@ class _WorkflowCtx:
     raw_output: str = ""
     workflow_output: str = ""
     extracted_payout: float | None = None
+    _last_stage_output: str = ""
 
 
 def run_claim_workflow(

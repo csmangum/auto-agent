@@ -40,7 +40,7 @@ class TestRateLimitLRUEviction:
     def test_buckets_capped_at_max(self):
         """LRU eviction keeps bucket count at _MAX_BUCKETS."""
         for i in range(_MAX_BUCKETS + 1):
-            is_rate_limited(f"192.168.0.{i % 256}.{i // 256}")
+            is_rate_limited(f"ip-{i}")
         assert len(_buckets) == _MAX_BUCKETS
 
     def test_evicted_ip_treated_as_new(self):

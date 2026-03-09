@@ -327,7 +327,7 @@ def _run_crew_stage(
         run=lambda c: _run_crew_stage_body(
             c, crew_name, create_crew, get_inputs, combine_label
         ),
-        get_checkpoint_data=lambda c: {output_key: getattr(c, "_last_stage_output", "")},
+        get_checkpoint_data=lambda c: {output_key: c._last_stage_output},
     )
 
 
