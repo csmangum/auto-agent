@@ -148,4 +148,6 @@ def _parse_outcome(workflow_output: str) -> str:
         return "route_to_appeal"
     if "escalated" in lower or "escalation" in lower:
         return "escalated"
-    return "uphold_denial"
+    if "uphold_denial" in lower or "uphold denial" in lower or "denial upheld" in lower:
+        return "uphold_denial"
+    return "escalated"
