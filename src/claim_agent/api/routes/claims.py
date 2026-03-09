@@ -31,7 +31,7 @@ from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type
-from claim_agent.utils.sanitization import MAX_ACTOR_ID, sanitize_claim_data, sanitize_denial_reason, sanitize_policyholder_evidence
+from claim_agent.utils.sanitization import MAX_ACTOR_ID, sanitize_claim_data
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
@@ -916,8 +916,8 @@ async def run_denial_coverage(
 
     denial_data = {
         "claim_id": claim_id,
-        "denial_reason": sanitize_denial_reason(body.denial_reason),
-        "policyholder_evidence": sanitize_policyholder_evidence(body.policyholder_evidence),
+        "denial_reason": body.denial_reason,
+        "policyholder_evidence": body.policyholder_evidence,
     }
     state = body.state or "California"
 
