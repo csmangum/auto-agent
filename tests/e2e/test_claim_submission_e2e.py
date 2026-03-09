@@ -303,7 +303,8 @@ def test_e2e_submit_bodily_injury_claim_via_api(
         medical_charges=3750.0,
         pain_suffering=5625.0,
         injury_severity="moderate",
-        policy_bi_limit=250000.0,
+        policy_bi_limit_per_person=250000.0,
+        policy_bi_limit_per_accident=500000.0,
     )
     workflow_tasks_output = [mock_task]
 

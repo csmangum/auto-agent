@@ -160,7 +160,8 @@ def calculate_bi_settlement_impl(
             {
                 "error": "Invalid claim_id",
                 "proposed_settlement": None,
-                "policy_bi_limit": None,
+                "policy_bi_limit_per_person": None,
+                "policy_bi_limit_per_accident": None,
             }
         )
     if not isinstance(medical_charges, (int, float)) or medical_charges < 0:
@@ -168,7 +169,8 @@ def calculate_bi_settlement_impl(
             {
                 "error": "Invalid medical_charges",
                 "proposed_settlement": None,
-                "policy_bi_limit": None,
+                "policy_bi_limit_per_person": None,
+                "policy_bi_limit_per_accident": None,
             }
         )
     # Get policy BI limits

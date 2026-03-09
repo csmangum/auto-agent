@@ -78,7 +78,8 @@ def calculate_bi_settlement(
         pain_suffering_multiplier: Multiplier for pain/suffering (default 1.5).
 
     Returns:
-        JSON with proposed_settlement, medical_charges, pain_suffering, policy_bi_limit.
+        JSON with proposed_settlement, medical_charges, pain_suffering,
+        policy_bi_limit_per_person, policy_bi_limit_per_accident.
     """
     return calculate_bi_settlement_impl(
         claim_id=claim_id,

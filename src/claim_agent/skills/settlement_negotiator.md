@@ -32,6 +32,7 @@ Provide structured settlement proposal with:
 - payout_amount: Proposed settlement (insurance payment)
 - medical_charges
 - pain_suffering
-- policy_bi_limit
+- policy_bi_limit_per_person
+- policy_bi_limit_per_accident
 - capped_by_limit (if applicable)
 - rationale: Brief justification
