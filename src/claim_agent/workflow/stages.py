@@ -84,6 +84,38 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
             logger.info("Restored router from checkpoint", extra={"claim_id": ctx.claim_id})
             return None
 
+    # If claim_type is already set (e.g., from reviewer override), skip re-classification
+    existing_claim_type = ctx.claim_data.get("claim_type")
+    if existing_claim_type and str(existing_claim_type).strip():
+        ctx.claim_type = str(existing_claim_type).strip()
+        ctx.router_confidence = 1.0
+        ctx.router_reasoning = "Using pre-determined claim type (reviewer override)"
+        ctx.raw_output = f"claim_type: {ctx.claim_type}"
+        logger.set_claim_type(ctx.claim_type)
+        logger.info(
+            "Skipping router classification; using existing claim_type from database",
+            extra={"claim_id": ctx.claim_id, "claim_type": ctx.claim_type},
+        )
+        # Save this as checkpoint so it's consistent with normal router flow
+        ctx.context.repo.save_task_checkpoint(
+            ctx.claim_id,
+            ctx.workflow_run_id,
+            "router",
+            json.dumps({
+                "claim_type": ctx.claim_type,
+                "router_confidence": ctx.router_confidence,
+                "router_reasoning": ctx.router_reasoning,
+                "raw_output": ctx.raw_output,
+            }),
+        )
+        ctx.checkpoints["router"] = json.dumps({
+            "claim_type": ctx.claim_type,
+            "router_confidence": ctx.router_confidence,
+            "router_reasoning": ctx.router_reasoning,
+            "raw_output": ctx.raw_output,
+        })
+        return None
+
     logger.log_event("router_started", step="classification")
     router_start = time.time()
 

@@ -14,6 +14,7 @@ from claim_agent.api.deps import require_role
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
+from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import (
@@ -279,6 +280,31 @@ class RequestInfoBody(BaseModel):
     note: str = ""
 
 
+class ReviewerDecisionBody(BaseModel):
+    """Optional reviewer decision for handback when approving a claim."""
+
+    confirmed_claim_type: Optional[
+        Literal["new", "duplicate", "total_loss", "partial_loss", "bodily_injury", "fraud"]
+    ] = Field(
+        default=None,
+        description="Reviewer-confirmed claim type. Must be one of: new, duplicate, total_loss, partial_loss, bodily_injury, fraud.",
+    )
+    confirmed_payout: Optional[float] = Field(
+        default=None,
+        description="Reviewer-confirmed payout amount",
+    )
+    notes: Optional[str] = Field(default=None, description="Reviewer notes")
+
+
+class ApproveBody(BaseModel):
+    """Optional body for approve endpoint to pass reviewer decision for handback."""
+
+    reviewer_decision: Optional[ReviewerDecisionBody] = Field(
+        default=None,
+        description="Reviewer decision for handback processing",
+    )
+
+
 @router.patch("/claims/{claim_id}/assign")
 def assign_claim(
     claim_id: str,
@@ -302,10 +328,13 @@ def assign_claim(
 @router.post("/claims/{claim_id}/review/approve")
 async def approve_review(
     claim_id: str,
+    body: ApproveBody = Body(default=ApproveBody()),
     auth: AuthContext = RequireSupervisor,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
-    """Approve claim for continued processing and re-run workflow. Requires supervisor."""
+    """Approve claim for continued processing. Runs Human Review Handback crew to parse
+    reviewer decision, update claim, then routes to next step (settlement, subrogation, etc).
+    Requires supervisor."""
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
@@ -321,9 +350,18 @@ async def approve_review(
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    result = run_claim_workflow(
-        claim_data,
-        existing_claim_id=claim_id,
+
+    reviewer_decision = None
+    if body.reviewer_decision:
+        reviewer_decision = {
+            "confirmed_claim_type": body.reviewer_decision.confirmed_claim_type,
+            "confirmed_payout": body.reviewer_decision.confirmed_payout,
+            "notes": body.reviewer_decision.notes,
+        }
+
+    result = run_handback_workflow(
+        claim_id,
+        reviewer_decision=reviewer_decision,
         actor_id=actor_id,
         ctx=ctx,
     )
