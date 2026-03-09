@@ -13,6 +13,7 @@ MAX_VIN = 32
 MAX_VEHICLE_MAKE = 64
 MAX_VEHICLE_MODEL = 128
 MAX_REOPENING_REASON = 1000
+MAX_PRIOR_CLAIM_ID = 64
 
 # Patterns that may indicate prompt injection attempts
 INJECTION_PATTERNS = [
@@ -96,6 +97,9 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
             out[key] = _remove_injection_patterns(t)
         elif key == "reopening_reason":
             t = _sanitize_text(value, MAX_REOPENING_REASON)
+            out[key] = _remove_injection_patterns(t)
+        elif key == "prior_claim_id":
+            t = _sanitize_text(value, MAX_PRIOR_CLAIM_ID)
             out[key] = _remove_injection_patterns(t)
         elif key == "policy_number":
             out[key] = _sanitize_text(value, MAX_POLICY_NUMBER)
