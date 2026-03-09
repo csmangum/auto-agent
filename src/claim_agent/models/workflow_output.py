@@ -72,6 +72,9 @@ class BIWorkflowOutput(BaseModel):
         default=None, description="Severity classification"
     )
     claim_id: str | None = Field(default=None, description="Claim ID")
-    policy_bi_limit: float | None = Field(
+    policy_bi_limit_per_person: float | None = Field(
         default=None, description="Policy BI per-person limit"
+    )
+    policy_bi_limit_per_accident: float | None = Field(
+        default=None, description="Policy BI per-accident limit"
     )

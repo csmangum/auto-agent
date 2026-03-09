@@ -82,8 +82,8 @@ Assess liability exposure and propose settlement.
 3. From the calculate_bi_settlement result, extract proposed_settlement as payout_amount.
 4. Use add_claim_note to document settlement rationale.
 
-Return a structured output with payout_amount (proposed settlement), medical_charges, pain_suffering, injury_severity, policy_bi_limit.""",
-                expected_output="Structured settlement proposal: payout_amount, medical_charges, pain_suffering, injury_severity, policy_bi_limit.",
+Return a structured output with payout_amount (proposed settlement), medical_charges, pain_suffering, injury_severity, policy_bi_limit_per_person, policy_bi_limit_per_accident.""",
+                expected_output="Structured settlement proposal: payout_amount, medical_charges, pain_suffering, injury_severity, policy_bi_limit_per_person, policy_bi_limit_per_accident.",
                 agent_index=2,
                 context_task_indices=[0, 1],
                 output_pydantic=BIWorkflowOutput,
