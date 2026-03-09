@@ -46,6 +46,7 @@ from claim_agent.workflow.stages import (
     _stage_escalation_check,
     _stage_rental,
     _stage_router,
+    _stage_salvage,
     _stage_settlement,
     _stage_subrogation,
     _stage_workflow_crew,
@@ -319,7 +320,7 @@ def run_claim_workflow(
                 checkpoints=checkpoints,
             )
 
-            for stage_fn in (_stage_router, _stage_escalation_check, _stage_workflow_crew, _stage_rental, _stage_settlement, _stage_subrogation):
+            for stage_fn in (_stage_router, _stage_escalation_check, _stage_workflow_crew, _stage_rental, _stage_settlement, _stage_subrogation, _stage_salvage):
                 early_return = stage_fn(wf_ctx)
                 if early_return is not None:
                     return early_return

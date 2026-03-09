@@ -13,7 +13,7 @@ from claim_agent.models.claim import ClaimType
 from claim_agent.utils.retry import with_llm_retry
 
 
-WORKFLOW_STAGES = ("router", "escalation_check", "workflow", "rental", "settlement", "subrogation")
+WORKFLOW_STAGES = ("router", "escalation_check", "workflow", "rental", "settlement", "subrogation", "salvage")
 
 
 def _final_status(claim_type: str) -> str:
@@ -32,6 +32,11 @@ def _final_status(claim_type: str) -> str:
 def _requires_settlement(claim_type: str) -> bool:
     """Return True when the workflow should hand off to the shared settlement crew."""
     return claim_type in (ClaimType.PARTIAL_LOSS.value, ClaimType.TOTAL_LOSS.value)
+
+
+def _requires_salvage(claim_type: str) -> bool:
+    """Return True when the workflow should run the salvage crew (total_loss only)."""
+    return claim_type == ClaimType.TOTAL_LOSS.value
 
 
 def _combine_workflow_outputs(

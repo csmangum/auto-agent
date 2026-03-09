@@ -112,6 +112,30 @@ class TestSettlementCrewStructure:
         assert len(crew.tasks) == 3
 
 
+class TestSubrogationCrewStructure:
+    """Structural validation for Subrogation crew."""
+
+    def test_creates_valid_crew(self):
+        from claim_agent.crews.subrogation_crew import create_subrogation_crew
+
+        crew = create_subrogation_crew(llm=_mock_llm(), use_rag=False)
+        _validate_crew_structure(crew)
+        assert len(crew.agents) == 3
+        assert len(crew.tasks) == 4
+
+
+class TestSalvageCrewStructure:
+    """Structural validation for Salvage crew."""
+
+    def test_creates_valid_crew(self):
+        from claim_agent.crews.salvage_crew import create_salvage_crew
+
+        crew = create_salvage_crew(llm=_mock_llm(), use_rag=False)
+        _validate_crew_structure(crew)
+        assert len(crew.agents) == 3
+        assert len(crew.tasks) == 4
+
+
 class TestEscalationCrewStructure:
     """Structural validation for Escalation crew."""
 

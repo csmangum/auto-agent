@@ -15,6 +15,9 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
 | [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
 | [Rental Reimbursement](#rental-reimbursement-crew) | 3 | Manage loss-of-use / rental coverage (runs after Partial Loss) |
+| [Settlement](#settlement-crew) | 3 | Shared final settlement for payout-ready claims |
+| [Subrogation](#subrogation-crew) | 3 | Post-settlement recovery from at-fault parties |
+| [Salvage](#salvage-crew) | 3 | Total-loss vehicle disposition (runs after Settlement for total_loss only) |
 | [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
 
 ---
@@ -774,6 +777,67 @@ flowchart TB
 - **AC5:** Closure task generates the final settlement report with status `settled` and `next_steps`
 - **AC6:** Total Loss and Partial Loss invoke Settlement Crew from main flow instead of inline settlement/report finalization
 - **AC7:** Documentation matches this specification
+
+---
+
+## Subrogation Crew
+
+**Location**: `src/claim_agent/crews/subrogation_crew.py`
+
+Post-settlement recovery from at-fault parties. Runs for total_loss and partial_loss after Settlement. Flow: assess liability → build case → send demand → track recovery.
+
+### Entry Conditions
+
+- **Claim type:** `total_loss` or `partial_loss` (runs after Settlement)
+- **Trigger:** Automatic when `_requires_settlement(claim_type)` is True
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Liability Investigator | `assess_liability`, `escalate_claim` |
+| Demand Specialist | `build_subrogation_case`, `send_demand_letter`, `generate_report`, `escalate_claim` |
+| Recovery Tracker | `record_recovery`, `generate_report`, `escalate_claim` |
+
+---
+
+## Salvage Crew
+
+**Location**: `src/claim_agent/crews/salvage_crew.py`
+
+Handles total-loss vehicle disposition. Runs **only for total_loss** claims, after Settlement and Subrogation. Flow: assess salvage value → arrange disposition → transfer title → track auction/recovery.
+
+### Entry Conditions
+
+- **Claim type:** `total_loss` only (runs after Subrogation)
+- **Trigger:** Automatic when `_requires_salvage(claim_type)` is True
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Salvage Coordinator | [`get_salvage_value`](tools.md#get_salvage_value), `generate_report`, `escalate_claim` |
+| Title Specialist | [`initiate_title_transfer`](tools.md#initiate_title_transfer), `generate_report`, `escalate_claim` |
+| Auction Liaison | [`record_salvage_disposition`](tools.md#record_salvage_disposition), `generate_report`, `escalate_claim` |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Salvage["Salvage Crew"]
+        A[1. Assess Salvage Value] --> B[2. Arrange Disposition] --> C[3. Transfer Title] --> D[4. Track Auction]
+    end
+
+    A -.- A1[get_salvage_value]
+    B -.- B1[initiate_title_transfer]
+    D -.- D1[record_salvage_disposition]
+```
+
+### Disposition Types
+
+- **auction** – Standard total loss disposition; vehicle sent to salvage auction
+- **owner_retention** – Policyholder retains vehicle; salvage deduction applied per state requirements
+- **scrap** – Very low salvage value; vehicle scrapped
 
 ---
 

@@ -19,6 +19,7 @@ from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 from claim_agent.crews.rental_crew import create_rental_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.crews.subrogation_crew import create_subrogation_crew
+from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
@@ -42,6 +43,7 @@ from claim_agent.workflow.helpers import (
     _combine_workflow_outputs,
     _extract_payout_from_workflow_result,
     _kickoff_with_retry,
+    _requires_salvage,
     _requires_settlement,
 )
 from claim_agent.workflow.routing import create_router_crew, _parse_router_output
@@ -641,5 +643,86 @@ def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
         ctx.workflow_run_id,
         "subrogation",
         json.dumps({"subrogation_output": subrogation_output}),
+    )
+    return None
+
+
+def _stage_salvage(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the salvage crew after settlement when claim is total_loss.
+
+    Populates ``ctx.workflow_output`` with the combined salvage output.
+    """
+    if not _requires_salvage(ctx.claim_type):
+        return None
+
+    if "salvage" in ctx.checkpoints:
+        try:
+            salv_cp = json.loads(ctx.checkpoints["salvage"])
+            if not isinstance(salv_cp, dict):
+                raise ValueError("salvage checkpoint is not a JSON object")
+            salvage_output = salv_cp["salvage_output"]
+            ctx.workflow_output = _combine_workflow_outputs(
+                ctx.workflow_output,
+                salvage_output,
+                label="Salvage workflow output",
+            )
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to restore salvage from checkpoint; invalidating and re-running stage: %s",
+                exc,
+                extra={"claim_id": ctx.claim_id},
+            )
+            ctx.checkpoints.pop("salvage", None)
+        else:
+            logger.info("Restored salvage from checkpoint", extra={"claim_id": ctx.claim_id})
+            return None
+
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    logger.log_event("crew_started", crew="salvage")
+    salvage_start = time.time()
+
+    salvage_crew = create_salvage_crew(ctx.context.llm)
+    salvage_inputs = {
+        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
+        "workflow_output": ctx.workflow_output,
+    }
+
+    try:
+        salvage_result = _kickoff_with_retry(salvage_crew, salvage_inputs)
+    except MidWorkflowEscalation as e:
+        return _handle_mid_workflow_escalation(
+            e,
+            claim_id=ctx.claim_id,
+            claim_type=ctx.claim_type,
+            raw_output=ctx.raw_output,
+            context=ctx.context,
+            workflow_logger=logger,
+            workflow_start_time=ctx.workflow_start_time,
+            prior_workflow_output=ctx.workflow_output,
+            actor_id=ctx.actor_id,
+            stage="salvage",
+            payout_amount=ctx.extracted_payout,
+            workflow_run_id=ctx.workflow_run_id,
+        )
+
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    salvage_latency = (time.time() - salvage_start) * 1000
+    salvage_output = str(
+        getattr(salvage_result, "raw", None)
+        or getattr(salvage_result, "output", None)
+        or str(salvage_result)
+    )
+    logger.log_event("crew_completed", crew="salvage", latency_ms=salvage_latency)
+    ctx.workflow_output = _combine_workflow_outputs(
+        ctx.workflow_output,
+        salvage_output,
+        label="Salvage workflow output",
+    )
+
+    ctx.context.repo.save_task_checkpoint(
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        "salvage",
+        json.dumps({"salvage_output": salvage_output}),
     )
     return None

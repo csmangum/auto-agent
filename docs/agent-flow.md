@@ -153,6 +153,13 @@ if claim_type in {"total_loss", "partial_loss"}:
             "workflow_output": str(workflow_result),
         }
     )
+    # Subrogation runs for both total_loss and partial_loss
+    subrogation_crew = create_subrogation_crew(llm)
+    workflow_result = subrogation_crew.kickoff(...)
+    # Salvage runs only for total_loss
+    if claim_type == "total_loss":
+        salvage_crew = create_salvage_crew(llm)
+        workflow_result = salvage_crew.kickoff(...)
 ```
 
 See [Crews](crews.md) for crew details.

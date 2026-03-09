@@ -284,6 +284,31 @@ _CREWS_CATALOG = [
             },
         ],
     },
+    {
+        "name": "Salvage Crew",
+        "description": "Handles total-loss vehicle disposition. Runs after Settlement and Subrogation for total_loss claims only.",
+        "module": "crews/salvage_crew.py",
+        "agents": [
+            {
+                "name": "Salvage Coordinator",
+                "skill": "salvage_coordinator",
+                "tools": ["get_salvage_value", "generate_report", "escalate_claim", "get_total_loss_requirements", "search_policy_compliance"],
+                "description": "Assesses salvage value and recommends disposition",
+            },
+            {
+                "name": "Title Specialist",
+                "skill": "title_specialist",
+                "tools": ["initiate_title_transfer", "generate_report", "escalate_claim", "get_total_loss_requirements", "search_policy_compliance"],
+                "description": "Initiates DMV title transfer or salvage certificate",
+            },
+            {
+                "name": "Auction Liaison",
+                "skill": "auction_liaison",
+                "tools": ["record_salvage_disposition", "generate_report", "escalate_claim", "get_total_loss_requirements", "search_policy_compliance"],
+                "description": "Records disposition outcome and tracks auction/recovery",
+            },
+        ],
+    },
 ]
 
 
