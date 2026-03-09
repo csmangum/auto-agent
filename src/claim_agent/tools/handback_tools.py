@@ -4,25 +4,26 @@ import json
 
 from crewai.tools import tool
 
-from claim_agent.db.database import get_db_path
+import logging
+import math
+
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.constants import STATUS_PROCESSING
 from claim_agent.exceptions import ClaimNotFoundError
-from claim_agent.utils.sanitization import sanitize_note
+from claim_agent.models.claim import ClaimType
+from claim_agent.utils.sanitization import MAX_PAYOUT, sanitize_note
 
-VALID_CLAIM_TYPES = (
-    "new",
-    "duplicate",
-    "total_loss",
-    "partial_loss",
-    "bodily_injury",
-    "fraud",
+# Handback-supported claim types (excludes REOPENED which is workflow-specific)
+VALID_CLAIM_TYPES = frozenset(
+    ct.value for ct in ClaimType if ct != ClaimType.REOPENED
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _get_repo():
     """Get repository instance for handback tools."""
-    return ClaimRepository(get_db_path())
+    return ClaimRepository()
 
 
 def _try_parse_escalation(s: str) -> dict | None:
@@ -143,12 +144,22 @@ def apply_reviewer_decision(
     claim_type = claim.get("claim_type")
     payout_amount = claim.get("payout_amount")
 
-    if confirmed_claim_type and str(confirmed_claim_type).strip().lower() in VALID_CLAIM_TYPES:
-        claim_type = str(confirmed_claim_type).strip().lower()
+    ct_str = str(confirmed_claim_type).strip().lower() if confirmed_claim_type else ""
+    if ct_str and ct_str in VALID_CLAIM_TYPES:
+        claim_type = ct_str
+    elif ct_str:
+        logger.warning(
+            "Invalid confirmed_claim_type %r for claim %s; keeping existing %r",
+            confirmed_claim_type,
+            claim_id,
+            claim_type,
+        )
 
     if confirmed_payout and str(confirmed_payout).strip():
         try:
-            payout_amount = float(confirmed_payout)
+            val = float(confirmed_payout)
+            if math.isfinite(val) and 0 <= val <= MAX_PAYOUT:
+                payout_amount = val
         except (ValueError, TypeError):
             pass
 

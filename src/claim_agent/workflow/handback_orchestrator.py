@@ -13,7 +13,6 @@ from claim_agent.db.constants import STATUS_PROCESSING
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.utils.sanitization import sanitize_note
 from claim_agent.workflow.helpers import _kickoff_with_retry
-from claim_agent.workflow.orchestrator import run_claim_workflow
 
 def _sanitize_reviewer_decision(decision: dict | None) -> dict:
     """Return a sanitized copy of the reviewer decision dict.
@@ -69,6 +68,7 @@ def run_handback_workflow(
     _kickoff_with_retry(crew, {
         "claim_id": claim_id,
         "reviewer_decision": decision_str,
+        "actor_id": actor_id or "handback_crew",
     })
 
     # Re-fetch claim after handback crew has applied updates
@@ -86,6 +86,8 @@ def run_handback_workflow(
         )
 
     claim_data = claim_data_from_row(claim)
+
+    from claim_agent.workflow.orchestrator import run_claim_workflow
 
     return run_claim_workflow(
         claim_data,
