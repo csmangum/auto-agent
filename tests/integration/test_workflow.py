@@ -174,31 +174,37 @@ class TestWorkflowWithMockedLLM:
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_partial_loss_crew") as mock_partial:
-                    with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
-                        with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
-                            with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                mock_llm.return_value = MagicMock()
-                                mock_router.return_value.kickoff.return_value = mock_router_response(
-                                    "partial_loss", "Repairable fender damage."
-                                )
-                                mock_partial.return_value.kickoff.return_value = mock_crew_response(
-                                    "Repair authorization created. insurance_pays: $2,100.",
-                                    tasks_output=workflow_tasks_output,
-                                )
-                                mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                    "Settlement completed. Status: settled."
-                                )
-                                mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                    "Subrogation assessment complete. No recovery opportunity."
-                                )
-                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                    with patch("claim_agent.workflow.stages.create_rental_crew") as mock_rental:
+                        with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                            with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
+                                with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                                    mock_llm.return_value = MagicMock()
+                                    mock_router.return_value.kickoff.return_value = mock_router_response(
+                                        "partial_loss", "Repairable fender damage."
+                                    )
+                                    mock_partial.return_value.kickoff.return_value = mock_crew_response(
+                                        "Repair authorization created. insurance_pays: $2,100.",
+                                        tasks_output=workflow_tasks_output,
+                                    )
+                                    mock_rental.return_value.kickoff.return_value = mock_crew_response(
+                                        "Rental eligibility confirmed. Reimbursement processed."
+                                    )
+                                    mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                        "Settlement completed. Status: settled."
+                                    )
+                                    mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                        "Subrogation assessment complete. No recovery opportunity."
+                                    )
+                                    mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
 
-                                result = run_claim_workflow(sample_partial_loss_claim)
+                                    result = run_claim_workflow(sample_partial_loss_claim)
 
         assert result["claim_type"] == "partial_loss"
         mock_partial.assert_called_once()
+        mock_rental.assert_called_once()
         mock_settlement.assert_called_once()
         assert "Repair authorization created" in result["workflow_output"]
+        assert "Rental eligibility confirmed" in result["workflow_output"]
         assert "Settlement completed" in result["workflow_output"]
         # Verify settlement received claim_data with payout_amount
         settlement_call = mock_settlement.return_value.kickoff.call_args

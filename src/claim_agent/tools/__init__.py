@@ -62,6 +62,10 @@ __all__ = [
     "get_total_loss_requirements",
     "get_fraud_detection_guidance",
     "get_repair_standards",
+    # Rental tools
+    "check_rental_coverage",
+    "get_rental_limits",
+    "process_rental_reimbursement",
     # Subrogation tools
     "assess_liability",
     "build_subrogation_case",
@@ -238,6 +242,19 @@ def __getattr__(name: str):
         from claim_agent.tools.rag_tools import get_repair_standards
         setattr(mod, "get_repair_standards", get_repair_standards)
         return get_repair_standards
+    # Rental tools
+    if name == "check_rental_coverage":
+        from claim_agent.tools.rental_tools import check_rental_coverage
+        setattr(mod, "check_rental_coverage", check_rental_coverage)
+        return check_rental_coverage
+    if name == "get_rental_limits":
+        from claim_agent.tools.rental_tools import get_rental_limits
+        setattr(mod, "get_rental_limits", get_rental_limits)
+        return get_rental_limits
+    if name == "process_rental_reimbursement":
+        from claim_agent.tools.rental_tools import process_rental_reimbursement
+        setattr(mod, "process_rental_reimbursement", process_rental_reimbursement)
+        return process_rental_reimbursement
     # Subrogation tools
     if name == "assess_liability":
         from claim_agent.tools.subrogation_tools import assess_liability

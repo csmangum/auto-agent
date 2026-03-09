@@ -16,6 +16,7 @@ from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
+from claim_agent.crews.rental_crew import create_rental_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.crews.subrogation_crew import create_subrogation_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
@@ -411,6 +412,84 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
                 "extracted_payout": ctx.extracted_payout,
             }
         ),
+    )
+    return None
+
+
+def _stage_rental(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the rental reimbursement crew for partial loss claims.
+
+    Only runs when claim_type is partial_loss. Combines rental output with
+    ctx.workflow_output before settlement.
+    """
+    if ctx.claim_type != ClaimType.PARTIAL_LOSS.value:
+        return None
+
+    if "rental" in ctx.checkpoints:
+        try:
+            rental_cp = json.loads(ctx.checkpoints["rental"])
+            if not isinstance(rental_cp, dict):
+                raise ValueError("rental checkpoint is not a JSON object")
+            rental_output = rental_cp["rental_output"]
+            ctx.workflow_output = _combine_workflow_outputs(
+                ctx.workflow_output, rental_output, label="Rental workflow output"
+            )
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to restore rental from checkpoint; invalidating and re-running stage: %s",
+                exc,
+                extra={"claim_id": ctx.claim_id},
+            )
+            ctx.checkpoints.pop("rental", None)
+        else:
+            logger.info("Restored rental from checkpoint", extra={"claim_id": ctx.claim_id})
+            return None
+
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    logger.log_event("crew_started", crew="rental")
+    rental_start = time.time()
+
+    rental_crew = create_rental_crew(ctx.context.llm)
+    rental_inputs = {
+        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
+        "workflow_output": ctx.workflow_output,
+    }
+
+    try:
+        rental_result = _kickoff_with_retry(rental_crew, rental_inputs)
+    except MidWorkflowEscalation as e:
+        return _handle_mid_workflow_escalation(
+            e,
+            claim_id=ctx.claim_id,
+            claim_type=ctx.claim_type,
+            raw_output=ctx.raw_output,
+            context=ctx.context,
+            workflow_logger=logger,
+            workflow_start_time=ctx.workflow_start_time,
+            prior_workflow_output=ctx.workflow_output,
+            actor_id=ctx.actor_id,
+            stage="rental",
+            payout_amount=ctx.extracted_payout,
+            workflow_run_id=ctx.workflow_run_id,
+        )
+
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    rental_latency = (time.time() - rental_start) * 1000
+    rental_output = str(
+        getattr(rental_result, "raw", None)
+        or getattr(rental_result, "output", None)
+        or str(rental_result)
+    )
+    logger.log_event("crew_completed", crew="rental", latency_ms=rental_latency)
+    ctx.workflow_output = _combine_workflow_outputs(
+        ctx.workflow_output, rental_output, label="Rental workflow output"
+    )
+
+    ctx.context.repo.save_task_checkpoint(
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        "rental",
+        json.dumps({"rental_output": rental_output}),
     )
     return None
 

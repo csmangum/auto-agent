@@ -38,12 +38,16 @@ def query_policy_db_impl(
         status = p.get("status", "active")
         is_active = isinstance(status, str) and status.lower() == "active"
         if is_active:
-            return json.dumps({
+            result = {
                 "valid": True,
                 "coverage": p.get("coverage", "comprehensive"),
                 "deductible": p.get("deductible", 500),
                 "status": status,
-            })
+            }
+            rental = p.get("rental_reimbursement") or p.get("transportation_expenses")
+            if rental and isinstance(rental, dict):
+                result["rental_reimbursement"] = rental
+            return json.dumps(result)
         return json.dumps({
             "valid": False,
             "status": status,

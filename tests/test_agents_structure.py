@@ -88,6 +88,18 @@ class TestPartialLossCrewStructure:
         assert len(crew.tasks) == 5
 
 
+class TestRentalCrewStructure:
+    """Structural validation for Rental Reimbursement crew."""
+
+    def test_creates_valid_crew(self):
+        from claim_agent.crews.rental_crew import create_rental_crew
+
+        crew = create_rental_crew(llm=_mock_llm())
+        _validate_crew_structure(crew)
+        assert len(crew.agents) == 3
+        assert len(crew.tasks) == 3
+
+
 class TestSettlementCrewStructure:
     """Structural validation for Settlement crew."""
 

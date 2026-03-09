@@ -14,6 +14,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Total Loss](#total-loss-crew) | 3 | Process total loss claims |
 | [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
 | [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
+| [Rental Reimbursement](#rental-reimbursement-crew) | 3 | Manage loss-of-use / rental coverage (runs after Partial Loss) |
 | [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
 
 ---
@@ -605,7 +606,8 @@ The Partial Loss crew is invoked **after**:
 2. Claim creation in SQLite (`repo.create_claim`)
 3. Router classification → `claim_type == "partial_loss"`
 4. Escalation check (if not escalated)
-5. On success, main flow invokes Settlement Crew with the authorization output
+5. On success, Rental Reimbursement Crew runs (check coverage → arrange rental → process reimbursement)
+6. Settlement Crew receives combined Partial Loss + Rental output
 
 ### Acceptance Criteria
 
@@ -618,6 +620,87 @@ The Partial Loss crew is invoked **after**:
 - **AC7:** Final claim status is set by Settlement Crew (`settled`) on success
 - **AC8:** Task context flows correctly through all five steps
 - **AC9:** Documentation matches this specification
+
+---
+
+## Rental Reimbursement Crew
+
+**Location**: `src/claim_agent/crews/rental_crew.py`
+
+Manages loss-of-use (rental) coverage for partial loss claims. Runs as a sequential stage after Partial Loss and before Settlement. Flow: check coverage → arrange/approve rental → process reimbursement. Compliance: RCC-001 through RCC-004, DISC-006 in [california_auto_compliance.json](../data/california_auto_compliance.json).
+
+### Entry Conditions
+
+- **Claim type:** `partial_loss` only (runs after Partial Loss crew)
+- **Trigger:** Automatic; runs when `claim_type == "partial_loss"` after workflow crew completes
+- **Input:** `claim_data` and `workflow_output` (from Partial Loss crew)
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Rental Eligibility Specialist | [`check_rental_coverage`](tools.md#check_rental_coverage), [`get_rental_limits`](tools.md#get_rental_limits), [`search_california_compliance`](tools.md#search_california_compliance) |
+| Rental Coordinator | [`get_rental_limits`](tools.md#get_rental_limits) |
+| Reimbursement Processor | [`process_rental_reimbursement`](tools.md#process_rental_reimbursement), [`get_rental_limits`](tools.md#get_rental_limits) |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Rental["Rental Reimbursement Crew"]
+        A[1. Check Coverage] --> B[2. Arrange Rental] --> C[3. Process Reimbursement]
+    end
+    
+    A -.- A1[check_rental_coverage]
+    A -.- A2[get_rental_limits]
+    
+    B -.- B1[get_rental_limits]
+    B -.- B2[Comparable vehicle class RCC-004]
+    
+    C -.- C1[process_rental_reimbursement]
+```
+
+### Step 1: Check Coverage
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Rental Eligibility Specialist |
+| **Input** | `claim_data`, `workflow_output` (repair duration context) |
+| **Action** | Check policy for rental coverage; get limits; reference CCR 2695.7(l), RCC-001–RCC-004 |
+| **Output** | eligible (bool), daily_limit, aggregate_limit, max_days, message |
+| **Tools** | `check_rental_coverage`, `get_rental_limits`, `search_california_compliance` |
+
+### Step 2: Arrange Rental
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Rental Coordinator |
+| **Input** | Eligibility result + `workflow_output` (estimated_repair_days) |
+| **Action** | Arrange rental within limits; ensure comparable vehicle class (RCC-004) |
+| **Output** | rental_arranged, provider, vehicle_class, daily_rate, estimated_days, estimated_total |
+| **Tools** | `get_rental_limits` |
+
+### Step 3: Process Reimbursement
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | Reimbursement Processor |
+| **Input** | Eligibility + rental arrangement |
+| **Action** | Validate amount against limits; call process_rental_reimbursement |
+| **Output** | reimbursement_id, amount, status |
+| **Tools** | `process_rental_reimbursement`, `get_rental_limits` |
+
+### Compliance References
+
+- **RCC-001:** Loss of use when liable for damage to another's vehicle
+- **RCC-002:** Reasonable rental period (repair period + replacement time for total loss)
+- **RCC-003:** First-party rental reimbursement; explain daily/aggregate limits (CCR 2695.7(l))
+- **RCC-004:** Rental class comparable to damaged vehicle
+- **DISC-006:** Rental Car Coverage Disclosure at time of loss
+
+### Integration with Main Flow
+
+The Rental crew runs **after** Partial Loss crew and **before** Settlement crew when `claim_type == "partial_loss"`. Output is combined with Partial Loss output and passed to Settlement.
 
 ---
 

@@ -185,6 +185,31 @@ _CREWS_CATALOG = [
         ],
     },
     {
+        "name": "Rental Reimbursement Crew",
+        "description": "Manages loss-of-use / rental coverage for partial loss claims. Runs after Partial Loss, before Settlement.",
+        "module": "crews/rental_crew.py",
+        "agents": [
+            {
+                "name": "Rental Eligibility Specialist",
+                "skill": "rental_eligibility_specialist",
+                "tools": ["check_rental_coverage", "get_rental_limits", "search_california_compliance"],
+                "description": "Checks policy for rental coverage and limits",
+            },
+            {
+                "name": "Rental Coordinator",
+                "skill": "rental_coordinator",
+                "tools": ["get_rental_limits"],
+                "description": "Arranges and approves rental within policy limits",
+            },
+            {
+                "name": "Reimbursement Processor",
+                "skill": "rental_reimbursement_processor",
+                "tools": ["process_rental_reimbursement", "get_rental_limits"],
+                "description": "Processes rental reimbursement for approved rentals",
+            },
+        ],
+    },
+    {
         "name": "Supplemental Crew",
         "description": "Handles additional damage discovered during repair on partial loss claims. Sub-workflow via POST /claims/{id}/supplemental.",
         "module": "crews/supplemental_crew.py",

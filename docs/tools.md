@@ -60,6 +60,7 @@ Logic functions access external data (policies, valuations, repair shops, parts,
 | Escalation | `escalation_tools.py` | evaluate_escalation, escalate_claim, detect_fraud_indicators, generate_escalation_report |
 | Fraud | `fraud_tools.py` | analyze_claim_patterns, cross_reference_fraud_indicators, perform_fraud_assessment, generate_fraud_report |
 | Partial Loss | `partial_loss_tools.py` | get_available_repair_shops, assign_repair_shop, get_parts_catalog, create_parts_order, calculate_repair_estimate, generate_repair_authorization |
+| Rental | `rental_tools.py` | check_rental_coverage, get_rental_limits, process_rental_reimbursement |
 | Supplemental | `supplemental_tools.py` | get_original_repair_estimate, calculate_supplemental_estimate, update_repair_authorization |
 | Compliance | `compliance_tools.py` | search_california_compliance |
 | RAG | `rag_tools.py` | search_policy_compliance, get_compliance_deadlines, get_required_disclosures, get_coverage_exclusions, get_total_loss_requirements, get_fraud_detection_guidance, get_repair_standards |
@@ -667,6 +668,75 @@ Generate a repair authorization document.
 ```
 
 ---
+
+## Rental Tools
+
+### check_rental_coverage
+
+Check if a policy has rental reimbursement (loss-of-use) coverage.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `policy_number` | string | The insurance policy number to check |
+
+**Returns:** JSON string
+```json
+{
+  "eligible": true,
+  "daily_limit": 35.0,
+  "aggregate_limit": 1050.0,
+  "message": "Rental reimbursement coverage found"
+}
+```
+
+---
+
+### get_rental_limits
+
+Get rental reimbursement limits for a policy (daily, aggregate, max days).
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `policy_number` | string | The insurance policy number |
+
+**Returns:** JSON string
+```json
+{
+  "daily_limit": 35.0,
+  "aggregate_limit": 1050.0,
+  "max_days": 30
+}
+```
+
+---
+
+### process_rental_reimbursement
+
+Process rental reimbursement for an approved rental. Validates amount against policy limits.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | The claim ID |
+| `amount` | float | Reimbursement amount in USD |
+| `rental_days` | integer | Number of rental days |
+| `policy_number` | string | Policy number for limit validation |
+
+**Returns:** JSON string
+```json
+{
+  "reimbursement_id": "RENT-ABC12345",
+  "amount": 175.0,
+  "status": "approved",
+  "message": "Rental reimbursement RENT-ABC12345 processed for claim CLM-123"
+}
+```
+
+---
+
+## Supplemental Tools
 
 ### get_original_repair_estimate
 
