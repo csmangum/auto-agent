@@ -398,6 +398,8 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
     }
 
+    reopened_output = ""
+
     if ctx.claim_type == ClaimType.REOPENED.value:
         reopened_crew = create_reopened_crew(ctx.context.llm)
         try:
