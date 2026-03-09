@@ -1,6 +1,7 @@
 """Tests for the FastAPI backend API endpoints."""
 
 import json
+import time
 import pytest
 from fastapi.testclient import TestClient
 
@@ -935,7 +936,6 @@ class TestJWTAuth:
     def test_expired_jwt_returns_401(self, client, monkeypatch):
         """Expired JWT returns 401."""
         jwt = pytest.importorskip("jwt")
-        import time
         monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
@@ -1108,6 +1108,37 @@ class TestPostClaimsJson:
         assert data["claim_id"].startswith("CLM-")
         assert "claim_type" not in data
         assert "status" not in data
+
+    def test_post_claims_async_returns_503_when_at_capacity(self, client, monkeypatch, tmp_path):
+        """POST /api/claims?async=true returns 503 when max concurrent background tasks reached."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        import claim_agent.api.routes.claims as claims_mod
+        from claim_agent.config import get_settings
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
+
+        # Wrap _background_tasks so len() reports 1 (at capacity). TestClient waits for
+        # background tasks before returning, so we can't rely on a previous request's task.
+        real_tasks = claims_mod._background_tasks
+
+        class AtCapacitySet:
+            def add(self, x):
+                real_tasks.add(x)
+
+            def discard(self, x):
+                real_tasks.discard(x)
+
+            def __len__(self):
+                return len(real_tasks) + 1
+
+        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+
+        resp = client.post("/api/claims", json=VALID_CLAIM_PAYLOAD, params={"async": "true"})
+        assert resp.status_code == 503
+        assert "Too many concurrent" in resp.json()["detail"]
 
     def test_post_claims_validation_error_returns_422(self, client, monkeypatch):
         """ClaimInput validation errors produce 422 (FastAPI default)."""

@@ -368,6 +368,9 @@ class Settings(BaseSettings):
     pre_routing_fraud_damage_ratio: float = 0.9
     max_tokens_per_claim: int = Field(default=100_000, validation_alias="CLAIM_AGENT_MAX_TOKENS_PER_CLAIM")
     max_llm_calls_per_claim: int = Field(default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM")
+    max_concurrent_background_tasks: int = Field(
+        default=10, validation_alias="CLAIM_AGENT_MAX_CONCURRENT_BACKGROUND_TASKS"
+    )
     crew_verbose: bool = Field(default=True, validation_alias="CREWAI_VERBOSE")
     retention_period_years: int = 5
     policy_adapter: str = Field(default="mock", validation_alias="POLICY_ADAPTER")

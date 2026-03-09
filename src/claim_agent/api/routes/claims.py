@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
+from claim_agent.config import get_settings
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
@@ -66,6 +67,7 @@ _STREAM_MAX_DURATION = 300  # 5 min timeout
 PRIORITY_VALUES = ("critical", "high", "medium", "low")
 
 _background_tasks: set[asyncio.Task] = set()
+_background_tasks_lock = asyncio.Lock()
 
 # Per-claim locks to prevent concurrent approve requests from racing (same claim_id).
 # Note: In multi-process deployments, use a distributed lock (e.g. Redis) instead.
@@ -125,6 +127,22 @@ def _run_workflow_background(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+async def _try_run_workflow_background(
+    claim_id: str,
+    claim_data_with_attachments: dict,
+    actor_id: str,
+    ctx: ClaimContext | None = None,
+) -> asyncio.Task | None:
+    """Run claim workflow in background if under concurrent limit. Returns None when at capacity."""
+    max_tasks = get_settings().max_concurrent_background_tasks
+    async with _background_tasks_lock:
+        if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+            return None
+        return _run_workflow_background(
+            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        )
 
 
 def _resolve_attachment_urls(claim_dict: dict) -> dict:
@@ -607,9 +625,14 @@ async def create_claim(
     )
 
     if async_mode:
-        _run_workflow_background(
+        task = await _try_run_workflow_background(
             claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
         )
+        if task is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Too many concurrent background tasks. Retry later.",
+            )
         return {"claim_id": claim_id}
 
     result = await asyncio.to_thread(
@@ -770,9 +793,14 @@ async def process_claim_async(
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id, ctx=ctx,
     )
-    _run_workflow_background(
+    task = await _try_run_workflow_background(
         claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
     )
+    if task is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Too many concurrent background tasks. Retry later.",
+        )
     return {"claim_id": claim_id}
 
 
@@ -1123,7 +1151,8 @@ async def reprocess_claim(
             from_stage = None
 
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    result = run_claim_workflow(
+    result = await asyncio.to_thread(
+        run_claim_workflow,
         claim_data,
         existing_claim_id=claim_id,
         actor_id=actor_id,
