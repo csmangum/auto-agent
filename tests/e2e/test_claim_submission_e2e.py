@@ -136,24 +136,28 @@ def test_e2e_submit_total_loss_claim_via_api(
             with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_crew:
                 with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
                     with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
-                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                            mock_llm.return_value = MagicMock()
-                            mock_router.return_value.kickoff.return_value = mock_router_response(
-                                "total_loss", "Vehicle flooded - total destruction."
-                            )
-                            mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                                "Total loss confirmed.",
-                                tasks_output=workflow_tasks_output,
-                            )
-                            mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                "Settlement completed."
-                            )
-                            mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                "Subrogation assessment complete. No recovery opportunity."
-                            )
-                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                        with patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
+                            with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                                mock_llm.return_value = MagicMock()
+                                mock_router.return_value.kickoff.return_value = mock_router_response(
+                                    "total_loss", "Vehicle flooded - total destruction."
+                                )
+                                mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                    "Total loss confirmed.",
+                                    tasks_output=workflow_tasks_output,
+                                )
+                                mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                    "Settlement completed."
+                                )
+                                mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                    "Subrogation assessment complete. No recovery opportunity."
+                                )
+                                mock_salvage.return_value.kickoff.return_value = mock_crew_response(
+                                    "Salvage disposition complete."
+                                )
+                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
 
-                            resp = e2e_client.post("/api/claims", json=low_value_claim)
+                                resp = e2e_client.post("/api/claims", json=low_value_claim)
 
     assert resp.status_code == 200
     data = resp.json()

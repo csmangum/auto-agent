@@ -28,7 +28,7 @@ def create_salvage_crew(
 WORKFLOW OUTPUT (includes settlement):
 {workflow_output}
 
-Assess salvage value for this total-loss vehicle. Use get_salvage_value with vin, vehicle_year, make, model from claim_data, damage_description from claim_data, and vehicle_value from claim_data or workflow_output when available.
+Assess salvage value for this total-loss vehicle. Use get_salvage_value with vin, vehicle_year, vehicle_make, vehicle_model from claim_data, damage_description from claim_data, and vehicle_value from claim_data or workflow_output when available.
 
 Output the estimated salvage value, disposition_recommendation (auction, owner_retention, or scrap), and reasoning. Use generate_report if needed to document the assessment.""",
                 expected_output="Salvage value estimate and disposition recommendation (auction, owner_retention, or scrap).",
@@ -43,7 +43,7 @@ CLAIM DATA (JSON):
 WORKFLOW OUTPUT:
 {workflow_output}
 
-Arrange disposition by initiating the title transfer. Use initiate_title_transfer with claim_id from claim_data, vin, vehicle_year, make, model, and disposition_type from the salvage coordinator's recommendation (auction, owner_retention, or scrap).
+Arrange disposition by initiating the title transfer. Use initiate_title_transfer with claim_id from claim_data, vin, vehicle_year, vehicle_make, vehicle_model, and disposition_type from the salvage coordinator's recommendation (auction, owner_retention, or scrap).
 
 Output the transfer_id and dmv_reference. Use generate_report to document the title transfer initiation.""",
                 expected_output="Title transfer initiated with transfer_id and DMV reference.",

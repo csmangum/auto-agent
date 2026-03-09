@@ -449,12 +449,14 @@ def test_run_claim_workflow_validation_enabled_disagrees_reclassifies(_temp_clai
          patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation), \
          patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_tl_crew, \
          patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settle_crew, \
-         patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
+         patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation, \
+         patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
         mock_tl_crew.return_value.kickoff.return_value = workflow_output
         mock_settle_crew.return_value.kickoff.return_value = settlement_output
         mock_subrogation.return_value.kickoff.return_value = MagicMock(raw="Subrogation assessment complete.")
+        mock_salvage.return_value.kickoff.return_value = MagicMock(raw="Salvage disposition complete.")
 
         result = run_claim_workflow(claim_data)
 

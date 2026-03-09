@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime.datetime:
@@ -57,8 +61,7 @@ def get_salvage_value_impl(
         acv = float(vehicle_value)
         source = "workflow"
     else:
-        from datetime import datetime as dt
-        current_year = dt.now().year
+        current_year = _utc_now().year
         acv = max(5000, 15000 - (current_year - year_int) * 800)
         source = "estimated"
 
@@ -102,6 +105,10 @@ def initiate_title_transfer_impl(
     """
     valid_types = ("auction", "owner_retention", "scrap")
     if disposition_type not in valid_types:
+        logger.warning(
+            "Invalid disposition_type %r, defaulting to auction",
+            disposition_type,
+        )
         disposition_type = "auction"
 
     transfer_id = f"SALV-{claim_id or 'UNK'}-{_utc_now().strftime('%Y%m%d%H')}"
@@ -136,10 +143,18 @@ def record_salvage_disposition_impl(
     """
     valid_statuses = ("pending", "auction_scheduled", "auction_complete", "owner_retained", "scrapped")
     if status not in valid_statuses:
+        logger.warning(
+            "Invalid status %r, defaulting to pending",
+            status,
+        )
         status = "pending"
 
     valid_types = ("auction", "owner_retention", "scrap")
     if disposition_type not in valid_types:
+        logger.warning(
+            "Invalid disposition_type %r, defaulting to auction",
+            disposition_type,
+        )
         disposition_type = "auction"
 
     result = {

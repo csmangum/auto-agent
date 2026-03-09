@@ -82,6 +82,18 @@ class TestInitiateTitleTransfer:
         assert data["disposition_type"] == "owner_retention"
         assert "initiated_at" in data
 
+    def test_invalid_disposition_type_falls_back_to_auction(self):
+        result = initiate_title_transfer_impl(
+            claim_id="CLM-789",
+            vin="1HGBH41JXMN109186",
+            vehicle_year=2021,
+            make="Honda",
+            model="Accord",
+            disposition_type="invalid",
+        )
+        data = json.loads(result)
+        assert data["disposition_type"] == "auction"
+
 
 class TestRecordSalvageDisposition:
     def test_record_pending(self):
@@ -108,3 +120,21 @@ class TestRecordSalvageDisposition:
         assert data["salvage_amount"] == 3500.0
         assert data["status"] == "auction_complete"
         assert data["notes"] == "Sold at Copart."
+
+    def test_invalid_status_falls_back_to_pending(self):
+        result = record_salvage_disposition_impl(
+            claim_id="CLM-123",
+            disposition_type="auction",
+            status="invalid_status",
+        )
+        data = json.loads(result)
+        assert data["status"] == "pending"
+
+    def test_invalid_disposition_type_falls_back_to_auction(self):
+        result = record_salvage_disposition_impl(
+            claim_id="CLM-123",
+            disposition_type="unknown",
+            status="pending",
+        )
+        data = json.loads(result)
+        assert data["disposition_type"] == "auction"
