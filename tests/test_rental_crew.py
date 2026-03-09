@@ -75,6 +75,7 @@ def test_rental_crew_agent_tools():
 def test_rental_crew_kickoff_inputs():
     """Rental crew accepts claim_data and workflow_output inputs."""
     crew = create_rental_crew(llm=_structural_llm())
+    assert crew is not None
     with open(Path(__file__).parent / "sample_claims" / "partial_loss_claim.json") as f:
         claim_data = json.load(f)
     claim_data["claim_id"] = "CLM-TEST"
