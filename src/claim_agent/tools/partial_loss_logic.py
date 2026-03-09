@@ -129,6 +129,7 @@ def assign_repair_shop_impl(
         "network": shop.get("network", "standard"),
         "estimated_start_date": start_date.strftime("%Y-%m-%d"),
         "estimated_completion_date": completion_date.strftime("%Y-%m-%d"),
+        "estimated_repair_days": repair_days,
         "confirmation_number": f"RSA-{uuid.uuid4().hex[:8].upper()}",
     }
 
@@ -504,6 +505,7 @@ def _parse_partial_loss_workflow_output(wf_output: str) -> dict[str, Any] | None
                     "total_estimate", "authorized_amount", "parts_cost", "labor_cost",
                     "deductible", "customer_pays", "insurance_pays", "payout_amount",
                     "authorization_id", "shop_id", "shop_name", "shop_phone",
+                    "estimated_repair_days",
                 ):
                     if key in data and data[key] is not None:
                         result[key] = data[key]
@@ -522,6 +524,7 @@ def _parse_partial_loss_workflow_output(wf_output: str) -> dict[str, Any] | None
                     "total_estimate", "authorized_amount", "parts_cost", "labor_cost",
                     "deductible", "customer_pays", "insurance_pays", "payout_amount",
                     "authorization_id", "shop_id", "shop_name", "shop_phone",
+                    "estimated_repair_days",
                 ):
                     if key in data and data[key] is not None:
                         result[key] = data[key]
@@ -540,8 +543,9 @@ def _parse_partial_loss_workflow_output(wf_output: str) -> dict[str, Any] | None
         (r"payout_amount[:\s]*(\d+\.?\d*)", "payout_amount"),
         (r"authorization_id[:\s]*['\"]?([A-Za-z0-9\-]+)['\"]?", "authorization_id"),
         (r"shop_id[:\s]*['\"]?([A-Za-z0-9\-]+)['\"]?", "shop_id"),
+        (r"estimated_repair_days[:\s]*(\d+)", "estimated_repair_days"),
     ]
-    numeric_keys = {"total_estimate", "authorized_amount", "parts_cost", "labor_cost", "insurance_pays", "payout_amount", "deductible", "customer_pays"}
+    numeric_keys = {"total_estimate", "authorized_amount", "parts_cost", "labor_cost", "insurance_pays", "payout_amount", "deductible", "customer_pays", "estimated_repair_days"}
     for pattern, key in patterns:
         m = re.search(pattern, wf_output, re.IGNORECASE)
         if m:

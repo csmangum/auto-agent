@@ -124,8 +124,9 @@ Generate the repair authorization and prepare the claim for shared settlement.
    - payout_amount: the insurance_pays value (amount insurance will pay)
    - authorization_id, claim_id, shop_id, shop_name, shop_phone, authorized_amount, shop_webhook_url
    - total_estimate: total repair estimate from the estimate step
+   - estimated_repair_days: from the shop assignment context (for rental crew)
 
-Pass through the full generate_repair_authorization result so the settlement crew and webhooks receive complete data.
+Pass through the full generate_repair_authorization result and include estimated_repair_days from the shop assignment so the settlement and rental crews receive complete data.
 
 Do not generate the final claim report in this crew; that is handled by the shared settlement crew.""",
                 expected_output="Structured output: payout_amount, authorization_id, claim_id, shop_id, shop_name, shop_phone, authorized_amount, total_estimate, shop_webhook_url.",

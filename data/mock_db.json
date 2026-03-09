@@ -4,11 +4,26 @@
     "description": "Reference policies, vehicle values, and seed claims; claim search uses SQLite."
   },
   "policies": {
-    "POL-001": { "coverage": "comprehensive", "deductible": 500, "status": "active" },
+    "POL-001": {
+      "coverage": "comprehensive",
+      "deductible": 500,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
+    },
     "POL-002": { "coverage": "liability", "deductible": 250, "status": "active" },
-    "POL-003": { "coverage": "full_coverage", "deductible": 1000, "status": "active" },
+    "POL-003": {
+      "coverage": "full_coverage",
+      "deductible": 1000,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
+    },
     "POL-004": { "coverage": "collision", "deductible": 500, "status": "active" },
-    "POL-005": { "coverage": "comprehensive", "deductible": 250, "status": "active" },
+    "POL-005": {
+      "coverage": "comprehensive",
+      "deductible": 250,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 40, "aggregate_limit": 1200, "max_days": 30 }
+    },
     "POL-006": { "coverage": "uninsured_motorist", "deductible": 500, "status": "active" },
     "POL-007": { "coverage": "full_coverage", "deductible": 1500, "status": "active" },
     "POL-008": { "coverage": "liability", "deductible": 500, "status": "active" },
