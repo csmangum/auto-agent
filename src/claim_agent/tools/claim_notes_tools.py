@@ -46,7 +46,7 @@ def add_claim_note(claim_id: str, note: str, actor_id: str) -> str:
         return json.dumps({"success": True, "message": "Note added"})
     except ClaimNotFoundError:
         return json.dumps({"success": False, "message": f"Claim not found: {claim_id}"})
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected error adding note to claim %s", claim_id)
         return json.dumps({"success": False, "message": "An unexpected error occurred while adding the note"})
 
