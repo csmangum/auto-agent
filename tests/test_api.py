@@ -13,6 +13,14 @@ def _use_seeded_db(seeded_temp_db):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _clear_rate_limit():
+    """Clear rate limit buckets before each API test to avoid 429 in CI."""
+    from claim_agent.api.rate_limit import clear_rate_limit_buckets
+    clear_rate_limit_buckets()
+    yield
+
+
 @pytest.fixture
 def client():
     """Create a test client for the FastAPI app."""

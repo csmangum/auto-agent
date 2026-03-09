@@ -231,9 +231,11 @@ class TestDenialCoverageOrchestratorEscalation:
         self, seeded_temp_db, monkeypatch
     ):
         """When crew raises MidWorkflowEscalation, orchestrator catches and returns outcome=escalated."""
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.exceptions import MidWorkflowEscalation
-        from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
+
+        mod = _load_denial_orchestrator()
 
         repo = ClaimRepository()
         repo.update_claim_status("CLM-TEST001", "denied", details="Test")
@@ -246,15 +248,11 @@ class TestDenialCoverageOrchestratorEscalation:
                 claim_id="CLM-TEST001",
             )
 
-        monkeypatch.setattr(
-            "claim_agent.workflow.denial_coverage_orchestrator._kickoff_with_retry",
-            _kickoff_raises,
-        )
+        monkeypatch.setattr(mod, "_kickoff_with_retry", _kickoff_raises)
 
-        from claim_agent.context import ClaimContext
-
-        result = run_denial_coverage_workflow(
+        result = mod.run_denial_coverage_workflow(
             {"claim_id": "CLM-TEST001", "denial_reason": "Coverage exclusion"},
+            llm=_mock_llm(),
             ctx=ClaimContext.from_defaults(),
         )
 

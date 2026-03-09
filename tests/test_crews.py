@@ -12,8 +12,16 @@ from claim_agent.utils.retry import with_llm_retry
 
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
 
-# Skip crew tests if no OpenAI/OpenRouter key (avoid failing in CI without key)
-SKIP_CREW = not os.environ.get("OPENAI_API_KEY")
+# Skip crew tests if no valid LLM key (avoids 401 when placeholder or OpenRouter key missing)
+def _skip_crew() -> bool:
+    try:
+        from claim_agent.config.llm import has_valid_llm_config
+        return not has_valid_llm_config()
+    except Exception:
+        return True
+
+
+SKIP_CREW = _skip_crew()
 
 
 def _kickoff_with_retry(crew, inputs):
@@ -405,7 +413,7 @@ def test_subrogation_crew_structure():
 
 
 @pytest.mark.llm
-@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+@pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_new_claim_crew_kickoff():
     """Run new claim crew on sample input (requires LLM)."""
     from claim_agent.crews.new_claim_crew import create_new_claim_crew
@@ -422,7 +430,7 @@ def test_new_claim_crew_kickoff():
 
 
 @pytest.mark.llm
-@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+@pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_duplicate_crew_kickoff():
     """Run duplicate crew on sample input (requires LLM)."""
     from claim_agent.crews.duplicate_crew import create_duplicate_crew
@@ -438,7 +446,7 @@ def test_duplicate_crew_kickoff():
 
 
 @pytest.mark.llm
-@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+@pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_total_loss_crew_kickoff():
     """Run total loss crew on sample input (requires LLM)."""
     from claim_agent.crews.total_loss_crew import create_total_loss_crew
@@ -454,7 +462,7 @@ def test_total_loss_crew_kickoff():
 
 
 @pytest.mark.llm
-@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+@pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_fraud_detection_crew_kickoff():
     """Run fraud detection crew on sample input (requires LLM)."""
     from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
@@ -471,7 +479,7 @@ def test_fraud_detection_crew_kickoff():
 
 
 @pytest.mark.llm
-@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+@pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_partial_loss_crew_kickoff():
     """Run partial loss crew on sample input (requires LLM)."""
     from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
@@ -487,7 +495,7 @@ def test_partial_loss_crew_kickoff():
 
 
 @pytest.mark.llm
-@pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
+@pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_rental_crew_kickoff():
     """Run rental crew on sample input; verifies output structure (requires LLM)."""
     from claim_agent.crews.rental_crew import create_rental_crew
