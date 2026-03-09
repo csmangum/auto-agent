@@ -8,6 +8,7 @@ from claim_agent.db.database import get_db_path
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.constants import STATUS_PROCESSING
 from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.utils.sanitization import sanitize_note
 
 VALID_CLAIM_TYPES = (
     "new",
@@ -24,6 +25,34 @@ def _get_repo():
     return ClaimRepository(get_db_path())
 
 
+def _try_parse_escalation(s: str) -> dict | None:
+    """Try to extract escalation JSON from workflow output string.
+
+    First attempts to parse the whole string as JSON, then scans backwards
+    for the last JSON object in the string.
+    """
+    # Try parsing whole string first
+    try:
+        parsed = json.loads(s)
+        if isinstance(parsed, dict) and (
+            "escalation" in parsed or "mid_workflow" in parsed or "escalation_reasons" in parsed
+        ):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Try finding the last JSON object in the string (e.g. after narrative text)
+    last_brace = s.rfind("{")
+    while last_brace >= 0:
+        try:
+            parsed = json.loads(s[last_brace:])
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+        last_brace = s.rfind("{", 0, last_brace)
+    return None
+
+
 @tool("Get Escalation Context")
 def get_escalation_context(claim_id: str) -> str:
     """Retrieve escalation context for a claim returned from human review.
@@ -36,8 +65,8 @@ def get_escalation_context(claim_id: str) -> str:
         claim_id: The claim ID.
 
     Returns:
-        JSON with claim_id, claim_type, status, escalation_stage, escalation_reasons,
-        mid_workflow (bool), prior_workflow_output (truncated), and workflow_output_raw.
+        JSON with claim_id, claim_type, status, payout_amount, escalation_stage,
+        escalation_reasons, mid_workflow (bool), and prior_workflow_output (truncated).
     """
     repo = _get_repo()
     claim = repo.get_claim(claim_id)
@@ -53,28 +82,6 @@ def get_escalation_context(claim_id: str) -> str:
     if runs:
         run = runs[0]
         workflow_output = run.get("workflow_output") or ""
-
-        def _try_parse_escalation(s: str) -> dict | None:
-            """Try to extract escalation JSON from workflow output."""
-            # Try parsing whole string first
-            try:
-                parsed = json.loads(s)
-                if isinstance(parsed, dict) and (
-                    "escalation" in parsed or "mid_workflow" in parsed or "escalation_reasons" in parsed
-                ):
-                    return parsed
-            except (json.JSONDecodeError, TypeError):
-                pass
-            # Try finding JSON object at end (e.g. after "Primary workflow output:\n...")
-            for i in range(len(s) - 1, -1, -1):
-                if s[i] == "{":
-                    try:
-                        parsed = json.loads(s[i:])
-                        if isinstance(parsed, dict):
-                            return parsed
-                    except (json.JSONDecodeError, TypeError):
-                        continue
-            return None
 
         parsed = _try_parse_escalation(workflow_output)
         if parsed:
@@ -200,6 +207,7 @@ def parse_reviewer_decision(
 
     # If structured didn't provide values, leave for LLM to infer from notes
     if reviewer_notes and str(reviewer_notes).strip():
-        result["reasoning"] = f"Reviewer notes to interpret: {reviewer_notes[:500]}"
+        safe_notes = sanitize_note(reviewer_notes)
+        result["reasoning"] = f"Reviewer notes to interpret: {safe_notes[:500]}"
 
     return json.dumps(result)

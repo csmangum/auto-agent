@@ -317,7 +317,7 @@ class TestReviewQueue:
         import claim_agent.api.routes.claims as claims_mod
 
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
         resp = client.post("/api/claims/CLM-TEST004/review/approve")
         assert resp.status_code == 200
         data = resp.json()
