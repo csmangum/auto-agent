@@ -219,3 +219,7 @@ AUCTION_LIAISON = "auction_liaison"
 BI_INTAKE_SPECIALIST = "bi_intake_specialist"
 MEDICAL_RECORDS_REVIEWER = "medical_records_reviewer"
 SETTLEMENT_NEGOTIATOR = "settlement_negotiator"
+# Denial / coverage dispute
+COVERAGE_ANALYST = "coverage_analyst"
+DENIAL_LETTER_SPECIALIST = "denial_letter_specialist"
+APPEAL_REVIEWER = "appeal_reviewer"

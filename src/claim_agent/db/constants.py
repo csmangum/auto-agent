@@ -29,6 +29,9 @@ DISPUTABLE_STATUSES = (STATUS_SETTLED, STATUS_OPEN)
 # Statuses that allow supplemental damage reports (partial loss during or after repair)
 SUPPLEMENTABLE_STATUSES = (STATUS_PROCESSING, STATUS_SETTLED)
 
+# Statuses that allow denial/coverage dispute workflow (denied claims)
+DENIAL_COVERAGE_STATUSES = (STATUS_DENIED,)
+
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
     STATUS_PENDING,
