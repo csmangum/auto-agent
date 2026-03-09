@@ -365,6 +365,41 @@ class ClaimRepository:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def add_note(
+        self,
+        claim_id: str,
+        note: str,
+        actor_id: str,
+    ) -> None:
+        """Append a note to a claim. Raises ClaimNotFoundError if claim does not exist."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            conn.execute(
+                """
+                INSERT INTO claim_notes (claim_id, note, actor_id)
+                VALUES (?, ?, ?)
+                """,
+                (claim_id, note.strip(), actor_id.strip()),
+            )
+
+    def get_notes(self, claim_id: str) -> list[dict[str, Any]]:
+        """Get all notes for a claim, ordered by created_at ascending."""
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, claim_id, note, actor_id, created_at
+                FROM claim_notes
+                WHERE claim_id = ?
+                ORDER BY id ASC
+                """,
+                (claim_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def insert_audit_entry(
         self,
         claim_id: str,

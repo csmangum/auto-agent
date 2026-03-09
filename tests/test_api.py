@@ -92,6 +92,8 @@ class TestClaimDetail:
         assert data["id"] == "CLM-TEST001"
         assert data["policy_number"] == "POL-001"
         assert data["status"] == "open"
+        assert "notes" in data
+        assert isinstance(data["notes"], list)
 
     def test_not_found(self, client):
         resp = client.get("/api/claims/CLM-NOTEXIST")
@@ -131,6 +133,88 @@ class TestClaimWorkflows:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["workflows"]) == 0
+
+
+class TestClaimNotes:
+    """Test claim notes API endpoints."""
+
+    def test_get_notes_empty(self, client):
+        resp = client.get("/api/claims/CLM-TEST001/notes")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["notes"] == []
+
+    def test_add_note_and_get(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/notes",
+            json={"note": "Fraud crew: No indicators found.", "actor_id": "Fraud Detection"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["claim_id"] == "CLM-TEST001"
+        assert resp.json()["actor_id"] == "Fraud Detection"
+
+        resp = client.get("/api/claims/CLM-TEST001/notes")
+        assert resp.status_code == 200
+        notes = resp.json()["notes"]
+        assert len(notes) == 1
+        assert notes[0]["note"] == "Fraud crew: No indicators found."
+        assert notes[0]["actor_id"] == "Fraud Detection"
+        assert notes[0].get("created_at") is not None
+
+    def test_get_claim_includes_notes(self, client):
+        client.post(
+            "/api/claims/CLM-TEST002/notes",
+            json={"note": "Settlement crew: Payout approved.", "actor_id": "Settlement"},
+        )
+        resp = client.get("/api/claims/CLM-TEST002")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "notes" in data
+        assert len(data["notes"]) == 1
+        assert data["notes"][0]["note"] == "Settlement crew: Payout approved."
+        assert data["notes"][0]["actor_id"] == "Settlement"
+
+    def test_get_notes_not_found(self, client):
+        resp = client.get("/api/claims/CLM-NOTEXIST/notes")
+        assert resp.status_code == 404
+
+    def test_add_note_not_found(self, client):
+        resp = client.post(
+            "/api/claims/CLM-NOTEXIST/notes",
+            json={"note": "Test", "actor_id": "workflow"},
+        )
+        assert resp.status_code == 404
+
+    def test_add_note_validation(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/notes",
+            json={"note": "", "actor_id": "workflow"},
+        )
+        assert resp.status_code == 422
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/notes",
+            json={"note": "Valid note", "actor_id": ""},
+        )
+        assert resp.status_code == 422
+
+    def test_add_note_whitespace_only_rejected(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/notes",
+            json={"note": "   ", "actor_id": "workflow"},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert any("blank" in str(e.get("msg", "")).lower() for e in body.get("detail", []))
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/notes",
+            json={"note": "Valid note", "actor_id": "   "},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert any("blank" in str(e.get("msg", "")).lower() for e in body.get("detail", []))
 
 
 class TestReviewQueue:

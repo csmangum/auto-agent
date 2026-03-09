@@ -84,6 +84,60 @@ def test_search_claims_db_empty():
         os.environ.pop("CLAIMS_DB_PATH", None)
 
 
+def test_add_claim_note_and_get_claim_notes(temp_db):
+    """add_claim_note and get_claim_notes tools work with a temp DB."""
+    from claim_agent.db.repository import ClaimRepository
+    from claim_agent.models.claim import ClaimInput
+    from claim_agent.tools.claim_notes_tools import add_claim_note, get_claim_notes
+
+    repo = ClaimRepository()
+    claim_id = repo.create_claim(
+        ClaimInput(
+            policy_number="POL-001",
+            vin="VIN123",
+            vehicle_year=2021,
+            vehicle_make="Honda",
+            vehicle_model="Accord",
+            incident_date="2025-01-15",
+            incident_description="Test",
+            damage_description="Test",
+        )
+    )
+
+    result = get_claim_notes.run(claim_id=claim_id)
+    notes = json.loads(result)
+    assert notes == []
+
+    result = add_claim_note.run(
+        claim_id=claim_id,
+        note="New Claim: Policy verified.",
+        actor_id="New Claim",
+    )
+    data = json.loads(result)
+    assert data["success"] is True
+
+    result = get_claim_notes.run(claim_id=claim_id)
+    notes = json.loads(result)
+    assert len(notes) == 1
+    assert notes[0]["note"] == "New Claim: Policy verified."
+    assert notes[0]["actor_id"] == "New Claim"
+    assert notes[0].get("created_at") is not None
+
+
+def test_add_claim_note_nonexistent_returns_error(temp_db):
+    """add_claim_note returns success=False for nonexistent claim."""
+    from claim_agent.tools.claim_notes_tools import add_claim_note
+
+    result = add_claim_note.run(
+        claim_id="CLM-NONEXIST",
+        note="Test",
+        actor_id="workflow",
+    )
+    data = json.loads(result)
+    assert data["success"] is False
+    assert "Claim not found" in data["message"]
+
+
 def test_compute_similarity_high():
     from claim_agent.tools.claims_logic import compute_similarity_impl
 

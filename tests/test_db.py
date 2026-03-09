@@ -32,7 +32,7 @@ def test_get_db_path_env():
 
 
 def test_init_db_creates_tables(temp_db):
-    """init_db creates claims, claim_audit_log, workflow_runs tables."""
+    """init_db creates claims, claim_audit_log, workflow_runs, claim_notes tables."""
     with get_connection(temp_db) as conn:
         cur = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -41,6 +41,7 @@ def test_init_db_creates_tables(temp_db):
     assert "claims" in tables
     assert "claim_audit_log" in tables
     assert "workflow_runs" in tables
+    assert "claim_notes" in tables
 
 
 def test_init_db_creates_append_only_triggers(temp_db):
@@ -317,3 +318,40 @@ def test_repository_search_claims_empty_criteria(temp_db):
     repo = ClaimRepository(db_path=temp_db)
     result = repo.search_claims(vin=None, incident_date=None)
     assert result == []
+
+
+def test_repository_add_note_and_get_notes(temp_db):
+    """ClaimRepository.add_note and get_notes work for cross-crew communication."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="VIN1",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date="2025-01-10",
+        incident_description="Scratch.",
+        damage_description="Door scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+
+    assert repo.get_notes(claim_id) == []
+
+    repo.add_note(claim_id, "New Claim crew: Policy verified.", "New Claim")
+    repo.add_note(claim_id, "Fraud crew: No indicators.", "Fraud Detection")
+
+    notes = repo.get_notes(claim_id)
+    assert len(notes) == 2
+    assert notes[0]["note"] == "New Claim crew: Policy verified."
+    assert notes[0]["actor_id"] == "New Claim"
+    assert notes[0]["claim_id"] == claim_id
+    assert notes[0].get("created_at") is not None
+    assert notes[1]["note"] == "Fraud crew: No indicators."
+    assert notes[1]["actor_id"] == "Fraud Detection"
+
+
+def test_repository_add_note_nonexistent_claim(temp_db):
+    """add_note raises ClaimNotFoundError for nonexistent claim_id."""
+    repo = ClaimRepository(db_path=temp_db)
+    with pytest.raises(ClaimNotFoundError, match="Claim not found: CLM-NONEXIST"):
+        repo.add_note("CLM-NONEXIST", "Test note", "workflow")
