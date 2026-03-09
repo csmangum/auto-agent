@@ -387,8 +387,13 @@ class ClaimRepository:
             )
 
     def get_notes(self, claim_id: str) -> list[dict[str, Any]]:
-        """Get all notes for a claim, ordered by created_at ascending."""
+        """Get all notes for a claim, ordered by created_at ascending. Raises ClaimNotFoundError if claim does not exist."""
         with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             rows = conn.execute(
                 """
                 SELECT id, claim_id, note, actor_id, created_at
