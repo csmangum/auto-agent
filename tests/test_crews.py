@@ -494,7 +494,15 @@ def test_run_claim_workflow_classification_only():
         result = run_claim_workflow(claim_data)
         assert "claim_id" in result
         assert "claim_type" in result
-        assert result["claim_type"] in ("new", "duplicate", "total_loss", "fraud", "partial_loss")
+        assert result["claim_type"] in (
+            "new",
+            "duplicate",
+            "total_loss",
+            "fraud",
+            "partial_loss",
+            "bodily_injury",
+            "reopened",
+        )
         assert "workflow_output" in result
         assert "summary" in result
     finally:
@@ -515,6 +523,7 @@ def test_parse_claim_type_exact():
     assert _parse_claim_type("partial loss") == "partial_loss"
     assert _parse_claim_type("bodily_injury") == "bodily_injury"
     assert _parse_claim_type("bodily injury") == "bodily_injury"
+    assert _parse_claim_type("reopened") == "reopened"
 
 
 def test_parse_claim_type_with_reasoning():
@@ -610,6 +619,8 @@ def test_normalize_claim_type():
     assert normalize_claim_type("new") == "new"
     assert normalize_claim_type("duplicate") == "duplicate"
     assert normalize_claim_type("fraud") == "fraud"
+    assert normalize_claim_type("bodily_injury") == "bodily_injury"
+    assert normalize_claim_type("reopened") == "reopened"
     assert normalize_claim_type("unknown") == "new"
 
 

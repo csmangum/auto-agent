@@ -56,6 +56,27 @@ class PartialLossWorkflowOutput(BaseModel):
     )
 
 
+class ReopenedWorkflowOutput(BaseModel):
+    """Structured output from Reopened crew: validated reason, prior claim summary, target routing."""
+
+    target_claim_type: str = Field(
+        ...,
+        description="Routed claim type: partial_loss, total_loss, or bodily_injury",
+    )
+    reopening_reason_validated: bool = Field(
+        ..., description="Whether the reopening reason was validated"
+    )
+    prior_claim_id: str | None = Field(
+        default=None, description="ID of the prior settled claim"
+    )
+    prior_claim_summary: str | None = Field(
+        default=None, description="Brief summary of prior claim (type, status, payout)"
+    )
+    reopening_reason: str | None = Field(
+        default=None, description="Validated reopening reason (e.g., new damage, policyholder appeal)"
+    )
+
+
 class BIWorkflowOutput(BaseModel):
     """Structured output from Bodily Injury crew final task."""
 
