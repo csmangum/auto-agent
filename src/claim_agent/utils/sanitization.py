@@ -12,6 +12,10 @@ MAX_POLICY_NUMBER = 64
 MAX_VIN = 32
 MAX_VEHICLE_MAKE = 64
 MAX_VEHICLE_MODEL = 128
+MAX_DENIAL_REASON = 4096
+MAX_POLICYHOLDER_EVIDENCE = 8192
+MAX_REOPENING_REASON = 1000
+MAX_PRIOR_CLAIM_ID = 64
 
 # Patterns that may indicate prompt injection attempts
 INJECTION_PATTERNS = [
@@ -61,6 +65,24 @@ def sanitize_supplemental_damage_description(text: str | None) -> str:
     return _remove_injection_patterns(t)
 
 
+def sanitize_denial_reason(text: str | None) -> str:
+    """Sanitize denial reason for prompt injection before passing to LLM."""
+    if text is None or not isinstance(text, str):
+        return ""
+    t = _sanitize_text(text, MAX_DENIAL_REASON)
+    return _remove_injection_patterns(t)
+
+
+def sanitize_policyholder_evidence(text: str | None) -> str | None:
+    """Sanitize policyholder evidence for prompt injection before passing to LLM."""
+    if text is None:
+        return None
+    if not isinstance(text, str):
+        return None
+    t = _sanitize_text(text, MAX_POLICYHOLDER_EVIDENCE)
+    return _remove_injection_patterns(t) or None
+
+
 def _remove_injection_patterns(text: str) -> str:
     """Remove or neutralize instruction-like patterns that could manipulate the LLM."""
     if not text:
@@ -92,6 +114,12 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
             out[key] = _remove_injection_patterns(t)
         elif key == "damage_description":
             t = _sanitize_text(value, MAX_DAMAGE_DESCRIPTION)
+            out[key] = _remove_injection_patterns(t)
+        elif key == "reopening_reason":
+            t = _sanitize_text(value, MAX_REOPENING_REASON)
+            out[key] = _remove_injection_patterns(t)
+        elif key == "prior_claim_id":
+            t = _sanitize_text(value, MAX_PRIOR_CLAIM_ID)
             out[key] = _remove_injection_patterns(t)
         elif key == "policy_number":
             out[key] = _sanitize_text(value, MAX_POLICY_NUMBER)

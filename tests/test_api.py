@@ -13,6 +13,14 @@ def _use_seeded_db(seeded_temp_db):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _clear_rate_limit():
+    """Clear rate limit buckets before each API test to avoid 429 in CI."""
+    from claim_agent.api.rate_limit import clear_rate_limit_buckets
+    clear_rate_limit_buckets()
+    yield
+
+
 @pytest.fixture
 def client():
     """Create a test client for the FastAPI app."""
@@ -485,6 +493,114 @@ class TestSupplemental:
         assert "summary" in data
 
 
+class TestDenialCoverage:
+    """Tests for POST /claims/{claim_id}/denial-coverage."""
+
+    def test_denial_coverage_claim_not_found_returns_404(self, client):
+        resp = client.post(
+            "/api/claims/CLM-NOTEXIST/denial-coverage",
+            json={"denial_reason": "Policy exclusion applied"},
+        )
+        assert resp.status_code == 404
+
+    def test_denial_coverage_wrong_status_returns_409(self, client):
+        # CLM-TEST001 has status "open", not "denied"
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": "Policy exclusion applied"},
+        )
+        assert resp.status_code == 409
+        data = resp.json()
+        assert "allowed statuses" in data["detail"].lower()
+
+    def test_denial_coverage_empty_denial_reason_returns_422(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": ""},
+        )
+        assert resp.status_code == 422
+
+    def test_denial_coverage_unsupported_state_returns_422(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": "Policy exclusion", "state": "Nevada"},
+        )
+        assert resp.status_code == 422
+        data = resp.json()
+        assert "unsupported" in data["detail"].lower() or "supported" in data["detail"].lower()
+
+    def test_denial_coverage_success_returns_response_model(self, client, monkeypatch):
+        import claim_agent.api.routes.claims as claims_mod
+        from claim_agent.db.repository import ClaimRepository
+
+        # Put CLM-TEST001 in denied status
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        mock_result = {
+            "claim_id": "CLM-TEST001",
+            "outcome": "uphold_denial",
+            "status": "denied",
+            "workflow_output": "Denial upheld. Letter generated.",
+            "summary": "Denial upheld. Letter generated.",
+        }
+        monkeypatch.setattr(
+            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+        )
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={
+                "denial_reason": "Coverage exclusion: pre-existing damage",
+                "policyholder_evidence": "Repair estimate from prior shop",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["outcome"] == "uphold_denial"
+        assert data["status"] == "denied"
+        assert "workflow_output" in data
+        assert "summary" in data
+
+    def test_denial_coverage_escalation_outcome_returns_200(self, client, monkeypatch):
+        """When workflow returns outcome=escalated, API returns 200 with correct body."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_status("CLM-TEST001", "denied", details="Test denial")
+
+        mock_result = {
+            "claim_id": "CLM-TEST001",
+            "outcome": "escalated",
+            "status": "needs_review",
+            "workflow_output": "Escalated: ambiguous_policy_language",
+            "summary": "Escalated for review: ambiguous_policy_language",
+        }
+        import claim_agent.api.routes.claims as claims_mod
+
+        monkeypatch.setattr(
+            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+        )
+        resp = client.post(
+            "/api/claims/CLM-TEST001/denial-coverage",
+            json={"denial_reason": "Policy exclusion applied"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["outcome"] == "escalated"
+        assert data["status"] == "needs_review"
+
+
 # -------------------------------------------------------------------
 # Metrics endpoints
 # -------------------------------------------------------------------
@@ -598,11 +714,12 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 11
+        assert len(crews) == 12
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names
         assert "Fraud Detection Crew" in crew_names
+        assert "Denial / Coverage Dispute Crew" in crew_names
         assert "Settlement Crew" in crew_names
         assert "Subrogation Crew" in crew_names
         # Check agents within a crew

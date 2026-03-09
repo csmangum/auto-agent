@@ -160,6 +160,18 @@ class TestRouterCrewStructure:
         assert len(crew.tasks) == 1
 
 
+class TestReopenedCrewStructure:
+    """Structural validation for Reopened claim crew."""
+
+    def test_creates_valid_crew(self):
+        from claim_agent.crews.reopened_crew import create_reopened_crew
+
+        crew = create_reopened_crew(llm=_mock_llm())
+        _validate_crew_structure(crew)
+        assert len(crew.agents) == 3
+        assert len(crew.tasks) == 3
+
+
 class TestTaskConfigSchema:
     """Validate TaskConfig and AgentConfig schema."""
 

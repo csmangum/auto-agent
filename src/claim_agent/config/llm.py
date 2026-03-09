@@ -6,11 +6,17 @@ This module configures the LLM with:
 """
 
 import logging
+import os
 import threading
 
 from claim_agent.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Placeholder API keys from .env.example that cause 401
+_PLACEHOLDER_KEYS = frozenset(
+    {"", "your_openrouter_key", "your_openai_key", "your-key-here", "your-key"}
+)
 
 # Track whether LangSmith has been set up (thread-safe check-and-set)
 _langsmith_initialized = False
@@ -64,10 +70,18 @@ def get_llm():
 
     llm_cfg = get_settings().llm
     api_key = llm_cfg.api_key.strip()
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is required")
-
     base = llm_cfg.api_base.strip()
+
+    # When using OpenRouter, accept OPENROUTER_API_KEY as fallback
+    if (not api_key or api_key in _PLACEHOLDER_KEYS) and base and "openrouter" in base.lower():
+        api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+
+    if not api_key or api_key in _PLACEHOLDER_KEYS:
+        raise ValueError(
+            "OPENAI_API_KEY (or OPENROUTER_API_KEY when using OpenRouter) is required; "
+            "replace placeholder values like 'your_openrouter_key' with a real key"
+        )
+
     model = llm_cfg.model_name.strip() or "gpt-4o-mini"
 
     # Log LLM configuration
@@ -85,3 +99,16 @@ def get_llm():
 def get_model_name() -> str:
     """Get the configured model name."""
     return get_settings().llm.model_name.strip() or "gpt-4o-mini"
+
+
+def has_valid_llm_config() -> bool:
+    """Return True if a real LLM API key is configured (same logic as get_llm).
+
+    Use this to skip tests that require a live LLM when only placeholders are set.
+    """
+    llm_cfg = get_settings().llm
+    api_key = llm_cfg.api_key.strip()
+    base = llm_cfg.api_base.strip()
+    if (not api_key or api_key in _PLACEHOLDER_KEYS) and base and "openrouter" in base.lower():
+        api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    return bool(api_key) and api_key not in _PLACEHOLDER_KEYS

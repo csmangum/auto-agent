@@ -220,3 +220,11 @@ BI_INTAKE_SPECIALIST = "bi_intake_specialist"
 MEDICAL_RECORDS_REVIEWER = "medical_records_reviewer"
 SETTLEMENT_NEGOTIATOR = "settlement_negotiator"
 HUMAN_REVIEW_HANDBACK = "human_review_handback"
+# Denial / coverage dispute
+COVERAGE_ANALYST = "coverage_analyst"
+DENIAL_LETTER_SPECIALIST = "denial_letter_specialist"
+APPEAL_REVIEWER = "appeal_reviewer"
+# Reopened claims
+REOPENED_VALIDATOR = "reopened_validator"
+PRIOR_CLAIM_LOADER = "prior_claim_loader"
+REOPENED_ROUTER = "reopened_router"

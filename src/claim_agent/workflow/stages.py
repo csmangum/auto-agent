@@ -7,6 +7,7 @@ either ``None`` (proceed to next stage) or a response dict (early return).
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -17,6 +18,7 @@ from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
+from claim_agent.crews.reopened_crew import create_reopened_crew
 from claim_agent.crews.rental_crew import create_rental_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.crews.subrogation_crew import create_subrogation_crew
@@ -25,6 +27,7 @@ from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
+from claim_agent.models.workflow_output import ReopenedWorkflowOutput
 from claim_agent.notifications.webhook import dispatch_repair_authorized_from_workflow_output
 from claim_agent.observability import get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
@@ -355,10 +358,41 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
     return None
 
 
+def _parse_reopened_output(result) -> str:
+    """Extract target_claim_type from Reopened crew result. Defaults to partial_loss."""
+    tasks_output = getattr(result, "tasks_output", None)
+    if tasks_output and isinstance(tasks_output, list) and len(tasks_output) > 0:
+        last_output = getattr(tasks_output[-1], "output", None)
+        if isinstance(last_output, ReopenedWorkflowOutput):
+            target = normalize_claim_type(last_output.target_claim_type)
+            if target in (
+                ClaimType.PARTIAL_LOSS.value,
+                ClaimType.TOTAL_LOSS.value,
+                ClaimType.BODILY_INJURY.value,
+            ):
+                return target
+    try:
+        raw = str(getattr(result, "raw", None) or getattr(result, "output", None) or result)
+        if "target_claim_type" in raw.lower():
+            m = re.search(r'"target_claim_type"\s*:\s*"([^"]+)"', raw, re.I)
+            if m:
+                target = normalize_claim_type(m.group(1))
+                if target in (
+                    ClaimType.PARTIAL_LOSS.value,
+                    ClaimType.TOTAL_LOSS.value,
+                    ClaimType.BODILY_INJURY.value,
+                ):
+                    return target
+    except (TypeError, AttributeError):
+        pass
+    return ClaimType.PARTIAL_LOSS.value
+
+
 def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     """Run (or restore) the primary workflow crew.
 
     Populates ``ctx.workflow_output`` and ``ctx.extracted_payout``.
+    For reopened claims: runs Reopened crew first, then routes to partial_loss/total_loss/bodily_injury.
     Returns an early-return response dict on mid-workflow escalation.
     """
     workflow_stage_key = f"workflow:{ctx.claim_type}"
@@ -372,6 +406,8 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             ctx.extracted_payout = wf_cp.get("extracted_payout")
             if ctx.extracted_payout is not None:
                 ctx.claim_data_with_id["payout_amount"] = ctx.extracted_payout
+            if wf_cp.get("target_claim_type"):
+                ctx.claim_type = wf_cp["target_claim_type"]
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             logger.warning(
                 "Failed to restore %s from checkpoint; invalidating and re-running stage: %s",
@@ -390,6 +426,37 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     logger.log_event("crew_started", crew=ctx.claim_type)
     crew_start = time.time()
 
+    crew_inputs = {
+        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
+    }
+
+    reopened_output = ""
+
+    if ctx.claim_type == ClaimType.REOPENED.value:
+        reopened_crew = create_reopened_crew(ctx.context.llm)
+        try:
+            reopened_result = _kickoff_with_retry(reopened_crew, crew_inputs)
+        except MidWorkflowEscalation as e:
+            return _handle_mid_workflow_escalation(
+                e,
+                claim_id=ctx.claim_id,
+                claim_type=ctx.claim_type,
+                raw_output=ctx.raw_output,
+                context=ctx.context,
+                workflow_logger=logger,
+                workflow_start_time=ctx.workflow_start_time,
+                workflow_run_id=ctx.workflow_run_id,
+            )
+        reopened_output = str(
+            getattr(reopened_result, "raw", None)
+            or getattr(reopened_result, "output", None)
+            or str(reopened_result)
+        )
+        ctx.claim_type = _parse_reopened_output(reopened_result)
+        crew_inputs["claim_data"] = json.dumps(
+            {**ctx.claim_data_with_id, "claim_type": ctx.claim_type}
+        )
+
     if ctx.claim_type == ClaimType.NEW.value:
         crew = create_new_claim_crew(ctx.context.llm)
     elif ctx.claim_type == ClaimType.DUPLICATE.value:
@@ -402,10 +469,6 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         crew = create_partial_loss_crew(ctx.context.llm)
     else:
         crew = create_total_loss_crew(ctx.context.llm)
-
-    crew_inputs = {
-        "claim_data": json.dumps({**ctx.claim_data_with_id, "claim_type": ctx.claim_type}),
-    }
 
     try:
         workflow_result = _kickoff_with_retry(crew, crew_inputs)
@@ -424,11 +487,20 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     crew_latency = (time.time() - crew_start) * 1000
 
-    ctx.workflow_output = str(
+    routed_output = str(
         getattr(workflow_result, "raw", None)
         or getattr(workflow_result, "output", None)
         or str(workflow_result)
     )
+
+    if workflow_stage_key == f"workflow:{ClaimType.REOPENED.value}":
+        ctx.workflow_output = _combine_workflow_outputs(
+            reopened_output,
+            routed_output,
+            label="Routed workflow output",
+        )
+    else:
+        ctx.workflow_output = routed_output
 
     logger.log_event("crew_completed", crew=ctx.claim_type, latency_ms=crew_latency)
 
@@ -439,16 +511,18 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
     if ctx.claim_type == ClaimType.PARTIAL_LOSS.value:
         dispatch_repair_authorized_from_workflow_output(ctx.workflow_output, log=logger)
 
+    cp_data = {
+        "workflow_output": ctx.workflow_output,
+        "extracted_payout": ctx.extracted_payout,
+    }
+    if workflow_stage_key == f"workflow:{ClaimType.REOPENED.value}":
+        cp_data["target_claim_type"] = ctx.claim_type
+
     ctx.context.repo.save_task_checkpoint(
         ctx.claim_id,
         ctx.workflow_run_id,
         workflow_stage_key,
-        json.dumps(
-            {
-                "workflow_output": ctx.workflow_output,
-                "extracted_payout": ctx.extracted_payout,
-            }
-        ),
+        json.dumps(cp_data),
     )
     return None
 

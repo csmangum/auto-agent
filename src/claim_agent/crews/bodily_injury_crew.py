@@ -12,6 +12,10 @@ from claim_agent.models.workflow_output import BIWorkflowOutput
 def create_bodily_injury_crew(llm=None):
     """Create the Bodily Injury crew: intake injury details → review medical records → assess liability → propose settlement.
 
+    Known limitation: Claims with both property damage and injury are routed to
+    a single crew (BI if injury is significant). Vehicle damage is not handled
+    by this crew; consider a combined or two-phase workflow for such claims.
+
     This crew handles injury-related claims:
     1. BI Intake Specialist: Capture injury details and incident description
     2. Medical Records Reviewer: Query medical records, assess injury severity

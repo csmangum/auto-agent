@@ -54,6 +54,9 @@ __all__ = [
     "lookup_original_claim",
     "classify_dispute",
     "generate_dispute_report",
+    # Denial / coverage tools
+    "generate_denial_letter",
+    "route_to_appeal",
     # RAG tools
     "search_policy_compliance",
     "get_compliance_deadlines",
@@ -221,6 +224,15 @@ def __getattr__(name: str):
         from claim_agent.tools.dispute_tools import generate_dispute_report
         setattr(mod, "generate_dispute_report", generate_dispute_report)
         return generate_dispute_report
+    # Denial / coverage tools
+    if name == "generate_denial_letter":
+        from claim_agent.tools.denial_coverage_tools import generate_denial_letter
+        setattr(mod, "generate_denial_letter", generate_denial_letter)
+        return generate_denial_letter
+    if name == "route_to_appeal":
+        from claim_agent.tools.denial_coverage_tools import route_to_appeal
+        setattr(mod, "route_to_appeal", route_to_appeal)
+        return route_to_appeal
     # RAG tools
     if name == "search_policy_compliance":
         from claim_agent.tools.rag_tools import search_policy_compliance
