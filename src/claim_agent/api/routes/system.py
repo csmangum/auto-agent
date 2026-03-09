@@ -185,6 +185,31 @@ _CREWS_CATALOG = [
         ],
     },
     {
+        "name": "Supplemental Crew",
+        "description": "Handles additional damage discovered during repair on partial loss claims. Sub-workflow via POST /claims/{id}/supplemental.",
+        "module": "crews/supplemental_crew.py",
+        "agents": [
+            {
+                "name": "Supplemental Intake Specialist",
+                "skill": "supplemental_intake",
+                "tools": ["get_original_repair_estimate", "query_policy_db", "get_repair_standards"],
+                "description": "Validates supplemental report and retrieves original estimate",
+            },
+            {
+                "name": "Damage Verifier",
+                "skill": "damage_verifier",
+                "tools": ["get_original_repair_estimate", "evaluate_damage"],
+                "description": "Compares supplemental damage to original scope",
+            },
+            {
+                "name": "Estimate Adjuster",
+                "skill": "estimate_adjuster",
+                "tools": ["calculate_supplemental_estimate", "update_repair_authorization"],
+                "description": "Calculates supplemental estimate and updates authorization",
+            },
+        ],
+    },
+    {
         "name": "Settlement Crew",
         "description": "Shared final settlement phase for payout-ready total loss and partial loss claims.",
         "module": "crews/settlement_crew.py",

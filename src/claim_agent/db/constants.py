@@ -26,6 +26,9 @@ STATUS_ARCHIVED = "archived"
 # Statuses that allow filing a policyholder dispute (must have completed workflow)
 DISPUTABLE_STATUSES = (STATUS_SETTLED, STATUS_OPEN)
 
+# Statuses that allow supplemental damage reports (partial loss during or after repair)
+SUPPLEMENTABLE_STATUSES = (STATUS_PROCESSING, STATUS_SETTLED)
+
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
     STATUS_PENDING,

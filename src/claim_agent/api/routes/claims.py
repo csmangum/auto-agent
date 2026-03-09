@@ -22,6 +22,7 @@ from claim_agent.db.constants import (
     STATUS_FAILED,
     STATUS_PENDING,
     STATUS_PROCESSING,
+    SUPPLEMENTABLE_STATUSES,
 )
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.models.claim import Attachment, ClaimInput
@@ -31,6 +32,7 @@ from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type
 from claim_agent.utils.sanitization import MAX_ACTOR_ID, sanitize_claim_data
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
+from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -769,6 +771,36 @@ class DisputeResponse(BaseModel):
     summary: str = Field(..., description="Short summary of the resolution")
 
 
+class SupplementalBody(BaseModel):
+    """Request body for filing a supplemental damage report."""
+
+    supplemental_damage_description: str = Field(
+        ...,
+        description="Description of the additional damage discovered during repair",
+    )
+    reported_by: Optional[str] = Field(
+        default=None,
+        description="Who reported: shop, adjuster, or policyholder",
+    )
+
+
+class SupplementalResponse(BaseModel):
+    """Response from supplemental workflow."""
+
+    claim_id: str = Field(..., description="Claim ID")
+    status: str = Field(..., description="Claim status after supplemental workflow")
+    supplemental_amount: Optional[float] = Field(
+        default=None,
+        description="Supplemental estimate amount",
+    )
+    combined_insurance_pays: Optional[float] = Field(
+        default=None,
+        description="Combined original + supplemental insurance payment",
+    )
+    workflow_output: str = Field(..., description="Raw workflow output")
+    summary: str = Field(..., description="Short summary")
+
+
 @router.post("/claims/{claim_id}/dispute", response_model=DisputeResponse)
 async def file_dispute(
     claim_id: str,
@@ -818,6 +850,57 @@ async def file_dispute(
         ctx=ctx,
     )
     return result
+
+
+@router.post("/claims/{claim_id}/supplemental", response_model=SupplementalResponse)
+async def file_supplemental(
+    claim_id: str,
+    body: SupplementalBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """File a supplemental damage report on an existing partial loss claim.
+
+    Runs the supplemental workflow when additional damage is discovered during
+    repair. Validates the report, compares to original estimate, calculates
+    supplemental amount, and updates the repair authorization.
+    """
+    claim = ctx.repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    claim_type = claim.get("claim_type")
+    if claim_type != "partial_loss":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Supplemental only applies to partial_loss claims. Claim has claim_type={claim_type!r}.",
+        )
+
+    claim_status = claim.get("status")
+    if claim_status not in SUPPLEMENTABLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Claim cannot receive supplemental in status {claim_status!r}. "
+                f"Allowed statuses: {', '.join(SUPPLEMENTABLE_STATUSES)}."
+            ),
+        )
+
+    supplemental_data = {
+        "claim_id": claim_id,
+        "supplemental_damage_description": body.supplemental_damage_description,
+        "reported_by": body.reported_by,
+    }
+
+    try:
+        result = await asyncio.to_thread(
+            run_supplemental_workflow,
+            supplemental_data,
+            ctx=ctx,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/claims/{claim_id}/reprocess")

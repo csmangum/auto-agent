@@ -1,5 +1,6 @@
 """Shared pytest fixtures for all test files."""
 
+import json
 import logging
 import os
 import tempfile
@@ -70,6 +71,14 @@ def _seed_test_data(db_path: str) -> None:
              "2025-01-25", "Low confidence routing", "Minor scratch", 500.0,
              "new", "needs_review", "high", "2025-01-26T12:00:00Z"),
         )
+        conn.execute(
+            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
+            "vehicle_model, incident_date, incident_description, damage_description, "
+            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("CLM-TEST005", "POL-005", "2T1BURHE5JC073987", 2022, "Toyota", "Corolla",
+             "2025-01-25", "Backed into pole", "Rear bumper cracked, taillight broken", 1800.0,
+             "partial_loss", "processing"),
+        )
 
         # Audit log entries (with actor_id, before_state, after_state for audit trail)
         conn.execute(
@@ -104,6 +113,21 @@ def _seed_test_data(db_path: str) -> None:
             "INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output) "
             "VALUES (?, ?, ?, ?)",
             ("CLM-TEST001", "new", "new\nFirst-time claim", "Claim assigned and opened"),
+        )
+        # Partial loss workflow run (for supplemental tests)
+        partial_loss_output = json.dumps({
+            "total_estimate": 2100.0,
+            "parts_cost": 550.0,
+            "labor_cost": 337.50,
+            "insurance_pays": 1600.0,
+            "authorization_id": "RA-ABC12345",
+            "shop_id": "SHOP-001",
+            "shop_name": "Quality Auto Repair",
+        })
+        conn.execute(
+            "INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output) "
+            "VALUES (?, ?, ?, ?)",
+            ("CLM-TEST005", "partial_loss", "partial_loss", partial_loss_output),
         )
 
 

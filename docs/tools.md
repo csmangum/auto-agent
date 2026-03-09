@@ -60,6 +60,7 @@ Logic functions access external data (policies, valuations, repair shops, parts,
 | Escalation | `escalation_tools.py` | evaluate_escalation, escalate_claim, detect_fraud_indicators, generate_escalation_report |
 | Fraud | `fraud_tools.py` | analyze_claim_patterns, cross_reference_fraud_indicators, perform_fraud_assessment, generate_fraud_report |
 | Partial Loss | `partial_loss_tools.py` | get_available_repair_shops, assign_repair_shop, get_parts_catalog, create_parts_order, calculate_repair_estimate, generate_repair_authorization |
+| Supplemental | `supplemental_tools.py` | get_original_repair_estimate, calculate_supplemental_estimate, update_repair_authorization |
 | Compliance | `compliance_tools.py` | search_california_compliance |
 | RAG | `rag_tools.py` | search_policy_compliance, get_compliance_deadlines, get_required_disclosures, get_coverage_exclusions, get_total_loss_requirements, get_fraud_detection_guidance, get_repair_standards |
 
@@ -664,6 +665,61 @@ Generate a repair authorization document.
   "status": "authorized"
 }
 ```
+
+---
+
+### get_original_repair_estimate
+
+Retrieve the original repair estimate from a partial loss claim's workflow. Used when processing supplemental damage reports.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | Claim ID to fetch original estimate for |
+
+**Returns:** JSON string with total_estimate, parts_cost, labor_cost, authorization_id, shop_id, and related fields.
+
+---
+
+### calculate_supplemental_estimate
+
+Calculate repair estimate for supplemental (additional) damage only. Use when additional damage was discovered during repair.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `supplemental_damage_description` | string | Description of newly discovered damage |
+| `vehicle_make` | string | Vehicle manufacturer |
+| `vehicle_year` | integer | Vehicle year |
+| `policy_number` | string | Policy number |
+| `shop_id` | string (optional) | Shop ID for labor rate (use same as original) |
+| `part_type_preference` | string (default: "aftermarket") | oem, aftermarket, refurbished |
+
+**Returns:** JSON string with parts, labor, total_estimate for supplemental damage.
+
+---
+
+### update_repair_authorization
+
+Update repair authorization with supplemental amounts. Adds supplemental authorization and returns combined totals.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | Claim ID |
+| `shop_id` | string | Repair shop ID (same as original) |
+| `original_total` | float | Original total estimate |
+| `original_parts` | float | Original parts cost |
+| `original_labor` | float | Original labor cost |
+| `original_insurance_pays` | float | Original insurance payment |
+| `supplemental_total` | float | Supplemental total estimate |
+| `supplemental_parts` | float | Supplemental parts cost |
+| `supplemental_labor` | float | Supplemental labor cost |
+| `supplemental_insurance_pays` | float | Supplemental insurance payment |
+| `authorization_id` | string (optional) | Original authorization ID |
+| `customer_approved` | boolean (default: true) | Customer approved supplemental |
+
+**Returns:** JSON string with combined totals and supplemental_authorization_id.
 
 ---
 

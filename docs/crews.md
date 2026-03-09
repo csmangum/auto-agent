@@ -14,6 +14,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Total Loss](#total-loss-crew) | 3 | Process total loss claims |
 | [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
 | [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
+| [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
 
 ---
 
@@ -617,6 +618,46 @@ The Partial Loss crew is invoked **after**:
 - **AC7:** Final claim status is set by Settlement Crew (`settled`) on success
 - **AC8:** Task context flows correctly through all five steps
 - **AC9:** Documentation matches this specification
+
+---
+
+## Supplemental Crew
+
+**Location**: `src/claim_agent/crews/supplemental_crew.py`
+
+Sub-workflow for additional damage discovered during repair on existing partial loss claims. Invoked via `POST /claims/{claim_id}/supplemental` when a shop or adjuster reports supplemental damage. California CCR 2695.8 requires prompt inspection and authorization of supplemental payment.
+
+### Entry Conditions
+
+- **Claim type:** `partial_loss` (existing claim)
+- **Claim status:** `processing` or `settled`
+- **Trigger:** Supplemental damage report with `supplemental_damage_description`
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Supplemental Intake Specialist | `get_original_repair_estimate`, `query_policy_db`, `get_repair_standards` |
+| Damage Verifier | `get_original_repair_estimate`, `evaluate_damage` |
+| Estimate Adjuster | `calculate_supplemental_estimate`, `update_repair_authorization` |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Supplemental["Supplemental Crew"]
+        A[1. Intake: Validate] --> B[2. Verify: Compare] --> C[3. Adjust: Update Auth]
+    end
+
+    A -.- A1[get_original_repair_estimate]
+    B -.- B1[evaluate_damage]
+    C -.- C1[calculate_supplemental_estimate]
+    C -.- C2[update_repair_authorization]
+```
+
+### Integration
+
+Supplemental is a **sub-workflow** (like Dispute), not a router-classified claim type. Entry point: `POST /claims/{claim_id}/supplemental` with body `{ "supplemental_damage_description": "...", "reported_by": "shop" }`.
 
 ---
 
