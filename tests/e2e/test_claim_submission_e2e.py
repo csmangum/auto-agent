@@ -14,7 +14,11 @@ from claim_agent.db.constants import (
     STATUS_OPEN,
     STATUS_SETTLED,
 )
-from claim_agent.models.workflow_output import PartialLossWorkflowOutput, TotalLossWorkflowOutput
+from claim_agent.models.workflow_output import (
+    BIWorkflowOutput,
+    PartialLossWorkflowOutput,
+    TotalLossWorkflowOutput,
+)
 
 
 # ============================================================================
@@ -272,6 +276,68 @@ def test_e2e_submit_partial_loss_claim_via_api(
     assert data["claim_id"].startswith("CLM-")
     assert data.get("status") == STATUS_SETTLED
     assert data.get("claim_type") == "partial_loss"
+
+    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    assert history_resp.status_code == 200
+    history = history_resp.json()["history"]
+    assert len(history) >= 2
+
+
+# ============================================================================
+# E2E: Bodily injury claim
+# ============================================================================
+
+
+@pytest.mark.e2e
+def test_e2e_submit_bodily_injury_claim_via_api(
+    e2e_client,
+    integration_db,
+    sample_bodily_injury_claim,
+    mock_router_response,
+    mock_crew_response,
+):
+    """Submit bodily injury claim via POST /api/claims; assert claim_id, status, history."""
+    mock_task = MagicMock()
+    mock_task.output = BIWorkflowOutput(
+        payout_amount=8500.0,
+        medical_charges=3750.0,
+        pain_suffering=5625.0,
+        injury_severity="moderate",
+        policy_bi_limit=250000.0,
+    )
+    workflow_tasks_output = [mock_task]
+
+    factory_mod._storage_instance = None
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
+        with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+            with patch("claim_agent.workflow.stages.create_bodily_injury_crew") as mock_bi_crew:
+                with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                    with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
+                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                            mock_llm.return_value = MagicMock()
+                            mock_router.return_value.kickoff.return_value = mock_router_response(
+                                "bodily_injury", "Passenger injured in collision."
+                            )
+                            mock_bi_crew.return_value.kickoff.return_value = mock_crew_response(
+                                "BI settlement proposed.",
+                                tasks_output=workflow_tasks_output,
+                            )
+                            mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                "Settlement completed."
+                            )
+                            mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                "Subrogation assessment complete. No recovery opportunity."
+                            )
+                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+
+                            resp = e2e_client.post("/api/claims", json=sample_bodily_injury_claim)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "claim_id" in data
+    assert data["claim_id"].startswith("CLM-")
+    assert data.get("status") == STATUS_SETTLED
+    assert data.get("claim_type") == "bodily_injury"
 
     history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200

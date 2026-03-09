@@ -32,15 +32,18 @@ class TestClaimClassification:
         assert _parse_claim_type("total_loss") == "total_loss"
         assert _parse_claim_type("fraud") == "fraud"
         assert _parse_claim_type("partial_loss") == "partial_loss"
-        
+        assert _parse_claim_type("bodily_injury") == "bodily_injury"
+
         # With reasoning
         assert _parse_claim_type("new\nThis is a new claim.") == "new"
         assert _parse_claim_type("total_loss\nVehicle flooded.") == "total_loss"
         assert _parse_claim_type("partial_loss\nMinor fender damage.") == "partial_loss"
-        
+        assert _parse_claim_type("bodily_injury\nPassenger injured in collision.") == "bodily_injury"
+
         # Normalized variants
         assert _parse_claim_type("total loss") == "total_loss"
         assert _parse_claim_type("partial loss") == "partial_loss"
+        assert _parse_claim_type("bodily injury") == "bodily_injury"
         assert _parse_claim_type("FRAUD\nSuspicious patterns.") == "fraud"
     
     @pytest.mark.integration
@@ -59,6 +62,7 @@ class TestClaimClassification:
         assert _final_status("fraud") == STATUS_FRAUD_SUSPECTED
         assert _final_status("partial_loss") == STATUS_SETTLED
         assert _final_status("total_loss") == STATUS_SETTLED
+        assert _final_status("bodily_injury") == STATUS_SETTLED
 
 
 # ============================================================================
@@ -483,6 +487,28 @@ class TestWorkflowCrewClaimDataAndTools:
         assert "{claim_data}" in first_task.description, (
             "First task description should contain {claim_data} for crew input injection"
         )
+
+    @pytest.mark.integration
+    def test_bodily_injury_crew_first_task_has_claim_data_placeholder(self):
+        """First task of bodily injury crew must contain {claim_data} for input injection."""
+        from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
+
+        crew = create_bodily_injury_crew(llm=_structural_llm_for_crew())
+        first_task = crew.tasks[0]
+        assert "{claim_data}" in first_task.description, (
+            "First task description should contain {claim_data} for crew input injection"
+        )
+
+    @pytest.mark.integration
+    def test_bodily_injury_crew_all_tasks_have_claim_data_placeholder(self):
+        """All bodily injury crew tasks must contain {claim_data} so agents receive claim context."""
+        from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
+
+        crew = create_bodily_injury_crew(llm=_structural_llm_for_crew())
+        for i, task in enumerate(crew.tasks):
+            assert "{claim_data}" in task.description, (
+                f"Task {i} ({task.description[:50]}...) must contain {{claim_data}} for input injection"
+            )
 
     @pytest.mark.integration
     def test_partial_loss_crew_all_tasks_have_claim_data_placeholder(self):

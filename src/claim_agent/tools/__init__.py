@@ -75,6 +75,10 @@ __all__ = [
     "get_salvage_value",
     "initiate_title_transfer",
     "record_salvage_disposition",
+    # Bodily injury tools
+    "query_medical_records",
+    "assess_injury_severity",
+    "calculate_bi_settlement",
 ]
 
 
@@ -289,4 +293,17 @@ def __getattr__(name: str):
         from claim_agent.tools.salvage_tools import record_salvage_disposition
         setattr(mod, "record_salvage_disposition", record_salvage_disposition)
         return record_salvage_disposition
+    # Bodily injury tools
+    if name == "query_medical_records":
+        from claim_agent.tools.bodily_injury_tools import query_medical_records
+        setattr(mod, "query_medical_records", query_medical_records)
+        return query_medical_records
+    if name == "assess_injury_severity":
+        from claim_agent.tools.bodily_injury_tools import assess_injury_severity
+        setattr(mod, "assess_injury_severity", assess_injury_severity)
+        return assess_injury_severity
+    if name == "calculate_bi_settlement":
+        from claim_agent.tools.bodily_injury_tools import calculate_bi_settlement
+        setattr(mod, "calculate_bi_settlement", calculate_bi_settlement)
+        return calculate_bi_settlement
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

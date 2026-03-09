@@ -513,6 +513,8 @@ def test_parse_claim_type_exact():
     assert _parse_claim_type("fraud") == "fraud"
     assert _parse_claim_type("partial_loss") == "partial_loss"
     assert _parse_claim_type("partial loss") == "partial_loss"
+    assert _parse_claim_type("bodily_injury") == "bodily_injury"
+    assert _parse_claim_type("bodily injury") == "bodily_injury"
 
 
 def test_parse_claim_type_with_reasoning():
@@ -536,6 +538,7 @@ def test_parse_claim_type_starts_with():
     assert _parse_claim_type("fraud - suspicious indicators") == "fraud"
     assert _parse_claim_type("partial loss - bumper repair") == "partial_loss"
     assert _parse_claim_type("partial_loss: fender damage repairable") == "partial_loss"
+    assert _parse_claim_type("bodily injury - whiplash claim") == "bodily_injury"
 
 
 def test_parse_claim_type_default():

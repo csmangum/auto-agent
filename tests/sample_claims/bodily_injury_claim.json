@@ -1,0 +1,11 @@
+{
+  "policy_number": "POL-004",
+  "vin": "2HGFG3B54CH501234",
+  "vehicle_year": 2020,
+  "vehicle_make": "Toyota",
+  "vehicle_model": "Camry",
+  "incident_date": "2025-02-01",
+  "incident_description": "Rear-ended at intersection. Driver and passenger both injured. Ambulance transported driver to ER for whiplash and back pain.",
+  "damage_description": "Rear bumper and trunk damaged. Driver sustained whiplash and cervical strain. Passenger had minor soft tissue injury. Both sought medical treatment.",
+  "estimated_damage": 4500
+}

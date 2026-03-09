@@ -112,6 +112,13 @@ def sample_partial_loss_claim() -> dict:
         return json.load(f)
 
 
+@pytest.fixture
+def sample_bodily_injury_claim() -> dict:
+    """Load sample bodily injury claim data."""
+    with open(SAMPLE_CLAIMS_DIR / "bodily_injury_claim.json") as f:
+        return json.load(f)
+
+
 # ============================================================================
 # Mock LLM fixtures (same as integration/conftest.py)
 # ============================================================================
