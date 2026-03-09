@@ -712,10 +712,12 @@ class TestSystemConfig:
         assert "valuation" in data
         assert "partial_loss" in data
         assert "token_budgets" in data
+        assert "background_tasks" in data
         assert "crew_verbose" in data
         # Check specific values exist
         assert "confidence_threshold" in data["escalation"]
         assert "max_tokens_per_claim" in data["token_budgets"]
+        assert data["background_tasks"]["max_concurrent"] >= 0
 
 
 class TestSystemHealth:

@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter
 
 from claim_agent.api.deps import require_role
+from claim_agent.config import get_settings
 from claim_agent.config.settings import (
     get_escalation_config,
     get_fraud_config,
@@ -359,6 +360,9 @@ def get_config():
         "token_budgets": {
             "max_tokens_per_claim": MAX_TOKENS_PER_CLAIM,
             "max_llm_calls_per_claim": MAX_LLM_CALLS_PER_CLAIM,
+        },
+        "background_tasks": {
+            "max_concurrent": get_settings().max_concurrent_background_tasks,
         },
         "crew_verbose": get_crew_verbose(),
     }
