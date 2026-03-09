@@ -10,7 +10,6 @@ from claim_agent.agents.reopened import (
     create_reopened_validator_agent,
 )
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
-from claim_agent.models.claim import ClaimType
 from claim_agent.models.workflow_output import ReopenedWorkflowOutput
 
 
