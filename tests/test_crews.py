@@ -404,6 +404,7 @@ def test_subrogation_crew_structure():
     assert task1 in task2.context and task2 in task3.context
 
 
+@pytest.mark.llm
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_new_claim_crew_kickoff():
     """Run new claim crew on sample input (requires LLM)."""
@@ -420,6 +421,7 @@ def test_new_claim_crew_kickoff():
     assert "CLM-" in str(output) or "claim" in str(output).lower()
 
 
+@pytest.mark.llm
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_duplicate_crew_kickoff():
     """Run duplicate crew on sample input (requires LLM)."""
@@ -435,6 +437,7 @@ def test_duplicate_crew_kickoff():
     assert output
 
 
+@pytest.mark.llm
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_total_loss_crew_kickoff():
     """Run total loss crew on sample input (requires LLM)."""
@@ -450,6 +453,7 @@ def test_total_loss_crew_kickoff():
     assert output
 
 
+@pytest.mark.llm
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_fraud_detection_crew_kickoff():
     """Run fraud detection crew on sample input (requires LLM)."""
@@ -466,6 +470,7 @@ def test_fraud_detection_crew_kickoff():
     assert "fraud" in str(output).lower() or "risk" in str(output).lower()
 
 
+@pytest.mark.llm
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_partial_loss_crew_kickoff():
     """Run partial loss crew on sample input (requires LLM)."""
@@ -481,6 +486,7 @@ def test_partial_loss_crew_kickoff():
     assert output
 
 
+@pytest.mark.llm
 @pytest.mark.skipif(SKIP_CREW, reason="OPENAI_API_KEY not set; skip crew integration tests")
 def test_rental_crew_kickoff():
     """Run rental crew on sample input; verifies output structure (requires LLM)."""
@@ -504,38 +510,42 @@ def test_rental_crew_kickoff():
     assert "workflow_output" in str(inputs)
 
 
-def test_run_claim_workflow_classification_only():
-    """Test that run_claim_workflow returns expected keys and persists to DB."""
+def test_run_claim_workflow_classification_only(tmp_path):
+    """Test that run_claim_workflow returns expected keys and persists to DB (mocked, no LLM)."""
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.database import init_db
 
     with open(Path(__file__).parent / "sample_claims" / "partial_loss_parking.json") as f:
         claim_data = json.load(f)
 
-    if SKIP_CREW:
-        pytest.skip("OPENAI_API_KEY not set")
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    try:
-        init_db(path)
-        os.environ["CLAIMS_DB_PATH"] = path
-        result = run_claim_workflow(claim_data)
-        assert "claim_id" in result
-        assert "claim_type" in result
-        assert result["claim_type"] in (
-            "new",
-            "duplicate",
-            "total_loss",
-            "fraud",
-            "partial_loss",
-            "bodily_injury",
-            "reopened",
-        )
-        assert "workflow_output" in result
-        assert "summary" in result
-    finally:
-        os.unlink(path)
-        os.environ.pop("CLAIMS_DB_PATH", None)
+    router_raw = '{"claim_type": "new", "confidence": 0.9, "reasoning": "First-time claim."}'
+    workflow_output = '{"payout_amount": 1500, "estimated_repair_days": 3}'
+
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
+         patch("claim_agent.workflow.stages.create_router_crew") as mock_router, \
+         patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_new_crew:
+        mock_llm.return_value = MagicMock()
+        mock_router.return_value.kickoff.return_value = MagicMock(raw=router_raw)
+        mock_new_crew.return_value.kickoff.return_value = MagicMock(raw=workflow_output)
+
+        db_path = tmp_path / "claims.db"
+        init_db(str(db_path))
+        with patch.dict(os.environ, {"CLAIMS_DB_PATH": str(db_path)}):
+            result = run_claim_workflow(claim_data)
+
+    assert "claim_id" in result
+    assert "claim_type" in result
+    assert result["claim_type"] in (
+        "new",
+        "duplicate",
+        "total_loss",
+        "fraud",
+        "partial_loss",
+        "bodily_injury",
+        "reopened",
+    )
+    assert "workflow_output" in result
+    assert "summary" in result
 
 
 def test_parse_claim_type_exact():

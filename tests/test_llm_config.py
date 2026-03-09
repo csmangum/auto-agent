@@ -162,6 +162,78 @@ class TestLLMConfig:
 
                 assert setup_count == 1
 
+    def test_get_llm_placeholder_key_raises(self):
+        """Test get_llm raises when OPENAI_API_KEY is a placeholder from .env.example."""
+        from claim_agent.config.llm import get_llm
+
+        original_key = os.environ.get("OPENAI_API_KEY")
+        original_base = os.environ.get("OPENAI_API_BASE")
+        original_openrouter = os.environ.get("OPENROUTER_API_KEY")
+        try:
+            os.environ["OPENAI_API_KEY"] = "your_openrouter_key"
+            os.environ["OPENAI_API_BASE"] = "https://openrouter.ai/api/v1"
+            if "OPENROUTER_API_KEY" in os.environ:
+                del os.environ["OPENROUTER_API_KEY"]
+            reload_settings()
+
+            with pytest.raises(ValueError, match="placeholder"):
+                get_llm()
+        finally:
+            if original_key is not None:
+                os.environ["OPENAI_API_KEY"] = original_key
+            elif "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
+            if original_base is not None:
+                os.environ["OPENAI_API_BASE"] = original_base
+            elif "OPENAI_API_BASE" in os.environ:
+                del os.environ["OPENAI_API_BASE"]
+            if original_openrouter is not None:
+                os.environ["OPENROUTER_API_KEY"] = original_openrouter
+            elif "OPENROUTER_API_KEY" in os.environ:
+                del os.environ["OPENROUTER_API_KEY"]
+            reload_settings()
+
+    def test_get_llm_openrouter_fallback_when_placeholder(self):
+        """Test get_llm uses OPENROUTER_API_KEY when OPENAI_API_KEY is placeholder."""
+        original_key = os.environ.get("OPENAI_API_KEY")
+        original_base = os.environ.get("OPENAI_API_BASE")
+        original_model = os.environ.get("OPENAI_MODEL_NAME")
+        original_openrouter = os.environ.get("OPENROUTER_API_KEY")
+        try:
+            os.environ["OPENAI_API_KEY"] = "your_openrouter_key"
+            os.environ["OPENAI_API_BASE"] = "https://openrouter.ai/api/v1"
+            os.environ["OPENAI_MODEL_NAME"] = ""
+            os.environ["OPENROUTER_API_KEY"] = "sk-real-openrouter-key"
+            reload_settings()
+
+            with patch("crewai.LLM") as mock_llm:
+                mock_llm.return_value = MagicMock()
+                from claim_agent.config.llm import get_llm
+                get_llm()
+                mock_llm.assert_called_once_with(
+                    model="gpt-4o-mini",
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key="sk-real-openrouter-key",
+                )
+        finally:
+            if original_key is not None:
+                os.environ["OPENAI_API_KEY"] = original_key
+            elif "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
+            if original_base is not None:
+                os.environ["OPENAI_API_BASE"] = original_base
+            elif "OPENAI_API_BASE" in os.environ:
+                del os.environ["OPENAI_API_BASE"]
+            if original_openrouter is not None:
+                os.environ["OPENROUTER_API_KEY"] = original_openrouter
+            elif "OPENROUTER_API_KEY" in os.environ:
+                del os.environ["OPENROUTER_API_KEY"]
+            if original_model is not None:
+                os.environ["OPENAI_MODEL_NAME"] = original_model
+            elif "OPENAI_MODEL_NAME" in os.environ:
+                del os.environ["OPENAI_MODEL_NAME"]
+            reload_settings()
+
     def test_get_llm_returns_llm_object(self):
         """Test that get_llm returns an LLM object with valid API key."""
         original_key = os.environ.get("OPENAI_API_KEY")

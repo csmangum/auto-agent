@@ -9,9 +9,6 @@ import pytest
 # Point to project data for mock_db
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
 
-# Skip full workflow integration test if no LLM (OPENAI_API_KEY)
-SKIP_WORKFLOW = not os.environ.get("OPENAI_API_KEY")
-
 
 @pytest.fixture(autouse=True)
 def _temp_claims_db(tmp_path, monkeypatch):
@@ -576,9 +573,10 @@ def test_run_claim_workflow_validation_non_numeric_confidence_escalates(_temp_cl
     assert "low_router_confidence" in result.get("escalation_reasons", [])
 
 
-@pytest.mark.skipif(SKIP_WORKFLOW, reason="OPENAI_API_KEY not set; skip run_claim_workflow integration test")
 def test_run_claim_workflow_escalation_high_value(_temp_claims_db):
-    """Integration: run_claim_workflow with high-value claim escalates and returns NEEDS_REVIEW."""
+    """run_claim_workflow with high-value claim escalates and returns NEEDS_REVIEW."""
+    from unittest.mock import MagicMock, patch
+
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 
@@ -593,7 +591,15 @@ def test_run_claim_workflow_escalation_high_value(_temp_claims_db):
         "damage_description": "Scratches on bumper.",
         "estimated_damage": 15000.0,
     }
-    result = run_claim_workflow(claim_data)
+    router_high_conf_raw = '{"claim_type": "new", "confidence": 0.9, "reasoning": "First-time submission."}'
+
+    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
+         patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+        mock_llm.return_value = MagicMock()
+        mock_router.return_value.kickoff.return_value = MagicMock(raw=router_high_conf_raw)
+
+        result = run_claim_workflow(claim_data)
+
     assert result["status"] == STATUS_NEEDS_REVIEW
     assert "high_value" in result["escalation_reasons"]
 

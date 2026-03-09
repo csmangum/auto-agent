@@ -2,10 +2,9 @@
 
 These tests verify the complete claim processing workflow from intake to resolution.
 Tests are designed to run with mocked LLM responses for CI, but can also run
-against a real LLM when OPENAI_API_KEY is set.
+against a real LLM when OPENAI_API_KEY or OPENROUTER_API_KEY is set (not a placeholder).
 """
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -528,9 +527,11 @@ class TestWorkflowCrewClaimDataAndTools:
     ):
         """Run duplicate crew with real LLM. Verifies crew completes and produces output.
         Optionally checks search_claims_db was invoked (LLM tool use is non-deterministic).
-        Requires OPENAI_API_KEY. Seeds DB so search has something to find."""
-        if not os.environ.get("OPENAI_API_KEY"):
-            pytest.skip("OPENAI_API_KEY not set; skipping LLM tool-invocation test")
+        Requires OPENAI_API_KEY or OPENROUTER_API_KEY. Seeds DB so search has something to find."""
+        from claim_agent.config.llm import has_valid_llm_config
+
+        if not has_valid_llm_config():
+            pytest.skip("No valid LLM API key; skipping LLM tool-invocation test")
 
         import json
         from claim_agent.crews.duplicate_crew import create_duplicate_crew
@@ -548,7 +549,7 @@ class TestWorkflowCrewClaimDataAndTools:
             "estimated_damage": 3500,
         }
         crew = create_duplicate_crew()
-        result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+        result = _run_llm_call(lambda: crew.kickoff(inputs={"claim_data": json.dumps(claim_data)}))
         output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
         output = str(output)
 
@@ -560,16 +561,18 @@ class TestWorkflowCrewClaimDataAndTools:
         self, sample_bodily_injury_claim
     ):
         """Run bodily injury crew with real LLM. Verifies crew completes and produces output.
-        Requires OPENAI_API_KEY."""
-        if not os.environ.get("OPENAI_API_KEY"):
-            pytest.skip("OPENAI_API_KEY not set; skipping LLM tool-invocation test")
+        Requires OPENAI_API_KEY or OPENROUTER_API_KEY."""
+        from claim_agent.config.llm import has_valid_llm_config
+
+        if not has_valid_llm_config():
+            pytest.skip("No valid LLM API key; skipping LLM tool-invocation test")
 
         import json
         from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
 
         crew = create_bodily_injury_crew()
         claim_data = {**sample_bodily_injury_claim, "claim_id": "CLM-BI-TEST"}
-        result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+        result = _run_llm_call(lambda: crew.kickoff(inputs={"claim_data": json.dumps(claim_data)}))
         output = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
         output = str(output)
 
@@ -582,8 +585,10 @@ class TestWorkflowCrewClaimDataAndTools:
     ):
         """Router with claim having both injury and repairable damage: expect bodily_injury.
         Per rules, injury takes priority over partial_loss when significant."""
-        if not os.environ.get("OPENAI_API_KEY"):
-            pytest.skip("OPENAI_API_KEY not set; skipping LLM routing test")
+        from claim_agent.config.llm import has_valid_llm_config
+
+        if not has_valid_llm_config():
+            pytest.skip("No valid LLM API key; skipping LLM routing test")
 
         import json
         from claim_agent.workflow.routing import create_router_crew
@@ -598,7 +603,7 @@ class TestWorkflowCrewClaimDataAndTools:
             "damage_description": "Rear bumper and trunk damaged. Driver sustained whiplash.",
         }
         crew = create_router_crew()
-        result = crew.kickoff(inputs={"claim_data": json.dumps(claim_data)})
+        result = _run_llm_call(lambda: crew.kickoff(inputs={"claim_data": json.dumps(claim_data)}))
         raw = getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
         raw = str(raw).strip().lower()
         # Per routing rules, injury to persons -> bodily_injury
@@ -612,10 +617,37 @@ class TestWorkflowCrewClaimDataAndTools:
 # ============================================================================
 
 
+def _is_auth_error(exc: BaseException) -> bool:
+    """True if exc is an auth/401 error (invalid/expired key)."""
+    try:
+        from litellm.exceptions import AuthenticationError
+        if isinstance(exc, AuthenticationError):
+            return True
+        if exc.__cause__ and isinstance(exc.__cause__, AuthenticationError):
+            return True
+        if hasattr(exc, "failed_attempts") and exc.failed_attempts:
+            for attempt in exc.failed_attempts:
+                if isinstance(getattr(attempt, "exception", None), AuthenticationError):
+                    return True
+    except ImportError:
+        pass
+    return False
+
+
+def _run_llm_call(fn):
+    """Run fn(), converting auth errors to pytest.skip."""
+    try:
+        return fn()
+    except BaseException as e:
+        if _is_auth_error(e):
+            pytest.skip("Invalid or expired API key; skipping LLM test")
+        raise
+
+
 @pytest.mark.llm
 @pytest.mark.e2e
 class TestWorkflowWithLLM:
-    """End-to-end tests with real LLM (requires OPENAI_API_KEY).
+    """End-to-end tests with real LLM (requires OPENAI_API_KEY or OPENROUTER_API_KEY).
 
     Claim type assertions allow multiple valid outcomes: the router is non-deterministic
     and may classify conservatively (e.g. total_loss → new, fraud → new or escalation).
@@ -624,15 +656,20 @@ class TestWorkflowWithLLM:
 
     @pytest.fixture(autouse=True)
     def check_api_key(self):
-        """Skip these tests if no API key is set."""
-        if not os.environ.get("OPENAI_API_KEY"):
-            pytest.skip("OPENAI_API_KEY not set; skipping LLM tests")
+        """Skip these tests if no valid API key is set (placeholder keys cause 401)."""
+        from claim_agent.config.llm import has_valid_llm_config
+
+        if not has_valid_llm_config():
+            pytest.skip(
+                "OPENAI_API_KEY or OPENROUTER_API_KEY not set or is a placeholder; "
+                "skipping LLM tests (use a real key to run)"
+            )
 
     def test_new_claim_full_workflow(self, integration_db, sample_new_claim):
         """Test complete new claim workflow with real LLM."""
         from claim_agent.crews.main_crew import run_claim_workflow
 
-        result = run_claim_workflow(sample_new_claim)
+        result = _run_llm_call(lambda: run_claim_workflow(sample_new_claim))
 
         assert "claim_id" in result
         assert "claim_type" in result
@@ -646,7 +683,7 @@ class TestWorkflowWithLLM:
         """
         from claim_agent.crews.main_crew import run_claim_workflow
 
-        result = run_claim_workflow(sample_total_loss_claim)
+        result = _run_llm_call(lambda: run_claim_workflow(sample_total_loss_claim))
 
         assert "claim_id" in result
         assert "claim_type" in result
@@ -660,7 +697,7 @@ class TestWorkflowWithLLM:
         """
         from claim_agent.crews.main_crew import run_claim_workflow
 
-        result = run_claim_workflow(sample_fraud_claim)
+        result = _run_llm_call(lambda: run_claim_workflow(sample_fraud_claim))
 
         assert "claim_id" in result
         assert result["claim_type"] in ("fraud", "new") or result.get("needs_review")
@@ -671,7 +708,7 @@ class TestWorkflowWithLLM:
         Router may return duplicate, new, or partial_loss."""
         from claim_agent.crews.main_crew import run_claim_workflow
 
-        result = run_claim_workflow(sample_duplicate_claim)
+        result = _run_llm_call(lambda: run_claim_workflow(sample_duplicate_claim))
 
         assert "claim_id" in result
         assert "claim_type" in result
@@ -683,7 +720,7 @@ class TestWorkflowWithLLM:
         Router may return partial_loss or new."""
         from claim_agent.crews.main_crew import run_claim_workflow
 
-        result = run_claim_workflow(sample_partial_loss_claim)
+        result = _run_llm_call(lambda: run_claim_workflow(sample_partial_loss_claim))
 
         assert "claim_id" in result
         assert "claim_type" in result
