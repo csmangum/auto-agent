@@ -27,6 +27,11 @@ from claim_agent.agents.partial_loss import (
     create_repair_shop_coordinator_agent,
 )
 from claim_agent.agents.router import create_router_agent
+from claim_agent.agents.reopened import (
+    create_prior_claim_loader_agent,
+    create_reopened_router_agent,
+    create_reopened_validator_agent,
+)
 from claim_agent.agents.settlement import (
     create_payment_distribution_agent,
     create_settlement_closure_agent,
@@ -220,5 +225,25 @@ class TestSettlementAgents:
             claim_type="partial_loss",
             use_rag=False,
         )
+        assert agent is not None
+        assert len(agent.tools) >= 1
+
+
+@pytest.mark.skipif(SKIP_AGENTS, reason="OPENAI_API_KEY not set; skip agent creation tests")
+class TestReopenedAgents:
+    """Test reopened claim workflow agent creation."""
+
+    def test_create_reopened_validator_agent(self, mock_llm):
+        agent = create_reopened_validator_agent(llm=mock_llm)
+        assert agent is not None
+        assert len(agent.tools) >= 1
+
+    def test_create_prior_claim_loader_agent(self, mock_llm):
+        agent = create_prior_claim_loader_agent(llm=mock_llm)
+        assert agent is not None
+        assert len(agent.tools) >= 1
+
+    def test_create_reopened_router_agent(self, mock_llm):
+        agent = create_reopened_router_agent(llm=mock_llm)
         assert agent is not None
         assert len(agent.tools) >= 1

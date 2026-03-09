@@ -34,13 +34,13 @@ Classify this claim as exactly one of: new, duplicate, total_loss, fraud, partia
 
 CLASSIFICATION RULES (in priority order):
 
-0. **reopened**: If ANY of these are true in the claim data, classify as reopened:
+0. **definitive_duplicate**: If "definitive_duplicate" is true in the claim data, you MUST classify as duplicate. Do not classify as anything else, including reopened.
+
+1. **reopened**: If "definitive_duplicate" is NOT true and ANY of these are true in the claim data, classify as reopened:
    - "prior_claim_id" is present and not empty (references a prior settled claim)
    - "reopening_reason" is present (e.g., new_damage, policyholder_appeal, additional_covered_damage)
    - "is_reopened" is true
    Reopened claims are settled claims being reopened for new damage, policyholder appeal, or similar. Route to reopened workflow.
-
-1. **definitive_duplicate**: If "definitive_duplicate" is true in the claim data, you MUST classify as duplicate. Do not classify as anything else.
 
 2. **duplicate**: ONLY if "existing_claims_for_vin" contains claims with:
    - For standard claims: description_similarity_score >= {duplicate_threshold} AND days_difference <= {days_window} (incident dates within {days_window} days)
@@ -79,8 +79,8 @@ EDGE CASE HINTS:
 - If damage_is_repairable is true and no catastrophic keywords in damage description, prefer partial_loss unless is_economic_total_loss is explicitly true.
 
 KEY DECISION POINTS:
-- If prior_claim_id, reopening_reason, or is_reopened present -> reopened
-- If definitive_duplicate is true -> duplicate (MUST)
+- If definitive_duplicate is true -> duplicate (MUST, overrides all other rules including reopened)
+- If prior_claim_id, reopening_reason, or is_reopened present (and definitive_duplicate is NOT true) -> reopened
 - If injury to persons is mentioned (injured, whiplash, hospital, etc.) -> bodily_injury
 - If damage says "totaled", "destroyed", "total loss", "beyond repair" -> total_loss (NOT fraud)
 - If rollover, fire, or flood mentioned in damage -> total_loss (NOT fraud)
@@ -134,6 +134,8 @@ def _parse_claim_type(raw_output: str) -> str:
                 return ClaimType.FRAUD.value
             if normalized == "bodily injury":
                 return ClaimType.BODILY_INJURY.value
+            if normalized == "reopened":
+                return ClaimType.REOPENED.value
             return normalized
         if normalized.startswith("bodily injury"):
             return ClaimType.BODILY_INJURY.value
