@@ -104,12 +104,12 @@ def assess_injury_severity_impl(
     desc_lower = injury_description.lower()
     severity = "moderate"
     factors = []
-    if any(k in desc_lower for k in ("fracture", "broken", "surgery", "hospitalization", "spinal")):
-        severity = "severe"
-        factors.append("Serious injury type indicated")
-    elif any(k in desc_lower for k in ("death", "paralysis", "amputation", "brain injury")):
+    if any(k in desc_lower for k in ("death", "paralysis", "amputation", "brain injury")):
         severity = "catastrophic"
         factors.append("Catastrophic injury type indicated")
+    elif any(k in desc_lower for k in ("fracture", "broken", "surgery", "hospitalization", "spinal")):
+        severity = "severe"
+        factors.append("Serious injury type indicated")
     elif any(k in desc_lower for k in ("minor", "bruise", "scratch", "soreness")):
         severity = "minor"
         factors.append("Minor injury description")
@@ -186,12 +186,8 @@ def calculate_bi_settlement_impl(
                     bi_per_accident = float(bi.get("per_accident", bi_per_accident))
         except Exception as exc:
             logger.warning("Policy lookup failed for BI limits: %s", exc)
-    # Pain and suffering (multiplier on medicals, severity-adjusted)
-    severity_mult = {"minor": 1.0, "moderate": 1.5, "severe": 2.5, "catastrophic": 4.0}.get(
-        (injury_severity or "moderate").lower(), 1.5
-    )
-    effective_mult = pain_suffering_multiplier * severity_mult
-    pain_suffering = medical_charges * effective_mult
+    # Pain and suffering (multiplier on medicals)
+    pain_suffering = medical_charges * pain_suffering_multiplier
     total_demand = medical_charges + pain_suffering
     # Cap at policy limit
     proposed = min(total_demand, bi_per_person)
