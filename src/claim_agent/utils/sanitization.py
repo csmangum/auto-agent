@@ -6,6 +6,7 @@ from typing import Any
 # Maximum lengths for text fields (characters)
 MAX_INCIDENT_DESCRIPTION = 5000
 MAX_DAMAGE_DESCRIPTION = 3000
+MAX_ACTOR_ID = 128
 MAX_NOTE = 5000
 MAX_POLICY_NUMBER = 64
 MAX_VIN = 32
@@ -34,6 +35,14 @@ def _sanitize_text(text: str | None, max_length: int) -> str:
     if len(cleaned) > max_length:
         cleaned = cleaned[:max_length]
     return cleaned
+
+
+def sanitize_actor_id(actor_id: str | None) -> str:
+    """Sanitize actor_id for prompt injection before storage. Truncates and redacts patterns."""
+    if actor_id is None or not isinstance(actor_id, str):
+        return ""
+    t = _sanitize_text(actor_id, MAX_ACTOR_ID)
+    return _remove_injection_patterns(t)
 
 
 def sanitize_note(note: str | None) -> str:

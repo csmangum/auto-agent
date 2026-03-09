@@ -220,8 +220,9 @@ class TestToolsLazyLoading:
         from claim_agent.tools import get_claim_notes
 
         result = get_claim_notes.run(claim_id="CLM-TEST001")
-        notes = json.loads(result)
-        assert isinstance(notes, list)
+        data = json.loads(result)
+        assert data["error"] is None
+        assert isinstance(data["notes"], list)
 
     def test_invalid_attribute_raises(self):
         """Test that invalid attribute raises AttributeError."""

@@ -29,7 +29,7 @@ from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import infer_attachment_type
-from claim_agent.utils.sanitization import sanitize_claim_data
+from claim_agent.utils.sanitization import MAX_ACTOR_ID, sanitize_claim_data
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 
 logger = logging.getLogger(__name__)
@@ -427,7 +427,12 @@ def get_claim_history(claim_id: str, ctx: ClaimContext = Depends(get_claim_conte
 
 class AddNoteBody(BaseModel):
     note: str = Field(..., min_length=1, description="Note content")
-    actor_id: str = Field(..., min_length=1, description="Crew name, agent identifier, or 'workflow'")
+    actor_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_ACTOR_ID,
+        description="Crew name, agent identifier, or 'workflow'",
+    )
 
     @field_validator("note", "actor_id", mode="after")
     @classmethod

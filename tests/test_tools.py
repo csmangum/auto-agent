@@ -105,8 +105,9 @@ def test_add_claim_note_and_get_claim_notes(temp_db):
     )
 
     result = get_claim_notes.run(claim_id=claim_id)
-    notes = json.loads(result)
-    assert notes == []
+    data = json.loads(result)
+    assert data["notes"] == []
+    assert data["error"] is None
 
     result = add_claim_note.run(
         claim_id=claim_id,
@@ -117,7 +118,9 @@ def test_add_claim_note_and_get_claim_notes(temp_db):
     assert data["success"] is True
 
     result = get_claim_notes.run(claim_id=claim_id)
-    notes = json.loads(result)
+    data = json.loads(result)
+    assert data["error"] is None
+    notes = data["notes"]
     assert len(notes) == 1
     assert notes[0]["note"] == "New Claim: Policy verified."
     assert notes[0]["actor_id"] == "New Claim"
@@ -136,6 +139,16 @@ def test_add_claim_note_nonexistent_returns_error(temp_db):
     data = json.loads(result)
     assert data["success"] is False
     assert "Claim not found" in data["message"]
+
+
+def test_get_claim_notes_nonexistent_returns_error(temp_db):
+    """get_claim_notes returns error format for nonexistent claim."""
+    from claim_agent.tools.claim_notes_tools import get_claim_notes
+
+    result = get_claim_notes.run(claim_id="CLM-NONEXIST")
+    data = json.loads(result)
+    assert data["notes"] is None
+    assert "Claim not found" in data["error"]
 
 
 def test_compute_similarity_high():

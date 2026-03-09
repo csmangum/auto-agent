@@ -63,11 +63,11 @@ def get_claim_notes(claim_id: str) -> str:
         claim_id: The claim ID (e.g., from claim_data).
 
     Returns:
-        JSON array of notes with id, note, actor_id, created_at.
+        JSON with notes (list) and error (null on success, string on failure).
     """
     claim_id = str(claim_id).strip()
     if not claim_id:
-        return json.dumps({"error": "claim_id is required"})
+        return json.dumps({"notes": None, "error": "claim_id is required"})
     try:
         notes = ClaimRepository().get_notes(claim_id)
         out = [
@@ -79,9 +79,9 @@ def get_claim_notes(claim_id: str) -> str:
             }
             for n in notes
         ]
-        return json.dumps(out)
+        return json.dumps({"notes": out, "error": None})
     except ClaimNotFoundError:
-        return json.dumps({"error": f"Claim not found: {claim_id}"})
+        return json.dumps({"notes": None, "error": f"Claim not found: {claim_id}"})
     except Exception:
         logger.exception("Unexpected error retrieving notes for claim %s", claim_id)
-        return json.dumps({"error": "An unexpected error occurred while retrieving notes"})
+        return json.dumps({"notes": None, "error": "An unexpected error occurred while retrieving notes"})
