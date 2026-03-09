@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import math
-import threading
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
@@ -70,15 +69,20 @@ _background_tasks: set[asyncio.Task] = set()
 
 # Per-claim locks to prevent concurrent approve requests from racing (same claim_id).
 # Note: In multi-process deployments, use a distributed lock (e.g. Redis) instead.
-_approve_locks: dict[str, threading.Lock] = {}
-_approve_locks_lock = threading.Lock()
+# LRU eviction prevents unbounded memory growth in long-running processes.
+_approve_locks: dict[str, asyncio.Lock] = {}
+_approve_locks_lock = asyncio.Lock()
+_MAX_APPROVE_LOCKS = 10000
 
 
-def _get_approve_lock(claim_id: str) -> threading.Lock:
+async def _get_approve_lock(claim_id: str) -> asyncio.Lock:
     """Get or create a lock for the given claim_id."""
-    with _approve_locks_lock:
+    async with _approve_locks_lock:
         if claim_id not in _approve_locks:
-            _approve_locks[claim_id] = threading.Lock()
+            if len(_approve_locks) >= _MAX_APPROVE_LOCKS:
+                # Evict oldest entry (FIFO eviction for simplicity)
+                _approve_locks.pop(next(iter(_approve_locks)))
+            _approve_locks[claim_id] = asyncio.Lock()
         return _approve_locks[claim_id]
 
 
@@ -379,9 +383,9 @@ async def approve_review(
             detail=f"Claim {claim_id} is not in needs_review (status={claim.get('status')}); cannot approve.",
         )
 
-    lock = _get_approve_lock(claim_id)
-    with lock:
-        claim = ctx.repo.get_claim(claim_id)
+    lock = await _get_approve_lock(claim_id)
+    async with lock:
+        claim = await asyncio.to_thread(ctx.repo.get_claim, claim_id)
         if claim is None:
             raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
         if claim.get("status") != STATUS_NEEDS_REVIEW:
@@ -396,7 +400,7 @@ async def approve_review(
             raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         try:
-            ctx.adjuster_service.approve(claim_id, actor_id=actor_id)
+            await asyncio.to_thread(ctx.adjuster_service.approve, claim_id, actor_id=actor_id)
         except ClaimNotFoundError as e:
             raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
         except ValueError as e:
@@ -410,7 +414,8 @@ async def approve_review(
                 "notes": body.reviewer_decision.notes,
             }
 
-        result = run_handback_workflow(
+        result = await asyncio.to_thread(
+            run_handback_workflow,
             claim_id,
             reviewer_decision=reviewer_decision,
             actor_id=actor_id,

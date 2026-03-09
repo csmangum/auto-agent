@@ -26,7 +26,7 @@ def _sanitize_reviewer_decision(decision: dict | None) -> dict:
     sanitized: dict = {}
     for key, value in decision.items():
         if key in ("notes", "confirmed_claim_type"):
-            sanitized[key] = sanitize_note(value)
+            sanitized[key] = sanitize_note(value) if value is not None else None
         else:
             sanitized[key] = value
     return sanitized
