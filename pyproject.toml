@@ -76,8 +76,8 @@ markers = [
     "e2e: marks tests as end-to-end tests (full workflow tests)",
     "load: marks tests as load tests (concurrent submissions, throughput, latency)",
 ]
-# Default addopts to show test output and warnings
-addopts = "-v --tb=short"
+# Default addopts: exclude LLM tests for fast runs; use pytest -m llm for full coverage
+addopts = "-v --tb=short -m \"not llm\""
 
 [tool.coverage.run]
 source = ["src/claim_agent"]

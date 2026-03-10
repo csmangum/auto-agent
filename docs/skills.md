@@ -39,8 +39,35 @@ src/claim_agent/skills/
 ├── settlement_documentation.md # Settlement Documentation Specialist
 ├── payment_distribution.md  # Payment Distribution Specialist
 ├── settlement_closure.md    # Settlement Closure Specialist
-└── escalation.md            # Escalation Review Specialist
+├── escalation.md            # Escalation Review Specialist
+├── rental_eligibility_specialist.md # Rental Eligibility Specialist
+├── rental_coordinator.md    # Rental Coordinator
+├── rental_reimbursement_processor.md # Rental Reimbursement Processor
+├── salvage_coordinator.md   # Salvage Coordinator
+├── title_specialist.md      # Title Specialist
+├── auction_liaison.md       # Auction Liaison
+├── liability_investigator.md # Liability Investigator
+├── demand_specialist.md     # Demand Specialist
+├── recovery_tracker.md      # Recovery Tracker
+├── supplemental_intake.md   # Supplemental Intake Specialist
+├── damage_verifier.md       # Damage Verifier
+├── estimate_adjuster.md     # Estimate Adjuster
+├── dispute_intake.md        # Dispute Intake Specialist
+├── dispute_policy_analyst.md # Dispute Policy Analyst
+├── dispute_resolution.md    # Dispute Resolution Specialist
+├── coverage_analyst.md      # Coverage Analyst
+├── denial_letter_specialist.md # Denial Letter Specialist
+├── appeal_reviewer.md       # Appeal Reviewer
+├── bi_intake_specialist.md  # Bodily Injury Intake Specialist
+├── medical_records_reviewer.md # Medical Records Reviewer
+├── settlement_negotiator.md  # Settlement Negotiator
+├── human_review_handback.md  # Human Review Handback Specialist
+├── reopened_validator.md    # Reopened Validator
+├── prior_claim_loader.md    # Prior Claim Loader
+└── reopened_router.md       # Reopened Router
 ```
+
+*Additional skills support sub-workflows (Rental, Salvage, Subrogation, Supplemental, Denial/Coverage, Dispute, Bodily Injury, Reopened). See [Crews](crews.md) for full workflow mapping.*
 
 ## Skills by Workflow
 
@@ -105,6 +132,22 @@ src/claim_agent/skills/
 | Skill | Agent | Purpose |
 |-------|-------|---------|
 | `escalation.md` | Escalation Review Specialist | Flag cases for human review |
+
+### Additional Workflows
+
+Skills for sub-workflows and specialized crews (see [Crews](crews.md) for full details):
+
+| Workflow | Skills |
+|----------|--------|
+| Rental Reimbursement | `rental_eligibility_specialist`, `rental_coordinator`, `rental_reimbursement_processor` |
+| Salvage | `salvage_coordinator`, `title_specialist`, `auction_liaison` |
+| Subrogation | `liability_investigator`, `demand_specialist`, `recovery_tracker` |
+| Supplemental | `supplemental_intake`, `damage_verifier`, `estimate_adjuster` |
+| Denial / Coverage | `coverage_analyst`, `denial_letter_specialist`, `appeal_reviewer` |
+| Dispute | `dispute_intake`, `dispute_policy_analyst`, `dispute_resolution` |
+| Bodily Injury | `bi_intake_specialist`, `medical_records_reviewer`, `settlement_negotiator` |
+| Human Review Handback | `human_review_handback` |
+| Reopened | `reopened_validator`, `prior_claim_loader`, `reopened_router` |
 
 ## Skill File Structure
 
@@ -190,6 +233,8 @@ path = get_skill_path("router")
 
 ### Skill Name Constants
 
+All skill names are available as constants in `claim_agent.skills`. Core constants include:
+
 ```python
 from claim_agent.skills import (
     ROUTER,
@@ -214,8 +259,13 @@ from claim_agent.skills import (
     PARTS_ORDERING,
     REPAIR_AUTHORIZATION,
     ESCALATION,
+    # Plus: RENTAL_ELIGIBILITY_SPECIALIST, RENTAL_COORDINATOR, RENTAL_REIMBURSEMENT_PROCESSOR,
+    # SALVAGE_COORDINATOR, TITLE_SPECIALIST, AUCTION_LIAISON, LIABILITY_INVESTIGATOR,
+    # DEMAND_SPECIALIST, RECOVERY_TRACKER, and others for sub-workflows.
 )
 ```
+
+Use `list_skills()` to get the full list of available skill names.
 
 ## How Agents Use Skills
 

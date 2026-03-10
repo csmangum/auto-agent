@@ -40,6 +40,15 @@ flowchart LR
 - **[PII and Retention](pii-and-retention.md)** - PII masking in logs and data retention enforcement
 - **[MCP Server](mcp-server.md)** - Optional external tool access
 
+### Human-in-the-Loop and Operations
+
+- **[Adjuster Workflow](adjuster-workflow.md)** - Review queue API, CLI, and audit trail
+- **[Review Queue](review-queue.md)** - Frontend planned implementation for review queue
+- **[Alerting](alerting.md)** - Prometheus alert rules and configuration
+- **[Evaluation Results](evaluation-results.md)** - Claim processing eval results and how to run
+- **[Compliance Corpus Requirements](compliance-corpus-requirements.md)** - RAG corpus requirements
+
+
 ## Quick Reference
 
 ### CLI Commands

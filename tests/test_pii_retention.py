@@ -3,7 +3,6 @@
 import json
 import os
 import tempfile
-from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -342,26 +341,19 @@ class TestRetentionRepository:
 class TestRetentionCLI:
     """Tests for retention-enforce CLI command."""
 
-    def test_retention_enforce_dry_run(self):
+    def test_retention_enforce_dry_run(self, capsys):
         """retention-enforce --dry-run should print without archiving."""
-        import subprocess
-        import sys
+        from claim_agent.db.database import init_db
+        from claim_agent.main import cmd_retention_enforce
 
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         try:
-            from claim_agent.db.database import init_db
             init_db(db_path)
-
-            result = subprocess.run(
-                [sys.executable, "-m", "claim_agent.main", "retention-enforce", "--dry-run"],
-                cwd=str(Path(__file__).resolve().parent.parent),
-                capture_output=True,
-                text=True,
-                env={**os.environ, "CLAIMS_DB_PATH": db_path},
-            )
-            assert result.returncode == 0
-            data = json.loads(result.stdout)
+            with mock.patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+                cmd_retention_enforce(dry_run=True)
+            captured = capsys.readouterr()
+            data = json.loads(captured.out)
             assert data["dry_run"] is True
             assert "retention_period_years" in data
             assert "claims_to_archive" in data

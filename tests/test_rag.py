@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import numpy as np
 
+pytestmark = pytest.mark.usefixtures("_preload_embedding_model")
 
 # Test data directory
 DATA_DIR = Path(__file__).parent.parent / "data"
