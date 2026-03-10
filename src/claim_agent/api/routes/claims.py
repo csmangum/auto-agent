@@ -538,13 +538,28 @@ def get_claim_attachment(claim_id: str, key: str):
 
 
 @router.get("/claims/{claim_id}/history", dependencies=[RequireAdjuster])
-def get_claim_history(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
-    """Get audit log entries for a claim."""
+def get_claim_history(
+    claim_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Get audit log entries for a claim with pagination."""
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    history = ctx.repo.get_claim_history(claim_id)
-    return {"claim_id": claim_id, "history": history}
+    if limit < 1 or limit > 500:
+        limit = 100
+    if offset < 0:
+        offset = 0
+    history, total = ctx.repo.get_claim_history(claim_id, limit=limit, offset=offset)
+    return {
+        "claim_id": claim_id,
+        "history": history,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 class AddNoteBody(BaseModel):

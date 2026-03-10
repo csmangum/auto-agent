@@ -332,7 +332,7 @@ class TestRetentionRepository:
             assert claim["status"] == STATUS_ARCHIVED
             assert claim["archived_at"] is not None
 
-            history = repo.get_claim_history(claim_id)
+            history, _ = repo.get_claim_history(claim_id)
             retention_actions = [h for h in history if h["action"] == "retention_archived"]
             assert len(retention_actions) == 1
         finally:

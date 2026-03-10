@@ -207,8 +207,16 @@ class TracingConfig(BaseSettings):
     log_prompts: bool = Field(default=False, validation_alias="CLAIM_AGENT_LOG_PROMPTS")
     log_responses: bool = Field(default=False, validation_alias="CLAIM_AGENT_LOG_RESPONSES")
 
+    # OpenTelemetry (alongside LangSmith)
+    otel_enabled: bool = Field(default=False, validation_alias="OTEL_TRACING")
+    otel_service_name: str = Field(default="claim-agent", validation_alias="OTEL_SERVICE_NAME")
+    otel_exporter_otlp_endpoint: str = Field(
+        default="http://localhost:4318", validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT"
+    )
+
     @field_validator(
         "langsmith_enabled", "trace_llm_calls", "trace_tool_calls", "log_prompts", "log_responses",
+        "otel_enabled",
         mode="before",
     )
     @classmethod

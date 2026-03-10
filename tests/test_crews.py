@@ -812,7 +812,7 @@ def test_workflow_failure_sets_status_failed():
         claim_id = row[0]
         claim = repo.get_claim(claim_id)
         assert claim["status"] == "failed"
-        history = repo.get_claim_history(claim_id)
+        history, _ = repo.get_claim_history(claim_id)
         assert any(h.get("new_status") == "failed" for h in history)
     finally:
         os.unlink(path)

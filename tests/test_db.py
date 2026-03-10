@@ -159,7 +159,7 @@ def test_repository_update_claim_status(temp_db):
     claim = repo.get_claim(claim_id)
     assert claim["status"] == "open"
 
-    history = repo.get_claim_history(claim_id)
+    history, _ = repo.get_claim_history(claim_id)
     assert len(history) >= 2
     actions = [h["action"] for h in history]
     assert "created" in actions
@@ -213,8 +213,9 @@ def test_repository_get_claim_history(temp_db):
     repo.update_claim_status(claim_id, "processing")
     repo.update_claim_status(claim_id, "open")
 
-    history = repo.get_claim_history(claim_id)
+    history, total = repo.get_claim_history(claim_id)
     assert len(history) == 3
+    assert total == 3
     assert history[0]["action"] == "created"
     assert history[1]["action"] == "status_change"
     assert history[2]["action"] == "status_change"
@@ -224,6 +225,32 @@ def test_repository_get_claim_history(temp_db):
     assert history[1].get("before_state") is not None
     assert history[1].get("after_state") is not None
     assert history[2]["new_status"] == "open"
+
+
+def test_repository_get_claim_history_pagination(temp_db):
+    """get_claim_history supports limit/offset pagination."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="VIN1",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date="2025-01-10",
+        incident_description="Scratch.",
+        damage_description="Door scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    for _ in range(5):
+        repo.update_claim_status(claim_id, "processing")
+        repo.update_claim_status(claim_id, "open")
+
+    page1, total = repo.get_claim_history(claim_id, limit=3, offset=0)
+    assert len(page1) == 3
+    assert total == 11  # created + 10 status changes
+    page2, _ = repo.get_claim_history(claim_id, limit=3, offset=3)
+    assert len(page2) == 3
+    assert page1[0]["id"] != page2[0]["id"]
 
 
 def test_repository_update_claim_siu_case_id(temp_db):
@@ -245,7 +272,7 @@ def test_repository_update_claim_siu_case_id(temp_db):
     claim = repo.get_claim(claim_id)
     assert claim["siu_case_id"] == "SIU-12345"
 
-    history = repo.get_claim_history(claim_id)
+    history, _ = repo.get_claim_history(claim_id)
     siu_entries = [h for h in history if h["action"] == AUDIT_EVENT_SIU_CASE_CREATED]
     assert len(siu_entries) == 1
     assert "SIU-12345" in siu_entries[0]["details"]
@@ -271,7 +298,7 @@ def test_repository_update_claim_siu_case_id_overwrites(temp_db):
     claim = repo.get_claim(claim_id)
     assert claim["siu_case_id"] == "SIU-22222"
 
-    history = repo.get_claim_history(claim_id)
+    history, _ = repo.get_claim_history(claim_id)
     siu_entries = [h for h in history if h["action"] == AUDIT_EVENT_SIU_CASE_CREATED]
     assert len(siu_entries) == 2
 

@@ -168,5 +168,5 @@ def test_approve_delegates_to_repo(service, repo, temp_db):
     service.approve(claim_id, actor_id="workflow")
     claim = repo.get_claim(claim_id)
     assert claim["status"] == STATUS_NEEDS_REVIEW
-    history = repo.get_claim_history(claim_id)
+    history, _ = repo.get_claim_history(claim_id)
     assert any(e["action"] == "approval" for e in history)

@@ -81,6 +81,8 @@ def _global_options(
 ) -> None:
     """Global options applied before any command."""
     _setup_logging(debug=debug, json_format=json_format)
+    from claim_agent.events import ensure_webhook_listener_registered
+    ensure_webhook_listener_registered()
 
 
 @app.command()
@@ -190,7 +192,7 @@ def history(
     if claim is None:
         typer.echo(f"Error: Claim not found: {claim_id}", err=True)
         sys.exit(1)
-    history = ctx.repo.get_claim_history(claim_id)
+    history, _ = ctx.repo.get_claim_history(claim_id)
     typer.echo(json.dumps(history, indent=2))
 
 

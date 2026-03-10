@@ -9,7 +9,7 @@ from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
-from claim_agent.tools.escalation_logic import KNOWN_FRAUD_PATTERNS
+from claim_agent.tools.fraud_detectors import KNOWN_FRAUD_PATTERNS
 from claim_agent.tools.fraud_logic import (
     analyze_claim_patterns_impl,
     cross_reference_fraud_indicators_impl,
@@ -238,7 +238,7 @@ class TestFraudAssessment:
         assert claim is not None
         assert claim["siu_case_id"] == result["siu_case_id"]
 
-        history = repo.get_claim_history(claim_id)
+        history, _ = repo.get_claim_history(claim_id)
         siu_entries = [h for h in history if h["action"] == AUDIT_EVENT_SIU_CASE_CREATED]
         assert len(siu_entries) == 1
         assert f"SIU case created: {result['siu_case_id']}" in siu_entries[0]["details"]

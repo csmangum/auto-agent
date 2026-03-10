@@ -33,6 +33,8 @@ from claim_agent.config import get_settings
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from claim_agent.events import ensure_webhook_listener_registered
+    ensure_webhook_listener_registered()
     yield
     if claim_background_tasks:
         await asyncio.gather(*claim_background_tasks)
@@ -62,6 +64,14 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # OpenTelemetry tracing (alongside LangSmith)
+    try:
+        from claim_agent.observability.opentelemetry_setup import setup_opentelemetry, instrument_fastapi
+        if setup_opentelemetry():
+            instrument_fastapi(_app)
+    except ImportError:
+        pass
 
     return _app
 

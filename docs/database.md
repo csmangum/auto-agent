@@ -386,11 +386,17 @@ def save_workflow_result(
 ### get_claim_history
 
 ```python
-def get_claim_history(self, claim_id: str) -> list[dict[str, Any]]:
-    """Get audit log entries for a claim."""
+def get_claim_history(
+    self,
+    claim_id: str,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Get audit log entries for a claim with optional pagination."""
 ```
 
-- Returns ordered list of all status changes
+- Returns (rows, total_count). Use limit/offset for pagination on large claims
 
 ### search_claims
 

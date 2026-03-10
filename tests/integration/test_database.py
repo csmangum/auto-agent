@@ -236,7 +236,7 @@ class TestAuditLog:
             damage_description="Test",
         ))
         
-        history = repo.get_claim_history(claim_id)
+        history, _ = repo.get_claim_history(claim_id)
         
         assert len(history) == 1
         assert history[0]["action"] == "created"
@@ -265,7 +265,7 @@ class TestAuditLog:
         repo.update_claim_status(claim_id, STATUS_OPEN, details="Intake complete")
         repo.update_claim_status(claim_id, STATUS_CLOSED, details="Claim resolved")
         
-        history = repo.get_claim_history(claim_id)
+        history, _ = repo.get_claim_history(claim_id)
         
         assert len(history) == 4  # created + 3 status changes
         
@@ -298,7 +298,7 @@ class TestAuditLog:
             damage_description="Test",
         ))
         
-        history = repo.get_claim_history(claim_id)
+        history, _ = repo.get_claim_history(claim_id)
         
         assert history[0]["created_at"] is not None
 
