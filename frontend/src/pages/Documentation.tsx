@@ -6,11 +6,11 @@ import { useDocs, useDoc } from '../api/queries';
 export default function Documentation() {
   const { slug } = useParams<{ slug?: string }>();
   const navigate = useNavigate();
-  const { data: docsData, error: docsError } = useDocs();
+  const { data: docsData, isLoading: docsLoading, error: docsError } = useDocs();
   const { data: docData, isLoading: docLoading, error: docError } = useDoc(slug ?? undefined);
   const pages = docsData?.pages.filter((p) => p.available) ?? [];
   const content = docData?.content ?? null;
-  const loading = docLoading;
+  const loading = docsLoading || docLoading;
   const error = docsError ?? docError;
 
   const firstSlug = pages[0]?.slug;
@@ -64,7 +64,7 @@ export default function Documentation() {
       <div className="flex-1 min-w-0">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <p className="text-red-800 text-sm">{error}</p>
+            <p className="text-red-800 text-sm">{error instanceof Error ? error.message : 'Unknown error'}</p>
           </div>
         )}
 
