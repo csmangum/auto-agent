@@ -1,0 +1,281 @@
+{
+  "metadata": {
+    "state": "New York",
+    "jurisdiction": "NY",
+    "data_type": "auto_insurance_compliance",
+    "version": "2025.1",
+    "last_updated": "2025-03-10",
+    "sources": [
+      "NY Insurance Law",
+      "11 NYCRR (Regulation 64, 35-D, 68)",
+      "NY Penal Law",
+      "CPLR"
+    ]
+  },
+  "fair_claims_settlement_practices": {
+    "regulation_reference": "NYIL §2601; 11 NYCRR 216 (Regulation 64)",
+    "description": "NY unfair claims settlement practices — 25 enumerated; Regulation 64.",
+    "provisions": [
+      {
+        "id": "FCSP-001",
+        "section": "NYIL §2601",
+        "title": "Unfair Claims Settlement",
+        "requirement": "25 enumerated unfair claims settlement practices are prohibited.",
+        "reference": "NYIL §2601"
+      },
+      {
+        "id": "FCSP-002",
+        "section": "11 NYCRR 216",
+        "title": "Regulation 64",
+        "requirement": "Detailed unfair settlement practices regulation.",
+        "reference": "11 NYCRR 216"
+      }
+    ]
+  },
+  "no_fault": {
+    "regulation_reference": "NYIL Article 51; §5102, §5104, §5106",
+    "description": "NY Comprehensive Motor Vehicle Insurance Reparations Act — $50K basic economic loss; serious injury threshold.",
+    "provisions": [
+      {
+        "id": "NF-001",
+        "title": "Basic Economic Loss",
+        "requirement": "Basic economic loss up to $50,000.",
+        "benefit_limit": 50000,
+        "reference": "NYIL §5102"
+      },
+      {
+        "id": "NF-002",
+        "title": "Serious Injury Threshold",
+        "requirement": "Tort suit requires serious injury threshold under §5104.",
+        "reference": "NYIL §5104"
+      },
+      {
+        "id": "NF-003",
+        "title": "30-Day No-Fault Payment",
+        "requirement": "No-fault benefits must be paid within 30 days.",
+        "time_limit_days": 30,
+        "reference": "NYIL §5106(a)"
+      }
+    ]
+  },
+  "total_loss_regulations": {
+    "regulation_reference": "11 NYCRR 216.7; NYIL §3411",
+    "description": "NY total loss settlement; ACV, comparables; DMV salvage requirements.",
+    "provisions": [
+      {
+        "id": "TL-001",
+        "section": "11 NYCRR 216.7",
+        "title": "Total Loss Settlement",
+        "requirement": "Total loss settlement procedures under Regulation 64.",
+        "reference": "11 NYCRR 216.7"
+      },
+      {
+        "id": "TL-002",
+        "section": "NYIL §3411",
+        "title": "ACV and Comparables",
+        "requirement": "ACV determination and comparable vehicle requirements.",
+        "reference": "NYIL §3411"
+      }
+    ]
+  },
+  "time_limits_and_deadlines": {
+    "description": "Critical time limits for New York auto claims.",
+    "deadlines": [
+      {
+        "id": "CLM-ACK-001",
+        "action": "Acknowledge claim receipt",
+        "time_limit": "15 business days",
+        "days": 15,
+        "reference": "11 NYCRR 216.4"
+      },
+      {
+        "id": "CLM-OFFER-001",
+        "action": "Settlement offer after investigation",
+        "time_limit": "30 calendar days",
+        "days": 30,
+        "reference": "11 NYCRR 216.6"
+      },
+      {
+        "id": "CLM-NF-001",
+        "action": "No-fault payment",
+        "time_limit": "30 days",
+        "days": 30,
+        "reference": "NYIL §5106(a)"
+      }
+    ]
+  },
+  "required_disclosures": {
+    "regulation_reference": "11 NYCRR 216.4(b), 216.11; NYIL §3411",
+    "description": "Mandatory disclosures for NY auto claims.",
+    "disclosures": [
+      {
+        "id": "DISC-001",
+        "title": "Claim Form and Instructions",
+        "requirement": "Claim form and instructions under 11 NYCRR 216.4(b).",
+        "reference": "11 NYCRR 216.4(b)"
+      },
+      {
+        "id": "DISC-002",
+        "title": "Claimant Rights",
+        "requirement": "Claimant rights disclosure under 11 NYCRR 216.11.",
+        "reference": "11 NYCRR 216.11"
+      },
+      {
+        "id": "DISC-003",
+        "title": "Total-Loss Disclosures",
+        "requirement": "Total-loss disclosure requirements under NYIL §3411.",
+        "reference": "NYIL §3411"
+      }
+    ]
+  },
+  "uninsured_underinsured_motorist": {
+    "regulation_reference": "NYIL §3420(f); 11 NYCRR 60-2 (Regulation 35-D)",
+    "description": "NY SUM — supplementary UM/UIM — mandatory $25K/$50K.",
+    "provisions": [
+      {
+        "id": "UM-001",
+        "title": "Mandatory SUM",
+        "requirement": "Supplementary UM/UIM mandatory — $25K/$50K minimum.",
+        "minimum_limits": {
+          "per_person": 25000,
+          "per_accident": 50000
+        },
+        "reference": "NYIL §3420(f)"
+      }
+    ]
+  },
+  "anti_fraud_provisions": {
+    "regulation_reference": "NY Penal Law §176.05–.30; NYIL §405, §409",
+    "description": "NY insurance fraud degrees; fraud warning; SIU reporting.",
+    "provisions": [
+      {
+        "id": "AF-001",
+        "title": "Insurance Fraud",
+        "requirement": "Insurance fraud degrees under NY Penal Law §176.05–.30.",
+        "reference": "NY Penal Law §176.05–.30"
+      },
+      {
+        "id": "AF-002",
+        "title": "Fraud Warning Statement",
+        "requirement": "Fraud warning required under NYIL §405.",
+        "reference": "NYIL §405"
+      },
+      {
+        "id": "AF-003",
+        "title": "SIU Reporting",
+        "requirement": "SIU reporting under NYIL §409.",
+        "reference": "NYIL §409"
+      }
+    ]
+  },
+  "repair_standards": {
+    "regulation_reference": "NYIL §2610; General Business Law §398-e",
+    "description": "NY shop choice (Freedom of Choice); aftermarket parts disclosure.",
+    "provisions": [
+      {
+        "id": "REP-001",
+        "title": "Freedom of Choice",
+        "requirement": "Claimant has right to choose repair shop.",
+        "reference": "NYIL §2610"
+      },
+      {
+        "id": "REP-002",
+        "title": "Aftermarket Parts Disclosure",
+        "requirement": "Aftermarket parts must be disclosed per NYIL §2610(b).",
+        "reference": "NYIL §2610(b)"
+      }
+    ]
+  },
+  "good_faith_requirements": {
+    "regulation_reference": "NYIL §2601; 11 NYCRR 216",
+    "description": "NY prohibited practices — 25 enumerated under §2601.",
+    "prohibited_practices": [
+      {
+        "id": "GF-001",
+        "title": "25 Prohibited Acts",
+        "description": "NYIL §2601 enumerates 25 prohibited unfair claims practices.",
+        "reference": "NYIL §2601"
+      }
+    ]
+  },
+  "rental_car_coverage": {
+    "regulation_reference": "NYIL §3411(g); 11 NYCRR 216.7(b)(4)",
+    "description": "NY total-loss rental period; rental coverage.",
+    "provisions": [
+      {
+        "id": "RCC-001",
+        "title": "Total-Loss Rental Period",
+        "requirement": "Rental period for total loss under NYIL §3411(g).",
+        "reference": "NYIL §3411(g)"
+      },
+      {
+        "id": "RCC-002",
+        "title": "Rental Provisions",
+        "requirement": "11 NYCRR 216.7(b)(4) governs rental coverage.",
+        "reference": "11 NYCRR 216.7(b)(4)"
+      }
+    ]
+  },
+  "no_fault_arbitration": {
+    "regulation_reference": "NYIL §5106; 11 NYCRR 65-4 (Regulation 68)",
+    "description": "Mandatory arbitration for no-fault disputes.",
+    "provisions": [
+      {
+        "id": "ARB-001",
+        "title": "Mandatory Arbitration",
+        "requirement": "No-fault disputes subject to mandatory arbitration.",
+        "reference": "NYIL §5106; 11 NYCRR 65-4"
+      }
+    ]
+  },
+  "subrogation_rules": {
+    "regulation_reference": "NY common law; CPLR §4545",
+    "description": "NY generally follows made-whole doctrine. Collateral source adjusted since 2009.",
+    "provisions": [
+      {
+        "id": "SUB-001",
+        "title": "Made Whole Doctrine",
+        "requirement": "NY generally follows made-whole doctrine.",
+        "reference": "NY common law"
+      },
+      {
+        "id": "SUB-002",
+        "title": "Collateral Source",
+        "requirement": "CPLR §4545 governs collateral source rule (adjusted since 2009).",
+        "reference": "CPLR §4545"
+      }
+    ]
+  },
+  "comparative_fault": {
+    "regulation_reference": "CPLR §1411",
+    "description": "NY pure comparative fault — same as California.",
+    "provisions": [
+      {
+        "id": "CF-001",
+        "title": "Pure Comparative Fault",
+        "requirement": "Claimant can recover reduced by fault percentage; no 51% bar.",
+        "reference": "CPLR §1411"
+      }
+    ]
+  },
+  "statute_of_limitations": {
+    "description": "New York statute of limitations for auto claims.",
+    "limitations": [
+      {
+        "action": "Personal injury lawsuit",
+        "time_limit": "3 years",
+        "reference": "CPLR §214(5)"
+      },
+      {
+        "action": "Property damage lawsuit",
+        "time_limit": "3 years",
+        "reference": "CPLR §214(4)"
+      },
+      {
+        "action": "Breach of contract",
+        "time_limit": "6 years",
+        "reference": "CPLR §213(2)"
+      }
+    ]
+  }
+}
