@@ -30,16 +30,6 @@ def register_fraud_detector(detector: Callable[..., list[str]]) -> Callable[...,
     return detector
 
 
-def get_fraud_detectors() -> list[Callable[..., list[str]]]:
-    """Return the list of registered detectors (read-only)."""
-    return list(_FRAUD_DETECTORS)
-
-
-def clear_fraud_detectors() -> None:
-    """Clear all registered detectors. Used for tests."""
-    _FRAUD_DETECTORS.clear()
-
-
 # ---------------------------------------------------------------------------
 # Built-in detectors
 # ---------------------------------------------------------------------------
