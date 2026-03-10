@@ -42,7 +42,6 @@ opentelemetry = [
     "opentelemetry-sdk>=1.27.0",
     "opentelemetry-exporter-otlp>=1.27.0",
     "opentelemetry-instrumentation-fastapi>=0.49b0",
-    "opentelemetry-instrumentation-httpx>=0.49b0",
 ]
 pdf = [
     "reportlab>=4.0.0",

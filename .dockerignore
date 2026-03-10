@@ -27,6 +27,9 @@ docs
 *.md
 !README.md
 
+# SQLite databases (should not be baked into image layers)
+data/*.db
+
 # Local dev
 .env
 .env.local
