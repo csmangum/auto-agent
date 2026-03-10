@@ -92,6 +92,9 @@ def get_llm():
     )
 
     if base and "openrouter" in base.lower():
+        # LiteLLM expects OPENROUTER_API_KEY in env when using openrouter/* models
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            os.environ["OPENROUTER_API_KEY"] = api_key
         return LLM(model=model, base_url=base, api_key=api_key)
     return LLM(model=model, api_key=api_key)
 
