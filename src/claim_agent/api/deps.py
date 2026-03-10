@@ -1,6 +1,7 @@
 """FastAPI dependencies for auth and RBAC."""
 
 import logging
+from typing import cast
 
 from fastapi import Depends, Request
 
@@ -21,7 +22,7 @@ def get_auth(request: Request) -> AuthContext | None:
     if auth is None:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
-    return auth
+    return cast(AuthContext, auth)
 
 
 def require_role(*roles: str):

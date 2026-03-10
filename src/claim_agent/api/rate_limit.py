@@ -2,6 +2,7 @@
 
 import time
 from collections import OrderedDict
+from typing import cast
 
 # (ip -> [timestamps]); OrderedDict for LRU eviction
 _buckets: OrderedDict[str, list[float]] = OrderedDict()
@@ -49,5 +50,5 @@ def get_client_ip(request, *, trust_forwarded_for: bool = False) -> str:
     if trust_forwarded_for:
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            return cast(str, forwarded.split(",")[0].strip())
     return request.client.host if request.client else "unknown"

@@ -64,7 +64,10 @@ async def lifespan(_app: FastAPI):
     if _otel_enabled:
         try:
             from opentelemetry import trace
-            trace.get_tracer_provider().shutdown()
+
+            provider = trace.get_tracer_provider()
+            if hasattr(provider, "shutdown"):
+                provider.shutdown()
         except Exception:
             # Shutdown errors are non-fatal; best-effort flush on exit
             pass

@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 from claim_agent.config import get_settings
@@ -17,7 +18,7 @@ def analyze_damage_photo_impl(
     """Analyze a damage photo using a vision model."""
     import base64
 
-    result = {
+    result: dict[str, Any] = {
         "severity": "unknown",
         "parts_affected": [],
         "consistency_with_description": "unknown",

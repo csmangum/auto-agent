@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 from claim_agent.config.llm import get_llm
 from claim_agent.config.llm_protocol import LLMProtocol
@@ -37,7 +37,7 @@ def _get_latest_partial_loss_workflow_output(repo: Any, claim_id: str) -> str | 
     runs = repo.get_workflow_runs(claim_id, limit=20)
     for run in runs:
         if run.get("claim_type") == "partial_loss":
-            return run.get("workflow_output")
+            return cast(str | None, run.get("workflow_output"))
     return None
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from claim_agent.config.settings import (
     ESCALATION_SLA_HOURS_CRITICAL,
@@ -13,6 +13,7 @@ from claim_agent.config.settings import (
     ESCALATION_SLA_HOURS_LOW,
     ESCALATION_SLA_HOURS_MEDIUM,
 )
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.observability import get_logger
@@ -38,10 +39,13 @@ def _sla_hours_for_priority(priority: str) -> int:
             extra={"known_priorities": list(_KNOWN_PRIORITIES)},
         )
     if priority in ("critical", "high"):
-        return ESCALATION_SLA_HOURS_CRITICAL if priority == "critical" else ESCALATION_SLA_HOURS_HIGH
+        return cast(
+            int,
+            ESCALATION_SLA_HOURS_CRITICAL if priority == "critical" else ESCALATION_SLA_HOURS_HIGH,
+        )
     if priority == "medium":
-        return ESCALATION_SLA_HOURS_MEDIUM
-    return ESCALATION_SLA_HOURS_LOW
+        return cast(int, ESCALATION_SLA_HOURS_MEDIUM)
+    return cast(int, ESCALATION_SLA_HOURS_LOW)
 
 
 def _build_low_confidence_escalation_details(
@@ -196,7 +200,7 @@ def _handle_mid_workflow_escalation(
                 claim_type=claim_type,
                 details=escalation_details,
                 payout_amount=payout_amount,
-                actor_id=actor_id,
+                actor_id=actor_id or ACTOR_WORKFLOW,
             )
             hours = _sla_hours_for_priority(e.priority)
             due_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")

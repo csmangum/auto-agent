@@ -7,11 +7,11 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from claim_agent.config import get_settings
 
-_DEFAULT_DB = {
+_DEFAULT_DB: dict[str, Any] = {
     "policies": {},
     "claims": [],
     "vehicle_values": {},
@@ -38,7 +38,7 @@ def load_mock_db() -> dict[str, Any]:
     if path.exists():
         try:
             with open(path, encoding="utf-8") as f:
-                return json.load(f)
+                return cast(dict[str, Any], json.load(f))
         except (json.JSONDecodeError, OSError):
             pass
     return _DEFAULT_DB.copy()
@@ -51,7 +51,7 @@ def load_california_compliance() -> dict[str, Any] | None:
         return None
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            return cast(dict[str, Any], json.load(f))
     except (json.JSONDecodeError, OSError):
         return None
 

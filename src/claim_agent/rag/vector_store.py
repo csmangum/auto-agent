@@ -7,7 +7,7 @@ For production, consider using Chroma, Pinecone, or similar.
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 
@@ -222,7 +222,7 @@ class VectorStore:
             embeddings_norm[valid_mask] = embeddings[valid_mask] / emb_norms[valid_mask]
         
         # Dot product gives cosine similarity for normalized vectors
-        return np.dot(embeddings_norm, query_norm)
+        return cast(np.ndarray, np.dot(embeddings_norm, query_norm))
     
     def save(self, path: Path) -> None:
         """Save the vector store to disk.
@@ -332,29 +332,29 @@ class VectorStore:
         self._chunks = []
         self._chunk_id_to_idx = {}
     
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Any]:
         """Get statistics about the vector store.
-        
+
         Returns:
             Dictionary with store statistics
         """
-        stats = {
+        stats: dict[str, Any] = {
             "total_chunks": len(self._chunks),
             "embedding_dimension": self.dimension if self._embeddings is not None else 0,
         }
-        
+
         # Count by state
-        state_counts = {}
+        state_counts: dict[str, int] = {}
         for chunk in self._chunks:
             state = chunk.metadata.state
             state_counts[state] = state_counts.get(state, 0) + 1
         stats["chunks_by_state"] = state_counts
-        
+
         # Count by data type
-        type_counts = {}
+        type_counts: dict[str, int] = {}
         for chunk in self._chunks:
             dtype = chunk.metadata.data_type
             type_counts[dtype] = type_counts.get(dtype, 0) + 1
         stats["chunks_by_type"] = type_counts
-        
+
         return stats

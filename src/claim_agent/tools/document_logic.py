@@ -37,7 +37,7 @@ def generate_report_pdf_impl(
 
     from claim_agent.config import get_settings
 
-    result = {"pdf_path": None, "error": None}
+    result: dict[str, str | None] = {"pdf_path": None, "error": None}
     try:
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import getSampleStyleSheet

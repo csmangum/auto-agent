@@ -87,7 +87,11 @@ def create_crew(
                 )
 
     agents = [cfg.factory(llm, **agent_kwargs) for cfg in agents_config]
-    tasks = []
+    tasks: list[Task] = []
     for cfg in tasks_config:
         tasks.append(cfg.to_task(agents, tasks))
-    return Crew(agents=agents, tasks=tasks, verbose=get_crew_verbose())
+    return Crew(
+        agents=agents,  # type: ignore[arg-type]
+        tasks=tasks,
+        verbose=get_crew_verbose(),
+    )

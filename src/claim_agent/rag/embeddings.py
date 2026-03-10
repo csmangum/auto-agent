@@ -8,7 +8,7 @@ Supports multiple embedding backends:
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import List, Optional, Union
+from typing import List, Optional, Union, cast
 
 import numpy as np
 
@@ -87,11 +87,12 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
         if self._dimension is None:
             # Trigger model load
             _ = self.model
+        assert self._dimension is not None
         return self._dimension
-    
+
     def embed(self, text: str) -> np.ndarray:
         """Generate embedding for a single text."""
-        return self.model.encode(text, convert_to_numpy=True)
+        return cast(np.ndarray, self.model.encode(text, convert_to_numpy=True))
     
     def embed_batch(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
         """Generate embeddings for multiple texts.
@@ -103,11 +104,14 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
         Returns:
             2D numpy array of embeddings
         """
-        return self.model.encode(
-            texts, 
-            convert_to_numpy=True,
-            batch_size=batch_size,
-            show_progress_bar=False,
+        return cast(
+            np.ndarray,
+            self.model.encode(
+                texts,
+                convert_to_numpy=True,
+                batch_size=batch_size,
+                show_progress_bar=False,
+            ),
         )
 
 

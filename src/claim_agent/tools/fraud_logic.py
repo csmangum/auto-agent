@@ -27,17 +27,16 @@ def analyze_claim_patterns_impl(
 ) -> str:
     """Analyze claim for suspicious patterns."""
     if not claim_data or not isinstance(claim_data, dict):
-        result = {
+        return json.dumps({
             "vin": vin or "",
             "patterns_detected": [],
             "timing_flags": [],
             "claim_history": [],
             "risk_factors": [],
             "pattern_score": 0,
-        }
-        return json.dumps(result)
+        })
 
-    result = {
+    result: dict[str, Any] = {
         "vin": vin or claim_data.get("vin", ""),
         "patterns_detected": [],
         "timing_flags": [],
@@ -70,8 +69,11 @@ def analyze_claim_patterns_impl(
                     end_date = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
 
                     claims_in_window = [
-                        c for c in all_claims
-                        if c.get("incident_date") and start_date <= c.get("incident_date") <= end_date
+                        c
+                        for c in all_claims
+                        if (inc := c.get("incident_date")) is not None
+                        and isinstance(inc, str)
+                        and start_date <= inc <= end_date
                     ]
 
                     result["claim_history"] = [
@@ -125,7 +127,7 @@ def cross_reference_fraud_indicators_impl(
     ctx: ClaimContext | None = None,
 ) -> str:
     """Cross-reference claim against known fraud indicators database."""
-    result = {
+    result: dict[str, Any] = {
         "fraud_keywords_found": [],
         "database_matches": [],
         "risk_level": "low",
@@ -228,7 +230,7 @@ def perform_fraud_assessment_impl(
 ) -> str:
     """Perform comprehensive fraud assessment combining pattern analysis and cross-reference results."""
     if not claim_data or not isinstance(claim_data, dict):
-        result = {
+        return json.dumps({
             "claim_id": "",
             "fraud_score": 0,
             "fraud_likelihood": "low",
@@ -239,10 +241,9 @@ def perform_fraud_assessment_impl(
             "should_block": False,
             "siu_referral": False,
             "assessment_details": {},
-        }
-        return json.dumps(result)
+        })
 
-    result = {
+    result: dict[str, Any] = {
         "claim_id": claim_data.get("claim_id", ""),
         "fraud_score": 0,
         "fraud_likelihood": "low",
@@ -274,12 +275,12 @@ def perform_fraud_assessment_impl(
     xref_score = cross_reference.get("cross_reference_score", 0)
     result["fraud_score"] = pattern_score + xref_score
 
-    result["pattern_flags"] = pattern_analysis.get("patterns_detected", [])
-    result["cross_reference_flags"] = cross_reference.get("database_matches", [])
-    combined_indicators = (
-        result["pattern_flags"]
-        + result["cross_reference_flags"]
-        + cross_reference.get("fraud_keywords_found", [])
+    result["pattern_flags"] = list(pattern_analysis.get("patterns_detected", []))
+    result["cross_reference_flags"] = list(cross_reference.get("database_matches", []))
+    combined_indicators: list[str] = (
+        list(result["pattern_flags"])
+        + list(result["cross_reference_flags"])
+        + list(cross_reference.get("fraud_keywords_found", []))
     )
     seen_indicators = set()
     ordered_indicators = []
@@ -337,7 +338,7 @@ def perform_fraud_assessment_impl(
     if result["siu_referral"] and claim_id and isinstance(claim_id, str) and claim_id.strip():
         _siu = ctx.adapters.siu if ctx else get_siu_adapter()
         try:
-            case_id = _siu.create_case(claim_id, result["fraud_indicators"])
+            case_id = _siu.create_case(claim_id, list(result["fraud_indicators"]))
             result["siu_case_id"] = case_id
             try:
                 _repo = ctx.repo if ctx else ClaimRepository()
