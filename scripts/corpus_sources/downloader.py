@@ -1,6 +1,8 @@
 """Shared download logic for corpus sources."""
 
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -26,9 +28,16 @@ def download_file(
     try:
         with httpx.stream("GET", url, headers=headers, timeout=timeout, follow_redirects=True) as resp:
             resp.raise_for_status()
-            with open(dest_path, "wb") as f:
-                for chunk in resp.iter_bytes(chunk_size=65536):
-                    f.write(chunk)
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=dest_path.parent)
+            os.close(tmp_fd)
+            try:
+                with open(tmp_path, "wb") as f:
+                    for chunk in resp.iter_bytes(chunk_size=65536):
+                        f.write(chunk)
+                Path(tmp_path).replace(dest_path)
+            except Exception:
+                Path(tmp_path).unlink(missing_ok=True)
+                raise
         logger.info("Downloaded %s -> %s", url, dest_path)
         return True
     except httpx.HTTPStatusError as e:

@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 
 from .config import OUTPUT_DIR
-from .downloader import download_file, download_to_dir
+from .downloader import download_file
 
 logger = logging.getLogger(__name__)
 
