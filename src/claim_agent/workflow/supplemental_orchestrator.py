@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from claim_agent.config.llm import get_llm
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.crews.supplemental_crew import create_supplemental_crew
 from claim_agent.db.constants import SUPPLEMENTABLE_STATUSES
@@ -43,7 +44,7 @@ def _get_latest_partial_loss_workflow_output(repo: Any, claim_id: str) -> str | 
 def run_supplemental_workflow(
     supplemental_data: dict[str, Any],
     *,
-    llm: Any | None = None,
+    llm: LLMProtocol | None = None,
     ctx: ClaimContext | None = None,
     state: str = "California",
 ) -> dict[str, Any]:

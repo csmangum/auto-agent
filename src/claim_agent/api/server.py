@@ -93,7 +93,8 @@ async def rate_limit_middleware(request: Request, call_next):
     """Rate limit API routes: 100 req/min per IP."""
     path = _normalize_path(request.url.path)
     if path.startswith("/api/") and path not in _PUBLIC_PATHS:
-        ip = get_client_ip(request)
+        settings = get_settings()
+        ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
         if is_rate_limited(ip):
             return JSONResponse(
                 status_code=429,

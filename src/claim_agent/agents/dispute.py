@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import (
     DISPUTE_INTAKE,
     DISPUTE_POLICY_ANALYST,
@@ -25,7 +26,7 @@ from claim_agent.tools import (
 from claim_agent.tools.partial_loss_tools import calculate_repair_estimate
 
 
-def create_dispute_intake_agent(llm=None, **kwargs):
+def create_dispute_intake_agent(llm: LLMProtocol | None = None, **kwargs):
     """Dispute Intake Specialist: retrieves original claim and classifies the dispute."""
     skill = load_skill(DISPUTE_INTAKE)
     return Agent(
@@ -38,7 +39,7 @@ def create_dispute_intake_agent(llm=None, **kwargs):
     )
 
 
-def create_dispute_policy_analyst_agent(llm=None, state: str = "California", **kwargs):
+def create_dispute_policy_analyst_agent(llm: LLMProtocol | None = None, state: str = "California", **kwargs):
     """Dispute Policy & Compliance Analyst: reviews policy terms and regulatory requirements."""
     skill = load_skill_with_context(DISPUTE_POLICY_ANALYST, state=state)
     return Agent(
@@ -51,7 +52,7 @@ def create_dispute_policy_analyst_agent(llm=None, state: str = "California", **k
     )
 
 
-def create_dispute_resolution_agent(llm=None, **kwargs):
+def create_dispute_resolution_agent(llm: LLMProtocol | None = None, **kwargs):
     """Dispute Resolution Specialist: resolves or escalates the dispute."""
     skill = load_skill(DISPUTE_RESOLUTION)
     return Agent(

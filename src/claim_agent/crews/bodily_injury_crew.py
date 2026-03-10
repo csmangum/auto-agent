@@ -5,11 +5,12 @@ from claim_agent.agents.bodily_injury import (
     create_medical_records_reviewer_agent,
     create_settlement_negotiator_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 from claim_agent.models.workflow_output import BIWorkflowOutput
 
 
-def create_bodily_injury_crew(llm=None):
+def create_bodily_injury_crew(llm: LLMProtocol | None = None):
     """Create the Bodily Injury crew: intake injury details → review medical records → assess liability → propose settlement.
 
     Known limitation: Claims with both property damage and injury are routed to

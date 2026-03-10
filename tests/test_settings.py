@@ -3,6 +3,8 @@
 import os
 from unittest.mock import patch
 
+import pytest
+
 from claim_agent.config import reload_settings
 from claim_agent.config import settings
 
@@ -228,3 +230,38 @@ class TestDuplicateAndHighValueConfig:
 
     def test_pre_routing_fraud_ratio_default(self):
         assert settings.PRE_ROUTING_FRAUD_DAMAGE_RATIO == 0.9
+
+
+class TestJWTSecretValidation:
+    """JWT_SECRET must be >= 32 characters or empty (disabled)."""
+
+    def test_empty_secret_is_allowed(self):
+        with patch.dict(os.environ, {"JWT_SECRET": ""}):
+            reload_settings()
+            assert settings.get_jwt_secret() is None
+
+    def test_long_enough_secret_is_accepted(self):
+        secret = "a" * 32
+        with patch.dict(os.environ, {"JWT_SECRET": secret}):
+            reload_settings()
+            assert settings.get_jwt_secret() == secret
+
+    def test_short_secret_raises_validation_error(self):
+        from pydantic import ValidationError
+        from claim_agent.config.settings_model import AuthConfig
+
+        with pytest.raises(ValidationError, match="at least 32 characters"):
+            AuthConfig(jwt_secret_raw="too-short")
+
+    def test_31_char_secret_is_rejected(self):
+        from pydantic import ValidationError
+        from claim_agent.config.settings_model import AuthConfig
+
+        with pytest.raises(ValidationError, match="at least 32 characters"):
+            AuthConfig(jwt_secret_raw="a" * 31)
+
+    def test_32_char_secret_is_accepted(self):
+        from claim_agent.config.settings_model import AuthConfig
+
+        config = AuthConfig(jwt_secret_raw="b" * 32)
+        assert config.jwt_secret == "b" * 32

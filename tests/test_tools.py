@@ -212,7 +212,7 @@ def test_generate_report():
 
 
 def test_compute_similarity_symmetric():
-    """Jaccard similarity is symmetric: sim(a, b) == sim(b, a)."""
+    """Similarity is symmetric: sim(a, b) == sim(b, a)."""
     from claim_agent.tools.claims_logic import compute_similarity_impl
 
     a = "Rear-ended at stoplight. Damage to rear bumper."

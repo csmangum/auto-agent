@@ -9,11 +9,12 @@ from claim_agent.agents.reopened import (
     create_reopened_router_agent,
     create_reopened_validator_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 from claim_agent.models.workflow_output import ReopenedWorkflowOutput
 
 
-def create_reopened_crew(llm=None):
+def create_reopened_crew(llm: LLMProtocol | None = None):
     """Create the Reopened crew: validate reason → load prior claim → route to crew.
 
     Handles reopened settled claims:

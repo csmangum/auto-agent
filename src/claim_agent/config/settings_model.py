@@ -279,12 +279,26 @@ class AuthConfig(BaseSettings):
         extra="ignore",
         env_file=".env",
         env_file_encoding="utf-8",
+        populate_by_name=True,
     )
 
     api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
     claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
     jwt_secret_raw: str = Field(default="", validation_alias="JWT_SECRET")
     cors_origins_raw: str = Field(default="", validation_alias="CORS_ORIGINS")
+    trust_forwarded_for: bool = Field(default=False, validation_alias="TRUST_FORWARDED_FOR")
+
+    @field_validator("jwt_secret_raw", mode="after")
+    @classmethod
+    def _validate_jwt_key_length(cls, v: str) -> str:
+        min_len = 32
+        stripped = v.strip()
+        if stripped and len(stripped) < min_len:
+            raise ValueError(
+                f"JWT_SECRET must be at least {min_len} characters "
+                f"for HS256 (RFC 7518 Section 3.2). Got {len(stripped)} characters."
+            )
+        return v
 
     @property
     def api_keys(self) -> dict[str, str]:

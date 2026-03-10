@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     add_claim_note,
     check_rental_coverage,
@@ -19,7 +20,7 @@ from claim_agent.skills import (
 )
 
 
-def create_rental_eligibility_specialist_agent(llm=None):
+def create_rental_eligibility_specialist_agent(llm: LLMProtocol | None = None):
     """Rental Eligibility Specialist: checks policy for rental coverage and limits."""
     skill = load_skill(RENTAL_ELIGIBILITY_SPECIALIST)
     return Agent(
@@ -39,7 +40,7 @@ def create_rental_eligibility_specialist_agent(llm=None):
     )
 
 
-def create_rental_coordinator_agent(llm=None):
+def create_rental_coordinator_agent(llm: LLMProtocol | None = None):
     """Rental Coordinator: arranges and approves rental within policy limits."""
     skill = load_skill(RENTAL_COORDINATOR)
     return Agent(
@@ -57,7 +58,7 @@ def create_rental_coordinator_agent(llm=None):
     )
 
 
-def create_rental_reimbursement_processor_agent(llm=None):
+def create_rental_reimbursement_processor_agent(llm: LLMProtocol | None = None):
     """Reimbursement Processor: processes rental reimbursement for approved rentals."""
     skill = load_skill(RENTAL_REIMBURSEMENT_PROCESSOR)
     return Agent(

@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     add_claim_note,
     calculate_payout,
@@ -22,7 +23,7 @@ from claim_agent.skills import (
 
 
 def create_settlement_documentation_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     claim_type: str | None = None,
     use_rag: bool = True,
@@ -52,7 +53,7 @@ def create_settlement_documentation_agent(
 
 
 def create_payment_distribution_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     claim_type: str | None = None,
     use_rag: bool = True,
@@ -82,7 +83,7 @@ def create_payment_distribution_agent(
 
 
 def create_settlement_closure_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     claim_type: str | None = None,
     use_rag: bool = True,

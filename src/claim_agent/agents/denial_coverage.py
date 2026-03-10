@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import (
     APPEAL_REVIEWER,
     COVERAGE_ANALYST,
@@ -23,7 +24,7 @@ from claim_agent.tools import (
 )
 
 
-def create_coverage_analyst_agent(llm=None, state: str = "California", **kwargs):
+def create_coverage_analyst_agent(llm: LLMProtocol | None = None, state: str = "California", **kwargs):
     """Coverage Analyst: reviews denial reason and verifies coverage/exclusions."""
     skill = load_skill_with_context(COVERAGE_ANALYST, state=state)
     return Agent(
@@ -41,7 +42,7 @@ def create_coverage_analyst_agent(llm=None, state: str = "California", **kwargs)
     )
 
 
-def create_denial_letter_specialist_agent(llm=None, state: str = "California", **kwargs):
+def create_denial_letter_specialist_agent(llm: LLMProtocol | None = None, state: str = "California", **kwargs):
     """Denial Letter Specialist: generates compliant denial letters."""
     skill = load_skill_with_context(DENIAL_LETTER_SPECIALIST, state=state)
     return Agent(
@@ -59,7 +60,7 @@ def create_denial_letter_specialist_agent(llm=None, state: str = "California", *
     )
 
 
-def create_appeal_reviewer_agent(llm=None, **kwargs):
+def create_appeal_reviewer_agent(llm: LLMProtocol | None = None, **kwargs):
     """Appeal Reviewer: decides whether to uphold denial or route to appeal."""
     skill = load_skill(APPEAL_REVIEWER)
     return Agent(

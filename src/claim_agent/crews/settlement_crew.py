@@ -5,11 +5,12 @@ from claim_agent.agents.settlement import (
     create_settlement_closure_agent,
     create_settlement_documentation_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
 def create_settlement_crew(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     claim_type: str | None = None,
     use_rag: bool = True,

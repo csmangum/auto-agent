@@ -12,6 +12,7 @@ import time
 from typing import Any
 
 from claim_agent.config.llm import get_llm
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.crews.denial_coverage_crew import create_denial_coverage_crew
 from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW
@@ -27,7 +28,7 @@ logger = get_logger(__name__)
 def run_denial_coverage_workflow(
     denial_data: dict[str, Any],
     *,
-    llm: Any | None = None,
+    llm: LLMProtocol | None = None,
     ctx: ClaimContext | None = None,
     state: str = "California",
 ) -> dict[str, Any]:

@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import (
     DAMAGE_VERIFIER,
     ESTIMATE_ADJUSTER,
@@ -19,7 +20,7 @@ from claim_agent.tools import (
 )
 
 
-def create_supplemental_intake_agent(llm=None, state: str = "California", **kwargs):
+def create_supplemental_intake_agent(llm: LLMProtocol | None = None, state: str = "California", **kwargs):
     """Supplemental Intake Specialist: validates report and retrieves original estimate."""
     skill = load_skill_with_context(SUPPLEMENTAL_INTAKE, state=state, use_rag=False)
     return Agent(
@@ -32,7 +33,7 @@ def create_supplemental_intake_agent(llm=None, state: str = "California", **kwar
     )
 
 
-def create_damage_verifier_agent(llm=None, **kwargs):
+def create_damage_verifier_agent(llm: LLMProtocol | None = None, **kwargs):
     """Damage Verifier: compares supplemental to original scope."""
     skill = load_skill(DAMAGE_VERIFIER)
     return Agent(
@@ -45,7 +46,7 @@ def create_damage_verifier_agent(llm=None, **kwargs):
     )
 
 
-def create_estimate_adjuster_agent(llm=None, **kwargs):
+def create_estimate_adjuster_agent(llm: LLMProtocol | None = None, **kwargs):
     """Estimate Adjuster: calculates supplemental estimate and updates authorization."""
     skill = load_skill(ESTIMATE_ADJUSTER)
     return Agent(

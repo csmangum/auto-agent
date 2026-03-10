@@ -6,10 +6,11 @@ reports, agent-driven evaluation).
 """
 
 from claim_agent.agents.escalation import create_escalation_agent
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_escalation_crew(llm=None):
+def create_escalation_crew(llm: LLMProtocol | None = None):
     """Create the Escalation crew: single agent evaluates claim for escalation (optional/manual use)."""
     return create_crew(
         agents_config=[AgentConfig(create_escalation_agent)],

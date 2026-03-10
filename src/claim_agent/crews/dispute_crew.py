@@ -11,10 +11,11 @@ from claim_agent.agents.dispute import (
     create_dispute_policy_analyst_agent,
     create_dispute_resolution_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_dispute_crew(llm=None, state: str = "California"):
+def create_dispute_crew(llm: LLMProtocol | None = None, state: str = "California"):
     """Create the Dispute crew: intake -> policy analysis -> resolution.
 
     Returns:

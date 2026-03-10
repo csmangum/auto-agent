@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools.fraud_tools import (
     analyze_claim_patterns,
     cross_reference_fraud_indicators,
@@ -12,7 +13,7 @@ from claim_agent.tools import add_claim_note, detect_fraud_indicators, escalate_
 from claim_agent.skills import load_skill, PATTERN_ANALYSIS, CROSS_REFERENCE, FRAUD_ASSESSMENT
 
 
-def create_pattern_analysis_agent(llm=None):
+def create_pattern_analysis_agent(llm: LLMProtocol | None = None):
     """Pattern Analysis Specialist: identifies suspicious patterns in claims."""
     skill = load_skill(PATTERN_ANALYSIS)
     return Agent(
@@ -25,7 +26,7 @@ def create_pattern_analysis_agent(llm=None):
     )
 
 
-def create_cross_reference_agent(llm=None):
+def create_cross_reference_agent(llm: LLMProtocol | None = None):
     """Cross-Reference Specialist: checks against known fraud indicators."""
     skill = load_skill(CROSS_REFERENCE)
     return Agent(
@@ -38,7 +39,7 @@ def create_cross_reference_agent(llm=None):
     )
 
 
-def create_fraud_assessment_agent(llm=None):
+def create_fraud_assessment_agent(llm: LLMProtocol | None = None):
     """Fraud Assessment Specialist: makes final fraud determination."""
     skill = load_skill(FRAUD_ASSESSMENT)
     return Agent(

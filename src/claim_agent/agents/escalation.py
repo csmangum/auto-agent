@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     evaluate_escalation,
     detect_fraud_indicators,
@@ -10,7 +11,7 @@ from claim_agent.tools import (
 from claim_agent.skills import load_skill, ESCALATION
 
 
-def create_escalation_agent(llm=None):
+def create_escalation_agent(llm: LLMProtocol | None = None):
     """Create the Escalation Review Specialist agent that flags cases needing human review."""
     skill = load_skill(ESCALATION)
     return Agent(

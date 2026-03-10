@@ -6,6 +6,7 @@ parameters to include relevant policy and compliance regulations in prompts.
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     add_claim_note,
     calculate_payout,
@@ -27,7 +28,7 @@ from claim_agent.skills import (
 
 
 def create_damage_assessor_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):
@@ -63,7 +64,7 @@ def create_damage_assessor_agent(
 
 
 def create_valuation_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):
@@ -98,7 +99,7 @@ def create_valuation_agent(
 
 
 def create_payout_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):

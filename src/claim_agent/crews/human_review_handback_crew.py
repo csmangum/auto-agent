@@ -5,10 +5,11 @@ Integration: Post-escalation; handles needs_review → processing transitions.
 """
 
 from claim_agent.agents.human_review_handback import create_handback_agent
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_human_review_handback_crew(llm=None):
+def create_human_review_handback_crew(llm: LLMProtocol | None = None):
     """Create the Human Review Handback crew."""
     return create_crew(
         agents_config=[AgentConfig(create_handback_agent)],

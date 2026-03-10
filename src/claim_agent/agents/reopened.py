@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import (
     PRIOR_CLAIM_LOADER,
     REOPENED_ROUTER,
@@ -16,7 +17,7 @@ from claim_agent.tools import (
 )
 
 
-def create_reopened_validator_agent(llm=None, **kwargs):
+def create_reopened_validator_agent(llm: LLMProtocol | None = None, **kwargs):
     """Reopening Reason Validator: validates reopening reason before proceeding."""
     skill = load_skill(REOPENED_VALIDATOR)
     return Agent(
@@ -29,7 +30,7 @@ def create_reopened_validator_agent(llm=None, **kwargs):
     )
 
 
-def create_prior_claim_loader_agent(llm=None, **kwargs):
+def create_prior_claim_loader_agent(llm: LLMProtocol | None = None, **kwargs):
     """Prior Claim Loader: loads and summarizes the prior settled claim."""
     skill = load_skill(PRIOR_CLAIM_LOADER)
     return Agent(
@@ -42,7 +43,7 @@ def create_prior_claim_loader_agent(llm=None, **kwargs):
     )
 
 
-def create_reopened_router_agent(llm=None, **kwargs):
+def create_reopened_router_agent(llm: LLMProtocol | None = None, **kwargs):
     """Reopened Claim Router: routes to partial_loss, total_loss, or bodily_injury."""
     skill = load_skill(REOPENED_ROUTER)
     return Agent(

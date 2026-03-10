@@ -5,10 +5,11 @@ from claim_agent.agents.duplicate import (
     create_search_agent,
     create_similarity_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_duplicate_crew(llm=None):
+def create_duplicate_crew(llm: LLMProtocol | None = None):
     """Create the Duplicate Checker crew: search -> similarity -> resolution."""
     return create_crew(
         agents_config=[

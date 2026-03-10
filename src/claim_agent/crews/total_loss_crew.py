@@ -9,12 +9,13 @@ from claim_agent.agents.total_loss import (
     create_payout_agent,
     create_valuation_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 from claim_agent.models.workflow_output import TotalLossWorkflowOutput
 
 
 def create_total_loss_crew(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):

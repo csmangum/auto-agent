@@ -2,10 +2,11 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import load_skill, ROUTER
 
 
-def create_router_agent(llm=None):
+def create_router_agent(llm: LLMProtocol | None = None):
     """Create the Claim Router Supervisor agent (manager in hierarchical process)."""
     skill = load_skill(ROUTER)
     return Agent(
