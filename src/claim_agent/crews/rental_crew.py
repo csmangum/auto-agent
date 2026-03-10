@@ -5,10 +5,11 @@ from claim_agent.agents.rental import (
     create_rental_eligibility_specialist_agent,
     create_rental_reimbursement_processor_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_rental_crew(llm=None):
+def create_rental_crew(llm: LLMProtocol | None = None):
     """Create the Rental Reimbursement crew: eligibility -> arrange/approve -> process reimbursement.
 
     This crew handles loss-of-use (rental) coverage for partial loss claims:

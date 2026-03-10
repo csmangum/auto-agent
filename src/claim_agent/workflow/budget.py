@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.config.llm import get_model_name
 from claim_agent.config.settings import MAX_LLM_CALLS_PER_CLAIM, MAX_TOKENS_PER_CLAIM
 from claim_agent.exceptions import TokenBudgetExceeded
@@ -10,7 +11,7 @@ from claim_agent.observability import get_logger
 logger = get_logger(__name__)
 
 
-def _get_llm_usage_snapshot(llm: Any) -> tuple[int, int, int] | None:
+def _get_llm_usage_snapshot(llm: LLMProtocol) -> tuple[int, int, int] | None:
     """Best-effort token usage snapshot from CrewAI LLM."""
     get_usage = getattr(llm, "get_token_usage_summary", None)
     if get_usage is None:
@@ -36,7 +37,7 @@ def _get_llm_usage_snapshot(llm: Any) -> tuple[int, int, int] | None:
     return int(prompt_tokens), int(completion_tokens), int(successful_requests or 0)
 
 
-def _check_token_budget(claim_id: str, metrics: Any, llm: Any | None = None) -> None:
+def _check_token_budget(claim_id: str, metrics: Any, llm: LLMProtocol | None = None) -> None:
     """Raise TokenBudgetExceeded if claim exceeds configured token or call budget."""
     summary = metrics.get_claim_summary(claim_id)
     total_tokens = summary.total_tokens if summary is not None else 0
@@ -65,20 +66,20 @@ def _check_token_budget(claim_id: str, metrics: Any, llm: Any | None = None) -> 
         )
 
 
-def _record_crew_llm_usage(claim_id: str, llm: Any, metrics: Any) -> None:
+def _record_crew_llm_usage(claim_id: str, llm: LLMProtocol | None, metrics: Any) -> None:
     """Record CrewAI LLM token usage and cost into metrics for this claim.
 
     CrewAI uses native SDK (OpenAI etc.) for standard models, so LiteLLM callbacks
     are not invoked. The LLM instance accumulates usage via get_token_usage_summary().
     We record one aggregated call so evaluation and reporting get real token/cost data.
     """
+    if llm is None:
+        return
     usage = _get_llm_usage_snapshot(llm)
     if usage is None:
         return
     prompt_tokens, completion_tokens, _successful_requests = usage
-    model = getattr(llm, "model", None) or get_model_name()
-    if not isinstance(model, str):
-        model = get_model_name()
+    model = llm.model if isinstance(llm.model, str) else get_model_name()
     metrics.record_llm_call(
         claim_id=claim_id,
         model=model,

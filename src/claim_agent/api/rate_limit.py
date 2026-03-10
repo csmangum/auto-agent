@@ -39,9 +39,15 @@ def clear_rate_limit_buckets() -> None:
     _buckets.clear()
 
 
-def get_client_ip(request) -> str:
-    """Extract client IP, respecting X-Forwarded-For when behind a proxy."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+def get_client_ip(request, *, trust_forwarded_for: bool = False) -> str:
+    """Extract client IP from the request.
+
+    Only trusts the ``X-Forwarded-For`` header when *trust_forwarded_for*
+    is ``True`` (i.e. the application is deployed behind a known reverse
+    proxy).  Without that flag the header is ignored to prevent IP spoofing.
+    """
+    if trust_forwarded_for:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"

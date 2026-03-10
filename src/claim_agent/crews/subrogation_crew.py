@@ -5,11 +5,12 @@ from claim_agent.agents.subrogation import (
     create_liability_investigator_agent,
     create_recovery_tracker_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
 def create_subrogation_crew(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):

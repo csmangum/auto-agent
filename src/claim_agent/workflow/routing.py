@@ -7,6 +7,7 @@ from crewai import Crew, Task
 
 from claim_agent.agents.router import create_router_agent
 from claim_agent.config.llm import get_llm
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.config.settings import (
     DUPLICATE_DAYS_WINDOW,
     DUPLICATE_SIMILARITY_THRESHOLD,
@@ -20,7 +21,7 @@ from claim_agent.tools.escalation_logic import (
 )
 
 
-def create_router_crew(llm=None):
+def create_router_crew(llm: LLMProtocol | None = None):
     """Create a crew with only the router agent to classify the claim."""
     llm = llm or get_llm()
     router = create_router_agent(llm)
@@ -111,7 +112,7 @@ Reply with a JSON object containing:
     )
 
 
-def create_main_crew(llm=None):
+def create_main_crew(llm: LLMProtocol | None = None):
     """Create the main crew (router only). Use run_claim_workflow to classify and run the right sub-crew."""
     return create_router_crew(llm)
 

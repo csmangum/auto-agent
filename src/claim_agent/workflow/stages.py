@@ -35,6 +35,14 @@ from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
+from claim_agent.models.stage_outputs import (
+    DuplicateDetectionResult,
+    EconomicAnalysisResult,
+    EnrichedDuplicate,
+    EscalationCheckResult,
+    FraudPrescreeningResult,
+    RouterStageResult,
+)
 from claim_agent.models.workflow_output import ReopenedWorkflowOutput
 from claim_agent.notifications.webhook import dispatch_repair_authorized_from_workflow_output
 from claim_agent.observability import get_logger
@@ -49,6 +57,7 @@ from claim_agent.workflow.claim_analysis import (
     _check_economic_total_loss,
     _filter_weak_fraud_indicators,
 )
+from claim_agent.tools.claims_logic import compute_similarity_score_impl
 from claim_agent.workflow.duplicate_detection import (
     _check_for_duplicates,
     _damage_tags_overlap,
@@ -81,14 +90,9 @@ def _stage_economic_analysis(ctx: _WorkflowCtx) -> dict | None:
 
     Enriches ``ctx.claim_data_with_id`` with economic flags (total loss,
     catastrophic event, damage-to-value ratio) and the high-value claim flag.
+    Stores the typed result in ``ctx.economic_result``.
     """
     economic_check = _check_economic_total_loss(ctx.claim_data)
-    ctx.claim_data_with_id["is_economic_total_loss"] = economic_check.get("is_economic_total_loss", False)
-    ctx.claim_data_with_id["is_catastrophic_event"] = economic_check.get("is_catastrophic_event", False)
-    ctx.claim_data_with_id["damage_indicates_total_loss"] = economic_check.get("damage_indicates_total_loss", False)
-    ctx.claim_data_with_id["damage_is_repairable"] = economic_check.get("damage_is_repairable", False)
-    ctx.claim_data_with_id["vehicle_value"] = economic_check.get("vehicle_value")
-    ctx.claim_data_with_id["damage_to_value_ratio"] = economic_check.get("damage_to_value_ratio")
 
     est_damage = ctx.claim_data.get("estimated_damage")
     vehicle_value = economic_check.get("vehicle_value")
@@ -96,7 +100,25 @@ def _stage_economic_analysis(ctx: _WorkflowCtx) -> dict | None:
         (est_damage is not None and est_damage > HIGH_VALUE_DAMAGE_THRESHOLD)
         or (vehicle_value is not None and vehicle_value > HIGH_VALUE_VEHICLE_THRESHOLD)
     )
-    if is_high_value:
+
+    result = EconomicAnalysisResult(
+        is_economic_total_loss=economic_check.get("is_economic_total_loss", False),
+        is_catastrophic_event=economic_check.get("is_catastrophic_event", False),
+        damage_indicates_total_loss=economic_check.get("damage_indicates_total_loss", False),
+        damage_is_repairable=economic_check.get("damage_is_repairable", False),
+        vehicle_value=vehicle_value,
+        damage_to_value_ratio=economic_check.get("damage_to_value_ratio"),
+        high_value_claim=is_high_value,
+    )
+    ctx.economic_result = result
+
+    ctx.claim_data_with_id["is_economic_total_loss"] = result.is_economic_total_loss
+    ctx.claim_data_with_id["is_catastrophic_event"] = result.is_catastrophic_event
+    ctx.claim_data_with_id["damage_indicates_total_loss"] = result.damage_indicates_total_loss
+    ctx.claim_data_with_id["damage_is_repairable"] = result.damage_is_repairable
+    ctx.claim_data_with_id["vehicle_value"] = result.vehicle_value
+    ctx.claim_data_with_id["damage_to_value_ratio"] = result.damage_to_value_ratio
+    if result.high_value_claim:
         ctx.claim_data_with_id["high_value_claim"] = True
 
     return None
@@ -107,12 +129,14 @@ def _stage_fraud_prescreening(ctx: _WorkflowCtx) -> dict | None:
 
     Only triggers when ``damage_to_value_ratio`` exceeds the pre-routing
     threshold and the claim is not catastrophic or explicitly total-loss.
-    Sets ``pre_routing_fraud_indicators`` on ``ctx.claim_data_with_id``.
+    Stores the typed result in ``ctx.fraud_prescreening_result``.
     """
-    ratio = ctx.claim_data_with_id.get("damage_to_value_ratio") or 0
-    is_catastrophic = ctx.claim_data_with_id.get("is_catastrophic_event", False)
-    damage_indicates_total = ctx.claim_data_with_id.get("damage_indicates_total_loss", False)
+    econ = ctx.economic_result
+    ratio = (econ.damage_to_value_ratio or 0) if econ else (ctx.claim_data_with_id.get("damage_to_value_ratio") or 0)
+    is_catastrophic = econ.is_catastrophic_event if econ else ctx.claim_data_with_id.get("is_catastrophic_event", False)
+    damage_indicates_total = econ.damage_indicates_total_loss if econ else ctx.claim_data_with_id.get("damage_indicates_total_loss", False)
 
+    meaningful_indicators: list[str] = []
     if ratio > PRE_ROUTING_FRAUD_DAMAGE_RATIO and not is_catastrophic and not damage_indicates_total:
         fraud_result = detect_fraud_indicators_impl(ctx.claim_data, ctx=ctx.context)
         try:
@@ -125,6 +149,10 @@ def _stage_fraud_prescreening(ctx: _WorkflowCtx) -> dict | None:
             if meaningful_indicators:
                 ctx.claim_data_with_id["pre_routing_fraud_indicators"] = meaningful_indicators
 
+    ctx.fraud_prescreening_result = FraudPrescreeningResult(
+        pre_routing_fraud_indicators=meaningful_indicators,
+    )
+
     return None
 
 
@@ -135,17 +163,17 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
     sets ``existing_claims_for_vin``, ``damage_tags``, and
     ``definitive_duplicate`` on ``ctx.claim_data_with_id``.  Also rebuilds
     ``ctx.inputs`` so downstream stages see the fully enriched payload.
+    Stores the typed result in ``ctx.duplicate_result``.
     """
     existing_claims = _check_for_duplicates(ctx.claim_data, current_claim_id=ctx.claim_id, ctx=ctx.context)
     if existing_claims:
-        from claim_agent.tools.claims_logic import compute_similarity_score_impl
-
         current_incident = ctx.claim_data.get("incident_description", "") or ""
         current_damage = ctx.claim_data.get("damage_description", "") or ""
         current_combined = f"{current_incident} {current_damage}"
         current_damage_tags = _extract_damage_tags(current_combined)
 
-        enriched_claims = []
+        enriched_models: list[EnrichedDuplicate] = []
+        max_sim: float | None = None
         for c in existing_claims[:5]:
             existing_incident = c.get("incident_description", "") or ""
             existing_damage = c.get("damage_description", "") or ""
@@ -161,35 +189,50 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
                     ctx.claim_id,
                     str(e),
                 )
-                similarity_score = 0
+                similarity_score = 0.0
 
-            enriched_claims.append({
-                "claim_id": c.get("id"),
-                "incident_date": c.get("incident_date"),
-                "incident_description": existing_incident[:200],
-                "damage_description": existing_damage[:200],
-                "damage_tags": sorted(existing_damage_tags),
-                "damage_type_match": damage_type_match,
-                "days_difference": c.get("days_difference"),
-                "description_similarity_score": similarity_score,
-            })
-            if ctx.similarity_score_for_escalation is None or similarity_score > ctx.similarity_score_for_escalation:
-                ctx.similarity_score_for_escalation = similarity_score
+            enriched_models.append(EnrichedDuplicate(
+                claim_id=c.get("id"),
+                incident_date=c.get("incident_date"),
+                incident_description=existing_incident[:200],
+                damage_description=existing_damage[:200],
+                damage_tags=sorted(existing_damage_tags),
+                damage_type_match=damage_type_match,
+                days_difference=c.get("days_difference"),
+                description_similarity_score=similarity_score,
+            ))
+            if max_sim is None or similarity_score > max_sim:
+                max_sim = similarity_score
 
-        ctx.claim_data_with_id["existing_claims_for_vin"] = enriched_claims
-        ctx.claim_data_with_id["damage_tags"] = sorted(current_damage_tags)
-        is_high_value = ctx.claim_data_with_id.get("high_value_claim", False)
+        ctx.similarity_score_for_escalation = max_sim
+
+        econ = ctx.economic_result
+        is_high_value = (econ.high_value_claim if econ else ctx.claim_data_with_id.get("high_value_claim", False))
         sim_threshold = DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE if is_high_value else DUPLICATE_SIMILARITY_THRESHOLD
         definitive_duplicate = any(
-            (e.get("description_similarity_score") or 0) >= sim_threshold
-            and e.get("days_difference", 999) <= DUPLICATE_DAYS_WINDOW
-            and e.get("damage_type_match")
-            for e in enriched_claims
+            e.description_similarity_score >= sim_threshold
+            and (e.days_difference or 999) <= DUPLICATE_DAYS_WINDOW
+            and e.damage_type_match
+            for e in enriched_models
         )
+
+        dup_result = DuplicateDetectionResult(
+            existing_claims=enriched_models,
+            damage_tags=sorted(current_damage_tags),
+            definitive_duplicate=definitive_duplicate,
+            similarity_score_for_escalation=max_sim,
+        )
+
+        enriched_dicts = [e.model_dump(mode="json") for e in enriched_models]
+        ctx.claim_data_with_id["existing_claims_for_vin"] = enriched_dicts
+        ctx.claim_data_with_id["damage_tags"] = dup_result.damage_tags
         ctx.claim_data_with_id["definitive_duplicate"] = definitive_duplicate
     else:
         ctx.similarity_score_for_escalation = None
         ctx.claim_data_with_id["definitive_duplicate"] = False
+        dup_result = DuplicateDetectionResult(definitive_duplicate=False)
+
+    ctx.duplicate_result = dup_result
 
     ctx.inputs = {"claim_data": json.dumps(ctx.claim_data_with_id) if isinstance(ctx.claim_data_with_id, dict) else ctx.claim_data_with_id}
     claim_data_str = ctx.inputs["claim_data"] if isinstance(ctx.inputs["claim_data"], str) else json.dumps(ctx.inputs["claim_data"])
@@ -531,6 +574,13 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
                 router_reasoning=ctx.router_reasoning,
             )
 
+    ctx.router_result = RouterStageResult(
+        claim_type=ctx.claim_type,
+        router_confidence=ctx.router_confidence,
+        router_reasoning=ctx.router_reasoning,
+        raw_output=ctx.raw_output,
+    )
+
     ctx.context.repo.save_task_checkpoint(
         ctx.claim_id,
         ctx.workflow_run_id,
@@ -572,6 +622,13 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
             priority = escalation_result.get("priority", "low")
             recommended_action = escalation_result.get("recommended_action", "")
             fraud_indicators = escalation_result.get("fraud_indicators", [])
+            ctx.escalation_result = EscalationCheckResult(
+                needs_review=True,
+                escalation_reasons=reasons,
+                priority=priority,
+                recommended_action=recommended_action,
+                fraud_indicators=fraud_indicators,
+            )
             escalation_output = EscalationOutput(
                 claim_id=ctx.claim_id,
                 needs_review=True,
@@ -636,6 +693,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 "summary": f"Escalated for review: {', '.join(reasons)}",
             }
 
+    ctx.escalation_result = EscalationCheckResult(needs_review=False)
     ctx.context.repo.save_task_checkpoint(
         ctx.claim_id, ctx.workflow_run_id, "escalation_check", "{}"
     )

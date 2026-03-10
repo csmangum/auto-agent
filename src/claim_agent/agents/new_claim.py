@@ -2,11 +2,12 @@
 
 from crewai import Agent
 
-from claim_agent.tools import add_claim_note, escalate_claim, generate_claim_id, generate_report, get_claim_notes, query_policy_db
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import load_skill, INTAKE, POLICY_CHECKER, ASSIGNMENT
+from claim_agent.tools import add_claim_note, escalate_claim, generate_claim_id, generate_report, get_claim_notes, query_policy_db
 
 
-def create_intake_agent(llm=None):
+def create_intake_agent(llm: LLMProtocol | None = None):
     """Intake Specialist: validates claim data."""
     skill = load_skill(INTAKE)
     return Agent(
@@ -19,7 +20,7 @@ def create_intake_agent(llm=None):
     )
 
 
-def create_policy_checker_agent(llm=None):
+def create_policy_checker_agent(llm: LLMProtocol | None = None):
     """Policy Verification Specialist: queries policy DB."""
     skill = load_skill(POLICY_CHECKER)
     return Agent(
@@ -32,7 +33,7 @@ def create_policy_checker_agent(llm=None):
     )
 
 
-def create_assignment_agent(llm=None):
+def create_assignment_agent(llm: LLMProtocol | None = None):
     """Claim Assignment Specialist: generates claim ID and updates status."""
     skill = load_skill(ASSIGNMENT)
     return Agent(

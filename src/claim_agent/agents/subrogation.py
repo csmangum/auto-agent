@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     assess_liability,
     build_subrogation_case,
@@ -22,7 +23,7 @@ from claim_agent.skills import (
 
 
 def create_liability_investigator_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):
@@ -50,7 +51,7 @@ def create_liability_investigator_agent(
 
 
 def create_demand_specialist_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):
@@ -78,7 +79,7 @@ def create_demand_specialist_agent(
 
 
 def create_recovery_tracker_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):

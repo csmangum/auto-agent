@@ -11,10 +11,11 @@ from claim_agent.agents.denial_coverage import (
     create_coverage_analyst_agent,
     create_denial_letter_specialist_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_denial_coverage_crew(llm=None, state: str = "California"):
+def create_denial_coverage_crew(llm: LLMProtocol | None = None, state: str = "California"):
     """Create the Denial/Coverage crew: coverage analysis -> denial letter or appeal routing.
 
     Flow: Review denial reason -> Verify coverage/exclusions -> Generate denial letter or route to appeal.

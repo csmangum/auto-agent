@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 from claim_agent.config.llm import get_llm
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.crews.dispute_crew import create_dispute_crew
 from claim_agent.db.constants import (
@@ -41,7 +42,7 @@ _ADJUSTED_AMOUNT_PATTERNS = (
 def run_dispute_workflow(
     dispute_data: dict[str, Any],
     *,
-    llm: Any | None = None,
+    llm: LLMProtocol | None = None,
     ctx: ClaimContext | None = None,
 ) -> dict[str, Any]:
     """Run the dispute resolution workflow for a policyholder dispute.

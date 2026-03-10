@@ -10,8 +10,16 @@ from dataclasses import dataclass, field
 import litellm
 
 from claim_agent.config.llm import get_llm
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.models.stage_outputs import (
+    DuplicateDetectionResult,
+    EconomicAnalysisResult,
+    EscalationCheckResult,
+    FraudPrescreeningResult,
+    RouterStageResult,
+)
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
 from claim_agent.models.claim import ClaimInput
@@ -88,10 +96,16 @@ class _WorkflowCtx:
     extracted_payout: float | None = None
     _last_stage_output: str = ""
 
+    economic_result: EconomicAnalysisResult | None = None
+    fraud_prescreening_result: FraudPrescreeningResult | None = None
+    duplicate_result: DuplicateDetectionResult | None = None
+    router_result: RouterStageResult | None = None
+    escalation_result: EscalationCheckResult | None = None
+
 
 def run_claim_workflow(
     claim_data: dict,
-    llm=None,
+    llm: LLMProtocol | None = None,
     existing_claim_id: str | None = None,
     *,
     actor_id: str | None = None,

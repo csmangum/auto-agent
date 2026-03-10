@@ -7,11 +7,12 @@ from claim_agent.agents.partial_loss import (
     create_repair_estimator_agent,
     create_repair_shop_coordinator_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 from claim_agent.models.workflow_output import PartialLossWorkflowOutput
 
 
-def create_partial_loss_crew(llm=None):
+def create_partial_loss_crew(llm: LLMProtocol | None = None):
     """Create the Partial Loss crew: damage assess -> estimate -> shop assignment -> parts order -> authorization.
 
     This crew handles repairable vehicle damage claims:

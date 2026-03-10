@@ -9,10 +9,11 @@ from claim_agent.agents.supplemental import (
     create_estimate_adjuster_agent,
     create_supplemental_intake_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_supplemental_crew(llm=None, state: str = "California"):
+def create_supplemental_crew(llm: LLMProtocol | None = None, state: str = "California"):
     """Create the Supplemental crew: intake -> verify damage -> adjust estimate -> update authorization.
 
     Handles supplemental damage reports on existing partial loss claims:

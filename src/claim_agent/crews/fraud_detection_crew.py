@@ -11,10 +11,11 @@ from claim_agent.agents.fraud import (
     create_fraud_assessment_agent,
     create_pattern_analysis_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_fraud_detection_crew(llm=None):
+def create_fraud_detection_crew(llm: LLMProtocol | None = None):
     """Create the Fraud Detection crew: pattern analysis -> cross-reference -> assessment.
 
     This crew processes claims flagged for potential fraud and performs:

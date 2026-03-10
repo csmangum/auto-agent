@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     add_claim_note,
     assign_repair_shop,
@@ -27,7 +28,7 @@ from claim_agent.skills import (
 )
 
 
-def create_partial_loss_damage_assessor_agent(llm=None):
+def create_partial_loss_damage_assessor_agent(llm: LLMProtocol | None = None):
     """Damage Assessor: evaluates vehicle damage for partial loss claims."""
     skill = load_skill(PARTIAL_LOSS_DAMAGE_ASSESSOR)
     return Agent(
@@ -40,7 +41,7 @@ def create_partial_loss_damage_assessor_agent(llm=None):
     )
 
 
-def create_repair_estimator_agent(llm=None):
+def create_repair_estimator_agent(llm: LLMProtocol | None = None):
     """Repair Estimator: calculates full repair estimate with parts and labor."""
     skill = load_skill(REPAIR_ESTIMATOR)
     return Agent(
@@ -53,7 +54,7 @@ def create_repair_estimator_agent(llm=None):
     )
 
 
-def create_repair_shop_coordinator_agent(llm=None):
+def create_repair_shop_coordinator_agent(llm: LLMProtocol | None = None):
     """Repair Shop Coordinator: finds and assigns repair shops."""
     skill = load_skill(REPAIR_SHOP_COORDINATOR)
     return Agent(
@@ -66,7 +67,7 @@ def create_repair_shop_coordinator_agent(llm=None):
     )
 
 
-def create_parts_ordering_agent(llm=None):
+def create_parts_ordering_agent(llm: LLMProtocol | None = None):
     """Parts Ordering Specialist: orders required parts for repair."""
     skill = load_skill(PARTS_ORDERING)
     return Agent(
@@ -79,7 +80,7 @@ def create_parts_ordering_agent(llm=None):
     )
 
 
-def create_repair_authorization_agent(llm=None):
+def create_repair_authorization_agent(llm: LLMProtocol | None = None):
     """Repair Authorization Specialist: generates the repair authorization handoff."""
     skill = load_skill(REPAIR_AUTHORIZATION)
     return Agent(

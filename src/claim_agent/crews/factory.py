@@ -6,6 +6,7 @@ from typing import Callable
 from crewai import Agent, Crew, Task
 
 from claim_agent.config.llm import get_llm
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.config.settings import get_crew_verbose
 
 
@@ -40,7 +41,7 @@ class TaskConfig:
 def create_crew(
     agents_config: list[AgentConfig],
     tasks_config: list[TaskConfig],
-    llm=None,
+    llm: LLMProtocol | None = None,
     agent_kwargs: dict | None = None,
 ) -> Crew:
     """Create a Crew instance from agent and task configurations.

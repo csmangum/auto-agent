@@ -5,11 +5,12 @@ from claim_agent.agents.salvage import (
     create_salvage_coordinator_agent,
     create_title_specialist_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
 def create_salvage_crew(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):

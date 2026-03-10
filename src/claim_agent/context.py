@@ -9,7 +9,6 @@ relying on inline instantiation and global singletons.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from claim_agent.adapters.base import (
     PartsAdapter,
@@ -18,6 +17,7 @@ from claim_agent.adapters.base import (
     SIUAdapter,
     ValuationAdapter,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.observability.metrics import ClaimMetrics
 from claim_agent.services.adjuster_action_service import AdjusterActionService
@@ -68,14 +68,14 @@ class ClaimContext:
     adjuster_service: AdjusterActionService
     adapters: AdapterRegistry
     metrics: ClaimMetrics
-    llm: Any = None
+    llm: LLMProtocol | None = None
 
     @classmethod
     def from_defaults(
         cls,
         *,
         db_path: str | None = None,
-        llm: Any = None,
+        llm: LLMProtocol | None = None,
     ) -> ClaimContext:
         """Build with production defaults.
 

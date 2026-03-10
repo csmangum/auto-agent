@@ -2,6 +2,7 @@
 
 from crewai import Agent
 
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     escalate_claim,
     generate_report,
@@ -21,7 +22,7 @@ from claim_agent.skills import (
 
 
 def create_salvage_coordinator_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):
@@ -49,7 +50,7 @@ def create_salvage_coordinator_agent(
 
 
 def create_title_specialist_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):
@@ -77,7 +78,7 @@ def create_title_specialist_agent(
 
 
 def create_auction_liaison_agent(
-    llm=None,
+    llm: LLMProtocol | None = None,
     state: str = "California",
     use_rag: bool = True,
 ):

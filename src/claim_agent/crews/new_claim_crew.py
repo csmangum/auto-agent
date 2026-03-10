@@ -9,10 +9,11 @@ from claim_agent.agents.new_claim import (
     create_intake_agent,
     create_policy_checker_agent,
 )
+from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
 
 
-def create_new_claim_crew(llm=None):
+def create_new_claim_crew(llm: LLMProtocol | None = None):
     """Create the New Claim crew: intake -> policy check -> assignment."""
     return create_crew(
         agents_config=[
