@@ -88,6 +88,7 @@ claim-agent status CLM-11EEF959
 | `tests/sample_claims/partial_loss_claim.json` | Partial loss |
 | `tests/sample_claims/partial_loss_fender.json` | Partial loss |
 | `tests/sample_claims/partial_loss_front_collision.json` | Partial loss |
+| `tests/sample_claims/bodily_injury_claim.json` | Bodily injury (BI workflow) |
 
 ## Documentation
 

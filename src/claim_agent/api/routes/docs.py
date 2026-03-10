@@ -32,7 +32,11 @@ _DOC_PAGES = [
     {"slug": "observability", "title": "Observability", "file": "observability.md"},
     {"slug": "rag", "title": "RAG", "file": "rag.md"},
     {"slug": "mcp-server", "title": "MCP Server", "file": "mcp-server.md"},
+    {"slug": "adjuster-workflow", "title": "Adjuster Workflow", "file": "adjuster-workflow.md"},
+    {"slug": "review-queue", "title": "Review Queue", "file": "review-queue.md"},
+    {"slug": "alerting", "title": "Alerting", "file": "alerting.md"},
     {"slug": "evaluation-results", "title": "Evaluation Results", "file": "evaluation-results.md"},
+    {"slug": "compliance-corpus-requirements", "title": "Compliance Corpus", "file": "compliance-corpus-requirements.md"},
 ]
 
 # Skill groupings by workflow

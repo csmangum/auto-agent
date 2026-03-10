@@ -10,9 +10,9 @@ For crew details and agent composition, see [Crews](crews.md).
 |------|-------------|--------------|------|
 | `new` | First-time submission | `open` | [New Claim](crews.md#new-claim-crew) |
 | `duplicate` | Duplicate of existing | `duplicate` | [Duplicate](crews.md#duplicate-crew) |
-| `total_loss` | Unrepairable vehicle | `closed` | [Total Loss](crews.md#total-loss-crew) |
+| `total_loss` | Unrepairable vehicle | `settled` | [Total Loss](crews.md#total-loss-crew) → [Settlement](crews.md#settlement-crew) |
 | `fraud` | Suspected fraud | `fraud_suspected` | [Fraud](crews.md#fraud-detection-crew) |
-| `partial_loss` | Repairable damage | `partial_loss` | [Partial Loss](crews.md#partial-loss-crew) |
+| `partial_loss` | Repairable damage | `settled` | [Partial Loss](crews.md#partial-loss-crew) → [Settlement](crews.md#settlement-crew) |
 
 ---
 

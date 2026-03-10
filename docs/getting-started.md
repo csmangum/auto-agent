@@ -9,26 +9,20 @@ This guide walks you through setting up and running the Agentic Claim Representa
 
 ## Installation
 
-### 1. Enter the Project
-
-```bash
-cd auto-agent
-```
-
-### 2. Create Virtual Environment
+### 1. Create Virtual Environment
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 ```
 
-### 3. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-### 4. Configure Environment
+### 3. Configure Environment
 
 ```bash
 cp .env.example .env
@@ -87,6 +81,7 @@ claim-agent history CLM-11EEF959
 | `tests/sample_claims/partial_loss_claim.json` | partial_loss | Repairable damage |
 | `tests/sample_claims/partial_loss_fender.json` | partial_loss | Fender damage |
 | `tests/sample_claims/partial_loss_front_collision.json` | partial_loss | Front collision |
+| `tests/sample_claims/bodily_injury_claim.json` | bodily_injury | Bodily injury (BI workflow) |
 
 See [Claim Types](claim-types.md) for classification criteria.
 
@@ -127,10 +122,11 @@ claim-agent process tests/sample_claims/duplicate_claim.json
 ```bash
 # Unit tests (no API key needed)
 export MOCK_DB_PATH=data/mock_db.json
-pytest tests/ -v
+pytest tests/ -v --ignore=tests/integration --ignore=tests/e2e --ignore=tests/load \
+  -m "not slow and not integration and not llm and not e2e and not load"
 
-# Integration tests (API key required)
-pytest tests/test_crews.py -v
+# Integration tests (mocked LLM, no API key needed)
+pytest tests/integration/ -v -m "integration and not slow and not llm"
 ```
 
 ## CLI Reference
