@@ -68,21 +68,6 @@ const FRAUD_DESCRIPTIONS: Record<string, string> = {
   critical_indicator_count: 'Number of indicators for critical status',
 };
 
-interface SystemConfigData {
-  escalation?: Record<string, unknown>;
-  fraud?: Record<string, unknown>;
-  valuation?: Record<string, unknown>;
-  partial_loss?: Record<string, unknown>;
-  token_budgets?: Record<string, unknown>;
-  crew_verbose?: boolean;
-}
-
-interface SystemHealthData {
-  status: string;
-  database: string;
-  total_claims: number;
-}
-
 export default function SystemConfig() {
   const { data: config, isLoading: configLoading, error: configError } = useSystemConfig();
   const { data: health, isLoading: healthLoading, error: healthError } = useSystemHealth();
@@ -110,9 +95,7 @@ export default function SystemConfig() {
     );
   }
 
-  const configData = config as SystemConfigData | undefined;
-  const healthData = health as SystemHealthData | undefined;
-  if (!configData) return null;
+  if (!config) return null;
 
   return (
     <div className="space-y-6">
@@ -123,22 +106,22 @@ export default function SystemConfig() {
         </p>
       </div>
 
-      {healthData && (
+      {health && (
         <div className={`rounded-xl border p-5 ${
-          healthData.status === 'healthy'
+          health.status === 'healthy'
             ? 'bg-green-50 border-green-200'
             : 'bg-yellow-50 border-yellow-200'
         }`}>
           <div className="flex items-center gap-3">
             <span className="text-2xl">
-              {healthData.status === 'healthy' ? '✅' : '⚠️'}
+              {health.status === 'healthy' ? '✅' : '⚠️'}
             </span>
             <div>
               <h3 className="font-semibold text-gray-900">
-                System {healthData.status === 'healthy' ? 'Healthy' : 'Degraded'}
+                System {health.status === 'healthy' ? 'Healthy' : 'Degraded'}
               </h3>
               <p className="text-sm text-gray-600">
-                Database: {healthData.database} · {healthData.total_claims} claims stored
+                Database: {health.database} · {health.total_claims} claims stored
               </p>
             </div>
           </div>
@@ -148,31 +131,31 @@ export default function SystemConfig() {
       <div className="space-y-4">
         <ConfigTable
           title="Escalation (Human-in-the-Loop)"
-          config={configData.escalation ?? {}}
+          config={config.escalation ?? {}}
           descriptions={ESCALATION_DESCRIPTIONS}
         />
         <ConfigTable
           title="Fraud Detection"
-          config={configData.fraud ?? {}}
+          config={config.fraud ?? {}}
           descriptions={FRAUD_DESCRIPTIONS}
         />
         <ConfigTable
           title="Vehicle Valuation"
-          config={configData.valuation ?? {}}
+          config={config.valuation ?? {}}
         />
         <ConfigTable
           title="Partial Loss"
-          config={configData.partial_loss ?? {}}
+          config={config.partial_loss ?? {}}
         />
         <ConfigTable
           title="Token Budgets"
-          config={configData.token_budgets ?? {}}
+          config={config.token_budgets ?? {}}
         />
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">General</h3>
           <p className="text-sm text-gray-600">
             CrewAI Verbose Mode: <span className="font-mono font-medium text-blue-700">
-              {configData.crew_verbose ? 'true' : 'false'}
+              {config.crew_verbose ? 'true' : 'false'}
             </span>
           </p>
         </div>

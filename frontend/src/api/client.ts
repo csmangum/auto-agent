@@ -17,13 +17,21 @@ import type {
   AgentsCatalogResponse,
   AuditEvent,
   WorkflowRun,
+  SystemConfigData,
+  SystemHealthData,
 } from './types';
 
 const BASE = '/api';
 const STORAGE_KEY = 'claims_api_token';
 
-let _authToken: string | null =
-  (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) || null;
+let _authToken: string | null = null;
+if (typeof window !== 'undefined') {
+  try {
+    _authToken = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    _authToken = null;
+  }
+}
 
 export function setAuthToken(token: string): void {
   _authToken = token;
@@ -102,11 +110,11 @@ export const getSkills = (): Promise<SkillsListResponse> =>
 export const getSkill = (name: string): Promise<SkillDetailResponse> =>
   fetchJSON<SkillDetailResponse>(`/skills/${name}`);
 
-export const getSystemConfig = (): Promise<unknown> =>
-  fetchJSON('/system/config');
+export const getSystemConfig = (): Promise<SystemConfigData> =>
+  fetchJSON<SystemConfigData>('/system/config');
 
-export const getSystemHealth = (): Promise<unknown> =>
-  fetchJSON('/system/health');
+export const getSystemHealth = (): Promise<SystemHealthData> =>
+  fetchJSON<SystemHealthData>('/system/health');
 
 export const getAgentsCatalog = (): Promise<AgentsCatalogResponse> =>
   fetchJSON<AgentsCatalogResponse>('/system/agents');

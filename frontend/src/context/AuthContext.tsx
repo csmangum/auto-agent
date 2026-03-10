@@ -4,6 +4,31 @@ import { setAuthToken, clearAuthToken } from '../api/client';
 
 const STORAGE_KEY = 'claims_api_token' as const;
 
+function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredToken(token: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, token);
+  } catch {
+    // Storage unavailable (privacy mode, embedded context, etc.)
+  }
+}
+
+function clearStoredToken(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage unavailable
+  }
+}
+
 interface AuthContextValue {
   token: string | null;
   isAuthenticated: boolean;
@@ -14,10 +39,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem(STORAGE_KEY);
-  });
+  const [token, setTokenState] = useState<string | null>(getStoredToken);
 
   useEffect(() => {
     if (token) {
@@ -30,13 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback((newToken: string) => {
     const trimmed = newToken.trim();
     if (trimmed) {
-      localStorage.setItem(STORAGE_KEY, trimmed);
+      setStoredToken(trimmed);
       setTokenState(trimmed);
     }
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    clearStoredToken();
     setTokenState(null);
   }, []);
 

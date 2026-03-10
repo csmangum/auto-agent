@@ -9,12 +9,20 @@ export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
   const [activeTab, setActiveTab] = useState('overview');
   const { data: claim, isLoading: claimLoading, error: claimError } = useClaim(claimId);
-  const { data: historyData } = useClaimHistory(claimId);
-  const { data: workflowsData } = useClaimWorkflows(claimId);
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    error: historyError,
+  } = useClaimHistory(claimId);
+  const {
+    data: workflowsData,
+    isLoading: workflowsLoading,
+    error: workflowsError,
+  } = useClaimWorkflows(claimId);
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
-  const loading = claimLoading;
-  const error = claimError;
+  const loading = claimLoading || historyLoading || workflowsLoading;
+  const error = claimError ?? historyError ?? workflowsError;
 
   if (loading) {
     return (
