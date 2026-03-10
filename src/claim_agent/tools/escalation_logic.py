@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from claim_agent.config.llm import get_model_name
@@ -13,7 +13,7 @@ from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimType
-from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
+from claim_agent.tools.fraud_detectors import run_fraud_detectors
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -24,44 +24,6 @@ except ImportError:
     litellm = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
-
-KNOWN_FRAUD_PATTERNS = {
-    "staged_accident_keywords": [
-        "multiple occupants",
-        "all passengers injured",
-        "witnesses left",
-        "witness left",
-        "no witnesses",
-        "brake checked",
-        "sudden stop",
-    ],
-    "suspicious_claim_keywords": [
-        "staged",
-        "inflated",
-        "pre-existing",
-        "inconsistent",
-        "misrepresentation",
-        "material misrepresentation",
-        "exaggerated",
-        "fabricated",
-        "prior claims",
-        "suspicious damage",
-    ],
-    "timing_red_flags": [
-        "new policy",
-        "policy just started",
-        "recently insured",
-        "just purchased",
-        "first day",
-    ],
-    "damage_fraud_keywords": [
-        "total destruction",
-        "complete loss",
-        "beyond repair",
-        "catastrophic",
-        "all components damaged",
-    ],
-}
 
 
 def normalize_claim_type(value: str) -> str:
@@ -208,80 +170,8 @@ def detect_fraud_indicators_impl(
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
-    """Check claim for fraud indicators. Returns JSON list of indicator strings."""
-    indicators: list[str] = []
-    if not claim_data or not isinstance(claim_data, dict):
-        return json.dumps(indicators)
-
-    incident = (claim_data.get("incident_description") or "").strip().lower()
-    damage = (claim_data.get("damage_description") or "").strip().lower()
-    vin = (claim_data.get("vin") or "").strip()
-    incident_date_raw = claim_data.get("incident_date")
-    if isinstance(incident_date_raw, datetime):
-        incident_date = incident_date_raw.strftime("%Y-%m-%d")
-    elif isinstance(incident_date_raw, date):
-        incident_date = incident_date_raw.isoformat()
-    elif isinstance(incident_date_raw, str):
-        incident_date = incident_date_raw.strip()
-    else:
-        incident_date = ""
-    estimated_damage = claim_data.get("estimated_damage")
-    if isinstance(estimated_damage, str):
-        try:
-            estimated_damage = float(estimated_damage)
-        except ValueError:
-            estimated_damage = None
-
-    fraud_keywords = (
-        KNOWN_FRAUD_PATTERNS["staged_accident_keywords"]
-        + KNOWN_FRAUD_PATTERNS["suspicious_claim_keywords"]
-    )
-    combined = f"{incident} {damage}"
-    for kw in fraud_keywords:
-        if kw in combined:
-            indicators.append(kw.replace(" ", "_"))
-
-    if vin and incident_date:
-        try:
-            repo = ctx.repo if ctx else ClaimRepository()
-            dt_obj = datetime.strptime(incident_date, "%Y-%m-%d")
-            start = (dt_obj - timedelta(days=get_escalation_config()["vin_claims_days"])).strftime("%Y-%m-%d")
-            end = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
-            matches = repo.search_claims(vin=vin, incident_date=None)
-            same_vin = [m for m in matches if m.get("vin") == vin and m.get("incident_date") != incident_date]
-            same_vin_in_window = [
-                m for m in same_vin
-                if m.get("incident_date") is not None and start <= m.get("incident_date") <= end
-            ]
-            if len(same_vin_in_window) >= 1:
-                indicators.append("multiple_claims_same_vin")
-        except (ValueError, OSError) as e:
-            logger.debug("VIN lookup skipped for fraud indicators: %s", e)
-
-    if estimated_damage is not None and isinstance(estimated_damage, (int, float)) and estimated_damage > 0:
-        year = claim_data.get("vehicle_year")
-        make = claim_data.get("make") or claim_data.get("vehicle_make") or ""
-        model = claim_data.get("model") or claim_data.get("vehicle_model") or ""
-        if year and make and model:
-            val_res = fetch_vehicle_value_impl(vin or "", year, make, model, ctx=ctx)
-            try:
-                val_data = json.loads(val_res)
-                vehicle_value = val_data.get("value")
-                if isinstance(vehicle_value, (int, float)) and vehicle_value > 0:
-                    if estimated_damage >= get_escalation_config()["fraud_damage_vs_value_ratio"] * vehicle_value:
-                        indicators.append("damage_near_or_above_vehicle_value")
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.debug("Vehicle value parse skipped for fraud indicators: %s", e)
-
-    overlap_threshold = get_escalation_config()["description_overlap_threshold"]
-    if incident and damage:
-        words_i = set(incident.split())
-        words_d = set(damage.split())
-        if words_i and words_d:
-            overlap = len(words_i & words_d) / len(words_i | words_d) if (words_i | words_d) else 0
-            if overlap < overlap_threshold:
-                indicators.append("incident_damage_description_mismatch")
-
+    """Check claim for fraud indicators via pluggable detectors. Returns JSON list of indicator strings."""
+    indicators = run_fraud_detectors(claim_data or {}, ctx=ctx)
     return json.dumps(indicators)
 
 

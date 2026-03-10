@@ -1,0 +1,30 @@
+# Reproducible deployment for claim-agent
+# Usage: docker compose up
+# API: http://localhost:8000
+services:
+  claim-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - CLAIMS_DB_PATH=/app/data/claims.db
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-}
+      - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME:-gpt-4o-mini}
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - OTEL_TRACING=${OTEL_TRACING:-false}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-claim-agent}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
+      - WEBHOOK_ENABLED=${WEBHOOK_ENABLED:-true}
+    volumes:
+      - claim-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  claim-data:

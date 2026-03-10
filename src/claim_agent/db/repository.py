@@ -351,20 +351,43 @@ class ClaimRepository:
                 ),
             )
 
-    def get_claim_history(self, claim_id: str) -> list[dict[str, Any]]:
-        """Get audit log entries for a claim."""
+    def get_claim_history(
+        self,
+        claim_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Get audit log entries for a claim with optional pagination.
+
+        Returns:
+            (rows, total_count). When limit is None, returns all rows.
+        """
         with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                """
+            query = """
                 SELECT id, claim_id, action, old_status, new_status, details,
                        actor_id, before_state, after_state, created_at
                 FROM claim_audit_log
                 WHERE claim_id = ?
                 ORDER BY id ASC
-                """,
-                (claim_id,),
-            ).fetchall()
-        return [dict(r) for r in rows]
+            """
+            params: tuple[Any, ...] = (claim_id,)
+            if limit is not None:
+                # Only run COUNT(*) when paginating; fetching a page doesn't
+                # give us the total for free.
+                count_row = conn.execute(
+                    "SELECT COUNT(*) FROM claim_audit_log WHERE claim_id = ?",
+                    (claim_id,),
+                ).fetchone()
+                total = count_row[0] if count_row else 0
+                query += " LIMIT ? OFFSET ?"
+                params = (claim_id, limit, offset)
+            rows = conn.execute(query, params).fetchall()
+        result = [dict(r) for r in rows]
+        if limit is None:
+            # All rows fetched; total is simply the list length — no extra query needed.
+            total = len(result)
+        return result, total
 
     def add_note(
         self,

@@ -57,6 +57,9 @@ export interface AuditEvent {
 export interface ClaimHistoryResponse {
   claim_id: string;
   history: AuditEvent[];
+  total: number;
+  limit: number | null;
+  offset: number;
 }
 
 export interface WorkflowRun {
