@@ -331,8 +331,8 @@ Each document in the corpus should be tagged with metadata for filtering:
   "metadata": {
     "state": "Texas",
     "jurisdiction": "TX",
-    "data_type": "compliance | policy_language | federal_regulation | industry_standard",
-    "domain": "fair_claims | total_loss | fraud | repair | rental | subrogation | salvage | bodily_injury | pip_nofault | settlement | denial | dispute | privacy | medicare | collection | title_salvage | electronic",
+    "data_type": "compliance",
+    "domain": "fair_claims",
     "version": "2025.1",
     "last_updated": "2025-01-31",
     "sources": ["Texas Insurance Code", "28 TAC Title 28"]
@@ -340,47 +340,53 @@ Each document in the corpus should be tagged with metadata for filtering:
 }
 ```
 
+Allowed values for `data_type`: `compliance`, `policy_language`, `federal_regulation`, `industry_standard`.
+
+Allowed values for `domain`: `fair_claims`, `total_loss`, `fraud`, `repair`, `rental`, `subrogation`, `salvage`, `bodily_injury`, `pip_nofault`, `settlement`, `denial`, `dispute`, `privacy`, `medicare`, `collection`, `title_salvage`, `electronic`.
+
 ### 5.2 Recommended Corpus Files
 
 #### Tier 1 — Critical (blocks multi-state operation)
 
 | File | Description |
 |------|-------------|
-| `texas_auto_compliance.json` | TX regulatory compliance (mirrors CA structure) |
-| `florida_auto_compliance.json` | FL regulatory compliance (mirrors CA structure + PIP/no-fault) |
-| `new_york_auto_compliance.json` | NY regulatory compliance (mirrors CA structure + no-fault) |
-| `federal_privacy_regulations.json` | HIPAA, GLBA, FCRA, state privacy laws |
-| `federal_medicare_msp.json` | MSP, MMSEA Section 111, MSA guidelines, Medicaid lien rules |
+| `data/texas_auto_compliance.json` | TX regulatory compliance (mirrors CA structure) |
+| `data/florida_auto_compliance.json` | FL regulatory compliance (mirrors CA structure + PIP/no-fault) |
+| `data/new_york_auto_compliance.json` | NY regulatory compliance (mirrors CA structure + no-fault) |
+| `data/federal_privacy_regulations.json` | HIPAA, GLBA, FCRA, state privacy laws |
+| `data/federal_medicare_msp.json` | MSP, MMSEA Section 111, MSA guidelines, Medicaid lien rules |
 
 #### Tier 2 — High (needed for crew correctness)
 
 | File | Description |
 |------|-------------|
-| `state_fraud_statutes.json` | Per-state fraud statutes, SIU rules, reporting requirements, federal 18 USC 1033 |
-| `state_bodily_injury_rules.json` | Serious-injury thresholds, PIP rules, BI settlement frameworks, wrongful death, minor settlements |
-| `state_subrogation_rules.json` | Made-whole doctrine, comparative fault, inter-company arbitration, SOL for recovery |
-| `state_salvage_title_rules.json` | DMV title transfer, salvage branding, NMVTIS, owner retention |
-| `state_bad_faith_standards.json` | Bad faith elements, remedies, notable case law, DOI complaint procedures |
-| `state_settlement_rules.json` | Payment timing, release requirements, lienholder rules, records retention, e-signature |
+| `data/state_fraud_statutes.json` | Per-state fraud statutes, SIU rules, reporting requirements, federal 18 USC 1033 |
+| `data/state_bodily_injury_rules.json` | Serious-injury thresholds, PIP rules, BI settlement frameworks, wrongful death, minor settlements |
+| `data/state_subrogation_rules.json` | Made-whole doctrine, comparative fault, inter-company arbitration, SOL for recovery |
+| `data/state_salvage_title_rules.json` | DMV title transfer, salvage branding, NMVTIS, owner retention |
+| `data/state_bad_faith_standards.json` | Bad faith elements, remedies, notable case law, DOI complaint procedures |
+| `data/state_settlement_rules.json` | Payment timing, release requirements, lienholder rules, records retention, e-signature |
 
 #### Tier 3 — Medium (enhances quality)
 
 | File | Description |
 |------|-------------|
-| `state_repair_standards.json` | Multi-state repair shop choice, parts rules, labor rates, DRP, supplemental |
-| `state_rental_coverage_rules.json` | Multi-state rental/loss-of-use, class, duration, disclosure |
-| `state_dispute_resolution.json` | Appraisal, arbitration, DOI complaints, diminished value |
-| `federal_collection_laws.json` | FDCPA, state collection licensing, arbitration compacts |
-| `state_comparative_fault.json` | Pure vs modified comparative, contributory negligence, caps |
-| `state_statute_of_limitations.json` | Per-state SOL for PI, PD, contract, bad faith, subrogation |
-| `federal_electronic_transactions.json` | ESIGN, UETA, state adoption notes |
-| `industry_standards.json` | NICB reporting, ISO claim forms, Arbitration Forums rules, CCC/Mitchell valuation |
+| `data/state_repair_standards.json` | Multi-state repair shop choice, parts rules, labor rates, DRP, supplemental |
+| `data/state_rental_coverage_rules.json` | Multi-state rental/loss-of-use, class, duration, disclosure |
+| `data/state_dispute_resolution.json` | Appraisal, arbitration, DOI complaints, diminished value |
+| `data/federal_collection_laws.json` | FDCPA, state collection licensing, arbitration compacts |
+| `data/state_comparative_fault.json` | Pure vs modified comparative, contributory negligence, caps |
+| `data/state_statute_of_limitations.json` | Per-state SOL for PI, PD, contract, bad faith, subrogation |
+| `data/federal_electronic_transactions.json` | ESIGN, UETA, state adoption notes |
+| `data/industry_standards.json` | NICB reporting, ISO claim forms, Arbitration Forums rules, CCC/Mitchell valuation |
+
+> **Indexing note:** The current RAG loader only globs `*_policy_language.json` and `*_compliance.json` when building the vector store. Files such as `data/federal_privacy_regulations.json`, `data/federal_medicare_msp.json`, `data/state_fraud_statutes.json`, `data/state_statute_of_limitations.json`, `data/federal_electronic_transactions.json`, and `data/industry_standards.json` will **not** be indexed unless you either (a) rename them to follow the existing naming convention (e.g., `*_policy_language.json` / `*_compliance.json`), or (b) extend `chunk_*_data()` and `_build_index()` in the retriever to include these additional filenames.
 
 ---
 
 ## 6. Chunking Considerations for New Document Types
 
-The existing chunker handles `policy_language` and `compliance` data types. New data types need chunker support:
+The existing chunker handles `policy_language` and `compliance` data types. Adding new data types requires two steps: (1) extending the retriever's file-discovery and indexing step (`_build_index()`) to include the new filenames, and (2) implementing a matching `chunk_*_data()` function for each new data type. Without both changes, new files will not be chunked or added to the vector store.
 
 | Data Type | Chunking Strategy |
 |-----------|------------------|
