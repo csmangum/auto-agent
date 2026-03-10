@@ -1,5 +1,7 @@
 """Shared pytest fixtures for all test files."""
 
+pytest_plugins = ["tests.conftest_shared"]
+
 import json
 import logging
 import os
