@@ -18,7 +18,7 @@ const selectClasses =
   'border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors';
 
 export default function ClaimsList() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -27,6 +27,16 @@ export default function ClaimsList() {
   useEffect(() => {
     setPage(1);
   }, [statusFilter, typeFilter]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (statusFilter) {
+      params.set('status', statusFilter);
+    } else {
+      params.delete('status');
+    }
+    setSearchParams(params, { replace: true });
+  }, [statusFilter, searchParams, setSearchParams]);
 
   const offset = (page - 1) * pageSize;
   const params = {
