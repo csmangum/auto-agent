@@ -5,6 +5,7 @@ Database, sample claims, and mock LLM fixtures come from tests.conftest_shared.
 """
 
 import os
+import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Generator
