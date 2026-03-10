@@ -22,7 +22,6 @@ flowchart LR
 ### Core Concepts
 
 - **[Architecture](architecture.md)** - System design, components, and patterns
-- **[Design Considerations](design-considerations.md)** - Known limitations and future enhancements
 - **[Agent Flow](agent-flow.md)** - Execution flow and state management
 - **[Crews](crews.md)** - Workflow crew details and agent composition
 - **[Skills](skills.md)** - Agent prompts and operational procedures
@@ -45,7 +44,6 @@ flowchart LR
 - **[Adjuster Workflow](adjuster-workflow.md)** - Review queue API, CLI, and audit trail
 - **[Review Queue](review-queue.md)** - Frontend planned implementation for review queue
 - **[Alerting](alerting.md)** - Prometheus alert rules and configuration
-- **[Evaluation Results](evaluation-results.md)** - Claim processing eval results and how to run
 - **[Compliance Corpus Requirements](compliance-corpus-requirements.md)** - RAG corpus requirements
 
 
@@ -62,7 +60,7 @@ claim-agent reprocess <claim_id> [--from-stage <stage>]  # Re-run workflow (opti
 claim-agent metrics [claim_id]     # Show metrics (optional claim ID)
 claim-agent review-queue [--assignee X] [--priority P]   # List claims needing review
 claim-agent assign <id> <assignee>  # Assign claim to adjuster
-claim-agent approve <id>           # Approve and reprocess (supervisor)
+claim-agent approve <id> [--confirmed-claim-type X] [--confirmed-payout N] [--notes "..."]  # Approve, run handback, then workflow (supervisor)
 claim-agent reject <id> [--reason "..."]  # Reject claim
 claim-agent request-info <id> [--note "..."]  # Request more info
 claim-agent escalate-siu <id>     # Escalate to SIU
@@ -78,6 +76,8 @@ claim-agent retention-enforce [--dry-run] [--years N]  # Archive claims older th
 | `total_loss` | [Total Loss](crews.md#total-loss-crew) | Unrepairable → value and settle |
 | `fraud` | [Fraud](crews.md#fraud-detection-crew) | Suspicious → investigate and assess |
 | `partial_loss` | [Partial Loss](crews.md#partial-loss-crew) | Repairable → estimate, shop, authorize |
+| `bodily_injury` | [Bodily Injury](crews.md#bodily-injury-crew) | Injury to persons → intake, medical review, settlement |
+| `reopened` | [Reopened](crews.md#reopened-crew) | Settled claim reopened → validate, load prior, route to crew |
 
 See [Claim Types](claim-types.md) for classification criteria and examples.
 

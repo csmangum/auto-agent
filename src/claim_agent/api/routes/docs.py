@@ -21,7 +21,6 @@ _DOC_PAGES = [
     {"slug": "index", "title": "Overview", "file": "index.md"},
     {"slug": "getting-started", "title": "Getting Started", "file": "getting-started.md"},
     {"slug": "architecture", "title": "Architecture", "file": "architecture.md"},
-    {"slug": "design-considerations", "title": "Design Considerations", "file": "design-considerations.md"},
     {"slug": "crews", "title": "Crews", "file": "crews.md"},
     {"slug": "claim-types", "title": "Claim Types", "file": "claim-types.md"},
     {"slug": "agent-flow", "title": "Agent Flow", "file": "agent-flow.md"},
@@ -35,7 +34,6 @@ _DOC_PAGES = [
     {"slug": "adjuster-workflow", "title": "Adjuster Workflow", "file": "adjuster-workflow.md"},
     {"slug": "review-queue", "title": "Review Queue", "file": "review-queue.md"},
     {"slug": "alerting", "title": "Alerting", "file": "alerting.md"},
-    {"slug": "evaluation-results", "title": "Evaluation Results", "file": "evaluation-results.md"},
     {"slug": "compliance-corpus-requirements", "title": "Compliance Corpus", "file": "compliance-corpus-requirements.md"},
 ]
 
@@ -95,6 +93,8 @@ def list_docs():
 @router.get("/docs/{slug}", dependencies=[RequireAdjuster])
 def get_doc(slug: str):
     """Get markdown content for a documentation page."""
+    # Normalize slug: strip .md so crews.md and crews both work (markdown links use .md)
+    slug = slug.removesuffix(".md") if slug else slug
     # Find the page config
     page_config = None
     for page in _DOC_PAGES:

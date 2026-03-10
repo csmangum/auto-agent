@@ -139,6 +139,14 @@ flowchart TB
         P1[Damage] --> P2[Estimate] --> P3[Shop] --> P4[Parts] --> P5[Auth]
     end
 
+    subgraph BICrew["Bodily Injury Crew"]
+        B1[Intake] --> B2[Medical] --> B3[Negotiation]
+    end
+
+    subgraph Reopened["Reopened Crew"]
+        R1[Validate] --> R2[Load Prior] --> R3[Route] --> R4{target?}
+    end
+
     subgraph Settlement["Settlement Crew"]
         S1[Documentation] --> S2[Payment Distribution] --> S3[Closure]
     end
@@ -148,11 +156,17 @@ flowchart TB
     H -->|total_loss| F1
     H -->|fraud| FR1
     H -->|partial_loss| P1
+    H -->|bodily_injury| B1
+    H -->|reopened| R1
     D3 --> ClaimResult
     E3 --> ClaimResult
     F3 --> S1
     FR3 --> ClaimResult
     P5 --> S1
+    B3 --> S1
+    R4 -->|partial_loss| P1
+    R4 -->|total_loss| F1
+    R4 -->|bodily_injury| B1
     S3 --> ClaimResult
 ```
 
@@ -264,5 +278,3 @@ See [Adapters](adapters.md) for interfaces, implementations, and integration gui
 - **Error messages** – Policy lookup and similar failures return generic messages to callers; detailed errors are logged internally.
 - **Token budgets** – Configurable max tokens and LLM calls per claim prevent runaway usage. See [Configuration](configuration.md#centralized-settings).
 - **Retry** – Transient LLM failures are retried with exponential backoff via `claim_agent.utils.retry`.
-
-For known limitations and future considerations, see [Design Considerations](design-considerations.md).

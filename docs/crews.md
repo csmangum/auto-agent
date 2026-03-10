@@ -14,6 +14,8 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Total Loss](#total-loss-crew) | 3 | Process total loss claims |
 | [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
 | [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
+| [Bodily Injury](#bodily-injury-crew) | 3 | Handle injury-related claims |
+| [Reopened](#reopened-crew) | 3 | Validate and route reopened settled claims |
 | [Rental Reimbursement](#rental-reimbursement-crew) | 3 | Manage loss-of-use / rental coverage (runs after Partial Loss) |
 | [Settlement](#settlement-crew) | 3 | Shared final settlement for payout-ready claims |
 | [Subrogation](#subrogation-crew) | 3 | Post-settlement recovery from at-fault parties |
@@ -24,41 +26,11 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 
 ---
 
-## Human Review Handback Crew
-
-**Location**: `src/claim_agent/crews/human_review_handback_crew.py`
-
-Processes claims returned from human review with an approval decision. Handles the needs_review → processing transition.
-
-### Flow
-
-```mermaid
-flowchart LR
-    A[Reviewer Decision] --> B[Parse Decision] --> C[Update Claim] --> D[Route to Next Step]
-    D --> E[Settlement]
-    D --> F[Subrogation]
-    D --> G[Workflow]
-```
-
-### Integration
-
-- **Post-escalation**: Runs when a supervisor approves a claim via `POST /claims/{claim_id}/review/approve` or `claim-agent approve`
-- **Optional reviewer decision**: Pass `reviewer_decision` with `confirmed_claim_type` and/or `confirmed_payout` to apply overrides
-- **Tools**: `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision`
-
-### Agent
-
-| Agent | Role | Tools |
-|-------|------|-------|
-| Human Review Handback Specialist | Process post-escalation handback | `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision` |
-
----
-
 ## Router Crew
 
 **Location**: `src/claim_agent/crews/main_crew.py`
 
-The Router Crew is the entry point for all claim processing. It contains a single agent that classifies claims into one of five types.
+The Router Crew is the entry point for all claim processing. It contains a single agent that classifies claims into one of seven types.
 
 ### Agent
 
@@ -76,6 +48,8 @@ flowchart LR
     C --> F[total_loss]
     C --> G[fraud]
     C --> H[partial_loss]
+    C --> I[bodily_injury]
+    C --> J[reopened]
 ```
 
 For classification criteria, see [Claim Types](claim-types.md).
@@ -86,7 +60,7 @@ For classification criteria, see [Claim Types](claim-types.md).
 
 **Location**: `src/claim_agent/crews/new_claim_crew.py`
 
-Handles first-time claim submissions through validation, policy verification, and assignment. This section is the **formal specification** for the New Claim workflow.
+Handles first-time claim submissions through validation, policy verification, and assignment.
 
 ### Entry Conditions
 
@@ -191,7 +165,7 @@ The New Claim crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/duplicate_crew.py`
 
-Identifies and resolves potential duplicate claims by searching existing claims, comparing similarity, and recommending merge or reject. This section is the **formal specification** for the Duplicate Claim workflow.
+Identifies and resolves potential duplicate claims by searching existing claims, comparing similarity, and recommending merge or reject.
 
 ### Entry Conditions
 
@@ -302,7 +276,7 @@ The Duplicate crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/total_loss_crew.py`
 
-Processes claims where the vehicle is unrepairable or repair cost exceeds 75% of value: assess damage, fetch vehicle value, calculate payout, then hand off to the shared Settlement Crew. This section is the **formal specification** for the Total Loss workflow.
+Processes claims where the vehicle is unrepairable or repair cost exceeds 75% of value: assess damage, fetch vehicle value, calculate payout, then hand off to the shared Settlement Crew.
 
 ### Entry Conditions
 
@@ -408,7 +382,7 @@ The Total Loss crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/fraud_detection_crew.py`
 
-Analyzes claims flagged for potential fraud through pattern analysis, cross-reference with fraud indicators, and comprehensive assessment with SIU referral recommendations. This section is the **formal specification** for the Fraud Detection workflow.
+Analyzes claims flagged for potential fraud through pattern analysis, cross-reference with fraud indicators, and comprehensive assessment with SIU referral recommendations.
 
 ### Entry Conditions
 
@@ -520,7 +494,7 @@ The Fraud crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/partial_loss_crew.py`
 
-Handles claims for repairable vehicle damage: assess damage, calculate repair estimate, assign repair shop, order parts, generate repair authorization, then hand off to the shared Settlement Crew. This section is the **formal specification** for the Partial Loss workflow.
+Handles claims for repairable vehicle damage: assess damage, calculate repair estimate, assign repair shop, order parts, generate repair authorization, then hand off to the shared Settlement Crew.
 
 ### Entry Conditions
 
@@ -658,6 +632,84 @@ The Partial Loss crew is invoked **after**:
 
 ---
 
+## Bodily Injury Crew
+
+**Location**: `src/claim_agent/crews/bodily_injury_crew.py`
+
+Handles injury-related claims: intake injury details → review medical records → assess liability → propose settlement. Routes to Settlement Crew on completion.
+
+### Entry Conditions
+
+- **Claim type:** `bodily_injury` (from Router classification)
+- **Classification criteria:** Incident or damage description mentions injury to persons (whiplash, hospital, medical treatment, etc.); `injury_related` or `bodily_injury` true in claim data when present
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| BI Intake Specialist | `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+| Medical Records Reviewer | `query_medical_records`, `assess_injury_severity`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+| Settlement Negotiator | `calculate_bi_settlement`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph BI["Bodily Injury Crew"]
+        A[1. Intake: Injury details] --> B[2. Medical: Review records]
+        B --> C[3. Negotiation: Propose settlement]
+    end
+    C --> Settlement[Settlement Crew]
+```
+
+### Exit Conditions
+
+| Outcome | Status | Notes |
+|---------|--------|-------|
+| Success | `settled` | Via Settlement Crew |
+| Escalated | `needs_review` | Returned before crew execution |
+| Failed | `failed` | Error during crew execution |
+
+**Note:** Claims with both vehicle damage and injury are routed to BI when injury is significant. Vehicle damage is not handled by this crew; consider a combined workflow for such claims.
+
+---
+
+## Reopened Crew
+
+**Location**: `src/claim_agent/crews/reopened_crew.py`
+
+Validates reopening reason, loads the prior settled claim, and routes to partial_loss, total_loss, or bodily_injury based on prior claim type and new damage.
+
+### Entry Conditions
+
+- **Claim type:** `reopened` (from Router classification)
+- **Classification criteria:** `prior_claim_id`, `reopening_reason`, or `is_reopened` present in claim data (and `definitive_duplicate` is NOT true)
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Reopened Validator | `query_policy_db`, `get_claim_notes` |
+| Prior Claim Loader | `lookup_original_claim` |
+| Reopened Router | `evaluate_damage`, `get_claim_notes` |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Reopened["Reopened Crew"]
+        A[1. Validate: Reopening reason] --> B[2. Load: Prior claim]
+        B --> C[3. Route: partial_loss / total_loss / bodily_injury]
+    end
+    C --> D[Main workflow runs selected crew]
+```
+
+### Exit Conditions
+
+The Reopened crew outputs `target_claim_type` (partial_loss, total_loss, or bodily_injury). The main workflow then runs the selected crew; final status depends on that crew.
+
+---
+
 ## Rental Reimbursement Crew
 
 **Location**: `src/claim_agent/crews/rental_crew.py`
@@ -736,82 +788,6 @@ flowchart TB
 ### Integration with Main Flow
 
 The Rental crew runs **after** Partial Loss crew and **before** Settlement crew when `claim_type == "partial_loss"`. Output is combined with Partial Loss output and passed to Settlement.
-
----
-
-## Denial / Coverage Dispute Crew
-
-**Location**: `src/claim_agent/crews/denial_coverage_crew.py`
-
-Handles denials and coverage disputes. Flow: review denial reason → verify coverage/exclusions → generate denial letter or route to appeal.
-
-### Entry Conditions
-
-- **Claim status:** `denied` (STATUS_DENIED)
-- **Trigger:** `POST /claims/{claim_id}/denial-coverage` with `{ "denial_reason": "...", "policyholder_evidence": "..." }`
-
-### Agents
-
-| Agent | Tools Used |
-|-------|------------|
-| Coverage Analyst | `lookup_original_claim`, `query_policy_db`, `get_coverage_exclusions`, `search_policy_compliance` |
-| Denial Letter Specialist | `generate_denial_letter`, `get_required_disclosures`, `get_compliance_deadlines`, `search_policy_compliance` |
-| Appeal Reviewer | `route_to_appeal`, `escalate_claim`, `generate_report`, `get_compliance_deadlines` |
-
-### Flow
-
-```mermaid
-flowchart TB
-    subgraph DenialCoverage["Denial / Coverage Crew"]
-        A[1. Coverage Analyst: Review denial] --> B[2. Denial Letter: Generate or skip] --> C[3. Appeal Reviewer: Uphold or Route]
-    end
-```
-
-### Outcomes
-
-- **uphold_denial**: Denial letter generated, status remains `denied`
-- **route_to_appeal**: Claim routed to appeal, status set to `needs_review`
-- **escalated**: Complex case escalated for human review, status set to `needs_review`
-
----
-
-## Supplemental Crew
-
-**Location**: `src/claim_agent/crews/supplemental_crew.py`
-
-Sub-workflow for additional damage discovered during repair on existing partial loss claims. Invoked via `POST /claims/{claim_id}/supplemental` when a shop or adjuster reports supplemental damage. California CCR 2695.8 requires prompt inspection and authorization of supplemental payment.
-
-### Entry Conditions
-
-- **Claim type:** `partial_loss` (existing claim)
-- **Claim status:** `processing` or `settled`
-- **Trigger:** Supplemental damage report with `supplemental_damage_description`
-
-### Agents
-
-| Agent | Tools Used |
-|-------|------------|
-| Supplemental Intake Specialist | `get_original_repair_estimate`, `query_policy_db`, `get_repair_standards` |
-| Damage Verifier | `get_original_repair_estimate`, `evaluate_damage` |
-| Estimate Adjuster | `calculate_supplemental_estimate`, `update_repair_authorization` |
-
-### Flow Sequence
-
-```mermaid
-flowchart TB
-    subgraph Supplemental["Supplemental Crew"]
-        A[1. Intake: Validate] --> B[2. Verify: Compare] --> C[3. Adjust: Update Auth]
-    end
-
-    A -.- A1[get_original_repair_estimate]
-    B -.- B1[evaluate_damage]
-    C -.- C1[calculate_supplemental_estimate]
-    C -.- C2[update_repair_authorization]
-```
-
-### Integration
-
-Supplemental is a **sub-workflow** (like Dispute), not a router-classified claim type. Entry point: `POST /claims/{claim_id}/supplemental` with body `{ "supplemental_damage_description": "...", "reported_by": "shop" }`.
 
 ---
 
@@ -906,6 +882,112 @@ flowchart TB
 - **auction** – Standard total loss disposition; vehicle sent to salvage auction
 - **owner_retention** – Policyholder retains vehicle; salvage deduction applied per state requirements
 - **scrap** – Very low salvage value; vehicle scrapped
+
+---
+
+## Denial / Coverage Dispute Crew
+
+**Location**: `src/claim_agent/crews/denial_coverage_crew.py`
+
+Handles denials and coverage disputes. Flow: review denial reason → verify coverage/exclusions → generate denial letter or route to appeal.
+
+### Entry Conditions
+
+- **Claim status:** `denied` (STATUS_DENIED)
+- **Trigger:** `POST /claims/{claim_id}/denial-coverage` with `{ "denial_reason": "...", "policyholder_evidence": "..." }`
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Coverage Analyst | `lookup_original_claim`, `query_policy_db`, `get_coverage_exclusions`, `search_policy_compliance` |
+| Denial Letter Specialist | `generate_denial_letter`, `get_required_disclosures`, `get_compliance_deadlines`, `search_policy_compliance` |
+| Appeal Reviewer | `route_to_appeal`, `escalate_claim`, `generate_report`, `get_compliance_deadlines` |
+
+### Flow
+
+```mermaid
+flowchart TB
+    subgraph DenialCoverage["Denial / Coverage Crew"]
+        A[1. Coverage Analyst: Review denial] --> B[2. Denial Letter: Generate or skip] --> C[3. Appeal Reviewer: Uphold or Route]
+    end
+```
+
+### Outcomes
+
+- **uphold_denial**: Denial letter generated, status remains `denied`
+- **route_to_appeal**: Claim routed to appeal, status set to `needs_review`
+- **escalated**: Complex case escalated for human review, status set to `needs_review`
+
+---
+
+## Supplemental Crew
+
+**Location**: `src/claim_agent/crews/supplemental_crew.py`
+
+Sub-workflow for additional damage discovered during repair on existing partial loss claims. Invoked via `POST /claims/{claim_id}/supplemental` when a shop or adjuster reports supplemental damage. California CCR 2695.8 requires prompt inspection and authorization of supplemental payment.
+
+### Entry Conditions
+
+- **Claim type:** `partial_loss` (existing claim)
+- **Claim status:** `processing` or `settled`
+- **Trigger:** Supplemental damage report with `supplemental_damage_description`
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Supplemental Intake Specialist | `get_original_repair_estimate`, `query_policy_db`, `get_repair_standards` |
+| Damage Verifier | `get_original_repair_estimate`, `evaluate_damage` |
+| Estimate Adjuster | `calculate_supplemental_estimate`, `update_repair_authorization` |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Supplemental["Supplemental Crew"]
+        A[1. Intake: Validate] --> B[2. Verify: Compare] --> C[3. Adjust: Update Auth]
+    end
+
+    A -.- A1[get_original_repair_estimate]
+    B -.- B1[evaluate_damage]
+    C -.- C1[calculate_supplemental_estimate]
+    C -.- C2[update_repair_authorization]
+```
+
+### Integration
+
+Supplemental is a **sub-workflow** (like Dispute), not a router-classified claim type. Entry point: `POST /claims/{claim_id}/supplemental` with body `{ "supplemental_damage_description": "...", "reported_by": "shop" }`.
+
+---
+
+## Human Review Handback Crew
+
+**Location**: `src/claim_agent/crews/human_review_handback_crew.py`
+
+Processes claims returned from human review with an approval decision. Handles the needs_review → processing transition.
+
+### Flow
+
+```mermaid
+flowchart LR
+    A[Reviewer Decision] --> B[Parse Decision] --> C[Update Claim] --> D[Route to Next Step]
+    D --> E[Settlement]
+    D --> F[Subrogation]
+    D --> G[Workflow]
+```
+
+### Integration
+
+- **Post-escalation**: Runs when a supervisor approves a claim via `POST /claims/{claim_id}/review/approve` or `claim-agent approve`
+- **Optional reviewer decision**: Pass `reviewer_decision` with `confirmed_claim_type` and/or `confirmed_payout` to apply overrides
+- **Tools**: `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision`
+
+### Agent
+
+| Agent | Role | Tools |
+|-------|------|-------|
+| Human Review Handback Specialist | Process post-escalation handback | `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision` |
 
 ---
 

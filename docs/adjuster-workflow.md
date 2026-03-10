@@ -27,9 +27,11 @@ The queue is ordered by priority (critical first) and due date.
 
 ## Adjuster Actions
 
+When you **approve** a claim, the system (1) runs the Human Review Handback crew to parse any reviewer decision (confirmed_claim_type, confirmed_payout, notes) and update the claim, then (2) re-runs the main workflow to route to settlement, subrogation, or the appropriate crew. Optional reviewer decision fields let you override the router classification or payout for handback.
+
 | Action | Description | Result |
 |--------|-------------|--------|
-| **approve** | Approve claim for continued processing | Re-runs the full workflow (router + crew) |
+| **approve** | Approve claim for continued processing | Runs Human Review Handback crew to parse reviewer decision (optional: confirmed_claim_type, confirmed_payout, notes), then re-runs main workflow |
 | **reject** | Reject the claim | Sets status to `denied`, stores reason in audit |
 | **request_info** | Request more info from claimant | Sets status to `pending_info`, stores note in audit |
 | **escalate_to_siu** | Refer to Special Investigations Unit | Sets status to `under_investigation` |
@@ -40,7 +42,7 @@ The queue is ordered by priority (critical first) and due date.
 |--------|------|-------------|
 | GET | `/api/claims/review-queue` | List claims needing review. Query params: `assignee`, `priority`, `older_than_hours` |
 | PATCH | `/api/claims/{claim_id}/assign` | Assign claim. Body: `{ "assignee": "user-123" }` |
-| POST | `/api/claims/{claim_id}/review/approve` | Approve and reprocess (supervisor+) |
+| POST | `/api/claims/{claim_id}/review/approve` | Approve and reprocess (supervisor+). Optional body: `{ "reviewer_decision": { "confirmed_claim_type": "...", "confirmed_payout": N, "notes": "..." } }` |
 | POST | `/api/claims/{claim_id}/review/reject` | Reject. Body: `{ "reason": "..." }` |
 | POST | `/api/claims/{claim_id}/review/request-info` | Request info. Body: `{ "note": "..." }` |
 | POST | `/api/claims/{claim_id}/review/escalate-to-siu` | Escalate to SIU |
@@ -59,6 +61,7 @@ claim-agent assign CLM-XXXXXXXX adjuster-id
 
 # Approve and reprocess (supervisor)
 claim-agent approve CLM-XXXXXXXX
+claim-agent approve CLM-XXXXXXXX --confirmed-claim-type partial_loss --confirmed-payout 5000 --notes "Reviewed and confirmed"
 
 # Reject with reason
 claim-agent reject CLM-XXXXXXXX --reason "Duplicate claim"

@@ -70,7 +70,7 @@ claim-agent status CLM-11EEF959
 | `claim-agent metrics [id]` | Show metrics (optional claim ID) |
 | `claim-agent review-queue [--assignee X] [--priority P]` | List claims needing review |
 | `claim-agent assign <id> <assignee>` | Assign claim to adjuster |
-| `claim-agent approve <id>` | Approve and reprocess (supervisor) |
+| `claim-agent approve <id> [--confirmed-claim-type X] [--confirmed-payout N] [--notes "..."]` | Approve, run handback, then workflow (supervisor) |
 | `claim-agent reject <id> [--reason "..."]` | Reject claim |
 | `claim-agent request-info <id> [--note "..."]` | Request more info |
 | `claim-agent escalate-siu <id>` | Escalate to SIU |
@@ -112,9 +112,7 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [PII and Retention](docs/pii-and-retention.md) | PII masking and data retention |
 | [RAG](docs/rag.md) | Policy and compliance search |
 | [MCP Server](docs/mcp-server.md) | External tool access and health check |
-| [Design Considerations](docs/design-considerations.md) | Limitations and future work |
 | [Alerting](docs/alerting.md) | Alert configuration |
-| [Evaluation](docs/evaluation-results.md) | Claim processing eval results and how to run |
 
 ## Project Layout
 
@@ -161,7 +159,7 @@ E2E tests submit claims via the REST API and assert claim_id, status, and audit 
 
 ## Evaluation
 
-Run the claim processing evaluation (requires API key). See [Evaluation](docs/evaluation-results.md) for results and assessment.
+Run the claim processing evaluation (requires API key).
 
 ```bash
 # Quick (one scenario per type)

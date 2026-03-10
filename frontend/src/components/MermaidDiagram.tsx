@@ -7,7 +7,7 @@ mermaid.initialize({
   theme: 'dark',
   securityLevel: 'strict',
   fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-  flowchart: { curve: 'basis', padding: 15 },
+  flowchart: { curve: 'basis', padding: 15, htmlLabels: false },
   themeVariables: {
     primaryColor: '#1e3a5f',
     primaryTextColor: '#e5e7eb',
