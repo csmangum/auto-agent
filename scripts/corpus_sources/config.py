@@ -56,16 +56,6 @@ FL_SOURCES = [
 FL_STATUTE_BASE = "https://www.leg.state.fl.us/Statutes/index.cfm"
 
 # --- New York ---
-NY_SOURCES = [
-    {
-        "id": "ny_insurance_law",
-        "name": "New York Insurance Law",
-        "url": "https://public.leginfo.state.ny.us/lawssrch.cgi?NVLWO:",
-        "format": "html",
-        "note": "NYIL available at public.leginfo.state.ny.us; may need per-article fetch",
-    },
-]
-
 # NY Consolidated Laws - alternative sources
 NY_INSURANCE_LAW_BASE = "https://www.nysenate.gov/legislation/laws/ISC"
 NY_CRR_BASE = "https://govt.westlaw.com/nycrr"  # 11 NYCRR (Regulation 64, etc.)

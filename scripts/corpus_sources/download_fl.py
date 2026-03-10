@@ -32,7 +32,8 @@ def download_florida(output_dir: Path | None = None) -> list[Path]:
         url = src["url"]
         fid = src["id"]
         ext = ".zip" if src.get("format") == "zip" else ""
-        path = download_to_dir(url, fl_dir, filename=f"{fid}{ext}" or None)
+        filename = f"{fid}{ext}" if ext else None
+        path = download_to_dir(url, fl_dir, filename=filename)
         if path:
             results.append(path)
 

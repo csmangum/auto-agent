@@ -24,7 +24,7 @@ def download_file(
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     headers = {"User-Agent": user_agent}
     try:
-        with httpx.stream("GET", url, headers=headers, timeout=timeout) as resp:
+        with httpx.stream("GET", url, headers=headers, timeout=timeout, follow_redirects=True) as resp:
             resp.raise_for_status()
             with open(dest_path, "wb") as f:
                 for chunk in resp.iter_bytes(chunk_size=65536):
