@@ -1,0 +1,247 @@
+{
+  "metadata": {
+    "state": "Florida",
+    "jurisdiction": "FL",
+    "data_type": "auto_insurance_compliance",
+    "version": "2025.1",
+    "last_updated": "2025-03-10",
+    "sources": [
+      "Florida Statutes",
+      "Florida Administrative Code 69O-166"
+    ]
+  },
+  "fair_claims_settlement_practices": {
+    "regulation_reference": "FS §626.9541 (unfair claims practices); §626.9541(1)(i) (prohibited practices)",
+    "description": "Florida unfair claims practices and prohibited conduct.",
+    "provisions": [
+      {
+        "id": "FCSP-001",
+        "section": "FS §626.9541",
+        "title": "Unfair Claims Practices",
+        "requirement": "Insurers must not engage in unfair claims settlement practices.",
+        "reference": "FS §626.9541"
+      },
+      {
+        "id": "FCSP-002",
+        "section": "FS §626.9541(1)(i)",
+        "title": "Prohibited Practices",
+        "requirement": "16 enumerated unfair practices are prohibited.",
+        "reference": "FS §626.9541(1)(i)"
+      }
+    ]
+  },
+  "no_fault_pip": {
+    "regulation_reference": "FS §627.730–.7405 (Motor Vehicle No-Fault Law); §627.736",
+    "description": "Florida PIP benefits — $10K, 14-day rule, 80% medical, 60% lost wages.",
+    "provisions": [
+      {
+        "id": "PIP-001",
+        "title": "PIP Benefits",
+        "requirement": "PIP provides $10,000 in benefits. 14-day rule for treatment; 80% medical, 60% lost wages.",
+        "benefit_limit": 10000,
+        "medical_percentage": 80,
+        "wage_percentage": 60,
+        "reference": "FS §627.736"
+      }
+    ]
+  },
+  "total_loss_regulations": {
+    "regulation_reference": "FS §319.30; FL Admin Code 69O-166",
+    "description": "Florida total-loss threshold — 80% of ACV or owner-retained.",
+    "provisions": [
+      {
+        "id": "TL-001",
+        "section": "FS §319.30",
+        "title": "Total Loss Threshold",
+        "requirement": "Vehicle is total loss when repair cost exceeds 80% of ACV or when owner retains salvage.",
+        "formula": "Total Loss if: Repair Cost > 80% ACV, or owner-retained",
+        "reference": "FS §319.30"
+      }
+    ]
+  },
+  "time_limits_and_deadlines": {
+    "description": "Critical time limits for Florida auto claims.",
+    "deadlines": [
+      {
+        "id": "CLM-FILE-001",
+        "action": "Claim filing",
+        "time_limit": "90 days",
+        "days": 90,
+        "reference": "FS §627.4265"
+      },
+      {
+        "id": "CLM-CRN-001",
+        "action": "Civil Remedy Notice (before bad faith suit)",
+        "time_limit": "60 days",
+        "days": 60,
+        "reference": "FS §627.426"
+      },
+      {
+        "id": "CLM-PAY-001",
+        "action": "Payment after acceptance",
+        "time_limit": "90 days",
+        "days": 90,
+        "reference": "FS §627.70131"
+      }
+    ]
+  },
+  "required_disclosures": {
+    "regulation_reference": "FS §627.7263, §626.9743, §627.7288",
+    "description": "Mandatory disclosures for Florida auto claims.",
+    "disclosures": [
+      {
+        "id": "DISC-001",
+        "title": "Windshield Repair",
+        "requirement": "FS §627.7263 governs windshield repair disclosure.",
+        "reference": "FS §627.7263"
+      },
+      {
+        "id": "DISC-002",
+        "title": "Repair Shop Choice",
+        "requirement": "Insurer must disclose claimant's right to choose repair shop.",
+        "reference": "FS §626.9743"
+      },
+      {
+        "id": "DISC-003",
+        "title": "Rental Reimbursement",
+        "requirement": "Rental reimbursement terms must be disclosed.",
+        "reference": "FS §627.7288"
+      }
+    ]
+  },
+  "uninsured_underinsured_motorist": {
+    "regulation_reference": "FS §627.727",
+    "description": "Florida UM — mandatory; stacking/non-stacking options; rejection waiver.",
+    "provisions": [
+      {
+        "id": "UM-001",
+        "title": "Mandatory UM",
+        "requirement": "UM coverage is mandatory. Stacking and non-stacking options available.",
+        "reference": "FS §627.727"
+      },
+      {
+        "id": "UM-002",
+        "title": "Rejection Waiver",
+        "requirement": "Rejection requires waiver per FS §627.727(1).",
+        "reference": "FS §627.727(1)"
+      }
+    ]
+  },
+  "anti_fraud_provisions": {
+    "regulation_reference": "FS §817.234, §626.989, §626.9891",
+    "description": "Florida insurance fraud and SIU requirements.",
+    "provisions": [
+      {
+        "id": "AF-001",
+        "title": "Insurance Fraud",
+        "requirement": "Insurance fraud is a criminal offense under FS §817.234.",
+        "reference": "FS §817.234"
+      },
+      {
+        "id": "AF-002",
+        "title": "Anti-Fraud Reporting",
+        "requirement": "Reporting requirements under FS §626.989.",
+        "reference": "FS §626.989"
+      },
+      {
+        "id": "AF-003",
+        "title": "SIU Requirements",
+        "requirement": "SIU formation and reporting under FS §626.9891.",
+        "reference": "FS §626.9891"
+      }
+    ]
+  },
+  "repair_standards": {
+    "regulation_reference": "FS §626.9743, §501.976; FL Admin Code 69O-166.031",
+    "description": "Florida shop choice and aftermarket parts disclosure.",
+    "provisions": [
+      {
+        "id": "REP-001",
+        "title": "Shop Choice",
+        "requirement": "Claimant has right to choose repair shop.",
+        "reference": "FS §626.9743"
+      },
+      {
+        "id": "REP-002",
+        "title": "Aftermarket Parts Disclosure",
+        "requirement": "Aftermarket parts must be disclosed per FS §501.976.",
+        "reference": "FS §501.976"
+      }
+    ]
+  },
+  "good_faith_requirements": {
+    "regulation_reference": "FS §624.155",
+    "description": "Florida statutory bad faith — Civil Remedy Notice required before suit.",
+    "prohibited_practices": [
+      {
+        "id": "GF-001",
+        "title": "Bad Faith",
+        "description": "Statutory bad faith under FS §624.155. Civil Remedy Notice must be filed 60 days before suit.",
+        "reference": "FS §624.155"
+      }
+    ]
+  },
+  "subrogation_rules": {
+    "regulation_reference": "Florida common law; FS §768.76",
+    "description": "Florida follows made-whole doctrine. Collateral source rule under FS §768.76.",
+    "provisions": [
+      {
+        "id": "SUB-001",
+        "title": "Made Whole Doctrine",
+        "requirement": "Florida follows made-whole doctrine — insurer cannot pursue subrogation until insured is fully compensated.",
+        "reference": "Florida common law"
+      },
+      {
+        "id": "SUB-002",
+        "title": "Collateral Source",
+        "requirement": "FS §768.76 governs collateral source rule.",
+        "reference": "FS §768.76"
+      }
+    ]
+  },
+  "rental_car_coverage": {
+    "regulation_reference": "FS §627.7263, §627.7288",
+    "description": "Florida loss-of-use for windshield; rental reimbursement terms.",
+    "provisions": [
+      {
+        "id": "RCC-001",
+        "title": "Windshield Loss of Use",
+        "requirement": "FS §627.7263 governs loss-of-use for windshield claims.",
+        "reference": "FS §627.7263"
+      },
+      {
+        "id": "RCC-002",
+        "title": "Rental Reimbursement",
+        "requirement": "Rental reimbursement terms under FS §627.7288.",
+        "reference": "FS §627.7288"
+      }
+    ]
+  },
+  "comparative_fault": {
+    "regulation_reference": "FS §768.81",
+    "description": "Florida modified comparative fault — 51% bar (effective 2023 tort reform).",
+    "provisions": [
+      {
+        "id": "CF-001",
+        "title": "Modified Comparative Fault",
+        "requirement": "Claimant barred from recovery if 51% or more at fault.",
+        "reference": "FS §768.81"
+      }
+    ]
+  },
+  "statute_of_limitations": {
+    "description": "Florida statute of limitations for auto claims.",
+    "limitations": [
+      {
+        "action": "Negligence (personal injury)",
+        "time_limit": "4 years (reduced to 2 years post-2023 HB 837)",
+        "reference": "FS §95.11(3)(a)"
+      },
+      {
+        "action": "Breach of contract",
+        "time_limit": "5 years",
+        "reference": "FS §95.11(2)(b)"
+      }
+    ]
+  }
+}
