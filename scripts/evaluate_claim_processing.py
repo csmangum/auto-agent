@@ -50,6 +50,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from dotenv import load_dotenv
 
+from claim_agent.db.audit_events import ACTOR_SYSTEM, AUDIT_EVENT_CREATED
+from claim_agent.db.constants import STATUS_PENDING, STATUS_SETTLED
+from claim_agent.db.database import get_connection
+from claim_agent.db.repository import ClaimRepository
+
 # Load .env from project root so OPENAI_API_KEY / OPENROUTER_API_KEY are available
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -782,6 +787,7 @@ BODILY_INJURY_SCENARIOS = [
 
 # Reopened Scenarios (router classifies as reopened; reopened crew routes to partial_loss/total_loss/bodily_injury)
 # Note: prior_claim_id must reference a claim seeded in _seed_reopened_prior_claim
+# expected_type is the FINAL type after reopened_crew runs (partial_loss/total_loss/bodily_injury), not the router output
 REOPENED_SCENARIOS = [
     EvaluationScenario(
         name="reopened_new_repairable_damage",
@@ -1001,12 +1007,6 @@ class ClaimEvaluator:
         so the initial INSERT is performed via raw SQL.  All subsequent state transitions use
         the repository so that audit entries are written consistently.
         """
-        import json
-        from claim_agent.db.audit_events import ACTOR_SYSTEM, AUDIT_EVENT_CREATED
-        from claim_agent.db.constants import STATUS_PENDING, STATUS_SETTLED
-        from claim_agent.db.database import get_connection
-        from claim_agent.db.repository import ClaimRepository
-
         prior_id = "CLM-PRIOR01"
         claim_type = "partial_loss"
 

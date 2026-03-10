@@ -8,7 +8,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Generator
+from typing import Any, Callable, Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -49,42 +49,42 @@ def integration_db() -> Generator[str, None, None]:
 
 
 @pytest.fixture
-def sample_new_claim() -> dict:
+def sample_new_claim() -> dict[str, Any]:
     """Load sample new claim data."""
     with open(SAMPLE_CLAIMS_DIR / "new_claim.json") as f:
         return json.load(f)
 
 
 @pytest.fixture
-def sample_fraud_claim() -> dict:
+def sample_fraud_claim() -> dict[str, Any]:
     """Load sample fraud claim data."""
     with open(SAMPLE_CLAIMS_DIR / "fraud_claim.json") as f:
         return json.load(f)
 
 
 @pytest.fixture
-def sample_total_loss_claim() -> dict:
+def sample_total_loss_claim() -> dict[str, Any]:
     """Load sample total loss claim data."""
     with open(SAMPLE_CLAIMS_DIR / "total_loss_claim.json") as f:
         return json.load(f)
 
 
 @pytest.fixture
-def sample_duplicate_claim() -> dict:
+def sample_duplicate_claim() -> dict[str, Any]:
     """Load sample duplicate claim data."""
     with open(SAMPLE_CLAIMS_DIR / "duplicate_claim.json") as f:
         return json.load(f)
 
 
 @pytest.fixture
-def sample_partial_loss_claim() -> dict:
+def sample_partial_loss_claim() -> dict[str, Any]:
     """Load sample partial loss claim data."""
     with open(SAMPLE_CLAIMS_DIR / "partial_loss_claim.json") as f:
         return json.load(f)
 
 
 @pytest.fixture
-def sample_bodily_injury_claim() -> dict:
+def sample_bodily_injury_claim() -> dict[str, Any]:
     """Load sample bodily injury claim data."""
     with open(SAMPLE_CLAIMS_DIR / "bodily_injury_claim.json") as f:
         return json.load(f)
@@ -96,9 +96,9 @@ def sample_bodily_injury_claim() -> dict:
 
 
 @pytest.fixture
-def mock_router_response():
+def mock_router_response() -> Callable[[str, str], MagicMock]:
     """Factory fixture for creating mock router responses."""
-    def _create_response(claim_type: str, reasoning: str = "Test reasoning."):
+    def _create_response(claim_type: str, reasoning: str = "Test reasoning.") -> MagicMock:
         mock_result = MagicMock()
         mock_result.raw = f"{claim_type}\n{reasoning}"
         mock_result.output = f"{claim_type}\n{reasoning}"
@@ -107,9 +107,9 @@ def mock_router_response():
 
 
 @pytest.fixture
-def mock_crew_response():
+def mock_crew_response() -> Callable[..., MagicMock]:
     """Factory fixture for creating mock crew responses."""
-    def _create_response(output: str, tasks_output=None):
+    def _create_response(output: str, tasks_output: Any = None) -> MagicMock:
         mock_result = MagicMock()
         mock_result.raw = output
         mock_result.output = output

@@ -213,6 +213,40 @@ class TestReportGeneration:
         assert "confusion_matrix" in parsed
         assert "results" in parsed
 
+    def test_report_status_accuracy(self):
+        """Report should compute status_accuracy when scenarios have expected_status."""
+        scenario_with_status = EvaluationScenario(
+            name="status_test",
+            description="Test",
+            claim_data={"policy_number": "POL-001", "vin": "VIN001", "vehicle_year": 2020,
+                       "vehicle_make": "Test", "vehicle_model": "Model", "incident_date": "2025-01-01",
+                       "incident_description": "Test", "damage_description": "Test"},
+            expected_type="fraud",
+            expected_status="needs_review",
+        )
+        results = [
+            EvaluationResult(
+                scenario=scenario_with_status,
+                success=True,
+                actual_type="fraud",
+                actual_status="needs_review",
+            ),
+            EvaluationResult(
+                scenario=scenario_with_status,
+                success=True,
+                actual_type="fraud",
+                actual_status="processing",
+            ),
+        ]
+        report = generate_report(results)
+        assert report.status_accuracy is not None
+        assert report.status_accuracy["total"] == 2
+        assert report.status_accuracy["correct"] == 1
+        assert report.status_accuracy["accuracy"] == 0.5
+        d = report.to_dict()
+        assert "status_accuracy" in d["summary"]
+        assert d["summary"]["status_accuracy"]["correct"] == 1
+
 
 class TestScenarioToDictSerialization:
     """Test scenario serialization."""
@@ -264,6 +298,45 @@ class TestScenarioToDictSerialization:
         assert d["actual_type"] == "fraud"
         assert d["type_match"] is True
         assert d["claim_id"] == "CLM-123"
+        assert "expected_status" in d
+        assert "actual_status" in d
+        assert "status_match" in d
+        assert d["expected_status"] is None
+        assert d["status_match"] is None
+
+    def test_result_to_dict_with_expected_status(self):
+        """Result with expected_status should serialize status_match correctly."""
+        scenario = EvaluationScenario(
+            name="test_status",
+            description="Test with status",
+            claim_data={"policy_number": "POL-001", "vin": "VIN001", "vehicle_year": 2020,
+                       "vehicle_make": "Test", "vehicle_model": "Model", "incident_date": "2025-01-01",
+                       "incident_description": "Test", "damage_description": "Test"},
+            expected_type="fraud",
+            expected_status="needs_review",
+        )
+        
+        result_match = EvaluationResult(
+            scenario=scenario,
+            success=True,
+            actual_type="fraud",
+            actual_status="needs_review",
+        )
+        d_match = result_match.to_dict()
+        assert d_match["expected_status"] == "needs_review"
+        assert d_match["actual_status"] == "needs_review"
+        assert d_match["status_match"] is True
+
+        result_mismatch = EvaluationResult(
+            scenario=scenario,
+            success=True,
+            actual_type="fraud",
+            actual_status="processing",
+        )
+        d_mismatch = result_mismatch.to_dict()
+        assert d_mismatch["expected_status"] == "needs_review"
+        assert d_mismatch["actual_status"] == "processing"
+        assert d_mismatch["status_match"] is False
 
 
 class TestScenarioCounts:
