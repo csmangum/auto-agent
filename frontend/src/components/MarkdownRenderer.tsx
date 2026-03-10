@@ -66,10 +66,9 @@ const components: Components = {
   td: ({ children }) => (
     <td className="border border-gray-700/50 px-4 py-2 text-gray-400">{children}</td>
   ),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code: ({ className, children, node }: any) => {
+  code: ({ className, children }) => {
     const content = String(children || '');
-    const isBlock = node?.position || className || content.includes('\n');
+    const isBlock = className || content.includes('\n');
     if (!isBlock) {
       return (
         <code className="bg-gray-800 text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono ring-1 ring-gray-700/50">

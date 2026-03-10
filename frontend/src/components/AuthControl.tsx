@@ -27,7 +27,7 @@ export default function AuthControl() {
           onClick={logout}
           className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
         >
-          Clear
+          Clear key
         </button>
       </div>
     );

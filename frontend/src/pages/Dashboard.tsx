@@ -65,7 +65,7 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 animate-fade-in">
         <PageHeader title="Dashboard" subtitle="Claims system observability overview" />
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
           <span className="text-lg">⚠️</span>

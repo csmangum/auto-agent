@@ -26,6 +26,16 @@ describe('ClaimTable', () => {
     expect(screen.getByText('Submit a Claim')).toBeInTheDocument();
   });
 
+  it('shows filter-specific empty state when hasFilters is true', () => {
+    render(
+      <BrowserRouter>
+        <ClaimTable claims={[]} hasFilters />
+      </BrowserRouter>
+    );
+    expect(screen.getByText('No claims found')).toBeInTheDocument();
+    expect(screen.queryByText('Submit a Claim')).not.toBeInTheDocument();
+  });
+
   it('renders claim rows', () => {
     render(
       <BrowserRouter>

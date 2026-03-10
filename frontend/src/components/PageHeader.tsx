@@ -11,7 +11,7 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, subtitle, backTo, backLabel, actions }: PageHeaderProps) {
   return (
-    <div className="animate-fade-in">
+    <div>
       {backTo && (
         <Link
           to={backTo}
