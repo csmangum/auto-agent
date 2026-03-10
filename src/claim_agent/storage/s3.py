@@ -1,7 +1,7 @@
 """S3-compatible storage for claim attachments."""
 
 import uuid
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from claim_agent.storage.base import StorageAdapter
 
@@ -69,7 +69,7 @@ class S3StorageAdapter(StorageAdapter):
             Params={"Bucket": self._bucket, "Key": key},
             ExpiresIn=3600 * 24 * 7,  # 7 days
         )
-        return url
+        return cast(str, url)
 
     def exists(self, claim_id: str, stored_path_or_key: str) -> bool:
         """Check if object exists in S3."""

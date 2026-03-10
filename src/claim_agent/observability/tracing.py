@@ -207,7 +207,7 @@ class TracingCallback:
         trace.complete(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost_usd=cost_usd if cost_usd is not None else 0.0,
             error=error,
         )
 
@@ -327,7 +327,7 @@ def _get_custom_logger_base():
         return object
 
 
-class LiteLLMTracingCallback(_get_custom_logger_base()):
+class LiteLLMTracingCallback(_get_custom_logger_base()):  # type: ignore[misc]
     """LiteLLM-compatible callback class for tracing.
 
     Inherits from litellm.integrations.custom_logger.CustomLogger when available

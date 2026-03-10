@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from claim_agent.adapters.registry import get_parts_adapter, get_repair_shop_adapter
 from claim_agent.config.settings import (
@@ -35,14 +35,14 @@ def _get_shop_labor_rate(
 ) -> float:
     """Return labor rate for shop_id, or default if not found."""
     if shop is not None:
-        return shop.get("labor_rate_per_hour", default)
+        return cast(float, shop.get("labor_rate_per_hour", default))
     if not shop_id:
         return default
     adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
     shop = adapter.get_shop(shop_id)
     if shop is None:
         return default
-    return shop.get("labor_rate_per_hour", default)
+    return cast(float, shop.get("labor_rate_per_hour", default))
 
 
 def get_available_repair_shops_impl(

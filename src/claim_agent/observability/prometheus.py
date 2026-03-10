@@ -103,9 +103,9 @@ def record_claim_outcome(
     if _claims_processed_total is None:
         return
 
-    if status == "error":
+    if status == "error" and _claims_failed_total is not None:
         _claims_failed_total.inc()
-    elif status == "escalated":
+    elif status == "escalated" and _claims_escalated_total is not None:
         _claims_escalated_total.inc()
     elif status in _PROCESSED_STATUSES:
         _claims_processed_total.inc()

@@ -135,9 +135,12 @@ def _seed_test_data(db_path: str) -> None:
 def _reset_settings():
     """Reset the settings singleton so each test gets fresh config from env."""
     import claim_agent.config as _cfg
+    import claim_agent.api.deps as _deps
     _cfg._settings = None
+    _deps._auth_warning_logged = False
     yield
     _cfg._settings = None
+    _deps._auth_warning_logged = False
 
 
 @pytest.fixture(autouse=True)

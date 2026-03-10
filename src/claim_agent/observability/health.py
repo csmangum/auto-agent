@@ -30,7 +30,7 @@ def check_health() -> dict:
 def is_healthy() -> bool:
     """Return True if all critical dependencies are healthy (DB connected)."""
     result = check_health()
-    return result["status"] == "ok"
+    return bool(result.get("status") == "ok")
 
 
 def _check_database() -> bool:

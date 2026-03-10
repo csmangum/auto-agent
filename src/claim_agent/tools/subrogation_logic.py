@@ -8,7 +8,7 @@ import json
 
 # Use timezone-aware UTC for datetime (datetime.utcnow is deprecated)
 def _utc_now() -> datetime.datetime:
-    return datetime.datetime.now(datetime.UTC)
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 _NOT_AT_FAULT_KEYWORDS = [

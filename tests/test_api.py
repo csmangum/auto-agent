@@ -325,9 +325,11 @@ class TestReviewQueue:
         """Supervisor can approve claim and re-run workflow."""
         import claim_agent.api.routes.claims as claims_mod
 
+        monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
         monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
-        resp = client.post("/api/claims/CLM-TEST004/review/approve")
+        resp = client.post("/api/claims/CLM-TEST004/review/approve", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 200
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST004"
@@ -343,10 +345,12 @@ class TestReviewQueue:
         )
         assert resp.status_code == 403
 
-    def test_approve_not_needs_review_returns_409(self, client):
+    def test_approve_not_needs_review_returns_409(self, client, monkeypatch):
         """Approve on claim not in needs_review returns 409."""
+        monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         # CLM-TEST001 has status "open"
-        resp = client.post("/api/claims/CLM-TEST001/review/approve")
+        resp = client.post("/api/claims/CLM-TEST001/review/approve", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 409
         assert "not in needs_review" in resp.json()["detail"]
 
@@ -354,10 +358,13 @@ class TestReviewQueue:
         """ReviewerDecisionBody rejects invalid confirmed_payout (negative, etc)."""
         import claim_agent.api.routes.claims as claims_mod
 
+        monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: {})
         resp = client.post(
             "/api/claims/CLM-TEST004/review/approve",
             json={"reviewer_decision": {"confirmed_payout": -100}},
+            headers=_auth_headers("sk-sup"),
         )
         assert resp.status_code == 422
         detail = str(resp.json()).lower()
@@ -627,14 +634,18 @@ class TestDenialCoverage:
 # -------------------------------------------------------------------
 
 class TestMetrics:
-    def test_global_metrics_empty(self, client):
-        resp = client.get("/api/metrics")
+    def test_global_metrics_empty(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        resp = client.get("/api/metrics", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 200
         data = resp.json()
         assert data["global_stats"]["total_claims"] == 0
 
-    def test_claim_metrics_not_found(self, client):
-        resp = client.get("/api/metrics/CLM-TEST001")
+    def test_claim_metrics_not_found(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        resp = client.get("/api/metrics/CLM-TEST001", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 404
 
 
@@ -702,9 +713,19 @@ class TestSkills:
 # System endpoints
 # -------------------------------------------------------------------
 
+_ADMIN_HEADERS = {"X-API-Key": "sk-admin"}
+
+
+def _set_admin_auth(monkeypatch):
+    """Set up admin auth for tests that need admin-level endpoints."""
+    monkeypatch.setenv("API_KEYS", "sk-admin:admin")
+    monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+
+
 class TestSystemConfig:
-    def test_get_config(self, client):
-        resp = client.get("/api/system/config")
+    def test_get_config(self, client, monkeypatch):
+        _set_admin_auth(monkeypatch)
+        resp = client.get("/api/system/config", headers=_ADMIN_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert "escalation" in data
@@ -721,8 +742,9 @@ class TestSystemConfig:
 
 
 class TestSystemHealth:
-    def test_health_check(self, client):
-        resp = client.get("/api/system/health")
+    def test_health_check(self, client, monkeypatch):
+        _set_admin_auth(monkeypatch)
+        resp = client.get("/api/system/health", headers=_ADMIN_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "healthy"
@@ -731,8 +753,9 @@ class TestSystemHealth:
 
 
 class TestAgentsCatalog:
-    def test_get_catalog(self, client):
-        resp = client.get("/api/system/agents")
+    def test_get_catalog(self, client, monkeypatch):
+        _set_admin_auth(monkeypatch)
+        resp = client.get("/api/system/agents", headers=_ADMIN_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert "crews" in data

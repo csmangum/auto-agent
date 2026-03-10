@@ -7,7 +7,7 @@ compliance context from the RAG system.
 import threading
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from claim_agent.rag.chunker import Chunk
 from claim_agent.rag.constants import DEFAULT_STATE
@@ -342,7 +342,7 @@ class RAGContextProvider:
         if use_cache:
             with self._cache_lock:
                 if cache_key in self._context_cache:
-                    return self._context_cache[cache_key]
+                    return cast(str, self._context_cache[cache_key])
         
         context = get_rag_context(
             skill_name=skill_name,
@@ -356,7 +356,7 @@ class RAGContextProvider:
             with self._cache_lock:
                 self._context_cache[cache_key] = context
         
-        return context
+        return cast(str, context)
     
     def enrich_skill(
         self,

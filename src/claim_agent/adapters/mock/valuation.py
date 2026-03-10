@@ -1,6 +1,6 @@
 """Mock vehicle-valuation adapter backed by mock_db.json."""
 
-from typing import Any
+from typing import Any, cast
 
 from claim_agent.adapters.base import ValuationAdapter
 from claim_agent.data.loader import load_mock_db
@@ -14,4 +14,4 @@ class MockValuationAdapter(ValuationAdapter):
         db = load_mock_db()
         values = db.get("vehicle_values", {})
         key = vin or f"{year}_{make}_{model}"
-        return values.get(key)
+        return cast(dict[str, Any] | None, values.get(key))

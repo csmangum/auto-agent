@@ -31,10 +31,21 @@ from claim_agent.api.routes.system import router as system_router
 from claim_agent.config import get_settings
 
 
+import logging
+
+_server_logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     from claim_agent.events import ensure_webhook_listener_registered
     ensure_webhook_listener_registered()
+
+    _server_logger.warning(
+        "Rate limiting and approve locks use in-memory storage. "
+        "These are NOT shared across workers or processes. "
+        "Run with a single worker or use Redis-backed alternatives for production."
+    )
 
     _otel_enabled = False
     try:
@@ -53,7 +64,10 @@ async def lifespan(_app: FastAPI):
     if _otel_enabled:
         try:
             from opentelemetry import trace
-            trace.get_tracer_provider().shutdown()
+
+            provider = trace.get_tracer_provider()
+            if hasattr(provider, "shutdown"):
+                provider.shutdown()
         except Exception:
             # Shutdown errors are non-fatal; best-effort flush on exit
             pass

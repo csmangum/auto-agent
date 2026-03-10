@@ -91,7 +91,6 @@ jobs:
 
       - name: Mypy
         run: mypy src/claim_agent
-        continue-on-error: true
 
   frontend:
     runs-on: ubuntu-latest

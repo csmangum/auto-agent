@@ -1,8 +1,15 @@
 """FastAPI dependencies for auth and RBAC."""
 
+import logging
+from typing import cast
+
 from fastapi import Depends, Request
 
 from claim_agent.api.auth import AuthContext, is_auth_required
+
+logger = logging.getLogger(__name__)
+
+_auth_warning_logged = False
 
 
 def get_auth(request: Request) -> AuthContext | None:
@@ -15,7 +22,7 @@ def get_auth(request: Request) -> AuthContext | None:
     if auth is None:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
-    return auth
+    return cast(AuthContext, auth)
 
 
 def require_role(*roles: str):
@@ -25,6 +32,14 @@ def require_role(*roles: str):
         from fastapi import HTTPException
 
         if not is_auth_required():
+            global _auth_warning_logged
+            if not _auth_warning_logged:
+                logger.warning(
+                    "No API_KEYS, CLAIMS_API_KEY, or JWT_SECRET configured. "
+                    "All endpoints are accessible without authentication. "
+                    "Set at least one auth variable for production deployments."
+                )
+                _auth_warning_logged = True
             return AuthContext(identity="anonymous", role="admin")
 
         auth = get_auth(request)

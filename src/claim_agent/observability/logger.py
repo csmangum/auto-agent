@@ -14,7 +14,7 @@ import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, MutableMapping
 
 from claim_agent.config import get_settings
 from claim_agent.utils.pii_masking import mask_policy_number, mask_vin, mask_dict, mask_text
@@ -168,7 +168,9 @@ class ClaimLogger(logging.LoggerAdapter):
         """Set additional context fields."""
         self._extra_context.update(kwargs)
 
-    def process(self, msg: str, kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    def process(
+        self, msg: str, kwargs: MutableMapping[str, Any]
+    ) -> tuple[str, MutableMapping[str, Any]]:
         """Add claim context to log kwargs."""
         extra = kwargs.get("extra", {})
         

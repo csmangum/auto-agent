@@ -7,7 +7,7 @@ Supported values: ``mock``, ``stub``. Unknown values raise ValueError.
 """
 
 import threading
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from claim_agent.adapters.base import (
     PartsAdapter,
@@ -40,16 +40,16 @@ def _get_or_create_adapter(
     mock_class: type[T],
 ) -> T:
     if adapter_name in _cache:
-        return _cache[adapter_name]
+        return cast(T, _cache[adapter_name])
     with _lock:
         if adapter_name in _cache:
-            return _cache[adapter_name]
+            return cast(T, _cache[adapter_name])
         backend = _resolve_backend(adapter_name)
         if backend == "stub":
             _cache[adapter_name] = stub_class()
         else:
             _cache[adapter_name] = mock_class()
-        return _cache[adapter_name]
+        return cast(T, _cache[adapter_name])
 
 
 def get_policy_adapter() -> PolicyAdapter:

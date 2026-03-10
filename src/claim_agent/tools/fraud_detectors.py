@@ -120,8 +120,11 @@ def _detect_vin_history_indicators(claim_data: dict, ctx: ClaimContext | None = 
         matches = repo.search_claims(vin=vin, incident_date=None)
         same_vin = [m for m in matches if m.get("vin") == vin and m.get("incident_date") != incident_date]
         same_vin_in_window = [
-            m for m in same_vin
-            if m.get("incident_date") is not None and start <= m.get("incident_date") <= end
+            m
+            for m in same_vin
+            if (inc := m.get("incident_date")) is not None
+            and isinstance(inc, str)
+            and start <= inc <= end
         ]
         if len(same_vin_in_window) >= 1:
             indicators.append("multiple_claims_same_vin")

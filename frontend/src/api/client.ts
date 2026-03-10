@@ -22,16 +22,8 @@ import type {
 } from './types';
 
 const BASE = '/api';
-const STORAGE_KEY = 'claims_api_token';
 
 let _authToken: string | null = null;
-if (typeof window !== 'undefined') {
-  try {
-    _authToken = window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    _authToken = null;
-  }
-}
 
 export function setAuthToken(token: string): void {
   _authToken = token;
@@ -79,8 +71,8 @@ export const getClaims = (params: GetClaimsParams = {}): Promise<ClaimsListRespo
   const qs = new URLSearchParams();
   if (params.status) qs.set('status', params.status);
   if (params.claim_type) qs.set('claim_type', params.claim_type);
-  if (params.limit) qs.set('limit', String(params.limit));
-  if (params.offset) qs.set('offset', String(params.offset));
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
   const q = qs.toString();
   return fetchJSON<ClaimsListResponse>(`/claims${q ? '?' + q : ''}`);
 };
@@ -173,6 +165,9 @@ export async function processClaimAsync(
   return res.json() as Promise<ProcessClaimAsyncResponse>;
 }
 
+const MAX_STREAM_RETRIES = 3;
+const STREAM_RETRY_DELAY_MS = 2000;
+
 export function streamClaimUpdates(
   claimId: string,
   onUpdate: (data: ClaimStreamUpdate) => void,
@@ -180,18 +175,22 @@ export function streamClaimUpdates(
 ): () => void {
   const controller = new AbortController();
   const abort = () => controller.abort();
+  let receivedDone = false;
+  let retries = 0;
 
-  fetch(`${BASE}/claims/${claimId}/stream`, {
-    signal: controller.signal,
-    credentials: 'include',
-    headers: getAuthHeaders(),
-  })
-    .then(async (res) => {
+  async function connect() {
+    try {
+      const res = await fetch(`${BASE}/claims/${claimId}/stream`, {
+        signal: controller.signal,
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error(`Stream error ${res.status}`);
       const reader = res.body?.getReader();
       if (!reader) throw new Error('No response body');
       const decoder = new TextDecoder();
       let buffer = '';
+      retries = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -204,18 +203,33 @@ export function streamClaimUpdates(
             try {
               const data = JSON.parse(match[1]) as ClaimStreamUpdate;
               onUpdate(data);
+              if (data.done) receivedDone = true;
             } catch {
               // ignore parse errors
             }
           }
         }
       }
-    })
-    .catch((err) => {
-      if (err.name !== 'AbortError') {
-        onError?.(err instanceof Error ? err : new Error(String(err)));
+      if (!receivedDone && !controller.signal.aborted && retries < MAX_STREAM_RETRIES) {
+        retries++;
+        await new Promise((r) => setTimeout(r, STREAM_RETRY_DELAY_MS * retries));
+        return connect();
       }
-    });
+      if (!receivedDone && !controller.signal.aborted) {
+        onError?.(new Error('Stream ended unexpectedly. The claim may still be processing.'));
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      if (err instanceof Error && err.name === 'AbortError') return;
+      if (!receivedDone && retries < MAX_STREAM_RETRIES) {
+        retries++;
+        await new Promise((r) => setTimeout(r, STREAM_RETRY_DELAY_MS * retries));
+        return connect();
+      }
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
 
+  connect();
   return abort;
 }
