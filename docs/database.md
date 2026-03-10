@@ -291,36 +291,26 @@ Defined in `src/claim_agent/db/constants.py`:
 
 ## Status Flow
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           STATUS TRANSITIONS                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│                        ┌─────────┐                                          │
-│                        │ pending │ (initial)                                │
-│                        └────┬────┘                                          │
-│                             │                                                │
-│                             ▼                                                │
-│                       ┌───────────┐                                         │
-│                       │processing │                                         │
-│                       └─────┬─────┘                                         │
-│                             │                                                │
-│          ┌──────────────────┼──────────────────┐                            │
-│          │                  │                  │                            │
-│          ▼                  ▼                  ▼                            │
-│    ┌────────────┐    ┌─────────────┐    ┌──────────┐                       │
-│    │needs_review│    │   failed    │    │(success) │                       │
-│    └────────────┘    └─────────────┘    └────┬─────┘                       │
-│                                              │                              │
-│                ┌────────────┬────────────┬───┴───────┬────────────┐        │
-│                │            │            │           │            │        │
-│                ▼            ▼            ▼           ▼            ▼        │
-│           ┌────────┐  ┌───────────┐  ┌─────────┐  ┌──────────┐          │
-│           │  open  │  │ duplicate │  │ settled │  │  fraud   │          │
-│           │ (new)  │  │           │  │(t.l/p.l)│  │suspected │          │
-│           └────────┘  └───────────┘  └─────────┘  └──────────┘          │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    pending["pending (initial)"]
+    processing["processing"]
+    needs_review["needs_review"]
+    failed["failed"]
+    success["(success)"]
+    open["open (new)"]
+    duplicate["duplicate"]
+    settled["settled (t.l/p.l)"]
+    fraud["fraud_suspected"]
+
+    pending --> processing
+    processing --> needs_review
+    processing --> failed
+    processing --> success
+    success --> open
+    success --> duplicate
+    success --> settled
+    success --> fraud
 ```
 
 ## Repository Operations

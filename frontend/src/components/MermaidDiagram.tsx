@@ -84,7 +84,13 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
       <div
         ref={containerRef}
         className="flex justify-center [&>svg]:max-w-full"
-        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true } }) }}
+        dangerouslySetInnerHTML={{
+            __html: DOMPurify.sanitize(svg, {
+              USE_PROFILES: { svg: true },
+              ADD_TAGS: ['foreignObject'],
+              HTML_INTEGRATION_POINTS: { foreignobject: true },
+            }),
+          }}
       />
     </div>
   );

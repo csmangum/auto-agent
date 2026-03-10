@@ -95,6 +95,8 @@ def list_docs():
 @router.get("/docs/{slug}", dependencies=[RequireAdjuster])
 def get_doc(slug: str):
     """Get markdown content for a documentation page."""
+    # Normalize slug: strip .md so crews.md and crews both work (markdown links use .md)
+    slug = slug.removesuffix(".md") if slug else slug
     # Find the page config
     page_config = None
     for page in _DOC_PAGES:
