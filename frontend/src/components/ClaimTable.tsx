@@ -8,9 +8,10 @@ import type { Claim } from '../api/types';
 interface ClaimTableProps {
   claims: Claim[];
   compact?: boolean;
+  hasFilters?: boolean;
 }
 
-export default function ClaimTable({ claims, compact = false }: ClaimTableProps) {
+export default function ClaimTable({ claims, compact = false, hasFilters = false }: ClaimTableProps) {
   const navigate = useNavigate();
 
   if (!claims || claims.length === 0) {
@@ -18,9 +19,13 @@ export default function ClaimTable({ claims, compact = false }: ClaimTableProps)
       <EmptyState
         icon="📋"
         title="No claims found"
-        description="There are no claims matching your current filters."
-        actionLabel="Submit a Claim"
-        actionTo="/claims/new"
+        description={
+          hasFilters
+            ? 'No claims match your current filters. Try adjusting or clearing them.'
+            : 'There are no claims yet.'
+        }
+        actionLabel={hasFilters ? undefined : 'Submit a Claim'}
+        actionTo={hasFilters ? undefined : '/claims/new'}
       />
     );
   }

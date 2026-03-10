@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import ClaimTable from '../components/ClaimTable';
@@ -19,24 +19,21 @@ const selectClasses =
 
 export default function ClaimsList() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
+  const statusFilter = searchParams.get('status') ?? '';
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  useEffect(() => {
-    setPage(1);
-  }, [statusFilter, typeFilter]);
-
-  useEffect(() => {
+  const setStatusFilter = (value: string) => {
     const params = new URLSearchParams(searchParams);
-    if (statusFilter) {
-      params.set('status', statusFilter);
+    if (value) {
+      params.set('status', value);
     } else {
       params.delete('status');
     }
     setSearchParams(params, { replace: true });
-  }, [statusFilter, searchParams, setSearchParams]);
+    setPage(1);
+  };
 
   const offset = (page - 1) * pageSize;
   const params = {
@@ -51,7 +48,7 @@ export default function ClaimsList() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // Generate page numbers for pagination
-  const getPageNumbers = () => {
+  const pageNumbers = useMemo(() => {
     const pages: (number | '...')[] = [];
     if (totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) pages.push(i);
@@ -65,7 +62,7 @@ export default function ClaimsList() {
       pages.push(totalPages);
     }
     return pages;
-  };
+  }, [totalPages, page]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -96,7 +93,7 @@ export default function ClaimsList() {
 
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
           className={selectClasses}
         >
           <option value="">All Types</option>
@@ -149,7 +146,7 @@ export default function ClaimsList() {
             </div>
           </div>
         ) : (
-          <ClaimTable claims={claims} />
+          <ClaimTable claims={claims} hasFilters={!!(statusFilter || typeFilter)} />
         )}
       </div>
 
@@ -168,7 +165,7 @@ export default function ClaimsList() {
             >
               ←
             </button>
-            {getPageNumbers().map((p, i) =>
+            {pageNumbers.map((p, i) =>
               p === '...' ? (
                 <span key={`ellipsis-${i}`} className="px-2 text-gray-600 text-sm">…</span>
               ) : (

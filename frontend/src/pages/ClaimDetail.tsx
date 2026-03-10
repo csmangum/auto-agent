@@ -129,13 +129,13 @@ export default function ClaimDetail() {
 
             {/* Descriptions */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 border-l-2 border-l-blue-500/50">
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 border-l-[3px] border-l-blue-500/50">
                 <h3 className="text-sm font-semibold text-gray-300 mb-2">Incident Description</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
                   {claim.incident_description ?? 'No description provided.'}
                 </p>
               </div>
-              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 border-l-2 border-l-amber-500/50">
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 border-l-[3px] border-l-amber-500/50">
                 <h3 className="text-sm font-semibold text-gray-300 mb-2">Damage Description</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
                   {claim.damage_description ?? 'No description provided.'}

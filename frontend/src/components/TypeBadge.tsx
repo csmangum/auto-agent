@@ -8,6 +8,8 @@ const TYPE_STYLES: Record<string, string> = {
   total_loss: 'bg-indigo-500/15 text-indigo-400 ring-indigo-500/20',
   fraud: 'bg-red-500/15 text-red-400 ring-red-500/20',
   partial_loss: 'bg-teal-500/15 text-teal-400 ring-teal-500/20',
+  bodily_injury: 'bg-rose-500/15 text-rose-400 ring-rose-500/20',
+  reopened: 'bg-amber-500/15 text-amber-400 ring-amber-500/20',
 };
 
 const DEFAULT_STYLE = 'bg-gray-500/15 text-gray-400 ring-gray-500/20';
