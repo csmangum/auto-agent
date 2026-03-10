@@ -28,7 +28,7 @@ os.environ.setdefault(
     str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"),
 )
 
-from evaluate_claim_processing import (
+from evaluate_claim_processing import (  # noqa: E402
     ALL_SCENARIOS,
     EvaluationResult,
     EvaluationScenario,

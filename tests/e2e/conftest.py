@@ -4,7 +4,6 @@ E2E tests submit claims via the REST API and assert outcomes.
 Database, sample claims, and mock LLM fixtures come from tests.conftest_shared.
 """
 
-import os
 import shutil
 import tempfile
 
