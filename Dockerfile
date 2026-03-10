@@ -21,8 +21,8 @@ COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 COPY data/ ./data/
 
-# Install dependencies (no dev)
-RUN uv sync --frozen --no-dev
+# Install dependencies (no dev, but include opentelemetry extras so OTEL_TRACING works)
+RUN uv sync --frozen --no-dev --extra opentelemetry
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
