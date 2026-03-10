@@ -14,6 +14,9 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', '**/*.d.ts'],
       reporter: ['text', 'html'],
+      thresholds: {
+        lines: 70,
+      },
     },
   },
 });

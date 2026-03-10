@@ -160,10 +160,72 @@ describe('API client', () => {
       expect.objectContaining({
         method: 'POST',
         body: expect.any(FormData),
+        credentials: 'include',
+        headers: expect.any(Object),
       })
     );
     const formData = (mockFetch.mock.calls[0][1] as { body: FormData }).body;
     expect(formData.get('claim')).toBe(JSON.stringify(payload));
     expect(formData.get('files')).toBe(file);
+  });
+
+  it('processClaimAsync includes Authorization header when token is set', async () => {
+    setAuthToken('sk-claim-token');
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ claim_id: 'CLM-NEW' }),
+    } as Response);
+
+    const payload = {
+      policy_number: 'POL-1',
+      vin: 'VIN123',
+      vehicle_year: 2024,
+      vehicle_make: 'Honda',
+      vehicle_model: 'Accord',
+      incident_date: '2025-01-15',
+      incident_description: 'Rear-ended',
+      damage_description: 'Bumper damage',
+    };
+
+    await processClaimAsync(payload);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/claims/process/async',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer sk-claim-token',
+        }),
+      })
+    );
+  });
+
+  it('processClaimAsync sends multiple files', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ claim_id: 'CLM-NEW' }),
+    } as Response);
+
+    const payload = {
+      policy_number: 'POL-1',
+      vin: 'VIN123',
+      vehicle_year: 2024,
+      vehicle_make: 'Honda',
+      vehicle_model: 'Accord',
+      incident_date: '2025-01-15',
+      incident_description: 'Rear-ended',
+      damage_description: 'Bumper damage',
+    };
+    const file1 = new File(['a'], 'photo1.jpg', { type: 'image/jpeg' });
+    const file2 = new File(['b'], 'photo2.png', { type: 'image/png' });
+
+    await processClaimAsync(payload, [file1, file2]);
+
+    const formData = (mockFetch.mock.calls[0][1] as { body: FormData }).body;
+    const files = formData.getAll('files');
+    expect(files).toHaveLength(2);
+    expect(files[0]).toBe(file1);
+    expect(files[1]).toBe(file2);
   });
 });

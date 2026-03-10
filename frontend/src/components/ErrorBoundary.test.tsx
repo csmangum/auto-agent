@@ -52,8 +52,8 @@ describe('ErrorBoundary', () => {
     const retryBtn = screen.getByRole('button', { name: /try again/i });
     expect(retryBtn).toBeInTheDocument();
     fireEvent.click(retryBtn);
-    // After retry, ErrorBoundary resets and remounts children; ThrowError throws again
-    // so we should still see error UI (or if child were to succeed, we'd see it)
+    // Retry resets state and remounts children with a new key. ThrowError throws again
+    // on mount, so we expect the error UI to reappear (not child content).
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
   });
 });

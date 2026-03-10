@@ -10,6 +10,10 @@ from claim_agent.observability import opentelemetry_setup
 _HAS_FASTAPI_INSTRUMENTATION = (
     importlib.util.find_spec("opentelemetry.instrumentation.fastapi") is not None
 )
+_HAS_OTEL_EXPORTER = (
+    importlib.util.find_spec("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+    is not None
+)
 
 
 class TestSetupOpenTelemetry:
@@ -51,6 +55,10 @@ class TestSetupOpenTelemetry:
 
         assert result is False
 
+    @pytest.mark.skipif(
+        not _HAS_OTEL_EXPORTER,
+        reason="opentelemetry packages not installed",
+    )
     def test_returns_true_when_enabled_and_packages_available(self):
         """When enabled and packages available, configures tracer and returns True."""
         config = MagicMock()
@@ -62,9 +70,12 @@ class TestSetupOpenTelemetry:
             mock_get.return_value.tracing = config
             result = opentelemetry_setup.setup_opentelemetry()
 
-        # Result depends on whether opentelemetry is installed in the env
-        assert result in (True, False)
+        assert result is True
 
+    @pytest.mark.skipif(
+        not _HAS_OTEL_EXPORTER,
+        reason="opentelemetry packages not installed",
+    )
     def test_endpoint_gets_http_prefix_when_missing(self):
         """Endpoint without http/https gets http:// prefix."""
         config = MagicMock()
