@@ -41,7 +41,7 @@ const components: Components = {
   ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1 text-gray-400">{children}</ol>,
   li: ({ children }) => <li className="text-gray-400">{children}</li>,
   a: ({ href, children }) => {
-    const safeHref = isSafeHref(href) ? href! : '#';
+    const safeHref = isSafeHref(href) ? (href as string) : '#';
     return (
       <a
         href={safeHref}

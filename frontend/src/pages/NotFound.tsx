@@ -29,13 +29,6 @@ export default function NotFound() {
           </Link>
         ))}
       </div>
-
-      <Link
-        to="/"
-        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 text-sm font-medium transition-all active:scale-[0.98]"
-      >
-        Back to Dashboard
-      </Link>
     </div>
   );
 }

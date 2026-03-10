@@ -36,7 +36,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const QUICK_ACTIONS = [
   { to: '/claims/new', label: 'New Claim', icon: '➕' },
-  { to: '/claims?status=needs_review', label: 'Review Queue', icon: '👁️' },
+  { to: '/claims', label: 'Review Queue', icon: '👁️' },
   { to: '/agents', label: 'View Agents', icon: '🤖' },
   { to: '/system', label: 'System Health', icon: '⚙️' },
 ];
