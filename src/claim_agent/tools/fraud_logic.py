@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from claim_agent.adapters.registry import get_siu_adapter
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.tools.escalation_logic import KNOWN_FRAUD_PATTERNS
+from claim_agent.tools.fraud_detectors import KNOWN_FRAUD_PATTERNS
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:

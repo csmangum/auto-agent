@@ -243,7 +243,7 @@ class TestWorkflowWithMockedLLM:
                     result = run_claim_workflow(sample_new_claim)
         
         repo = ClaimRepository(db_path=integration_db)
-        history = repo.get_claim_history(result["claim_id"])
+        history, _ = repo.get_claim_history(result["claim_id"])
         
         # Should have at least: created, status_change (processing), status_change (final)
         assert len(history) >= 2
@@ -403,7 +403,7 @@ class TestReprocessing:
         assert result["claim_id"] == claim_id
         
         # Check history shows reprocessing
-        history = repo.get_claim_history(claim_id)
+        history, _ = repo.get_claim_history(claim_id)
         assert len(history) >= 3  # created + multiple status changes
     
     @pytest.mark.integration

@@ -1,0 +1,36 @@
+# Git and IDE
+.git
+.gitignore
+.cursor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+
+# Node
+frontend/node_modules
+frontend/dist
+
+# Tests and docs (not needed for runtime)
+tests
+docs
+*.md
+!README.md
+
+# SQLite databases (should not be baked into image layers)
+data/*.db
+
+# Local dev
+.env
+.env.local
+*.log

@@ -53,8 +53,8 @@ def emit_claim_event(event: ClaimEvent) -> None:
 _webhook_listener_registered = False
 
 
-def _register_webhook_listener() -> None:
-    """Register the default webhook dispatch listener (idempotent)."""
+def ensure_webhook_listener_registered() -> None:
+    """Register the default webhook dispatch listener (idempotent). Call at app startup."""
     global _webhook_listener_registered
     if _webhook_listener_registered:
         return
@@ -72,6 +72,3 @@ def _register_webhook_listener() -> None:
 
     register_claim_event_listener(dispatch)
     _webhook_listener_registered = True
-
-
-_register_webhook_listener()

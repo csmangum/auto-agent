@@ -640,7 +640,7 @@ def test_escalate_claim_impl_updates_db(_temp_claims_db):
     assert claim["priority"] == "high"
     assert claim.get("due_at") is not None
 
-    history = repo.get_claim_history(claim_id)
+    history, _ = repo.get_claim_history(claim_id)
     escalation_entries = [h for h in history if h.get("action") == "escalation"]
     assert len(escalation_entries) >= 1
 
