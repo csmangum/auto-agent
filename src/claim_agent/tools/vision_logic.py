@@ -1,14 +1,20 @@
 """Vision model logic for damage photo analysis."""
 
+import base64
 import json
 import logging
 import os
+import re
 from typing import Any
 from urllib.parse import unquote, urlparse
+
+import litellm
 
 from claim_agent.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+MAX_VISION_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 def analyze_damage_photo_impl(
@@ -16,8 +22,6 @@ def analyze_damage_photo_impl(
     damage_description: str | None = None,
 ) -> str:
     """Analyze a damage photo using a vision model."""
-    import base64
-
     result: dict[str, Any] = {
         "severity": "unknown",
         "parts_affected": [],
@@ -36,10 +40,9 @@ def analyze_damage_photo_impl(
             if not path.startswith(allowed_base + os.sep) and path != allowed_base:
                 result["error"] = "Access to this file path is not permitted"
                 return json.dumps(result)
-            _MAX_VISION_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
             if os.path.isfile(path):
                 file_size = os.path.getsize(path)
-                if file_size > _MAX_VISION_FILE_BYTES:
+                if file_size > MAX_VISION_FILE_BYTES:
                     result["error"] = f"File size ({file_size} bytes) exceeds the limit for vision analysis"
                     return json.dumps(result)
                 with open(path, "rb") as f:
@@ -55,9 +58,6 @@ def analyze_damage_photo_impl(
             return json.dumps(result)
 
     try:
-        import litellm
-        import re
-
         model = get_settings().llm.vision_model.strip() or "gpt-4o"
         prompt = """Analyze this vehicle damage photo. Return a JSON object with:
 - severity: "low" | "medium" | "high" | "total_loss"
@@ -80,6 +80,7 @@ def analyze_damage_photo_impl(
         ]
         resp = litellm.completion(model=model, messages=messages)
         text = resp.choices[0].message.content or ""
+        # Flat JSON only; nested objects would require a more robust extractor
         match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
         if match:
             parsed = json.loads(match.group())

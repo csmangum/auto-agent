@@ -22,4 +22,27 @@ describe('MarkdownRenderer', () => {
     render(<MarkdownRenderer content="Some paragraph text" />);
     expect(screen.getByText('Some paragraph text')).toBeInTheDocument();
   });
+
+  it('renders links', () => {
+    render(<MarkdownRenderer content="[Click here](https://example.com)" />);
+    const link = screen.getByRole('link', { name: 'Click here' });
+    expect(link).toHaveAttribute('href', 'https://example.com');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('renders code blocks', () => {
+    render(<MarkdownRenderer content={'```\nconst x = 1;\n```'} />);
+    expect(screen.getByText(/const x = 1/)).toBeInTheDocument();
+  });
+
+  it('renders blockquote', () => {
+    render(<MarkdownRenderer content="> A quote" />);
+    expect(screen.getByText('A quote')).toBeInTheDocument();
+  });
+
+  it('renders lists', () => {
+    render(<MarkdownRenderer content="- Item 1\n- Item 2" />);
+    expect(screen.getByText(/Item 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Item 2/)).toBeInTheDocument();
+  });
 });
