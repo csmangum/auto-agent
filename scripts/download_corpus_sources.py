@@ -61,18 +61,67 @@ def main() -> int:
     output.mkdir(parents=True, exist_ok=True)
 
     all_results: list[Path] = []
+    failed_states: list[str] = []
+
     if args.state in ("TX", "ALL"):
         logger.info("Downloading Texas sources...")
-        all_results.extend(download_texas(output))
+        try:
+            tx_results = download_texas(output)
+            if not tx_results:
+                logger.error("No files were downloaded for Texas.")
+                failed_states.append("TX")
+            else:
+                all_results.extend(tx_results)
+        except Exception as exc:
+            logger.error("Failed to download Texas sources: %s", exc)
+            failed_states.append("TX")
+
     if args.state in ("FL", "ALL"):
         logger.info("Downloading Florida sources...")
-        all_results.extend(download_florida(output))
+        try:
+            fl_results = download_florida(output)
+            if not fl_results:
+                logger.error("No files were downloaded for Florida.")
+                failed_states.append("FL")
+            else:
+                all_results.extend(fl_results)
+        except Exception as exc:
+            logger.error("Failed to download Florida sources: %s", exc)
+            failed_states.append("FL")
+
     if args.state in ("NY", "ALL"):
         logger.info("Downloading New York sources...")
-        all_results.extend(download_new_york(output))
+        try:
+            ny_results = download_new_york(output)
+            if not ny_results:
+                logger.error("No files were downloaded for New York.")
+                failed_states.append("NY")
+            else:
+                all_results.extend(ny_results)
+        except Exception as exc:
+            logger.error("Failed to download New York sources: %s", exc)
+            failed_states.append("NY")
+
     if args.state in ("FED", "ALL"):
         logger.info("Downloading Federal sources...")
-        all_results.extend(download_federal(output))
+        try:
+            fed_results = download_federal(output)
+            if not fed_results:
+                logger.error("No files were downloaded for Federal sources.")
+                failed_states.append("FED")
+            else:
+                all_results.extend(fed_results)
+        except Exception as exc:
+            logger.error("Failed to download Federal sources: %s", exc)
+            failed_states.append("FED")
+
+    if failed_states:
+        logger.error(
+            "One or more downloads failed for: %s",
+            ", ".join(sorted(failed_states)),
+        )
+        logger.info("Successfully downloaded %d files to %s", len(all_results), output)
+        return 1
 
     logger.info("Downloaded %d files to %s", len(all_results), output)
     return 0

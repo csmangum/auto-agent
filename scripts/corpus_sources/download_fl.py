@@ -45,6 +45,7 @@ def download_florida(output_dir: Path | None = None) -> list[Path]:
         "Relevant: 69O-166 (total loss, salvage).\n",
         encoding="utf-8",
     )
+    logger.info("Wrote FL Admin Code note to %s", admin_note)
     results.append(admin_note)
 
     return results
