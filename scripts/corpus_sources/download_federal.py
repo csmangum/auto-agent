@@ -11,12 +11,30 @@ Per docs/compliance-corpus-requirements.md Section 3:
 """
 
 import logging
+import time
 from pathlib import Path
 
 from .config import FEDERAL_SOURCES, OUTPUT_DIR
-from .downloader import download_to_dir
+from .downloader import LARGE_FILE_TIMEOUT, download_file, download_to_dir
 
 logger = logging.getLogger(__name__)
+
+# Retry settings for transient network errors on large files
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF = 5.0  # seconds between retries
+
+
+def _download_with_retry(url: str, dest_path: Path, timeout: float, max_attempts: int = _RETRY_ATTEMPTS) -> Path | None:
+    """Download a file with retry/backoff on transient failures. Returns path or None."""
+    for attempt in range(1, max_attempts + 1):
+        if download_file(url, dest_path, timeout=timeout):
+            return dest_path
+        if attempt < max_attempts:
+            wait = _RETRY_BACKOFF * attempt
+            logger.warning("Attempt %d/%d failed for %s; retrying in %.0fs", attempt, max_attempts, url, wait)
+            time.sleep(wait)
+    logger.error("All %d attempts failed for %s", max_attempts, url)
+    return None
 
 
 def download_federal(output_dir: Path | None = None) -> list[Path]:
@@ -25,16 +43,17 @@ def download_federal(output_dir: Path | None = None) -> list[Path]:
     fed_dir = out / "federal"
     fed_dir.mkdir(parents=True, exist_ok=True)
 
-    from .downloader import LARGE_FILE_TIMEOUT
-
     results: list[Path] = []
     for src in FEDERAL_SOURCES:
         url = src["url"]
         fid = src["id"]
         fmt = src.get("format", "xml")
         ext = ".zip" if fmt == "zip" else ".xml"
-        kwargs = {"timeout": LARGE_FILE_TIMEOUT} if fid == "cfr_title_45" else {}
-        path = download_to_dir(url, fed_dir, filename=f"{fid}{ext}", **kwargs)
+        dest = fed_dir / f"{fid}{ext}"
+        if fid == "cfr_title_45":
+            path = _download_with_retry(url, dest, timeout=LARGE_FILE_TIMEOUT)
+        else:
+            path = download_to_dir(url, fed_dir, filename=f"{fid}{ext}")
         if path:
             results.append(path)
 
