@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { getSystemConfig, getSystemHealth } from '../api/client';
+import { useSystemConfig, useSystemHealth } from '../api/queries';
 
 interface ConfigTableProps {
   title: string;
@@ -85,20 +84,10 @@ interface SystemHealthData {
 }
 
 export default function SystemConfig() {
-  const [config, setConfig] = useState<SystemConfigData | null>(null);
-  const [health, setHealth] = useState<SystemHealthData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    Promise.all([getSystemConfig(), getSystemHealth()])
-      .then(([configData, healthData]) => {
-        setConfig(configData as SystemConfigData);
-        setHealth(healthData as SystemHealthData);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: config, isLoading: configLoading, error: configError } = useSystemConfig();
+  const { data: health, isLoading: healthLoading, error: healthError } = useSystemHealth();
+  const loading = configLoading || healthLoading;
+  const error = configError ?? healthError;
 
   if (loading) {
     return (
@@ -116,12 +105,14 @@ export default function SystemConfig() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error}</p>
+        <p className="text-red-800">{error instanceof Error ? error.message : 'Unknown error'}</p>
       </div>
     );
   }
 
-  if (!config) return null;
+  const configData = config as SystemConfigData | undefined;
+  const healthData = health as SystemHealthData | undefined;
+  if (!configData) return null;
 
   return (
     <div className="space-y-6">
@@ -132,22 +123,22 @@ export default function SystemConfig() {
         </p>
       </div>
 
-      {health && (
+      {healthData && (
         <div className={`rounded-xl border p-5 ${
-          health.status === 'healthy'
+          healthData.status === 'healthy'
             ? 'bg-green-50 border-green-200'
             : 'bg-yellow-50 border-yellow-200'
         }`}>
           <div className="flex items-center gap-3">
             <span className="text-2xl">
-              {health.status === 'healthy' ? '✅' : '⚠️'}
+              {healthData.status === 'healthy' ? '✅' : '⚠️'}
             </span>
             <div>
               <h3 className="font-semibold text-gray-900">
-                System {health.status === 'healthy' ? 'Healthy' : 'Degraded'}
+                System {healthData.status === 'healthy' ? 'Healthy' : 'Degraded'}
               </h3>
               <p className="text-sm text-gray-600">
-                Database: {health.database} · {health.total_claims} claims stored
+                Database: {healthData.database} · {healthData.total_claims} claims stored
               </p>
             </div>
           </div>
@@ -157,31 +148,31 @@ export default function SystemConfig() {
       <div className="space-y-4">
         <ConfigTable
           title="Escalation (Human-in-the-Loop)"
-          config={config.escalation ?? {}}
+          config={configData.escalation ?? {}}
           descriptions={ESCALATION_DESCRIPTIONS}
         />
         <ConfigTable
           title="Fraud Detection"
-          config={config.fraud ?? {}}
+          config={configData.fraud ?? {}}
           descriptions={FRAUD_DESCRIPTIONS}
         />
         <ConfigTable
           title="Vehicle Valuation"
-          config={config.valuation ?? {}}
+          config={configData.valuation ?? {}}
         />
         <ConfigTable
           title="Partial Loss"
-          config={config.partial_loss ?? {}}
+          config={configData.partial_loss ?? {}}
         />
         <ConfigTable
           title="Token Budgets"
-          config={config.token_budgets ?? {}}
+          config={configData.token_budgets ?? {}}
         />
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">General</h3>
           <p className="text-sm text-gray-600">
             CrewAI Verbose Mode: <span className="font-mono font-medium text-blue-700">
-              {config.crew_verbose ? 'true' : 'false'}
+              {configData.crew_verbose ? 'true' : 'false'}
             </span>
           </p>
         </div>

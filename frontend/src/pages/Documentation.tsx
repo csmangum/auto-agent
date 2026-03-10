@@ -1,40 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useParams, NavLink, useNavigate } from 'react-router-dom';
 import MarkdownRenderer from '../components/MarkdownRenderer';
-import { getDocs, getDoc } from '../api/client';
-import type { DocPage } from '../api/types';
+import { useDocs, useDoc } from '../api/queries';
 
 export default function Documentation() {
   const { slug } = useParams<{ slug?: string }>();
   const navigate = useNavigate();
-  const [pages, setPages] = useState<DocPage[]>([]);
-  const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: docsData, error: docsError } = useDocs();
+  const { data: docData, isLoading: docLoading, error: docError } = useDoc(slug ?? undefined);
+  const pages = docsData?.pages.filter((p) => p.available) ?? [];
+  const content = docData?.content ?? null;
+  const loading = docLoading;
+  const error = docsError ?? docError;
 
+  const firstSlug = pages[0]?.slug;
   useEffect(() => {
-    getDocs()
-      .then((data) => {
-        const availablePages = data.pages.filter((p) => p.available);
-        setPages(availablePages);
-        if (!slug && availablePages.length > 0) {
-          navigate(`/docs/${availablePages[0].slug}`, { replace: true });
-        }
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'));
-  }, [navigate, slug]);
-
-  useEffect(() => {
-    if (!slug) return;
-    setLoading(true);
-    setError(null);
-    getDoc(slug)
-      .then((data) => {
-        setContent(data.content);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, [slug]);
+    if (!slug && firstSlug) {
+      navigate(`/docs/${firstSlug}`, { replace: true });
+    }
+  }, [slug, firstSlug, navigate]);
 
   return (
     <div className="flex gap-6 min-h-[calc(100vh-120px)]">

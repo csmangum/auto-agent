@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getAgentsCatalog } from '../api/client';
-import type { CrewInfo } from '../api/types';
+import { useAgentsCatalog } from '../api/queries';
 
 const CREW_COLORS = [
   'border-blue-200 bg-blue-50',
@@ -15,18 +13,10 @@ const CREW_COLORS = [
 const CREW_ICONS = ['🔀', '📝', '🔍', '💥', '🚨', '🔧'];
 
 export default function Agents() {
-  const [crews, setCrews] = useState<CrewInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useAgentsCatalog();
+  const crews = data?.crews ?? [];
 
-  useEffect(() => {
-    getAgentsCatalog()
-      .then((data) => setCrews(data.crews))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-gray-900">Agents & Crews</h1>
@@ -42,7 +32,7 @@ export default function Agents() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error}</p>
+        <p className="text-red-800">{error instanceof Error ? error.message : 'Unknown error'}</p>
       </div>
     );
   }

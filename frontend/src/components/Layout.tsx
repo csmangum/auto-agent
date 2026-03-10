@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState } from 'react';
+import AuthControl from './AuthControl';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '📊' },
@@ -31,8 +32,13 @@ export default function Layout() {
         }`}
       >
         <div className="p-5 border-b border-gray-100">
-          <h1 className="text-lg font-bold text-gray-900">Claims System</h1>
-          <p className="text-xs text-gray-500 mt-1">Observability & Documentation</p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Claims System</h1>
+              <p className="text-xs text-gray-500 mt-1">Observability & Documentation</p>
+            </div>
+            <AuthControl />
+          </div>
         </div>
 
         <nav className="p-3 space-y-1">
@@ -67,7 +73,8 @@ export default function Layout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4 lg:hidden">
+        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between gap-4 lg:hidden">
+          <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
@@ -80,6 +87,8 @@ export default function Layout() {
             </svg>
           </button>
           <h1 className="text-lg font-semibold text-gray-900">Claims System</h1>
+          </div>
+          <AuthControl />
         </header>
 
         <main className="flex-1 p-6 overflow-auto">

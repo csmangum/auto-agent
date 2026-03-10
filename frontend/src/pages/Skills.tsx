@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getSkills } from '../api/client';
-import type { SkillSummary } from '../api/types';
+import { useSkills } from '../api/queries';
 
 const GROUP_COLORS: Record<string, string> = {
   'Core Routing': 'border-blue-200 bg-blue-50',
@@ -24,18 +22,10 @@ const GROUP_ICONS: Record<string, string> = {
 };
 
 export default function Skills() {
-  const [groups, setGroups] = useState<Record<string, SkillSummary[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useSkills();
+  const groups = data?.groups ?? {};
 
-  useEffect(() => {
-    getSkills()
-      .then((data) => setGroups(data.groups))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-gray-900">Agent Skills</h1>
@@ -51,7 +41,7 @@ export default function Skills() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error}</p>
+        <p className="text-red-800">{error instanceof Error ? error.message : 'Unknown error'}</p>
       </div>
     );
   }

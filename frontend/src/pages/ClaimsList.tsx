@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import ClaimTable from '../components/ClaimTable';
-import { getClaims } from '../api/client';
-import type { Claim } from '../api/types';
+import { useClaims } from '../api/queries';
 
 const STATUSES = [
   'pending', 'processing', 'open', 'closed', 'duplicate',
@@ -11,29 +10,29 @@ const STATUSES = [
 
 const TYPES = ['new', 'duplicate', 'total_loss', 'fraud', 'partial_loss'];
 
+const PAGE_SIZES = [25, 50, 100];
+
 export default function ClaimsList() {
-  const [claims, setClaims] = useState<Claim[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    const params: { limit: number; status?: string; claim_type?: string } = { limit: 200 };
-    if (statusFilter) params.status = statusFilter;
-    if (typeFilter) params.claim_type = typeFilter;
-
-    getClaims(params)
-      .then((data) => {
-        setClaims(data.claims);
-        setTotal(data.total);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
+    setPage(1);
   }, [statusFilter, typeFilter]);
+
+  const offset = (page - 1) * pageSize;
+  const params = {
+    limit: pageSize,
+    offset,
+    ...(statusFilter && { status: statusFilter }),
+    ...(typeFilter && { claim_type: typeFilter }),
+  };
+  const { data, isLoading, error } = useClaims(params);
+  const claims = data?.claims ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div className="space-y-6">
@@ -69,6 +68,18 @@ export default function ClaimsList() {
           ))}
         </select>
 
+        <select
+          value={pageSize}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {PAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {size} per page
+            </option>
+          ))}
+        </select>
+
         <span className="self-center text-sm text-gray-500">
           {total} claim{total !== 1 ? 's' : ''}
         </span>
@@ -76,12 +87,12 @@ export default function ClaimsList() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800 text-sm">{error}</p>
+          <p className="text-red-800 text-sm">{error instanceof Error ? error.message : 'Unknown error'}</p>
         </div>
       )}
 
       <div className="bg-white rounded-xl border border-gray-200">
-        {loading ? (
+        {isLoading ? (
           <div className="p-8 text-center">
             <div className="animate-pulse space-y-3">
               {[...Array(8)].map((_, i) => (
@@ -93,6 +104,32 @@ export default function ClaimsList() {
           <ClaimTable claims={claims} />
         )}
       </div>
+
+      {total > 0 && (
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <p className="text-sm text-gray-500">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
