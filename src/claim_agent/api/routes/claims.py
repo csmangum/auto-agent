@@ -540,18 +540,14 @@ def get_claim_attachment(claim_id: str, key: str):
 @router.get("/claims/{claim_id}/history", dependencies=[RequireAdjuster])
 def get_claim_history(
     claim_id: str,
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Get audit log entries for a claim with pagination."""
     claim = ctx.repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    if limit < 1 or limit > 500:
-        limit = 100
-    if offset < 0:
-        offset = 0
     history, total = ctx.repo.get_claim_history(claim_id, limit=limit, offset=offset)
     return {
         "claim_id": claim_id,
