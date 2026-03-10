@@ -14,6 +14,8 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Total Loss](#total-loss-crew) | 3 | Process total loss claims |
 | [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
 | [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
+| [Bodily Injury](#bodily-injury-crew) | 3 | Handle injury-related claims |
+| [Reopened](#reopened-crew) | 3 | Validate and route reopened settled claims |
 | [Rental Reimbursement](#rental-reimbursement-crew) | 3 | Manage loss-of-use / rental coverage (runs after Partial Loss) |
 | [Settlement](#settlement-crew) | 3 | Shared final settlement for payout-ready claims |
 | [Subrogation](#subrogation-crew) | 3 | Post-settlement recovery from at-fault parties |
@@ -28,7 +30,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 
 **Location**: `src/claim_agent/crews/main_crew.py`
 
-The Router Crew is the entry point for all claim processing. It contains a single agent that classifies claims into one of five types.
+The Router Crew is the entry point for all claim processing. It contains a single agent that classifies claims into one of seven types.
 
 ### Agent
 
@@ -46,6 +48,8 @@ flowchart LR
     C --> F[total_loss]
     C --> G[fraud]
     C --> H[partial_loss]
+    C --> I[bodily_injury]
+    C --> J[reopened]
 ```
 
 For classification criteria, see [Claim Types](claim-types.md).
@@ -625,6 +629,84 @@ The Partial Loss crew is invoked **after**:
 - **AC7:** Final claim status is set by Settlement Crew (`settled`) on success
 - **AC8:** Task context flows correctly through all five steps
 - **AC9:** Documentation matches this specification
+
+---
+
+## Bodily Injury Crew
+
+**Location**: `src/claim_agent/crews/bodily_injury_crew.py`
+
+Handles injury-related claims: intake injury details → review medical records → assess liability → propose settlement. Routes to Settlement Crew on completion.
+
+### Entry Conditions
+
+- **Claim type:** `bodily_injury` (from Router classification)
+- **Classification criteria:** Incident or damage description mentions injury to persons (whiplash, hospital, medical treatment, etc.); `injury_related` or `bodily_injury` true in claim data when present
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| BI Intake Specialist | `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+| Medical Records Reviewer | `query_medical_records`, `assess_injury_severity`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+| Settlement Negotiator | `calculate_bi_settlement`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph BI["Bodily Injury Crew"]
+        A[1. Intake: Injury details] --> B[2. Medical: Review records]
+        B --> C[3. Negotiation: Propose settlement]
+    end
+    C --> Settlement[Settlement Crew]
+```
+
+### Exit Conditions
+
+| Outcome | Status | Notes |
+|---------|--------|-------|
+| Success | `settled` | Via Settlement Crew |
+| Escalated | `needs_review` | Returned before crew execution |
+| Failed | `failed` | Error during crew execution |
+
+**Note:** Claims with both vehicle damage and injury are routed to BI when injury is significant. Vehicle damage is not handled by this crew; consider a combined workflow for such claims.
+
+---
+
+## Reopened Crew
+
+**Location**: `src/claim_agent/crews/reopened_crew.py`
+
+Validates reopening reason, loads the prior settled claim, and routes to partial_loss, total_loss, or bodily_injury based on prior claim type and new damage.
+
+### Entry Conditions
+
+- **Claim type:** `reopened` (from Router classification)
+- **Classification criteria:** `prior_claim_id`, `reopening_reason`, or `is_reopened` present in claim data (and `definitive_duplicate` is NOT true)
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Reopened Validator | `query_policy_db`, `get_claim_notes` |
+| Prior Claim Loader | `lookup_original_claim` |
+| Reopened Router | `evaluate_damage`, `get_claim_notes` |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph Reopened["Reopened Crew"]
+        A[1. Validate: Reopening reason] --> B[2. Load: Prior claim]
+        B --> C[3. Route: partial_loss / total_loss / bodily_injury]
+    end
+    C --> D[Main workflow runs selected crew]
+```
+
+### Exit Conditions
+
+The Reopened crew outputs `target_claim_type` (partial_loss, total_loss, or bodily_injury). The main workflow then runs the selected crew; final status depends on that crew.
 
 ---
 

@@ -1,6 +1,6 @@
 # Claim Types
 
-The system supports five distinct claim types, each handled by a specialized workflow crew.
+The system supports seven distinct claim types, each handled by a specialized workflow crew.
 
 For crew details and agent composition, see [Crews](crews.md).
 
@@ -13,24 +13,34 @@ For crew details and agent composition, see [Crews](crews.md).
 | `total_loss` | Unrepairable vehicle | `settled` | [Total Loss](crews.md#total-loss-crew) → [Settlement](crews.md#settlement-crew) |
 | `fraud` | Suspected fraud | `fraud_suspected` | [Fraud](crews.md#fraud-detection-crew) |
 | `partial_loss` | Repairable damage | `settled` | [Partial Loss](crews.md#partial-loss-crew) → [Settlement](crews.md#settlement-crew) |
+| `bodily_injury` | Injury to persons | `settled` | [Bodily Injury](crews.md#bodily-injury-crew) → [Settlement](crews.md#settlement-crew) |
+| `reopened` | Reopened settled claim | varies | [Reopened](crews.md#reopened-crew) → routes to partial_loss/total_loss/bodily_injury |
 
 ---
 
 ## Classification Decision Tree
 
+The router evaluates in priority order: definitive_duplicate → reopened → duplicate → total_loss → fraud → bodily_injury → partial_loss → new.
+
 ```mermaid
 flowchart TD
-    A[New Claim] --> B{Fraud indicators?}
-    B -->|Yes| C[FRAUD]
-    B -->|No| D{Same VIN/date exists?}
-    D -->|Yes| E[DUPLICATE]
-    D -->|No| F{Total loss keywords?}
-    F -->|Yes| G[TOTAL_LOSS]
-    F -->|No| H{Repair > 75% value?}
-    H -->|Yes| G
-    H -->|No| I{Repairable damage?}
-    I -->|Yes| J[PARTIAL_LOSS]
-    I -->|No| K[NEW]
+    A[New Claim] --> B{definitive_duplicate?}
+    B -->|Yes| C[DUPLICATE]
+    B -->|No| D{prior_claim_id / reopening_reason / is_reopened?}
+    D -->|Yes| E[REOPENED]
+    D -->|No| F{Fraud indicators?}
+    F -->|Yes| G[FRAUD]
+    F -->|No| H{Same VIN/date exists?}
+    H -->|Yes| C
+    H -->|No| I{Total loss keywords?}
+    I -->|Yes| J[TOTAL_LOSS]
+    I -->|No| K{Injury to persons?}
+    K -->|Yes| L[BODILY_INJURY]
+    K -->|No| M{Repair > 75% value?}
+    M -->|Yes| J
+    M -->|No| N{Repairable damage?}
+    N -->|Yes| O[PARTIAL_LOSS]
+    N -->|No| P[NEW]
 ```
 
 ---
@@ -259,6 +269,60 @@ Allowed claim statuses: `processing`, `settled`. California CCR 2695.8 requires 
 
 ---
 
+## Bodily Injury
+
+Claims involving injury to persons. For the formal workflow specification, see [Bodily Injury Crew](crews.md#bodily-injury-crew).
+
+### Classification Criteria
+
+- Incident or damage description mentions: injured, injury, whiplash, broken bone, fracture, hospital, medical treatment, back pain, neck pain, concussion, soft tissue, laceration, ambulance, ER visit, bodily harm, passenger injured, driver injured
+- `injury_related` or `bodily_injury` is true in claim data when present
+- Injury to people is a significant component (not just vehicle damage)
+
+### Example
+
+```json
+{
+  "policy_number": "POL-004",
+  "vin": "2HGFG3B54CH501234",
+  "vehicle_year": 2020,
+  "vehicle_make": "Toyota",
+  "vehicle_model": "Camry",
+  "incident_date": "2025-02-01",
+  "incident_description": "Rear-ended at intersection. Driver and passenger both injured. Ambulance transported driver to ER for whiplash and back pain.",
+  "damage_description": "Rear bumper and trunk damaged. Driver sustained whiplash and cervical strain. Passenger had minor soft tissue injury. Both sought medical treatment.",
+  "estimated_damage": 4500
+}
+```
+
+---
+
+## Reopened
+
+Settled claims being reopened for new damage, policyholder appeal, or similar. The Reopened crew validates the reason, loads the prior claim, and routes to partial_loss, total_loss, or bodily_injury. For the formal workflow specification, see [Reopened Crew](crews.md#reopened-crew).
+
+### Classification Criteria
+
+- `prior_claim_id` is present and references a prior settled claim
+- `reopening_reason` is present (e.g., new_damage, policyholder_appeal, additional_covered_damage)
+- `is_reopened` is true
+
+### Example
+
+```json
+{
+  "policy_number": "POL-003",
+  "vin": "2T1BURHE5JC073987",
+  "prior_claim_id": "CLM-XXXXXXXX",
+  "reopening_reason": "new_damage",
+  "incident_date": "2025-02-10",
+  "incident_description": "Additional damage discovered during repair",
+  "damage_description": "Hidden frame damage discovered during bumper removal"
+}
+```
+
+---
+
 ## Sample Claims
 
 The project includes sample claims for testing in `tests/sample_claims/`:
@@ -273,5 +337,6 @@ The project includes sample claims for testing in `tests/sample_claims/`:
 | `partial_loss_claim.json` | partial_loss |
 | `partial_loss_fender.json` | partial_loss |
 | `partial_loss_front_collision.json` | partial_loss |
+| `bodily_injury_claim.json` | bodily_injury |
 
 See [Getting Started](getting-started.md#sample-claims) for usage.

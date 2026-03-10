@@ -88,8 +88,7 @@ Creates audit log entries. See [Database](database.md) for schema.
 
 Router and workflow crew kickoffs use **retry with exponential backoff** for transient LLM failures. **Token and call budgets** (configurable via `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` and `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM`) are enforced; processing stops if limits are exceeded.
 
-The router returns **structured JSON** with `claim_type`, `confidence` (0.0–1.0), and `reasoning`. When confidence is below `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), the claim is escalated to `needs_review` for human classification before any workflow runs. Optionally, `ROUTER_VALIDATION_ENABLED=true` runs a second LLM call; if validation returns high confidence, the workflow proceeds (re-classification if validation disagrees). See [Design Considerations - Router Classification](design-considerations.md#router-classification).
-
+The router returns **structured JSON** with `claim_type`, `confidence` (0.0–1.0), and `reasoning`. When confidence is below `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), the claim is escalated to `needs_review` for human classification before any workflow runs. Optionally, `ROUTER_VALIDATION_ENABLED=true` runs a second LLM call; if validation returns high confidence, the workflow proceeds (re-classification if validation disagrees).
 ```mermaid
 flowchart LR
     A[claim_data JSON] --> B[Router Agent]
