@@ -23,7 +23,7 @@ Claim Types:
     new, duplicate, total_loss, fraud, partial_loss, bodily_injury, reopened
 
 Scenario Groups:
-    new, duplicate, total_loss, fraud, partial_loss, edge_cases, escalation, stress_test
+    new, duplicate, total_loss, fraud, partial_loss, bodily_injury, reopened, edge_cases, escalation, stress_test
 
 Examples:
     python scripts/evaluate_claim_processing.py --all
