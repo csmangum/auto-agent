@@ -17,12 +17,42 @@ import type {
   AgentsCatalogResponse,
   AuditEvent,
   WorkflowRun,
+  SystemConfigData,
+  SystemHealthData,
 } from './types';
 
 const BASE = '/api';
+const STORAGE_KEY = 'claims_api_token';
+
+let _authToken: string | null = null;
+if (typeof window !== 'undefined') {
+  try {
+    _authToken = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    _authToken = null;
+  }
+}
+
+export function setAuthToken(token: string): void {
+  _authToken = token;
+}
+
+export function clearAuthToken(): void {
+  _authToken = null;
+}
+
+function getAuthHeaders(): HeadersInit {
+  const headers: Record<string, string> = {};
+  if (_authToken) {
+    headers['Authorization'] = `Bearer ${_authToken}`;
+  }
+  return headers;
+}
 
 async function fetchJSON<T>(url: string, retries = 1): Promise<T> {
-  const res = await fetch(`${BASE}${url}`);
+  const res = await fetch(`${BASE}${url}`, {
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) {
     const text = await res.text();
     const msg = `API error ${res.status}: ${text.slice(0, 200)}`;
@@ -80,11 +110,11 @@ export const getSkills = (): Promise<SkillsListResponse> =>
 export const getSkill = (name: string): Promise<SkillDetailResponse> =>
   fetchJSON<SkillDetailResponse>(`/skills/${name}`);
 
-export const getSystemConfig = (): Promise<unknown> =>
-  fetchJSON('/system/config');
+export const getSystemConfig = (): Promise<SystemConfigData> =>
+  fetchJSON<SystemConfigData>('/system/config');
 
-export const getSystemHealth = (): Promise<unknown> =>
-  fetchJSON('/system/health');
+export const getSystemHealth = (): Promise<SystemHealthData> =>
+  fetchJSON<SystemHealthData>('/system/health');
 
 export const getAgentsCatalog = (): Promise<AgentsCatalogResponse> =>
   fetchJSON<AgentsCatalogResponse>('/system/agents');
@@ -134,6 +164,7 @@ export async function processClaimAsync(
     method: 'POST',
     body: formData,
     credentials: 'include',
+    headers: getAuthHeaders(),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -153,6 +184,7 @@ export function streamClaimUpdates(
   fetch(`${BASE}/claims/${claimId}/stream`, {
     signal: controller.signal,
     credentials: 'include',
+    headers: getAuthHeaders(),
   })
     .then(async (res) => {
       if (!res.ok) throw new Error(`Stream error ${res.status}`);

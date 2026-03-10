@@ -1,36 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import StatusBadge from '../components/StatusBadge';
 import AuditTimeline from '../components/AuditTimeline';
-import { getClaim, getClaimHistory, getClaimWorkflows } from '../api/client';
+import { useClaim, useClaimHistory, useClaimWorkflows } from '../api/queries';
 import { formatDateTime } from '../utils/date';
-import type { Claim, AuditEvent, WorkflowRun } from '../api/types';
 
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
-  const [claim, setClaim] = useState<Claim | null>(null);
-  const [history, setHistory] = useState<AuditEvent[]>([]);
-  const [workflows, setWorkflows] = useState<WorkflowRun[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!claimId) return;
-    setLoading(true);
-    Promise.all([
-      getClaim(claimId),
-      getClaimHistory(claimId),
-      getClaimWorkflows(claimId),
-    ])
-      .then(([claimData, historyData, workflowData]) => {
-        setClaim(claimData);
-        setHistory(historyData.history ?? []);
-        setWorkflows(workflowData.workflows ?? []);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, [claimId]);
+  const { data: claim, isLoading: claimLoading, error: claimError } = useClaim(claimId);
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    error: historyError,
+  } = useClaimHistory(claimId);
+  const {
+    data: workflowsData,
+    isLoading: workflowsLoading,
+    error: workflowsError,
+  } = useClaimWorkflows(claimId);
+  const history = historyData?.history ?? [];
+  const workflows = workflowsData?.workflows ?? [];
+  const loading = claimLoading || historyLoading || workflowsLoading;
+  const error = claimError ?? historyError ?? workflowsError;
 
   if (loading) {
     return (
@@ -50,7 +42,7 @@ export default function ClaimDetail() {
       <div className="space-y-4">
         <Link to="/claims" className="text-blue-600 hover:text-blue-800 text-sm">&larr; Back to Claims</Link>
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">{error}</p>
+          <p className="text-red-800">{error instanceof Error ? error.message : 'Unknown error'}</p>
         </div>
       </div>
     );

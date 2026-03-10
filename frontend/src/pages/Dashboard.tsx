@@ -1,20 +1,9 @@
-import { useState, useEffect } from 'react';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import { Suspense, lazy } from 'react';
 import StatCard from '../components/StatCard';
 import ClaimTable from '../components/ClaimTable';
-import { getClaimsStats, getClaims } from '../api/client';
-import type { Claim, ClaimsStats } from '../api/types';
+import { useClaimsStats, useClaims } from '../api/queries';
+
+const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
 
 const TYPE_COLORS: Record<string, string> = {
   new: '#3B82F6',
@@ -44,20 +33,10 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<ClaimsStats | null>(null);
-  const [recentClaims, setRecentClaims] = useState<Claim[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    Promise.all([getClaimsStats(), getClaims({ limit: 10 })])
-      .then(([statsData, claimsData]) => {
-        setStats(statsData);
-        setRecentClaims(claimsData.claims);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: stats, isLoading: statsLoading, error: statsError } = useClaimsStats();
+  const { data: claimsData, isLoading: claimsLoading, error: claimsError } = useClaims({ limit: 10 });
+  const loading = statsLoading || claimsLoading;
+  const error = statsError ?? claimsError;
 
   if (loading) {
     return (
@@ -78,7 +57,7 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error loading dashboard: {error}</p>
+        <p className="text-red-800">Error loading dashboard: {error instanceof Error ? error.message : 'Unknown error'}</p>
       </div>
     );
   }
@@ -151,59 +130,20 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Claims by Type</h3>
-          {typeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={typeData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, value }) => `${name} (${value})`}
-                >
-                  {typeData.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-gray-400 text-sm py-8 text-center">No data</p>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Claims by Status</h3>
-          {statusData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={statusData} layout="vertical" margin={{ left: 80 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={80} />
-                <Tooltip />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {statusData.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-gray-400 text-sm py-8 text-center">No data</p>
-          )}
-        </div>
-      </div>
+      <Suspense
+        fallback={
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-5 h-[340px] animate-pulse" />
+            <div className="bg-white rounded-xl border border-gray-200 p-5 h-[340px] animate-pulse" />
+          </div>
+        }
+      >
+        <DashboardCharts typeData={typeData} statusData={statusData} />
+      </Suspense>
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Recent Claims</h3>
-        <ClaimTable claims={recentClaims} compact />
+        <ClaimTable claims={claimsData?.claims ?? []} compact />
       </div>
     </div>
   );

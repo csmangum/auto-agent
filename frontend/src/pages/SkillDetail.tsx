@@ -1,25 +1,12 @@
-import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import MarkdownRenderer from '../components/MarkdownRenderer';
-import { getSkill } from '../api/client';
-import type { SkillDetailResponse } from '../api/types';
+import { useSkill } from '../api/queries';
 
 export default function SkillDetail() {
   const { name } = useParams<{ name: string }>();
-  const [skill, setSkill] = useState<SkillDetailResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: skill, isLoading, error } = useSkill(name ?? undefined);
 
-  useEffect(() => {
-    if (!name) return;
-    setLoading(true);
-    getSkill(name)
-      .then((data) => setSkill(data))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, [name]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="animate-pulse space-y-4">
         <div className="h-8 bg-gray-200 rounded w-48" />
@@ -34,7 +21,7 @@ export default function SkillDetail() {
       <div className="space-y-4">
         <Link to="/skills" className="text-blue-600 hover:text-blue-800 text-sm">&larr; Back to Skills</Link>
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">{error}</p>
+          <p className="text-red-800">{error instanceof Error ? error.message : 'Unknown error'}</p>
         </div>
       </div>
     );

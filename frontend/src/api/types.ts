@@ -124,3 +124,18 @@ export interface CrewInfo {
 export interface AgentsCatalogResponse {
   crews: CrewInfo[];
 }
+
+export interface SystemConfigData {
+  escalation?: Record<string, unknown>;
+  fraud?: Record<string, unknown>;
+  valuation?: Record<string, unknown>;
+  partial_loss?: Record<string, unknown>;
+  token_budgets?: Record<string, unknown>;
+  crew_verbose?: boolean;
+}
+
+export interface SystemHealthData {
+  status: string;
+  database: string;
+  total_claims: number;
+}

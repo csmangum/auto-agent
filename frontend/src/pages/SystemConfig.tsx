@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { getSystemConfig, getSystemHealth } from '../api/client';
+import { useSystemConfig, useSystemHealth } from '../api/queries';
 
 interface ConfigTableProps {
   title: string;
@@ -69,36 +68,11 @@ const FRAUD_DESCRIPTIONS: Record<string, string> = {
   critical_indicator_count: 'Number of indicators for critical status',
 };
 
-interface SystemConfigData {
-  escalation?: Record<string, unknown>;
-  fraud?: Record<string, unknown>;
-  valuation?: Record<string, unknown>;
-  partial_loss?: Record<string, unknown>;
-  token_budgets?: Record<string, unknown>;
-  crew_verbose?: boolean;
-}
-
-interface SystemHealthData {
-  status: string;
-  database: string;
-  total_claims: number;
-}
-
 export default function SystemConfig() {
-  const [config, setConfig] = useState<SystemConfigData | null>(null);
-  const [health, setHealth] = useState<SystemHealthData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    Promise.all([getSystemConfig(), getSystemHealth()])
-      .then(([configData, healthData]) => {
-        setConfig(configData as SystemConfigData);
-        setHealth(healthData as SystemHealthData);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: config, isLoading: configLoading, error: configError } = useSystemConfig();
+  const { data: health, isLoading: healthLoading, error: healthError } = useSystemHealth();
+  const loading = configLoading || healthLoading;
+  const error = configError ?? healthError;
 
   if (loading) {
     return (
@@ -116,7 +90,7 @@ export default function SystemConfig() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error}</p>
+        <p className="text-red-800">{error instanceof Error ? error.message : 'Unknown error'}</p>
       </div>
     );
   }

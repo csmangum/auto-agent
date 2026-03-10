@@ -1,7 +1,9 @@
+import { Suspense, lazy } from 'react';
 import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import MermaidDiagram from './MermaidDiagram';
+
+const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
 
 /** Allowed URL schemes to prevent XSS via javascript:, data:, etc. */
 const SAFE_SCHEMES = ['http:', 'https:', 'mailto:'];
@@ -75,7 +77,17 @@ const components: Components = {
     const lang = className?.replace('language-', '') ?? '';
     if (lang === 'mermaid') {
       const code = Array.isArray(children) ? children.join('') : String(children ?? '');
-      return <MermaidDiagram chart={code} />;
+      return (
+        <Suspense
+          fallback={
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 mb-4 text-center">
+              <div className="animate-pulse text-gray-400 text-sm">Loading diagram...</div>
+            </div>
+          }
+        >
+          <MermaidDiagram chart={code} />
+        </Suspense>
+      );
     }
     return (
       <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto mb-4">
