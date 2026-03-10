@@ -160,5 +160,9 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
             else:
                 out[key] = []
         else:
-            out[key] = value
+            if isinstance(value, str):
+                t = _sanitize_text(value, MAX_INCIDENT_DESCRIPTION)
+                out[key] = _remove_injection_patterns(t)
+            else:
+                out[key] = value
     return out

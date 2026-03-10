@@ -42,11 +42,13 @@ const components: Components = {
   li: ({ children }) => <li className="text-gray-400">{children}</li>,
   a: ({ href, children }) => {
     const safeHref = isSafeHref(href) ? (href as string) : '#';
+    const isExternal = safeHref.startsWith('http');
     return (
       <a
         href={safeHref}
         className="text-blue-400 hover:text-blue-300 underline underline-offset-2 decoration-blue-400/30 transition-colors"
-        rel={safeHref.startsWith('http') ? 'noopener noreferrer' : undefined}
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
       >
         {children}
       </a>

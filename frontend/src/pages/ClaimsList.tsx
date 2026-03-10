@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import ClaimTable from '../components/ClaimTable';
@@ -10,7 +10,10 @@ const STATUSES = [
   'partial_loss', 'under_investigation', 'denied', 'settled', 'disputed', 'failed',
 ];
 
-const TYPES = ['new', 'duplicate', 'total_loss', 'fraud', 'partial_loss'];
+const TYPES = [
+  'new', 'duplicate', 'total_loss', 'fraud', 'partial_loss',
+  'bodily_injury', 'reopened', 'supplemental', 'subrogation',
+];
 
 const PAGE_SIZES = [25, 50, 100];
 
@@ -20,20 +23,20 @@ const selectClasses =
 export default function ClaimsList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get('status') ?? '';
-  const [typeFilter, setTypeFilter] = useState('');
+  const typeFilter = searchParams.get('type') ?? '';
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  const setStatusFilter = (value: string) => {
+  const setFilter = useCallback((key: string, value: string) => {
     const params = new URLSearchParams(searchParams);
     if (value) {
-      params.set('status', value);
+      params.set(key, value);
     } else {
-      params.delete('status');
+      params.delete(key);
     }
     setSearchParams(params, { replace: true });
     setPage(1);
-  };
+  }, [searchParams, setSearchParams]);
 
   const offset = (page - 1) * pageSize;
   const params = {
@@ -80,7 +83,7 @@ export default function ClaimsList() {
       <div className="flex flex-wrap gap-3 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => setFilter('status', e.target.value)}
           className={selectClasses}
         >
           <option value="">All Statuses</option>
@@ -93,7 +96,7 @@ export default function ClaimsList() {
 
         <select
           value={typeFilter}
-          onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+          onChange={(e) => setFilter('type', e.target.value)}
           className={selectClasses}
         >
           <option value="">All Types</option>
@@ -119,7 +122,7 @@ export default function ClaimsList() {
         {(statusFilter || typeFilter) && (
           <button
             type="button"
-            onClick={() => { setStatusFilter(''); setTypeFilter(''); }}
+            onClick={() => { setFilter('status', ''); setFilter('type', ''); }}
             className="text-xs text-gray-400 hover:text-gray-200 px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
           >
             Clear filters
@@ -161,6 +164,7 @@ export default function ClaimsList() {
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
+              aria-label="Previous page"
               className="px-3 py-1.5 text-sm border border-gray-700 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               ←
@@ -173,6 +177,8 @@ export default function ClaimsList() {
                   key={p}
                   type="button"
                   onClick={() => setPage(p)}
+                  aria-label={`Page ${p}`}
+                  aria-current={page === p ? 'page' : undefined}
                   className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
                     page === p
                       ? 'bg-blue-600 text-white font-medium'
@@ -187,6 +193,7 @@ export default function ClaimsList() {
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
+              aria-label="Next page"
               className="px-3 py-1.5 text-sm border border-gray-700 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               →

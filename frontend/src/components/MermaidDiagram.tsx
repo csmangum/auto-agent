@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
@@ -83,7 +84,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
       <div
         ref={containerRef}
         className="flex justify-center [&>svg]:max-w-full"
-        dangerouslySetInnerHTML={{ __html: svg }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true } }) }}
       />
     </div>
   );
