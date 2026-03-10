@@ -10,9 +10,15 @@ Note: Actual claim processing tests require OPENAI_API_KEY.
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
+
+# Ensure scripts dir is on path (robust when pyproject pythonpath not applied, e.g. some IDEs)
+_scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+if str(_scripts_dir) not in sys.path:
+    sys.path.append(str(_scripts_dir))
 
 # Set mock DB path
 os.environ.setdefault(
@@ -61,7 +67,7 @@ class TestScenarioDefinitions:
 
     def test_expected_types_are_valid(self):
         """Expected types should be valid claim types."""
-        valid_types = {"new", "duplicate", "total_loss", "fraud", "partial_loss"}
+        valid_types = {"new", "duplicate", "total_loss", "fraud", "partial_loss", "bodily_injury", "reopened"}
         for group_name, scenarios in ALL_SCENARIOS.items():
             for scenario in scenarios:
                 assert scenario.expected_type in valid_types, \
@@ -100,18 +106,13 @@ class TestSampleClaimsIntegration:
             assert "vin" in scenario.claim_data
 
     def test_sample_claim_files_exist(self):
-        """Sample claim JSON files should exist."""
+        """Sample claim JSON files should exist for all entries in SAMPLE_CLAIMS_MAPPING."""
+        from evaluate_claim_processing import SAMPLE_CLAIMS_MAPPING
+
         sample_dir = Path(__file__).parent / "sample_claims"
         assert sample_dir.exists()
-        
-        expected_files = [
-            "partial_loss_parking.json",
-            "duplicate_claim.json",
-            "total_loss_claim.json",
-            "fraud_claim.json",
-            "partial_loss_claim.json",
-        ]
-        for filename in expected_files:
+
+        for filename in SAMPLE_CLAIMS_MAPPING:
             assert (sample_dir / filename).exists(), f"Missing {filename}"
 
 
