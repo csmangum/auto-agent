@@ -7,7 +7,7 @@ mermaid.initialize({
   theme: 'dark',
   securityLevel: 'strict',
   fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-  flowchart: { curve: 'basis', padding: 15 },
+  flowchart: { curve: 'basis', padding: 15, htmlLabels: false },
   themeVariables: {
     primaryColor: '#1e3a5f',
     primaryTextColor: '#e5e7eb',
@@ -84,13 +84,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
       <div
         ref={containerRef}
         className="flex justify-center [&>svg]:max-w-full"
-        dangerouslySetInnerHTML={{
-            __html: DOMPurify.sanitize(svg, {
-              USE_PROFILES: { svg: true },
-              ADD_TAGS: ['foreignObject'],
-              HTML_INTEGRATION_POINTS: { foreignobject: true },
-            }),
-          }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true } }) }}
       />
     </div>
   );
