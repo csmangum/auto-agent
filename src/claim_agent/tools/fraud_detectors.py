@@ -75,7 +75,7 @@ KNOWN_FRAUD_PATTERNS = {
 
 @register_fraud_detector
 def _detect_keyword_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
-    """Detect fraud indicators from staged/suspicious keywords in descriptions."""
+    """Detect fraud indicators from staged/suspicious/timing/damage keywords in descriptions."""
     indicators: list[str] = []
     if not claim_data or not isinstance(claim_data, dict):
         return indicators
@@ -85,6 +85,8 @@ def _detect_keyword_indicators(claim_data: dict, ctx: ClaimContext | None = None
     fraud_keywords = (
         KNOWN_FRAUD_PATTERNS["staged_accident_keywords"]
         + KNOWN_FRAUD_PATTERNS["suspicious_claim_keywords"]
+        + KNOWN_FRAUD_PATTERNS["timing_red_flags"]
+        + KNOWN_FRAUD_PATTERNS["damage_fraud_keywords"]
     )
     for kw in fraud_keywords:
         if kw in combined:

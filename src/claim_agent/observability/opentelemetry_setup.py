@@ -55,11 +55,7 @@ def setup_opentelemetry() -> bool:
 
 
 def instrument_fastapi(app: Any) -> None:
-    """Instrument FastAPI app with OpenTelemetry if enabled."""
-    config = get_settings().tracing
-    if not config.otel_enabled:
-        return
-
+    """Instrument FastAPI app with OpenTelemetry. Call only when setup_opentelemetry() returned True."""
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         FastAPIInstrumentor.instrument_app(app)

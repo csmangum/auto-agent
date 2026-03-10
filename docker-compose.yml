@@ -13,6 +13,9 @@ services:
       - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME:-gpt-4o-mini}
       - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - OTEL_TRACING=${OTEL_TRACING:-false}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-claim-agent}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
       - WEBHOOK_ENABLED=${WEBHOOK_ENABLED:-true}
     volumes:
       - claim-data:/app/data

@@ -58,7 +58,7 @@ export interface ClaimHistoryResponse {
   claim_id: string;
   history: AuditEvent[];
   total: number;
-  limit: number;
+  limit: number | null;
   offset: number;
 }
 
