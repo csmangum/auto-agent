@@ -1,6 +1,6 @@
 # Eval Suite: Remaining Gaps
 
-This document tracks known gaps in the claim processing evaluation suite. Gaps that have been addressed are noted in the [Getting Started](getting-started.md) guide.
+This document tracks known gaps in the claim processing evaluation suite. Gaps that have been addressed are listed in the [Addressed Gaps (Reference)](#addressed-gaps-reference) section below.
 
 **Last updated:** March 2025
 

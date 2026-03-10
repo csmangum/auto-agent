@@ -16,9 +16,11 @@ from pathlib import Path
 import pytest
 
 # Ensure scripts dir is on path (robust when pyproject pythonpath not applied, e.g. some IDEs)
+# Insert at index 0 so scripts/evaluate_claim_processing.py takes precedence over any
+# same-named module that may appear later on sys.path.
 _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
 if str(_scripts_dir) not in sys.path:
-    sys.path.append(str(_scripts_dir))
+    sys.path.insert(0, str(_scripts_dir))
 
 # Set mock DB path
 os.environ.setdefault(
