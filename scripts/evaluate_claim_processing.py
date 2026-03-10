@@ -994,12 +994,24 @@ class ClaimEvaluator:
             print("[Setup] Seeded original claims for duplicate detection")
 
     def _seed_reopened_prior_claim(self) -> None:
-        """Seed a prior settled claim for reopened scenarios (prior_claim_id=CLM-PRIOR01)."""
-        from claim_agent.db.audit_events import AUDIT_EVENT_CREATED
+        """Seed a prior settled claim for reopened scenarios (prior_claim_id=CLM-PRIOR01).
+
+        The claim must carry a fixed ID (CLM-PRIOR01) so that reopened scenario data can
+        reference it via prior_claim_id.  ClaimRepository.create_claim() auto-generates IDs,
+        so the initial INSERT is performed via raw SQL.  All subsequent state transitions use
+        the repository so that audit entries are written consistently.
+        """
+        import json
+        from claim_agent.db.audit_events import ACTOR_SYSTEM, AUDIT_EVENT_CREATED
+        from claim_agent.db.constants import STATUS_PENDING, STATUS_SETTLED
         from claim_agent.db.database import get_connection
-        from claim_agent.db.constants import STATUS_SETTLED
+        from claim_agent.db.repository import ClaimRepository
 
         prior_id = "CLM-PRIOR01"
+        claim_type = "partial_loss"
+
+        # Insert the claim record with STATUS_PENDING (matching ClaimRepository.create_claim behaviour).
+        # INSERT OR IGNORE is safe because setup() creates a fresh DB each evaluation run.
         with get_connection(self._db_path) as conn:
             conn.execute(
                 """
@@ -1020,18 +1032,33 @@ class ClaimEvaluator:
                     "Rear-ended at stoplight. Damage to rear bumper and trunk.",
                     "Rear bumper and trunk damaged.",
                     3500.0,
-                    "partial_loss",
-                    STATUS_SETTLED,
+                    claim_type,
+                    STATUS_PENDING,
                     "[]",
                 ),
+            )
+            # Audit entry for record creation — consistent with ClaimRepository.create_claim().
+            after_state = json.dumps(
+                {"status": STATUS_PENDING, "claim_type": claim_type, "payout_amount": None}
             )
             conn.execute(
                 """
                 INSERT OR IGNORE INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (prior_id, AUDIT_EVENT_CREATED, STATUS_SETTLED, "Prior claim for reopened eval", "system", "{}"),
+                (prior_id, AUDIT_EVENT_CREATED, STATUS_PENDING, "Prior claim for reopened eval", ACTOR_SYSTEM, after_state),
             )
+
+        # Transition to settled via the repository so the audit trail mirrors normal workflow behaviour.
+        repo = ClaimRepository(self._db_path)
+        repo.update_claim_status(
+            prior_id,
+            STATUS_SETTLED,
+            "Prior claim settled (eval seed)",
+            claim_type=claim_type,
+            actor_id=ACTOR_SYSTEM,
+        )
+
         if self.verbose:
             print("[Setup] Seeded prior claim CLM-PRIOR01 for reopened scenarios")
 
