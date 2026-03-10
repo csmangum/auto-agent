@@ -41,7 +41,7 @@ const components: Components = {
   ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1 text-gray-400">{children}</ol>,
   li: ({ children }) => <li className="text-gray-400">{children}</li>,
   a: ({ href, children }) => {
-    const safeHref = isSafeHref(href) ? href : '#';
+    const safeHref = isSafeHref(href) ? href! : '#';
     return (
       <a
         href={safeHref}
@@ -66,8 +66,10 @@ const components: Components = {
   td: ({ children }) => (
     <td className="border border-gray-700/50 px-4 py-2 text-gray-400">{children}</td>
   ),
-  code: ({ inline, className, children }) => {
-    if (inline) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  code: ({ className, children, ...rest }: any) => {
+    const isInline = !className && !rest.node?.tagName?.match?.(/pre/i);
+    if (isInline) {
       return (
         <code className="bg-gray-800 text-pink-400 px-1.5 py-0.5 rounded text-sm font-mono ring-1 ring-gray-700/50">
           {children}
