@@ -1,10 +1,30 @@
-"""Unit tests for repair authorization webhook dispatch from workflow output."""
+"""Unit tests for repair authorization webhook dispatch and workflow stages."""
 
 import json
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+# Import workflow via main_crew first to avoid circular import when tests import stages
+import claim_agent.crews.main_crew  # noqa: F401
+
+from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.claim import ClaimInput
 from claim_agent.notifications.webhook import dispatch_repair_authorized_from_workflow_output
+
+
+def _make_claim_for_stage_tests(repo: ClaimRepository, claim_id: str = "CLM-1") -> str:
+    """Create a claim for stage tests (required for checkpoint FK)."""
+    return repo.create_claim(ClaimInput(
+        policy_number="POL-001",
+        vin="VIN123",
+        vehicle_year=2022,
+        vehicle_make="Test",
+        vehicle_model="Car",
+        incident_date="2025-06-01",
+        incident_description="Hit",
+        damage_description="Dent",
+        estimated_damage=3000,
+    ))
 
 
 class TestDispatchRepairAuthorizedFromWorkflowOutput:
@@ -198,3 +218,473 @@ class TestParseReopenedOutput:
 
         result = self._make_result_empty()
         assert _parse_reopened_output(result) == ClaimType.PARTIAL_LOSS.value
+
+
+class TestRunStage:
+    """Unit tests for _run_stage checkpoint wrapper."""
+
+    def test_successful_checkpoint_restore_skips_run(self, temp_db):
+        """When checkpoint exists and restores successfully, run is not called."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _run_stage
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {**claim_data, "id": claim_id}
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={"my_stage": json.dumps({"foo": "restored"})},
+        )
+
+        restore_called = []
+        run_called = []
+
+        def restore(c: _WorkflowCtx, cp: dict) -> None:
+            restore_called.append(cp)
+
+        def run(c: _WorkflowCtx) -> dict | None:
+            run_called.append(True)
+            return None
+
+        result = _run_stage(
+            wf_ctx,
+            "my_stage",
+            restore=restore,
+            run=run,
+            get_checkpoint_data=lambda c: {"foo": "bar"},
+        )
+
+        assert result is None
+        assert restore_called == [{"foo": "restored"}]
+        assert run_called == []
+
+    def test_corrupt_checkpoint_fallback_and_rerun(self, temp_db):
+        """When checkpoint is corrupt, it is invalidated and run is executed."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _run_stage
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {**claim_data, "id": claim_id}
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={"my_stage": "not valid json"},
+        )
+
+        run_called = []
+
+        def restore(c: _WorkflowCtx, cp: dict) -> None:
+            pass
+
+        def run(c: _WorkflowCtx) -> dict | None:
+            run_called.append(True)
+            return None
+
+        result = _run_stage(
+            wf_ctx,
+            "my_stage",
+            restore=restore,
+            run=run,
+            get_checkpoint_data=lambda c: {"foo": "bar"},
+        )
+
+        assert result is None
+        assert run_called == [True]
+        assert "my_stage" not in wf_ctx.checkpoints
+
+    def test_early_return_propagation(self, temp_db):
+        """When run returns a dict, it is propagated and checkpoint is not saved."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _run_stage
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {**claim_data, "id": claim_id}
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+        )
+
+        early = {"status": "escalated", "claim_id": claim_id}
+
+        def restore(c: _WorkflowCtx, cp: dict) -> None:
+            pass
+
+        def run(c: _WorkflowCtx) -> dict | None:
+            return early
+
+        result = _run_stage(
+            wf_ctx,
+            "my_stage",
+            restore=restore,
+            run=run,
+            get_checkpoint_data=lambda c: {"foo": "bar"},
+        )
+
+        assert result == early
+
+    def test_checkpoint_save_after_successful_run(self, temp_db):
+        """After successful run, checkpoint is saved via repo."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _run_stage
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {**claim_data, "id": claim_id}
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+        )
+
+        def restore(c: _WorkflowCtx, cp: dict) -> None:
+            pass
+
+        def run(c: _WorkflowCtx) -> dict | None:
+            return None
+
+        result = _run_stage(
+            wf_ctx,
+            "my_stage",
+            restore=restore,
+            run=run,
+            get_checkpoint_data=lambda c: {"saved": "data"},
+        )
+
+        assert result is None
+        cps = ctx.repo.get_task_checkpoints(claim_id, "run-1")
+        assert "my_stage" in cps
+        assert json.loads(cps["my_stage"]) == {"saved": "data"}
+
+
+class TestRunCrewStage:
+    """Unit tests for _run_crew_stage and _run_crew_stage_body."""
+
+    @patch("claim_agent.workflow.stages._check_token_budget")
+    @patch("claim_agent.workflow.stages.create_rental_crew")
+    def test_run_crew_stage_saves_checkpoint_after_success(
+        self, mock_create_crew, mock_budget, temp_db
+    ):
+        """_run_crew_stage saves checkpoint with crew output after successful run."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.models.claim import ClaimType
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _run_crew_stage, create_rental_crew
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {**claim_data, "id": claim_id, "claim_type": ClaimType.PARTIAL_LOSS.value}
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            claim_type=ClaimType.PARTIAL_LOSS.value,
+            workflow_output="prior",
+            checkpoints={},
+        )
+
+        crew_inst = MagicMock()
+        crew_inst.kickoff.return_value = MagicMock(raw="rental output here")
+        mock_create_crew.return_value = crew_inst
+
+        result = _run_crew_stage(
+            wf_ctx,
+            "rental",
+            "rental",
+            "rental_output",
+            create_crew=lambda c: create_rental_crew(c.context.llm),
+            get_inputs=lambda c: {"claim_data": json.dumps(c.claim_data_with_id), "workflow_output": c.workflow_output},
+            combine_label="Rental workflow output",
+        )
+
+        assert result is None
+        cps = ctx.repo.get_task_checkpoints(claim_id, "run-1")
+        assert "rental" in cps
+        cp_data = json.loads(cps["rental"])
+        assert cp_data["rental_output"] == "rental output here"
+
+    def test_run_crew_stage_restores_from_checkpoint(self, temp_db):
+        """_run_crew_stage restores workflow_output from checkpoint and skips crew."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.models.claim import ClaimType
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _run_crew_stage, create_rental_crew
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {**claim_data, "id": claim_id, "claim_type": ClaimType.PARTIAL_LOSS.value}
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            claim_type=ClaimType.PARTIAL_LOSS.value,
+            workflow_output="prior",
+            checkpoints={"rental": json.dumps({"rental_output": "cached rental output"})},
+        )
+
+        with patch("claim_agent.workflow.stages.create_rental_crew") as mock_create:
+            result = _run_crew_stage(
+                wf_ctx,
+                "rental",
+                "rental",
+                "rental_output",
+                create_crew=lambda c: create_rental_crew(c.context.llm),
+                get_inputs=lambda c: {"claim_data": json.dumps(c.claim_data_with_id), "workflow_output": c.workflow_output},
+                combine_label="Rental workflow output",
+            )
+
+        assert result is None
+        assert "cached rental output" in wf_ctx.workflow_output
+        mock_create.assert_not_called()
+
+
+class TestStageEconomicAnalysis:
+    """Unit tests for _stage_economic_analysis."""
+
+    @patch("claim_agent.workflow.stages._check_economic_total_loss")
+    def test_enriches_claim_data_with_id(self, mock_economic, temp_db):
+        """_stage_economic_analysis enriches ctx.claim_data_with_id with economic flags."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _stage_economic_analysis
+
+        mock_economic.return_value = {
+            "is_economic_total_loss": True,
+            "is_catastrophic_event": False,
+            "damage_indicates_total_loss": True,
+            "damage_is_repairable": False,
+            "vehicle_value": 20000,
+            "damage_to_value_ratio": 0.95,
+        }
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123", "estimated_damage": 19000}
+        claim_data_with_id = {**claim_data, "id": "CLM-1"}
+        wf_ctx = _WorkflowCtx(
+            claim_id="CLM-1",
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+        )
+
+        result = _stage_economic_analysis(wf_ctx)
+
+        assert result is None
+        assert wf_ctx.claim_data_with_id["is_economic_total_loss"] is True
+        assert wf_ctx.claim_data_with_id["is_catastrophic_event"] is False
+        assert wf_ctx.claim_data_with_id["damage_indicates_total_loss"] is True
+        assert wf_ctx.claim_data_with_id["damage_is_repairable"] is False
+        assert wf_ctx.claim_data_with_id["vehicle_value"] == 20000
+        assert wf_ctx.claim_data_with_id["damage_to_value_ratio"] == 0.95
+
+
+class TestStageFraudPrescreening:
+    """Unit tests for _stage_fraud_prescreening."""
+
+    @patch("claim_agent.workflow.stages.detect_fraud_indicators_impl")
+    def test_triggers_only_when_ratio_exceeds_threshold(self, mock_detect, temp_db):
+        """_stage_fraud_prescreening only runs when damage_to_value_ratio > threshold."""
+        from claim_agent.config.settings import PRE_ROUTING_FRAUD_DAMAGE_RATIO
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _stage_fraud_prescreening
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {
+            **claim_data,
+            "id": "CLM-1",
+            "damage_to_value_ratio": PRE_ROUTING_FRAUD_DAMAGE_RATIO + 0.1,
+            "is_catastrophic_event": False,
+            "damage_indicates_total_loss": False,
+        }
+        wf_ctx = _WorkflowCtx(
+            claim_id="CLM-1",
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+        )
+
+        mock_detect.return_value = json.dumps({"indicators": ["suspicious_timing"]})
+
+        result = _stage_fraud_prescreening(wf_ctx)
+
+        assert result is None
+        mock_detect.assert_called_once()
+        assert "pre_routing_fraud_indicators" in wf_ctx.claim_data_with_id
+
+    @patch("claim_agent.workflow.stages.detect_fraud_indicators_impl")
+    def test_skips_when_ratio_below_threshold(self, mock_detect, temp_db):
+        """_stage_fraud_prescreening does not run when ratio <= threshold."""
+        from claim_agent.config.settings import PRE_ROUTING_FRAUD_DAMAGE_RATIO
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _stage_fraud_prescreening
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {
+            **claim_data,
+            "id": "CLM-1",
+            "damage_to_value_ratio": PRE_ROUTING_FRAUD_DAMAGE_RATIO - 0.1,
+            "is_catastrophic_event": False,
+            "damage_indicates_total_loss": False,
+        }
+        wf_ctx = _WorkflowCtx(
+            claim_id="CLM-1",
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+        )
+
+        result = _stage_fraud_prescreening(wf_ctx)
+
+        assert result is None
+        mock_detect.assert_not_called()
+
+    @patch("claim_agent.workflow.stages.detect_fraud_indicators_impl")
+    def test_skips_when_catastrophic(self, mock_detect, temp_db):
+        """_stage_fraud_prescreening does not run when is_catastrophic_event."""
+        from claim_agent.config.settings import PRE_ROUTING_FRAUD_DAMAGE_RATIO
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _stage_fraud_prescreening
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123"}
+        claim_data_with_id = {
+            **claim_data,
+            "id": "CLM-1",
+            "damage_to_value_ratio": PRE_ROUTING_FRAUD_DAMAGE_RATIO + 0.1,
+            "is_catastrophic_event": True,
+            "damage_indicates_total_loss": False,
+        }
+        wf_ctx = _WorkflowCtx(
+            claim_id="CLM-1",
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+        )
+
+        result = _stage_fraud_prescreening(wf_ctx)
+
+        assert result is None
+        mock_detect.assert_not_called()
+
+
+class TestStageDuplicateDetection:
+    """Unit tests for _stage_duplicate_detection."""
+
+    @patch("claim_agent.workflow.stages._check_for_duplicates")
+    def test_rebuilds_inputs_with_enriched_claim_data(self, mock_check, temp_db):
+        """_stage_duplicate_detection rebuilds ctx.inputs with claim_data_with_id."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _stage_duplicate_detection
+
+        mock_check.return_value = []
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123", "incident_description": "Hit", "damage_description": "Dent"}
+        claim_data_with_id = {**claim_data, "id": "CLM-1"}
+        wf_ctx = _WorkflowCtx(
+            claim_id="CLM-1",
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={"old": "input"},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+        )
+
+        result = _stage_duplicate_detection(wf_ctx)
+
+        assert result is None
+        assert "claim_data" in wf_ctx.inputs
+        assert json.loads(wf_ctx.inputs["claim_data"]) == claim_data_with_id

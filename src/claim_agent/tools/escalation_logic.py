@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from claim_agent.config.llm import get_model_name
@@ -423,12 +423,12 @@ def escalate_claim_impl(
     )
 
     hours = 24 if priority in ("critical", "high") else 48 if priority == "medium" else 72
-    due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    due_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
     _repo.update_claim_review_metadata(
         claim_id,
         priority=priority,
         due_at=due_at,
-        review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        review_started_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
     _repo.insert_audit_entry(

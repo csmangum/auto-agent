@@ -26,7 +26,7 @@ class AdjusterActionService:
         actor_id: str,
     ) -> None:
         """Approve claim for continued processing. Caller must invoke run_claim_workflow."""
-        self._repo.perform_adjuster_action(claim_id, "approve", actor_id=actor_id)
+        self._repo.approve_claim(claim_id, actor_id=actor_id)
 
     def reject(
         self,
@@ -36,9 +36,7 @@ class AdjusterActionService:
         reason: str | None = None,
     ) -> None:
         """Reject claim with optional reason."""
-        self._repo.perform_adjuster_action(
-            claim_id, "reject", actor_id=actor_id, reason=reason
-        )
+        self._repo.reject_claim(claim_id, actor_id=actor_id, reason=reason)
 
     def request_info(
         self,
@@ -48,9 +46,7 @@ class AdjusterActionService:
         note: str | None = None,
     ) -> None:
         """Request more information from claimant."""
-        self._repo.perform_adjuster_action(
-            claim_id, "request_info", actor_id=actor_id, note=note
-        )
+        self._repo.request_info_claim(claim_id, actor_id=actor_id, note=note)
 
     def escalate_to_siu(
         self,
@@ -59,4 +55,4 @@ class AdjusterActionService:
         actor_id: str,
     ) -> None:
         """Escalate claim to Special Investigations Unit."""
-        self._repo.perform_adjuster_action(claim_id, "escalate_to_siu", actor_id=actor_id)
+        self._repo.escalate_claim_to_siu(claim_id, actor_id=actor_id)

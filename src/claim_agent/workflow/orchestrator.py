@@ -10,14 +10,6 @@ from dataclasses import dataclass, field
 import litellm
 
 from claim_agent.config.llm import get_llm
-from claim_agent.config.settings import (
-    DUPLICATE_DAYS_WINDOW,
-    DUPLICATE_SIMILARITY_THRESHOLD,
-    DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE,
-    HIGH_VALUE_DAMAGE_THRESHOLD,
-    HIGH_VALUE_VEHICLE_THRESHOLD,
-    PRE_ROUTING_FRAUD_DAMAGE_RATIO,
-)
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.exceptions import ClaimNotFoundError
@@ -26,24 +18,17 @@ from claim_agent.models.claim import ClaimInput
 from claim_agent.observability import claim_context, get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.observability.tracing import LiteLLMTracingCallback
-from claim_agent.tools.escalation_logic import detect_fraud_indicators_impl
 from claim_agent.utils.sanitization import sanitize_claim_data
 from claim_agent.workflow.budget import _record_crew_llm_usage
-from claim_agent.workflow.claim_analysis import (
-    _check_economic_total_loss,
-    _filter_weak_fraud_indicators,
-)
-from claim_agent.workflow.duplicate_detection import (
-    _check_for_duplicates,
-    _damage_tags_overlap,
-    _extract_damage_tags,
-)
 from claim_agent.workflow.helpers import (
     _checkpoint_keys_to_invalidate,
     _final_status,
 )
 from claim_agent.workflow.stages import (
+    _stage_duplicate_detection,
+    _stage_economic_analysis,
     _stage_escalation_check,
+    _stage_fraud_prescreening,
     _stage_rental,
     _stage_router,
     _stage_salvage,
@@ -101,6 +86,7 @@ class _WorkflowCtx:
     raw_output: str = ""
     workflow_output: str = ""
     extracted_payout: float | None = None
+    _last_stage_output: str = ""
 
 
 def run_claim_workflow(
@@ -219,108 +205,15 @@ def run_claim_workflow(
                     extra={"claim_id": claim_id},
                 )
 
-            economic_check = _check_economic_total_loss(claim_data)
             claim_data_with_id = {**claim_data, "claim_id": claim_id}
-            claim_data_with_id["is_economic_total_loss"] = economic_check.get("is_economic_total_loss", False)
-            claim_data_with_id["is_catastrophic_event"] = economic_check.get("is_catastrophic_event", False)
-            claim_data_with_id["damage_indicates_total_loss"] = economic_check.get("damage_indicates_total_loss", False)
-            claim_data_with_id["damage_is_repairable"] = economic_check.get("damage_is_repairable", False)
-            claim_data_with_id["vehicle_value"] = economic_check.get("vehicle_value")
-            claim_data_with_id["damage_to_value_ratio"] = economic_check.get("damage_to_value_ratio")
-
-            is_catastrophic = economic_check.get("is_catastrophic_event", False)
-            damage_indicates_total = economic_check.get("damage_indicates_total_loss", False)
-
-            if (economic_check.get("damage_to_value_ratio") or 0) > PRE_ROUTING_FRAUD_DAMAGE_RATIO and not is_catastrophic and not damage_indicates_total:
-                fraud_result = detect_fraud_indicators_impl(claim_data, ctx=ctx)
-                try:
-                    fraud_data = json.loads(fraud_result)
-                except (json.JSONDecodeError, TypeError):
-                    fraud_data = {}
-                indicators = fraud_data if isinstance(fraud_data, list) else (fraud_data.get("indicators", []) if isinstance(fraud_data, dict) else [])
-                if indicators:
-                    meaningful_indicators = _filter_weak_fraud_indicators(indicators)
-                    if meaningful_indicators:
-                        claim_data_with_id["pre_routing_fraud_indicators"] = meaningful_indicators
-
-            est_damage = claim_data.get("estimated_damage")
-            vehicle_value = economic_check.get("vehicle_value")
-            is_high_value = (
-                (est_damage is not None and est_damage > HIGH_VALUE_DAMAGE_THRESHOLD)
-                or (vehicle_value is not None and vehicle_value > HIGH_VALUE_VEHICLE_THRESHOLD)
-            )
-            if is_high_value:
-                claim_data_with_id["high_value_claim"] = True
-
-            existing_claims = _check_for_duplicates(claim_data, current_claim_id=claim_id, ctx=ctx)
-            similarity_score_for_escalation = None
-            if existing_claims:
-                from claim_agent.tools.claims_logic import compute_similarity_score_impl
-                current_incident = claim_data.get("incident_description", "") or ""
-                current_damage = claim_data.get("damage_description", "") or ""
-                current_combined = f"{current_incident} {current_damage}"
-                current_damage_tags = _extract_damage_tags(current_combined)
-
-                enriched_claims = []
-                for c in existing_claims[:5]:
-                    existing_incident = c.get("incident_description", "") or ""
-                    existing_damage = c.get("damage_description", "") or ""
-                    existing_combined = f"{existing_incident} {existing_damage}"
-                    existing_damage_tags = _extract_damage_tags(existing_combined)
-                    damage_type_match = _damage_tags_overlap(current_damage_tags, existing_damage_tags)
-
-                    try:
-                        similarity_score = compute_similarity_score_impl(current_combined, existing_combined)
-                    except (TypeError, ZeroDivisionError) as e:
-                        logger.warning(
-                            "Similarity computation failed for claim %s: %s",
-                            claim_id,
-                            str(e),
-                        )
-                        similarity_score = 0
-
-                    enriched_claims.append({
-                        "claim_id": c.get("id"),
-                        "incident_date": c.get("incident_date"),
-                        "incident_description": existing_incident[:200],
-                        "damage_description": existing_damage[:200],
-                        "damage_tags": sorted(existing_damage_tags),
-                        "damage_type_match": damage_type_match,
-                        "days_difference": c.get("days_difference"),
-                        "description_similarity_score": similarity_score,
-                    })
-                    if similarity_score_for_escalation is None or similarity_score > similarity_score_for_escalation:
-                        similarity_score_for_escalation = similarity_score
-
-                claim_data_with_id["existing_claims_for_vin"] = enriched_claims
-                claim_data_with_id["damage_tags"] = sorted(current_damage_tags)
-                is_high_value = claim_data_with_id.get("high_value_claim", False)
-                sim_threshold = DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE if is_high_value else DUPLICATE_SIMILARITY_THRESHOLD
-                definitive_duplicate = any(
-                    (e.get("description_similarity_score") or 0) >= sim_threshold
-                    and e.get("days_difference", 999) <= DUPLICATE_DAYS_WINDOW
-                    and e.get("damage_type_match")
-                    for e in enriched_claims
-                )
-                claim_data_with_id["definitive_duplicate"] = definitive_duplicate
-            else:
-                similarity_score_for_escalation = None
-                claim_data_with_id["definitive_duplicate"] = False
-            inputs = {"claim_data": json.dumps(claim_data_with_id) if isinstance(claim_data_with_id, dict) else claim_data_with_id}
-            claim_data_str = inputs["claim_data"] if isinstance(inputs["claim_data"], str) else json.dumps(inputs["claim_data"])
-            logger.debug(
-                "router_input_size claim_id=%s payload_chars=%s existing_claims_count=%s",
-                claim_id,
-                len(claim_data_str),
-                len(claim_data_with_id.get("existing_claims_for_vin") or []),
-            )
+            inputs = {"claim_data": json.dumps(claim_data_with_id)}
 
             wf_ctx = _WorkflowCtx(
                 claim_id=claim_id,
                 claim_data=claim_data,
                 claim_data_with_id=claim_data_with_id,
                 inputs=inputs,
-                similarity_score_for_escalation=similarity_score_for_escalation,
+                similarity_score_for_escalation=None,
                 context=ctx,
                 workflow_run_id=workflow_run_id,
                 workflow_start_time=workflow_start_time,
@@ -329,7 +222,18 @@ def run_claim_workflow(
                 is_resume_run=resume_run_id is not None,
             )
 
-            for stage_fn in (_stage_router, _stage_escalation_check, _stage_workflow_crew, _stage_rental, _stage_settlement, _stage_subrogation, _stage_salvage):
+            for stage_fn in (
+                _stage_economic_analysis,
+                _stage_fraud_prescreening,
+                _stage_duplicate_detection,
+                _stage_router,
+                _stage_escalation_check,
+                _stage_workflow_crew,
+                _stage_rental,
+                _stage_settlement,
+                _stage_subrogation,
+                _stage_salvage,
+            ):
                 early_return = stage_fn(wf_ctx)
                 if early_return is not None:
                     return early_return

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from claim_agent.config.settings import (
@@ -90,12 +90,12 @@ def _escalate_low_router_confidence(
     repo.update_claim_status(
         claim_id, STATUS_NEEDS_REVIEW, claim_type=claim_type, details=details, actor_id=actor_id
     )
-    due_at = (datetime.utcnow() + timedelta(hours=sla_hours)).strftime("%Y-%m-%d %H:%M:%S")
+    due_at = (datetime.now(timezone.utc) + timedelta(hours=sla_hours)).strftime("%Y-%m-%d %H:%M:%S")
     repo.update_claim_review_metadata(
         claim_id,
         priority="medium",
         due_at=due_at,
-        review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        review_started_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     )
     workflow_duration = (time.time() - workflow_start_time) * 1000
     workflow_logger.log_event(
@@ -199,12 +199,12 @@ def _handle_mid_workflow_escalation(
                 actor_id=actor_id,
             )
             hours = _sla_hours_for_priority(e.priority)
-            due_at = (datetime.utcnow() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+            due_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
             repo.update_claim_review_metadata(
                 claim_id,
                 priority=e.priority,
                 due_at=due_at,
-                review_started_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                review_started_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             )
 
     workflow_duration = (time.time() - workflow_start_time) * 1000

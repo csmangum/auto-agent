@@ -69,7 +69,7 @@ def test_assign_raises_when_not_needs_review(service, repo):
 
 
 def test_reject_delegates_to_repo(service, repo, temp_db):
-    """Reject delegates to repo.perform_adjuster_action."""
+    """Reject delegates to repo.reject_claim."""
     claim_input = ClaimInput(
         policy_number="POL-C",
         vin="VIN-C",
@@ -99,7 +99,7 @@ def test_reject_raises_on_not_found(service):
 
 
 def test_request_info_delegates_to_repo(service, repo, temp_db):
-    """Request_info delegates to repo.perform_adjuster_action."""
+    """Request_info delegates to repo.request_info_claim."""
     claim_input = ClaimInput(
         policy_number="POL-D",
         vin="VIN-D",
@@ -123,7 +123,7 @@ def test_request_info_delegates_to_repo(service, repo, temp_db):
 
 
 def test_escalate_to_siu_delegates_to_repo(service, repo, temp_db):
-    """Escalate_to_siu delegates to repo.perform_adjuster_action."""
+    """Escalate_to_siu delegates to repo.escalate_claim_to_siu."""
     claim_input = ClaimInput(
         policy_number="POL-E",
         vin="VIN-E",
@@ -147,7 +147,7 @@ def test_escalate_to_siu_delegates_to_repo(service, repo, temp_db):
 
 
 def test_approve_delegates_to_repo(service, repo, temp_db):
-    """Approve delegates to repo.perform_adjuster_action (audit only, no status change)."""
+    """Approve delegates to repo.approve_claim (audit only, no status change)."""
     claim_input = ClaimInput(
         policy_number="POL-F",
         vin="VIN-F",
