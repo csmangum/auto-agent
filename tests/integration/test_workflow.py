@@ -522,6 +522,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
     @pytest.mark.integration
     @pytest.mark.llm
+    @pytest.mark.slow
     def test_duplicate_crew_invokes_search_tool_when_run(
         self, seeded_db, seeded_db_base_date
     ):
@@ -557,6 +558,7 @@ class TestWorkflowCrewClaimDataAndTools:
 
     @pytest.mark.integration
     @pytest.mark.llm
+    @pytest.mark.slow
     def test_bodily_injury_crew_invokes_tools_when_run(
         self, sample_bodily_injury_claim
     ):
@@ -646,6 +648,7 @@ def _run_llm_call(fn):
 
 @pytest.mark.llm
 @pytest.mark.e2e
+@pytest.mark.slow
 class TestWorkflowWithLLM:
     """End-to-end tests with real LLM (requires OPENAI_API_KEY or OPENROUTER_API_KEY).
 

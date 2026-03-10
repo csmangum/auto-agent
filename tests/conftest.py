@@ -200,3 +200,14 @@ def claim_context(temp_db):
     from claim_agent.context import ClaimContext
 
     return ClaimContext.from_defaults(db_path=temp_db)
+
+
+@pytest.fixture(scope="session")
+def _preload_embedding_model():
+    """Pre-load sentence-transformers so RAG tests share cached model."""
+    pytest.importorskip("sentence_transformers")
+    from claim_agent.rag.embeddings import get_embedding_provider
+
+    p = get_embedding_provider()
+    _ = p.embed("warmup")  # trigger load
+    yield

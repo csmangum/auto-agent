@@ -10,6 +10,7 @@ import pytest
 
 # Skip all RAG tests if sentence-transformers is not installed
 pytest.importorskip("sentence_transformers")
+pytestmark = pytest.mark.usefixtures("_preload_embedding_model")
 
 
 # Test data directory

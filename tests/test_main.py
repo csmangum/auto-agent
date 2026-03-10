@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -58,44 +59,59 @@ def test_process_invalid_claim_exits_nonzero_no_claim_created():
         os.unlink(claim_path)
 
 
-def test_cli_status_nonexistent_exits_nonzero():
+def test_cli_status_nonexistent_exits_nonzero(capsys):
     """status with nonexistent claim_id exits non-zero and prints not found."""
+    from claim_agent.main import cmd_status
+
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
         from claim_agent.db.database import init_db
         init_db(db_path)
-        code, out, err = _run_cli(["status", "CLM-NONEXISTENT"], env={"CLAIMS_DB_PATH": db_path})
-        assert code != 0
-        assert "not found" in err.lower()
+        with patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_status("CLM-NONEXISTENT")
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "not found" in captured.err.lower()
     finally:
         os.unlink(db_path)
 
 
-def test_cli_history_nonexistent_exits_nonzero():
+def test_cli_history_nonexistent_exits_nonzero(capsys):
     """history with nonexistent claim_id exits non-zero and prints not found."""
+    from claim_agent.main import cmd_history
+
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
         from claim_agent.db.database import init_db
         init_db(db_path)
-        code, out, err = _run_cli(["history", "CLM-NONEXISTENT"], env={"CLAIMS_DB_PATH": db_path})
-        assert code != 0
-        assert "not found" in err.lower()
+        with patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_history("CLM-NONEXISTENT")
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "not found" in captured.err.lower()
     finally:
         os.unlink(db_path)
 
 
-def test_cli_reprocess_nonexistent_exits_nonzero():
+def test_cli_reprocess_nonexistent_exits_nonzero(capsys):
     """reprocess with nonexistent claim_id exits non-zero and prints not found."""
+    from claim_agent.main import cmd_reprocess
+
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
         from claim_agent.db.database import init_db
         init_db(db_path)
-        code, out, err = _run_cli(["reprocess", "CLM-NONEXISTENT"], env={"CLAIMS_DB_PATH": db_path})
-        assert code != 0
-        assert "not found" in err.lower()
+        with patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_reprocess("CLM-NONEXISTENT")
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "not found" in captured.err.lower()
     finally:
         os.unlink(db_path)
 

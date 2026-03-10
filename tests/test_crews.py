@@ -413,6 +413,7 @@ def test_subrogation_crew_structure():
 
 
 @pytest.mark.llm
+@pytest.mark.slow
 @pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_new_claim_crew_kickoff():
     """Run new claim crew on sample input (requires LLM)."""
@@ -430,6 +431,7 @@ def test_new_claim_crew_kickoff():
 
 
 @pytest.mark.llm
+@pytest.mark.slow
 @pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_duplicate_crew_kickoff():
     """Run duplicate crew on sample input (requires LLM)."""
@@ -446,6 +448,7 @@ def test_duplicate_crew_kickoff():
 
 
 @pytest.mark.llm
+@pytest.mark.slow
 @pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_total_loss_crew_kickoff():
     """Run total loss crew on sample input (requires LLM)."""
@@ -462,6 +465,7 @@ def test_total_loss_crew_kickoff():
 
 
 @pytest.mark.llm
+@pytest.mark.slow
 @pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_fraud_detection_crew_kickoff():
     """Run fraud detection crew on sample input (requires LLM)."""
@@ -479,6 +483,7 @@ def test_fraud_detection_crew_kickoff():
 
 
 @pytest.mark.llm
+@pytest.mark.slow
 @pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_partial_loss_crew_kickoff():
     """Run partial loss crew on sample input (requires LLM)."""
@@ -495,6 +500,7 @@ def test_partial_loss_crew_kickoff():
 
 
 @pytest.mark.llm
+@pytest.mark.slow
 @pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")
 def test_rental_crew_kickoff():
     """Run rental crew on sample input; verifies output structure (requires LLM)."""
