@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 import StatusBadge from '../components/StatusBadge';
+import TypeBadge from '../components/TypeBadge';
 import {
   processClaimAsync,
   streamClaimUpdates,
@@ -25,6 +27,11 @@ const INITIAL_FORM: ClaimFormState = {
   damage_description: '',
   estimated_damage: undefined,
 };
+
+const inputClasses =
+  'w-full border border-gray-700 rounded-lg px-3 py-2 bg-gray-800 text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors';
+
+const labelClasses = 'block text-sm font-medium text-gray-300 mb-1.5';
 
 export default function NewClaimForm() {
   const [form, setForm] = useState<ClaimFormState>(INITIAL_FORM);
@@ -119,215 +126,256 @@ export default function NewClaimForm() {
   }, []);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">New Claim</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Submit a claim and watch it get routed and resolved in realtime
-        </p>
-      </div>
+    <div className="space-y-8 animate-fade-in">
+      <PageHeader
+        title="New Claim"
+        subtitle="Submit a claim and watch it get routed and resolved in realtime"
+      />
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label htmlFor="policy_number" className="block text-sm font-medium text-gray-700 mb-1">
-              Policy Number
-            </label>
-            <input
-              id="policy_number"
-              type="text"
-              value={form.policy_number}
-              onChange={(e) => updateField('policy_number', e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="POL-001"
-            />
-          </div>
-          <div>
-            <label htmlFor="vin" className="block text-sm font-medium text-gray-700 mb-1">
-              VIN
-            </label>
-            <input
-              id="vin"
-              type="text"
-              value={form.vin}
-              onChange={(e) => updateField('vin', e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="1HGBH41JXMN109186"
-            />
-          </div>
-          <div>
-            <label htmlFor="vehicle_year" className="block text-sm font-medium text-gray-700 mb-1">
-              Vehicle Year
-            </label>
-            <input
-              id="vehicle_year"
-              type="number"
-              value={form.vehicle_year ?? ''}
-              onChange={(e) => {
-                const raw = e.target.value;
-                const num = parseInt(raw, 10);
-                updateField(
-                  'vehicle_year',
-                  raw === '' ? undefined : (Number.isNaN(num) ? form.vehicle_year : num)
-                );
-              }}
-              required
-              min={1900}
-              max={2100}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="vehicle_make" className="block text-sm font-medium text-gray-700 mb-1">
-              Vehicle Make
-            </label>
-            <input
-              id="vehicle_make"
-              type="text"
-              value={form.vehicle_make}
-              onChange={(e) => updateField('vehicle_make', e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Honda"
-            />
-          </div>
-          <div>
-            <label htmlFor="vehicle_model" className="block text-sm font-medium text-gray-700 mb-1">
-              Vehicle Model
-            </label>
-            <input
-              id="vehicle_model"
-              type="text"
-              value={form.vehicle_model}
-              onChange={(e) => updateField('vehicle_model', e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Accord"
-            />
-          </div>
-          <div>
-            <label htmlFor="incident_date" className="block text-sm font-medium text-gray-700 mb-1">
-              Incident Date
-            </label>
-            <input
-              id="incident_date"
-              type="date"
-              value={form.incident_date}
-              onChange={(e) => updateField('incident_date', e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="estimated_damage" className="block text-sm font-medium text-gray-700 mb-1">
-              Estimated Damage ($)
-            </label>
-            <input
-              id="estimated_damage"
-              type="number"
-              value={form.estimated_damage ?? ''}
-              onChange={(e) =>
-                updateField(
-                  'estimated_damage',
-                  e.target.value ? parseFloat(e.target.value) : undefined
-                )
-              }
-              min={0}
-              step={0.01}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Optional"
-            />
+      <form onSubmit={handleSubmit} className="bg-gray-800/50 rounded-xl border border-gray-700/50 overflow-hidden">
+        {/* Vehicle Information */}
+        <div className="p-6 border-b border-gray-700/30">
+          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+            <span>🚗</span> Vehicle Information
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label htmlFor="policy_number" className={labelClasses}>
+                Policy Number <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="policy_number"
+                type="text"
+                value={form.policy_number}
+                onChange={(e) => updateField('policy_number', e.target.value)}
+                required
+                className={inputClasses}
+                placeholder="POL-001"
+              />
+            </div>
+            <div>
+              <label htmlFor="vin" className={labelClasses}>
+                VIN <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="vin"
+                type="text"
+                value={form.vin}
+                onChange={(e) => updateField('vin', e.target.value)}
+                required
+                className={inputClasses}
+                placeholder="1HGBH41JXMN109186"
+              />
+            </div>
+            <div>
+              <label htmlFor="vehicle_year" className={labelClasses}>
+                Vehicle Year <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="vehicle_year"
+                type="number"
+                value={form.vehicle_year ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const num = parseInt(raw, 10);
+                  updateField(
+                    'vehicle_year',
+                    raw === '' ? undefined : (Number.isNaN(num) ? form.vehicle_year : num)
+                  );
+                }}
+                required
+                min={1900}
+                max={2100}
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label htmlFor="vehicle_make" className={labelClasses}>
+                Vehicle Make <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="vehicle_make"
+                type="text"
+                value={form.vehicle_make}
+                onChange={(e) => updateField('vehicle_make', e.target.value)}
+                required
+                className={inputClasses}
+                placeholder="Honda"
+              />
+            </div>
+            <div>
+              <label htmlFor="vehicle_model" className={labelClasses}>
+                Vehicle Model <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="vehicle_model"
+                type="text"
+                value={form.vehicle_model}
+                onChange={(e) => updateField('vehicle_model', e.target.value)}
+                required
+                className={inputClasses}
+                placeholder="Accord"
+              />
+            </div>
           </div>
         </div>
 
-        <div>
-          <label htmlFor="incident_description" className="block text-sm font-medium text-gray-700 mb-1">
-            Incident Description
-          </label>
-          <textarea
-            id="incident_description"
-            value={form.incident_description}
-            onChange={(e) => updateField('incident_description', e.target.value)}
-            required
-            rows={3}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Describe what happened..."
-          />
-        </div>
-
-        <div>
-          <label htmlFor="damage_description" className="block text-sm font-medium text-gray-700 mb-1">
-            Damage Description
-          </label>
-          <textarea
-            id="damage_description"
-            value={form.damage_description}
-            onChange={(e) => updateField('damage_description', e.target.value)}
-            required
-            rows={3}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Describe the vehicle damage..."
-          />
-        </div>
-
-        <div>
-          <label htmlFor="attachments" className="block text-sm font-medium text-gray-700 mb-1">
-            Attachments (optional)
-          </label>
-          <input
-            id="attachments"
-            type="file"
-            multiple
-            accept="image/*,.pdf"
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-          />
-          {files.length > 0 && (
-            <p className="mt-1 text-xs text-gray-500">{files.length} file(s) selected</p>
-          )}
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800">{error}</p>
+        {/* Incident Details */}
+        <div className="p-6 border-b border-gray-700/30">
+          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+            <span>📝</span> Incident Details
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+            <div>
+              <label htmlFor="incident_date" className={labelClasses}>
+                Incident Date <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="incident_date"
+                type="date"
+                value={form.incident_date}
+                onChange={(e) => updateField('incident_date', e.target.value)}
+                required
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label htmlFor="estimated_damage" className={labelClasses}>
+                Estimated Damage ($)
+              </label>
+              <input
+                id="estimated_damage"
+                type="number"
+                value={form.estimated_damage ?? ''}
+                onChange={(e) =>
+                  updateField(
+                    'estimated_damage',
+                    e.target.value ? parseFloat(e.target.value) : undefined
+                  )
+                }
+                min={0}
+                step={0.01}
+                className={inputClasses}
+                placeholder="Optional"
+              />
+            </div>
           </div>
-        )}
 
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={submitting || (!!claimId && !done)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          <div className="space-y-5">
+            <div>
+              <label htmlFor="incident_description" className={labelClasses}>
+                Incident Description <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                id="incident_description"
+                value={form.incident_description}
+                onChange={(e) => updateField('incident_description', e.target.value)}
+                required
+                rows={3}
+                className={inputClasses}
+                placeholder="Describe what happened…"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="damage_description" className={labelClasses}>
+                Damage Description <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                id="damage_description"
+                value={form.damage_description}
+                onChange={(e) => updateField('damage_description', e.target.value)}
+                required
+                rows={3}
+                className={inputClasses}
+                placeholder="Describe the vehicle damage…"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Attachments */}
+        <div className="p-6 border-b border-gray-700/30">
+          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+            <span>📎</span> Attachments
+          </h3>
+          <label
+            htmlFor="attachments"
+            className="flex flex-col items-center justify-center py-8 px-4 border-2 border-dashed border-gray-700 rounded-xl bg-gray-800/30 hover:bg-gray-800/50 hover:border-gray-600 transition-colors cursor-pointer"
           >
-            {submitting ? 'Submitting...' : claimId && !done ? 'Processing...' : 'Submit Claim'}
-          </button>
-          {claimId && done && (
-            <>
-              <Link
-                to={`/claims/${claimId}`}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
-              >
-                View Claim
-              </Link>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
-              >
-                New Claim
-              </button>
-            </>
+            <span className="text-3xl mb-2 opacity-40">📂</span>
+            <span className="text-sm text-gray-400 mb-1">
+              Drop files here or <span className="text-blue-400">browse</span>
+            </span>
+            <span className="text-xs text-gray-600">
+              Photos, PDFs, estimates (optional)
+            </span>
+            <input
+              id="attachments"
+              type="file"
+              multiple
+              accept="image/*,.pdf"
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              className="hidden"
+            />
+          </label>
+          {files.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {files.map((f, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-800 text-xs text-gray-300 ring-1 ring-gray-700"
+                >
+                  📄 {f.name}
+                </span>
+              ))}
+            </div>
           )}
+        </div>
+
+        {/* Error & Actions */}
+        <div className="p-6">
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-4 flex items-start gap-3">
+              <span className="text-lg">⚠️</span>
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={submitting || (!!claimId && !done)}
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+            >
+              {submitting ? 'Submitting…' : claimId && !done ? 'Processing…' : 'Submit Claim'}
+            </button>
+            {claimId && done && (
+              <>
+                <Link
+                  to={`/claims/${claimId}`}
+                  className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-500 transition-all active:scale-[0.98]"
+                >
+                  View Claim
+                </Link>
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="px-5 py-2.5 border border-gray-700 rounded-lg font-medium text-gray-300 hover:bg-gray-800 transition-all active:scale-[0.98]"
+                >
+                  New Claim
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </form>
 
       {/* Realtime processing view */}
       {claimId && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
-            <h2 className="text-lg font-semibold text-gray-900">Processing in Realtime</h2>
+        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 overflow-hidden animate-slide-up">
+          <div className="px-6 py-4 border-b border-gray-700/30 bg-gray-800/80">
+            <h2 className="text-lg font-semibold text-gray-100">Processing in Realtime</h2>
             <p className="text-sm text-gray-500 mt-0.5">
               Claim {claimId} — routing and resolution updates stream live below
             </p>
@@ -336,20 +384,18 @@ export default function NewClaimForm() {
           <div className="p-6 space-y-6">
             {/* Status and routing */}
             <div className="flex flex-wrap items-center gap-4">
-              <div>
-                <span className="text-sm text-gray-500 mr-2">Status:</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Status:</span>
                 <StatusBadge status={claim?.status ?? 'pending'} />
               </div>
               {claim?.claim_type && (
-                <div>
-                  <span className="text-sm text-gray-500 mr-2">Routed to:</span>
-                  <span className="font-medium text-gray-900">
-                    {claim.claim_type.replace(/_/g, ' ')}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Routed to:</span>
+                  <TypeBadge type={claim.claim_type} />
                 </div>
               )}
               {!done && (
-                <span className="inline-flex items-center gap-1.5 text-sm text-blue-600">
+                <span className="inline-flex items-center gap-1.5 text-sm text-blue-400">
                   <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                   Live
                 </span>
@@ -359,26 +405,26 @@ export default function NewClaimForm() {
             {/* Audit timeline */}
             {history.length > 0 && (
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Audit Log</h3>
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Audit Log</h3>
                 <ul className="space-y-2">
                   {history.map((evt, i) => (
                     <li
                       key={evt.id ?? i}
-                      className="flex items-start gap-2 text-sm py-2 px-3 bg-gray-50 rounded-lg"
+                      className="flex items-start gap-3 text-sm py-2.5 px-3 bg-gray-900/50 rounded-lg ring-1 ring-gray-700/30"
                     >
-                      <span className="text-gray-500 shrink-0">
+                      <span className="text-gray-500 shrink-0 text-xs">
                         {evt.created_at
                           ? new Date(evt.created_at).toLocaleTimeString()
                           : '—'}
                       </span>
-                      <span className="font-medium">{evt.action}</span>
+                      <span className="font-medium text-gray-300">{evt.action}</span>
                       {evt.old_status && evt.new_status && (
                         <span className="text-gray-500">
                           {evt.old_status} → {evt.new_status}
                         </span>
                       )}
                       {evt.details && (
-                        <span className="text-gray-600 truncate">{evt.details}</span>
+                        <span className="text-gray-500 truncate">{evt.details}</span>
                       )}
                     </li>
                   ))}
@@ -389,17 +435,15 @@ export default function NewClaimForm() {
             {/* Workflow runs */}
             {workflows.length > 0 && (
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Workflow Runs</h3>
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Workflow Runs</h3>
                 <div className="space-y-3">
                   {workflows.map((wf, i) => (
                     <div
                       key={wf.id ?? i}
-                      className="p-4 border border-gray-200 rounded-lg bg-white"
+                      className="p-4 border border-gray-700/50 rounded-lg bg-gray-900/30"
                     >
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                          {wf.claim_type?.replace(/_/g, ' ') ?? 'unclassified'}
-                        </span>
+                        <TypeBadge type={wf.claim_type} />
                         {wf.created_at && (
                           <span className="text-xs text-gray-500">
                             {new Date(wf.created_at).toLocaleString()}
@@ -407,13 +451,13 @@ export default function NewClaimForm() {
                         )}
                       </div>
                       {wf.router_output && (
-                        <p className="text-sm text-gray-600 mb-1">
-                          <span className="font-medium">Router:</span> {wf.router_output}
+                        <p className="text-sm text-gray-400 mb-1">
+                          <span className="font-medium text-gray-300">Router:</span> {wf.router_output}
                         </p>
                       )}
                       {wf.workflow_output && (
-                        <p className="text-sm text-gray-600">
-                          <span className="font-medium">Output:</span> {wf.workflow_output}
+                        <p className="text-sm text-gray-400">
+                          <span className="font-medium text-gray-300">Output:</span> {wf.workflow_output}
                         </p>
                       )}
                     </div>
@@ -423,7 +467,7 @@ export default function NewClaimForm() {
             )}
 
             {!claim && !done && !error && (
-              <p className="text-sm text-gray-500">Waiting for first update...</p>
+              <p className="text-sm text-gray-500 animate-pulse">Waiting for first update…</p>
             )}
           </div>
         </div>

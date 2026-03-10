@@ -21,10 +21,11 @@ export default function Documentation() {
   }, [slug, firstSlug, navigate]);
 
   return (
-    <div className="flex gap-6 min-h-[calc(100vh-120px)]">
+    <div className="flex gap-6 min-h-[calc(100vh-120px)] animate-fade-in">
+      {/* Desktop sidebar */}
       <div className="w-56 shrink-0 hidden md:block">
         <div className="sticky top-6">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+          <h2 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-3 px-3">
             Documentation
           </h2>
           <nav className="space-y-0.5">
@@ -33,10 +34,10 @@ export default function Documentation() {
                 key={page.slug}
                 to={`/docs/${page.slug}`}
                 className={({ isActive }) =>
-                  `block px-3 py-1.5 rounded-md text-sm transition-colors ${
+                  `block px-3 py-1.5 rounded-lg text-sm transition-colors ${
                     isActive
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-blue-600/15 text-blue-400 font-medium'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                   }`
                 }
               >
@@ -47,11 +48,12 @@ export default function Documentation() {
         </div>
       </div>
 
+      {/* Mobile doc selector */}
       <div className="md:hidden mb-4 w-full">
         <select
           value={slug ?? ''}
           onChange={(e) => navigate(`/docs/${e.target.value}`)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+          className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
         >
           {pages.map((page) => (
             <option key={page.slug} value={page.slug}>
@@ -61,22 +63,24 @@ export default function Documentation() {
         </select>
       </div>
 
+      {/* Content */}
       <div className="flex-1 min-w-0">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <p className="text-red-800 text-sm">{error instanceof Error ? error.message : 'Unknown error'}</p>
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-4 flex items-start gap-3">
+            <span className="text-lg">⚠️</span>
+            <p className="text-sm text-red-400">{error instanceof Error ? error.message : 'Unknown error'}</p>
           </div>
         )}
 
         {loading ? (
-          <div className="animate-pulse space-y-4">
-            <div className="h-10 bg-gray-200 rounded w-64" />
-            <div className="h-4 bg-gray-100 rounded w-full" />
-            <div className="h-4 bg-gray-100 rounded w-5/6" />
-            <div className="h-4 bg-gray-100 rounded w-4/6" />
+          <div className="space-y-4">
+            <div className="h-10 bg-gray-700/50 rounded w-64 skeleton-shimmer" />
+            <div className="h-4 bg-gray-700/30 rounded w-full skeleton-shimmer" />
+            <div className="h-4 bg-gray-700/30 rounded w-5/6 skeleton-shimmer" />
+            <div className="h-4 bg-gray-700/30 rounded w-4/6 skeleton-shimmer" />
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 p-8">
+          <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-8">
             <MarkdownRenderer content={content} />
           </div>
         )}
