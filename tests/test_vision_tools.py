@@ -51,17 +51,19 @@ class TestAnalyzeDamagePhotoImpl:
 
     def test_file_size_exceeds_limit_returns_error(self):
         """File larger than 20MB returns error."""
-        with tempfile.TemporaryDirectory() as tmp:
-            storage = Path(tmp) / "attachments"
-            storage.mkdir()
-            large_file = storage / "big.jpg"
-            large_file.write_bytes(b"x" * (21 * 1024 * 1024))
-            url = f"file://{large_file}"
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"small")
+            path = f.name
+        try:
+            url = f"file://{path}"
             with patch("claim_agent.tools.vision_logic.get_settings") as mock_get:
-                mock_get.return_value.paths.attachment_storage_path = tmp
-                result = analyze_damage_photo_impl(url)
+                mock_get.return_value.paths.attachment_storage_path = str(Path(path).parent)
+                with patch("claim_agent.tools.vision_logic.MAX_VISION_FILE_BYTES", 1):
+                    result = analyze_damage_photo_impl(url)
             parsed = json.loads(result)
             assert "exceeds the limit" in parsed["error"]
+        finally:
+            Path(path).unlink(missing_ok=True)
 
     def test_vision_model_exception_returns_error_in_result(self):
         """When litellm raises, error is captured in result."""

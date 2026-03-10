@@ -93,6 +93,7 @@ describe('API client', () => {
   });
 
   it('retries once on 5xx error', async () => {
+    vi.useFakeTimers();
     const mockFetch = vi.mocked(fetch);
     mockFetch
       .mockResolvedValueOnce({
@@ -105,10 +106,13 @@ describe('API client', () => {
         json: async () => ({ total_claims: 0, by_status: {}, by_type: {} }),
       } as Response);
 
-    const result = await getClaimsStats();
+    const pending = getClaimsStats();
+    await vi.advanceTimersByTimeAsync(500);
+    const result = await pending;
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ total_claims: 0, by_status: {}, by_type: {} });
+    vi.useRealTimers();
   });
 
   it('getClaims builds query string from params', async () => {
