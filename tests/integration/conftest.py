@@ -1,23 +1,19 @@
 """Shared fixtures for integration tests.
 
-This module provides fixtures that are commonly needed for integration tests,
-including database setup, mock LLM configurations, and test data loading.
+This module provides fixtures for integration tests.
+Database, sample claims, and mock LLM fixtures come from tests.conftest_shared.
 """
 
-import json
 import os
-import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Generator
-from unittest.mock import MagicMock
 
 import pytest
 
 # Ensure project paths are set
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-SAMPLE_CLAIMS_DIR = Path(__file__).parent.parent / "sample_claims"
 
 # Set MOCK_DB_PATH for all tests
 os.environ.setdefault("MOCK_DB_PATH", str(DATA_DIR / "mock_db.json"))
@@ -27,43 +23,6 @@ os.environ.setdefault("MOCK_DB_PATH", str(DATA_DIR / "mock_db.json"))
 def temp_db():
     """Override root autouse temp_db - integration tests use integration_db explicitly."""
     yield None
-
-
-# ============================================================================
-# Database Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def integration_db() -> Generator[str, None, None]:
-    """Create a temporary SQLite database for integration tests.
-    
-    This fixture provides a clean database for each test and automatically
-    cleans up after the test completes.
-    
-    Yields:
-        str: Path to the temporary database file.
-    """
-    from claim_agent.db.database import init_db
-    
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    
-    prev = os.environ.get("CLAIMS_DB_PATH")
-    try:
-        init_db(path)
-        os.environ["CLAIMS_DB_PATH"] = path
-        yield path
-    finally:
-        if prev is None:
-            os.environ.pop("CLAIMS_DB_PATH", None)
-        else:
-            os.environ["CLAIMS_DB_PATH"] = prev
-        try:
-            os.unlink(path)
-        except OSError:
-            # Ignore errors if the file doesn't exist or can't be deleted
-            pass
 
 
 # Base date for seeded_db claims (shared so tests can search by it)
@@ -133,82 +92,6 @@ def seeded_db(integration_db: str) -> Generator[str, None, None]:
         repo.create_claim(ClaimInput(**claim_data))
     
     yield integration_db
-
-
-# ============================================================================
-# Sample Claim Data Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def sample_new_claim() -> dict:
-    """Load sample new claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "new_claim.json") as f:
-        return json.load(f)
-
-
-@pytest.fixture
-def sample_fraud_claim() -> dict:
-    """Load sample fraud claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "fraud_claim.json") as f:
-        return json.load(f)
-
-
-@pytest.fixture
-def sample_total_loss_claim() -> dict:
-    """Load sample total loss claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "total_loss_claim.json") as f:
-        return json.load(f)
-
-
-@pytest.fixture
-def sample_duplicate_claim() -> dict:
-    """Load sample duplicate claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "duplicate_claim.json") as f:
-        return json.load(f)
-
-
-@pytest.fixture
-def sample_partial_loss_claim() -> dict:
-    """Load sample partial loss claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "partial_loss_claim.json") as f:
-        return json.load(f)
-
-
-@pytest.fixture
-def sample_bodily_injury_claim() -> dict:
-    """Load sample bodily injury claim data."""
-    with open(SAMPLE_CLAIMS_DIR / "bodily_injury_claim.json") as f:
-        return json.load(f)
-
-
-# ============================================================================
-# Mock LLM Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def mock_router_response():
-    """Factory fixture for creating mock router responses."""
-    def _create_response(claim_type: str, reasoning: str = "Test reasoning."):
-        mock_result = MagicMock()
-        mock_result.raw = f"{claim_type}\n{reasoning}"
-        mock_result.output = f"{claim_type}\n{reasoning}"
-        return mock_result
-    return _create_response
-
-
-@pytest.fixture
-def mock_crew_response():
-    """Factory fixture for creating mock crew responses."""
-    def _create_response(output: str, tasks_output=None):
-        mock_result = MagicMock()
-        mock_result.raw = output
-        mock_result.output = output
-        if tasks_output is not None:
-            mock_result.tasks_output = tasks_output
-        return mock_result
-    return _create_response
 
 
 # ============================================================================

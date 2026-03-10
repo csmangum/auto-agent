@@ -20,7 +20,7 @@ Options:
     --list               List all available scenarios
 
 Claim Types:
-    new, duplicate, total_loss, fraud, partial_loss
+    new, duplicate, total_loss, fraud, partial_loss, bodily_injury, reopened
 
 Scenario Groups:
     new, duplicate, total_loss, fraud, partial_loss, edge_cases, escalation, stress_test
@@ -104,13 +104,21 @@ class EvaluationResult:
     cost_usd: float = 0.0
     
     def to_dict(self) -> dict[str, Any]:
+        type_match = self.actual_type == self.scenario.expected_type
+        status_match = (
+            self.actual_status == self.scenario.expected_status
+            if self.scenario.expected_status is not None
+            else None
+        )
         return {
             "scenario_name": self.scenario.name,
             "expected_type": self.scenario.expected_type,
             "actual_type": self.actual_type,
             "success": self.success,
-            "type_match": self.actual_type == self.scenario.expected_type,
+            "type_match": type_match,
+            "expected_status": self.scenario.expected_status,
             "actual_status": self.actual_status,
+            "status_match": status_match,
             "claim_id": self.claim_id,
             "latency_ms": self.latency_ms,
             "error": self.error,
@@ -732,6 +740,72 @@ ESCALATION_SCENARIOS = [
     ),
 ]
 
+# Bodily Injury Scenarios
+BODILY_INJURY_SCENARIOS = [
+    EvaluationScenario(
+        name="bodily_injury_rear_end_injuries",
+        description="Bodily injury: rear-end collision with driver and passenger injuries",
+        claim_data={
+            "policy_number": "POL-004",
+            "vin": "2HGFG3B54CH501234",
+            "vehicle_year": 2020,
+            "vehicle_make": "Toyota",
+            "vehicle_model": "Camry",
+            "incident_date": "2025-02-01",
+            "incident_description": "Rear-ended at intersection. Driver and passenger both injured. Ambulance transported driver to ER for whiplash and back pain.",
+            "damage_description": "Rear bumper and trunk damaged. Driver sustained whiplash and cervical strain. Passenger had minor soft tissue injury. Both sought medical treatment.",
+            "estimated_damage": 4500,
+        },
+        expected_type="bodily_injury",
+        tags=["injury", "whiplash", "medical"],
+        difficulty="medium",
+    ),
+    EvaluationScenario(
+        name="bodily_injury_pedestrian_strike",
+        description="Bodily injury: vehicle struck pedestrian",
+        claim_data={
+            "policy_number": "POL-008",
+            "vin": "1G1ZD5ST0LF123459",
+            "vehicle_year": 2020,
+            "vehicle_make": "Chevrolet",
+            "vehicle_model": "Malibu",
+            "incident_date": "2025-01-26",
+            "incident_description": "Pedestrian stepped into crosswalk. Vehicle struck pedestrian at low speed. Pedestrian taken to hospital with leg injury.",
+            "damage_description": "Front bumper and hood damaged. Pedestrian sustained fractured tibia. Medical bills pending.",
+            "estimated_damage": 8500,
+        },
+        expected_type="bodily_injury",
+        tags=["pedestrian", "injury"],
+        difficulty="medium",
+    ),
+]
+
+# Reopened Scenarios (router classifies as reopened; reopened crew routes to partial_loss/total_loss/bodily_injury)
+# Note: prior_claim_id must reference a claim seeded in _seed_reopened_prior_claim
+REOPENED_SCENARIOS = [
+    EvaluationScenario(
+        name="reopened_new_repairable_damage",
+        description="Reopened claim: prior partial_loss settled, new repairable damage to door",
+        claim_data={
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-02-10",
+            "incident_description": "Prior claim CLM-PRIOR01 was settled. New damage discovered: driver door dent from parking lot incident.",
+            "damage_description": "Driver door dented. Paint scratch. Repairable.",
+            "estimated_damage": 1200,
+            "prior_claim_id": "CLM-PRIOR01",
+            "reopening_reason": "New damage to driver door discovered after settlement",
+            "is_reopened": True,
+        },
+        expected_type="partial_loss",
+        tags=["reopened", "supplemental_damage"],
+        difficulty="medium",
+    ),
+]
+
 # Stress Test Scenarios (unusual or extreme cases)
 STRESS_TEST_SCENARIOS = [
     EvaluationScenario(
@@ -845,6 +919,8 @@ ALL_SCENARIOS = {
     "total_loss": TOTAL_LOSS_SCENARIOS,
     "fraud": FRAUD_CLAIM_SCENARIOS,
     "partial_loss": PARTIAL_LOSS_SCENARIOS,
+    "bodily_injury": BODILY_INJURY_SCENARIOS,
+    "reopened": REOPENED_SCENARIOS,
     "edge_cases": EDGE_CASE_SCENARIOS,
     "escalation": ESCALATION_SCENARIOS,
     "stress_test": STRESS_TEST_SCENARIOS,
@@ -883,7 +959,9 @@ class ClaimEvaluator:
         
         # Seed original claims for duplicate detection scenarios
         self._seed_original_claims()
-        
+        # Seed prior claim for reopened scenarios
+        self._seed_reopened_prior_claim()
+
         # Reset metrics
         reset_metrics()
         
@@ -914,7 +992,49 @@ class ClaimEvaluator:
         
         if self.verbose:
             print("[Setup] Seeded original claims for duplicate detection")
-    
+
+    def _seed_reopened_prior_claim(self) -> None:
+        """Seed a prior settled claim for reopened scenarios (prior_claim_id=CLM-PRIOR01)."""
+        from claim_agent.db.audit_events import AUDIT_EVENT_CREATED
+        from claim_agent.db.database import get_connection
+        from claim_agent.db.constants import STATUS_SETTLED
+
+        prior_id = "CLM-PRIOR01"
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description, estimated_damage,
+                    claim_type, status, attachments
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    prior_id,
+                    "POL-001",
+                    "1HGBH41JXMN109186",
+                    2021,
+                    "Honda",
+                    "Accord",
+                    "2025-01-15",
+                    "Rear-ended at stoplight. Damage to rear bumper and trunk.",
+                    "Rear bumper and trunk damaged.",
+                    3500.0,
+                    "partial_loss",
+                    STATUS_SETTLED,
+                    "[]",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (prior_id, AUDIT_EVENT_CREATED, STATUS_SETTLED, "Prior claim for reopened eval", "system", "{}"),
+            )
+        if self.verbose:
+            print("[Setup] Seeded prior claim CLM-PRIOR01 for reopened scenarios")
+
     def teardown(self) -> None:
         """Clean up evaluation environment."""
         if self._db_path and os.path.exists(self._db_path):
@@ -1119,9 +1239,10 @@ class EvaluationReport:
     total_cost_usd: float
     results: list[dict[str, Any]]
     confusion_matrix: dict[str, dict[str, int]]
+    status_accuracy: dict[str, Any] | None = None  # For scenarios with expected_status
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "timestamp": self.timestamp,
             "summary": {
                 "total_scenarios": self.total_scenarios,
@@ -1136,6 +1257,10 @@ class EvaluationReport:
             "confusion_matrix": self.confusion_matrix,
             "results": self.results,
         }
+        if self.status_accuracy is not None:
+            d["summary"]["status_accuracy"] = self.status_accuracy
+            d["status_accuracy"] = self.status_accuracy
+        return d
     
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2)
@@ -1159,6 +1284,13 @@ class EvaluationReport:
             accuracy = stats.get("accuracy", 0)
             print(f"  {type_name:15} {correct:3}/{total:3} ({accuracy:.1%})")
         print()
+
+        if self.status_accuracy is not None:
+            sa = self.status_accuracy
+            print("STATUS ACCURACY (scenarios with expected_status):")
+            print("-" * 50)
+            print(f"  {sa.get('correct', 0)}/{sa.get('total', 0)} ({sa.get('accuracy', 0):.1%})")
+            print()
 
         print("CONFUSION MATRIX (expected -> actual):")
         print("-" * 50)
@@ -1186,6 +1318,19 @@ class EvaluationReport:
         print(f"  Total Cost:         ${self.total_cost_usd:.4f}")
         print()
         
+        # Show status mismatches (for scenarios with expected_status)
+        status_mismatches = [
+            r for r in self.results
+            if r.get("expected_status") is not None and r.get("status_match") is False
+        ]
+        if status_mismatches:
+            print("STATUS MISMATCHES (expected_status not met):")
+            print("-" * 50)
+            for r in status_mismatches:
+                print(f"  {r['scenario_name']}")
+                print(f"    Expected status: {r['expected_status']}, Got: {r.get('actual_status', 'N/A')}")
+            print()
+
         # Show misclassifications
         misclassified = [r for r in self.results if not r.get("type_match", True)]
         if misclassified:
@@ -1251,6 +1396,19 @@ def generate_report(results: list[EvaluationResult]) -> EvaluationReport:
     )
     overall_accuracy = correct_classifications / total_scenarios if total_scenarios > 0 else 0
 
+    # Status accuracy (for scenarios with expected_status)
+    status_results = [r for r in results if r.scenario.expected_status is not None]
+    status_accuracy: dict[str, Any] | None = None
+    if status_results:
+        status_correct = sum(
+            1 for r in status_results if r.actual_status == r.scenario.expected_status
+        )
+        status_accuracy = {
+            "total": len(status_results),
+            "correct": status_correct,
+            "accuracy": status_correct / len(status_results) if status_results else 0,
+        }
+
     # Performance metrics
     total_latency = sum(r.latency_ms for r in results)
     avg_latency = total_latency / total_scenarios if total_scenarios > 0 else 0
@@ -1269,6 +1427,7 @@ def generate_report(results: list[EvaluationResult]) -> EvaluationReport:
         total_tokens=total_tokens,
         total_cost_usd=total_cost,
         results=[r.to_dict() for r in results],
+        status_accuracy=status_accuracy,
     )
 
 
@@ -1278,6 +1437,7 @@ def generate_report(results: list[EvaluationResult]) -> EvaluationReport:
 
 # Mapping of sample claim files to expected types
 SAMPLE_CLAIMS_MAPPING = {
+    "new_claim.json": "new",
     "partial_loss_parking.json": "partial_loss",
     "duplicate_claim.json": "duplicate",
     "total_loss_claim.json": "total_loss",
@@ -1285,6 +1445,7 @@ SAMPLE_CLAIMS_MAPPING = {
     "partial_loss_claim.json": "partial_loss",
     "partial_loss_fender.json": "partial_loss",
     "partial_loss_front_collision.json": "partial_loss",
+    "bodily_injury_claim.json": "bodily_injury",
 }
 
 
