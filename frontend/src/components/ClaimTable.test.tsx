@@ -16,13 +16,14 @@ const mockClaims: Claim[] = [
 ];
 
 describe('ClaimTable', () => {
-  it('shows empty message when no claims', () => {
+  it('shows empty state when no claims', () => {
     render(
       <BrowserRouter>
         <ClaimTable claims={[]} />
       </BrowserRouter>
     );
-    expect(screen.getByText('No claims found.')).toBeInTheDocument();
+    expect(screen.getByText('No claims found')).toBeInTheDocument();
+    expect(screen.getByText('Submit a Claim')).toBeInTheDocument();
   });
 
   it('renders claim rows', () => {
