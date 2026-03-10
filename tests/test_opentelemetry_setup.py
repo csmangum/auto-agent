@@ -7,12 +7,17 @@ import pytest
 
 from claim_agent.observability import opentelemetry_setup
 
-_HAS_FASTAPI_INSTRUMENTATION = (
-    importlib.util.find_spec("opentelemetry.instrumentation.fastapi") is not None
-)
-_HAS_OTEL_EXPORTER = (
-    importlib.util.find_spec("opentelemetry.exporter.otlp.proto.http.trace_exporter")
-    is not None
+def _has_module(name: str) -> bool:
+    """Return True if the module can be found, False if not installed."""
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
+_HAS_FASTAPI_INSTRUMENTATION = _has_module("opentelemetry.instrumentation.fastapi")
+_HAS_OTEL_EXPORTER = _has_module(
+    "opentelemetry.exporter.otlp.proto.http.trace_exporter"
 )
 
 

@@ -5,6 +5,15 @@ import {
   getClaimsStats,
   getClaims,
   getClaim,
+  getClaimHistory,
+  getClaimWorkflows,
+  getDocs,
+  getDoc,
+  getSkills,
+  getSkill,
+  getSystemConfig,
+  getSystemHealth,
+  getAgentsCatalog,
   processClaimAsync,
 } from './client';
 
@@ -198,6 +207,111 @@ describe('API client', () => {
         }),
       })
     );
+  });
+
+  it('getClaimHistory fetches history by id', async () => {
+    const mockFetch = vi.mocked(fetch);
+    const mockHistory = { claim_id: 'CLM-001', history: [], total: 0, limit: null, offset: 0 };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockHistory,
+    } as Response);
+
+    const result = await getClaimHistory('CLM-001');
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-001/history', expect.any(Object));
+    expect(result).toEqual(mockHistory);
+  });
+
+  it('getClaimWorkflows fetches workflows by id', async () => {
+    const mockFetch = vi.mocked(fetch);
+    const mockWorkflows = { claim_id: 'CLM-001', workflows: [] };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockWorkflows,
+    } as Response);
+
+    const result = await getClaimWorkflows('CLM-001');
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-001/workflows', expect.any(Object));
+    expect(result).toEqual(mockWorkflows);
+  });
+
+  it('getDocs fetches docs list', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ pages: [] }),
+    } as Response);
+
+    await getDocs();
+    expect(mockFetch).toHaveBeenCalledWith('/api/docs', expect.any(Object));
+  });
+
+  it('getDoc fetches doc by slug', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ slug: 'intro', title: 'Intro', content: 'Hello' }),
+    } as Response);
+
+    await getDoc('intro');
+    expect(mockFetch).toHaveBeenCalledWith('/api/docs/intro', expect.any(Object));
+  });
+
+  it('getSkills fetches skills list', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ groups: {} }),
+    } as Response);
+
+    await getSkills();
+    expect(mockFetch).toHaveBeenCalledWith('/api/skills', expect.any(Object));
+  });
+
+  it('getSkill fetches skill by name', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ name: 'adjuster', role: 'Adjuster', content: '' }),
+    } as Response);
+
+    await getSkill('adjuster');
+    expect(mockFetch).toHaveBeenCalledWith('/api/skills/adjuster', expect.any(Object));
+  });
+
+  it('getSystemConfig fetches config', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    } as Response);
+
+    await getSystemConfig();
+    expect(mockFetch).toHaveBeenCalledWith('/api/system/config', expect.any(Object));
+  });
+
+  it('getSystemHealth fetches health', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: 'healthy', database: 'sqlite', total_claims: 0 }),
+    } as Response);
+
+    await getSystemHealth();
+    expect(mockFetch).toHaveBeenCalledWith('/api/system/health', expect.any(Object));
+  });
+
+  it('getAgentsCatalog fetches agents', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ crews: [] }),
+    } as Response);
+
+    await getAgentsCatalog();
+    expect(mockFetch).toHaveBeenCalledWith('/api/system/agents', expect.any(Object));
   });
 
   it('processClaimAsync sends multiple files', async () => {

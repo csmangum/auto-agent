@@ -54,6 +54,7 @@ export default function Layout() {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
+          data-testid="sidebar-overlay"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 lg:hidden"
           onClick={closeSidebar}
         />
