@@ -1,1 +1,62 @@
 @import "tailwindcss";
+
+/* ── Dark-mode palette (default) ─────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-gray-950 text-gray-100;
+}
+
+/* ── Animations ──────────────────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out both;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.35s ease-out both;
+}
+
+/* Staggered children: apply to parent, each child gets a delay */
+.stagger > * { animation: fade-in 0.3s ease-out both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 50ms; }
+.stagger > *:nth-child(3) { animation-delay: 100ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 200ms; }
+.stagger > *:nth-child(6) { animation-delay: 250ms; }
+
+/* Skeleton shimmer for loading states */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.06) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ── Scrollbar (dark) ────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Selection ───────────────────────────────────────────────────────── */
+::selection {
+  background: rgba(59, 130, 246, 0.35);
+  color: #fff;
+}

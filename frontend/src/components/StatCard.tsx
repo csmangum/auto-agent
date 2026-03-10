@@ -6,26 +6,28 @@ interface StatCardProps {
   color?: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'teal' | 'gray';
 }
 
+const COLOR_MAP: Record<string, { card: string; icon: string }> = {
+  blue:   { card: 'bg-blue-500/10 ring-blue-500/20 text-blue-400',     icon: 'text-blue-500/30' },
+  green:  { card: 'bg-emerald-500/10 ring-emerald-500/20 text-emerald-400', icon: 'text-emerald-500/30' },
+  purple: { card: 'bg-purple-500/10 ring-purple-500/20 text-purple-400',   icon: 'text-purple-500/30' },
+  orange: { card: 'bg-orange-500/10 ring-orange-500/20 text-orange-400',   icon: 'text-orange-500/30' },
+  red:    { card: 'bg-red-500/10 ring-red-500/20 text-red-400',       icon: 'text-red-500/30' },
+  teal:   { card: 'bg-teal-500/10 ring-teal-500/20 text-teal-400',     icon: 'text-teal-500/30' },
+  gray:   { card: 'bg-gray-500/10 ring-gray-500/20 text-gray-400',     icon: 'text-gray-500/30' },
+};
+
 export default function StatCard({ title, value, subtitle, icon, color = 'blue' }: StatCardProps) {
-  const colorMap: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    green: 'bg-green-50 text-green-700 border-green-200',
-    purple: 'bg-purple-50 text-purple-700 border-purple-200',
-    orange: 'bg-orange-50 text-orange-700 border-orange-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
-    teal: 'bg-teal-50 text-teal-700 border-teal-200',
-    gray: 'bg-gray-50 text-gray-700 border-gray-200',
-  };
+  const colors = COLOR_MAP[color] ?? COLOR_MAP.blue;
 
   return (
-    <div className={`rounded-xl border p-5 ${colorMap[color] ?? colorMap.blue}`}>
+    <div className={`rounded-xl ring-1 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 ${colors.card}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium opacity-75">{title}</p>
-          <p className="text-3xl font-bold mt-1">{value}</p>
+          <p className="text-3xl font-bold mt-1 text-gray-100">{value}</p>
           {subtitle && <p className="text-xs mt-1 opacity-60">{subtitle}</p>}
         </div>
-        {icon && <span className="text-3xl opacity-40">{icon}</span>}
+        {icon && <span className={`text-4xl ${colors.icon}`}>{icon}</span>}
       </div>
     </div>
   );
