@@ -19,6 +19,10 @@ from .downloader import LARGE_FILE_TIMEOUT, download_file, download_to_dir
 
 logger = logging.getLogger(__name__)
 
+# CMS Medicare - no bulk API; manual or scrape
+CMS_MSP_URL = "https://www.cms.gov/medicare-coordination-benefits-recovery"
+CMS_SECTION_111_URL = "https://www.cms.gov/medicare-coordination-benefits-recovery/mandatory-insurance-reporting"
+
 # Retry settings for transient network errors on large files
 _RETRY_ATTEMPTS = 3
 _RETRY_BACKOFF = 5.0  # seconds between retries
@@ -62,8 +66,8 @@ def download_federal(output_dir: Path | None = None) -> list[Path]:
     cms_note.write_text(
         "CMS Medicare Secondary Payer (MSP) & Section 111\n\n"
         "Sources:\n"
-        "- https://www.cms.gov/medicare-coordination-benefits-recovery\n"
-        "- https://www.cms.gov/medicare-coordination-benefits-recovery/mandatory-insurance-reporting\n\n"
+        f"- {CMS_MSP_URL}\n"
+        f"- {CMS_SECTION_111_URL}\n\n"
         "Relevant: MSP conditional payment recovery, MMSEA Section 111 reporting, "
         "MSA guidelines.\n",
         encoding="utf-8",

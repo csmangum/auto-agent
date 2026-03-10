@@ -52,14 +52,6 @@ FL_SOURCES = [
     },
 ]
 
-# Alternative: individual chapter HTML (if zip requires auth or changes)
-FL_STATUTE_BASE = "https://www.leg.state.fl.us/Statutes/index.cfm"
-
-# --- New York ---
-# NY Consolidated Laws - alternative sources
-NY_INSURANCE_LAW_BASE = "https://www.nysenate.gov/legislation/laws/ISC"
-NY_CRR_BASE = "https://govt.westlaw.com/nycrr"  # 11 NYCRR (Regulation 64, etc.)
-
 # --- Federal ---
 # USC: Bulk zip from House OLRC (release point may change; check download page)
 USC_BULK_ZIP_URL = "https://uscode.house.gov/download/releasepoints/us/pl/119/73not60/xml_uscAll@119-73not60.zip"
@@ -95,15 +87,3 @@ FEDERAL_SOURCES = [
         "sections": ["28 CFR Part 25 (NMVTIS)"],
     },
 ]
-
-# US Code - House OLRC provides bulk zip; individual titles via download page
-# See https://uscode.house.gov/download/download.shtml
-USCODE_DOWNLOAD_PAGE = "https://uscode.house.gov/download/download.shtml"
-
-# eCFR API - full title XML (date format: YYYY-MM-DD)
-# https://www.ecfr.gov/reader-aids/ecfr-developer-resources/rest-api-interactive-documentation
-ECFR_API_BASE = "https://www.ecfr.gov/api/versioner/v1/full"
-
-# CMS Medicare - no bulk API; manual or scrape
-CMS_MSP_URL = "https://www.cms.gov/medicare-coordination-benefits-recovery"
-CMS_SECTION_111_URL = "https://www.cms.gov/medicare-coordination-benefits-recovery/mandatory-insurance-reporting"

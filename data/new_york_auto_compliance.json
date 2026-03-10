@@ -248,7 +248,7 @@
   },
   "comparative_fault": {
     "regulation_reference": "CPLR §1411",
-    "description": "NY pure comparative fault — same as California.",
+    "description": "NY follows pure comparative fault — claimant can recover reduced by fault percentage; no bar threshold.",
     "provisions": [
       {
         "id": "CF-001",
