@@ -49,14 +49,6 @@ def _get_embedding_provider() -> EmbeddingProvider | None:
     return _embedding_provider
 
 
-def reset_embedding_provider() -> None:
-    """Reset cached provider. For testing only."""
-    global _embedding_provider, _embedding_provider_failed
-    with _embedding_provider_lock:
-        _embedding_provider = None
-        _embedding_provider_failed = False
-
-
 def search_claims_db_impl(
     vin: str,
     incident_date: str,

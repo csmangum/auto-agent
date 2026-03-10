@@ -80,8 +80,6 @@ def _record_crew_llm_usage(claim_id: str, llm: LLMProtocol | None, metrics: Any)
         return
     prompt_tokens, completion_tokens, _successful_requests = usage
     model = llm.model if isinstance(llm.model, str) else get_model_name()
-    if not isinstance(model, str):
-        model = get_model_name()
     metrics.record_llm_call(
         claim_id=claim_id,
         model=model,
