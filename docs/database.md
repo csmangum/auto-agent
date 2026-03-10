@@ -300,7 +300,7 @@ flowchart TD
     success["(success)"]
     open["open (new)"]
     duplicate["duplicate"]
-    settled["settled (t.l/p.l)"]
+    settled["settled (t.l / p.l / bodily_injury)"]
     fraud["fraud_suspected"]
 
     pending --> processing

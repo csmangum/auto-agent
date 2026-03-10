@@ -28,13 +28,13 @@ flowchart TD
     B -->|Yes| C[DUPLICATE]
     B -->|No| D{prior_claim_id / reopening_reason / is_reopened?}
     D -->|Yes| E[REOPENED]
-    D -->|No| F{Fraud indicators?}
-    F -->|Yes| G[FRAUD]
-    F -->|No| H{Same VIN/date exists?}
+    D -->|No| H{Same VIN/date exists?}
     H -->|Yes| C
     H -->|No| I{Total loss keywords?}
     I -->|Yes| J[TOTAL_LOSS]
-    I -->|No| K{Injury to persons?}
+    I -->|No| F{Fraud indicators?}
+    F -->|Yes| G[FRAUD]
+    F -->|No| K{Injury to persons?}
     K -->|Yes| L[BODILY_INJURY]
     K -->|No| M{Repair > 75% value?}
     M -->|Yes| J
@@ -271,7 +271,7 @@ Allowed claim statuses: `processing`, `settled`. California CCR 2695.8 requires 
 
 ## Bodily Injury
 
-Claims involving injury to persons. For the formal workflow specification, see [Bodily Injury Crew](crews.md#bodily-injury-crew).
+Claims involving injury to persons. For workflow details, see [Bodily Injury Crew](crews.md#bodily-injury-crew).
 
 ### Classification Criteria
 
@@ -299,7 +299,7 @@ Claims involving injury to persons. For the formal workflow specification, see [
 
 ## Reopened
 
-Settled claims being reopened for new damage, policyholder appeal, or similar. The Reopened crew validates the reason, loads the prior claim, and routes to partial_loss, total_loss, or bodily_injury. For the formal workflow specification, see [Reopened Crew](crews.md#reopened-crew).
+Settled claims being reopened for new damage, policyholder appeal, or similar. The Reopened crew validates the reason, loads the prior claim, and routes to partial_loss, total_loss, or bodily_injury. For workflow details, see [Reopened Crew](crews.md#reopened-crew).
 
 ### Classification Criteria
 
