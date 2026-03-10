@@ -39,7 +39,7 @@ def require_role(*roles: str):
                     "Set at least one auth variable for production deployments."
                 )
                 _auth_warning_logged = True
-            return AuthContext(identity="anonymous", role="adjuster")
+            return AuthContext(identity="anonymous", role="admin")
 
         auth = get_auth(request)
         assert auth is not None
