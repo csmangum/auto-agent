@@ -1,7 +1,7 @@
 """Pluggable fraud indicator detectors.
 
 Each detector is a function (claim_data, ctx) -> list[str] returning indicator codes.
-Register detectors via register_fraud_detector(); detect_fraud_indicators runs all.
+Register detectors via register_fraud_detector(); run_fraud_detectors runs all.
 """
 
 from __future__ import annotations
