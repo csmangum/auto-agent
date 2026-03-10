@@ -21,6 +21,6 @@ class LLMProtocol(Protocol):
     attributes (used by budget enforcement).
     """
 
-    model: str
+    model: str | None
 
     def get_token_usage_summary(self) -> object: ...

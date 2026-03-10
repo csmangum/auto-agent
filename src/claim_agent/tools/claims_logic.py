@@ -75,11 +75,15 @@ def search_claims_db_impl(
 
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     """Cosine similarity between two vectors, returned in [0, 1]."""
+    if not isinstance(a, np.ndarray):
+        a = np.asarray(a, dtype=float)
+    if not isinstance(b, np.ndarray):
+        b = np.asarray(b, dtype=float)
     norm_a = np.linalg.norm(a)
     norm_b = np.linalg.norm(b)
     if norm_a < 1e-9 or norm_b < 1e-9:
         return 0.0
-    return float(np.dot(a, b) / (norm_a * norm_b))
+    return float(np.clip(np.dot(a, b) / (norm_a * norm_b), 0.0, 1.0))
 
 
 def compute_jaccard_score(description_a: str, description_b: str) -> float:
@@ -114,9 +118,13 @@ def compute_similarity_score_impl(description_a: str, description_b: str) -> flo
             vec_a = provider.embed(a)
             vec_b = provider.embed(b)
             cos = _cosine_similarity(vec_a, vec_b)
-            return round(max(0.0, cos) * 100.0, 2)
+            return round(cos * 100.0, 2)
         except Exception:
             _log.debug("Embedding similarity failed; falling back to Jaccard", exc_info=True)
+            global _embedding_provider, _embedding_provider_failed
+            with _embedding_provider_lock:
+                _embedding_provider = None
+                _embedding_provider_failed = True
 
     return compute_jaccard_score(description_a, description_b)
 
