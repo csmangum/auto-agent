@@ -25,11 +25,12 @@ NY_ARTICLE_URLS = [
 
 
 def _fetch_ny_article(article_id: str, primary_url: str, fallback_url: str, output_dir: Path) -> Path | None:
-    """Fetch a NY Insurance Law article. Tries primary, then fallback. Returns path or None."""
+    """Fetch a NY Insurance Law article. Tries fallback first (NY Senate returns 403 for
+    programmatic access), then primary. Returns path or None."""
     dest = output_dir / f"NYIL_{article_id}.html"
-    if download_file(primary_url, dest):
-        return dest
     if download_file(fallback_url, dest):
+        return dest
+    if download_file(primary_url, dest):
         return dest
     return None
 
