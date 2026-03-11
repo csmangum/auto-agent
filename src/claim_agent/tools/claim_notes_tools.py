@@ -78,6 +78,10 @@ def add_after_action_note(claim_id: str, note: str) -> str:
         return json.dumps({"success": False, "message": "note cannot be empty", "truncated": False})
 
     max_tokens = get_settings().after_action_note_max_tokens
+    if max_tokens <= 0:
+        logger.error("Non-positive after_action_note_max_tokens configuration: %r", max_tokens)
+        return json.dumps({"success": False, "message": "after_action_note_max_tokens must be greater than zero", "truncated": False})
+
     max_chars = max_tokens * CHARS_PER_TOKEN
     truncated = len(note) > max_chars
     if truncated:
@@ -86,6 +90,10 @@ def add_after_action_note(claim_id: str, note: str) -> str:
             "After-action note truncated to %d chars (~%d tokens) for claim %s",
             len(note), max_tokens, claim_id,
         )
+
+    if not note:
+        logger.error("After-action note became empty after truncation for claim %s", claim_id)
+        return json.dumps({"success": False, "message": "After-action note became empty after truncation", "truncated": truncated})
 
     try:
         ClaimRepository().add_note(claim_id, note, "After-Action Summary")
