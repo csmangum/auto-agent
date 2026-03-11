@@ -254,7 +254,13 @@ def run_claim_workflow(
                 if early_return is not None:
                     return early_return
 
-            final_status = _final_status(wf_ctx.claim_type)
+            current_claim = repo.get_claim(claim_id)
+            current_status = current_claim.get("status") if current_claim else None
+            from claim_agent.db.constants import STATUS_CLOSED
+            if current_status == STATUS_CLOSED:
+                final_status = STATUS_CLOSED
+            else:
+                final_status = _final_status(wf_ctx.claim_type)
             repo.save_workflow_result(claim_id, wf_ctx.claim_type, wf_ctx.raw_output, wf_ctx.workflow_output)
             repo.update_claim_status(
                 claim_id,
