@@ -11,6 +11,30 @@ describe('StructuredOutputDisplay', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('falls back to raw display for plain text', () => {
+    const text = 'Claim processed successfully. Settlement completed.';
+    render(<StructuredOutputDisplay value={text} />);
+    expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it('renders malformed JSON as raw text', () => {
+    const payload = '{"invalid": json';
+    render(<StructuredOutputDisplay value={payload} />);
+    expect(screen.getByText(payload)).toBeInTheDocument();
+  });
+
+  it('truncates fallback when maxLength is set', () => {
+    const text = 'a'.repeat(600);
+    render(<StructuredOutputDisplay value={text} maxLength={100} />);
+    expect(screen.getByText('a'.repeat(100) + '…')).toBeInTheDocument();
+  });
+
+  it('does not truncate fallback when maxLength is omitted', () => {
+    const text = 'x'.repeat(600);
+    render(<StructuredOutputDisplay value={text} />);
+    expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
   it('parses and renders escalation payload with all fields', () => {
     const payload = JSON.stringify({
       escalation_reasons: ['fraud_suspected', 'low_confidence'],
@@ -80,24 +104,6 @@ describe('StructuredOutputDisplay', () => {
     expect(screen.getByText(payload)).toBeInTheDocument();
   });
 
-  it('falls back to raw display for plain text', () => {
-    const text = 'Claim processed successfully. Settlement completed.';
-    render(<StructuredOutputDisplay value={text} />);
-    expect(screen.getByText(text)).toBeInTheDocument();
-  });
-
-  it('truncates fallback when maxLength is set', () => {
-    const text = 'a'.repeat(600);
-    render(<StructuredOutputDisplay value={text} maxLength={100} />);
-    expect(screen.getByText('a'.repeat(100) + '…')).toBeInTheDocument();
-  });
-
-  it('does not truncate fallback when maxLength is omitted', () => {
-    const text = 'x'.repeat(600);
-    render(<StructuredOutputDisplay value={text} />);
-    expect(screen.getByText(text)).toBeInTheDocument();
-  });
-
   it('uses escalation parse when JSON matches both escalation and state snapshot', () => {
     const payload = JSON.stringify({
       escalation_reasons: ['fraud_suspected'],
@@ -111,12 +117,6 @@ describe('StructuredOutputDisplay', () => {
     expect(screen.queryByText('Claim type')).not.toBeInTheDocument();
   });
 
-  it('renders malformed JSON as raw text', () => {
-    const payload = '{"invalid": json';
-    render(<StructuredOutputDisplay value={payload} />);
-    expect(screen.getByText(payload)).toBeInTheDocument();
-  });
-
   it('handles escalation_reasons as single string (coerces to array)', () => {
     const payload = JSON.stringify({
       escalation_reasons: 'fraud_suspected',
@@ -125,6 +125,21 @@ describe('StructuredOutputDisplay', () => {
     render(<StructuredOutputDisplay value={payload} />);
     expect(screen.getByText('Reasons')).toBeInTheDocument();
     expect(screen.getByText('fraud suspected')).toBeInTheDocument();
+  });
+
+  it('prefers state snapshot over router when both match', () => {
+    const json = JSON.stringify({
+      status: 'open',
+      claim_type: 'partial_loss',
+      payout_amount: null,
+      confidence: 0.9,
+      reasoning: 'Some reasoning',
+    });
+    render(<StructuredOutputDisplay value={json} />);
+    expect(screen.getByText('Status')).toBeInTheDocument();
+    expect(screen.getByText('open')).toBeInTheDocument();
+    expect(screen.getByText('Claim type')).toBeInTheDocument();
+    expect(screen.getByText('Payout')).toBeInTheDocument();
   });
 
   it('renders audit variant for state snapshot', () => {

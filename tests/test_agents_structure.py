@@ -172,6 +172,18 @@ class TestReopenedCrewStructure:
         assert len(crew.tasks) == 3
 
 
+class TestAfterActionCrewStructure:
+    """Structural validation for After-Action crew."""
+
+    def test_creates_valid_crew(self):
+        from claim_agent.crews.after_action_crew import create_after_action_crew
+
+        crew = create_after_action_crew(llm=_mock_llm())
+        _validate_crew_structure(crew)
+        assert len(crew.agents) == 2
+        assert len(crew.tasks) == 2
+
+
 class TestTaskConfigSchema:
     """Validate TaskConfig and AgentConfig schema."""
 

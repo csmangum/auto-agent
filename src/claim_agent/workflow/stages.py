@@ -30,6 +30,7 @@ from claim_agent.crews.reopened_crew import create_reopened_crew
 from claim_agent.crews.rental_crew import create_rental_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.crews.subrogation_crew import create_subrogation_crew
+from claim_agent.crews.after_action_crew import create_after_action_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
@@ -936,4 +937,24 @@ def _stage_salvage(ctx: _WorkflowCtx) -> dict | None:
             "workflow_output": c.workflow_output,
         },
         combine_label="Salvage workflow output",
+    )
+
+
+def _stage_after_action(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the after-action crew to compile a summary note and evaluate closure.
+
+    Always runs regardless of claim type. Combines output with
+    ``ctx.workflow_output`` so it is captured in the final workflow result.
+    """
+    return _run_crew_stage(
+        ctx,
+        "after_action",
+        "after_action",
+        "after_action_output",
+        create_crew=lambda c: create_after_action_crew(c.context.llm),
+        get_inputs=lambda c: {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "workflow_output": c.workflow_output,
+        },
+        combine_label="After-action workflow output",
     )

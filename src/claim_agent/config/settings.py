@@ -143,6 +143,8 @@ def __getattr__(name: str):
         return get_settings().max_tokens_per_claim
     if name == "MAX_LLM_CALLS_PER_CLAIM":
         return get_settings().max_llm_calls_per_claim
+    if name == "AFTER_ACTION_NOTE_MAX_TOKENS":
+        return get_settings().after_action_note_max_tokens
     if name == "ADAPTER_ENV_KEYS":
         from claim_agent.config.settings_model import ADAPTER_ENV_KEYS
         return ADAPTER_ENV_KEYS

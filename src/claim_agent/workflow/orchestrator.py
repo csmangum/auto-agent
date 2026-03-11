@@ -33,6 +33,7 @@ from claim_agent.workflow.helpers import (
     _final_status,
 )
 from claim_agent.workflow.stages import (
+    _stage_after_action,
     _stage_duplicate_detection,
     _stage_economic_analysis,
     _stage_escalation_check,
@@ -247,21 +248,30 @@ def run_claim_workflow(
                 _stage_settlement,
                 _stage_subrogation,
                 _stage_salvage,
+                _stage_after_action,
             ):
                 early_return = stage_fn(wf_ctx)
                 if early_return is not None:
                     return early_return
 
-            final_status = _final_status(wf_ctx.claim_type)
+            current_claim = repo.get_claim(claim_id)
+            current_status = current_claim.get("status") if current_claim else None
+            from claim_agent.db.constants import STATUS_CLOSED
+            already_closed = current_status == STATUS_CLOSED
+            if already_closed:
+                final_status = STATUS_CLOSED
+            else:
+                final_status = _final_status(wf_ctx.claim_type)
             repo.save_workflow_result(claim_id, wf_ctx.claim_type, wf_ctx.raw_output, wf_ctx.workflow_output)
-            repo.update_claim_status(
-                claim_id,
-                final_status,
-                details=wf_ctx.workflow_output[:500] if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
-                claim_type=wf_ctx.claim_type,
-                payout_amount=wf_ctx.extracted_payout,
-                actor_id=_actor,
-            )
+            if not already_closed:
+                repo.update_claim_status(
+                    claim_id,
+                    final_status,
+                    details=wf_ctx.workflow_output[:500] if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
+                    claim_type=wf_ctx.claim_type,
+                    payout_amount=wf_ctx.extracted_payout,
+                    actor_id=_actor,
+                )
 
             workflow_duration = (time.time() - workflow_start_time) * 1000
             logger.log_event(
