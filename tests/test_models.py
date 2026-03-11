@@ -229,3 +229,35 @@ class TestEscalationOutput:
         for p in ("low", "medium", "high", "critical"):
             out = EscalationOutput(claim_id="CLM-1", needs_review=True, priority=p)
             assert out.priority == p
+
+
+class TestUserType:
+    """Test UserType enum and UserContext model."""
+
+    def test_all_user_types(self):
+        from claim_agent.models.user import UserType
+
+        assert UserType.CLAIMANT.value == "claimant"
+        assert UserType.POLICYHOLDER.value == "policyholder"
+        assert UserType.ADJUSTER.value == "adjuster"
+        assert UserType.REPAIR_SHOP.value == "repair_shop"
+        assert UserType.SIU.value == "siu"
+        assert UserType.OTHER.value == "other"
+
+    def test_user_context_to_actor_id(self):
+        from claim_agent.models.user import UserContext, UserType
+
+        ctx = UserContext(user_type=UserType.CLAIMANT, identifier="claim-123")
+        assert ctx.to_actor_id() == "claimant:claim-123"
+
+    def test_user_context_with_contact(self):
+        from claim_agent.models.user import UserContext, UserType
+
+        ctx = UserContext(
+            user_type=UserType.REPAIR_SHOP,
+            identifier="SHOP-001",
+            email="shop@example.com",
+        )
+        assert ctx.user_type == UserType.REPAIR_SHOP
+        assert ctx.identifier == "SHOP-001"
+        assert ctx.email == "shop@example.com"

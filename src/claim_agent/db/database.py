@@ -102,6 +102,22 @@ CREATE TABLE IF NOT EXISTS claim_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_claim_notes_claim_id ON claim_notes(claim_id);
 
+-- Follow-up messages: outreach and responses for human-in-the-loop flows
+CREATE TABLE IF NOT EXISTS follow_up_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    user_type TEXT NOT NULL,
+    message_content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    response_content TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    responded_at TEXT,
+    actor_id TEXT DEFAULT 'workflow',
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_follow_up_messages_claim_id ON follow_up_messages(claim_id);
+CREATE INDEX IF NOT EXISTS idx_follow_up_messages_status ON follow_up_messages(claim_id, status);
+
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """

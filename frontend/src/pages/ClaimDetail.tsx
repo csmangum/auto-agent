@@ -25,6 +25,9 @@ export default function ClaimDetail() {
   } = useClaimWorkflows(claimId);
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
+  const notes = claim?.notes ?? [];
+  const followUps = claim?.follow_up_messages ?? [];
+  const notesFollowUpsCount = notes.length + followUps.length;
   const loading = claimLoading || historyLoading || workflowsLoading;
   const error = claimError ?? historyError ?? workflowsError;
 
@@ -57,6 +60,7 @@ export default function ClaimDetail() {
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '📋' },
+    { key: 'notes', label: `Notes & Follow-ups (${notesFollowUpsCount})`, icon: '💬' },
     { key: 'audit', label: `Audit Log (${history.length})`, icon: '📜' },
     { key: 'workflows', label: `Workflows (${workflows.length})`, icon: '🔄' },
   ];
@@ -142,6 +146,98 @@ export default function ClaimDetail() {
                   {claim.damage_description ?? 'No description provided.'}
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'notes' && (
+          <div className="space-y-6">
+            {/* Claim notes */}
+            <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+              <h3 className="text-sm font-semibold text-gray-300 mb-4">Claim Notes</h3>
+              {notes.length === 0 ? (
+                <EmptyState
+                  icon="📝"
+                  title="No notes"
+                  description="No claim notes recorded yet."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {notes.map((n, i) => (
+                    <div
+                      key={n.id ?? i}
+                      className="rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-blue-400">{n.actor_id}</span>
+                        {n.created_at && (
+                          <span className="text-xs text-gray-500">
+                            {formatDateTime(n.created_at)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{n.note}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Follow-up messages */}
+            <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+              <h3 className="text-sm font-semibold text-gray-300 mb-4">Follow-up Messages</h3>
+              {followUps.length === 0 ? (
+                <EmptyState
+                  icon="✉️"
+                  title="No follow-ups"
+                  description="No follow-up messages sent for this claim."
+                />
+              ) : (
+                <div className="space-y-4">
+                  {followUps.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className="rounded-lg bg-gray-900/50 p-4 ring-1 ring-gray-700/50"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-medium text-amber-400 capitalize">
+                          {msg.user_type.replaceAll('_', ' ')}
+                        </span>
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded ${
+                            msg.status === 'responded'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : msg.status === 'sent'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-gray-500/20 text-gray-400'
+                          }`}
+                        >
+                          {msg.status}
+                        </span>
+                        {msg.created_at && (
+                          <span className="text-xs text-gray-500">
+                            {formatDateTime(msg.created_at)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-300 mb-2">{msg.message_content}</p>
+                      {msg.response_content && (
+                        <div className="mt-2 pt-2 border-t border-gray-700/50">
+                          <p className="text-xs text-gray-500 mb-1">Response</p>
+                          <p className="text-sm text-gray-300 whitespace-pre-wrap">
+                            {msg.response_content}
+                          </p>
+                          {msg.responded_at && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {formatDateTime(msg.responded_at)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

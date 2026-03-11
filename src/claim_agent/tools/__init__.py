@@ -85,6 +85,10 @@ __all__ = [
     "calculate_bi_settlement",
     # After-action tools
     "close_claim",
+    # Follow-up tools
+    "send_user_message",
+    "record_user_response",
+    "check_pending_responses",
 ]
 
 
@@ -330,4 +334,17 @@ def __getattr__(name: str):
         from claim_agent.tools.status_tools import close_claim
         setattr(mod, "close_claim", close_claim)
         return close_claim
+    # Follow-up tools
+    if name == "send_user_message":
+        from claim_agent.tools.follow_up_tools import send_user_message
+        setattr(mod, "send_user_message", send_user_message)
+        return send_user_message
+    if name == "record_user_response":
+        from claim_agent.tools.follow_up_tools import record_user_response
+        setattr(mod, "record_user_response", record_user_response)
+        return record_user_response
+    if name == "check_pending_responses":
+        from claim_agent.tools.follow_up_tools import check_pending_responses
+        setattr(mod, "check_pending_responses", check_pending_responses)
+        return check_pending_responses
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
