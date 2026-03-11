@@ -5,6 +5,7 @@ from crewai import Agent
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import (
     FOLLOW_UP_OUTREACH,
+    MESSAGE_COMPOSITION,
     RESPONSE_PROCESSING,
     load_skill,
 )
@@ -32,7 +33,7 @@ def create_outreach_planner_agent(llm: LLMProtocol | None = None, **kwargs) -> A
 
 def create_message_composer_agent(llm: LLMProtocol | None = None, **kwargs) -> Agent:
     """Message Composer: drafts and sends tailored outreach messages."""
-    skill = load_skill(FOLLOW_UP_OUTREACH)
+    skill = load_skill(MESSAGE_COMPOSITION)
     return Agent(
         role=skill["role"],
         goal=skill["goal"],

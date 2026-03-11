@@ -58,10 +58,7 @@ Use get_claim_notes if claim_notes are not provided.""",
 TASK:
 {task}
 
-OUTREACH PLAN FROM PREVIOUS TASK:
-{outreach_plan}
-
-Using the outreach plan, compose a professional, clear message tailored to the user type.
+Using the outreach plan from the previous task, compose a professional, clear message tailored to the user type.
 Then use send_user_message with claim_id, user_type, and message_content.
 Include email or phone if available from claim context for claimant/policyholder.""",
                 expected_output=(
