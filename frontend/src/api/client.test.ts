@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { waitFor } from '@testing-library/react';
 import {
   setAuthToken,
   clearAuthToken,
@@ -15,11 +16,15 @@ import {
   getSystemHealth,
   getAgentsCatalog,
   processClaimAsync,
+  streamClaimUpdates,
 } from './client';
+
+const mockFetch = vi.fn();
 
 describe('API client', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    mockFetch.mockReset();
+    vi.stubGlobal('fetch', mockFetch);
     clearAuthToken();
   });
 
@@ -28,7 +33,6 @@ describe('API client', () => {
   });
 
   it('sends request to correct base URL', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ total_claims: 0, by_status: {}, by_type: {} }),
@@ -46,7 +50,6 @@ describe('API client', () => {
 
   it('includes Authorization header when token is set', async () => {
     setAuthToken('sk-test-token');
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ total_claims: 0, by_status: {}, by_type: {} }),
@@ -67,7 +70,6 @@ describe('API client', () => {
   it('does not include Authorization when token is cleared', async () => {
     setAuthToken('sk-token');
     clearAuthToken();
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ total_claims: 0, by_status: {}, by_type: {} }),
@@ -81,7 +83,6 @@ describe('API client', () => {
   });
 
   it('throws on 4xx error without retry', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 404,
@@ -94,7 +95,6 @@ describe('API client', () => {
 
   it('retries once on 5xx error', async () => {
     vi.useFakeTimers();
-    const mockFetch = vi.mocked(fetch);
     mockFetch
       .mockResolvedValueOnce({
         ok: false,
@@ -116,7 +116,6 @@ describe('API client', () => {
   });
 
   it('getClaims builds query string from params', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ total: 0, claims: [] }),
@@ -131,7 +130,6 @@ describe('API client', () => {
   });
 
   it('getClaim fetches by id', async () => {
-    const mockFetch = vi.mocked(fetch);
     const mockClaim = { id: 'CLM-001', status: 'open' };
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -148,7 +146,6 @@ describe('API client', () => {
   });
 
   it('processClaimAsync sends FormData with claim and files', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ claim_id: 'CLM-NEW' }),
@@ -184,7 +181,6 @@ describe('API client', () => {
 
   it('processClaimAsync includes Authorization header when token is set', async () => {
     setAuthToken('sk-claim-token');
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ claim_id: 'CLM-NEW' }),
@@ -214,7 +210,6 @@ describe('API client', () => {
   });
 
   it('getClaimHistory fetches history by id', async () => {
-    const mockFetch = vi.mocked(fetch);
     const mockHistory = { claim_id: 'CLM-001', history: [], total: 0, limit: null, offset: 0 };
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -228,7 +223,6 @@ describe('API client', () => {
   });
 
   it('getClaimWorkflows fetches workflows by id', async () => {
-    const mockFetch = vi.mocked(fetch);
     const mockWorkflows = { claim_id: 'CLM-001', workflows: [] };
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -242,7 +236,6 @@ describe('API client', () => {
   });
 
   it('getDocs fetches docs list', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ pages: [] }),
@@ -253,7 +246,6 @@ describe('API client', () => {
   });
 
   it('getDoc fetches doc by slug', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ slug: 'intro', title: 'Intro', content: 'Hello' }),
@@ -264,7 +256,6 @@ describe('API client', () => {
   });
 
   it('getSkills fetches skills list', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ groups: {} }),
@@ -275,7 +266,6 @@ describe('API client', () => {
   });
 
   it('getSkill fetches skill by name', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ name: 'adjuster', role: 'Adjuster', content: '' }),
@@ -286,7 +276,6 @@ describe('API client', () => {
   });
 
   it('getSystemConfig fetches config', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({}),
@@ -297,7 +286,6 @@ describe('API client', () => {
   });
 
   it('getSystemHealth fetches health', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: 'healthy', database: 'sqlite', total_claims: 0 }),
@@ -308,7 +296,6 @@ describe('API client', () => {
   });
 
   it('getAgentsCatalog fetches agents', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ crews: [] }),
@@ -319,7 +306,6 @@ describe('API client', () => {
   });
 
   it('processClaimAsync sends multiple files', async () => {
-    const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ claim_id: 'CLM-NEW' }),
@@ -345,5 +331,142 @@ describe('API client', () => {
     expect(files).toHaveLength(2);
     expect(files[0]).toBe(file1);
     expect(files[1]).toBe(file2);
+  });
+
+  it('processClaimAsync throws on non-ok response', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => 'Bad request',
+    } as Response);
+
+    const payload = {
+      policy_number: 'POL-1',
+      vin: 'VIN123',
+      vehicle_year: 2024,
+      vehicle_make: 'Honda',
+      vehicle_model: 'Accord',
+      incident_date: '2025-01-15',
+      incident_description: 'Rear-ended',
+      damage_description: 'Bumper damage',
+    };
+
+    await expect(processClaimAsync(payload)).rejects.toThrow(/API error 400/);
+  });
+
+  describe('streamClaimUpdates', () => {
+    function createStreamChunks(...chunks: string[]) {
+      return new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(new TextEncoder().encode(chunk));
+          }
+          controller.close();
+        },
+      });
+    }
+
+    it('calls onUpdate with parsed SSE data', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      body: createStreamChunks('data: {"claim":{"id":"CLM-1","status":"open"},"done":false}\n\n', 'data: {"done":true}\n\n'),
+    } as Response);
+
+    const onUpdate = vi.fn();
+    const abort = streamClaimUpdates('CLM-1', onUpdate);
+
+    await waitFor(() => {
+      expect(onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ claim: expect.objectContaining({ id: 'CLM-1' }), done: false })
+      );
+      expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ done: true }));
+    });
+
+    abort();
+    });
+
+    it('calls onError when stream returns non-ok', async () => {
+      vi.useFakeTimers();
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+      } as Response);
+
+      const onUpdate = vi.fn();
+      const onError = vi.fn();
+      const abort = streamClaimUpdates('CLM-1', onUpdate, onError);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(4000);
+      await vi.advanceTimersByTimeAsync(6000);
+
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('Stream error 500') })
+      );
+
+      abort();
+      vi.useRealTimers();
+    });
+
+    it('fetches correct stream URL with auth headers', async () => {
+    setAuthToken('stream-token');
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      body: createStreamChunks('data: {"done":true}\n\n'),
+    } as Response);
+
+    const onUpdate = vi.fn();
+    const abort = streamClaimUpdates('CLM-1', onUpdate);
+
+    await waitFor(() => {
+      expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ done: true }));
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/claims/CLM-1/stream',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer stream-token',
+        }),
+      })
+    );
+
+    abort();
+    clearAuthToken();
+    });
+
+    it('abort stops the stream without calling onError', async () => {
+    mockFetch.mockImplementation(
+      (_url, options) =>
+        new Promise((resolve, reject) => {
+          const signal = options?.signal as AbortSignal;
+          const timeoutId = setTimeout(
+            () =>
+              resolve({
+                ok: true,
+                body: createStreamChunks('data: {"done":true}\n\n'),
+              } as Response),
+            100
+          );
+          if (signal) {
+            signal.addEventListener('abort', () => {
+              clearTimeout(timeoutId);
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }
+        })
+    );
+
+    const onUpdate = vi.fn();
+    const onError = vi.fn();
+    const abort = streamClaimUpdates('CLM-1', onUpdate, onError);
+
+    abort();
+
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onUpdate).not.toHaveBeenCalled();
+    });
   });
 });
