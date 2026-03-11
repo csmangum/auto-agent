@@ -451,26 +451,35 @@ class ClaimRepository:
                 INSERT INTO follow_up_messages (claim_id, user_type, message_content, status, actor_id)
                 VALUES (?, ?, ?, 'pending', ?)
                 """,
-                (claim_id, user_type, message_content, actor_id),
+                (claim_id, user_type, sanitize_note(message_content), actor_id),
             )
             msg_id = cursor.lastrowid
-            details = json.dumps({"user_type": user_type, "message_id": msg_id})
+        return msg_id
+
+
+    def mark_follow_up_sent(self, message_id: int) -> None:
+        """Mark a follow-up message as sent (status=sent) and log audit."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT claim_id, user_type, actor_id FROM follow_up_messages WHERE id = ?",
+                (message_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Follow-up message not found: {message_id}")
+            claim_id = row["claim_id"]
+            user_type = row["user_type"]
+            actor_id = row["actor_id"]
+            conn.execute(
+                "UPDATE follow_up_messages SET status = 'sent' WHERE id = ?",
+                (message_id,),
+            )
+            details = json.dumps({"user_type": user_type, "message_id": message_id})
             conn.execute(
                 """
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
                 VALUES (?, ?, ?, ?)
                 """,
                 (claim_id, AUDIT_EVENT_FOLLOW_UP_SENT, details, actor_id),
-            )
-        return msg_id
-
-
-    def mark_follow_up_sent(self, message_id: int) -> None:
-        """Mark a follow-up message as sent (status=sent)."""
-        with get_connection(self._db_path) as conn:
-            conn.execute(
-                "UPDATE follow_up_messages SET status = 'sent' WHERE id = ?",
-                (message_id,),
             )
 
     def record_follow_up_response(
@@ -479,8 +488,17 @@ class ClaimRepository:
         response_content: str,
         *,
         actor_id: str = ACTOR_WORKFLOW,
+        expected_claim_id: str | None = None,
     ) -> None:
-        """Record a user response to a follow-up message. Updates status to responded and logs audit."""
+        """Record a user response to a follow-up message. Updates status to responded and logs audit.
+
+        Args:
+            message_id: The follow-up message ID.
+            response_content: The user's response text.
+            actor_id: Who recorded the response.
+            expected_claim_id: If provided, raises ValueError when the message belongs to a
+                different claim (prevents cross-claim response injection).
+        """
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT claim_id, user_type FROM follow_up_messages WHERE id = ?",
@@ -490,13 +508,17 @@ class ClaimRepository:
                 raise ValueError(f"Follow-up message not found: {message_id}")
             claim_id = row["claim_id"]
             user_type = row["user_type"]
+            if expected_claim_id is not None and claim_id != expected_claim_id:
+                raise ValueError(
+                    f"Follow-up message {message_id} does not belong to claim {expected_claim_id}"
+                )
             conn.execute(
                 """
                 UPDATE follow_up_messages
                 SET status = 'responded', response_content = ?, responded_at = datetime('now')
                 WHERE id = ?
                 """,
-                (response_content, message_id),
+                (sanitize_note(response_content), message_id),
             )
             details = json.dumps({"user_type": user_type, "message_id": message_id})
             conn.execute(

@@ -12,7 +12,7 @@ export type UserType =
 export interface FollowUpMessage {
   id: number;
   claim_id: string;
-  user_type: string;
+  user_type: UserType;
   message_content: string;
   status: string;
   response_content?: string;

@@ -42,10 +42,6 @@ def notify_user(
         identifier: Optional user/contact identifier.
         template_data: Optional template variables.
     """
-    config = get_notification_config()
-    if not config["email_enabled"] and not config["sms_enabled"]:
-        return
-
     try:
         ut = UserType(user_type)
     except ValueError:
@@ -53,6 +49,14 @@ def notify_user(
         return
 
     if ut in (UserType.CLAIMANT, UserType.POLICYHOLDER):
+        config = get_notification_config()
+        if not config["email_enabled"] and not config["sms_enabled"]:
+            logger.debug(
+                "Both email and SMS disabled; skipping follow-up notification for %s claim_id=%s",
+                user_type,
+                claim_id,
+            )
+            return
         if email or phone:
             notify_claimant(
                 "follow_up_request",
