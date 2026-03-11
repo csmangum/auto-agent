@@ -454,7 +454,7 @@ class ClaimRepository:
                 (claim_id, user_type, sanitize_note(message_content), actor_id),
             )
             msg_id = cursor.lastrowid
-        return msg_id
+        return int(msg_id)
 
     def mark_follow_up_sent(self, message_id: int) -> None:
         """Mark a follow-up message as sent (status=sent) and log audit."""
