@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import StatusBadge from './StatusBadge';
 import EmptyState from './EmptyState';
+import StructuredOutputDisplay from './StructuredOutputDisplay';
 import { formatDateTime } from '../utils/date';
 import type { AuditEvent } from '../api/types';
 
@@ -24,29 +24,6 @@ function getDotColor(action: string): string {
   if (action.includes('fraud')) return 'bg-red-500';
   if (action.includes('escalat')) return 'bg-purple-500';
   return 'bg-blue-500';
-}
-
-function StateDiff({ label, jsonStr }: { label: string; jsonStr?: string }) {
-  if (!jsonStr) return null;
-  let displayStr: string | null = null;
-  try {
-    const obj = JSON.parse(jsonStr) as Record<string, unknown>;
-    const hasNonNull = Object.values(obj).some((v) => v != null);
-    if (hasNonNull) {
-      displayStr = JSON.stringify(obj, null, 2);
-    }
-  } catch {
-    return null;
-  }
-  if (!displayStr) return null;
-  return (
-    <div className="mt-2 text-xs">
-      <span className="font-medium text-gray-500">{label}:</span>
-      <pre className="mt-0.5 rounded-lg bg-gray-800 p-2 font-mono text-gray-400 overflow-x-auto ring-1 ring-gray-700/50">
-        {displayStr}
-      </pre>
-    </div>
-  );
 }
 
 export default function AuditTimeline({ events }: AuditTimelineProps) {
@@ -73,60 +50,90 @@ export default function AuditTimeline({ events }: AuditTimelineProps) {
 }
 
 function AuditEventCard({ event }: { event: AuditEvent }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasStateDiff =
-    (event.before_state || event.after_state) && event.action === 'status_change';
   const dotColor = getDotColor(event.action);
+  const hasStateDiff =
+    event.before_state && event.after_state && event.action === 'status_change';
+  const detailsRaw = event.details || event.after_state || '';
+  const hasStatusChange = event.old_status && event.new_status;
 
   return (
     <div className="relative pl-10 animate-fade-in">
       <div className={`absolute left-2.5 top-2 w-3 h-3 rounded-full ${dotColor} ring-4 ring-gray-900`} />
 
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-4">
-        <div className="flex items-center gap-3 mb-1 flex-wrap">
-          <span className="text-sm font-semibold text-gray-200 capitalize">
-            {event.action?.replace(/_/g, ' ')}
-          </span>
-          {event.actor_id && (
-            <span className="text-xs text-gray-500" title="Actor">
-              by {event.actor_id}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-gray-200 capitalize">
+              {event.action?.replace(/_/g, ' ')}
             </span>
+            {event.actor_id && (
+              <span className="text-xs text-gray-500" title="Actor">
+                by {event.actor_id}
+              </span>
+            )}
+          </div>
+
+          {hasStatusChange && (
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <StatusBadge status={event.old_status} />
+              <span className="text-gray-500 text-xs" aria-hidden>→</span>
+              <StatusBadge status={event.new_status} />
+            </div>
           )}
-          {event.new_status && <StatusBadge status={event.new_status} />}
-          {event.old_status && event.new_status && (
-            <span className="text-xs text-gray-500">
-              from <StatusBadge status={event.old_status} />
-            </span>
+
+          {!hasStatusChange && event.new_status && (
+            <StatusBadge status={event.new_status} />
           )}
         </div>
 
-        {event.details && (
-          <p className="text-sm text-gray-400 mt-1 break-words">
-            {event.details.length > 300
-              ? event.details.slice(0, 300) + '…'
-              : event.details}
-          </p>
-        )}
-
-        {hasStateDiff && (
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setExpanded(!expanded)}
-              className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
-            >
-              {expanded ? 'Hide state diff' : 'Show state diff'}
-            </button>
-            {expanded && (
-              <div className="mt-2 space-y-2">
-                <StateDiff label="Before" jsonStr={event.before_state} />
-                <StateDiff label="After" jsonStr={event.after_state} />
+        {(detailsRaw || hasStateDiff) && (
+          <div className="mt-3 pt-3 border-t border-gray-700/50 space-y-3 max-h-64 overflow-y-auto">
+            {event.details && (
+              <StructuredOutputDisplay
+                value={event.details}
+                compact
+                variant="audit"
+                maxLength={300}
+              />
+            )}
+            {hasStateDiff && (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500 mb-1">
+                    Before
+                  </p>
+                  <StructuredOutputDisplay
+                    value={event.before_state}
+                    compact
+                    variant="audit"
+                    maxLength={300}
+                  />
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500 mb-1">
+                    After
+                  </p>
+                  <StructuredOutputDisplay
+                    value={event.after_state}
+                    compact
+                    variant="audit"
+                    maxLength={300}
+                  />
+                </div>
               </div>
+            )}
+            {!event.details && !hasStateDiff && detailsRaw && (
+              <StructuredOutputDisplay
+                value={detailsRaw}
+                compact
+                variant="audit"
+                maxLength={300}
+              />
             )}
           </div>
         )}
 
-        <p className="text-xs text-gray-600 mt-2">
+        <p className="text-xs text-gray-600 mt-3">
           {formatDateTime(event.created_at) ?? '—'}
         </p>
       </div>

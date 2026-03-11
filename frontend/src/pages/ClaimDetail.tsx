@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge';
 import TypeBadge from '../components/TypeBadge';
 import AuditTimeline from '../components/AuditTimeline';
 import EmptyState from '../components/EmptyState';
+import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
 import { useClaim, useClaimHistory, useClaimWorkflows } from '../api/queries';
 import { formatDateTime } from '../utils/date';
 
@@ -178,15 +179,15 @@ export default function ClaimDetail() {
                   <div className="space-y-4">
                     <div>
                       <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Router Output</p>
-                      <pre className="bg-gray-900 rounded-lg p-3 text-sm text-gray-400 whitespace-pre-wrap font-mono overflow-x-auto ring-1 ring-gray-700/50">
-                        {wf.router_output ?? '—'}
-                      </pre>
+                      <div className="bg-gray-900 rounded-lg p-3 ring-1 ring-gray-700/50">
+                        <StructuredOutputDisplay value={wf.router_output ?? ''} />
+                      </div>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Workflow Output</p>
-                      <pre className="bg-gray-900 rounded-lg p-3 text-sm text-gray-400 whitespace-pre-wrap font-mono overflow-x-auto max-h-96 overflow-y-auto ring-1 ring-gray-700/50">
-                        {wf.workflow_output ?? '—'}
-                      </pre>
+                      <div className="bg-gray-900 rounded-lg p-3 max-h-96 overflow-y-auto ring-1 ring-gray-700/50">
+                        <StructuredOutputDisplay value={wf.workflow_output ?? ''} />
+                      </div>
                     </div>
                   </div>
                 </div>
