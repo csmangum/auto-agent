@@ -532,6 +532,7 @@ def record_follow_up_response(
             body.message_id,
             body.response_content,
             actor_id=actor_id,
+            expected_claim_id=claim_id,
         )
         return {"success": True, "message": "Response recorded"}
     except ValueError as e:

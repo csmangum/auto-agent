@@ -61,16 +61,22 @@ def send_user_message(
         msg_id = repo.create_follow_up_message(
             claim_id, user_type, message_content, actor_id="follow_up_agent"
         )
-        repo.mark_follow_up_sent(msg_id)
 
-        notify_user(
-            user_type,
-            claim_id,
-            message_content,
-            email=email,
-            phone=phone,
-            identifier=identifier or claim_id,
-        )
+        try:
+            notify_user(
+                user_type,
+                claim_id,
+                message_content,
+                email=email,
+                phone=phone,
+                identifier=identifier or claim_id,
+            )
+        except Exception:
+            logger.exception(
+                "Notification delivery failed for claim %s message %s", claim_id, msg_id
+            )
+
+        repo.mark_follow_up_sent(msg_id)
 
         return json.dumps(
             {
@@ -153,9 +159,24 @@ def check_pending_responses(
     if not claim_id:
         return json.dumps({"pending": None, "error": "claim_id is required"})
 
+    # Normalize and validate user_type if provided
+    normalized_user_type: str | None = None
+    if user_type is not None:
+        normalized_user_type = str(user_type).strip().lower()
+        if not normalized_user_type:
+            normalized_user_type = None
+        elif normalized_user_type not in VALID_USER_TYPES:
+            return json.dumps(
+                {
+                    "pending": None,
+                    "error": f"Invalid user_type: {normalized_user_type!r}. "
+                    f"Must be one of: {', '.join(VALID_USER_TYPES)}",
+                }
+            )
+
     try:
         repo = ClaimRepository()
-        pending = repo.get_pending_follow_ups(claim_id, user_type=user_type)
+        pending = repo.get_pending_follow_ups(claim_id, user_type=normalized_user_type)
         out = [
             {
                 "id": p["id"],
