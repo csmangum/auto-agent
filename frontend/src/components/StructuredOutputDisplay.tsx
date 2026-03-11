@@ -8,6 +8,8 @@ const PRIORITY_BADGE_STYLES: Record<string, string> = {
   low: 'bg-gray-500/20 text-gray-400 ring-gray-500/30',
 };
 
+const DEFAULT_PRIORITY_STYLE = 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30';
+
 interface EscalationPayload {
   escalation_reasons?: string[];
   reason?: string;
@@ -140,71 +142,80 @@ function EscalationDisplay({
   const priority = parsed.priority;
   const recommended = parsed.recommended_action;
   const reason = parsed.reason;
-  const isAudit = variant === 'audit';
+  const v = variant;
+  const isAudit = v === 'audit';
+
+  const priorityBlock = priority && (
+    <DetailRow label="Priority" variant={v}>
+      <DetailBadge
+        className={PRIORITY_BADGE_STYLES[priority] ?? DEFAULT_PRIORITY_STYLE}
+      >
+        {priority}
+      </DetailBadge>
+    </DetailRow>
+  );
+  const reasonsBlock =
+    reasons.length > 0 && (
+      <DetailRow label="Reasons" variant={v}>
+        <div className="flex flex-wrap gap-1">
+          {reasons.map((r) => (
+            <DetailBadge
+              key={r}
+              className="bg-purple-500/20 text-purple-300 ring-purple-500/30"
+            >
+              {r.replace(/_/g, ' ')}
+            </DetailBadge>
+          ))}
+        </div>
+      </DetailRow>
+    );
+  const indicatorsBlock =
+    indicators.length > 0 && (
+      <DetailRow
+        label={parsed.indicators ? 'Indicators' : 'Fraud indicators'}
+        variant={v}
+      >
+        <div className="flex flex-wrap gap-1">
+          {indicators.map((i) => (
+            <DetailBadge
+              key={i}
+              className="bg-red-500/20 text-red-300 ring-red-500/30"
+            >
+              {i.replace(/_/g, ' ')}
+            </DetailBadge>
+          ))}
+        </div>
+      </DetailRow>
+    );
+  const reasonBlock =
+    reason && (
+      <DetailRow label="Reason" variant={v}>
+        <span className="text-gray-400">{reason}</span>
+      </DetailRow>
+    );
+  const routerBlock =
+    parsed.router_confidence != null &&
+    parsed.router_confidence_threshold != null && (
+      <DetailRow label="Router" variant={v}>
+        <span className="text-gray-400">
+          Confidence {parsed.router_confidence} below threshold{' '}
+          {parsed.router_confidence_threshold}
+        </span>
+      </DetailRow>
+    );
 
   if (isAudit) {
     return (
       <div className="space-y-4">
         {(priority || reasons.length > 0) && (
           <div className="space-y-3">
-            {priority && (
-              <DetailRow label="Priority" variant="audit">
-                <DetailBadge
-                  className={
-                    PRIORITY_BADGE_STYLES[priority] ?? PRIORITY_BADGE_STYLES.medium
-                  }
-                >
-                  {priority}
-                </DetailBadge>
-              </DetailRow>
-            )}
-            {reasons.length > 0 && (
-              <DetailRow label="Reasons" variant="audit">
-                <div className="flex flex-wrap gap-1">
-                  {reasons.map((r) => (
-                    <DetailBadge
-                      key={r}
-                      className="bg-purple-500/20 text-purple-300 ring-purple-500/30"
-                    >
-                      {r.replace(/_/g, ' ')}
-                    </DetailBadge>
-                  ))}
-                </div>
-              </DetailRow>
-            )}
+            {priorityBlock}
+            {reasonsBlock}
           </div>
         )}
-        {indicators.length > 0 && (
-          <DetailRow
-            label={parsed.indicators ? 'Indicators' : 'Fraud indicators'}
-            variant="audit"
-          >
-            <div className="flex flex-wrap gap-1">
-              {indicators.map((i) => (
-                <DetailBadge
-                  key={i}
-                  className="bg-red-500/20 text-red-300 ring-red-500/30"
-                >
-                  {i.replace(/_/g, ' ')}
-                </DetailBadge>
-              ))}
-            </div>
-          </DetailRow>
-        )}
-        {reason && (
-          <DetailRow label="Reason" variant="audit">
-            <span className="text-gray-400">{reason}</span>
-          </DetailRow>
-        )}
-        {parsed.router_confidence != null &&
-          parsed.router_confidence_threshold != null && (
-            <DetailRow label="Router" variant="audit">
-              <span className="text-gray-400">
-                Confidence {parsed.router_confidence} below threshold{' '}
-                {parsed.router_confidence_threshold}
-              </span>
-            </DetailRow>
-          )}
+        {indicatorsBlock}
+        {reasonBlock}
+        {routerBlock}
         {recommended && (
           <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-3">
             <p className="text-[10px] font-medium uppercase tracking-wider text-amber-400/80 mb-1">
@@ -220,71 +231,11 @@ function EscalationDisplay({
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
-        {priority && (
-          <>
-            <DetailRow label="Priority">
-              <DetailBadge
-                className={
-                  PRIORITY_BADGE_STYLES[priority] ?? PRIORITY_BADGE_STYLES.medium
-                }
-              >
-                {priority}
-              </DetailBadge>
-            </DetailRow>
-          </>
-        )}
-        {reasons.length > 0 && (
-          <>
-            <DetailRow label="Reasons">
-              <div className="flex flex-wrap gap-1">
-                {reasons.map((r) => (
-                  <DetailBadge
-                    key={r}
-                    className="bg-purple-500/20 text-purple-300 ring-purple-500/30"
-                  >
-                    {r.replace(/_/g, ' ')}
-                  </DetailBadge>
-                ))}
-              </div>
-            </DetailRow>
-          </>
-        )}
-        {indicators.length > 0 && (
-          <>
-            <DetailRow
-              label={parsed.indicators ? 'Indicators' : 'Fraud indicators'}
-            >
-              <div className="flex flex-wrap gap-1">
-                {indicators.map((i) => (
-                  <DetailBadge
-                    key={i}
-                    className="bg-red-500/20 text-red-300 ring-red-500/30"
-                  >
-                    {i.replace(/_/g, ' ')}
-                  </DetailBadge>
-                ))}
-              </div>
-            </DetailRow>
-          </>
-        )}
-        {reason && (
-          <>
-            <DetailRow label="Reason">
-              <span className="text-gray-400">{reason}</span>
-            </DetailRow>
-          </>
-        )}
-        {parsed.router_confidence != null &&
-          parsed.router_confidence_threshold != null && (
-            <>
-              <DetailRow label="Router">
-                <span className="text-gray-400">
-                  Confidence {parsed.router_confidence} below threshold{' '}
-                  {parsed.router_confidence_threshold}
-                </span>
-              </DetailRow>
-            </>
-          )}
+        {priorityBlock}
+        {reasonsBlock}
+        {indicatorsBlock}
+        {reasonBlock}
+        {routerBlock}
       </div>
       {recommended && (
         <p className="text-sm text-gray-400 pt-0.5 border-t border-gray-700/50">
@@ -310,7 +261,7 @@ function RouterDisplay({ parsed }: { parsed: RouterPayload }) {
         <>
           <span className="text-gray-500 shrink-0">Confidence</span>
           <span className="text-gray-400">
-            {(parsed.confidence * 100).toFixed(0)}%
+            {(parsed.confidence <= 1 ? parsed.confidence * 100 : parsed.confidence).toFixed(0)}%
           </span>
         </>
       )}
@@ -343,7 +294,11 @@ function StateSnapshotDisplay({
         )}
         {'claim_type' in parsed && (
           <DetailRow label="Claim type" variant="audit">
-            <span className="text-gray-400">{parsed.claim_type || '—'}</span>
+            {parsed.claim_type ? (
+              <TypeBadge type={parsed.claim_type} />
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
           </DetailRow>
         )}
         {'payout_amount' in parsed && (
@@ -372,7 +327,13 @@ function StateSnapshotDisplay({
       {'claim_type' in parsed && (
         <>
           <span className="text-gray-500 shrink-0">Claim type</span>
-          <span className="text-gray-400">{parsed.claim_type || '—'}</span>
+          <span>
+            {parsed.claim_type ? (
+              <TypeBadge type={parsed.claim_type} />
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+          </span>
         </>
       )}
       {'payout_amount' in parsed && (
@@ -389,14 +350,22 @@ function StateSnapshotDisplay({
   );
 }
 
+/**
+ * Parses JSON and renders structured UIs for known payload shapes.
+ * Parse precedence (first match wins): escalation → state snapshot → router.
+ * Unrecognized JSON or plain text falls through to raw display.
+ */
 export default function StructuredOutputDisplay({
   value,
   compact = false,
   variant = 'default',
+  maxLength,
 }: {
   value: string;
   compact?: boolean;
   variant?: 'audit' | 'default';
+  /** Max chars for fallback raw display. Omit for no truncation (e.g. scrollable workflow output). */
+  maxLength?: number;
 }) {
   if (!value?.trim()) return <span className="text-gray-500">—</span>;
 
@@ -428,9 +397,14 @@ export default function StructuredOutputDisplay({
     );
   }
 
+  const displayValue =
+    maxLength != null && value.length > maxLength
+      ? value.slice(0, maxLength) + '…'
+      : value;
+
   return (
     <div className="text-sm text-gray-400 break-words whitespace-pre-wrap font-mono">
-      {value.length > 500 ? value.slice(0, 500) + '…' : value}
+      {displayValue}
     </div>
   );
 }
