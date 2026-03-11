@@ -45,6 +45,7 @@ from claim_agent.utils.sanitization import (
 )
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
+from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
 from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
 
 logger = logging.getLogger(__name__)
@@ -319,6 +320,16 @@ class RequestInfoBody(BaseModel):
     note: str = ""
 
 
+class FollowUpRunBody(BaseModel):
+    task: str = Field(..., min_length=1, description="Follow-up task (e.g., 'Gather photos from claimant')")
+    user_response: Optional[str] = Field(default=None, description="Optional user response when recording in same run")
+
+
+class RecordFollowUpResponseBody(BaseModel):
+    message_id: int = Field(..., description="Follow-up message ID from send_user_message")
+    response_content: str = Field(..., min_length=1, description="User's response text")
+
+
 class ReviewerDecisionBody(BaseModel):
     """Optional reviewer decision for handback when approving a claim."""
 
@@ -482,6 +493,62 @@ def request_info_review(
     return {"claim_id": claim_id, "status": "pending_info"}
 
 
+@router.post("/claims/{claim_id}/follow-up/run", dependencies=[RequireAdjuster])
+def run_follow_up(
+    claim_id: str,
+    body: FollowUpRunBody = Body(...),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Run the follow-up agent to send outreach or process a response."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    try:
+        result = run_follow_up_workflow(
+            claim_id,
+            body.task,
+            ctx=ctx,
+            user_response=body.user_response,
+        )
+        return result
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/claims/{claim_id}/follow-up/record-response", dependencies=[RequireAdjuster])
+def record_follow_up_response(
+    claim_id: str,
+    body: RecordFollowUpResponseBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Record a user's response to a follow-up message (webhook or manual entry)."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        ctx.repo.record_follow_up_response(
+            body.message_id,
+            body.response_content,
+            actor_id=actor_id,
+        )
+        return {"success": True, "message": "Response recorded"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/claims/{claim_id}/follow-up", dependencies=[RequireAdjuster])
+def get_follow_up_messages(
+    claim_id: str,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Get all follow-up messages for a claim."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    return {"claim_id": claim_id, "messages": ctx.repo.get_follow_up_messages(claim_id)}
+
+
 @router.post("/claims/{claim_id}/review/escalate-to-siu")
 def escalate_to_siu(
     claim_id: str,
@@ -503,13 +570,14 @@ def escalate_to_siu(
 
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
 def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
-    """Get a single claim by ID. Includes claim notes for cross-crew context."""
+    """Get a single claim by ID. Includes claim notes and follow-up messages."""
     row = ctx.repo.get_claim(claim_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
     result = _resolve_attachment_urls(row)
     result["notes"] = ctx.repo.get_notes(claim_id)
+    result["follow_up_messages"] = ctx.repo.get_follow_up_messages(claim_id)
     return result
 
 

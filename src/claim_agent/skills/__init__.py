@@ -231,3 +231,6 @@ REOPENED_ROUTER = "reopened_router"
 # After-action
 AFTER_ACTION_SUMMARY = "after_action_summary"
 AFTER_ACTION_STATUS = "after_action_status"
+# Follow-up
+FOLLOW_UP_OUTREACH = "follow_up_outreach"
+RESPONSE_PROCESSING = "response_processing"

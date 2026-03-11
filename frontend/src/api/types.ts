@@ -1,5 +1,25 @@
 /** API response types for the Claims System backend */
 
+/** User types for follow-up and human-in-the-loop flows */
+export type UserType =
+  | "claimant"
+  | "policyholder"
+  | "adjuster"
+  | "repair_shop"
+  | "siu"
+  | "other";
+
+export interface FollowUpMessage {
+  id: number;
+  claim_id: string;
+  user_type: string;
+  message_content: string;
+  status: string;
+  response_content?: string;
+  created_at?: string;
+  responded_at?: string;
+}
+
 export interface Claim {
   id: string;
   policy_number: string;
@@ -22,6 +42,8 @@ export interface Claim {
   assignee?: string; // adjuster/user ID
   siu_case_id?: string; // SIU case ID when escalated
   review_started_at?: string; // ISO datetime when entered needs_review
+  notes?: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
+  follow_up_messages?: FollowUpMessage[];
 }
 
 export interface ClaimsStats {

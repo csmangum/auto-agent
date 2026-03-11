@@ -321,6 +321,46 @@ class TestReviewQueue:
         assert data["claim_id"] == "CLM-TEST002"
         assert data["status"] == "under_investigation"
 
+    def test_follow_up_run(self, client, monkeypatch):
+        """Follow-up run endpoint invokes workflow and returns result."""
+        import claim_agent.api.routes.claims as claims_mod
+
+        mock_result = {"claim_id": "CLM-TEST001", "workflow_output": "Message sent.", "summary": "Message sent."}
+        monkeypatch.setattr(claims_mod, "run_follow_up_workflow", lambda *a, **kw: mock_result)
+        resp = client.post(
+            "/api/claims/CLM-TEST001/follow-up/run",
+            json={"task": "Gather photos from claimant"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert "workflow_output" in data
+
+    def test_follow_up_record_response(self, client):
+        """Record follow-up response creates record and returns success."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        msg_id = repo.create_follow_up_message(
+            "CLM-TEST001", "claimant", "Please upload photos.", actor_id="workflow"
+        )
+        resp = client.post(
+            "/api/claims/CLM-TEST001/follow-up/record-response",
+            json={"message_id": msg_id, "response_content": "I uploaded 3 photos."},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+
+    def test_follow_up_get_messages(self, client):
+        """Get follow-up messages returns list."""
+        resp = client.get("/api/claims/CLM-TEST001/follow-up")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert "messages" in data
+        assert isinstance(data["messages"], list)
+
     def test_approve_reprocesses_claim(self, client, monkeypatch):
         """Supervisor can approve claim and re-run workflow."""
         import claim_agent.api.routes.claims as claims_mod
@@ -760,12 +800,13 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 12
+        assert len(crews) == 13
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names
         assert "Fraud Detection Crew" in crew_names
         assert "Denial / Coverage Dispute Crew" in crew_names
+        assert "Follow-up Crew" in crew_names
         assert "Settlement Crew" in crew_names
         assert "Subrogation Crew" in crew_names
         # Check agents within a crew

@@ -9,6 +9,7 @@ from claim_agent.models.claim import (
     EscalationOutput,
     RouterOutput,
 )
+from claim_agent.models.user import UserContext, UserType
 
 __all__ = [
     "Attachment",
@@ -18,4 +19,6 @@ __all__ = [
     "ClaimType",
     "EscalationOutput",
     "RouterOutput",
+    "UserContext",
+    "UserType",
 ]

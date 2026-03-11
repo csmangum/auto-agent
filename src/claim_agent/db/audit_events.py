@@ -18,6 +18,8 @@ AUDIT_EVENT_ESCALATE_TO_SIU = "escalate_to_siu"
 AUDIT_EVENT_SIU_CASE_CREATED = "siu_case_created"
 AUDIT_EVENT_ASSIGN = "assign"
 AUDIT_EVENT_RETENTION = "retention_archived"
+AUDIT_EVENT_FOLLOW_UP_SENT = "follow_up_sent"
+AUDIT_EVENT_FOLLOW_UP_RESPONSE = "follow_up_response"
 
 # Actor identifiers for automated actions
 ACTOR_SYSTEM = "system"
@@ -39,4 +41,6 @@ AUDIT_EVENT_TYPES = (
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_ASSIGN,
     AUDIT_EVENT_RETENTION,
+    AUDIT_EVENT_FOLLOW_UP_SENT,
+    AUDIT_EVENT_FOLLOW_UP_RESPONSE,
 )

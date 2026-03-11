@@ -261,6 +261,31 @@ _CREWS_CATALOG = [
         ],
     },
     {
+        "name": "Follow-up Crew",
+        "description": "Human-in-the-loop outreach to claimants, policyholders, repair shops. Sends follow-up messages, records responses, integrates with pending_info.",
+        "module": "crews/follow_up_crew.py",
+        "agents": [
+            {
+                "name": "Outreach Planner",
+                "skill": "follow_up_outreach",
+                "tools": ["send_user_message", "check_pending_responses", "get_claim_notes"],
+                "description": "Identifies user type and plans follow-up tasks",
+            },
+            {
+                "name": "Message Composer",
+                "skill": "follow_up_outreach",
+                "tools": ["send_user_message", "check_pending_responses", "get_claim_notes"],
+                "description": "Drafts and sends tailored outreach messages",
+            },
+            {
+                "name": "Response Processor",
+                "skill": "response_processing",
+                "tools": ["check_pending_responses", "record_user_response", "add_claim_note", "get_claim_notes"],
+                "description": "Processes user responses and updates claim context",
+            },
+        ],
+    },
+    {
         "name": "Settlement Crew",
         "description": "Shared final settlement phase for payout-ready total loss and partial loss claims.",
         "module": "crews/settlement_crew.py",
