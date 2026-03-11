@@ -43,6 +43,7 @@ describe('ClaimsList', () => {
   const Wrapper = createWrapper();
 
   beforeEach(() => {
+    vi.mocked(useClaims).mockClear();
     vi.mocked(useClaims).mockReturnValue({
       data: mockClaimsData,
       isLoading: false,
