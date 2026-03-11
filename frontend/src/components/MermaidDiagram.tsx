@@ -9,19 +9,19 @@ mermaid.initialize({
   fontFamily: 'ui-sans-serif, system-ui, sans-serif',
   flowchart: { curve: 'basis', padding: 15, htmlLabels: false },
   themeVariables: {
-    primaryColor: '#1e3a5f',
-    primaryTextColor: '#e5e7eb',
-    primaryBorderColor: '#4b5563',
-    lineColor: '#6b7280',
-    secondaryColor: '#312e81',
-    tertiaryColor: '#1f2937',
-    background: '#111827',
-    mainBkg: '#1f2937',
-    nodeBorder: '#4b5563',
-    clusterBkg: '#1f2937',
-    clusterBorder: '#374151',
-    titleColor: '#e5e7eb',
-    edgeLabelBackground: '#1f2937',
+    primaryColor: '#1e293b',
+    primaryTextColor: '#cbd5e1',
+    primaryBorderColor: '#64748b',
+    lineColor: '#94a3b8',
+    secondaryColor: '#334155',
+    tertiaryColor: '#475569',
+    background: '#0f172a',
+    mainBkg: '#1e293b',
+    nodeBorder: '#64748b',
+    clusterBkg: '#1e293b',
+    clusterBorder: '#94a3b8',
+    titleColor: '#94a3b8',
+    edgeLabelBackground: '#334155',
   },
 });
 
@@ -73,18 +73,24 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
 
   if (!svg) {
     return (
-      <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-8 mb-4 text-center">
-        <div className="animate-pulse text-gray-500 text-sm">Rendering diagram…</div>
+      <div className="bg-slate-800/50 border border-slate-600/60 rounded-lg p-8 mb-4 text-center">
+        <div className="animate-pulse text-slate-400 text-sm">Rendering diagram…</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-700/50 rounded-lg p-4 mb-4 overflow-x-auto">
+    <div className="bg-slate-900/80 border border-slate-600/60 rounded-lg p-4 mb-4 overflow-x-auto ring-1 ring-slate-600/50">
       <div
         ref={containerRef}
         className="flex justify-center [&>svg]:max-w-full"
-        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true } }) }}
+        dangerouslySetInnerHTML={{
+          __html: DOMPurify.sanitize(svg, {
+            USE_PROFILES: { svg: true },
+            ADD_TAGS: ['foreignObject'],
+            HTML_INTEGRATION_POINTS: { foreignobject: true },
+          }),
+        }}
       />
     </div>
   );

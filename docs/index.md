@@ -51,21 +51,21 @@ flowchart LR
 
 ### CLI Commands
 
-```bash
-claim-agent serve [--reload] [--port <port>] [--host <host>]  # Start REST API server
-claim-agent process <claim.json> [--attachment <file> ...]     # Process a new claim (optionally attach photos, PDFs, estimates)
-claim-agent status <claim_id>      # Get claim status
-claim-agent history <claim_id>     # Get claim audit log
-claim-agent reprocess <claim_id> [--from-stage <stage>]  # Re-run workflow (optionally resume from router, escalation_check, workflow, or settlement)
-claim-agent metrics [claim_id]     # Show metrics (optional claim ID)
-claim-agent review-queue [--assignee X] [--priority P]   # List claims needing review
-claim-agent assign <id> <assignee>  # Assign claim to adjuster
-claim-agent approve <id> [--confirmed-claim-type X] [--confirmed-payout N] [--notes "..."]  # Approve, run handback, then workflow (supervisor)
-claim-agent reject <id> [--reason "..."]  # Reject claim
-claim-agent request-info <id> [--note "..."]  # Request more info
-claim-agent escalate-siu <id>     # Escalate to SIU
-claim-agent retention-enforce [--dry-run] [--years N]  # Archive claims older than retention
-```
+| Command | Description |
+|---------|-------------|
+| `claim-agent serve [--reload] [--port <port>] [--host <host>]` | Start REST API server |
+| `claim-agent process <claim.json> [--attachment <file> ...]` | Process a new claim (optionally attach photos, PDFs, estimates) |
+| `claim-agent status <claim_id>` | Get claim status |
+| `claim-agent history <claim_id>` | Get claim audit log |
+| `claim-agent reprocess <claim_id> [--from-stage <stage>]` | Re-run workflow (optionally resume from router, escalation_check, workflow, or settlement) |
+| `claim-agent metrics [claim_id]` | Show metrics (optional claim ID) |
+| `claim-agent review-queue [--assignee X] [--priority P]` | List claims needing review |
+| `claim-agent assign <id> <assignee>` | Assign claim to adjuster |
+| `claim-agent approve <id> [--confirmed-claim-type X] [--confirmed-payout N] [--notes "..."]` | Approve, run handback, then workflow (supervisor) |
+| `claim-agent reject <id> [--reason "..."]` | Reject claim |
+| `claim-agent request-info <id> [--note "..."]` | Request more info |
+| `claim-agent escalate-siu <id>` | Escalate to SIU |
+| `claim-agent retention-enforce [--dry-run] [--years N]` | Archive claims older than retention |
 
 ### Claim Types at a Glance
 
