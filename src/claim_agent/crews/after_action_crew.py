@@ -30,8 +30,7 @@ def create_after_action_crew(llm: LLMProtocol | None = None):
 WORKFLOW OUTPUT:
 {{workflow_output}}
 
-TOKEN BUDGET: Your after-action note MUST stay under {max_tokens} tokens (~{max_tokens * 4}
-characters). This note serves as the canonical claim state for future interactions, so it
+TOKEN BUDGET: Your after-action note MUST stay under {max_tokens} tokens (~{max_tokens * 4} characters). This note serves as the canonical claim state for future interactions, so it
 must be dense and information-rich without being verbose. Prioritize facts over narration.
 If the note exceeds the budget it will be truncated, losing trailing content.
 
