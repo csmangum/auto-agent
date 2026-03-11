@@ -9,6 +9,7 @@ import logging
 
 from crewai.tools import tool
 
+from claim_agent.config import get_settings
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 
@@ -69,8 +70,6 @@ def add_after_action_note(claim_id: str, note: str) -> str:
         JSON with success (bool), message, and truncated (bool) indicating
         whether the note was trimmed to fit the token budget.
     """
-    from claim_agent.config import get_settings
-
     claim_id = str(claim_id).strip()
     note = str(note).strip()
     if not claim_id:

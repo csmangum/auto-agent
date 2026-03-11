@@ -87,7 +87,7 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
         {detailsRaw && (
           <div className="mt-3 pt-3 border-t border-gray-700/50">
             <StructuredOutputDisplay
-              value={event.details || event.after_state || ''}
+              value={detailsRaw}
               compact
               variant="audit"
             />

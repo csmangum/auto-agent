@@ -13,6 +13,7 @@ from crewai.tools import tool
 from claim_agent.db.constants import STATUS_CLOSED
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.utils.sanitization import sanitize_note
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +39,14 @@ def close_claim(claim_id: str, reason: str) -> str:
         return json.dumps({"success": False, "message": "claim_id is required"})
     if not reason:
         return json.dumps({"success": False, "message": "reason is required"})
+    reason = sanitize_note(reason)
     try:
         repo = ClaimRepository()
         claim = repo.get_claim(claim_id)
         if claim is None:
             return json.dumps({"success": False, "message": f"Claim not found: {claim_id}"})
+        if claim.get("status") == STATUS_CLOSED:
+            return json.dumps({"success": True, "message": f"Claim {claim_id} already closed"})
         repo.update_claim_status(
             claim_id,
             STATUS_CLOSED,

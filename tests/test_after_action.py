@@ -75,6 +75,20 @@ class TestCloseClaimTool:
         assert len(close_entries) >= 1
         assert "Final closure" in close_entries[-1].get("details", "")
 
+    def test_close_claim_idempotent_when_already_closed(self, seeded_temp_db):
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.tools.status_tools import close_claim
+
+        close_claim.run(claim_id="CLM-TEST001", reason="First close")
+        result = close_claim.run(claim_id="CLM-TEST001", reason="Second close")
+        data = json.loads(result)
+        assert data["success"] is True
+        assert "already closed" in data["message"]
+        repo = ClaimRepository()
+        entries, _ = repo.get_claim_history("CLM-TEST001")
+        close_entries = [e for e in entries if e.get("new_status") == "closed"]
+        assert len(close_entries) == 1
+
 
 class TestCloseClaimLazyLoad:
     """Test that close_claim is properly lazy-loaded from tools/__init__.py."""
