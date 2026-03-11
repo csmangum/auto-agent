@@ -9,8 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# MagicMock is imported at top level for use in test fixtures
-
 
 # ============================================================================
 # Claim Type Classification Tests (with mocked LLM)
@@ -83,13 +81,17 @@ class TestWorkflowWithMockedLLM:
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
-                    mock_llm.return_value = MagicMock()
-                    mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                    mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                        "Claim processed successfully. Claim ID: CLM-TEST001"
-                    )
-                    
-                    result = run_claim_workflow(sample_new_claim)
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        mock_llm.return_value = MagicMock()
+                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                            "Claim processed successfully. Claim ID: CLM-TEST001"
+                        )
+                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                            "After-action summary completed."
+                        )
+
+                        result = run_claim_workflow(sample_new_claim)
         
         assert "claim_id" in result
         assert result["claim_id"].startswith("CLM-")
@@ -124,27 +126,31 @@ class TestWorkflowWithMockedLLM:
                     with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
                         with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
                             with patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
-                                with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                    mock_llm.return_value = MagicMock()
-                                    mock_router.return_value.kickoff.return_value = mock_router_response(
-                                        "total_loss", "Vehicle flooded - total destruction."
-                                    )
-                                    mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                                        "Total loss confirmed. Vehicle value: $15,000.",
-                                        tasks_output=workflow_tasks_output,
-                                    )
-                                    mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                        "Settlement completed. Status: settled."
-                                    )
-                                    mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                        "Subrogation assessment complete. No recovery opportunity."
-                                    )
-                                    mock_salvage.return_value.kickoff.return_value = mock_crew_response(
-                                        "Salvage disposition complete."
-                                    )
-                                    mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                                        mock_llm.return_value = MagicMock()
+                                        mock_router.return_value.kickoff.return_value = mock_router_response(
+                                            "total_loss", "Vehicle flooded - total destruction."
+                                        )
+                                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                            "Total loss confirmed. Vehicle value: $15,000.",
+                                            tasks_output=workflow_tasks_output,
+                                        )
+                                        mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                            "Settlement completed. Status: settled."
+                                        )
+                                        mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                            "Subrogation assessment complete. No recovery opportunity."
+                                        )
+                                        mock_salvage.return_value.kickoff.return_value = mock_crew_response(
+                                            "Salvage disposition complete."
+                                        )
+                                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                            "After-action summary completed."
+                                        )
+                                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
 
-                                    result = run_claim_workflow(low_value_claim)
+                                        result = run_claim_workflow(low_value_claim)
 
         assert result["claim_type"] == "total_loss"
         mock_crew.assert_called_once()
@@ -184,27 +190,31 @@ class TestWorkflowWithMockedLLM:
                     with patch("claim_agent.workflow.stages.create_rental_crew") as mock_rental:
                         with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
                             with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
-                                with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                    mock_llm.return_value = MagicMock()
-                                    mock_router.return_value.kickoff.return_value = mock_router_response(
-                                        "partial_loss", "Repairable fender damage."
-                                    )
-                                    mock_partial.return_value.kickoff.return_value = mock_crew_response(
-                                        "Repair authorization created. insurance_pays: $2,100.",
-                                        tasks_output=workflow_tasks_output,
-                                    )
-                                    mock_rental.return_value.kickoff.return_value = mock_crew_response(
-                                        "Rental eligibility confirmed. Reimbursement processed."
-                                    )
-                                    mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                        "Settlement completed. Status: settled."
-                                    )
-                                    mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                        "Subrogation assessment complete. No recovery opportunity."
-                                    )
-                                    mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                                        mock_llm.return_value = MagicMock()
+                                        mock_router.return_value.kickoff.return_value = mock_router_response(
+                                            "partial_loss", "Repairable fender damage."
+                                        )
+                                        mock_partial.return_value.kickoff.return_value = mock_crew_response(
+                                            "Repair authorization created. insurance_pays: $2,100.",
+                                            tasks_output=workflow_tasks_output,
+                                        )
+                                        mock_rental.return_value.kickoff.return_value = mock_crew_response(
+                                            "Rental eligibility confirmed. Reimbursement processed."
+                                        )
+                                        mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                            "Settlement completed. Status: settled."
+                                        )
+                                        mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                            "Subrogation assessment complete. No recovery opportunity."
+                                        )
+                                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                            "After-action summary completed."
+                                        )
+                                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
 
-                                    result = run_claim_workflow(sample_partial_loss_claim)
+                                        result = run_claim_workflow(sample_partial_loss_claim)
 
         assert result["claim_type"] == "partial_loss"
         mock_partial.assert_called_once()
@@ -236,11 +246,15 @@ class TestWorkflowWithMockedLLM:
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
-                    mock_llm.return_value = MagicMock()
-                    mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                    mock_crew.return_value.kickoff.return_value = mock_crew_response("Success")
-                    
-                    result = run_claim_workflow(sample_new_claim)
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        mock_llm.return_value = MagicMock()
+                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                        mock_crew.return_value.kickoff.return_value = mock_crew_response("Success")
+                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                            "After-action summary completed."
+                        )
+
+                        result = run_claim_workflow(sample_new_claim)
         
         repo = ClaimRepository(db_path=integration_db)
         history, _ = repo.get_claim_history(result["claim_id"])
@@ -285,14 +299,17 @@ class TestWorkflowWithMockedLLM:
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
-                    # Also mock escalation to return no escalation needed
-                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response("Processed!")
-                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
-                        
-                        result = run_claim_workflow(sample_new_claim)
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                            mock_llm.return_value = MagicMock()
+                            mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                            mock_crew.return_value.kickoff.return_value = mock_crew_response("Processed!")
+                            mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                "After-action summary completed."
+                            )
+                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+
+                            result = run_claim_workflow(sample_new_claim)
         
         with get_connection(integration_db) as conn:
             row = conn.execute(
@@ -356,13 +373,17 @@ class TestEscalation:
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_fraud_detection_crew") as mock_fraud:
-                    mock_llm.return_value = MagicMock()
-                    mock_router.return_value.kickoff.return_value = mock_router_response("fraud")
-                    mock_fraud.return_value.kickoff.return_value = mock_crew_response(
-                        "Fraud indicators detected: staged accident, inflated damages."
-                    )
-                    
-                    result = run_claim_workflow(sample_fraud_claim)
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        mock_llm.return_value = MagicMock()
+                        mock_router.return_value.kickoff.return_value = mock_router_response("fraud")
+                        mock_fraud.return_value.kickoff.return_value = mock_crew_response(
+                            "Fraud indicators detected: staged accident, inflated damages."
+                        )
+                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                            "After-action summary completed."
+                        )
+
+                        result = run_claim_workflow(sample_fraud_claim)
         
         assert result["claim_type"] == "fraud"
         mock_fraud.assert_called_once()
@@ -394,11 +415,15 @@ class TestReprocessing:
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
-                    mock_llm.return_value = MagicMock()
-                    mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                    mock_crew.return_value.kickoff.return_value = mock_crew_response("Reprocessed!")
-                    
-                    result = run_claim_workflow(sample_new_claim, existing_claim_id=claim_id)
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        mock_llm.return_value = MagicMock()
+                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                        mock_crew.return_value.kickoff.return_value = mock_crew_response("Reprocessed!")
+                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                            "After-action summary completed."
+                        )
+
+                        result = run_claim_workflow(sample_new_claim, existing_claim_id=claim_id)
         
         assert result["claim_id"] == claim_id
         
