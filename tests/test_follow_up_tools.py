@@ -59,10 +59,13 @@ def claim_id(repo):
 
 
 def test_send_user_message_success(repo, claim_id):
+    # Use repair_shop: delivery is attempted (stub) without requiring email/phone.
+    # claimant/policyholder need email or phone AND notifications enabled.
     result = send_user_message.run(
         claim_id=claim_id,
-        user_type="claimant",
-        message_content="Please upload photos of the damage.",
+        user_type="repair_shop",
+        message_content="Please submit the supplement estimate.",
+        identifier="SHOP-001",
     )
     data = json.loads(result)
     assert data["success"] is True
@@ -90,6 +93,33 @@ def test_send_user_message_invalid_user_type(repo, claim_id):
     data = json.loads(result)
     assert data["success"] is False
     assert "user_type" in data["message"]
+
+
+def test_send_user_message_claimant_no_contact_returns_false(repo, claim_id):
+    """Claimant/policyholder without email or phone is not delivered; status stays pending."""
+    result = send_user_message.run(
+        claim_id=claim_id,
+        user_type="claimant",
+        message_content="Please upload photos.",
+    )
+    data = json.loads(result)
+    assert data["success"] is False
+    assert "contact" in data["message"].lower() or "not delivered" in data["message"].lower()
+
+
+def test_record_user_response_rejects_blank_claim_id(repo, claim_id):
+    """When claim_id is provided but blank/whitespace, return error."""
+    msg_id = repo.create_follow_up_message(
+        claim_id, "claimant", "Please upload photos.", actor_id="workflow"
+    )
+    result = record_user_response.run(
+        message_id=msg_id,
+        response_content="My response.",
+        claim_id="   ",
+    )
+    data = json.loads(result)
+    assert data["success"] is False
+    assert "blank" in data["message"].lower() or "whitespace" in data["message"].lower()
 
 
 def test_record_user_response_success(repo, claim_id):

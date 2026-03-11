@@ -63,7 +63,7 @@ def send_user_message(
         )
 
         try:
-            notify_user(
+            delivered = notify_user(
                 user_type,
                 claim_id,
                 message_content,
@@ -77,6 +77,17 @@ def send_user_message(
             )
             return json.dumps(
                 {"success": False, "message": "Notification delivery failed"}
+            )
+
+        if not delivered:
+            return json.dumps(
+                {
+                    "success": False,
+                    "message": (
+                        f"Message not delivered: no contact channel (email/phone) for {user_type}, "
+                        "or notifications disabled. Message created but status remains pending."
+                    ),
+                }
             )
 
         repo.mark_follow_up_sent(msg_id)
@@ -125,13 +136,23 @@ def record_user_response(
     if not response_content:
         return json.dumps({"success": False, "message": "response_content cannot be empty"})
 
+    # Validate claim_id: if provided, it must not be blank/whitespace.
+    expected_claim_id: str | None = None
+    if claim_id is not None:
+        claim_id_stripped = str(claim_id).strip()
+        if not claim_id_stripped:
+            return json.dumps(
+                {"success": False, "message": "claim_id cannot be blank or whitespace"}
+            )
+        expected_claim_id = claim_id_stripped
+
     try:
         repo = ClaimRepository()
         repo.record_follow_up_response(
             message_id,
             response_content,
             actor_id=actor_id,
-            expected_claim_id=str(claim_id).strip() or None if claim_id else None,
+            expected_claim_id=expected_claim_id,
         )
         return json.dumps(
             {"success": True, "message": "Response recorded"}

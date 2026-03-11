@@ -24,7 +24,7 @@ def notify_user(
     phone: str | None = None,
     identifier: str | None = None,
     template_data: dict[str, Any] | None = None,
-) -> None:
+) -> bool:
     """Send follow-up message to a user based on their type.
 
     Routes to the appropriate channel for each user type:
@@ -41,12 +41,16 @@ def notify_user(
         phone: Optional phone for SMS.
         identifier: Optional user/contact identifier.
         template_data: Optional template variables.
+
+    Returns:
+        True if delivery was attempted (or queued); False if skipped (e.g., no
+        contact channels for claimant/policyholder, or notifications disabled).
     """
     try:
         ut = UserType(user_type)
     except ValueError:
         logger.warning("Unknown user_type for notify_user: %s", user_type)
-        return
+        return False
 
     if ut in (UserType.CLAIMANT, UserType.POLICYHOLDER):
         config = get_notification_config()
@@ -56,35 +60,44 @@ def notify_user(
                 user_type,
                 claim_id,
             )
-            return
-        if email or phone:
-            notify_claimant(
-                "follow_up_request",
-                claim_id,
-                email=email,
-                phone=phone,
-                template_data=template_data or {"message": message},
-            )
-            logger.info(
-                "Would send follow-up to %s: claim_id=%s (stub)",
-                user_type,
+            return False
+        if not email and not phone:
+            logger.debug(
+                "No email or phone for claimant/policyholder; skipping follow-up for claim_id=%s",
                 claim_id,
             )
+            return False
+        notify_claimant(
+            "follow_up_request",
+            claim_id,
+            email=email,
+            phone=phone,
+            template_data=template_data or {"message": message},
+        )
+        logger.info(
+            "Would send follow-up to %s: claim_id=%s (stub)",
+            user_type,
+            claim_id,
+        )
+        return True
     elif ut == UserType.REPAIR_SHOP:
         logger.info(
             "Would send follow-up to repair_shop via portal/API: claim_id=%s identifier=%s (stub)",
             claim_id,
             identifier,
         )
+        return True
     elif ut in (UserType.ADJUSTER, UserType.SIU):
         logger.info(
             "Would send internal follow-up to %s: claim_id=%s (stub)",
             user_type,
             claim_id,
         )
+        return True
     else:
         logger.info(
             "Would send follow-up to %s: claim_id=%s (stub)",
             user_type,
             claim_id,
         )
+        return True
