@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import ClaimTable from './ClaimTable';
 import type { Claim } from '../api/types';
 
@@ -15,12 +15,16 @@ const mockClaims: Claim[] = [
   },
 ];
 
+function TestWrapper({ children }: { children: React.ReactNode }) {
+  return <MemoryRouter initialEntries={['/claims']}>{children}</MemoryRouter>;
+}
+
 describe('ClaimTable', () => {
   it('shows empty state when no claims', () => {
     render(
-      <BrowserRouter>
+      <TestWrapper>
         <ClaimTable claims={[]} />
-      </BrowserRouter>
+      </TestWrapper>
     );
     expect(screen.getByText('No claims found')).toBeInTheDocument();
     expect(screen.getByText('Submit a Claim')).toBeInTheDocument();
@@ -28,9 +32,9 @@ describe('ClaimTable', () => {
 
   it('shows filter-specific empty state when hasFilters is true', () => {
     render(
-      <BrowserRouter>
+      <TestWrapper>
         <ClaimTable claims={[]} hasFilters />
-      </BrowserRouter>
+      </TestWrapper>
     );
     expect(screen.getByText('No claims found')).toBeInTheDocument();
     expect(screen.queryByText('Submit a Claim')).not.toBeInTheDocument();
@@ -38,12 +42,23 @@ describe('ClaimTable', () => {
 
   it('renders claim rows', () => {
     render(
-      <BrowserRouter>
+      <TestWrapper>
         <ClaimTable claims={mockClaims} />
-      </BrowserRouter>
+      </TestWrapper>
     );
     expect(screen.getByText('CLM-001')).toBeInTheDocument();
     expect(screen.getByText('POL-001')).toBeInTheDocument();
     expect(screen.getByText('new')).toBeInTheDocument();
+  });
+
+  it('claim rows are clickable', () => {
+    render(
+      <TestWrapper>
+        <ClaimTable claims={mockClaims} />
+      </TestWrapper>
+    );
+    const row = screen.getByText('CLM-001').closest('tr');
+    expect(row).toHaveClass('cursor-pointer');
+    fireEvent.click(row!);
   });
 });
