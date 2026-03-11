@@ -436,9 +436,10 @@ describe('API client', () => {
 
     it('abort stops the stream without calling onError', async () => {
     mockFetch.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(
+      (_url, options) =>
+        new Promise((resolve, reject) => {
+          const signal = options?.signal as AbortSignal;
+          const timeoutId = setTimeout(
             () =>
               resolve({
                 ok: true,
@@ -446,6 +447,12 @@ describe('API client', () => {
               } as Response),
             100
           );
+          if (signal) {
+            signal.addEventListener('abort', () => {
+              clearTimeout(timeoutId);
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }
         })
     );
 
@@ -458,6 +465,7 @@ describe('API client', () => {
     await new Promise((r) => setTimeout(r, 150));
 
     expect(onError).not.toHaveBeenCalled();
+    expect(onUpdate).not.toHaveBeenCalled();
     });
   });
 });
