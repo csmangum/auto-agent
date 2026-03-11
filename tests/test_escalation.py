@@ -389,10 +389,12 @@ def test_run_claim_workflow_validation_enabled_agrees_high_confidence(_temp_clai
          patch("claim_agent.workflow.stages.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
          patch("claim_agent.workflow.stages.validate_router_classification_impl", return_value=val_result), \
          patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation), \
-         patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
+         patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew, \
+         patch("claim_agent.workflow.stages.create_after_action_crew") as mock_aa:
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
         mock_crew.return_value.kickoff.return_value = workflow_output
+        mock_aa.return_value.kickoff.return_value = MagicMock(raw="After-action complete.")
 
         result = run_claim_workflow(claim_data)
 
@@ -447,13 +449,15 @@ def test_run_claim_workflow_validation_enabled_disagrees_reclassifies(_temp_clai
          patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_tl_crew, \
          patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settle_crew, \
          patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation, \
-         patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
+         patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage, \
+         patch("claim_agent.workflow.stages.create_after_action_crew") as mock_aa:
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
         mock_tl_crew.return_value.kickoff.return_value = workflow_output
         mock_settle_crew.return_value.kickoff.return_value = settlement_output
         mock_subrogation.return_value.kickoff.return_value = MagicMock(raw="Subrogation assessment complete.")
         mock_salvage.return_value.kickoff.return_value = MagicMock(raw="Salvage disposition complete.")
+        mock_aa.return_value.kickoff.return_value = MagicMock(raw="After-action complete.")
 
         result = run_claim_workflow(claim_data)
 

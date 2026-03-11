@@ -228,3 +228,6 @@ APPEAL_REVIEWER = "appeal_reviewer"
 REOPENED_VALIDATOR = "reopened_validator"
 PRIOR_CLAIM_LOADER = "prior_claim_loader"
 REOPENED_ROUTER = "reopened_router"
+# After-action
+AFTER_ACTION_SUMMARY = "after_action_summary"
+AFTER_ACTION_STATUS = "after_action_status"

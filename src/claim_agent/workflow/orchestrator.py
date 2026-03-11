@@ -33,6 +33,7 @@ from claim_agent.workflow.helpers import (
     _final_status,
 )
 from claim_agent.workflow.stages import (
+    _stage_after_action,
     _stage_duplicate_detection,
     _stage_economic_analysis,
     _stage_escalation_check,
@@ -247,6 +248,7 @@ def run_claim_workflow(
                 _stage_settlement,
                 _stage_subrogation,
                 _stage_salvage,
+                _stage_after_action,
             ):
                 early_return = stage_fn(wf_ctx)
                 if early_return is not None:

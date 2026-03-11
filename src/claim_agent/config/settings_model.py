@@ -390,6 +390,11 @@ class Settings(BaseSettings):
     pre_routing_fraud_damage_ratio: float = 0.9
     max_tokens_per_claim: int = Field(default=100_000, validation_alias="CLAIM_AGENT_MAX_TOKENS_PER_CLAIM")
     max_llm_calls_per_claim: int = Field(default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM")
+    after_action_note_max_tokens: int = Field(
+        default=1024,
+        ge=1,
+        validation_alias="AFTER_ACTION_NOTE_MAX_TOKENS",
+    )
     max_concurrent_background_tasks: int = Field(
         default=10, validation_alias="CLAIM_AGENT_MAX_CONCURRENT_BACKGROUND_TASKS"
     )

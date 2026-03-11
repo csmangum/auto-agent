@@ -169,6 +169,89 @@ function DetailRow({
   );
 }
 
+function EscalationRowContent({
+  parsed,
+  variant,
+}: {
+  parsed: EscalationPayload;
+  variant: 'audit' | 'default';
+}) {
+  const reasons = parsed.escalation_reasons ?? [];
+  const indicators = parsed.indicators ?? parsed.fraud_indicators ?? [];
+  const priority = parsed.priority;
+  const reason = parsed.reason;
+  const rowVariant = variant === 'audit' ? ('audit' as const) : undefined;
+
+  const priorityBadge = priority ? (
+    <DetailBadge
+      className={PRIORITY_BADGE_STYLES[priority] ?? DEFAULT_PRIORITY_STYLE}
+    >
+      {priority}
+    </DetailBadge>
+  ) : null;
+
+  const reasonsContent =
+    reasons.length > 0 ? (
+      <div className="flex flex-wrap gap-1">
+        {reasons.map((r) => (
+          <DetailBadge
+            key={r}
+            className="bg-purple-500/20 text-purple-300 ring-purple-500/30"
+          >
+            {r.replace(/_/g, ' ')}
+          </DetailBadge>
+        ))}
+      </div>
+    ) : null;
+
+  const indicatorsContent =
+    indicators.length > 0 ? (
+      <div className="flex flex-wrap gap-1">
+        {indicators.map((i) => (
+          <DetailBadge
+            key={i}
+            className="bg-red-500/20 text-red-300 ring-red-500/30"
+          >
+            {i.replace(/_/g, ' ')}
+          </DetailBadge>
+        ))}
+      </div>
+    ) : null;
+
+  const routerContent =
+    parsed.router_confidence != null &&
+    parsed.router_confidence_threshold != null ? (
+      <span className="text-gray-400">
+        Confidence {parsed.router_confidence} below threshold{' '}
+        {parsed.router_confidence_threshold}
+      </span>
+    ) : null;
+
+  const rows = [
+    priority && { label: 'Priority', children: priorityBadge },
+    reasons.length > 0 && {
+      label: 'Reasons',
+      children: reasonsContent,
+    },
+    indicators.length > 0 && {
+      label: parsed.indicators ? 'Indicators' : 'Fraud indicators',
+      children: indicatorsContent,
+    },
+    reason && { label: 'Reason', children: <span className="text-gray-400">{reason}</span> },
+    routerContent && { label: 'Router', children: routerContent },
+  ].filter(Boolean) as { label: string; children: React.ReactNode }[];
+
+  return (
+    <>
+      {rows.map(({ label, children }) => (
+        <DetailRow key={label} label={label} variant={rowVariant}>
+          {children}
+        </DetailRow>
+      ))}
+    </>
+  );
+}
+
 function EscalationDisplay({
   parsed,
   variant = 'default',
@@ -176,85 +259,13 @@ function EscalationDisplay({
   parsed: EscalationPayload;
   variant?: 'audit' | 'default';
 }) {
-  const reasons = parsed.escalation_reasons ?? [];
-  const indicators = parsed.indicators ?? parsed.fraud_indicators ?? [];
-  const priority = parsed.priority;
   const recommended = parsed.recommended_action;
-  const reason = parsed.reason;
-  const v = variant;
-  const isAudit = v === 'audit';
-
-  const priorityBlock = priority && (
-    <DetailRow label="Priority" variant={v}>
-      <DetailBadge
-        className={PRIORITY_BADGE_STYLES[priority] ?? DEFAULT_PRIORITY_STYLE}
-      >
-        {priority}
-      </DetailBadge>
-    </DetailRow>
-  );
-  const reasonsBlock =
-    reasons.length > 0 && (
-      <DetailRow label="Reasons" variant={v}>
-        <div className="flex flex-wrap gap-1">
-          {reasons.map((r) => (
-            <DetailBadge
-              key={r}
-              className="bg-purple-500/20 text-purple-300 ring-purple-500/30"
-            >
-              {r.replace(/_/g, ' ')}
-            </DetailBadge>
-          ))}
-        </div>
-      </DetailRow>
-    );
-  const indicatorsBlock =
-    indicators.length > 0 && (
-      <DetailRow
-        label={parsed.indicators ? 'Indicators' : 'Fraud indicators'}
-        variant={v}
-      >
-        <div className="flex flex-wrap gap-1">
-          {indicators.map((i) => (
-            <DetailBadge
-              key={i}
-              className="bg-red-500/20 text-red-300 ring-red-500/30"
-            >
-              {i.replace(/_/g, ' ')}
-            </DetailBadge>
-          ))}
-        </div>
-      </DetailRow>
-    );
-  const reasonBlock =
-    reason && (
-      <DetailRow label="Reason" variant={v}>
-        <span className="text-gray-400">{reason}</span>
-      </DetailRow>
-    );
-  const routerBlock =
-    parsed.router_confidence != null &&
-    parsed.router_confidence_threshold != null && (
-      <DetailRow label="Router" variant={v}>
-        <span className="text-gray-400">
-          Confidence {parsed.router_confidence} below threshold{' '}
-          {parsed.router_confidence_threshold}
-        </span>
-      </DetailRow>
-    );
+  const isAudit = variant === 'audit';
 
   if (isAudit) {
     return (
       <div className="space-y-4">
-        {(priority || reasons.length > 0) && (
-          <div className="space-y-3">
-            {priorityBlock}
-            {reasonsBlock}
-          </div>
-        )}
-        {indicatorsBlock}
-        {reasonBlock}
-        {routerBlock}
+        <EscalationRowContent parsed={parsed} variant="audit" />
         {recommended && (
           <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-3">
             <p className="text-[10px] font-medium uppercase tracking-wider text-amber-400/80 mb-1">
@@ -270,11 +281,7 @@ function EscalationDisplay({
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
-        {priorityBlock}
-        {reasonsBlock}
-        {indicatorsBlock}
-        {reasonBlock}
-        {routerBlock}
+        <EscalationRowContent parsed={parsed} variant="default" />
       </div>
       {recommended && (
         <p className="text-sm text-gray-400 pt-0.5 border-t border-gray-700/50">
@@ -432,7 +439,7 @@ export default function StructuredOutputDisplay({
   variant = 'default',
   maxLength,
 }: {
-  value: string;
+  value: string | undefined;
   compact?: boolean;
   variant?: 'audit' | 'default';
   /** Max chars for fallback raw display. Omit for no truncation (e.g. scrollable workflow output). */
