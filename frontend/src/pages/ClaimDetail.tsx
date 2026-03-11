@@ -201,7 +201,7 @@ export default function ClaimDetail() {
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-medium text-amber-400 capitalize">
-                          {msg.user_type.replace('_', ' ')}
+                          {msg.user_type.replaceAll('_', ' ')}
                         </span>
                         <span
                           className={`text-xs px-2 py-0.5 rounded ${

@@ -75,6 +75,9 @@ def send_user_message(
             logger.exception(
                 "Notification delivery failed for claim %s message %s", claim_id, msg_id
             )
+            return json.dumps(
+                {"success": False, "message": "Notification delivery failed"}
+            )
 
         repo.mark_follow_up_sent(msg_id)
 
