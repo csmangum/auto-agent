@@ -179,13 +179,12 @@ function EscalationRowContent({
   const reasons = parsed.escalation_reasons ?? [];
   const indicators = parsed.indicators ?? parsed.fraud_indicators ?? [];
   const priority = parsed.priority;
-  const recommended = parsed.recommended_action;
   const reason = parsed.reason;
   const rowVariant = variant === 'audit' ? ('audit' as const) : undefined;
 
   const priorityBadge = priority ? (
     <DetailBadge
-      className={PRIORITY_BADGE_STYLES[priority] ?? PRIORITY_BADGE_STYLES.medium}
+      className={PRIORITY_BADGE_STYLES[priority] ?? DEFAULT_PRIORITY_STYLE}
     >
       {priority}
     </DetailBadge>
@@ -440,7 +439,7 @@ export default function StructuredOutputDisplay({
   variant = 'default',
   maxLength,
 }: {
-  value: string;
+  value: string | undefined;
   compact?: boolean;
   variant?: 'audit' | 'default';
   /** Max chars for fallback raw display. Omit for no truncation (e.g. scrollable workflow output). */
