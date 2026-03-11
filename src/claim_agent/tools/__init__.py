@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "add_claim_note",
+    "add_after_action_note",
     "get_claim_notes",
     "query_policy_db",
     "search_claims_db",
@@ -82,6 +83,8 @@ __all__ = [
     "query_medical_records",
     "assess_injury_severity",
     "calculate_bi_settlement",
+    # After-action tools
+    "close_claim",
 ]
 
 
@@ -91,6 +94,10 @@ def __getattr__(name: str):
         from claim_agent.tools.claim_notes_tools import add_claim_note
         setattr(mod, "add_claim_note", add_claim_note)
         return add_claim_note
+    if name == "add_after_action_note":
+        from claim_agent.tools.claim_notes_tools import add_after_action_note
+        setattr(mod, "add_after_action_note", add_after_action_note)
+        return add_after_action_note
     if name == "get_claim_notes":
         from claim_agent.tools.claim_notes_tools import get_claim_notes
         setattr(mod, "get_claim_notes", get_claim_notes)
@@ -318,4 +325,9 @@ def __getattr__(name: str):
         from claim_agent.tools.bodily_injury_tools import calculate_bi_settlement
         setattr(mod, "calculate_bi_settlement", calculate_bi_settlement)
         return calculate_bi_settlement
+    # After-action tools
+    if name == "close_claim":
+        from claim_agent.tools.status_tools import close_claim
+        setattr(mod, "close_claim", close_claim)
+        return close_claim
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

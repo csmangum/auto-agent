@@ -14,6 +14,8 @@ from claim_agent.exceptions import ClaimNotFoundError
 
 logger = logging.getLogger(__name__)
 
+CHARS_PER_TOKEN = 4
+
 
 @tool("Add Claim Note")
 def add_claim_note(claim_id: str, note: str, actor_id: str) -> str:
@@ -49,6 +51,54 @@ def add_claim_note(claim_id: str, note: str, actor_id: str) -> str:
     except Exception:
         logger.exception("Unexpected error adding note to claim %s", claim_id)
         return json.dumps({"success": False, "message": "An unexpected error occurred while adding the note"})
+
+
+@tool("Add After-Action Note")
+def add_after_action_note(claim_id: str, note: str) -> str:
+    """Append the after-action summary note to a claim with token-budget enforcement.
+
+    This tool is specifically for the After-Action Summary agent. The note is
+    truncated to the configured AFTER_ACTION_NOTE_MAX_TOKENS limit to ensure
+    it fits in downstream LLM context windows when used as claim state.
+
+    Args:
+        claim_id: The claim ID (e.g., from claim_data).
+        note: The after-action summary content.
+
+    Returns:
+        JSON with success (bool), message, and truncated (bool) indicating
+        whether the note was trimmed to fit the token budget.
+    """
+    from claim_agent.config import get_settings
+
+    claim_id = str(claim_id).strip()
+    note = str(note).strip()
+    if not claim_id:
+        return json.dumps({"success": False, "message": "claim_id is required", "truncated": False})
+    if not note:
+        return json.dumps({"success": False, "message": "note cannot be empty", "truncated": False})
+
+    max_tokens = get_settings().after_action_note_max_tokens
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    truncated = len(note) > max_chars
+    if truncated:
+        note = note[:max_chars].rsplit("\n", 1)[0]
+        logger.info(
+            "After-action note truncated to %d chars (~%d tokens) for claim %s",
+            len(note), max_tokens, claim_id,
+        )
+
+    try:
+        ClaimRepository().add_note(claim_id, note, "After-Action Summary")
+        msg = "After-action note added"
+        if truncated:
+            msg += f" (truncated to ~{max_tokens} tokens)"
+        return json.dumps({"success": True, "message": msg, "truncated": truncated})
+    except ClaimNotFoundError:
+        return json.dumps({"success": False, "message": f"Claim not found: {claim_id}", "truncated": False})
+    except Exception:
+        logger.exception("Unexpected error adding after-action note to claim %s", claim_id)
+        return json.dumps({"success": False, "message": "An unexpected error occurred while adding the note", "truncated": False})
 
 
 @tool("Get Claim Notes")
