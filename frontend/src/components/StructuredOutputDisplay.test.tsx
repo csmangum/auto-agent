@@ -117,6 +117,16 @@ describe('StructuredOutputDisplay', () => {
     expect(screen.getByText(payload)).toBeInTheDocument();
   });
 
+  it('handles escalation_reasons as single string (coerces to array)', () => {
+    const payload = JSON.stringify({
+      escalation_reasons: 'fraud_suspected',
+      priority: 'high',
+    });
+    render(<StructuredOutputDisplay value={payload} />);
+    expect(screen.getByText('Reasons')).toBeInTheDocument();
+    expect(screen.getByText('fraud suspected')).toBeInTheDocument();
+  });
+
   it('renders audit variant for state snapshot', () => {
     const payload = JSON.stringify({
       status: 'processing',

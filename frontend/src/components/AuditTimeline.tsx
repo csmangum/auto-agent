@@ -87,12 +87,13 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
         </div>
 
         {(detailsRaw || hasStateDiff) && (
-          <div className="mt-3 pt-3 border-t border-gray-700/50 space-y-3">
+          <div className="mt-3 pt-3 border-t border-gray-700/50 space-y-3 max-h-64 overflow-y-auto">
             {event.details && (
               <StructuredOutputDisplay
                 value={event.details}
                 compact
                 variant="audit"
+                maxLength={300}
               />
             )}
             {hasStateDiff && (
@@ -105,6 +106,7 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
                     value={event.before_state}
                     compact
                     variant="audit"
+                    maxLength={300}
                   />
                 </div>
                 <div>
@@ -115,6 +117,7 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
                     value={event.after_state}
                     compact
                     variant="audit"
+                    maxLength={300}
                   />
                 </div>
               </div>
@@ -124,6 +127,7 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
                 value={detailsRaw}
                 compact
                 variant="audit"
+                maxLength={300}
               />
             )}
           </div>

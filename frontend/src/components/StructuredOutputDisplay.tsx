@@ -35,61 +35,95 @@ interface StateSnapshot {
   payout_amount?: number | null;
 }
 
-function parseEscalation(str: string): EscalationPayload | null {
-  if (!str?.trim()) return null;
-  try {
-    const obj = JSON.parse(str) as Record<string, unknown>;
-    const hasSpecificEscalationFields =
-      obj.escalation_reasons ||
-      obj.recommended_action ||
-      obj.indicators ||
-      obj.fraud_indicators ||
-      (obj.router_confidence != null && obj.router_confidence_threshold != null);
-    if (hasSpecificEscalationFields) {
-      return obj as EscalationPayload;
-    }
-    if ('status' in obj && ('claim_type' in obj || 'payout_amount' in obj)) {
-      return null;
-    }
-    const hasGenericFields = obj.reason || obj.priority;
-    return hasGenericFields ? (obj as EscalationPayload) : null;
-  } catch {
-    return null;
+function normalizeStringArray(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const strings = value.filter((v): v is string => typeof v === 'string');
+    return strings.length ? strings : undefined;
   }
+  if (typeof value === 'string') return [value];
+  return undefined;
 }
 
-function parseRouter(str: string): RouterPayload | null {
-  if (!str?.trim()) return null;
-  try {
-    const obj = JSON.parse(str) as Record<string, unknown>;
-    if ('claim_type' in obj || ('confidence' in obj && 'reasoning' in obj)) {
-      return {
-        claim_type: obj.claim_type as string,
-        confidence: obj.confidence as number,
-        reasoning: obj.reasoning as string,
-      };
-    }
-    return null;
-  } catch {
-    return null;
+function parseEscalation(obj: Record<string, unknown>): EscalationPayload | null {
+  const escalation_reasons = normalizeStringArray(obj.escalation_reasons);
+  const indicators = normalizeStringArray(obj.indicators);
+  const fraud_indicators = normalizeStringArray(obj.fraud_indicators);
+  const reason = typeof obj.reason === 'string' ? obj.reason : undefined;
+  const priority = typeof obj.priority === 'string' ? obj.priority : undefined;
+  const recommended_action =
+    typeof obj.recommended_action === 'string' ? obj.recommended_action : undefined;
+  const router_claim_type =
+    typeof obj.router_claim_type === 'string' ? obj.router_claim_type : undefined;
+  const router_reasoning =
+    typeof obj.router_reasoning === 'string' ? obj.router_reasoning : undefined;
+  const router_confidence =
+    typeof obj.router_confidence === 'number' ? obj.router_confidence : undefined;
+  const router_confidence_threshold =
+    typeof obj.router_confidence_threshold === 'number'
+      ? obj.router_confidence_threshold
+      : undefined;
+
+  const hasSpecificEscalation =
+    (escalation_reasons && escalation_reasons.length > 0) ||
+    !!recommended_action ||
+    (indicators && indicators.length > 0) ||
+    (fraud_indicators && fraud_indicators.length > 0) ||
+    (router_confidence != null && router_confidence_threshold != null);
+
+  if (hasSpecificEscalation) {
+    return {
+      escalation_reasons,
+      reason,
+      priority,
+      recommended_action,
+      indicators,
+      fraud_indicators,
+      router_confidence,
+      router_confidence_threshold,
+      router_claim_type,
+      router_reasoning,
+    };
   }
+
+  if ('status' in obj && ('claim_type' in obj || 'payout_amount' in obj)) return null;
+
+  const hasGeneric = !!reason || !!priority;
+  if (!hasGeneric) return null;
+
+  return {
+    escalation_reasons,
+    reason,
+    priority,
+    recommended_action,
+    indicators,
+    fraud_indicators,
+    router_confidence,
+    router_confidence_threshold,
+    router_claim_type,
+    router_reasoning,
+  };
 }
 
-function parseStateSnapshot(str: string): StateSnapshot | null {
-  if (!str?.trim()) return null;
-  try {
-    const obj = JSON.parse(str) as Record<string, unknown>;
-    if ('status' in obj && ('claim_type' in obj || 'payout_amount' in obj)) {
-      return {
-        status: obj.status as string,
-        claim_type: obj.claim_type as string | null,
-        payout_amount: obj.payout_amount as number | null,
-      };
-    }
-    return null;
-  } catch {
+function parseRouter(obj: Record<string, unknown>): RouterPayload | null {
+  if ('claim_type' in obj || ('confidence' in obj && 'reasoning' in obj)) {
+    return {
+      claim_type: typeof obj.claim_type === 'string' ? obj.claim_type : undefined,
+      confidence: typeof obj.confidence === 'number' ? obj.confidence : undefined,
+      reasoning: typeof obj.reasoning === 'string' ? obj.reasoning : undefined,
+    };
+  }
+  return null;
+}
+
+function parseStateSnapshot(obj: Record<string, unknown>): StateSnapshot | null {
+  if (!('status' in obj) || (!('claim_type' in obj) && !('payout_amount' in obj))) {
     return null;
   }
+  const result: StateSnapshot = {};
+  if ('status' in obj) result.status = obj.status as string;
+  if ('claim_type' in obj) result.claim_type = obj.claim_type as string | null;
+  if ('payout_amount' in obj) result.payout_amount = obj.payout_amount as number | null;
+  return result;
 }
 
 function DetailBadge({
@@ -406,9 +440,16 @@ export default function StructuredOutputDisplay({
 }) {
   if (!value?.trim()) return <span className="text-gray-500">—</span>;
 
-  const escalation = parseEscalation(value);
-  const stateSnapshot = parseStateSnapshot(value);
-  const router = parseRouter(value);
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    // Fall through to raw display
+  }
+
+  const escalation = parsed ? parseEscalation(parsed) : null;
+  const stateSnapshot = parsed ? parseStateSnapshot(parsed) : null;
+  const router = parsed ? parseRouter(parsed) : null;
 
   if (escalation) {
     return (
