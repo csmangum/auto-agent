@@ -17,6 +17,7 @@ CLAIMANT_EVENTS = (
     "estimate_ready",
     "repair_authorized",
     "claim_closed",
+    "follow_up_request",
 )
 
 
