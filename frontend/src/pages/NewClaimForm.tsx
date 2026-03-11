@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import StatusBadge from '../components/StatusBadge';
 import TypeBadge from '../components/TypeBadge';
+import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
 import {
   processClaimAsync,
   streamClaimUpdates,
@@ -451,14 +452,20 @@ export default function NewClaimForm() {
                         )}
                       </div>
                       {wf.router_output && (
-                        <p className="text-sm text-gray-400 mb-1">
-                          <span className="font-medium text-gray-300">Router:</span> {wf.router_output}
-                        </p>
+                        <div className="mb-2">
+                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Router</p>
+                          <div className="bg-gray-900 rounded-lg p-3 ring-1 ring-gray-700/50">
+                            <StructuredOutputDisplay value={wf.router_output} />
+                          </div>
+                        </div>
                       )}
                       {wf.workflow_output && (
-                        <p className="text-sm text-gray-400">
-                          <span className="font-medium text-gray-300">Output:</span> {wf.workflow_output}
-                        </p>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Output</p>
+                          <div className="bg-gray-900 rounded-lg p-3 max-h-48 overflow-y-auto ring-1 ring-gray-700/50">
+                            <StructuredOutputDisplay value={wf.workflow_output} />
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))}

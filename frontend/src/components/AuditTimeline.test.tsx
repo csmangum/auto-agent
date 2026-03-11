@@ -21,7 +21,7 @@ describe('AuditTimeline', () => {
     expect(screen.getByText('claim created')).toBeInTheDocument();
   });
 
-  it('renders status change without state diff', () => {
+  it('renders status change with before and after state sections', () => {
     const events: AuditEvent[] = [
       {
         claim_id: 'CLM-001',
@@ -36,6 +36,8 @@ describe('AuditTimeline', () => {
     render(<AuditTimeline events={events} />);
     expect(screen.getByText('status change')).toBeInTheDocument();
     expect(screen.getByText('open')).toBeInTheDocument();
+    expect(screen.getByText('Before')).toBeInTheDocument();
+    expect(screen.getByText('After')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /show state diff/i })).not.toBeInTheDocument();
   });
 

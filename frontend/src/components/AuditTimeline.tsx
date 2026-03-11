@@ -51,6 +51,8 @@ export default function AuditTimeline({ events }: AuditTimelineProps) {
 
 function AuditEventCard({ event }: { event: AuditEvent }) {
   const dotColor = getDotColor(event.action);
+  const hasStateDiff =
+    event.before_state && event.after_state && event.action === 'status_change';
   const detailsRaw = event.details || event.after_state || '';
   const hasStatusChange = event.old_status && event.new_status;
 
@@ -84,13 +86,50 @@ function AuditEventCard({ event }: { event: AuditEvent }) {
           )}
         </div>
 
-        {detailsRaw && (
-          <div className="mt-3 pt-3 border-t border-gray-700/50">
-            <StructuredOutputDisplay
-              value={detailsRaw}
-              compact
-              variant="audit"
-            />
+        {(detailsRaw || hasStateDiff) && (
+          <div className="mt-3 pt-3 border-t border-gray-700/50 space-y-3 max-h-64 overflow-y-auto">
+            {event.details && (
+              <StructuredOutputDisplay
+                value={event.details}
+                compact
+                variant="audit"
+                maxLength={300}
+              />
+            )}
+            {hasStateDiff && (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500 mb-1">
+                    Before
+                  </p>
+                  <StructuredOutputDisplay
+                    value={event.before_state}
+                    compact
+                    variant="audit"
+                    maxLength={300}
+                  />
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500 mb-1">
+                    After
+                  </p>
+                  <StructuredOutputDisplay
+                    value={event.after_state}
+                    compact
+                    variant="audit"
+                    maxLength={300}
+                  />
+                </div>
+              </div>
+            )}
+            {!event.details && !hasStateDiff && detailsRaw && (
+              <StructuredOutputDisplay
+                value={detailsRaw}
+                compact
+                variant="audit"
+                maxLength={300}
+              />
+            )}
           </div>
         )}
 
