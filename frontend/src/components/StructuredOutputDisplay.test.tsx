@@ -11,6 +11,11 @@ describe('StructuredOutputDisplay', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('renders empty state for undefined value', () => {
+    render(<StructuredOutputDisplay value={undefined} />);
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
   it('falls back to raw display for plain text', () => {
     const text = 'Claim processed successfully. Settlement completed.';
     render(<StructuredOutputDisplay value={text} />);

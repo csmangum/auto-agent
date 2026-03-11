@@ -113,6 +113,36 @@ def test_record_user_response_invalid_message(repo):
     assert data["success"] is False
 
 
+def test_record_user_response_rejects_cross_claim_when_claim_id_provided(repo, claim_id):
+    """When claim_id is provided, tool rejects message from another claim."""
+    from claim_agent.models.claim import ClaimInput
+    from datetime import date
+
+    msg_id = repo.create_follow_up_message(
+        claim_id, "claimant", "Please upload photos.", actor_id="workflow"
+    )
+    other_claim_id = repo.create_claim(
+        ClaimInput(
+            policy_number="POL-456",
+            vin="2HGBH41JXMN109187",
+            vehicle_year=2020,
+            vehicle_make="Toyota",
+            vehicle_model="Camry",
+            incident_date=date(2025, 2, 1),
+            incident_description="Side swipe",
+            damage_description="Door damage",
+        )
+    )
+    result = record_user_response.run(
+        message_id=msg_id,
+        response_content="My response.",
+        claim_id=other_claim_id,
+    )
+    data = json.loads(result)
+    assert data["success"] is False
+    assert "does not belong" in data["message"]
+
+
 def test_check_pending_responses(repo, claim_id):
     repo.create_follow_up_message(
         claim_id, "claimant", "Please upload photos.", actor_id="workflow"

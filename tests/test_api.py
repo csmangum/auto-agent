@@ -352,6 +352,21 @@ class TestReviewQueue:
         data = resp.json()
         assert data["success"] is True
 
+    def test_follow_up_record_response_rejects_cross_claim_message_id(self, client):
+        """Recording response for message from another claim returns 400."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        msg_id = repo.create_follow_up_message(
+            "CLM-TEST001", "claimant", "Please upload photos.", actor_id="workflow"
+        )
+        resp = client.post(
+            "/api/claims/CLM-TEST002/follow-up/record-response",
+            json={"message_id": msg_id, "response_content": "My response."},
+        )
+        assert resp.status_code == 400
+        assert "does not belong" in resp.json().get("detail", "")
+
     def test_follow_up_get_messages(self, client):
         """Get follow-up messages returns list."""
         resp = client.get("/api/claims/CLM-TEST001/follow-up")

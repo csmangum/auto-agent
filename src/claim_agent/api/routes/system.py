@@ -273,7 +273,7 @@ _CREWS_CATALOG = [
             },
             {
                 "name": "Message Composer",
-                "skill": "follow_up_outreach",
+                "skill": "message_composition",
                 "tools": ["send_user_message", "check_pending_responses", "get_claim_notes"],
                 "description": "Drafts and sends tailored outreach messages",
             },

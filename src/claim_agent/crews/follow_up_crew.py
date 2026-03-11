@@ -79,7 +79,7 @@ USER RESPONSE (if provided):
 
 Use check_pending_responses to see if there are pending follow-ups for this claim.
 If a response has been provided above (user_response), use record_user_response with the
-appropriate message_id to record it, then add_claim_note to capture key findings for downstream crews.
+appropriate message_id and claim_id (from claim_data) to record it, then add_claim_note to capture key findings for downstream crews.
 If no user_response is provided, output that we are waiting for the user to respond.
 Determine next step: task_complete, need_more_info, escalate_to_human, or waiting_for_response.""",
                 expected_output=(

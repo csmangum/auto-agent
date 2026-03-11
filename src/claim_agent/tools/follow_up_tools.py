@@ -99,6 +99,7 @@ def record_user_response(
     message_id: int,
     response_content: str,
     *,
+    claim_id: str | None = None,
     actor_id: str = "workflow",
 ) -> str:
     """Record a user's response to a follow-up message.
@@ -110,6 +111,8 @@ def record_user_response(
     Args:
         message_id: The follow-up message ID (from send_user_message).
         response_content: The user's response text.
+        claim_id: Optional claim ID from claim_data. When provided, validates
+            that the message belongs to this claim (defense-in-depth).
         actor_id: Who recorded the response (default: workflow).
 
     Returns:
@@ -122,7 +125,10 @@ def record_user_response(
     try:
         repo = ClaimRepository()
         repo.record_follow_up_response(
-            message_id, response_content, actor_id=actor_id
+            message_id,
+            response_content,
+            actor_id=actor_id,
+            expected_claim_id=str(claim_id).strip() or None if claim_id else None,
         )
         return json.dumps(
             {"success": True, "message": "Response recorded"}
