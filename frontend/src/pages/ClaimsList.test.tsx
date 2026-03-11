@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -43,6 +43,7 @@ describe('ClaimsList', () => {
   const Wrapper = createWrapper();
 
   beforeEach(() => {
+    vi.mocked(useClaims).mockClear();
     vi.mocked(useClaims).mockReturnValue({
       data: mockClaimsData,
       isLoading: false,
@@ -163,5 +164,72 @@ describe('ClaimsList', () => {
       </WrapperWithParams>
     );
     expect(screen.getByRole('button', { name: /clear filters/i })).toBeInTheDocument();
+  });
+
+  it('calls useClaims with filter params when status filter is set', () => {
+    const WrapperWithParams = createWrapper('/claims?status=open');
+    vi.mocked(useClaims).mockReturnValue({
+      data: mockClaimsData,
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <WrapperWithParams>
+        <ClaimsList />
+      </WrapperWithParams>
+    );
+
+    expect(useClaims).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'open', limit: 25, offset: 0 })
+    );
+  });
+
+  it('pagination next button advances page', () => {
+    vi.mocked(useClaims).mockImplementation((params: { offset?: number }) => ({
+      data: {
+        claims: Array.from({ length: 25 }, (_, i) => ({
+          ...mockClaimsData.claims[0],
+          id: `CLM-${String((params.offset ?? 0) + i + 1).padStart(3, '0')}`,
+        })),
+        total: 50,
+        limit: 25,
+        offset: params.offset ?? 0,
+      },
+      isLoading: false,
+      error: null,
+    }) as never);
+
+    render(
+      <Wrapper>
+        <ClaimsList />
+      </Wrapper>
+    );
+
+    expect(screen.getByText('Showing 1–25 of 50')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText('Showing 26–50 of 50')).toBeInTheDocument();
+  });
+
+  it('changing status filter updates useClaims params', () => {
+    const WrapperWithParams = createWrapper('/claims');
+    vi.mocked(useClaims).mockReturnValue({
+      data: mockClaimsData,
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <WrapperWithParams>
+        <ClaimsList />
+      </WrapperWithParams>
+    );
+
+    const statusSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(statusSelect, { target: { value: 'closed' } });
+
+    expect(useClaims).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'closed', limit: 25, offset: 0 })
+    );
   });
 });

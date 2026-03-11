@@ -212,6 +212,12 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

@@ -45,4 +45,12 @@ describe('MarkdownRenderer', () => {
     expect(screen.getByText(/Item 1/)).toBeInTheDocument();
     expect(screen.getByText(/Item 2/)).toBeInTheDocument();
   });
+
+  it('renders mermaid code block with diagram placeholder', async () => {
+    render(
+      <MarkdownRenderer content={'```mermaid\ngraph TD\nA-->B\n```'} />
+    );
+
+    expect(screen.getByText(/Loading diagram|Rendering diagram/i)).toBeInTheDocument();
+  });
 });

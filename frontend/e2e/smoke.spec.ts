@@ -30,4 +30,22 @@ test.describe('Smoke tests', () => {
     await page.goto('/system');
     await expect(page.getByRole('heading', { name: 'System Configuration' })).toBeVisible({ timeout: 5000 });
   });
+
+  test('New Claim form loads', async ({ page }) => {
+    await page.goto('/claims/new');
+    await expect(page.getByRole('heading', { name: 'New Claim' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Submit Claim' })).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Claim detail page loads', async ({ page }) => {
+    await page.goto('/claims/CLM-001');
+    await expect(
+      page.locator('main').getByRole('heading', { name: /CLM-001|Claim/ })
+    ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Agents page loads', async ({ page }) => {
+    await page.goto('/agents');
+    await expect(page.getByRole('heading', { name: /Agents & Crews|No crews/ })).toBeVisible({ timeout: 5000 });
+  });
 });
