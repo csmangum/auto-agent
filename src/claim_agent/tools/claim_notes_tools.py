@@ -12,6 +12,7 @@ from crewai.tools import tool
 from claim_agent.config import get_settings
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.utils.sanitization import MAX_NOTE
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def add_after_action_note(claim_id: str, note: str) -> str:
         logger.error("Non-positive after_action_note_max_tokens configuration: %r", max_tokens)
         return json.dumps({"success": False, "message": "after_action_note_max_tokens must be greater than zero", "truncated": False})
 
-    max_chars = max_tokens * CHARS_PER_TOKEN
+    max_chars = min(max_tokens * CHARS_PER_TOKEN, MAX_NOTE)
     truncated = len(note) > max_chars
     if truncated:
         note = note[:max_chars].rsplit("\n", 1)[0]
