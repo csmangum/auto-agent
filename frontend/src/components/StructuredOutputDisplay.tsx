@@ -39,15 +39,20 @@ function parseEscalation(str: string): EscalationPayload | null {
   if (!str?.trim()) return null;
   try {
     const obj = JSON.parse(str) as Record<string, unknown>;
-    const has =
+    const hasSpecificEscalationFields =
       obj.escalation_reasons ||
-      obj.reason ||
-      obj.priority ||
       obj.recommended_action ||
       obj.indicators ||
       obj.fraud_indicators ||
       (obj.router_confidence != null && obj.router_confidence_threshold != null);
-    return has ? (obj as EscalationPayload) : null;
+    if (hasSpecificEscalationFields) {
+      return obj as EscalationPayload;
+    }
+    if ('status' in obj && ('claim_type' in obj || 'payout_amount' in obj)) {
+      return null;
+    }
+    const hasGenericFields = obj.reason || obj.priority;
+    return hasGenericFields ? (obj as EscalationPayload) : null;
   } catch {
     return null;
   }
@@ -246,7 +251,39 @@ function EscalationDisplay({
   );
 }
 
-function RouterDisplay({ parsed }: { parsed: RouterPayload }) {
+function RouterDisplay({
+  parsed,
+  variant = 'default',
+}: {
+  parsed: RouterPayload;
+  variant?: 'audit' | 'default';
+}) {
+  const isAudit = variant === 'audit';
+
+  if (isAudit) {
+    return (
+      <div className="space-y-3">
+        {parsed.claim_type && (
+          <DetailRow label="Claim type" variant="audit">
+            <TypeBadge type={parsed.claim_type} />
+          </DetailRow>
+        )}
+        {parsed.confidence != null && (
+          <DetailRow label="Confidence" variant="audit">
+            <span className="text-gray-400">
+              {(parsed.confidence <= 1 ? parsed.confidence * 100 : parsed.confidence).toFixed(0)}%
+            </span>
+          </DetailRow>
+        )}
+        {parsed.reasoning && (
+          <DetailRow label="Reasoning" variant="audit">
+            <p className="text-gray-400">{parsed.reasoning}</p>
+          </DetailRow>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
       {parsed.claim_type && (
@@ -392,7 +429,7 @@ export default function StructuredOutputDisplay({
   if (router) {
     return (
       <div className={compact ? '' : 'mt-2'}>
-        <RouterDisplay parsed={router} />
+        <RouterDisplay parsed={router} variant={variant} />
       </div>
     );
   }
