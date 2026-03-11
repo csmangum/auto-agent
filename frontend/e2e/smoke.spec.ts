@@ -40,7 +40,7 @@ test.describe('Smoke tests', () => {
   test('Claim detail page loads', async ({ page }) => {
     await page.goto('/claims/CLM-001');
     await expect(
-      page.locator('main').getByRole('heading', { name: /CLM-001|Error|Loading/ })
+      page.locator('main').getByRole('heading', { name: /CLM-001|Claim/ })
     ).toBeVisible({ timeout: 5000 });
   });
 

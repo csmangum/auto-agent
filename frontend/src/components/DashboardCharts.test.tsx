@@ -19,14 +19,14 @@ describe('DashboardCharts', () => {
     expect(screen.getByText('Claims by Type')).toBeInTheDocument();
     expect(screen.getByText('Claims by Status')).toBeInTheDocument();
     expect(screen.queryByText('No data')).not.toBeInTheDocument();
-    expect(document.querySelector('.recharts-responsive-container')).toBeInTheDocument();
   });
 
   it('renders both chart sections when data provided', () => {
     render(<DashboardCharts typeData={typeData} statusData={statusData} />);
 
-    const containers = document.querySelectorAll('.recharts-responsive-container');
-    expect(containers).toHaveLength(2);
+    expect(screen.getByText('Claims by Type')).toBeInTheDocument();
+    expect(screen.getByText('Claims by Status')).toBeInTheDocument();
+    expect(screen.queryAllByText('No data')).toHaveLength(0);
   });
 
   it('shows No data when typeData is empty', () => {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { waitFor } from '@testing-library/react';
 import {
   setAuthToken,
   clearAuthToken,
@@ -374,7 +375,7 @@ describe('API client', () => {
     const onUpdate = vi.fn();
     const abort = streamClaimUpdates('CLM-1', onUpdate);
 
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(onUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ claim: expect.objectContaining({ id: 'CLM-1' }), done: false })
       );
@@ -417,7 +418,7 @@ describe('API client', () => {
     const onUpdate = vi.fn();
     const abort = streamClaimUpdates('CLM-1', onUpdate);
 
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ done: true }));
     });
 
