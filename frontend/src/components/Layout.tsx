@@ -1,8 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import AuthControl from './AuthControl';
+import RoleSwitcher from './RoleSwitcher';
+import SimulationBanner from './SimulationBanner';
 import { DocumentIcon } from './icons';
 import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
+import { useRoleSimulation } from '../context/RoleSimulationContext';
 
 const MAIN_NAV = [
   { to: '/', label: 'Dashboard', icon: 'dashboard' as NavIconKey },
@@ -15,6 +18,10 @@ const REFERENCE_NAV = [
   { to: '/skills', label: 'Skills', icon: 'skills' as NavIconKey },
   { to: '/agents', label: 'Agents & Crews', icon: 'agents' as NavIconKey },
   { to: '/system', label: 'System Config', icon: 'system' as NavIconKey },
+];
+
+const SIMULATION_NAV = [
+  { to: '/simulate', label: 'Role Simulation', icon: 'simulate' as NavIconKey },
 ];
 
 function NavSection({ label, items, onLinkClick }: { label: string; items: typeof MAIN_NAV; onLinkClick: () => void }) {
@@ -55,6 +62,10 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: typeo
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = () => setSidebarOpen(false);
+  const { roleDef, isSimulating } = useRoleSimulation();
+
+  const brandBg = isSimulating ? roleDef.accentBg : 'bg-blue-600';
+  const brandShadow = isSimulating ? '' : 'shadow-lg shadow-blue-600/20';
 
   return (
     <div className="min-h-screen bg-gray-950 flex">
@@ -76,7 +87,7 @@ export default function Layout() {
         {/* Brand */}
         <div className="p-5 border-b border-gray-800">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-blue-600/20">
+            <div className={`w-8 h-8 rounded-lg ${brandBg} flex items-center justify-center text-white text-sm font-bold ${brandShadow}`}>
               C
             </div>
             <div className="min-w-0">
@@ -89,13 +100,15 @@ export default function Layout() {
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-6 overflow-y-auto">
           <NavSection label="Main" items={MAIN_NAV} onLinkClick={closeSidebar} />
+          <NavSection label="Simulation" items={SIMULATION_NAV} onLinkClick={closeSidebar} />
           <NavSection label="Reference" items={REFERENCE_NAV} onLinkClick={closeSidebar} />
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-800">
+        <div className="p-4 border-t border-gray-800 space-y-3">
+          <RoleSwitcher />
           <AuthControl />
-          <div className="mt-3 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-gray-800 text-gray-500 ring-1 ring-gray-700">
               v0.1.0
             </span>
@@ -106,6 +119,9 @@ export default function Layout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Simulation banner */}
+        <SimulationBanner />
+
         {/* Mobile top bar */}
         <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between gap-4 lg:hidden">
           <div className="flex items-center gap-3">
@@ -120,7 +136,7 @@ export default function Layout() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+            <div className={`w-7 h-7 rounded-lg ${brandBg} flex items-center justify-center text-white text-xs font-bold`}>
               C
             </div>
             <h1 className="text-sm font-semibold text-gray-100">Claims System</h1>

@@ -12,6 +12,7 @@ import {
   RouterIcon,
   SearchIcon,
   SettlementIcon,
+  SimulationIcon,
   SkillsIcon,
   SubrogationIcon,
   SystemIcon,
@@ -27,6 +28,7 @@ export const NAV_ICONS = {
   skills: SkillsIcon,
   agents: AgentsIcon,
   system: SystemIcon,
+  simulate: SimulationIcon,
 } as const;
 
 export const SKILL_GROUP_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
