@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import { useAgentsCatalog } from '../api/queries';
-import { CREW_CYCLE_ICONS, WarningIcon } from '../components/icons';
+import { WarningIcon } from '../components/icons';
+import { CREW_CYCLE_ICONS } from '../components/icons/icons-maps';
 
 const CREW_CARD_CLASSES = [
   'border border-blue-500/30 bg-blue-500/10 border-l-4 border-l-blue-500/60',

@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import { useSkills } from '../api/queries';
-import { SKILL_GROUP_ICONS, DocumentIcon, WarningIcon } from '../components/icons';
+import { DocumentIcon, WarningIcon } from '../components/icons';
+import { SKILL_GROUP_ICONS } from '../components/icons/icons-maps';
 
 const SETTLEMENT_CARD =
   'border border-indigo-500/30 bg-indigo-500/10 border-l-4 border-l-indigo-500/60 hover:ring-1 hover:ring-indigo-500/30';

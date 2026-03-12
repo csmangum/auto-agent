@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import AuthControl from './AuthControl';
-import { NAV_ICONS, DocumentIcon, type NavIconKey } from './icons';
+import { DocumentIcon } from './icons';
+import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
 
 const MAIN_NAV = [
   { to: '/', label: 'Dashboard', icon: 'dashboard' as NavIconKey },
