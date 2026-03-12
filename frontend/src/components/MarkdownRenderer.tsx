@@ -212,7 +212,7 @@ const components: Components = {
         </code>
       );
       return (
-        <span className={isCommand ? 'flex w-full items-center' : 'inline-flex items-center'}>
+        <span className="inline-flex items-center">
           {isDataField ? (
             <Link
               to={`/docs/claim-types#${trimmed}`}
@@ -224,7 +224,7 @@ const components: Components = {
             codeEl
           )}
           {isCommand && (
-            <span className="ml-auto shrink-0">
+            <span className="shrink-0">
               <CopyButton text={trimmed} />
             </span>
           )}
