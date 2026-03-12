@@ -35,10 +35,6 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=70
 
-      - name: Run standalone workflow evaluation
-        run: |
-          python scripts/evaluate_standalone_workflows.py --output standalone_workflow_report.json
-
   integration:
     runs-on: ubuntu-latest
     steps:

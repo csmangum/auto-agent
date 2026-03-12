@@ -672,7 +672,7 @@ def _run_llm_call(fn):
 
 
 # Expected claim_type variance for LLM routing tests (non-deterministic router).
-# Use bounded assertions: result["claim_type"] in VALID_TYPES_FOR_SCENARIO[scenario]
+# Use bounded assertions: result["claim_type"] in LLM_ROUTER_VALID_OUTCOMES[scenario]
 # Documented per docs/eval-suite-gaps.md to avoid false failures when router is conservative.
 LLM_ROUTER_VALID_OUTCOMES = {
     "new_claim": ("new", "partial_loss"),  # Minor damage could be partial

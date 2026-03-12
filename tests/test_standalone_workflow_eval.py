@@ -30,9 +30,10 @@ def _run_eval(args=None):
     )
 
 
-def test_standalone_workflow_eval_script_runs():
+def test_standalone_workflow_eval_script_runs(tmp_path):
     """Standalone workflow eval script should complete and exit 0."""
-    result = _run_eval()
+    report_path = tmp_path / "report.json"
+    result = _run_eval(["--output", str(report_path)])
     assert result.returncode == 0, f"Script failed: {result.stderr}"
 
 

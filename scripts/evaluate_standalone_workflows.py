@@ -15,7 +15,7 @@ import json
 import os
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -228,6 +228,8 @@ def _run_dispute_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult
                     },
                     ctx=ctx,
                 )
+        # NOTE: run_dispute_workflow obtains its DB connection via ClaimContext.from_defaults(),
+        # which in this standalone script is configured using the CLAIMS_DB_PATH environment variable.
         success = (
             result.get("claim_id") == "CLM-DIS01"
             and result.get("resolution_type") == "auto_resolved"
