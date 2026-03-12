@@ -1,7 +1,24 @@
 import { Suspense, lazy, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import type { Components } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+/** Inline code that matches these names is rendered as a link to Claim Types field definitions. */
+const CLAIM_DATA_FIELD_NAMES = new Set([
+  'claim_data',
+  'policy_number',
+  'vin',
+  'vehicle_year',
+  'vehicle_make',
+  'vehicle_model',
+  'incident_date',
+  'incident_description',
+  'damage_description',
+  'estimated_damage',
+  'attachments',
+  'claim_type',
+]);
 
 const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
 
@@ -75,6 +92,23 @@ function highlightJsonKeys(content: string): React.ReactNode[] {
   );
 }
 
+/** Generate a URL-safe id from heading text (matches anchors used in docs like crews.md). */
+function slugifyHeading(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s*\/\s*/g, '--')
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]/g, '');
+}
+
+function headingTextFromNode(node: { children?: Array<{ type?: string; value?: string }> } | null): string {
+  if (!node?.children) return '';
+  return (node.children as Array<{ type?: string; value?: string }>)
+    .filter((c) => c.type === 'text' && c.value)
+    .map((c) => c.value!)
+    .join('');
+}
+
 function isSafeHref(href: string | null | undefined): boolean {
   if (!href || typeof href !== 'string') return false;
   const trimmed = href.trim();
@@ -89,20 +123,38 @@ function isSafeHref(href: string | null | undefined): boolean {
 }
 
 const components: Components = {
-  h1: ({ children }) => (
-    <h1 className="text-3xl font-bold text-white mt-8 mb-4 pb-2 border-b border-sky-500/40">
-      {children}
-    </h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-2xl font-semibold text-sky-100 mt-6 mb-3">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-xl font-semibold text-slate-200 mt-5 mb-2">{children}</h3>
-  ),
-  h4: ({ children }) => (
-    <h4 className="text-lg font-medium text-slate-300 mt-4 mb-2">{children}</h4>
-  ),
+  h1: ({ node, children }) => {
+    const id = slugifyHeading(headingTextFromNode(node));
+    return (
+      <h1 id={id || undefined} className="text-3xl font-bold text-white mt-8 mb-4 pb-2 border-b border-sky-500/40 scroll-mt-6">
+        {children}
+      </h1>
+    );
+  },
+  h2: ({ node, children }) => {
+    const id = slugifyHeading(headingTextFromNode(node));
+    return (
+      <h2 id={id || undefined} className="text-2xl font-semibold text-sky-100 mt-6 mb-3 scroll-mt-6">
+        {children}
+      </h2>
+    );
+  },
+  h3: ({ node, children }) => {
+    const id = slugifyHeading(headingTextFromNode(node));
+    return (
+      <h3 id={id || undefined} className="text-xl font-semibold text-slate-200 mt-5 mb-2 scroll-mt-6">
+        {children}
+      </h3>
+    );
+  },
+  h4: ({ node, children }) => {
+    const id = slugifyHeading(headingTextFromNode(node));
+    return (
+      <h4 id={id || undefined} className="text-lg font-medium text-slate-300 mt-4 mb-2 scroll-mt-6">
+        {children}
+      </h4>
+    );
+  },
   p: ({ children }) => (
     <p className="text-slate-400 leading-relaxed mb-4">{children}</p>
   ),
@@ -152,14 +204,28 @@ const components: Components = {
     const isBlock = className || content.includes('\n');
     const isCommand = content.trim().startsWith('claim-agent');
     if (!isBlock) {
+      const trimmed = content.trim();
+      const isDataField = CLAIM_DATA_FIELD_NAMES.has(trimmed);
+      const codeEl = (
+        <code className="bg-slate-800 text-sky-300 px-1.5 py-0.5 rounded text-sm font-mono ring-1 ring-slate-600/50">
+          {children}
+        </code>
+      );
       return (
         <span className={isCommand ? 'flex w-full items-center' : 'inline-flex items-center'}>
-          <code className="bg-slate-800 text-sky-300 px-1.5 py-0.5 rounded text-sm font-mono ring-1 ring-slate-600/50">
-            {children}
-          </code>
+          {isDataField ? (
+            <Link
+              to={`/docs/claim-types#${trimmed}`}
+              className="text-sky-400 hover:text-sky-300 underline underline-offset-2 decoration-sky-500/40 transition-colors"
+            >
+              {codeEl}
+            </Link>
+          ) : (
+            codeEl
+          )}
           {isCommand && (
             <span className="ml-auto shrink-0">
-              <CopyButton text={content.trim()} />
+              <CopyButton text={trimmed} />
             </span>
           )}
         </span>

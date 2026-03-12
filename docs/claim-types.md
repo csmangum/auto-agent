@@ -4,6 +4,75 @@ The system supports seven distinct claim types, each handled by a specialized wo
 
 For crew details and agent composition, see [Crews](crews.md).
 
+## Claim data fields
+
+Definitions for the claim payload and fields used across workflows. Inline field names in documentation link here.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| [claim_data](#claim_data) | object | Full claim payload JSON passed through the workflow |
+| [policy_number](#policy_number) | string | Insurance policy number |
+| [vin](#vin) | string | Vehicle identification number |
+| [vehicle_year](#vehicle_year) | integer | Year of vehicle |
+| [vehicle_make](#vehicle_make) | string | Vehicle manufacturer |
+| [vehicle_model](#vehicle_model) | string | Vehicle model |
+| [incident_date](#incident_date) | string (YYYY-MM-DD) | Date of incident |
+| [incident_description](#incident_description) | string | Description of the incident |
+| [damage_description](#damage_description) | string | Description of vehicle damage |
+| [estimated_damage](#estimated_damage) | float | Estimated repair cost (optional) |
+| [attachments](#attachments) | array | Optional attachments (photos, PDFs, estimates) |
+| [claim_type](#claim_type) | string | Classification (new, duplicate, total_loss, etc.); set by router or reviewer |
+
+### claim_data
+
+The full claim payload object (JSON) passed through the workflow. Contains the fields listed above.
+
+### policy_number
+
+Insurance policy number (string). Required for new claims.
+
+### vin
+
+Vehicle identification number (string). Required for new claims.
+
+### vehicle_year
+
+Year of vehicle (integer). Required for new claims.
+
+### vehicle_make
+
+Vehicle manufacturer (string). Required for new claims.
+
+### vehicle_model
+
+Vehicle model (string). Required for new claims.
+
+### incident_date
+
+Date of incident (YYYY-MM-DD). Required for new claims. Validated as date by Pydantic.
+
+### incident_description
+
+Description of the incident (string). Required for new claims.
+
+### damage_description
+
+Description of vehicle damage (string). Required for new claims.
+
+### estimated_damage
+
+Estimated repair cost in dollars (float, optional).
+
+### attachments
+
+Optional list of attachments (photos, PDFs, estimates). Default empty array.
+
+### claim_type
+
+Classification result (e.g. `new`, `duplicate`, `total_loss`). Set by router or by reviewer override; intake endpoints should not accept this from untrusted input.
+
+---
+
 ## Overview
 
 | Type | Description | Final Status | Crew |
