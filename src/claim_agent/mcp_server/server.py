@@ -77,9 +77,20 @@ def evaluate_damage(damage_description: str, estimated_repair_cost: float | None
 
 
 @mcp.tool()
-def calculate_payout(vehicle_value: float, policy_number: str) -> str:
+def calculate_payout(
+    vehicle_value: float,
+    policy_number: str,
+    damage_description: str = "",
+    coverage_type: str | None = None,
+) -> str:
     """Calculate total loss payout by subtracting policy deductible from vehicle value."""
-    return calculate_payout_impl(vehicle_value, policy_number, ctx=_get_ctx())
+    return calculate_payout_impl(
+        vehicle_value,
+        policy_number,
+        damage_description=damage_description,
+        coverage_type=coverage_type,
+        ctx=_get_ctx(),
+    )
 
 
 @mcp.tool()

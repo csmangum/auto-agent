@@ -38,6 +38,62 @@ class WorkflowScenarioResult:
     success: bool
     error: str | None = None
     latency_ms: float = 0.0
+    db_assertions_passed: bool = True
+    db_assertion_error: str | None = None
+
+
+def _get_repo(db_path: str):
+    """Return ClaimRepository for db_path (lazy import)."""
+    from claim_agent.db.repository import ClaimRepository
+    return ClaimRepository(db_path=db_path)
+
+
+def _assert_claim_status(db_path: str, claim_id: str, expected_status: str) -> str | None:
+    """Return None if claim has expected status, else error message."""
+    repo = _get_repo(db_path)
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        return f"Claim {claim_id} not found"
+    actual = (claim.get("status") or "").strip().lower()
+    expected = expected_status.strip().lower()
+    if actual != expected:
+        return f"Claim {claim_id} status: expected {expected!r}, got {actual!r}"
+    return None
+
+
+def _assert_claim_payout(db_path: str, claim_id: str, expected_payout: float) -> str | None:
+    """Return None if claim payout_amount matches, else error message."""
+    repo = _get_repo(db_path)
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        return f"Claim {claim_id} not found"
+    actual = claim.get("payout_amount")
+    if actual is None:
+        return f"Claim {claim_id} payout_amount not set (expected {expected_payout})"
+    try:
+        if abs(float(actual) - expected_payout) > 0.01:
+            return f"Claim {claim_id} payout_amount: expected {expected_payout}, got {actual}"
+    except (TypeError, ValueError):
+        return f"Claim {claim_id} payout_amount invalid: {actual!r}"
+    return None
+
+
+def _assert_workflow_run_recorded(
+    db_path: str,
+    claim_id: str,
+    claim_type_prefix: str,
+) -> str | None:
+    """Return None if at least one workflow run exists with claim_type starting with prefix."""
+    repo = _get_repo(db_path)
+    runs = repo.get_workflow_runs(claim_id, limit=20)
+    for run in runs:
+        ct = run.get("claim_type") or ""
+        if ct.startswith(claim_type_prefix):
+            return None
+    return (
+        f"Claim {claim_id}: no workflow_runs with claim_type starting with {claim_type_prefix!r} "
+        f"(found: {[r.get('claim_type') for r in runs]})"
+    )
 
 
 def _seed_db_for_workflows(db_path: str) -> None:
@@ -178,6 +234,13 @@ def _run_supplemental_scenario(db_path: str, verbose: bool) -> WorkflowScenarioR
             and result.get("supplemental_amount") == 450.0
             and result.get("combined_insurance_pays") == 2050.0
         )
+        db_err: str | None = None
+        if success:
+            db_err = _assert_claim_payout(db_path, "CLM-SUP01", 2050.0)
+            if db_err is None:
+                db_err = _assert_workflow_run_recorded(db_path, "CLM-SUP01", "supplemental")
+        if db_err:
+            success = False
         latency_ms = (time.perf_counter() - start) * 1000
         if verbose:
             print(f"  supplemental: {'PASS' if success else 'FAIL'} ({latency_ms:.0f}ms)")
@@ -185,7 +248,10 @@ def _run_supplemental_scenario(db_path: str, verbose: bool) -> WorkflowScenarioR
             workflow="supplemental",
             scenario_name="supplemental_success",
             success=success,
+            error=db_err if db_err else None,
             latency_ms=latency_ms,
+            db_assertions_passed=db_err is None,
+            db_assertion_error=db_err,
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
@@ -235,6 +301,13 @@ def _run_dispute_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult
             and result.get("resolution_type") == "auto_resolved"
             and result.get("status") == STATUS_DISPUTE_RESOLVED
         )
+        db_err = None
+        if success:
+            db_err = _assert_claim_status(db_path, "CLM-DIS01", STATUS_DISPUTE_RESOLVED)
+            if db_err is None:
+                db_err = _assert_workflow_run_recorded(db_path, "CLM-DIS01", "dispute:")
+        if db_err:
+            success = False
         latency_ms = (time.perf_counter() - start) * 1000
         if verbose:
             print(f"  dispute: {'PASS' if success else 'FAIL'} ({latency_ms:.0f}ms)")
@@ -242,7 +315,10 @@ def _run_dispute_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult
             workflow="dispute",
             scenario_name="dispute_auto_resolve",
             success=success,
+            error=db_err if db_err else None,
             latency_ms=latency_ms,
+            db_assertions_passed=db_err is None,
+            db_assertion_error=db_err,
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
@@ -290,6 +366,11 @@ def _run_denial_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult:
                 )
 
         success = result.get("claim_id") == "CLM-DEN01" and "workflow_output" in result
+        db_err = None
+        if success:
+            db_err = _assert_workflow_run_recorded(db_path, "CLM-DEN01", "denial_coverage")
+        if db_err:
+            success = False
         latency_ms = (time.perf_counter() - start) * 1000
         if verbose:
             print(f"  denial_coverage: {'PASS' if success else 'FAIL'} ({latency_ms:.0f}ms)")
@@ -297,7 +378,10 @@ def _run_denial_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult:
             workflow="denial_coverage",
             scenario_name="denial_upheld",
             success=success,
+            error=db_err if db_err else None,
             latency_ms=latency_ms,
+            db_assertions_passed=db_err is None,
+            db_assertion_error=db_err,
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
@@ -361,6 +445,11 @@ def _run_handback_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResul
                     )
 
         success = result.get("claim_id") == "CLM-HB01" and result.get("status") == STATUS_PROCESSING
+        db_err = None
+        if success:
+            db_err = _assert_claim_status(db_path, "CLM-HB01", STATUS_PROCESSING)
+        if db_err:
+            success = False
         latency_ms = (time.perf_counter() - start) * 1000
         if verbose:
             print(f"  handback: {'PASS' if success else 'FAIL'} ({latency_ms:.0f}ms)")
@@ -368,7 +457,10 @@ def _run_handback_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResul
             workflow="handback",
             scenario_name="handback_success",
             success=success,
+            error=db_err if db_err else None,
             latency_ms=latency_ms,
+            db_assertions_passed=db_err is None,
+            db_assertion_error=db_err,
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
@@ -393,6 +485,7 @@ def main() -> int:
 
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
+    prior_claims_db_path = os.environ.get("CLAIMS_DB_PATH")
     try:
         os.environ["CLAIMS_DB_PATH"] = db_path
         _seed_db_for_workflows(db_path)
@@ -425,6 +518,8 @@ def main() -> int:
                     "success": r.success,
                     "error": r.error,
                     "latency_ms": r.latency_ms,
+                    "db_assertions_passed": r.db_assertions_passed,
+                    "db_assertion_error": r.db_assertion_error,
                 }
                 for r in results
             ],
@@ -443,7 +538,8 @@ def main() -> int:
         print(f"Total: {passed}/{total} passed ({report['summary']['success_rate']:.0%})")
         for r in results:
             status = "PASS" if r.success else "FAIL"
-            print(f"  {r.workflow:20} {r.scenario_name:25} {status}")
+            db_info = " [DB OK]" if r.db_assertions_passed else f" [DB: {r.db_assertion_error}]"
+            print(f"  {r.workflow:20} {r.scenario_name:25} {status}{db_info}")
         print("=" * 60)
 
         output_path = args.output or "standalone_workflow_report.json"
@@ -453,7 +549,10 @@ def main() -> int:
 
         return 0 if passed == total else 1
     finally:
-        os.environ.pop("CLAIMS_DB_PATH", None)
+        if prior_claims_db_path is None:
+            os.environ.pop("CLAIMS_DB_PATH", None)
+        else:
+            os.environ["CLAIMS_DB_PATH"] = prior_claims_db_path
         try:
             os.unlink(db_path)
         except OSError:

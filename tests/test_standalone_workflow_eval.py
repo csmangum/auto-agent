@@ -9,8 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 _scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
 _project_root = Path(__file__).resolve().parent.parent
 
@@ -57,3 +55,8 @@ def test_standalone_workflow_eval_produces_valid_report(tmp_path):
 
     workflows = {r["workflow"] for r in report["results"]}
     assert workflows == {"supplemental", "dispute", "denial_coverage", "handback"}
+
+    for r in report["results"]:
+        assert r.get("db_assertions_passed", True), (
+            f"{r['workflow']}: DB assertions failed: {r.get('db_assertion_error', 'unknown')}"
+        )
