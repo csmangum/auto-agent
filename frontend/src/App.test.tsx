@@ -96,4 +96,9 @@ describe('App', () => {
     renderApp('/system');
     expect(screen.getByRole('heading', { name: 'System Configuration' })).toBeInTheDocument();
   });
+
+  it('renders Simulation landing at /simulate with no role set', () => {
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'Role Simulation' })).toBeInTheDocument();
+  });
 });

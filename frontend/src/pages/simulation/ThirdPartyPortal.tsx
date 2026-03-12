@@ -8,6 +8,7 @@ import QuickStat from '../../components/QuickStat';
 import MessagesTab from '../../components/MessagesTab';
 import { formatDateTime } from '../../utils/date';
 import { queryKeys } from '../../api/queries';
+import { postClaimDispute } from '../../api/client';
 import type { Claim, AuditEvent, FollowUpMessage } from '../../api/types';
 
 export default function ThirdPartyPortal() {
@@ -272,20 +273,11 @@ function LiabilityTab({ claim }: { claim: Claim }) {
     setSubmitting(true);
     setResult(null);
     try {
-      const res = await fetch(`/api/claims/${claim.id}/dispute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dispute_type: 'liability_determination',
-          dispute_description: `Third-party liability dispute: ${evidence.trim()}`,
-          policyholder_evidence: null,
-        }),
+      const data = await postClaimDispute(claim.id, {
+        dispute_type: 'liability_determination',
+        dispute_description: `Third-party liability dispute: ${evidence.trim()}`,
+        policyholder_evidence: null,
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text.slice(0, 200));
-      }
-      const data = await res.json();
       setResult(`Dispute filed. Resolution: ${data.resolution_type ?? 'pending'} — ${data.summary ?? ''}`);
       setEvidence('');
       

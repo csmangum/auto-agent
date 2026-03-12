@@ -5,6 +5,7 @@ import EmptyState from '../../components/EmptyState';
 import MessagesTab from '../../components/MessagesTab';
 import { formatDateTime } from '../../utils/date';
 import { queryKeys } from '../../api/queries';
+import { postClaimDispute } from '../../api/client';
 import type { Claim, AuditEvent, FollowUpMessage } from '../../api/types';
 
 interface Props {
@@ -182,20 +183,11 @@ function DisputeTab({ claimId, canDispute, status }: { claimId: string; canDispu
     setSubmitting(true);
     setResult(null);
     try {
-      const res = await fetch(`/api/claims/${claimId}/dispute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dispute_type: form.dispute_type,
-          dispute_description: form.dispute_description.trim(),
-          policyholder_evidence: form.policyholder_evidence.trim() || null,
-        }),
+      const data = await postClaimDispute(claimId, {
+        dispute_type: form.dispute_type,
+        dispute_description: form.dispute_description.trim(),
+        policyholder_evidence: form.policyholder_evidence.trim() || null,
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text.slice(0, 200));
-      }
-      const data = await res.json();
       setResult(`Dispute filed successfully. Resolution: ${data.resolution_type ?? 'pending'} — ${data.summary ?? ''}`);
       setForm({ dispute_type: 'valuation_disagreement', dispute_description: '', policyholder_evidence: '' });
       
