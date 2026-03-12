@@ -23,7 +23,9 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: typeo
         {label}
       </p>
       <div className="space-y-0.5">
-        {items.map((item) => (
+        {items.map((item) => {
+          const Icon = NAV_ICONS[item.icon] ?? DocumentIcon;
+          return (
           <NavLink
             key={item.to}
             to={item.to}
@@ -38,14 +40,12 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: typeo
             }
           >
             <span className="shrink-0 flex items-center justify-center text-current">
-              {(function () {
-                const Icon = NAV_ICONS[item.icon] ?? DocumentIcon;
-                return <Icon className="w-5 h-5" />;
-              })()}
+              <Icon className="w-5 h-5" />
             </span>
             {item.label}
           </NavLink>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

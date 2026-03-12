@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import { useSkills } from '../api/queries';
-import { SKILL_GROUP_ICONS, DocumentIcon } from '../components/icons';
+import { SKILL_GROUP_ICONS, DocumentIcon, WarningIcon } from '../components/icons';
 
 const SETTLEMENT_CARD =
   'border border-indigo-500/30 bg-indigo-500/10 border-l-4 border-l-indigo-500/60 hover:ring-1 hover:ring-indigo-500/30';
@@ -52,7 +52,7 @@ export default function Skills() {
       <div className="space-y-6 animate-fade-in">
         <PageHeader title="Agent Skills" />
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
-          <span className="text-lg">⚠️</span>
+          <WarningIcon className="w-5 h-5 shrink-0 text-red-400" aria-hidden />
           <p className="text-sm text-red-400">{error instanceof Error ? error.message : 'Unknown error'}</p>
         </div>
       </div>
@@ -75,14 +75,13 @@ export default function Skills() {
         subtitle="Browse agent skill definitions grouped by workflow. Each skill defines the role, goal, and backstory for an AI agent."
       />
 
-      {Object.entries(groups).map(([groupName, skills]) => (
+      {Object.entries(groups).map(([groupName, skills]) => {
+        const GroupIcon = SKILL_GROUP_ICONS[groupName] ?? DocumentIcon;
+        return (
         <section key={groupName} className="pb-8 last:pb-0">
           <h2 className="text-base font-semibold text-gray-200 pb-3 border-b border-gray-700/50 flex items-center gap-2">
             <span className="text-gray-500" aria-hidden>➤</span>
-            {(function () {
-              const Icon = SKILL_GROUP_ICONS[groupName] ?? DocumentIcon;
-              return <Icon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />;
-            })()}
+            <GroupIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />
             {groupName}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
@@ -106,7 +105,8 @@ export default function Skills() {
             ))}
           </div>
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }
