@@ -53,7 +53,102 @@
     "POL-027": { "coverage": "collision", "deductible": 500, "status": "cancelled" },
     "POL-028": { "coverage": "full_coverage", "deductible": 1000, "status": "suspended" },
     "POL-029": { "coverage": "comprehensive", "deductible": 500, "status": "suspended" },
-    "POL-030": { "coverage": "liability", "deductible": 1000, "status": "suspended" }
+    "POL-030": { "coverage": "liability", "deductible": 1000, "status": "suspended" },
+    "POL-031": {
+      "coverage": "commercial_auto",
+      "deductible": 1000,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 50, "aggregate_limit": 1500, "max_days": 30 },
+      "bodily_injury": { "per_person": 500000, "per_accident": 1000000 },
+      "cargo_coverage": 25000
+    },
+    "POL-032": {
+      "coverage": "classic_car",
+      "deductible": 250,
+      "status": "active",
+      "agreed_value": 45000,
+      "storage_requirements": "climate_controlled"
+    },
+    "POL-033": {
+      "coverage": "rideshare",
+      "deductible": 500,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "bodily_injury": { "per_person": 250000, "per_accident": 500000 },
+      "period_1_2_coverage": true
+    },
+    "POL-034": {
+      "coverage": "non_owned",
+      "deductible": 0,
+      "status": "active",
+      "bodily_injury": { "per_person": 100000, "per_accident": 300000 }
+    },
+    "POL-035": {
+      "coverage": "motorcycle",
+      "deductible": 250,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 25, "aggregate_limit": 500, "max_days": 14 },
+      "accessory_coverage": 3000
+    },
+    "POL-036": {
+      "coverage": "rv_motorhome",
+      "deductible": 500,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 75, "aggregate_limit": 2250, "max_days": 30 },
+      "personal_effects_coverage": 5000,
+      "attached_vehicle_coverage": true
+    },
+    "POL-037": {
+      "coverage": "high_risk_sr22",
+      "deductible": 1000,
+      "status": "active",
+      "sr22_filed": true,
+      "bodily_injury": { "per_person": 15000, "per_accident": 30000 }
+    },
+    "POL-038": {
+      "coverage": "garage",
+      "deductible": 2500,
+      "status": "active",
+      "garage_keepers_legal": 100000,
+      "garage_keepers_direct": 50000
+    },
+    "POL-039": {
+      "coverage": "fleet",
+      "deductible": 500,
+      "status": "active",
+      "rental_reimbursement": { "daily_limit": 45, "aggregate_limit": 1350, "max_days": 30 },
+      "vehicle_count": 12,
+      "bodily_injury": { "per_person": 250000, "per_accident": 500000 }
+    },
+    "POL-040": {
+      "coverage": "pay_per_mile",
+      "deductible": 250,
+      "status": "active",
+      "base_premium_miles": 250,
+      "per_mile_rate": 0.06,
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 700, "max_days": 20 }
+    },
+    "POL-041": {
+      "coverage": "underinsured_motorist",
+      "deductible": 0,
+      "status": "active",
+      "bodily_injury": { "per_person": 250000, "per_accident": 500000 },
+      "stacking_allowed": true
+    },
+    "POL-042": {
+      "coverage": "personal_injury_protection",
+      "deductible": 0,
+      "status": "active",
+      "pip_limits": { "medical": 10000, "wage_loss": 5000, "funeral": 2000 },
+      "no_fault_state": "FL"
+    },
+    "POL-043": {
+      "coverage": "full_coverage",
+      "deductible": 500,
+      "status": "active",
+      "gap_insurance": true,
+      "rental_reimbursement": { "daily_limit": 40, "aggregate_limit": 1200, "max_days": 30 }
+    }
   },
   "claims": [
     {

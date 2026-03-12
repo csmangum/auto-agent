@@ -24,7 +24,17 @@ DEFAULT_AGGREGATE_LIMIT = 1050.0
 DEFAULT_MAX_DAYS = 30
 
 # Coverage types that typically include rental reimbursement (Part D / physical damage)
-RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
+RENTAL_ELIGIBLE_COVERAGES = frozenset({
+    "comprehensive",
+    "collision",
+    "full_coverage",
+    "commercial_auto",
+    "rideshare",
+    "motorcycle",
+    "rv_motorhome",
+    "fleet",
+    "pay_per_mile",
+})
 
 # In-memory idempotency cache for mock: (claim_id, amount, rental_days) -> reimbursement_id.
 # TODO: Real implementation must persist to repository and enforce idempotency in DB.
