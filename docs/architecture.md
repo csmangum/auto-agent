@@ -66,7 +66,7 @@ flowchart TB
 ### Router-Delegator Pattern
 
 The system uses a **router-delegator pattern**:
-- A **Router Crew** classifies incoming claims into one of five types
+- A **Router Crew** classifies incoming claims into one of seven types: `new`, `duplicate`, `total_loss`, `fraud`, `partial_loss`, `bodily_injury`, and `reopened`
 - Based on classification, the appropriate **Workflow Crew** is invoked
 - Each workflow crew contains specialized agents for that claim type
 
@@ -79,6 +79,8 @@ flowchart LR
     Type --> TLCrew[Total Loss Crew]
     Type --> FraudCrew[Fraud Crew]
     Type --> PLCrew[Partial Loss Crew]
+    Type --> BICrew[Bodily Injury Crew]
+    Type --> ReopenedCrew[Reopened Crew]
 ```
 
 See [Crews](crews.md) for detailed crew documentation.
