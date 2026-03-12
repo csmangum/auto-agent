@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
+import { RoleSimulationProvider } from '../context/RoleSimulationContext';
 import Layout from './Layout';
 
 describe('Layout', () => {
@@ -12,14 +13,16 @@ describe('Layout', () => {
   function renderLayout(initialPath = '/') {
     return render(
       <AuthProvider>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<div>Dashboard content</div>} />
-              <Route path="/claims" element={<div>Claims content</div>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
+        <RoleSimulationProvider>
+          <MemoryRouter initialEntries={[initialPath]}>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route path="/" element={<div>Dashboard content</div>} />
+                <Route path="/claims" element={<div>Claims content</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </RoleSimulationProvider>
       </AuthProvider>
     );
   }

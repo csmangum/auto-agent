@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { RoleSimulationProvider } from './context/RoleSimulationContext';
 import App from './App';
 
 vi.mock('./api/queries', () => ({
@@ -35,9 +36,11 @@ function renderApp(initialPath = '/') {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <App />
-        </MemoryRouter>
+        <RoleSimulationProvider>
+          <MemoryRouter initialEntries={[initialPath]}>
+            <App />
+          </MemoryRouter>
+        </RoleSimulationProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
@@ -92,5 +95,10 @@ describe('App', () => {
   it('renders System Config at /system', () => {
     renderApp('/system');
     expect(screen.getByRole('heading', { name: 'System Configuration' })).toBeInTheDocument();
+  });
+
+  it('renders Simulation landing at /simulate with no role set', () => {
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'Role Simulation' })).toBeInTheDocument();
   });
 });

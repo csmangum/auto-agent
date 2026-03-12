@@ -254,3 +254,19 @@ export function TokenIcon(props: SVGProps<SVGSVGElement>) {
     </IconWrapper>
   );
 }
+
+/** Simulation / role play (theater masks) */
+export function SimulationIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M9 3C5.69 3 3 5.69 3 9c0 2.02 1 3.81 2.53 4.9A5.99 5.99 0 003 18v1h12v-1a5.99 5.99 0 00-2.53-4.1A5.98 5.98 0 0015 9c0-3.31-2.69-6-6-6z" />
+      <circle cx="7" cy="8" r="1" />
+      <circle cx="11" cy="8" r="1" />
+      <path d="M7 11s1 1.5 2 1.5S11 11 11 11" />
+      <path d="M15 7c2.76 0 5 2.24 5 5 0 1.68-.83 3.16-2.1 4.07A4.99 4.99 0 0120 20v1h-7" />
+      <circle cx="16" cy="11" r="0.75" />
+      <circle cx="19" cy="11" r="0.75" />
+      <path d="M16 13.5s.75-1 1.5-1 1.5 1 1.5 1" />
+    </IconWrapper>
+  );
+}

@@ -28,6 +28,7 @@ from claim_agent.api.routes.claims import _background_tasks as claim_background_
 from claim_agent.api.routes.metrics import router as metrics_router
 from claim_agent.api.routes.docs import router as docs_router
 from claim_agent.api.routes.system import router as system_router
+from claim_agent.api.routes.simulation import router as simulation_router
 from claim_agent.config import get_settings
 
 
@@ -204,6 +205,7 @@ app.include_router(claims_router, prefix="/api")
 app.include_router(metrics_router, prefix="/api")
 app.include_router(docs_router, prefix="/api")
 app.include_router(system_router, prefix="/api")
+app.include_router(simulation_router, prefix="/api")
 
 
 # Serve frontend static files in production (when built)
