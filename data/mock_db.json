@@ -204,6 +204,13 @@
       "status": "suspended",
       "coverages": ["liability"],
       "liability_limits": { "bi_per_person": 30000, "bi_per_accident": 60000, "pd_per_accident": 25000 }
+    },
+    "POL-099": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 250,
+      "comprehensive_deductible": 1000
     }
   },
   "claims": [

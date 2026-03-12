@@ -368,7 +368,7 @@ def calculate_repair_estimate_impl(
     total_estimate = round(parts_cost + labor_cost, 2)
 
     try:
-        policy_result = query_policy_db_impl(policy_number, ctx=ctx)
+        policy_result = query_policy_db_impl(policy_number, damage_description=damage_description, ctx=ctx)
     except (DomainValidationError, AdapterError):
         deductible = DEFAULT_DEDUCTIBLE
     else:

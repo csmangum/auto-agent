@@ -23,23 +23,58 @@ def _policy_coverage_summary(p: dict[str, Any]) -> str:
     return p.get("coverage", "liability")
 
 
-def _policy_physical_damage_deductible(p: dict[str, Any]) -> float:
-    """Return deductible for collision/comprehensive claims. Prefers collision, then comprehensive."""
+def _policy_physical_damage_deductible(p: dict[str, Any], damage_description: str = "") -> float:
+    """Return deductible for collision/comprehensive claims based on damage type.
+    
+    Analyzes damage_description to determine whether this is a comprehensive claim
+    (theft, vandalism, fire, weather, animal, glass, hail, flood) or a collision claim.
+    Returns the appropriate deductible, or falls back to collision deductible if unknown.
+    """
     coverages = p.get("coverages") or []
-    if "collision" in coverages and p.get("collision_deductible") is not None:
-        return float(p["collision_deductible"])
-    if "comprehensive" in coverages and p.get("comprehensive_deductible") is not None:
-        return float(p["comprehensive_deductible"])
-    if p.get("collision_deductible") is not None:
-        return float(p["collision_deductible"])
-    if p.get("comprehensive_deductible") is not None:
-        return float(p["comprehensive_deductible"])
+    collision_deductible = p.get("collision_deductible")
+    comprehensive_deductible = p.get("comprehensive_deductible")
+    
+    # Comprehensive claim keywords (non-collision damage)
+    comprehensive_keywords = {
+        "theft", "stolen", "vandalism", "vandalized", "fire", "burned", "burning",
+        "weather", "hail", "flood", "flooded", "water damage", "wind", "tornado",
+        "hurricane", "animal", "deer", "glass", "windshield", "window"
+    }
+    
+    # If we have damage description, analyze it to determine claim type
+    if damage_description:
+        damage_lower = damage_description.lower()
+        is_comprehensive = any(keyword in damage_lower for keyword in comprehensive_keywords)
+        
+        # Return appropriate deductible based on damage type
+        if is_comprehensive:
+            if "comprehensive" in coverages and comprehensive_deductible is not None:
+                return float(comprehensive_deductible)
+            if comprehensive_deductible is not None:
+                return float(comprehensive_deductible)
+        else:
+            # Collision claim
+            if "collision" in coverages and collision_deductible is not None:
+                return float(collision_deductible)
+            if collision_deductible is not None:
+                return float(collision_deductible)
+    
+    # Fallback logic when no damage description or both deductibles available
+    if "collision" in coverages and collision_deductible is not None:
+        return float(collision_deductible)
+    if "comprehensive" in coverages and comprehensive_deductible is not None:
+        return float(comprehensive_deductible)
+    if collision_deductible is not None:
+        return float(collision_deductible)
+    if comprehensive_deductible is not None:
+        return float(comprehensive_deductible)
     return float(p.get("deductible", 500))
 
 
 def query_policy_db_impl(
     policy_number: str,
     *,
+    damage_description: str = "",
     ctx: ClaimContext | None = None,
 ) -> str:
     if not policy_number or not isinstance(policy_number, str):
@@ -63,7 +98,7 @@ def query_policy_db_impl(
             result = {
                 "valid": True,
                 "coverage": _policy_coverage_summary(p),
-                "deductible": _policy_physical_damage_deductible(p),
+                "deductible": _policy_physical_damage_deductible(p, damage_description),
                 "status": status,
             }
             rental = p.get("rental_reimbursement") or p.get("transportation_expenses")
