@@ -3,7 +3,7 @@
 from claim_agent.agents.escalation import create_escalation_agent
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
-from claim_agent.models.stage_outputs import EscalationDecisionOutput
+from claim_agent.models.stage_outputs import EscalationCheckResult
 
 
 def create_escalation_crew(llm: LLMProtocol | None = None):
@@ -34,12 +34,12 @@ Your job is to decide whether this claim needs human review. Do NOT delegate the
    - router_confidence vs confidence_threshold
    - high_value, ambiguous_similarity
 
-3. Decide: needs_review (bool), escalation_reasons (list), priority (low/medium/high/critical), recommended_action (str), fraud_indicators (list — include only indicators you agree warrant escalation). Add reasoning (brief) to explain your decision.
+3. Decide: needs_review (bool), escalation_reasons (list), priority (low/medium/high/critical), recommended_action (str), fraud_indicators (list — include only indicators you agree warrant escalation).
 
 Output your decision in the required structured format.""",
-                expected_output="EscalationDecisionOutput: needs_review, escalation_reasons, priority, recommended_action, fraud_indicators, reasoning.",
+                expected_output="EscalationCheckResult: needs_review, escalation_reasons, priority, recommended_action, fraud_indicators.",
                 agent_index=0,
-                output_pydantic=EscalationDecisionOutput,
+                output_pydantic=EscalationCheckResult,
             ),
         ],
         llm=llm,

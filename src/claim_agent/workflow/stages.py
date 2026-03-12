@@ -43,7 +43,6 @@ from claim_agent.models.stage_outputs import (
     EconomicAnalysisResult,
     EnrichedDuplicate,
     EscalationCheckResult,
-    EscalationDecisionOutput,
     FraudPrescreeningResult,
     RouterStageResult,
 )
@@ -601,13 +600,13 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
     return None
 
 
-def _parse_escalation_crew_result(result: Any) -> EscalationDecisionOutput | None:
-    """Extract EscalationDecisionOutput from escalation crew result."""
+def _parse_escalation_crew_result(result: Any) -> EscalationCheckResult | None:
+    """Extract EscalationCheckResult from escalation crew result."""
     tasks_output = getattr(result, "tasks_output", None)
     if not tasks_output or not isinstance(tasks_output, list) or len(tasks_output) == 0:
         return None
-    last_output = getattr(tasks_output[-1], "output", None)
-    if isinstance(last_output, EscalationDecisionOutput):
+    last_output = getattr(tasks_output[-1], "pydantic", None)
+    if isinstance(last_output, EscalationCheckResult):
         return last_output
     return None
 
