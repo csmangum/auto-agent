@@ -66,9 +66,22 @@ flowchart TB
 ### Router-Delegator Pattern
 
 The system uses a **router-delegator pattern**:
-- A **Router Crew** classifies incoming claims into one of five types
+- A **Router Crew** classifies incoming claims into one of seven types: `new`, `duplicate`, `total_loss`, `fraud`, `partial_loss`, `bodily_injury`, and `reopened`
 - Based on classification, the appropriate **Workflow Crew** is invoked
 - Each workflow crew contains specialized agents for that claim type
+
+```mermaid
+flowchart LR
+    ClaimIn[Claim Input] --> Router[Router Crew]
+    Router --> Type{claim_type?}
+    Type --> NewCrew[New Claim Crew]
+    Type --> DupCrew[Duplicate Crew]
+    Type --> TLCrew[Total Loss Crew]
+    Type --> FraudCrew[Fraud Crew]
+    Type --> PLCrew[Partial Loss Crew]
+    Type --> BICrew[Bodily Injury Crew]
+    Type --> ReopenedCrew[Reopened Crew]
+```
 
 See [Crews](crews.md) for detailed crew documentation.
 
@@ -79,11 +92,30 @@ After classification but before workflow execution:
 - Claims flagged for escalation are marked `needs_review` and bypass automated processing
 - Escalation criteria: fraud indicators, high-value payouts, low confidence scores
 
+```mermaid
+flowchart LR
+    Classified[Classified Claim] --> Esc[Escalation Check]
+    Esc --> Need{needs_review?}
+    Need -->|yes| Review[needs_review]
+    Need -->|no| Workflow[Workflow Crew]
+    Workflow --> Out[ClaimOutput]
+    Review --> EscOut[EscalationOutput]
+```
+
 See [Agent Flow - Escalation](agent-flow.md#4-escalation-check-hitl) for details.
 
 ### Data Flow
 
 Claim data flows through the system as follows. The Router Crew receives a `ClaimInput` (from `models/claim.py`) and classifies the claim; it passes the validated claim data and classification to the selected workflow crew. Within each crew, context is shared between tasks (see Agent Composition below for details on the context mechanism). Persistent state (claim records, workflow runs) is stored in the SQLite database via the repository layer. The final output is a `ClaimOutput` (or `EscalationOutput` for escalated claims) containing `claim_id`, `status`, `actions_taken`, and optional `payout_amount`.
+
+```mermaid
+flowchart LR
+    ClaimInput[ClaimInput] --> Router[Router Crew]
+    Router --> Crew[Workflow Crew]
+    Crew --> Repo[Repository]
+    Repo --> DB[(SQLite)]
+    Crew --> Out["ClaimOutput or EscalationOutput"]
+```
 
 ### Agent Composition
 
@@ -91,6 +123,15 @@ Each crew consists of multiple **specialized agents** that:
 - Have specific roles, goals, and backstories defined in **skill files**
 - Use dedicated tools to accomplish tasks
 - Pass context between sequential tasks via **CrewAI's sequential task context mechanism**: each task declares a `context` parameter listing prior tasks; the output of those tasks is automatically injected as input context for the next agent. For example, in the Total Loss crew, the payout task receives context from both the damage assessment and valuation tasks. Tasks specify an `expected_output` string to guide the LLM; structured Pydantic output is used where the workflow needs to parse results (e.g., escalation reports).
+
+```mermaid
+flowchart LR
+    subgraph Crew [Crew]
+        T1[Task 1] -->|context| T2[Task 2] -->|context| T3[Task 3]
+    end
+    Skills[Skill files] --> T1
+    Tools[Tools] --> T2
+```
 
 See [Skills](skills.md) for agent prompt definitions.
 
@@ -113,7 +154,8 @@ The `observability/` module provides structured logging, tracing, and metrics. *
 flowchart TB
     A[Claim JSON] --> B[Claim Router Supervisor]
     B --> C{claim_type?}
-    C --> D[Escalation Check]
+    C -->|fraud| FR1
+    C -->|"other"| D[Escalation Check]
     D --> E{needs_review?}
     E -->|yes| G[Return with Escalation Details]
     E -->|no| H{claim_type?}
@@ -154,7 +196,6 @@ flowchart TB
     H -->|new| D1
     H -->|duplicate| E1
     H -->|total_loss| F1
-    H -->|fraud| FR1
     H -->|partial_loss| P1
     H -->|bodily_injury| B1
     H -->|reopened| R1
@@ -172,7 +213,7 @@ flowchart TB
 
 ## Directory Structure
 
-```
+```tree
 src/claim_agent/
 ├── main.py              # CLI entry point
 ├── context.py           # ClaimContext for CLI/API

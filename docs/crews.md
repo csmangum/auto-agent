@@ -2,7 +2,7 @@
 
 Crews are collections of agents that work together to accomplish a specific workflow. Each crew handles a particular type of claim processing.
 
-For classification criteria and claim examples, see [Claim Types](claim-types.md). For agent prompt definitions, see [Skills](skills.md).
+For classification criteria and claim examples, see [Claim Types](claim-types.md). Agents have specific roles, goals, and backstories defined in [skill files](skills.md).
 
 ## Overview
 
