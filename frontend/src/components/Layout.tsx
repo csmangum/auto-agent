@@ -1,18 +1,20 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import AuthControl from './AuthControl';
+import { DocumentIcon } from './icons';
+import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
 
 const MAIN_NAV = [
-  { to: '/', label: 'Dashboard', icon: '📊' },
-  { to: '/claims', label: 'Claims', icon: '📋' },
-  { to: '/claims/new', label: 'New Claim', icon: '➕' },
+  { to: '/', label: 'Dashboard', icon: 'dashboard' as NavIconKey },
+  { to: '/claims', label: 'Claims', icon: 'claims' as NavIconKey },
+  { to: '/claims/new', label: 'New Claim', icon: 'newClaim' as NavIconKey },
 ];
 
 const REFERENCE_NAV = [
-  { to: '/docs', label: 'Documentation', icon: '📖' },
-  { to: '/skills', label: 'Skills', icon: '🧠' },
-  { to: '/agents', label: 'Agents & Crews', icon: '🤖' },
-  { to: '/system', label: 'System Config', icon: '⚙️' },
+  { to: '/docs', label: 'Documentation', icon: 'docs' as NavIconKey },
+  { to: '/skills', label: 'Skills', icon: 'skills' as NavIconKey },
+  { to: '/agents', label: 'Agents & Crews', icon: 'agents' as NavIconKey },
+  { to: '/system', label: 'System Config', icon: 'system' as NavIconKey },
 ];
 
 function NavSection({ label, items, onLinkClick }: { label: string; items: typeof MAIN_NAV; onLinkClick: () => void }) {
@@ -22,7 +24,9 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: typeo
         {label}
       </p>
       <div className="space-y-0.5">
-        {items.map((item) => (
+        {items.map((item) => {
+          const Icon = NAV_ICONS[item.icon] ?? DocumentIcon;
+          return (
           <NavLink
             key={item.to}
             to={item.to}
@@ -36,10 +40,13 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: typeo
               }`
             }
           >
-            <span className="text-base shrink-0">{item.icon}</span>
+            <span className="shrink-0 flex items-center justify-center text-current">
+              <Icon className="w-5 h-5" />
+            </span>
             {item.label}
           </NavLink>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
