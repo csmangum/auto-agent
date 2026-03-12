@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { useClaims, useClaim } from '../../api/queries';
+import { useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../../components/PageHeader';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
+import QuickStat from '../../components/QuickStat';
+import MessagesTab from '../../components/MessagesTab';
 import { formatDateTime } from '../../utils/date';
+import { queryKeys } from '../../api/queries';
 import type { Claim, FollowUpMessage } from '../../api/types';
 
 const REPAIR_RELEVANT_STATUSES = new Set([
@@ -180,7 +184,16 @@ function RepairJobDetail({ claimId, onBack }: { claimId: string; onBack: () => v
         {activeTab === 'supplement' && (
           <SupplementalTab claimId={claim.id} canSupplement={canSupplement} status={claim.status} claimType={claim.claim_type} />
         )}
-        {activeTab === 'messages' && <ShopMessagesTab followUps={followUps} claimId={claim.id} />}
+        {activeTab === 'messages' && (
+          <MessagesTab
+            followUps={followUps}
+            claimId={claim.id}
+            accentColor="amber"
+            senderLabel="From: Insurance Carrier"
+            emptyTitle="No messages"
+            emptyDescription="No messages from the insurance carrier for this repair."
+          />
+        )}
       </div>
     </div>
   );
@@ -242,6 +255,7 @@ function SupplementalTab({ claimId, canSupplement, status, claimType }: {
   });
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -266,6 +280,9 @@ function SupplementalTab({ claimId, canSupplement, status, claimType }: {
         `Supplemental filed. Amount: $${data.supplemental_amount?.toLocaleString() ?? 'TBD'} — ${data.summary ?? ''}`
       );
       setForm({ supplemental_damage_description: '', reported_by: 'shop' });
+      
+      await queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.claimHistory(claimId) });
     } catch (err) {
       setResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
@@ -333,125 +350,6 @@ function SupplementalTab({ claimId, canSupplement, status, claimType }: {
           {submitting ? 'Submitting...' : 'Submit Supplemental'}
         </button>
       </form>
-    </div>
-  );
-}
-
-function ShopMessagesTab({ followUps, claimId }: { followUps: FollowUpMessage[]; claimId: string }) {
-  const [responseText, setResponseText] = useState('');
-  const [respondingTo, setRespondingTo] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<string | null>(null);
-
-  async function handleRespond(messageId: number) {
-    if (!responseText.trim()) return;
-    setSubmitting(true);
-    setSubmitResult(null);
-    try {
-      const res = await fetch(`/api/claims/${claimId}/follow-up/record-response`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message_id: messageId,
-          response_content: responseText.trim(),
-        }),
-      });
-      if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      setSubmitResult('Response submitted');
-      setResponseText('');
-      setRespondingTo(null);
-    } catch (err) {
-      setSubmitResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {submitResult && (
-        <div className={`text-sm px-4 py-2 rounded-lg ${
-          submitResult.startsWith('Error') ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'
-        }`}>
-          {submitResult}
-        </div>
-      )}
-
-      {followUps.length === 0 ? (
-        <EmptyState
-          icon="✉️"
-          title="No messages"
-          description="No messages from the insurance carrier for this repair."
-        />
-      ) : (
-        followUps.map((msg) => (
-          <div key={msg.id} className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-amber-400">From: Insurance Carrier</span>
-                <span className={`text-xs px-2 py-0.5 rounded ${
-                  msg.status === 'responded' ? 'bg-emerald-500/20 text-emerald-400'
-                    : msg.status === 'sent' ? 'bg-amber-500/20 text-amber-400'
-                    : 'bg-gray-500/20 text-gray-400'
-                }`}>
-                  {msg.status === 'sent' ? 'Action needed' : msg.status}
-                </span>
-              </div>
-              <span className="text-xs text-gray-500">{formatDateTime(msg.created_at)}</span>
-            </div>
-
-            <div className="bg-gray-900/50 rounded-lg p-3 mb-3">
-              <p className="text-sm text-gray-300">{msg.message_content}</p>
-            </div>
-
-            {msg.response_content ? (
-              <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3">
-                <p className="text-xs text-amber-400 mb-1">Your response</p>
-                <p className="text-sm text-gray-300">{msg.response_content}</p>
-              </div>
-            ) : msg.status === 'sent' ? (
-              respondingTo === msg.id ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={responseText}
-                    onChange={(e) => setResponseText(e.target.value)}
-                    placeholder="Type your response..."
-                    rows={3}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-500/40 resize-none"
-                  />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => handleRespond(msg.id)} disabled={submitting || !responseText.trim()}
-                      className="px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-500 disabled:opacity-50 transition-colors">
-                      {submitting ? 'Sending...' : 'Send Response'}
-                    </button>
-                    <button type="button" onClick={() => { setRespondingTo(null); setResponseText(''); }}
-                      className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setRespondingTo(msg.id)}
-                  className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors">
-                  Reply →
-                </button>
-              )
-            ) : null}
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
-function QuickStat({ label, value, accent }: { label: string; value: number; accent: string }) {
-  const colorMap: Record<string, string> = {
-    amber: 'text-amber-400', teal: 'text-teal-400', blue: 'text-blue-400', green: 'text-green-400',
-  };
-  return (
-    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${colorMap[accent] ?? 'text-gray-200'}`}>{value}</p>
     </div>
   );
 }

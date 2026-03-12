@@ -3,6 +3,7 @@ import { useClaims, useClaim, useClaimHistory } from '../../api/queries';
 import PageHeader from '../../components/PageHeader';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
+import QuickStat from '../../components/QuickStat';
 import { formatDateTime } from '../../utils/date';
 import CustomerClaimView from './CustomerClaimView';
 
@@ -124,20 +125,5 @@ function CustomerClaimDetail({ claimId, onBack }: { claimId: string; onBack: () 
       history={history}
       onBack={onBack}
     />
-  );
-}
-
-function QuickStat({ label, value, accent }: { label: string; value: number; accent: string }) {
-  const colorMap: Record<string, string> = {
-    emerald: 'text-emerald-400',
-    blue: 'text-blue-400',
-    green: 'text-green-400',
-    amber: 'text-amber-400',
-  };
-  return (
-    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${colorMap[accent] ?? 'text-gray-200'}`}>{value}</p>
-    </div>
   );
 }

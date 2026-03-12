@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
+import MessagesTab from '../../components/MessagesTab';
 import { formatDateTime } from '../../utils/date';
+import { queryKeys } from '../../api/queries';
 import type { Claim, AuditEvent, FollowUpMessage } from '../../api/types';
 
 interface Props {
@@ -23,6 +26,10 @@ export default function CustomerClaimView({ claim, history, onBack }: Props) {
 
   const customerHistory = history.filter(
     (e) => CUSTOMER_VISIBLE_ACTIONS.has(e.action) || e.action.includes('status')
+  );
+
+  const customerMessages = followUps.filter(
+    (m) => m.user_type === 'claimant' || m.user_type === 'policyholder'
   );
 
   const tabs = [
@@ -88,7 +95,14 @@ export default function CustomerClaimView({ claim, history, onBack }: Props) {
           <ClaimStatusTab claim={claim} history={customerHistory} />
         )}
         {activeTab === 'messages' && (
-          <MessagesTab followUps={followUps} claimId={claim.id} />
+          <MessagesTab
+            followUps={customerMessages}
+            claimId={claim.id}
+            accentColor="emerald"
+            senderLabel="From: Claims Team"
+            emptyTitle="No messages"
+            emptyDescription="You don't have any messages from your claims adjuster yet."
+          />
         )}
         {activeTab === 'dispute' && (
           <DisputeTab claimId={claim.id} canDispute={canDispute} status={claim.status} />
@@ -152,132 +166,6 @@ function ClaimStatusTab({ claim, history }: { claim: Claim; history: AuditEvent[
   );
 }
 
-function MessagesTab({ followUps, claimId }: { followUps: FollowUpMessage[]; claimId: string }) {
-  const [responseText, setResponseText] = useState('');
-  const [respondingTo, setRespondingTo] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<string | null>(null);
-
-  const customerMessages = followUps.filter(
-    (m) => m.user_type === 'claimant' || m.user_type === 'policyholder'
-  );
-
-  async function handleRespond(messageId: number) {
-    if (!responseText.trim()) return;
-    setSubmitting(true);
-    setSubmitResult(null);
-    try {
-      const res = await fetch(`/api/claims/${claimId}/follow-up/record-response`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message_id: messageId,
-          response_content: responseText.trim(),
-        }),
-      });
-      if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      setSubmitResult('Response submitted successfully');
-      setResponseText('');
-      setRespondingTo(null);
-    } catch (err) {
-      setSubmitResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {submitResult && (
-        <div className={`text-sm px-4 py-2 rounded-lg ${
-          submitResult.startsWith('Error') ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
-        }`}>
-          {submitResult}
-        </div>
-      )}
-
-      {customerMessages.length === 0 ? (
-        <EmptyState
-          icon="✉️"
-          title="No messages"
-          description="You don't have any messages from your claims adjuster yet."
-        />
-      ) : (
-        customerMessages.map((msg) => (
-          <div
-            key={msg.id}
-            className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5"
-          >
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-emerald-400">From: Claims Team</span>
-                <span className={`text-xs px-2 py-0.5 rounded ${
-                  msg.status === 'responded'
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : msg.status === 'sent'
-                      ? 'bg-amber-500/20 text-amber-400'
-                      : 'bg-gray-500/20 text-gray-400'
-                }`}>
-                  {msg.status === 'sent' ? 'Awaiting your response' : msg.status}
-                </span>
-              </div>
-              <span className="text-xs text-gray-500">{formatDateTime(msg.created_at)}</span>
-            </div>
-
-            <div className="bg-gray-900/50 rounded-lg p-3 mb-3">
-              <p className="text-sm text-gray-300">{msg.message_content}</p>
-            </div>
-
-            {msg.response_content ? (
-              <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3">
-                <p className="text-xs text-emerald-400 mb-1">Your response</p>
-                <p className="text-sm text-gray-300">{msg.response_content}</p>
-              </div>
-            ) : msg.status === 'sent' ? (
-              respondingTo === msg.id ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={responseText}
-                    onChange={(e) => setResponseText(e.target.value)}
-                    placeholder="Type your response..."
-                    rows={3}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 resize-none"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleRespond(msg.id)}
-                      disabled={submitting || !responseText.trim()}
-                      className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-500 disabled:opacity-50 transition-colors"
-                    >
-                      {submitting ? 'Sending...' : 'Send Response'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setRespondingTo(null); setResponseText(''); }}
-                      className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setRespondingTo(msg.id)}
-                  className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
-                >
-                  Reply to this message →
-                </button>
-              )
-            ) : null}
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
 function DisputeTab({ claimId, canDispute, status }: { claimId: string; canDispute: boolean; status: string }) {
   const [form, setForm] = useState({
     dispute_type: 'valuation_disagreement',
@@ -286,6 +174,7 @@ function DisputeTab({ claimId, canDispute, status }: { claimId: string; canDispu
   });
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -309,6 +198,9 @@ function DisputeTab({ claimId, canDispute, status }: { claimId: string; canDispu
       const data = await res.json();
       setResult(`Dispute filed successfully. Resolution: ${data.resolution_type ?? 'pending'} — ${data.summary ?? ''}`);
       setForm({ dispute_type: 'valuation_disagreement', dispute_description: '', policyholder_evidence: '' });
+      
+      await queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.claimHistory(claimId) });
     } catch (err) {
       setResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
