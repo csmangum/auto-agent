@@ -57,6 +57,19 @@ async function fetchJSON<T>(url: string, retries = 1): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function postJSON<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${url}`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 export const getClaimsStats = (): Promise<ClaimsStats> =>
   fetchJSON<ClaimsStats>('/claims/stats');
 
@@ -110,6 +123,45 @@ export const getSystemHealth = (): Promise<SystemHealthData> =>
 
 export const getAgentsCatalog = (): Promise<AgentsCatalogResponse> =>
   fetchJSON<AgentsCatalogResponse>('/system/agents');
+
+// ---------------------------------------------------------------------------
+// Simulation action helpers (dispute, supplemental)
+// ---------------------------------------------------------------------------
+
+export interface PostClaimDisputePayload {
+  dispute_type: string;
+  dispute_description: string;
+  policyholder_evidence?: string | null;
+}
+
+export interface PostClaimDisputeResponse {
+  resolution_type?: string;
+  summary?: string;
+  [key: string]: unknown;
+}
+
+export const postClaimDispute = (
+  claimId: string,
+  payload: PostClaimDisputePayload
+): Promise<PostClaimDisputeResponse> =>
+  postJSON<PostClaimDisputeResponse>(`/claims/${claimId}/dispute`, payload);
+
+export interface PostClaimSupplementalPayload {
+  supplemental_damage_description: string;
+  reported_by: string;
+}
+
+export interface PostClaimSupplementalResponse {
+  supplemental_amount?: number;
+  summary?: string;
+  [key: string]: unknown;
+}
+
+export const postClaimSupplemental = (
+  claimId: string,
+  payload: PostClaimSupplementalPayload
+): Promise<PostClaimSupplementalResponse> =>
+  postJSON<PostClaimSupplementalResponse>(`/claims/${claimId}/supplemental`, payload);
 
 // ---------------------------------------------------------------------------
 // Claim submission and realtime stream

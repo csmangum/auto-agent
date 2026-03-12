@@ -8,6 +8,7 @@ import QuickStat from '../../components/QuickStat';
 import MessagesTab from '../../components/MessagesTab';
 import { formatDateTime } from '../../utils/date';
 import { queryKeys } from '../../api/queries';
+import { postClaimSupplemental } from '../../api/client';
 import type { Claim, FollowUpMessage } from '../../api/types';
 
 const REPAIR_RELEVANT_STATUSES = new Set([
@@ -263,19 +264,10 @@ function SupplementalTab({ claimId, canSupplement, status, claimType }: {
     setSubmitting(true);
     setResult(null);
     try {
-      const res = await fetch(`/api/claims/${claimId}/supplemental`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplemental_damage_description: form.supplemental_damage_description.trim(),
-          reported_by: form.reported_by,
-        }),
+      const data = await postClaimSupplemental(claimId, {
+        supplemental_damage_description: form.supplemental_damage_description.trim(),
+        reported_by: form.reported_by,
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text.slice(0, 200));
-      }
-      const data = await res.json();
       setResult(
         `Supplemental filed. Amount: $${data.supplemental_amount?.toLocaleString() ?? 'TBD'} — ${data.summary ?? ''}`
       );

@@ -63,7 +63,7 @@ function getStoredRole(): SimulationRole {
   if (typeof window === 'undefined') return 'adjuster';
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && stored in ROLE_DEFINITIONS) return stored as SimulationRole;
+    if (stored && Object.prototype.hasOwnProperty.call(ROLE_DEFINITIONS, stored)) return stored as SimulationRole;
   } catch { /* ignore */ }
   return 'adjuster';
 }
