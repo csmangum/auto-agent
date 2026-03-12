@@ -71,6 +71,7 @@ data/corpus_sources/
 # Evaluation reports
 evaluation_report.json
 evaluation_report_*.json
+standalone_workflow_report.json
 
 # Flask stuff:
 instance/

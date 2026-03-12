@@ -671,6 +671,18 @@ def _run_llm_call(fn):
         raise
 
 
+# Expected claim_type variance for LLM routing tests (non-deterministic router).
+# Use bounded assertions: result["claim_type"] in VALID_TYPES_FOR_SCENARIO[scenario]
+# Documented per docs/eval-suite-gaps.md to avoid false failures when router is conservative.
+LLM_ROUTER_VALID_OUTCOMES = {
+    "new_claim": ("new", "partial_loss"),  # Minor damage could be partial
+    "total_loss": ("total_loss", "new"),  # LLM may route conservatively
+    "fraud": ("fraud", "new"),  # Or escalate (needs_review)
+    "duplicate": ("duplicate", "new", "partial_loss"),  # Or escalate
+    "partial_loss": ("partial_loss", "new"),  # Or escalate
+}
+
+
 @pytest.mark.llm
 @pytest.mark.e2e
 @pytest.mark.slow
@@ -679,7 +691,8 @@ class TestWorkflowWithLLM:
 
     Claim type assertions allow multiple valid outcomes: the router is non-deterministic
     and may classify conservatively (e.g. total_loss → new, fraud → new or escalation).
-    These tests assert that the workflow runs to completion and returns a valid result.
+    Use LLM_ROUTER_VALID_OUTCOMES for bounded assertions. These tests assert that the
+    workflow runs to completion and returns a valid result.
     """
 
     @pytest.fixture(autouse=True)
@@ -702,7 +715,7 @@ class TestWorkflowWithLLM:
         assert "claim_id" in result
         assert "claim_type" in result
         assert "workflow_output" in result
-        assert result["claim_type"] in ("new", "partial_loss")  # Minor damage could be partial
+        assert result["claim_type"] in LLM_ROUTER_VALID_OUTCOMES["new_claim"]
 
     def test_total_loss_full_workflow(self, integration_db, sample_total_loss_claim):
         """Test complete total-loss-shaped claim workflow with real LLM.
@@ -716,7 +729,7 @@ class TestWorkflowWithLLM:
         assert "claim_id" in result
         assert "claim_type" in result
         assert "workflow_output" in result
-        assert result["claim_type"] in ("total_loss", "new")  # LLM may route conservatively
+        assert result["claim_type"] in LLM_ROUTER_VALID_OUTCOMES["total_loss"]
 
     def test_fraud_claim_full_workflow(self, integration_db, sample_fraud_claim):
         """Test complete fraud-shaped claim workflow with real LLM.
@@ -728,7 +741,10 @@ class TestWorkflowWithLLM:
         result = _run_llm_call(lambda: run_claim_workflow(sample_fraud_claim))
 
         assert "claim_id" in result
-        assert result["claim_type"] in ("fraud", "new") or result.get("needs_review")
+        assert (
+            result["claim_type"] in LLM_ROUTER_VALID_OUTCOMES["fraud"]
+            or result.get("needs_review")
+        )
 
     def test_duplicate_claim_full_workflow(self, integration_db, sample_duplicate_claim):
         """Test complete duplicate-shaped claim workflow with real LLM.
@@ -740,7 +756,10 @@ class TestWorkflowWithLLM:
 
         assert "claim_id" in result
         assert "claim_type" in result
-        assert result["claim_type"] in ("duplicate", "new", "partial_loss") or result.get("needs_review")
+        assert (
+            result["claim_type"] in LLM_ROUTER_VALID_OUTCOMES["duplicate"]
+            or result.get("needs_review")
+        )
 
     def test_partial_loss_claim_full_workflow(self, integration_db, sample_partial_loss_claim):
         """Test complete partial-loss-shaped claim workflow with real LLM.
@@ -752,4 +771,7 @@ class TestWorkflowWithLLM:
 
         assert "claim_id" in result
         assert "claim_type" in result
-        assert result["claim_type"] in ("partial_loss", "new") or result.get("needs_review")
+        assert (
+            result["claim_type"] in LLM_ROUTER_VALID_OUTCOMES["partial_loss"]
+            or result.get("needs_review")
+        )

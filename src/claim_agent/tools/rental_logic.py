@@ -23,7 +23,8 @@ DEFAULT_DAILY_LIMIT = 35.0
 DEFAULT_AGGREGATE_LIMIT = 1050.0
 DEFAULT_MAX_DAYS = 30
 
-# Coverage types that typically include rental reimbursement (Part D / physical damage)
+# Coverage types that typically include rental reimbursement (Part D / physical damage).
+# "full_coverage" is a legacy misnomer; real policies use coverages array with collision/comprehensive.
 RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
 
 # In-memory idempotency cache for mock: (claim_id, amount, rental_days) -> reimbursement_id.
@@ -103,7 +104,13 @@ def check_rental_coverage_impl(
             }
         )
     rental = policy.get("rental_reimbursement") or policy.get("transportation_expenses")
+    coverages = policy.get("coverages") or []
     coverage = policy.get("coverage", "")
+    has_physical_damage = (
+        "collision" in coverages
+        or "comprehensive" in coverages
+        or (coverage and str(coverage).lower() in RENTAL_ELIGIBLE_COVERAGES)
+    )
     if rental and isinstance(rental, dict):
         daily_val, agg_val, max_days_val = _parse_rental_limits(rental)
         return json.dumps(
@@ -115,14 +122,14 @@ def check_rental_coverage_impl(
                 "message": "Rental reimbursement coverage found",
             }
         )
-    if coverage and str(coverage).lower() in RENTAL_ELIGIBLE_COVERAGES:
+    if has_physical_damage:
         return json.dumps(
             {
                 "eligible": True,
                 "daily_limit": DEFAULT_DAILY_LIMIT,
                 "aggregate_limit": DEFAULT_AGGREGATE_LIMIT,
                 "max_days": DEFAULT_MAX_DAYS,
-                "message": f"Coverage type '{coverage}' typically includes rental; using default limits",
+                "message": "Policy includes collision or comprehensive; using default rental limits",
             }
         )
     return json.dumps(
@@ -130,7 +137,7 @@ def check_rental_coverage_impl(
             "eligible": False,
             "daily_limit": None,
             "aggregate_limit": None,
-            "message": f"Policy coverage '{coverage}' does not include rental reimbursement",
+            "message": "Policy does not include collision or comprehensive coverage (rental requires physical damage coverage)",
         }
     )
 
@@ -170,6 +177,13 @@ def get_rental_limits_impl(
     if policy is None:
         return _error_limits("Policy not found")
     rental = policy.get("rental_reimbursement") or policy.get("transportation_expenses")
+    coverages = policy.get("coverages") or []
+    coverage = policy.get("coverage", "")
+    has_physical_damage = (
+        "collision" in coverages
+        or "comprehensive" in coverages
+        or (coverage and str(coverage).lower() in RENTAL_ELIGIBLE_COVERAGES)
+    )
     if rental and isinstance(rental, dict):
         daily_val, agg_val, max_days_val = _parse_rental_limits(rental)
         return json.dumps(
@@ -179,8 +193,7 @@ def get_rental_limits_impl(
                 "max_days": max_days_val,
             }
         )
-    coverage = policy.get("coverage", "")
-    if coverage and str(coverage).lower() in RENTAL_ELIGIBLE_COVERAGES:
+    if has_physical_damage:
         return json.dumps(
             {
                 "daily_limit": DEFAULT_DAILY_LIMIT,

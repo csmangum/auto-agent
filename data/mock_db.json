@@ -1,59 +1,210 @@
 {
   "_meta": {
-    "mock_data_version": "2025.01",
-    "description": "Reference policies, vehicle values, and seed claims; claim search uses SQLite."
+    "mock_data_version": "2025.02",
+    "description": "Reference policies with realistic coverage bundles (liability, collision, comprehensive, UM), vehicle values, and seed claims."
   },
   "policies": {
     "POL-001": {
-      "coverage": "comprehensive",
-      "deductible": 500,
       "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
       "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
     },
-    "POL-002": { "coverage": "liability", "deductible": 250, "status": "active" },
-    "POL-003": {
-      "coverage": "full_coverage",
-      "deductible": 1000,
+    "POL-002": {
       "status": "active",
+      "coverages": ["liability"],
+      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+    },
+    "POL-003": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "collision_deductible": 1000,
+      "comprehensive_deductible": 1000,
       "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
     },
     "POL-004": {
-      "coverage": "collision",
-      "deductible": 500,
       "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
       "bodily_injury": { "per_person": 250000, "per_accident": 500000 }
     },
     "POL-005": {
-      "coverage": "comprehensive",
-      "deductible": 250,
       "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 250,
+      "comprehensive_deductible": 250,
       "rental_reimbursement": { "daily_limit": 40, "aggregate_limit": 1200, "max_days": 30 }
     },
-    "POL-006": { "coverage": "uninsured_motorist", "deductible": 500, "status": "active" },
-    "POL-007": { "coverage": "full_coverage", "deductible": 1500, "status": "active" },
-    "POL-008": { "coverage": "liability", "deductible": 500, "status": "active" },
-    "POL-009": { "coverage": "comprehensive", "deductible": 1000, "status": "active" },
-    "POL-010": { "coverage": "collision", "deductible": 250, "status": "active" },
-    "POL-011": { "coverage": "full_coverage", "deductible": 500, "status": "active" },
-    "POL-012": { "coverage": "comprehensive", "deductible": 2000, "status": "active" },
-    "POL-013": { "coverage": "liability", "deductible": 1000, "status": "active" },
-    "POL-014": { "coverage": "uninsured_motorist", "deductible": 250, "status": "active" },
-    "POL-015": { "coverage": "collision", "deductible": 1000, "status": "active" },
-    "POL-016": { "coverage": "full_coverage", "deductible": 250, "status": "active" },
-    "POL-017": { "coverage": "comprehensive", "deductible": 1500, "status": "active" },
-    "POL-018": { "coverage": "liability", "deductible": 1500, "status": "active" },
-    "POL-019": { "coverage": "collision", "deductible": 1500, "status": "active" },
-    "POL-020": { "coverage": "full_coverage", "deductible": 2000, "status": "active" },
-    "POL-021": { "coverage": "comprehensive", "deductible": 500, "status": "inactive" },
-    "POL-022": { "coverage": "liability", "deductible": 500, "status": "inactive" },
-    "POL-023": { "coverage": "collision", "deductible": 1000, "status": "expired" },
-    "POL-024": { "coverage": "full_coverage", "deductible": 500, "status": "expired" },
-    "POL-025": { "coverage": "comprehensive", "deductible": 1000, "status": "cancelled" },
-    "POL-026": { "coverage": "liability", "deductible": 250, "status": "cancelled" },
-    "POL-027": { "coverage": "collision", "deductible": 500, "status": "cancelled" },
-    "POL-028": { "coverage": "full_coverage", "deductible": 1000, "status": "suspended" },
-    "POL-029": { "coverage": "comprehensive", "deductible": 500, "status": "suspended" },
-    "POL-030": { "coverage": "liability", "deductible": 1000, "status": "suspended" }
+    "POL-006": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive", "uninsured_motorist"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500
+    },
+    "POL-007": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1500,
+      "comprehensive_deductible": 1500
+    },
+    "POL-008": {
+      "status": "active",
+      "coverages": ["liability"],
+      "liability_limits": { "bi_per_person": 30000, "bi_per_accident": 60000, "pd_per_accident": 25000 }
+    },
+    "POL-009": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1000,
+      "comprehensive_deductible": 1000
+    },
+    "POL-010": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 50000, "bi_per_accident": 100000, "pd_per_accident": 25000 },
+      "collision_deductible": 250,
+      "comprehensive_deductible": 250
+    },
+    "POL-011": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
+    },
+    "POL-012": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 2000,
+      "comprehensive_deductible": 2000
+    },
+    "POL-013": {
+      "status": "active",
+      "coverages": ["liability"],
+      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+    },
+    "POL-014": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive", "uninsured_motorist"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 250,
+      "comprehensive_deductible": 250
+    },
+    "POL-015": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1000,
+      "comprehensive_deductible": 1000
+    },
+    "POL-016": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "collision_deductible": 250,
+      "comprehensive_deductible": 250,
+      "rental_reimbursement": { "daily_limit": 50, "aggregate_limit": 1500, "max_days": 30 }
+    },
+    "POL-017": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1500,
+      "comprehensive_deductible": 1500
+    },
+    "POL-018": {
+      "status": "active",
+      "coverages": ["liability"],
+      "liability_limits": { "bi_per_person": 25000, "bi_per_accident": 50000, "pd_per_accident": 25000 }
+    },
+    "POL-019": {
+      "status": "active",
+      "coverages": ["liability", "collision"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1500
+    },
+    "POL-020": {
+      "status": "active",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 2000,
+      "comprehensive_deductible": 2000
+    },
+    "POL-021": {
+      "status": "inactive",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500
+    },
+    "POL-022": {
+      "status": "inactive",
+      "coverages": ["liability"],
+      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+    },
+    "POL-023": {
+      "status": "expired",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1000,
+      "comprehensive_deductible": 1000
+    },
+    "POL-024": {
+      "status": "expired",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500
+    },
+    "POL-025": {
+      "status": "cancelled",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1000,
+      "comprehensive_deductible": 1000
+    },
+    "POL-026": {
+      "status": "cancelled",
+      "coverages": ["liability"],
+      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+    },
+    "POL-027": {
+      "status": "cancelled",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500
+    },
+    "POL-028": {
+      "status": "suspended",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 1000,
+      "comprehensive_deductible": 1000
+    },
+    "POL-029": {
+      "status": "suspended",
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500
+    },
+    "POL-030": {
+      "status": "suspended",
+      "coverages": ["liability"],
+      "liability_limits": { "bi_per_person": 30000, "bi_per_accident": 60000, "pd_per_accident": 25000 }
+    }
   },
   "claims": [
     {

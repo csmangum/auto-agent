@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from claim_agent.adapters.registry import get_policy_adapter
 from claim_agent.exceptions import AdapterError, DomainValidationError
@@ -13,6 +13,28 @@ if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
+
+
+def _policy_coverage_summary(p: dict[str, Any]) -> str:
+    """Return human-readable coverage summary. Supports coverages array or legacy coverage string."""
+    coverages = p.get("coverages")
+    if coverages and isinstance(coverages, list):
+        return "+".join(str(c) for c in coverages)
+    return p.get("coverage", "liability")
+
+
+def _policy_physical_damage_deductible(p: dict[str, Any]) -> float:
+    """Return deductible for collision/comprehensive claims. Prefers collision, then comprehensive."""
+    coverages = p.get("coverages") or []
+    if "collision" in coverages and p.get("collision_deductible") is not None:
+        return float(p["collision_deductible"])
+    if "comprehensive" in coverages and p.get("comprehensive_deductible") is not None:
+        return float(p["comprehensive_deductible"])
+    if p.get("collision_deductible") is not None:
+        return float(p["collision_deductible"])
+    if p.get("comprehensive_deductible") is not None:
+        return float(p["comprehensive_deductible"])
+    return float(p.get("deductible", 500))
 
 
 def query_policy_db_impl(
@@ -40,8 +62,8 @@ def query_policy_db_impl(
         if is_active:
             result = {
                 "valid": True,
-                "coverage": p.get("coverage", "comprehensive"),
-                "deductible": p.get("deductible", 500),
+                "coverage": _policy_coverage_summary(p),
+                "deductible": _policy_physical_damage_deductible(p),
                 "status": status,
             }
             rental = p.get("rental_reimbursement") or p.get("transportation_expenses")
