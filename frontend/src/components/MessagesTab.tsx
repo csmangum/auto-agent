@@ -4,6 +4,7 @@ import EmptyState from './EmptyState';
 import { formatDateTime } from '../utils/date';
 import { queryKeys } from '../api/queries';
 import type { FollowUpMessage } from '../api/types';
+import { postJSON } from '../api/client';
 
 interface MessagesTabProps {
   followUps: FollowUpMessage[];
@@ -77,15 +78,10 @@ export default function MessagesTab({
     setSubmitting(true);
     setSubmitResult(null);
     try {
-      const res = await fetch(`/api/claims/${claimId}/follow-up/record-response`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message_id: messageId,
-          response_content: responseText.trim(),
-        }),
+      await postJSON(`/claims/${claimId}/follow-up/record-response`, {
+        message_id: messageId,
+        response_content: responseText.trim(),
       });
-      if (!res.ok) throw new Error(`Failed: ${res.status}`);
       setSubmitResult('Response submitted');
       setResponseText('');
       setRespondingTo(null);
@@ -165,7 +161,7 @@ export default function MessagesTab({
                   </div>
                 </div>
               ) : (
-                <button type="button" onClick={() => setRespondingTo(msg.id)}
+                <button type="button" onClick={() => { setRespondingTo(msg.id); setResponseText(''); }}
                   className={`text-xs font-medium ${colors.text} ${colors.hover} transition-colors`}>
                   {accentColor === 'emerald' ? 'Reply to this message →' : 'Reply →'}
                 </button>
