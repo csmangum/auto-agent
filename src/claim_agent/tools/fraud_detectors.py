@@ -165,9 +165,56 @@ def _detect_damage_vs_value_indicators(claim_data: dict, ctx: ClaimContext | Non
     return indicators
 
 
+def get_description_overlap_evidence(claim_data: dict) -> dict | None:
+    """Return {score, threshold} for incident/damage overlap. None if N/A.
+
+    Used by get_escalation_evidence so the agent can reason over overlap
+    without the rule directly deciding incident_damage_description_mismatch.
+    """
+    if not claim_data or not isinstance(claim_data, dict):
+        return None
+    incident = (claim_data.get("incident_description") or "").strip().lower()
+    damage = (claim_data.get("damage_description") or "").strip().lower()
+    if not incident or not damage:
+        return None
+    overlap_threshold = get_escalation_config()["description_overlap_threshold"]
+    words_i = _normalize_words_for_overlap(incident)
+    words_d = _normalize_words_for_overlap(damage)
+    if not words_i or not words_d:
+        return None
+    overlap = len(words_i & words_d) / len(words_i | words_d) if (words_i | words_d) else 0
+    return {"score": round(overlap, 4), "threshold": overlap_threshold}
+
+
+_OVERLAP_STOPWORDS = frozenset(
+    {"a", "an", "and", "are", "at", "be", "been", "but", "did", "do", "does",
+     "for", "had", "has", "have", "i", "in", "is", "may", "might", "my", "of",
+     "on", "or", "our", "that", "the", "this", "to", "was", "were", "while",
+     "will", "would"}
+)
+
+
+def _normalize_words_for_overlap(text: str) -> set[str]:
+    """Normalize into content-word tokens: strip punctuation, split hyphens, drop stopwords."""
+    tokens: set[str] = set()
+    for raw in text.split():
+        word = raw.strip(".,;:!?\"'()")
+        if not word or word in _OVERLAP_STOPWORDS:
+            continue
+        for part in word.split("-"):
+            if part and part not in _OVERLAP_STOPWORDS:
+                tokens.add(part)
+    return tokens
+
+
 @register_fraud_detector
 def _detect_description_overlap_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
-    """Detect low overlap between incident and damage descriptions."""
+    """Detect low overlap between incident and damage descriptions.
+
+    Uses Jaccard similarity on normalized word sets (punctuation stripped, hyphenated
+    words split) so semantically consistent pairs like "rear-ended" / "rear bumper"
+    are not falsely flagged as description mismatch.
+    """
     indicators: list[str] = []
     if not claim_data or not isinstance(claim_data, dict):
         return indicators
@@ -176,8 +223,8 @@ def _detect_description_overlap_indicators(claim_data: dict, ctx: ClaimContext |
     if not incident or not damage:
         return indicators
     overlap_threshold = get_escalation_config()["description_overlap_threshold"]
-    words_i = set(incident.split())
-    words_d = set(damage.split())
+    words_i = _normalize_words_for_overlap(incident)
+    words_d = _normalize_words_for_overlap(damage)
     if words_i and words_d:
         overlap = len(words_i & words_d) / len(words_i | words_d) if (words_i | words_d) else 0
         if overlap < overlap_threshold:

@@ -68,3 +68,14 @@ class EscalationCheckResult(BaseModel):
     priority: str = "low"
     recommended_action: str = ""
     fraud_indicators: list[str] = Field(default_factory=list)
+
+
+class EscalationDecisionOutput(BaseModel):
+    """Structured output from escalation agent: needs_review, reasons, priority, etc."""
+
+    needs_review: bool
+    escalation_reasons: list[str] = Field(default_factory=list)
+    priority: str = "low"
+    recommended_action: str = ""
+    fraud_indicators: list[str] = Field(default_factory=list)
+    reasoning: str = ""

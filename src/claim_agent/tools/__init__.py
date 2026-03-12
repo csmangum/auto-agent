@@ -32,6 +32,7 @@ __all__ = [
     "evaluate_escalation",
     "escalate_claim",
     "detect_fraud_indicators",
+    "get_escalation_evidence",
     "generate_escalation_report",
     # Fraud detection tools
     "analyze_claim_patterns",
@@ -158,6 +159,10 @@ def __getattr__(name: str):
         from claim_agent.tools.escalation_tools import detect_fraud_indicators
         setattr(mod, "detect_fraud_indicators", detect_fraud_indicators)
         return detect_fraud_indicators
+    if name == "get_escalation_evidence":
+        from claim_agent.tools.escalation_tools import get_escalation_evidence
+        setattr(mod, "get_escalation_evidence", get_escalation_evidence)
+        return get_escalation_evidence
     if name == "generate_escalation_report":
         from claim_agent.tools.escalation_tools import generate_escalation_report
         setattr(mod, "generate_escalation_report", generate_escalation_report)
