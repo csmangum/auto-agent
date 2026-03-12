@@ -1,21 +1,27 @@
+import type { ReactNode } from 'react';
 import PageHeader from '../components/PageHeader';
 import { useSystemConfig, useSystemHealth } from '../api/queries';
+import { WarningIcon, BellIcon, FraudIcon, CurrencyIcon, PartialLossIcon, TokenIcon, SystemIcon } from '../components/icons';
 
 interface ConfigTableProps {
   title: string;
-  icon?: string;
+  icon?: ReactNode;
   config: Record<string, unknown>;
   descriptions?: Record<string, string>;
+  cardClass?: string;
 }
 
-function ConfigTable({ title, icon, config, descriptions = {} }: ConfigTableProps) {
+function ConfigTable({ title, icon, config, descriptions = {}, cardClass }: ConfigTableProps) {
   const entries = Object.entries(config ?? {});
   if (entries.length === 0) return null;
 
+  const baseCard = 'rounded-xl border p-5';
+  const classes = cardClass ?? 'bg-gray-800/50 border-gray-700/50';
+
   return (
-    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
+    <div className={`${baseCard} ${classes}`}>
       <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-        {icon && <span>{icon}</span>}
+        {icon}
         {title}
       </h3>
       <div className="overflow-x-auto">
@@ -81,13 +87,18 @@ export default function SystemConfig() {
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-8 animate-fade-in">
         <PageHeader title="System Configuration" subtitle="Current configuration thresholds and system health" />
-        <div className="space-y-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-40 bg-gray-800/50 rounded-xl border border-gray-700/50 skeleton-shimmer" />
-          ))}
-        </div>
+        <div className="h-24 rounded-xl border border-gray-700/50 bg-gray-800/50 skeleton-shimmer" />
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="pb-8 last:pb-0">
+            <div className="flex items-center gap-2 pb-3 border-b border-gray-700/50 mb-4">
+              <div className="h-4 w-4 rounded bg-gray-700/50 skeleton-shimmer" />
+              <div className="h-4 w-36 rounded bg-gray-700/50 skeleton-shimmer" />
+            </div>
+            <div className="h-48 rounded-xl border border-gray-700/50 bg-gray-800/50 skeleton-shimmer mt-4" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -97,7 +108,7 @@ export default function SystemConfig() {
       <div className="space-y-6 animate-fade-in">
         <PageHeader title="System Configuration" />
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
-          <span className="text-lg">⚠️</span>
+          <WarningIcon className="w-5 h-5 shrink-0 text-red-400" aria-hidden />
           <p className="text-sm text-red-400">{error instanceof Error ? error.message : 'Unknown error'}</p>
         </div>
       </div>
@@ -107,74 +118,95 @@ export default function SystemConfig() {
   if (!config) return null;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
       <PageHeader
         title="System Configuration"
         subtitle="Current configuration thresholds and system health"
       />
 
       {health && (
-        <div className={`rounded-xl border p-5 ${
-          health.status === 'healthy'
-            ? 'bg-emerald-500/10 border-emerald-500/20'
-            : 'bg-yellow-500/10 border-yellow-500/20'
-        }`}>
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">
-              {health.status === 'healthy' ? '✅' : '⚠️'}
-            </span>
-            <div>
-              <h3 className="font-semibold text-gray-100">
-                System {health.status === 'healthy' ? 'Healthy' : 'Degraded'}
-              </h3>
-              <p className="text-sm text-gray-400">
-                Database: {health.database} · {health.total_claims} claims stored
-              </p>
-            </div>
+        <section className="pb-8">
+          <h2 className="text-base font-semibold text-gray-200 pb-3 border-b border-gray-700/50 flex items-center gap-2">
+            <span className="text-gray-500" aria-hidden>➤</span>
+            {health.status === 'healthy' ? (
+              <span className="w-5 h-5 rounded-full bg-emerald-500/30 flex items-center justify-center" aria-hidden>
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              </span>
+            ) : (
+              <WarningIcon className="w-5 h-5 shrink-0 text-amber-400" aria-hidden />
+            )}
+            System health
+          </h2>
+          <div
+            className={`rounded-xl border border-l-4 p-5 mt-4 ${
+              health.status === 'healthy'
+                ? 'bg-emerald-500/10 border-emerald-500/30 border-l-emerald-500/60'
+                : 'bg-amber-500/10 border-amber-500/30 border-l-amber-500/60'
+            }`}
+          >
+            <h3 className="font-semibold text-gray-100">
+              System {health.status === 'healthy' ? 'Healthy' : 'Degraded'}
+            </h3>
+            <p className="text-sm text-gray-400 mt-0.5">
+              Database: {health.database} · {health.total_claims} claims stored
+            </p>
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="space-y-4">
-        <ConfigTable
-          title="Escalation (Human-in-the-Loop)"
-          icon="🔔"
-          config={config.escalation ?? {}}
-          descriptions={ESCALATION_DESCRIPTIONS}
-        />
-        <ConfigTable
-          title="Fraud Detection"
-          icon="🚨"
-          config={config.fraud ?? {}}
-          descriptions={FRAUD_DESCRIPTIONS}
-        />
-        <ConfigTable
-          title="Vehicle Valuation"
-          icon="💰"
-          config={config.valuation ?? {}}
-        />
-        <ConfigTable
-          title="Partial Loss"
-          icon="🔧"
-          config={config.partial_loss ?? {}}
-        />
-        <ConfigTable
-          title="Token Budgets"
-          icon="🎫"
-          config={config.token_budgets ?? {}}
-        />
-        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-            <span>⚙️</span> General
-          </h3>
-          <p className="text-sm text-gray-400">
-            CrewAI Verbose Mode:{' '}
-            <span className="font-mono font-medium text-blue-400">
-              {config.crew_verbose ? 'true' : 'false'}
-            </span>
-          </p>
+      <section className="pb-8 last:pb-0">
+        <h2 className="text-base font-semibold text-gray-200 pb-3 border-b border-gray-700/50 flex items-center gap-2">
+          <span className="text-gray-500" aria-hidden>➤</span>
+          <SystemIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />
+          Configuration
+        </h2>
+        <div className="space-y-4 mt-4">
+          <ConfigTable
+            title="Escalation (Human-in-the-Loop)"
+            icon={<BellIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />}
+            config={config.escalation ?? {}}
+            descriptions={ESCALATION_DESCRIPTIONS}
+            cardClass="bg-amber-500/10 border-amber-500/30 border-l-4 border-l-amber-500/60"
+          />
+          <ConfigTable
+            title="Fraud Detection"
+            icon={<FraudIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />}
+            config={config.fraud ?? {}}
+            descriptions={FRAUD_DESCRIPTIONS}
+            cardClass="bg-red-500/10 border-red-500/30 border-l-4 border-l-red-500/60"
+          />
+          <ConfigTable
+            title="Vehicle Valuation"
+            icon={<CurrencyIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />}
+            config={config.valuation ?? {}}
+            cardClass="bg-emerald-500/10 border-emerald-500/30 border-l-4 border-l-emerald-500/60"
+          />
+          <ConfigTable
+            title="Partial Loss"
+            icon={<PartialLossIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />}
+            config={config.partial_loss ?? {}}
+            cardClass="bg-teal-500/10 border-teal-500/30 border-l-4 border-l-teal-500/60"
+          />
+          <ConfigTable
+            title="Token Budgets"
+            icon={<TokenIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />}
+            config={config.token_budgets ?? {}}
+            cardClass="bg-purple-500/10 border-purple-500/30 border-l-4 border-l-purple-500/60"
+          />
+          <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 border-l-4 border-l-gray-500/60 p-5">
+            <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+              <SystemIcon className="w-5 h-5 shrink-0 text-gray-400" aria-hidden />
+              General
+            </h3>
+            <p className="text-sm text-gray-400">
+              CrewAI Verbose Mode:{' '}
+              <span className="font-mono font-medium text-blue-400">
+                {config.crew_verbose ? 'true' : 'false'}
+              </span>
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

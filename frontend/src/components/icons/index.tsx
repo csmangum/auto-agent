@@ -224,6 +224,37 @@ export function WarningIcon(props: SVGProps<SVGSVGElement>) {
   return <EscalationIcon {...props} />;
 }
 
+/** Bell (notifications / human-in-the-loop) */
+export function BellIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 01-3.46 0" />
+    </IconWrapper>
+  );
+}
+
+/** Currency / valuation */
+export function CurrencyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M16 8h-2a2 2 0 00-2 2v0a2 2 0 002 2h2a2 2 0 012 2v0a2 2 0 01-2 2h-2a2 2 0 00-2 2v0a2 2 0 002 2h2" />
+    </IconWrapper>
+  );
+}
+
+/** Token / budget (stacked) */
+export function TokenIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M6 8h12" />
+      <path d="M6 12h12" />
+      <path d="M6 16h12" />
+    </IconWrapper>
+  );
+}
+
 // Lookup maps for nav and skills
 
 export const NAV_ICONS = {
@@ -247,5 +278,18 @@ export const SKILL_GROUP_ICONS: Record<string, React.ComponentType<SVGProps<SVGS
   Subrogation: SubrogationIcon,
   Escalation: EscalationIcon,
 };
+
+/** Icons for crew sections (cycle by index when crew name is dynamic) */
+export const CREW_CYCLE_ICONS = [
+  RouterIcon,
+  WorkflowIcon,
+  SearchIcon,
+  FraudIcon,
+  TotalLossIcon,
+  PartialLossIcon,
+  SettlementIcon,
+  SubrogationIcon,
+  EscalationIcon,
+] as const;
 
 export type NavIconKey = keyof typeof NAV_ICONS;
