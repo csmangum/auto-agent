@@ -68,6 +68,11 @@ def _policy_physical_damage_deductible(p: dict[str, Any], damage_description: st
         return float(collision_deductible)
     if comprehensive_deductible is not None:
         return float(comprehensive_deductible)
+    # New schema (coverages list present) with no physical-damage coverage: no deductible applies
+    if p.get("coverages") is not None and not any(
+        c in coverages for c in ("collision", "comprehensive")
+    ):
+        return 0.0
     return float(p.get("deductible", 500))
 
 
