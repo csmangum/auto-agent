@@ -77,7 +77,7 @@ def _seed_db_for_workflows(db_path: str) -> None:
             ("CLM-SUP01", "partial_loss", "partial_loss", partial_output),
         )
 
-        # CLM-DIS01: new, open (for dispute)
+        # CLM-DIS01: new, open total_loss (for dispute)
         conn.execute(
             """INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
             vehicle_model, incident_date, incident_description, damage_description,
@@ -228,8 +228,8 @@ def _run_dispute_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult
                     },
                     ctx=ctx,
                 )
-        # NOTE: run_dispute_workflow obtains its DB connection via ClaimContext.from_defaults(),
-        # which in this standalone script is configured using the CLAIMS_DB_PATH environment variable.
+        # NOTE: run_dispute_workflow obtains its DB connection via ClaimContext,
+        # which here is constructed using the explicit db_path argument passed into this function.
         success = (
             result.get("claim_id") == "CLM-DIS01"
             and result.get("resolution_type") == "auto_resolved"
