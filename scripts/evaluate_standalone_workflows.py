@@ -204,6 +204,7 @@ def _run_dispute_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult
     """Run dispute workflow scenario (auto_resolve) with mocked LLM."""
     import time
 
+    from claim_agent.context import ClaimContext
     from claim_agent.db.constants import STATUS_DISPUTE_RESOLVED
     from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 
@@ -218,16 +219,15 @@ def _run_dispute_scenario(db_path: str, verbose: bool) -> WorkflowScenarioResult
                 mock_crew.kickoff.return_value = mock_result
                 mock_crew_fn.return_value = mock_crew
 
+                ctx = ClaimContext.from_defaults(db_path=db_path)
                 result = run_dispute_workflow(
                     {
                         "claim_id": "CLM-DIS01",
                         "dispute_type": "valuation_disagreement",
                         "dispute_description": "ACV is too low",
                     },
-                    ctx=None,
+                    ctx=ctx,
                 )
-        # Use ClaimContext with db_path for run_dispute_workflow - it builds from defaults
-        # The test uses seeded_temp_db; we pass db via env
         success = (
             result.get("claim_id") == "CLM-DIS01"
             and result.get("resolution_type") == "auto_resolved"
