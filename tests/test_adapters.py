@@ -69,8 +69,13 @@ class TestMockPolicyAdapter:
         adapter = MockPolicyAdapter()
         result = adapter.get_policy("POL-001")
         assert result is not None
-        assert "coverage" in result
-        assert "deductible" in result
+        assert "status" in result
+        assert "coverages" in result or "coverage" in result
+        assert (
+            "collision_deductible" in result
+            or "comprehensive_deductible" in result
+            or "deductible" in result
+        )
 
     def test_unknown_policy(self):
         adapter = MockPolicyAdapter()

@@ -33,12 +33,24 @@ def evaluate_damage(damage_description: str, estimated_repair_cost: float | None
 
 
 @tool("Calculate Payout")
-def calculate_payout(vehicle_value: float, policy_number: str) -> str:
+def calculate_payout(
+    vehicle_value: float,
+    policy_number: str,
+    damage_description: str = "",
+    coverage_type: str | None = None,
+) -> str:
     """Calculate total loss payout by subtracting policy deductible from vehicle value.
     Args:
         vehicle_value: Current market value of the vehicle in dollars.
         policy_number: Policy number to look up deductible amount.
+        damage_description: Optional damage description to infer collision vs comprehensive.
+        coverage_type: Optional explicit coverage type ("collision" or "comprehensive").
     Returns:
         JSON string with payout_amount (float), vehicle_value (float), deductible (float), and calculation (str).
     """
-    return calculate_payout_impl(vehicle_value, policy_number)
+    return calculate_payout_impl(
+        vehicle_value,
+        policy_number,
+        damage_description=damage_description,
+        coverage_type=coverage_type,
+    )

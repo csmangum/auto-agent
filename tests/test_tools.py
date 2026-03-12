@@ -392,3 +392,38 @@ def test_calculate_payout_deductible_exceeds_value():
     # POL-012 has 2000 deductible, vehicle value 1000, payout should be 0
     assert data["payout_amount"] == 0.0
     assert data["deductible"] == 2000
+
+
+def test_calculate_payout_liability_only_policy_returns_error():
+    """Liability-only policy should not produce first-party physical damage payout."""
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    result = calculate_payout_impl(12000, "POL-002")
+    data = json.loads(result)
+    assert "error" in data
+    assert data["payout_amount"] == 0.0
+
+
+def test_calculate_payout_requires_context_for_asymmetric_deductibles():
+    """Policies with different collision/comprehensive deductibles require context."""
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    result = calculate_payout_impl(12000, "POL-099")
+    data = json.loads(result)
+    assert "error" in data
+    assert data["payout_amount"] == 0.0
+
+
+def test_calculate_payout_uses_explicit_coverage_type():
+    """Coverage type should select the matching deductible for payout."""
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    collision_result = calculate_payout_impl(12000, "POL-099", coverage_type="collision")
+    comprehensive_result = calculate_payout_impl(12000, "POL-099", coverage_type="comprehensive")
+    collision_data = json.loads(collision_result)
+    comprehensive_data = json.loads(comprehensive_result)
+
+    assert collision_data["payout_amount"] == 11750.0
+    assert collision_data["deductible"] == 250.0
+    assert comprehensive_data["payout_amount"] == 11000.0
+    assert comprehensive_data["deductible"] == 1000.0

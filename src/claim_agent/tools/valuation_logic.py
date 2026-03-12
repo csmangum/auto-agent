@@ -90,6 +90,8 @@ def calculate_payout_impl(
     vehicle_value: float,
     policy_number: str,
     *,
+    damage_description: str = "",
+    coverage_type: str | None = None,
     ctx: ClaimContext | None = None,
 ) -> str:
     """Calculate total loss payout by subtracting deductible from vehicle value."""
@@ -105,7 +107,12 @@ def calculate_payout_impl(
     vehicle_value = round(vehicle_value, 2)
 
     try:
-        policy_result = query_policy_db_impl(policy_number, ctx=ctx)
+        policy_result = query_policy_db_impl(
+            policy_number,
+            damage_description=damage_description,
+            coverage_type=coverage_type,
+            ctx=ctx,
+        )
     except (DomainValidationError, AdapterError) as e:
         return json.dumps({
             "error": str(e),
@@ -123,6 +130,30 @@ def calculate_payout_impl(
                 "vehicle_value": vehicle_value,
                 "deductible": 0,
                 "calculation": "Error: Policy not found or inactive"
+            })
+        if not policy_data.get("physical_damage_covered", True):
+            return json.dumps({
+                "error": "Policy does not include applicable physical damage coverage",
+                "payout_amount": 0.0,
+                "vehicle_value": vehicle_value,
+                "deductible": 0,
+                "calculation": "Error: Collision/comprehensive coverage is required",
+            })
+        collision_deductible = policy_data.get("collision_deductible")
+        comprehensive_deductible = policy_data.get("comprehensive_deductible")
+        if (
+            not coverage_type
+            and not damage_description
+            and collision_deductible is not None
+            and comprehensive_deductible is not None
+            and collision_deductible != comprehensive_deductible
+        ):
+            return json.dumps({
+                "error": "Coverage context required for policy with different collision/comprehensive deductibles",
+                "payout_amount": 0.0,
+                "vehicle_value": vehicle_value,
+                "deductible": 0,
+                "calculation": "Error: Provide coverage_type ('collision' or 'comprehensive')",
             })
         deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
     except (json.JSONDecodeError, KeyError) as e:

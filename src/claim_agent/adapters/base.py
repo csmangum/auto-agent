@@ -16,7 +16,10 @@ class PolicyAdapter(ABC):
     def get_policy(self, policy_number: str) -> dict[str, Any] | None:
         """Return policy data for *policy_number*, or ``None`` if not found.
 
-        Expected keys when found: ``coverage``, ``deductible``, ``status``.
+        Expected keys when found: ``status``, and either:
+        - New format: ``coverages`` (list, e.g. ["liability","collision","comprehensive"]),
+          ``collision_deductible``, ``comprehensive_deductible``, ``liability_limits``
+        - Legacy: ``coverage`` (str), ``deductible`` (number)
         """
         ...
 
