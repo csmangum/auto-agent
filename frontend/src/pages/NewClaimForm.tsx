@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import { SparkleIcon } from '../components/icons';
 import PolicySelect from '../components/PolicySelect';
 import StatusBadge from '../components/StatusBadge';
 import TypeBadge from '../components/TypeBadge';
@@ -8,6 +9,7 @@ import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
 import {
   processClaimAsync,
   streamClaimUpdates,
+  generateIncidentDetails,
   type ProcessClaimPayload,
   type ClaimStreamUpdate,
 } from '../api/client';
@@ -59,6 +61,8 @@ export default function NewClaimForm() {
   const [history, setHistory] = useState<AuditEvent[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowRun[]>([]);
   const [done, setDone] = useState(false);
+  const [generatingDetails, setGeneratingDetails] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const abortStreamRef = useRef<(() => void) | null>(null);
 
   const updateField = useCallback(
@@ -67,6 +71,33 @@ export default function NewClaimForm() {
     },
     []
   );
+
+  const canGenerateDetails =
+    form.vehicle_year != null &&
+    form.vehicle_year >= 1900 &&
+    form.vehicle_make.trim() !== '' &&
+    form.vehicle_model.trim() !== '';
+
+  const handleGenerateDetails = useCallback(async () => {
+    if (!canGenerateDetails || generatingDetails) return;
+    setGenerateError(null);
+    setGeneratingDetails(true);
+    try {
+      const result = await generateIncidentDetails({
+        vehicle_year: form.vehicle_year!,
+        vehicle_make: form.vehicle_make.trim(),
+        vehicle_model: form.vehicle_model.trim(),
+      });
+      updateField('incident_date', result.incident_date);
+      updateField('incident_description', result.incident_description);
+      updateField('damage_description', result.damage_description);
+      updateField('estimated_damage', result.estimated_damage ?? undefined);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : 'Failed to generate details');
+    } finally {
+      setGeneratingDetails(false);
+    }
+  }, [canGenerateDetails, generatingDetails, form.vehicle_year, form.vehicle_make, form.vehicle_model, updateField]);
 
   const allVehicles: VehicleRecord[] = useMemo(
     () =>
@@ -482,9 +513,30 @@ export default function NewClaimForm() {
 
         {/* Incident Details */}
         <div className="p-6 border-b border-gray-700/30">
-          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-            <span>📝</span> Incident Details
-          </h3>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+              <span>📝</span> Incident Details
+            </h3>
+            <button
+              type="button"
+              onClick={handleGenerateDetails}
+              disabled={!canGenerateDetails || generatingDetails}
+              title={
+                !canGenerateDetails
+                  ? 'Select a vehicle first'
+                  : 'Generate realistic damage with AI'
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+            >
+              <SparkleIcon className="w-4 h-4 shrink-0" aria-hidden />
+              {generatingDetails ? 'Generating…' : 'Generate'}
+            </button>
+          </div>
+          {generateError && (
+            <p className="text-sm text-red-400 mb-4" role="alert">
+              {generateError}
+            </p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
             <div>
               <label htmlFor="incident_date" className={labelClasses}>

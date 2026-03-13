@@ -153,6 +153,28 @@ export interface PoliciesListResponse {
 export const getPolicies = (): Promise<PoliciesListResponse> =>
   fetchJSON<PoliciesListResponse>('/system/policies');
 
+export interface GenerateIncidentDetailsPayload {
+  vehicle_year: number;
+  vehicle_make: string;
+  vehicle_model: string;
+  prompt?: string;
+}
+
+export interface GenerateIncidentDetailsResponse {
+  incident_date: string;
+  incident_description: string;
+  damage_description: string;
+  estimated_damage: number | null;
+}
+
+export const generateIncidentDetails = (
+  payload: GenerateIncidentDetailsPayload
+): Promise<GenerateIncidentDetailsResponse> =>
+  postJSON<GenerateIncidentDetailsResponse>(
+    '/claims/generate-incident-details',
+    payload
+  );
+
 // ---------------------------------------------------------------------------
 // Simulation action helpers (dispute, supplemental)
 // ---------------------------------------------------------------------------

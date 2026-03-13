@@ -47,7 +47,10 @@ from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverag
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
 from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
-from claim_agent.mock_crew.claim_generator import generate_claim_from_prompt
+from claim_agent.mock_crew.claim_generator import (
+    generate_claim_from_prompt,
+    generate_incident_damage_from_vehicle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,19 @@ class GenerateClaimRequest(BaseModel):
     submit: bool = Field(
         default=True,
         description="If true, submit the generated claim for processing via the workflow",
+    )
+
+
+class GenerateIncidentDetailsRequest(BaseModel):
+    """Request body for generating incident/damage details from vehicle info."""
+
+    vehicle_year: int = Field(..., ge=1900, le=2100, description="Vehicle year")
+    vehicle_make: str = Field(..., min_length=1, max_length=100, description="Vehicle make")
+    vehicle_model: str = Field(..., min_length=1, max_length=100, description="Vehicle model")
+    prompt: str = Field(
+        default="",
+        max_length=2000,
+        description="Optional scenario (e.g. parking lot fender bender)",
     )
 
 
@@ -745,6 +761,29 @@ async def generate_and_submit_claim(
         ctx=ctx,
     )
     return {"claim": claim_data, "submitted": True, **result}
+
+
+@router.post("/claims/generate-incident-details")
+async def generate_incident_details(
+    body: GenerateIncidentDetailsRequest = Body(...),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Generate incident/damage details via Mock Crew LLM for a given vehicle.
+
+    Requires MOCK_CREW_ENABLED=true. Returns incident_date, incident_description,
+    damage_description, and estimated_damage for use in the New Claim form.
+    """
+    try:
+        result = await asyncio.to_thread(
+            generate_incident_damage_from_vehicle,
+            body.vehicle_year,
+            body.vehicle_make,
+            body.vehicle_model,
+            body.prompt,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return result
 
 
 @router.post("/claims")

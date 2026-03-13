@@ -232,3 +232,76 @@ Return only the JSON object, no markdown or explanation."""
     }
 
     return ClaimInput.model_validate(claim_data)
+
+
+def generate_incident_damage_from_vehicle(
+    vehicle_year: int,
+    vehicle_make: str,
+    vehicle_model: str,
+    prompt: str = "",
+    *,
+    seed: int | None = None,
+) -> dict[str, Any]:
+    """Generate incident/damage details for a given vehicle via LLM.
+
+    Args:
+        vehicle_year: Year of the vehicle.
+        vehicle_make: Make of the vehicle (e.g. Honda).
+        vehicle_model: Model of the vehicle (e.g. Accord).
+        prompt: Optional scenario description (e.g. "parking lot fender bender").
+            If empty, uses a default partial-loss scenario.
+        seed: Optional seed for reproducibility.
+
+    Returns:
+        Dict with keys: incident_date, incident_description, damage_description,
+        estimated_damage (number or None).
+
+    Raises:
+        ValueError: If mock crew disabled or LLM returns invalid JSON.
+    """
+    crew_cfg = get_mock_crew_config()
+    if not crew_cfg.get("enabled"):
+        raise ValueError(
+            "Mock Crew must be enabled (MOCK_CREW_ENABLED=true) to generate incident details."
+        )
+    if seed is None:
+        seed = crew_cfg.get("seed")
+
+    get_llm()
+
+    vehicle_desc = f"{vehicle_year} {vehicle_make} {vehicle_model}"
+    scenario = prompt.strip() or "Generate realistic partial loss auto insurance claim details"
+    full_prompt = f"""{_DAMAGE_SCHEMA}
+
+Vehicle: {vehicle_desc}
+
+User request / scenario: {scenario}
+
+Return only the JSON object, no markdown or explanation."""
+
+    model = get_model_name()
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "user", "content": full_prompt}],
+    }
+    if seed is not None:
+        kwargs["seed"] = seed
+
+    resp = litellm.completion(**kwargs)
+    text = (resp.choices[0].message.content or "").strip()
+    parsed = _extract_json(text)
+    if not parsed:
+        raise ValueError(f"LLM did not return valid JSON. Raw output: {text[:500]}")
+
+    incident_date = parsed.get("incident_date")
+    if isinstance(incident_date, str):
+        incident_date = incident_date[:10]
+    else:
+        incident_date = (date.today() - timedelta(days=7)).isoformat()
+
+    return {
+        "incident_date": incident_date,
+        "incident_description": parsed.get("incident_description", "Incident occurred."),
+        "damage_description": parsed.get("damage_description", "Vehicle damage."),
+        "estimated_damage": parsed.get("estimated_damage"),
+    }

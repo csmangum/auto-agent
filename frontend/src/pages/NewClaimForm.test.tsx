@@ -37,9 +37,12 @@ const MOCK_POLICIES = {
   ],
 };
 
+const mockGenerateIncidentDetails = vi.fn();
+
 vi.mock('../api/client', () => ({
   processClaimAsync: (...args: unknown[]) => mockProcessClaimAsync(...args),
   streamClaimUpdates: (...args: unknown[]) => mockStreamClaimUpdates(...args),
+  generateIncidentDetails: (...args: unknown[]) => mockGenerateIncidentDetails(...args),
   getPolicies: () => Promise.resolve(MOCK_POLICIES),
 }));
 

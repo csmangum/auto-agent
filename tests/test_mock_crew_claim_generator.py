@@ -9,6 +9,7 @@ from claim_agent.mock_crew.claim_generator import (
     _pick_policy_and_vehicle,
     _vehicle_filter_from_prompt,
     generate_claim_from_prompt,
+    generate_incident_damage_from_vehicle,
 )
 
 
@@ -236,3 +237,85 @@ class TestGenerateClaimFromPrompt:
                     ):
                         with pytest.raises(ValueError, match="LLM did not return valid JSON"):
                             generate_claim_from_prompt("some prompt")
+
+
+class TestGenerateIncidentDamageFromVehicle:
+    """Tests for generate_incident_damage_from_vehicle with mocked LLM."""
+
+    def test_raises_when_mock_crew_disabled(self):
+        """Raises when MOCK_CREW_ENABLED is false."""
+        with patch(
+            "claim_agent.mock_crew.claim_generator.get_mock_crew_config",
+            return_value={"enabled": False, "seed": None},
+        ):
+            with pytest.raises(ValueError, match="Mock Crew must be enabled"):
+                generate_incident_damage_from_vehicle(2021, "Honda", "Accord")
+
+    def test_generates_details_with_mocked_llm(self):
+        """Produces incident/damage dict when LLM returns valid JSON."""
+        llm_response = type("R", (), {"choices": [type("C", (), {
+            "message": type("M", (), {
+                "content": '{"incident_date": "2025-02-10", "incident_description": "Parking lot fender bender.", '
+                '"damage_description": "Front left fender dent.", "estimated_damage": 1800}'
+            })()
+        })()]})()
+        with patch(
+            "claim_agent.mock_crew.claim_generator.get_mock_crew_config",
+            return_value={"enabled": True, "seed": 42},
+        ):
+            with patch(
+                "claim_agent.mock_crew.claim_generator.litellm.completion",
+                return_value=llm_response,
+            ):
+                with patch(
+                    "claim_agent.mock_crew.claim_generator.get_llm",
+                ):
+                    result = generate_incident_damage_from_vehicle(2021, "Honda", "Accord")
+        assert result["incident_date"] == "2025-02-10"
+        assert result["incident_description"] == "Parking lot fender bender."
+        assert result["damage_description"] == "Front left fender dent."
+        assert result["estimated_damage"] == 1800
+
+    def test_raises_when_llm_returns_invalid_json(self):
+        """Raises when LLM does not return valid JSON."""
+        llm_response = type("R", (), {"choices": [type("C", (), {
+            "message": type("M", (), {"content": "I cannot do that."})()
+        })()]})()
+        with patch(
+            "claim_agent.mock_crew.claim_generator.get_mock_crew_config",
+            return_value={"enabled": True, "seed": None},
+        ):
+            with patch(
+                "claim_agent.mock_crew.claim_generator.litellm.completion",
+                return_value=llm_response,
+            ):
+                with patch(
+                    "claim_agent.mock_crew.claim_generator.get_llm",
+                ):
+                    with pytest.raises(ValueError, match="LLM did not return valid JSON"):
+                        generate_incident_damage_from_vehicle(2020, "Toyota", "Camry")
+
+    def test_uses_custom_prompt_when_provided(self):
+        """Custom prompt is passed to LLM."""
+        llm_response = type("R", (), {"choices": [type("C", (), {
+            "message": type("M", (), {
+                "content": '{"incident_date": "2025-01-01", "incident_description": "Flood damage.", '
+                '"damage_description": "Water damage to interior.", "estimated_damage": null}'
+            })()
+        })()]})()
+        with patch(
+            "claim_agent.mock_crew.claim_generator.get_mock_crew_config",
+            return_value={"enabled": True, "seed": None},
+        ):
+            with patch(
+                "claim_agent.mock_crew.claim_generator.litellm.completion",
+                return_value=llm_response,
+            ) as mock_completion:
+                with patch(
+                    "claim_agent.mock_crew.claim_generator.get_llm",
+                ):
+                    result = generate_incident_damage_from_vehicle(
+                        2022, "Tesla", "Model 3", prompt="flood damage"
+                    )
+        assert "flood" in mock_completion.call_args[1]["messages"][0]["content"].lower()
+        assert result["estimated_damage"] is None
