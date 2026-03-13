@@ -77,6 +77,7 @@ export default function NewClaimForm() {
   const canGenerateDetails =
     form.vehicle_year != null &&
     form.vehicle_year >= 1900 &&
+    form.vehicle_year <= 2100 &&
     form.vehicle_make.trim() !== '' &&
     form.vehicle_model.trim() !== '';
 

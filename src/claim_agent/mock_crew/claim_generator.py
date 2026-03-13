@@ -320,9 +320,21 @@ Return only the JSON object, no markdown or explanation."""
     incident_date = _normalize_incident_date(parsed.get("incident_date"))
     est = _validate_estimated_damage(parsed.get("estimated_damage"))
 
+    incident_description_raw = parsed.get("incident_description")
+    if isinstance(incident_description_raw, str):
+        incident_description = incident_description_raw.strip() or "Incident occurred."
+    else:
+        incident_description = "Incident occurred."
+
+    damage_description_raw = parsed.get("damage_description")
+    if isinstance(damage_description_raw, str):
+        damage_description = damage_description_raw.strip() or "Vehicle damage."
+    else:
+        damage_description = "Vehicle damage."
+
     return {
         "incident_date": incident_date,
-        "incident_description": parsed.get("incident_description", "Incident occurred."),
-        "damage_description": parsed.get("damage_description", "Vehicle damage."),
+        "incident_description": incident_description,
+        "damage_description": damage_description,
         "estimated_damage": est,
     }

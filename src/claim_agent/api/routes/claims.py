@@ -783,6 +783,12 @@ async def generate_incident_details(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("generate-incident-details failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Incident details generation is temporarily unavailable. Please try again later.",
+        ) from e
     return result
 
 

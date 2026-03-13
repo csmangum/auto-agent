@@ -234,7 +234,7 @@ describe('NewClaimForm', () => {
     });
 
     it('Generate shows "Generating…" while loading', async () => {
-      let resolveGenerate: (v: unknown) => void;
+      let resolveGenerate: (v: unknown) => void = () => {};
       mockGenerateIncidentDetails.mockImplementation(
         () =>
           new Promise((resolve) => {
@@ -252,7 +252,7 @@ describe('NewClaimForm', () => {
       });
 
       await act(async () => {
-        resolveGenerate!({
+        resolveGenerate({
           incident_date: '2025-02-10',
           incident_description: 'Test.',
           damage_description: 'Test.',
