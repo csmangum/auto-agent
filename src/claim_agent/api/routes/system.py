@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
+from claim_agent.data.loader import load_mock_db
 from claim_agent.config.settings import (
     get_escalation_config,
     get_fraud_config,
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["system"])
 
 RequireAdmin = require_role("admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin")
 
 
 
@@ -37,7 +39,7 @@ RequireAdmin = require_role("admin")
 _CREWS_CATALOG = [
     {
         "name": "Router Crew",
-        "description": "Entry point for all claim processing. Classifies claims into one of five types.",
+        "description": "Entry point for all claim processing. Classifies claims into one of seven types.",
         "module": "crews/main_crew.py",
         "agents": [
             {
@@ -45,6 +47,19 @@ _CREWS_CATALOG = [
                 "skill": "router",
                 "tools": [],
                 "description": "Classifies claims and delegates to appropriate workflow",
+            },
+        ],
+    },
+    {
+        "name": "Escalation Crew",
+        "description": "Pre-workflow HITL gate. Evaluates claims against escalation criteria and flags cases needing human review.",
+        "module": "crews/escalation_crew.py",
+        "agents": [
+            {
+                "name": "Escalation Review Specialist",
+                "skill": "escalation",
+                "tools": ["get_escalation_evidence", "detect_fraud_indicators", "generate_escalation_report"],
+                "description": "Evaluates escalation criteria and flags cases for human review",
             },
         ],
     },
@@ -95,6 +110,31 @@ _CREWS_CATALOG = [
                 "skill": "resolution",
                 "tools": [],
                 "description": "Decides merge or reject for duplicate claims",
+            },
+        ],
+    },
+    {
+        "name": "Reopened Crew",
+        "description": "Validates reopening reason, loads prior settled claim, and routes to partial_loss, total_loss, or bodily_injury.",
+        "module": "crews/reopened_crew.py",
+        "agents": [
+            {
+                "name": "Reopening Reason Validator",
+                "skill": "reopened_validator",
+                "tools": ["query_policy_db", "get_claim_notes"],
+                "description": "Validates reopening reason before proceeding",
+            },
+            {
+                "name": "Prior Claim Loader",
+                "skill": "prior_claim_loader",
+                "tools": ["lookup_original_claim"],
+                "description": "Loads and summarizes the prior settled claim",
+            },
+            {
+                "name": "Reopened Router",
+                "skill": "reopened_router",
+                "tools": ["evaluate_damage", "get_claim_notes"],
+                "description": "Routes to partial_loss, total_loss, or bodily_injury",
             },
         ],
     },
@@ -186,6 +226,31 @@ _CREWS_CATALOG = [
         ],
     },
     {
+        "name": "Bodily Injury Crew",
+        "description": "Handles injury-related claims: intake injury details, review medical records, assess liability, propose settlement.",
+        "module": "crews/bodily_injury_crew.py",
+        "agents": [
+            {
+                "name": "BI Intake Specialist",
+                "skill": "bi_intake_specialist",
+                "tools": ["add_claim_note", "get_claim_notes", "escalate_claim"],
+                "description": "Captures injury details at intake",
+            },
+            {
+                "name": "Medical Records Reviewer",
+                "skill": "medical_records_reviewer",
+                "tools": ["query_medical_records", "assess_injury_severity", "add_claim_note", "get_claim_notes", "escalate_claim"],
+                "description": "Reviews medical records and assesses injury severity",
+            },
+            {
+                "name": "Settlement Negotiator",
+                "skill": "settlement_negotiator",
+                "tools": ["calculate_bi_settlement", "add_claim_note", "get_claim_notes", "escalate_claim"],
+                "description": "Proposes BI settlement within policy limits",
+            },
+        ],
+    },
+    {
         "name": "Rental Reimbursement Crew",
         "description": "Manages loss-of-use / rental coverage for partial loss claims. Runs after Partial Loss, before Settlement.",
         "module": "crews/rental_crew.py",
@@ -236,6 +301,31 @@ _CREWS_CATALOG = [
         ],
     },
     {
+        "name": "Dispute Crew",
+        "description": "Handles policyholder disputes on existing claims. Intake, policy/compliance analysis, resolution or escalation. Sub-workflow via POST /claims/{id}/dispute.",
+        "module": "crews/dispute_crew.py",
+        "agents": [
+            {
+                "name": "Dispute Intake Specialist",
+                "skill": "dispute_intake",
+                "tools": ["lookup_original_claim", "classify_dispute", "query_policy_db", "search_policy_compliance"],
+                "description": "Retrieves original claim and classifies the dispute",
+            },
+            {
+                "name": "Dispute Policy & Compliance Analyst",
+                "skill": "dispute_policy_analyst",
+                "tools": ["query_policy_db", "search_policy_compliance", "get_compliance_deadlines", "get_required_disclosures"],
+                "description": "Reviews policy terms and regulatory requirements",
+            },
+            {
+                "name": "Dispute Resolution Specialist",
+                "skill": "dispute_resolution",
+                "tools": ["fetch_vehicle_value", "calculate_repair_estimate", "calculate_payout", "escalate_claim", "generate_report", "generate_dispute_report", "get_compliance_deadlines"],
+                "description": "Resolves or escalates the dispute",
+            },
+        ],
+    },
+    {
         "name": "Supplemental Crew",
         "description": "Handles additional damage discovered during repair on partial loss claims. Sub-workflow via POST /claims/{id}/supplemental.",
         "module": "crews/supplemental_crew.py",
@@ -257,6 +347,19 @@ _CREWS_CATALOG = [
                 "skill": "estimate_adjuster",
                 "tools": ["calculate_supplemental_estimate", "update_repair_authorization"],
                 "description": "Calculates supplemental estimate and updates authorization",
+            },
+        ],
+    },
+    {
+        "name": "Human Review Handback Crew",
+        "description": "Processes claims returned from human review with an approval decision. Parses decision, updates claim, routes to next step.",
+        "module": "crews/human_review_handback_crew.py",
+        "agents": [
+            {
+                "name": "Human Review Handback Specialist",
+                "skill": "human_review_handback",
+                "tools": ["get_escalation_context", "apply_reviewer_decision", "parse_reviewer_decision"],
+                "description": "Processes post-escalation handback and routes claim",
             },
         ],
     },
@@ -360,6 +463,25 @@ _CREWS_CATALOG = [
             },
         ],
     },
+    {
+        "name": "After Action Crew",
+        "description": "Runs after all workflow stages. Compiles summary note and evaluates whether the claim should be closed.",
+        "module": "crews/after_action_crew.py",
+        "agents": [
+            {
+                "name": "After-Action Summary Specialist",
+                "skill": "after_action_summary",
+                "tools": ["add_after_action_note", "get_claim_notes"],
+                "description": "Compiles token-budgeted after-action summary note",
+            },
+            {
+                "name": "After-Action Status Specialist",
+                "skill": "after_action_status",
+                "tools": ["close_claim", "get_claim_notes"],
+                "description": "Evaluates whether claim should be closed",
+            },
+        ],
+    },
 ]
 
 
@@ -416,3 +538,47 @@ def health_check():
 def get_agents_catalog():
     """Get the complete agent/crew catalog."""
     return {"crews": _CREWS_CATALOG}
+
+
+@router.get("/system/policies", dependencies=[RequireAdjuster])
+def get_policies():
+    """List policies with vehicles for the New Claim form dropdown.
+    Returns active policies only, with policy_vehicles for autofill."""
+    db = load_mock_db()
+    policies_data = db.get("policies", {})
+    policy_vehicles = db.get("policy_vehicles", {})
+
+    result = []
+    for policy_number, policy in policies_data.items():
+        status = (policy.get("status") or "").lower()
+        if status != "active":
+            continue
+        raw_vehicles = policy_vehicles.get(policy_number, [])
+        vehicles = [
+            {
+                "vin": v.get("vin", ""),
+                "vehicle_year": v.get("vehicle_year"),
+                "vehicle_make": v.get("vehicle_make", ""),
+                "vehicle_model": v.get("vehicle_model", ""),
+            }
+            for v in raw_vehicles
+            if v.get("vin") and v.get("vehicle_year") is not None and v.get("vehicle_make") and v.get("vehicle_model")
+        ]
+        if not vehicles:
+            continue
+        liability = policy.get("liability_limits") or {}
+        bi = liability.get("bi_per_accident")
+        pd = liability.get("pd_per_accident")
+        coll_ded = policy.get("collision_deductible")
+        comp_ded = policy.get("comprehensive_deductible")
+        result.append({
+            "policy_number": policy_number,
+            "status": status,
+            "vehicle_count": len(vehicles),
+            "liability_limits": {"bi_per_accident": bi, "pd_per_accident": pd},
+            "collision_deductible": coll_ded,
+            "comprehensive_deductible": comp_ded,
+            "vehicles": vehicles,
+        })
+    result.sort(key=lambda p: p["policy_number"])
+    return {"policies": result}

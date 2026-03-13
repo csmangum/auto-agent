@@ -16,6 +16,7 @@ import {
   getSystemConfig,
   getSystemHealth,
   getAgentsCatalog,
+  getPolicies,
 } from './client';
 import type { GetClaimsParams } from './client';
 
@@ -32,6 +33,7 @@ export const queryKeys = {
   systemConfig: ['system', 'config'] as const,
   systemHealth: ['system', 'health'] as const,
   agentsCatalog: ['system', 'agents'] as const,
+  policies: ['system', 'policies'] as const,
 };
 
 export function useClaimsStats() {
@@ -120,5 +122,12 @@ export function useAgentsCatalog() {
   return useQuery({
     queryKey: queryKeys.agentsCatalog,
     queryFn: getAgentsCatalog,
+  });
+}
+
+export function usePolicies() {
+  return useQuery({
+    queryKey: queryKeys.policies,
+    queryFn: getPolicies,
   });
 }

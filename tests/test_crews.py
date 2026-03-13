@@ -537,10 +537,12 @@ def test_run_claim_workflow_classification_only(tmp_path):
 
     with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
          patch("claim_agent.workflow.stages.create_router_crew") as mock_router, \
-         patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_new_crew:
+         patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_new_crew, \
+         patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after_action:
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_raw)
         mock_new_crew.return_value.kickoff.return_value = MagicMock(raw=workflow_output)
+        mock_after_action.return_value.kickoff.return_value = MagicMock(raw="After-action complete.")
 
         db_path = tmp_path / "claims.db"
         init_db(str(db_path))

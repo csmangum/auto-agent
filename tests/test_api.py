@@ -815,7 +815,7 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 13
+        assert len(crews) == 19
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names
@@ -828,6 +828,45 @@ class TestAgentsCatalog:
         router_crew = next(c for c in crews if c["name"] == "Router Crew")
         assert len(router_crew["agents"]) == 1
         assert router_crew["agents"][0]["name"] == "Claim Router Supervisor"
+
+
+class TestPoliciesEndpoint:
+    """Test GET /api/system/policies (RequireAdjuster)."""
+
+    def test_adjuster_can_access_policies(self, client, monkeypatch):
+        """Adjuster can access policies endpoint."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        resp = client.get("/api/system/policies", headers=_auth_headers("sk-adj"))
+        assert resp.status_code == 200
+
+    def test_policies_returns_valid_schema(self, client, monkeypatch):
+        """Policies response has correct structure and policy/vehicle shape."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        resp = client.get("/api/system/policies", headers=_auth_headers("sk-adj"))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "policies" in data
+        policies = data["policies"]
+        assert isinstance(policies, list)
+        for p in policies:
+            assert "policy_number" in p
+            assert "status" in p
+            assert "vehicles" in p
+            assert isinstance(p["vehicles"], list)
+            for v in p["vehicles"]:
+                assert "vin" in v
+                assert "vehicle_year" in v
+                assert "vehicle_make" in v
+                assert "vehicle_model" in v
+
+    def test_policies_unauthorized_when_auth_required(self, client, monkeypatch):
+        """Policies returns 401 when auth required and no key provided."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        resp = client.get("/api/system/policies")
+        assert resp.status_code == 401
 
 
 class TestHealthEndpoint:
