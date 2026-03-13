@@ -19,6 +19,7 @@ import type {
   WorkflowRun,
   SystemConfigData,
   SystemHealthData,
+  ChatStreamEvent,
 } from './types';
 
 const BASE = '/api';
@@ -371,6 +372,72 @@ export function streamClaimUpdates(
         await new Promise((r) => setTimeout(r, STREAM_RETRY_DELAY_MS * retries));
         return connect();
       }
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  connect();
+  return abort;
+}
+
+// ---------------------------------------------------------------------------
+// Chat Agent
+// ---------------------------------------------------------------------------
+
+export interface ChatRequestMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export function streamChat(
+  messages: ChatRequestMessage[],
+  onEvent: (event: ChatStreamEvent) => void,
+  onError?: (err: Error) => void,
+): () => void {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+
+  async function connect() {
+    try {
+      const res = await fetch(`${BASE}/chat`, {
+        method: 'POST',
+        signal: controller.signal,
+        credentials: 'include',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messages }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(parseApiError(res.status, text));
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() ?? '';
+        for (const block of lines) {
+          const match = block.match(/^data: (.+)$/m);
+          if (match) {
+            try {
+              const data = JSON.parse(match[1]) as ChatStreamEvent;
+              onEvent(data);
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      if (err instanceof Error && err.name === 'AbortError') return;
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
   }
