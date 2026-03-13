@@ -396,6 +396,7 @@ export function streamChat(
 ): () => void {
   const controller = new AbortController();
   const abort = () => controller.abort();
+  let receivedDone = false;
 
   async function connect() {
     try {
@@ -429,11 +430,15 @@ export function streamChat(
             try {
               const data = JSON.parse(match[1]) as ChatStreamEvent;
               onEvent(data);
+              if (data.type === 'done') receivedDone = true;
             } catch {
               // ignore parse errors
             }
           }
         }
+      }
+      if (!receivedDone && !controller.signal.aborted) {
+        onError?.(new Error('Stream ended unexpectedly'));
       }
     } catch (err) {
       if (controller.signal.aborted) return;
