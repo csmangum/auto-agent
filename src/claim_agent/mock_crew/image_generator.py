@@ -8,7 +8,7 @@ import os
 import re
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -67,8 +67,8 @@ def _extract_base64_from_response(data: dict[str, Any]) -> str | None:
             url = (img.get("imageUrl") or img.get("image_url") or {}).get(
                 "url", img.get("url", "")
             )
-            if url and url.startswith("data:"):
-                return url
+            if url and isinstance(url, str) and url.startswith("data:"):
+                return cast(str, url)
 
         # Format 2: message.content (array of parts)
         content = msg.get("content")
@@ -78,8 +78,8 @@ def _extract_base64_from_response(data: dict[str, Any]) -> str | None:
                     url = (
                         part.get("image_url") or part.get("imageUrl") or {}
                     ).get("url", part.get("url", ""))
-                    if url and url.startswith("data:"):
-                        return url
+                    if url and isinstance(url, str) and url.startswith("data:"):
+                        return cast(str, url)
         elif isinstance(content, str) and "data:image" in content:
             # Some models return inline base64 in text
             match = re.search(r"data:image/[^;]+;base64,[A-Za-z0-9+/=]+", content)
