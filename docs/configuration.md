@@ -28,7 +28,7 @@ cp .env.example .env
 | `MOCK_DB_PATH` | `data/mock_db.json` | Path to mock policy/vehicle data |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
-| `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `100000` | Max tokens per claim before stopping |
+| `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
 
 ### Authentication and RBAC

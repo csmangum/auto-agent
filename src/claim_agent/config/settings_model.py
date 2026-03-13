@@ -251,7 +251,7 @@ class PathsConfig(BaseSettings):
         default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
     )
     fresh_claims_db_on_startup: bool = Field(
-        default=True,
+        default=False,
         validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
     )
 
@@ -467,7 +467,7 @@ class Settings(BaseSettings):
     high_value_damage_threshold: int = 25_000
     high_value_vehicle_threshold: int = 50_000
     pre_routing_fraud_damage_ratio: float = 0.9
-    max_tokens_per_claim: int = Field(default=100_000, validation_alias="CLAIM_AGENT_MAX_TOKENS_PER_CLAIM")
+    max_tokens_per_claim: int = Field(default=150_000, validation_alias="CLAIM_AGENT_MAX_TOKENS_PER_CLAIM")
     max_llm_calls_per_claim: int = Field(default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM")
     after_action_note_max_tokens: int = Field(
         default=1024,

@@ -99,6 +99,7 @@ export const getClaimsStats = (): Promise<ClaimsStats> =>
 export interface GetClaimsParams {
   status?: string;
   claim_type?: string;
+  include_archived?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -107,6 +108,7 @@ export const getClaims = (params: GetClaimsParams = {}): Promise<ClaimsListRespo
   const qs = new URLSearchParams();
   if (params.status) qs.set('status', params.status);
   if (params.claim_type) qs.set('claim_type', params.claim_type);
+  if (params.include_archived === true) qs.set('include_archived', 'true');
   if (params.limit != null) qs.set('limit', String(params.limit));
   if (params.offset != null) qs.set('offset', String(params.offset));
   const q = qs.toString();
@@ -276,6 +278,8 @@ export interface ClaimStreamUpdate {
   claim?: Claim;
   history?: AuditEvent[];
   workflows?: WorkflowRun[];
+  /** Completed workflow stage keys for progress indicator */
+  progress?: string[];
   done?: boolean;
   status?: string;
   error?: string;

@@ -49,6 +49,20 @@ const labelClasses = 'block text-sm font-medium text-gray-300 mb-1.5';
 const selectClasses =
   'w-full border border-gray-700 rounded-lg px-3 py-2 bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors';
 
+const STAGE_LABELS: Record<string, string> = {
+  economic_analysis: 'Economic analysis',
+  fraud_prescreening: 'Fraud prescreening',
+  duplicate_detection: 'Duplicate detection',
+  router: 'Routing',
+  escalation_check: 'Escalation check',
+  workflow: 'Workflow crew',
+  rental: 'Rental',
+  settlement: 'Settlement',
+  subrogation: 'Subrogation',
+  salvage: 'Salvage',
+  after_action: 'After action',
+};
+
 export default function NewClaimForm() {
   const { data: policiesData, isLoading: policiesLoading, error: policiesError } = usePolicies();
   const policies = policiesData?.policies ?? [];
@@ -60,6 +74,7 @@ export default function NewClaimForm() {
   const [claim, setClaim] = useState<Claim | null>(null);
   const [history, setHistory] = useState<AuditEvent[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowRun[]>([]);
+  const [progress, setProgress] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   const [generatingDetails, setGeneratingDetails] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -292,6 +307,7 @@ export default function NewClaimForm() {
           if (data.claim) setClaim(data.claim);
           if (data.history) setHistory(data.history);
           if (data.workflows) setWorkflows(data.workflows);
+          if (data.progress) setProgress(data.progress);
           if (data.done) setDone(true);
         },
         (err) => {
@@ -319,6 +335,7 @@ export default function NewClaimForm() {
     setClaim(null);
     setHistory([]);
     setWorkflows([]);
+    setProgress([]);
     setDone(false);
     setError(null);
     setGenerateError(null);
@@ -754,6 +771,24 @@ export default function NewClaimForm() {
                 </span>
               )}
             </div>
+
+            {/* Stage progress */}
+            {progress.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Progress</h3>
+                <div className="flex flex-wrap gap-2">
+                  {progress.map((stage) => (
+                    <span
+                      key={stage}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-400 text-xs font-medium"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      {STAGE_LABELS[stage.split(':')[0]] ?? stage}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Audit timeline */}
             {history.length > 0 && (

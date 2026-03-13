@@ -31,15 +31,21 @@ def create_rental_crew(llm: LLMProtocol | None = None):
 PARTIAL LOSS WORKFLOW OUTPUT (for repair duration context):
 {workflow_output}
 
-Check rental reimbursement eligibility for this partial loss claim.
+Determine claim coverage FIRST, then rental eligibility. A claims processor must verify coverage before authorizing any benefits (including rental).
 
-1. Use check_rental_coverage with policy_number from claim_data.
-2. Use get_rental_limits to get daily_limit, aggregate_limit, and max_days.
-3. Use search_california_compliance with query "rental" for RCC-001 through RCC-004 and DISC-006.
-4. Determine if the policyholder is eligible for rental reimbursement.
+Step 1 - CLAIM COVERAGE (required before rental):
+1. Use query_policy_db with policy_number and damage_description from claim_data.
+2. Verify: valid=true, physical_damage_covered=true. Confirm incident is within policy period.
+3. If not covered (invalid policy, no physical damage coverage, or loss type excluded), output claim_covered: false and do NOT proceed to rental.
 
-If eligible, output the limits. If not eligible, explain why (e.g., liability-only policy).""",
-                expected_output="Eligibility determination: eligible (true/false), daily_limit, aggregate_limit, max_days (if applicable), and brief message.",
+Step 2 - RENTAL ELIGIBILITY (only if claim_covered):
+4. Use check_rental_coverage with policy_number.
+5. Use get_rental_limits to get daily_limit, aggregate_limit, and max_days.
+6. Use search_california_compliance with query "rental" for RCC-001 through RCC-004 and DISC-006.
+7. Determine rental_eligible (true/false).
+
+Output: claim_covered (bool), rental_eligible (bool), daily_limit, aggregate_limit, max_days, and message.""",
+                expected_output="Coverage and eligibility: claim_covered (true/false), rental_eligible (true/false), daily_limit, aggregate_limit, max_days (if applicable), and brief message.",
                 agent_index=0,
             ),
             TaskConfig(
@@ -50,17 +56,19 @@ PARTIAL LOSS WORKFLOW OUTPUT (repair duration, shop assignment):
 {workflow_output}
 
 ELIGIBILITY RESULT (from previous task):
-Use the eligibility and limits from the prior task.
+Use the coverage and eligibility result from the prior task.
 
-Arrange and approve rental within policy limits.
+CRITICAL: Do NOT arrange rental unless BOTH claim_covered AND rental_eligible are true.
+A current claims processor waits for coverage determination before authorizing rental.
+If claim_covered is false or not yet determined, output "no rental arranged - coverage must be determined first".
+If rental_eligible is false, output "no rental arranged" with reason.
 
+Only when BOTH are true:
 1. Use get_rental_limits to confirm limits.
 2. From workflow_output, extract estimated_repair_days or similar to determine rental duration.
 3. Ensure rental vehicle class is comparable to the damaged vehicle (RCC-004).
-4. Document the arrangement: rental provider, vehicle class, daily rate (within limit), estimated days, estimated total (capped at aggregate_limit).
-
-If not eligible, output that no rental was arranged.""",
-                expected_output="Rental arrangement with provider, vehicle class, daily rate, estimated days, estimated total, and confirmation; or 'no rental arranged' if ineligible.",
+4. Document the arrangement: rental provider, vehicle class, daily rate (within limit), estimated days, estimated total (capped at aggregate_limit).""",
+                expected_output="Rental arrangement with provider, vehicle class, daily rate, estimated days, estimated total, and confirmation; or 'no rental arranged' with reason (coverage not determined, not covered, or ineligible).",
                 agent_index=1,
                 context_task_indices=[0],
             ),
