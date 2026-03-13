@@ -150,7 +150,7 @@ describe('NewClaimForm', () => {
     fireEvent.click(resetButtons[resetButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/policy number/i)).toHaveValue('');
+      expect(screen.getByLabelText(/policy number/i)).toHaveTextContent('Select a policy…');
       expect(screen.queryByText(/CLM-1/)).not.toBeInTheDocument();
     });
   });

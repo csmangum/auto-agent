@@ -48,7 +48,7 @@ const selectClasses =
   'w-full border border-gray-700 rounded-lg px-3 py-2 bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors';
 
 export default function NewClaimForm() {
-  const { data: policiesData } = usePolicies();
+  const { data: policiesData, isLoading: policiesLoading, error: policiesError } = usePolicies();
   const policies = policiesData?.policies ?? [];
   const [form, setForm] = useState<ClaimFormState>(INITIAL_FORM);
   const [files, setFiles] = useState<File[]>([]);
@@ -118,13 +118,12 @@ export default function NewClaimForm() {
     [filterByOther]
   );
   const vinOptions = useMemo(() => {
-    let matches = allVehicles;
-    if (form.policy_number) matches = matches.filter((v) => v.policy_number === form.policy_number);
+    const matches = filterByOther('vin');
     return matches.map((v) => ({
       vin: v.vin,
       label: `${v.vehicle_year} ${v.vehicle_make} ${v.vehicle_model} (${v.vin})`,
     }));
-  }, [allVehicles, form.policy_number]);
+  }, [filterByOther]);
 
   useEffect(() => {
     setForm((prev) => {
@@ -174,17 +173,7 @@ export default function NewClaimForm() {
   const handlePolicyChange = useCallback(
     (policyNumber: string) => {
       const policy = policies.find((p) => p.policy_number === policyNumber);
-      if (policy?.vehicles.length === 1) {
-        const v = policy.vehicles[0];
-        setForm((prev) => ({
-          ...prev,
-          policy_number: policyNumber,
-          vin: v.vin,
-          vehicle_year: v.vehicle_year,
-          vehicle_make: v.vehicle_make,
-          vehicle_model: v.vehicle_model,
-        }));
-      } else if (policy?.vehicles.length) {
+      if (policy?.vehicles.length) {
         const v = policy.vehicles[0];
         setForm((prev) => ({
           ...prev,
@@ -303,7 +292,18 @@ export default function NewClaimForm() {
             <span>🚗</span> Vehicle Information
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {policies.length > 0 ? (
+            {policiesError ? (
+              <div className="col-span-full flex items-center gap-2 py-3 px-4 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm">
+                <span>⚠️</span>
+                <span>Could not load policies. Using manual entry.</span>
+              </div>
+            ) : null}
+            {policiesLoading ? (
+              <div className="col-span-full py-4 text-sm text-gray-500 animate-pulse">
+                Loading policies…
+              </div>
+            ) : null}
+            {!policiesLoading && policies.length > 0 ? (
               <>
                 <div>
                   <label htmlFor="policy_number" className={labelClasses}>

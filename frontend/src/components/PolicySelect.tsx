@@ -1,5 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { PolicyWithVehicles } from '../api/client';
+
+/** Liability limits are in whole dollars; display as thousands (e.g. 50000 → 50k). */
+const LIABILITY_DIVISOR = 1000;
 
 interface PolicySelectProps {
   policies: PolicyWithVehicles[];
@@ -21,9 +24,29 @@ export default function PolicySelect({
   placeholder = 'Select a policy…',
 }: PolicySelectProps) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listboxRef = useRef<HTMLDivElement>(null);
 
   const selected = policies.find((p) => p.policy_number === value);
+
+  const selectByIndex = useCallback(
+    (idx: number) => {
+      const p = policies[idx];
+      if (p) {
+        onChange(p.policy_number);
+        setOpen(false);
+      }
+    },
+    [policies, onChange]
+  );
+
+  useEffect(() => {
+    if (open) {
+      const selectedIdx = policies.findIndex((p) => p.policy_number === value);
+      setActiveIndex(selectedIdx >= 0 ? selectedIdx : 0);
+    }
+  }, [open, policies, value]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -37,8 +60,47 @@ export default function PolicySelect({
     }
   }, [open]);
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!open) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          setOpen(true);
+        }
+        return;
+      }
+      switch (e.key) {
+        case 'Escape':
+          e.preventDefault();
+          setOpen(false);
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          if (policies.length > 0) {
+            setActiveIndex((prev) => (prev + 1) % policies.length);
+          }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          if (policies.length > 0) {
+            setActiveIndex((prev) => (prev - 1 + policies.length) % policies.length);
+          }
+          break;
+        case 'Enter':
+          e.preventDefault();
+          selectByIndex(activeIndex);
+          break;
+        case ' ':
+          e.preventDefault();
+          selectByIndex(activeIndex);
+          break;
+      }
+    },
+    [open, policies.length, activeIndex, selectByIndex]
+  );
+
   const formatCell = (val: number | undefined) =>
-    val != null ? `${(val / 1000).toFixed(0)}k` : '—';
+    val != null ? `${(val / LIABILITY_DIVISOR).toFixed(0)}k` : '—';
   const formatDed = (p: PolicyWithVehicles) => {
     const d = p.collision_deductible ?? p.comprehensive_deductible;
     return d != null ? `$${d}` : '—';
@@ -51,10 +113,13 @@ export default function PolicySelect({
         type="button"
         id={id}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={handleKeyDown}
         className={`w-full text-left border border-gray-700 rounded-lg px-3 py-2 bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors ${className}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-required={required}
+        aria-controls={`${id}-listbox`}
+        aria-activedescendant={open && policies[activeIndex] ? `${id}-opt-${activeIndex}` : undefined}
       >
         {selected ? (
           <span className="font-medium">{selected.policy_number}</span>
@@ -62,10 +127,13 @@ export default function PolicySelect({
           <span className="text-gray-500">{placeholder}</span>
         )}
       </button>
-      {open && (
+      {open && policies.length > 0 && (
         <div
-          className="absolute z-50 mt-1 w-full min-w-[28rem] rounded-lg border border-gray-600 bg-gray-800 shadow-xl overflow-hidden"
+          ref={listboxRef}
+          id={`${id}-listbox`}
           role="listbox"
+          aria-labelledby={id}
+          className="absolute z-50 mt-1 w-full min-w-[28rem] rounded-lg border border-gray-600 bg-gray-800 shadow-xl overflow-hidden"
         >
           <table className="w-full text-sm">
             <thead>
@@ -78,22 +146,24 @@ export default function PolicySelect({
               </tr>
             </thead>
             <tbody>
-              {policies.map((p) => {
+              {policies.map((p, idx) => {
                 const vc = p.vehicle_count ?? p.vehicles.length;
                 const liab = p.liability_limits;
                 const isSelected = p.policy_number === value;
+                const isActive = idx === activeIndex;
                 return (
                   <tr
                     key={p.policy_number}
+                    id={`${id}-opt-${idx}`}
                     role="option"
                     aria-selected={isSelected}
+                    className={`border-b border-gray-700/50 cursor-pointer transition-colors ${
+                      isActive ? 'bg-blue-500/30' : isSelected ? 'bg-blue-500/20' : 'hover:bg-gray-700/50'
+                    }`}
                     onClick={() => {
                       onChange(p.policy_number);
                       setOpen(false);
                     }}
-                    className={`border-b border-gray-700/50 cursor-pointer transition-colors ${
-                      isSelected ? 'bg-blue-500/20' : 'hover:bg-gray-700/50'
-                    }`}
                   >
                     <td className="px-3 py-2 font-medium text-gray-200">{p.policy_number}</td>
                     <td className="px-3 py-2 text-right text-gray-300">{vc}</td>

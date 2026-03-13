@@ -553,7 +553,19 @@ def get_policies():
         status = (policy.get("status") or "").lower()
         if status != "active":
             continue
-        vehicles = policy_vehicles.get(policy_number, [])
+        raw_vehicles = policy_vehicles.get(policy_number, [])
+        vehicles = [
+            {
+                "vin": v.get("vin", ""),
+                "vehicle_year": v.get("vehicle_year"),
+                "vehicle_make": v.get("vehicle_make", ""),
+                "vehicle_model": v.get("vehicle_model", ""),
+            }
+            for v in raw_vehicles
+            if v.get("vin") and v.get("vehicle_year") is not None and v.get("vehicle_make") and v.get("vehicle_model")
+        ]
+        if not vehicles:
+            continue
         liability = policy.get("liability_limits") or {}
         bi = liability.get("bi_per_accident")
         pd = liability.get("pd_per_accident")
@@ -566,15 +578,7 @@ def get_policies():
             "liability_limits": {"bi_per_accident": bi, "pd_per_accident": pd},
             "collision_deductible": coll_ded,
             "comprehensive_deductible": comp_ded,
-            "vehicles": [
-                {
-                    "vin": v.get("vin", ""),
-                    "vehicle_year": v.get("vehicle_year"),
-                    "vehicle_make": v.get("vehicle_make", ""),
-                    "vehicle_model": v.get("vehicle_model", ""),
-                }
-                for v in vehicles
-            ],
+            "vehicles": vehicles,
         })
     result.sort(key=lambda p: p["policy_number"])
     return {"policies": result}
