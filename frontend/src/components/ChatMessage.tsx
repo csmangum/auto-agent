@@ -14,10 +14,14 @@ const TOOL_LABELS: Record<string, string> = {
   get_review_queue: 'Checking review queue',
 };
 
+function toolLabel(name: string): string {
+  return TOOL_LABELS[name] ?? name.replace(/_/g, ' ');
+}
+
 function ToolCallIndicator({ toolCall }: { toolCall: ChatToolCall }) {
   const [expanded, setExpanded] = useState(false);
   const uid = useId();
-  const label = TOOL_LABELS[toolCall.name] || toolCall.name;
+  const label = toolLabel(toolCall.name);
   const argsStr = toolCall.args ? Object.entries(toolCall.args).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ') : '';
   const resultId = `tool-result-${uid}`;
 
