@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
+from claim_agent.data.loader import load_mock_db
 from claim_agent.config.settings import (
     get_escalation_config,
     get_fraud_config,
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["system"])
 
 RequireAdmin = require_role("admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin")
 
 
 
@@ -536,3 +538,43 @@ def health_check():
 def get_agents_catalog():
     """Get the complete agent/crew catalog."""
     return {"crews": _CREWS_CATALOG}
+
+
+@router.get("/system/policies", dependencies=[RequireAdjuster])
+def get_policies():
+    """List policies with vehicles for the New Claim form dropdown.
+    Returns active policies only, with policy_vehicles for autofill."""
+    db = load_mock_db()
+    policies_data = db.get("policies", {})
+    policy_vehicles = db.get("policy_vehicles", {})
+
+    result = []
+    for policy_number, policy in policies_data.items():
+        status = (policy.get("status") or "").lower()
+        if status != "active":
+            continue
+        vehicles = policy_vehicles.get(policy_number, [])
+        liability = policy.get("liability_limits") or {}
+        bi = liability.get("bi_per_accident")
+        pd = liability.get("pd_per_accident")
+        coll_ded = policy.get("collision_deductible")
+        comp_ded = policy.get("comprehensive_deductible")
+        result.append({
+            "policy_number": policy_number,
+            "status": status,
+            "vehicle_count": len(vehicles),
+            "liability_limits": {"bi_per_accident": bi, "pd_per_accident": pd},
+            "collision_deductible": coll_ded,
+            "comprehensive_deductible": comp_ded,
+            "vehicles": [
+                {
+                    "vin": v.get("vin", ""),
+                    "vehicle_year": v.get("vehicle_year"),
+                    "vehicle_make": v.get("vehicle_make", ""),
+                    "vehicle_model": v.get("vehicle_model", ""),
+                }
+                for v in vehicles
+            ],
+        })
+    result.sort(key=lambda p: p["policy_number"])
+    return {"policies": result}

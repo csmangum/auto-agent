@@ -1,21 +1,55 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import NewClaimForm from './NewClaimForm';
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function renderWithProviders(ui: React.ReactElement) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>
+  );
+}
 
 const mockProcessClaimAsync = vi.fn();
 const mockStreamClaimUpdates = vi.fn();
 
+const MOCK_POLICIES = {
+  policies: [
+    {
+      policy_number: 'POL-001',
+      status: 'active',
+      vehicles: [
+        { vin: '1HGBH41JXMN109186', vehicle_year: 2021, vehicle_make: 'Honda', vehicle_model: 'Accord' },
+        { vin: '5YJSA1E26HF123456', vehicle_year: 2022, vehicle_make: 'Tesla', vehicle_model: 'Model 3' },
+      ],
+    },
+    {
+      policy_number: 'POL-002',
+      status: 'active',
+      vehicles: [{ vin: '2HGFG3B54CH501234', vehicle_year: 2020, vehicle_make: 'Honda', vehicle_model: 'Civic' }],
+    },
+  ],
+};
+
 vi.mock('../api/client', () => ({
   processClaimAsync: (...args: unknown[]) => mockProcessClaimAsync(...args),
   streamClaimUpdates: (...args: unknown[]) => mockStreamClaimUpdates(...args),
+  getPolicies: () => Promise.resolve(MOCK_POLICIES),
 }));
 
 function fillRequiredFields() {
-  fireEvent.change(screen.getByLabelText(/policy number/i), { target: { value: 'POL-001' } });
-  fireEvent.change(screen.getByLabelText(/vin/i), { target: { value: '1HGBH41JXMN109186' } });
+  fireEvent.click(screen.getByLabelText(/policy number/i));
+  fireEvent.click(screen.getByText('POL-001'));
+  fireEvent.change(screen.getByLabelText(/vehicle year/i), { target: { value: '2021' } });
   fireEvent.change(screen.getByLabelText(/vehicle make/i), { target: { value: 'Honda' } });
   fireEvent.change(screen.getByLabelText(/vehicle model/i), { target: { value: 'Accord' } });
+  fireEvent.change(screen.getByLabelText(/vin/i), { target: { value: '1HGBH41JXMN109186' } });
   fireEvent.change(screen.getByLabelText(/incident description/i), {
     target: { value: 'Rear-end collision' },
   });
@@ -30,11 +64,7 @@ describe('NewClaimForm', () => {
   });
 
   it('renders form with required fields', () => {
-    render(
-      <MemoryRouter>
-        <NewClaimForm />
-      </MemoryRouter>
-    );
+    renderWithProviders(<NewClaimForm />);
     expect(screen.getByText('New Claim')).toBeInTheDocument();
     expect(screen.getByLabelText(/policy number/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/vin/i)).toBeInTheDocument();
@@ -52,11 +82,7 @@ describe('NewClaimForm', () => {
       return () => {};
     });
 
-    render(
-      <MemoryRouter>
-        <NewClaimForm />
-      </MemoryRouter>
-    );
+    renderWithProviders(<NewClaimForm />);
 
     fillRequiredFields();
     fireEvent.click(screen.getByRole('button', { name: 'Submit Claim' }));
@@ -77,11 +103,7 @@ describe('NewClaimForm', () => {
   it('shows error when processClaimAsync fails', async () => {
     mockProcessClaimAsync.mockRejectedValue(new Error('Network error'));
 
-    render(
-      <MemoryRouter>
-        <NewClaimForm />
-      </MemoryRouter>
-    );
+    renderWithProviders(<NewClaimForm />);
 
     fillRequiredFields();
     fireEvent.click(screen.getByRole('button', { name: /submit|process/i }));
@@ -98,11 +120,7 @@ describe('NewClaimForm', () => {
       return () => {};
     });
 
-    render(
-      <MemoryRouter>
-        <NewClaimForm />
-      </MemoryRouter>
-    );
+    renderWithProviders(<NewClaimForm />);
 
     fillRequiredFields();
     fireEvent.click(screen.getByRole('button', { name: /submit|process/i }));
@@ -119,11 +137,7 @@ describe('NewClaimForm', () => {
       return () => {};
     });
 
-    render(
-      <MemoryRouter>
-        <NewClaimForm />
-      </MemoryRouter>
-    );
+    renderWithProviders(<NewClaimForm />);
 
     fillRequiredFields();
     fireEvent.click(screen.getByRole('button', { name: 'Submit Claim' }));
@@ -138,6 +152,21 @@ describe('NewClaimForm', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/policy number/i)).toHaveValue('');
       expect(screen.queryByText(/CLM-1/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('cascading filter: select year first then policy completes vehicle selection', async () => {
+    renderWithProviders(<NewClaimForm />);
+
+    fireEvent.change(screen.getByLabelText(/vehicle year/i), { target: { value: '2021' } });
+    fireEvent.click(screen.getByLabelText(/policy number/i));
+    fireEvent.click(screen.getByText('POL-001'));
+    fireEvent.change(screen.getByLabelText(/vehicle make/i), { target: { value: 'Honda' } });
+    fireEvent.change(screen.getByLabelText(/vehicle model/i), { target: { value: 'Accord' } });
+    fireEvent.change(screen.getByLabelText(/vin/i), { target: { value: '1HGBH41JXMN109186' } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/vin/i)).toHaveValue('1HGBH41JXMN109186');
     });
   });
 });

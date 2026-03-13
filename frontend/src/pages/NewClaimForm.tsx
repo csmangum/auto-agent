@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import PolicySelect from '../components/PolicySelect';
 import StatusBadge from '../components/StatusBadge';
 import TypeBadge from '../components/TypeBadge';
 import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
@@ -11,6 +12,15 @@ import {
   type ClaimStreamUpdate,
 } from '../api/client';
 import type { Claim, AuditEvent, WorkflowRun } from '../api/types';
+import { usePolicies } from '../api/queries';
+
+type VehicleRecord = {
+  policy_number: string;
+  vin: string;
+  vehicle_year: number;
+  vehicle_make: string;
+  vehicle_model: string;
+};
 
 /** Form state allows vehicle_year to be undefined when cleared (for validation). */
 type ClaimFormState = Omit<ProcessClaimPayload, 'vehicle_year'> & {
@@ -20,7 +30,7 @@ type ClaimFormState = Omit<ProcessClaimPayload, 'vehicle_year'> & {
 const INITIAL_FORM: ClaimFormState = {
   policy_number: '',
   vin: '',
-  vehicle_year: new Date().getFullYear(),
+  vehicle_year: undefined,
   vehicle_make: '',
   vehicle_model: '',
   incident_date: new Date().toISOString().slice(0, 10),
@@ -34,7 +44,12 @@ const inputClasses =
 
 const labelClasses = 'block text-sm font-medium text-gray-300 mb-1.5';
 
+const selectClasses =
+  'w-full border border-gray-700 rounded-lg px-3 py-2 bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors';
+
 export default function NewClaimForm() {
+  const { data: policiesData } = usePolicies();
+  const policies = policiesData?.policies ?? [];
   const [form, setForm] = useState<ClaimFormState>(INITIAL_FORM);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -52,6 +67,154 @@ export default function NewClaimForm() {
     },
     []
   );
+
+  const allVehicles: VehicleRecord[] = useMemo(
+    () =>
+      policies.flatMap((p) =>
+        p.vehicles.map((v) => ({
+          ...v,
+          policy_number: p.policy_number,
+        }))
+      ),
+    [policies]
+  );
+
+  const filterByOther = useCallback(
+    (excludeField: keyof Pick<ClaimFormState, 'policy_number' | 'vin' | 'vehicle_year' | 'vehicle_make' | 'vehicle_model'>) => {
+      return allVehicles.filter((v) => {
+        if (excludeField !== 'policy_number' && form.policy_number && v.policy_number !== form.policy_number)
+          return false;
+        if (excludeField !== 'vehicle_year' && form.vehicle_year != null && v.vehicle_year !== form.vehicle_year)
+          return false;
+        if (excludeField !== 'vehicle_make' && form.vehicle_make && v.vehicle_make !== form.vehicle_make)
+          return false;
+        if (excludeField !== 'vehicle_model' && form.vehicle_model && v.vehicle_model !== form.vehicle_model)
+          return false;
+        if (excludeField !== 'vin' && form.vin && v.vin !== form.vin) return false;
+        return true;
+      });
+    },
+    [allVehicles, form]
+  );
+
+  const policyOptions = useMemo(
+    () => [...new Set(allVehicles.map((v) => v.policy_number))].sort(),
+    [allVehicles]
+  );
+
+  const yearOptions = useMemo(() => {
+    let matches = allVehicles;
+    if (form.policy_number) matches = matches.filter((v) => v.policy_number === form.policy_number);
+    return [...new Set(matches.map((v) => v.vehicle_year))].sort((a, b) => a - b);
+  }, [allVehicles, form.policy_number]);
+  const makeOptions = useMemo(
+    () =>
+      [...new Set(filterByOther('vehicle_make').map((v) => v.vehicle_make))].sort(),
+    [filterByOther]
+  );
+  const modelOptions = useMemo(
+    () =>
+      [...new Set(filterByOther('vehicle_model').map((v) => v.vehicle_model))].sort(),
+    [filterByOther]
+  );
+  const vinOptions = useMemo(() => {
+    let matches = allVehicles;
+    if (form.policy_number) matches = matches.filter((v) => v.policy_number === form.policy_number);
+    return matches.map((v) => ({
+      vin: v.vin,
+      label: `${v.vehicle_year} ${v.vehicle_make} ${v.vehicle_model} (${v.vin})`,
+    }));
+  }, [allVehicles, form.policy_number]);
+
+  useEffect(() => {
+    setForm((prev) => {
+      let next = { ...prev };
+      let changed = false;
+      if (prev.policy_number && !policyOptions.includes(prev.policy_number)) {
+        next = { ...next, policy_number: '', vin: '', vehicle_year: undefined, vehicle_make: '', vehicle_model: '' };
+        changed = true;
+      }
+      if (next.vehicle_year != null && !yearOptions.includes(next.vehicle_year)) {
+        next = { ...next, vehicle_year: undefined, vin: '', vehicle_make: '', vehicle_model: '' };
+        changed = true;
+      }
+      if (next.vehicle_make && !makeOptions.includes(next.vehicle_make)) {
+        next = { ...next, vin: '', vehicle_model: '' };
+        changed = true;
+      }
+      if (next.vehicle_model && !modelOptions.includes(next.vehicle_model)) {
+        next = { ...next, vin: '' };
+        changed = true;
+      }
+      if (next.vin && !vinOptions.some((o) => o.vin === next.vin)) {
+        next = { ...next, vin: '' };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [policyOptions, yearOptions, makeOptions, modelOptions, vinOptions]);
+
+  const handleVehicleSelect = useCallback(
+    (vin: string) => {
+      const v = allVehicles.find((ve) => ve.vin === vin);
+      if (v) {
+        setForm((prev) => ({
+          ...prev,
+          vin: v.vin,
+          policy_number: v.policy_number,
+          vehicle_year: v.vehicle_year,
+          vehicle_make: v.vehicle_make,
+          vehicle_model: v.vehicle_model,
+        }));
+      }
+    },
+    [allVehicles]
+  );
+
+  const handlePolicyChange = useCallback(
+    (policyNumber: string) => {
+      const policy = policies.find((p) => p.policy_number === policyNumber);
+      if (policy?.vehicles.length === 1) {
+        const v = policy.vehicles[0];
+        setForm((prev) => ({
+          ...prev,
+          policy_number: policyNumber,
+          vin: v.vin,
+          vehicle_year: v.vehicle_year,
+          vehicle_make: v.vehicle_make,
+          vehicle_model: v.vehicle_model,
+        }));
+      } else if (policy?.vehicles.length) {
+        const v = policy.vehicles[0];
+        setForm((prev) => ({
+          ...prev,
+          policy_number: policyNumber,
+          vin: v.vin,
+          vehicle_year: v.vehicle_year,
+          vehicle_make: v.vehicle_make,
+          vehicle_model: v.vehicle_model,
+        }));
+      } else {
+        updateField('policy_number', policyNumber);
+      }
+    },
+    [policies, updateField]
+  );
+
+  const handleYearChange = useCallback(
+    (year: string) => {
+      updateField('vehicle_year', year ? parseInt(year, 10) : undefined);
+    },
+    [updateField]
+  );
+
+  const handleMakeChange = useCallback((make: string) => {
+    updateField('vehicle_make', make);
+  }, [updateField]);
+
+  const handleModelChange = useCallback((model: string) => {
+    updateField('vehicle_model', model);
+  }, [updateField]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,84 +303,180 @@ export default function NewClaimForm() {
             <span>🚗</span> Vehicle Information
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
-              <label htmlFor="policy_number" className={labelClasses}>
-                Policy Number <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="policy_number"
-                type="text"
-                value={form.policy_number}
-                onChange={(e) => updateField('policy_number', e.target.value)}
-                required
-                className={inputClasses}
-                placeholder="POL-001"
-              />
-            </div>
-            <div>
-              <label htmlFor="vin" className={labelClasses}>
-                VIN <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="vin"
-                type="text"
-                value={form.vin}
-                onChange={(e) => updateField('vin', e.target.value)}
-                required
-                className={inputClasses}
-                placeholder="1HGBH41JXMN109186"
-              />
-            </div>
-            <div>
-              <label htmlFor="vehicle_year" className={labelClasses}>
-                Vehicle Year <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="vehicle_year"
-                type="number"
-                value={form.vehicle_year ?? ''}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const num = parseInt(raw, 10);
-                  updateField(
-                    'vehicle_year',
-                    raw === '' ? undefined : (Number.isNaN(num) ? form.vehicle_year : num)
-                  );
-                }}
-                required
-                min={1900}
-                max={2100}
-                className={inputClasses}
-              />
-            </div>
-            <div>
-              <label htmlFor="vehicle_make" className={labelClasses}>
-                Vehicle Make <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="vehicle_make"
-                type="text"
-                value={form.vehicle_make}
-                onChange={(e) => updateField('vehicle_make', e.target.value)}
-                required
-                className={inputClasses}
-                placeholder="Honda"
-              />
-            </div>
-            <div>
-              <label htmlFor="vehicle_model" className={labelClasses}>
-                Vehicle Model <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="vehicle_model"
-                type="text"
-                value={form.vehicle_model}
-                onChange={(e) => updateField('vehicle_model', e.target.value)}
-                required
-                className={inputClasses}
-                placeholder="Accord"
-              />
-            </div>
+            {policies.length > 0 ? (
+              <>
+                <div>
+                  <label htmlFor="policy_number" className={labelClasses}>
+                    Policy Number <span className="text-red-400">*</span>
+                  </label>
+                  <PolicySelect
+                    id="policy_number"
+                    policies={policies}
+                    value={form.policy_number}
+                    onChange={handlePolicyChange}
+                    required
+                    className={selectClasses}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vehicle_year" className={labelClasses}>
+                    Vehicle Year <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    id="vehicle_year"
+                    value={form.vehicle_year ?? ''}
+                    onChange={(e) => handleYearChange(e.target.value)}
+                    required
+                    className={selectClasses}
+                  >
+                    <option value="">Select year…</option>
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="vehicle_make" className={labelClasses}>
+                    Vehicle Make <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    id="vehicle_make"
+                    value={form.vehicle_make}
+                    onChange={(e) => handleMakeChange(e.target.value)}
+                    required
+                    className={selectClasses}
+                  >
+                    <option value="">Select make…</option>
+                    {makeOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="vehicle_model" className={labelClasses}>
+                    Vehicle Model <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    id="vehicle_model"
+                    value={form.vehicle_model}
+                    onChange={(e) => handleModelChange(e.target.value)}
+                    required
+                    className={selectClasses}
+                  >
+                    <option value="">Select model…</option>
+                    {modelOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="vin" className={labelClasses}>
+                    VIN <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    id="vin"
+                    value={form.vin}
+                    onChange={(e) => handleVehicleSelect(e.target.value)}
+                    required
+                    className={selectClasses}
+                  >
+                    <option value="">Select vehicle…</option>
+                    {vinOptions.map((o) => (
+                      <option key={o.vin} value={o.vin}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label htmlFor="policy_number" className={labelClasses}>
+                    Policy Number <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="policy_number"
+                    type="text"
+                    value={form.policy_number}
+                    onChange={(e) => updateField('policy_number', e.target.value)}
+                    required
+                    className={inputClasses}
+                    placeholder="POL-001"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vin" className={labelClasses}>
+                    VIN <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="vin"
+                    type="text"
+                    value={form.vin}
+                    onChange={(e) => updateField('vin', e.target.value)}
+                    required
+                    className={inputClasses}
+                    placeholder="1HGBH41JXMN109186"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vehicle_year" className={labelClasses}>
+                    Vehicle Year <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="vehicle_year"
+                    type="number"
+                    value={form.vehicle_year ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const num = parseInt(raw, 10);
+                      updateField(
+                        'vehicle_year',
+                        raw === '' ? undefined : (Number.isNaN(num) ? form.vehicle_year : num)
+                      );
+                    }}
+                    required
+                    min={1900}
+                    max={2100}
+                    className={inputClasses}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vehicle_make" className={labelClasses}>
+                    Vehicle Make <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="vehicle_make"
+                    type="text"
+                    value={form.vehicle_make}
+                    onChange={(e) => updateField('vehicle_make', e.target.value)}
+                    required
+                    className={inputClasses}
+                    placeholder="Honda"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vehicle_model" className={labelClasses}>
+                    Vehicle Model <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="vehicle_model"
+                    type="text"
+                    value={form.vehicle_model}
+                    onChange={(e) => updateField('vehicle_model', e.target.value)}
+                    required
+                    className={inputClasses}
+                    placeholder="Accord"
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
 

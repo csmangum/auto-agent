@@ -129,6 +129,30 @@ export const getSystemHealth = (): Promise<SystemHealthData> =>
 export const getAgentsCatalog = (): Promise<AgentsCatalogResponse> =>
   fetchJSON<AgentsCatalogResponse>('/system/agents');
 
+export interface PolicyVehicle {
+  vin: string;
+  vehicle_year: number;
+  vehicle_make: string;
+  vehicle_model: string;
+}
+
+export interface PolicyWithVehicles {
+  policy_number: string;
+  status: string;
+  vehicle_count?: number;
+  liability_limits?: { bi_per_accident?: number; pd_per_accident?: number };
+  collision_deductible?: number;
+  comprehensive_deductible?: number;
+  vehicles: PolicyVehicle[];
+}
+
+export interface PoliciesListResponse {
+  policies: PolicyWithVehicles[];
+}
+
+export const getPolicies = (): Promise<PoliciesListResponse> =>
+  fetchJSON<PoliciesListResponse>('/system/policies');
+
 // ---------------------------------------------------------------------------
 // Simulation action helpers (dispute, supplemental)
 // ---------------------------------------------------------------------------
