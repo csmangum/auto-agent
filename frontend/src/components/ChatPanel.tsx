@@ -54,7 +54,6 @@ export default function ChatPanel() {
     // Build conversation for the API (only role + content)
     const apiMessages = newMessages
       .filter((m) => m.content || m.role === 'user')
-      .slice(0, -1) // exclude the empty assistant placeholder
       .map((m) => ({ role: m.role, content: m.content }));
 
     let currentToolCalls: ChatToolCall[] = [];
