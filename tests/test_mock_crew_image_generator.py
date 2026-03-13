@@ -1,6 +1,7 @@
 """Tests for mock crew image generator."""
 
 import base64
+import json
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -123,16 +124,40 @@ class TestGenerateDamageImage:
             with pytest.raises(ValueError, match="Mock image generator is disabled"):
                 generate_damage_image({"damage_description": "bumper dent"})
 
-    def test_raises_when_api_key_placeholder(self):
+    def test_raises_when_api_key_placeholder_and_no_fallback(self):
         with patch("claim_agent.mock_crew.image_generator.get_settings") as mock_get:
             mock_get.return_value.mock_image.generator_enabled = True
             mock_get.return_value.mock_image.model = "google/gemini-2.0-flash-exp"
             mock_get.return_value.mock_crew.seed = None
+            mock_get.return_value.paths.attachment_storage_path = "/tmp"
             mock_get.return_value.llm.api_key = "your_openrouter_key"
             mock_get.return_value.llm.api_base = "https://openrouter.ai/api/v1"
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}, clear=False):
                 with pytest.raises(ValueError, match="OPENAI_API_KEY or OPENROUTER_API_KEY"):
-                    generate_damage_image({"damage_description": "bumper dent"})
+                    generate_damage_image(
+                        {"damage_description": "bumper dent"},
+                        fallback_on_error=False,
+                    )
+
+    def test_fallback_placeholder_when_api_key_missing(self, tmp_path):
+        """When API key missing and fallback_on_error=True, returns placeholder path."""
+        with patch("claim_agent.mock_crew.image_generator.get_settings") as mock_get:
+            mock_get.return_value.mock_image.generator_enabled = True
+            mock_get.return_value.mock_image.model = "test"
+            mock_get.return_value.mock_crew.seed = None
+            mock_get.return_value.paths.attachment_storage_path = str(tmp_path)
+            mock_get.return_value.llm.api_key = "your_openrouter_key"
+            mock_get.return_value.llm.api_base = "https://openrouter.ai/api/v1"
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}, clear=False):
+                result = generate_damage_image(
+                    {"damage_description": "bumper dent"},
+                    fallback_on_error=True,
+                )
+        assert result.startswith("file://")
+        assert "mock_damage_" in result
+        out_file = Path(result.replace("file://", ""))
+        assert out_file.exists()
+        assert out_file.stat().st_size == 67  # minimal PNG
 
     def test_success_with_mocked_httpx(self, tmp_path):
         raw = b"\x89PNG\r\n\x1a\n"
@@ -219,3 +244,26 @@ class TestGenerateDamageImage:
         assert Path(r1.replace("file://", "")).name == Path(
             r2.replace("file://", "")
         ).name
+
+    def test_cache_hit_when_seed_set_and_file_exists(self, tmp_path):
+        """When seed is set and file already exists, return without calling API."""
+        import hashlib
+
+        ctx = {"vehicle_year": 2020, "vehicle_make": "Honda", "damage_description": "bumper"}
+        ctx_str = json.dumps(ctx, sort_keys=True)
+        h = hashlib.sha256(f"{ctx_str}:42".encode()).hexdigest()[:12]
+        out_dir = tmp_path / "mock_generated"
+        out_dir.mkdir()
+        existing = out_dir / f"mock_damage_{h}.png"
+        existing.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        with patch("claim_agent.mock_crew.image_generator.get_settings") as m:
+            m.return_value.mock_image.generator_enabled = True
+            m.return_value.mock_crew.seed = 42
+            m.return_value.paths.attachment_storage_path = str(tmp_path)
+            with patch(
+                "claim_agent.mock_crew.image_generator.httpx.Client"
+            ) as mc:
+                result = generate_damage_image(ctx)
+                mc.return_value.__enter__.return_value.post.assert_not_called()
+        assert result == f"file://{existing.resolve()}"

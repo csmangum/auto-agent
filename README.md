@@ -16,6 +16,7 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 - **Webhooks** - Outbound webhooks for status changes and repair authorization
 - **Adapters** - Pluggable backends for policy, valuation, repair shops, parts, SIU (see `.env.example`)
 - **File Attachments** - Photos, PDFs, estimates via CLI `--attachment` or API upload
+- **Mock Crew** - Simulate external interactions (claimant, vision, image gen) for E2E testing without real services (see [Mock Crew Design](docs/mock-crew-design.md))
 
 ## Architecture
 
@@ -112,6 +113,7 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [PII and Retention](docs/pii-and-retention.md) | PII masking and data retention |
 | [RAG](docs/rag.md) | Policy and compliance search |
 | [MCP Server](docs/mcp-server.md) | External tool access and health check |
+| [Mock Crew Design](docs/mock-crew-design.md) | Mock external interactions for testing |
 | [Alerting](docs/alerting.md) | Alert configuration |
 
 ## Project Layout
@@ -126,6 +128,7 @@ src/claim_agent/
 ├── skills/           # Agent prompts (markdown)
 ├── tools/            # CrewAI tools
 ├── adapters/         # Policy, valuation, repair shop, parts, SIU adapters
+├── mock_crew/        # Mock claimant, image gen, vision (testing)
 ├── rag/              # RAG pipeline (policy/compliance search)
 ├── storage/          # Local and S3 storage for attachments
 ├── notifications/    # Webhooks and claimant notifications
@@ -156,6 +159,18 @@ LOAD_TEST_CONCURRENCY=20 pytest tests/load/ -v -m load -s
 ```
 
 E2E tests submit claims via the REST API and assert claim_id, status, and audit history. Load tests report throughput (claims/sec), latency percentiles (p50, p99), and error rate. Set `LOAD_TEST_CONCURRENCY` for concurrency (default 10). Use `LOAD_TEST_OUTPUT=report.json` to write metrics to a file.
+
+**Mock Crew** – For testing without real people or external APIs, enable the Mock Crew:
+
+```bash
+VISION_ADAPTER=mock                    # Use mock vision (no vision API calls)
+# Or for full mock crew:
+MOCK_CREW_ENABLED=true
+MOCK_IMAGE_VISION_ANALYSIS_SOURCE=claim_context
+MOCK_CREW_SEED=42                      # Reproducible outputs
+```
+
+See [Mock Crew Design](docs/mock-crew-design.md) and [Implementation Plan](docs/mock-crew-implementation-plan.md).
 
 ## Evaluation
 

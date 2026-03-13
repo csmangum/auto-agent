@@ -56,6 +56,19 @@ Each external-system adapter can be configured independently. See [Adapters](ada
 | `REPAIR_SHOP_ADAPTER` | `mock` | `mock`, `stub` | Repair shop network backend |
 | `PARTS_ADAPTER` | `mock` | `mock`, `stub` | Parts catalog backend |
 | `SIU_ADAPTER` | `mock` | `mock`, `stub` | SIU case management backend |
+| `VISION_ADAPTER` | `real` | `real`, `mock` | Vision analysis: `real` (litellm) or `mock` (claim-context derived) |
+
+### Mock Crew (Testing)
+
+The Mock Crew simulates external interactions for E2E testing without real people or services. See [Mock Crew Design](mock-crew-design.md).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MOCK_CREW_ENABLED` | `false` | Enable Mock Crew (claimant, vision, etc.) |
+| `MOCK_CREW_SEED` | (none) | Optional seed for reproducible mock outputs |
+| `MOCK_IMAGE_GENERATOR_ENABLED` | `false` | Generate damage images via OpenRouter |
+| `MOCK_IMAGE_MODEL` | `google/gemini-2.0-flash-exp` | OpenRouter model for image generation |
+| `MOCK_IMAGE_VISION_ANALYSIS_SOURCE` | `claim_context` | Vision analysis: `claim_context` (mock) or `openrouter` (real API) |
 
 ### Observability
 

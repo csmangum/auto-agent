@@ -62,9 +62,9 @@ class MockImageConfig(BaseSettings):
 Wire these into the root `Settings` model (e.g., `mock_crew: MockCrewConfig`, `mock_image: MockImageConfig`).
 
 **Tasks:**
-- [ ] Add `MockCrewConfig` and `MockImageConfig` classes
-- [ ] Add `mock_crew` and `mock_image` fields to root Settings
-- [ ] Add `get_mock_crew_config()` and `get_mock_image_config()` in `settings.py` if needed
+- [x] Add `MockCrewConfig` and `MockImageConfig` classes
+- [x] Add `mock_crew` and `mock_image` fields to root Settings
+- [x] Add `get_mock_crew_config()` and `get_mock_image_config()` in `settings.py` if needed
 
 ### 1.2 Add Adapter Backend for Vision
 
@@ -76,8 +76,8 @@ Add `VISION_ADAPTER` with values `real` | `mock`:
 
 **File:** `src/claim_agent/config/settings.py`
 
-- [ ] Add `get_adapter_backend("vision")` support (or equivalent)
-- [ ] Ensure `VALID_ADAPTER_BACKENDS` includes `vision` if using the adapter registry pattern
+- [x] Add `get_adapter_backend("vision")` support (or equivalent)
+- [x] Ensure `VALID_ADAPTER_BACKENDS` includes `vision` if using the adapter registry pattern
 
 ---
 
@@ -121,10 +121,10 @@ resp = requests.post(url, headers=headers, json=payload)
 ```
 
 **Tasks:**
-- [ ] Implement `generate_damage_image(claim_context: dict) -> str` returning file path or data URL
-- [ ] Save generated image to `attachment_storage_path` with deterministic name when seed is set
-- [ ] Handle OpenRouter-specific response format (base64 in message content)
-- [ ] Add logging and error handling (return placeholder path on failure if desired)
+- [x] Implement `generate_damage_image(claim_context: dict) -> str` returning file path or data URL
+- [x] Save generated image to `attachment_storage_path` with deterministic name when seed is set
+- [x] Handle OpenRouter-specific response format (base64 in message content)
+- [x] Add logging and error handling (return placeholder path on failure if desired)
 
 ### 2.2 OpenRouter Image Response Parsing
 
@@ -133,9 +133,9 @@ Image generation models return images in the assistant message. Structure varies
 - Some return base64 in a different structure
 
 **Tasks:**
-- [ ] Inspect OpenRouter docs for the exact response format of your chosen model
-- [ ] Implement robust extraction of base64 image from response
-- [ ] Decode and save to disk; return `file:///path/to/image.png`
+- [x] Inspect OpenRouter docs for the exact response format of your chosen model
+- [x] Implement robust extraction of base64 image from response
+- [x] Decode and save to disk; return `file:///path/to/image.png`
 
 ---
 
@@ -158,9 +158,9 @@ def analyze_damage_photo_mock(image_url: str, damage_description: str | None, cl
 - Optional: use simple rules or a tiny local model for more nuance
 
 **Tasks:**
-- [ ] Implement `analyze_damage_photo_mock`
-- [ ] Add keyword → severity mapping
-- [ ] Add keyword → parts_affected extraction
+- [x] Implement `analyze_damage_photo_mock`
+- [x] Add keyword → severity mapping
+- [x] Add keyword → parts_affected extraction
 
 ### 3.2 Wire Vision Adapter into vision_logic
 
@@ -182,9 +182,9 @@ def analyze_damage_photo_impl(image_url: str, damage_description: str | None = N
 - **B)** Use only `damage_description` in the mock (simpler; mock infers from that)
 
 **Tasks:**
-- [ ] Add `claim_context` parameter to `analyze_damage_photo_impl` (optional)
-- [ ] Add branch for mock vision when `VISION_ADAPTER=mock` or mock crew enabled
-- [ ] Ensure `analyze_damage_photo` tool passes through (CrewAI tool wraps `_impl`)
+- [x] Add `claim_context` parameter to `analyze_damage_photo_impl` (optional)
+- [x] Add branch for mock vision when `VISION_ADAPTER=mock` or mock crew enabled
+- [x] Ensure `analyze_damage_photo` tool passes through (CrewAI tool wraps `_impl`)
 
 ---
 
@@ -306,9 +306,9 @@ Follow the same pattern:
 
 ## Implementation Order Checklist
 
-1. [ ] **Phase 1** – Config (MockCrewConfig, MockImageConfig, VISION_ADAPTER)
-2. [ ] **Phase 2** – Image generator (OpenRouter, prompt, save to disk)
-3. [ ] **Phase 3** – Mock vision analysis + wire into vision_logic
+1. [x] **Phase 1** – Config (MockCrewConfig, MockImageConfig, VISION_ADAPTER)
+2. [x] **Phase 2** – Image generator (OpenRouter, prompt, save to disk)
+3. [x] **Phase 3** – Mock vision analysis + wire into vision_logic
 4. [ ] **Phase 4** – Mock Claimant
 5. [ ] **Phase 5** – Mock Notifier
 6. [ ] **Phase 6** – Fixtures + E2E tests

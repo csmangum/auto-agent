@@ -17,12 +17,12 @@ Use this document to track implementation progress and acceptance criteria.
 - [ ] **Config**: `MOCK_CLAIMANT_ENABLED`, `MOCK_CLAIMANT_RESPONSE_STRATEGY`
 
 ### FR-2: Mock Image Generator
-- [ ] **Implement** Mock Image Generator agent/module
-- [ ] **Acceptance**: Generates placeholder image for claim (vehicle + damage context)
-- [ ] **Acceptance**: `analyze_damage_photo` returns structured result without calling vision API
-- [ ] **Acceptance**: Result includes `severity`, `parts_affected`, `consistency_with_description`
-- [ ] **Acceptance**: Result is consistent with claim's `damage_description`
-- [ ] **Config**: `MOCK_IMAGE_GENERATOR_ENABLED`, `MOCK_IMAGE_MODE`, `MOCK_VISION_ANALYSIS_SOURCE`
+- [x] **Implement** Mock Image Generator agent/module
+- [x] **Acceptance**: Generates placeholder image for claim (vehicle + damage context)
+- [x] **Acceptance**: `analyze_damage_photo` returns structured result without calling vision API (via mock vision)
+- [x] **Acceptance**: Result includes `severity`, `parts_affected`, `consistency_with_description`
+- [x] **Acceptance**: Result is consistent with claim's `damage_description`
+- [x] **Config**: `MOCK_IMAGE_GENERATOR_ENABLED`, `MOCK_IMAGE_MODEL`, `MOCK_IMAGE_VISION_ANALYSIS_SOURCE`
 
 ### FR-3: Mock Document Generator
 - [ ] **Implement** Mock Document Generator agent/module
@@ -64,13 +64,13 @@ Use this document to track implementation progress and acceptance criteria.
 - [ ] **Acceptance**: Disabled mocks fall back to real/stub behavior (or no-op)
 
 ### FR-9: Claim-Context Derivation
-- [ ] **Acceptance**: All mock outputs use claim fields: `damage_description`, `incident_description`, `vehicle_*`, `policy_number`
-- [ ] **Acceptance**: Mock Image Generator severity matches damage_description keywords
+- [x] **Acceptance**: All mock outputs use claim fields: `damage_description`, `incident_description`, `vehicle_*`, `policy_number`
+- [x] **Acceptance**: Mock Image Generator severity matches damage_description keywords (via vision_mock)
 - [ ] **Acceptance**: Mock Claimant response references claim details when relevant
 
 ### FR-10: Seeded Randomness
-- [ ] **Acceptance**: `MOCK_CREW_SEED` produces deterministic outputs across runs
-- [ ] **Acceptance**: Same seed + same claim = same mock outputs
+- [x] **Acceptance**: `MOCK_CREW_SEED` produces deterministic outputs across runs
+- [x] **Acceptance**: Same seed + same claim = same mock outputs (image filename, vision mock)
 
 ---
 
@@ -86,8 +86,8 @@ Use this document to track implementation progress and acceptance criteria.
 - [ ] **Acceptance**: Fixture resets mock state between tests
 
 ### NFR-3: No External API Keys
-- [ ] **Acceptance**: With all mocks enabled, no OPENAI_API_KEY or similar required for E2E
-- [ ] **Acceptance**: Vision analysis uses mock, not real vision model
+- [ ] **Acceptance**: With all mocks enabled, no OPENAI_API_KEY or similar required for E2E (image gen still needs key)
+- [x] **Acceptance**: Vision analysis uses mock, not real vision model (when VISION_ADAPTER=mock)
 
 ### NFR-4: Environment-Driven Config
 - [ ] **Acceptance**: All config via env vars (no hardcoded paths in CI)
