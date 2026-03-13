@@ -63,6 +63,8 @@ export default function NewClaimForm() {
   const [done, setDone] = useState(false);
   const [generatingDetails, setGeneratingDetails] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [generateScenario, setGenerateScenario] = useState('');
+  const [generateCooldownMs, setGenerateCooldownMs] = useState(0);
   const abortStreamRef = useRef<(() => void) | null>(null);
 
   const updateField = useCallback(
@@ -78,8 +80,10 @@ export default function NewClaimForm() {
     form.vehicle_make.trim() !== '' &&
     form.vehicle_model.trim() !== '';
 
+  const onGenerateCooldown = generateCooldownMs > 0;
+
   const handleGenerateDetails = useCallback(async () => {
-    if (!canGenerateDetails || generatingDetails) return;
+    if (!canGenerateDetails || generatingDetails || onGenerateCooldown) return;
     setGenerateError(null);
     setGeneratingDetails(true);
     try {
@@ -87,17 +91,34 @@ export default function NewClaimForm() {
         vehicle_year: form.vehicle_year!,
         vehicle_make: form.vehicle_make.trim(),
         vehicle_model: form.vehicle_model.trim(),
+        prompt: generateScenario.trim() || undefined,
       });
       updateField('incident_date', result.incident_date);
       updateField('incident_description', result.incident_description);
       updateField('damage_description', result.damage_description);
       updateField('estimated_damage', result.estimated_damage ?? undefined);
+      setGenerateCooldownMs(2000);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : 'Failed to generate details');
     } finally {
       setGeneratingDetails(false);
     }
-  }, [canGenerateDetails, generatingDetails, form.vehicle_year, form.vehicle_make, form.vehicle_model, updateField]);
+  }, [
+    canGenerateDetails,
+    generatingDetails,
+    onGenerateCooldown,
+    form.vehicle_year,
+    form.vehicle_make,
+    form.vehicle_model,
+    generateScenario,
+    updateField,
+  ]);
+
+  useEffect(() => {
+    if (generateCooldownMs <= 0) return;
+    const id = setTimeout(() => setGenerateCooldownMs(0), generateCooldownMs);
+    return () => clearTimeout(id);
+  }, [generateCooldownMs]);
 
   const allVehicles: VehicleRecord[] = useMemo(
     () =>
@@ -299,6 +320,9 @@ export default function NewClaimForm() {
     setWorkflows([]);
     setDone(false);
     setError(null);
+    setGenerateError(null);
+    setGenerateScenario('');
+    setGenerateCooldownMs(0);
   };
 
   useEffect(() => {
@@ -520,17 +544,33 @@ export default function NewClaimForm() {
             <button
               type="button"
               onClick={handleGenerateDetails}
-              disabled={!canGenerateDetails || generatingDetails}
+              disabled={!canGenerateDetails || generatingDetails || onGenerateCooldown}
               title={
                 !canGenerateDetails
                   ? 'Select a vehicle first'
-                  : 'Generate realistic damage with AI'
+                  : onGenerateCooldown
+                    ? 'Please wait before generating again'
+                    : 'Generate realistic damage with AI'
               }
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
             >
               <SparkleIcon className="w-4 h-4 shrink-0" aria-hidden />
-              {generatingDetails ? 'Generating…' : 'Generate'}
+              {generatingDetails ? 'Generating…' : onGenerateCooldown ? 'Wait…' : 'Generate'}
             </button>
+          </div>
+          <div className="mb-4">
+            <label htmlFor="generate_scenario" className={labelClasses}>
+              Scenario (optional)
+            </label>
+            <input
+              id="generate_scenario"
+              type="text"
+              value={generateScenario}
+              onChange={(e) => setGenerateScenario(e.target.value)}
+              placeholder="e.g. parking lot fender bender, flood damage"
+              maxLength={2000}
+              className={inputClasses}
+            />
           </div>
           {generateError && (
             <p className="text-sm text-red-400 mb-4" role="alert">

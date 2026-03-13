@@ -299,9 +299,18 @@ Return only the JSON object, no markdown or explanation."""
     else:
         incident_date = (date.today() - timedelta(days=7)).isoformat()
 
+    est = parsed.get("estimated_damage")
+    if est is not None:
+        try:
+            est = float(est)
+            if est < 0 or est > 1e9:
+                est = None
+        except (TypeError, ValueError):
+            est = None
+
     return {
         "incident_date": incident_date,
         "incident_description": parsed.get("incident_description", "Incident occurred."),
         "damage_description": parsed.get("damage_description", "Vehicle damage."),
-        "estimated_damage": parsed.get("estimated_damage"),
+        "estimated_damage": est,
     }

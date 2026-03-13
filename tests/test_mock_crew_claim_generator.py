@@ -319,3 +319,45 @@ class TestGenerateIncidentDamageFromVehicle:
                     )
         assert "flood" in mock_completion.call_args[1]["messages"][0]["content"].lower()
         assert result["estimated_damage"] is None
+
+    def test_sanitizes_invalid_estimated_damage(self):
+        """Invalid estimated_damage (negative, string, out of range) becomes None."""
+        llm_response = type("R", (), {"choices": [type("C", (), {
+            "message": type("M", (), {
+                "content": '{"incident_date": "2025-02-10", "incident_description": "Test.", '
+                '"damage_description": "Test.", "estimated_damage": -500}'
+            })()
+        })()]})()
+        with patch(
+            "claim_agent.mock_crew.claim_generator.get_mock_crew_config",
+            return_value={"enabled": True, "seed": None},
+        ):
+            with patch(
+                "claim_agent.mock_crew.claim_generator.litellm.completion",
+                return_value=llm_response,
+            ):
+                with patch(
+                    "claim_agent.mock_crew.claim_generator.get_llm",
+                ):
+                    result = generate_incident_damage_from_vehicle(2021, "Honda", "Accord")
+        assert result["estimated_damage"] is None
+
+        llm_response2 = type("R", (), {"choices": [type("C", (), {
+            "message": type("M", (), {
+                "content": '{"incident_date": "2025-02-10", "incident_description": "Test.", '
+                '"damage_description": "Test.", "estimated_damage": "not a number"}'
+            })()
+        })()]})()
+        with patch(
+            "claim_agent.mock_crew.claim_generator.get_mock_crew_config",
+            return_value={"enabled": True, "seed": None},
+        ):
+            with patch(
+                "claim_agent.mock_crew.claim_generator.litellm.completion",
+                return_value=llm_response2,
+            ):
+                with patch(
+                    "claim_agent.mock_crew.claim_generator.get_llm",
+                ):
+                    result2 = generate_incident_damage_from_vehicle(2021, "Honda", "Accord")
+        assert result2["estimated_damage"] is None

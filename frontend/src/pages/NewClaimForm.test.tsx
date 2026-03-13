@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -170,6 +170,153 @@ describe('NewClaimForm', () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText(/vin/i)).toHaveValue('1HGBH41JXMN109186');
+    });
+  });
+
+  describe('Generate incident details', () => {
+    function fillVehicleForGenerate() {
+      fireEvent.click(screen.getByLabelText(/policy number/i));
+      fireEvent.click(screen.getByText('POL-001'));
+      fireEvent.change(screen.getByLabelText(/vehicle year/i), { target: { value: '2021' } });
+      fireEvent.change(screen.getByLabelText(/vehicle make/i), { target: { value: 'Honda' } });
+      fireEvent.change(screen.getByLabelText(/vehicle model/i), { target: { value: 'Accord' } });
+    }
+
+    it('Generate button is disabled when vehicle fields incomplete', () => {
+      renderWithProviders(<NewClaimForm />);
+      const generateBtn = screen.getByRole('button', { name: 'Generate' });
+      expect(generateBtn).toBeDisabled();
+    });
+
+    it('Generate calls API and populates form on success', async () => {
+      mockGenerateIncidentDetails.mockResolvedValue({
+        incident_date: '2025-02-10',
+        incident_description: 'Parking lot fender bender.',
+        damage_description: 'Front left fender dent.',
+        estimated_damage: 1800,
+      });
+
+      renderWithProviders(<NewClaimForm />);
+      fillVehicleForGenerate();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      await waitFor(() => {
+        expect(mockGenerateIncidentDetails).toHaveBeenCalledWith(
+          expect.objectContaining({
+            vehicle_year: 2021,
+            vehicle_make: 'Honda',
+            vehicle_model: 'Accord',
+          })
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/incident date/i)).toHaveValue('2025-02-10');
+        expect(screen.getByLabelText(/incident description/i)).toHaveValue('Parking lot fender bender.');
+        expect(screen.getByLabelText(/damage description/i)).toHaveValue('Front left fender dent.');
+        const damageInput = screen.getByLabelText(/estimated damage/i);
+        expect(damageInput.value).toBe('1800');
+      });
+    });
+
+    it('Generate shows error message on API failure', async () => {
+      mockGenerateIncidentDetails.mockRejectedValue(new Error('Mock Crew must be enabled'));
+
+      renderWithProviders(<NewClaimForm />);
+      fillVehicleForGenerate();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Mock Crew must be enabled');
+      });
+    });
+
+    it('Generate shows "Generating…" while loading', async () => {
+      let resolveGenerate: (v: unknown) => void;
+      mockGenerateIncidentDetails.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveGenerate = resolve;
+          })
+      );
+
+      renderWithProviders(<NewClaimForm />);
+      fillVehicleForGenerate();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /generating/i })).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        resolveGenerate!({
+          incident_date: '2025-02-10',
+          incident_description: 'Test.',
+          damage_description: 'Test.',
+          estimated_damage: null,
+        });
+      });
+    });
+
+    it('Generate passes scenario prompt when provided', async () => {
+      mockGenerateIncidentDetails.mockResolvedValue({
+        incident_date: '2025-02-10',
+        incident_description: 'Flood damage.',
+        damage_description: 'Water damage.',
+        estimated_damage: null,
+      });
+
+      renderWithProviders(<NewClaimForm />);
+      fillVehicleForGenerate();
+      fireEvent.change(screen.getByLabelText(/scenario/i), {
+        target: { value: 'flood damage' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      await waitFor(() => {
+        expect(mockGenerateIncidentDetails).toHaveBeenCalledWith(
+          expect.objectContaining({ prompt: 'flood damage' })
+        );
+      });
+    });
+
+    it('Reset clears generate error', async () => {
+      mockProcessClaimAsync.mockResolvedValue({ claim_id: 'CLM-1' });
+      mockStreamClaimUpdates.mockImplementation((_id: string, onUpdate: (d: unknown) => void) => {
+        queueMicrotask(() => onUpdate({ claim: { id: 'CLM-1', status: 'open' }, done: true }));
+        return () => {};
+      });
+      mockGenerateIncidentDetails.mockRejectedValue(new Error('Generate failed'));
+
+      renderWithProviders(<NewClaimForm />);
+      fillVehicleForGenerate();
+      fireEvent.change(screen.getByLabelText(/incident description/i), {
+        target: { value: 'Test incident' },
+      });
+      fireEvent.change(screen.getByLabelText(/damage description/i), {
+        target: { value: 'Test damage' },
+      });
+      fireEvent.change(screen.getByLabelText(/vin/i), { target: { value: '1HGBH41JXMN109186' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Submit Claim' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/CLM-1/)).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Generate failed');
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'New Claim' }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      });
     });
   });
 });

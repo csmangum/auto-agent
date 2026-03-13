@@ -41,13 +41,31 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+function parseApiError(status: number, text: string): string {
+  let msg = `API error ${status}: ${text.slice(0, 200)}`;
+  try {
+    const body = JSON.parse(text) as { detail?: string | Array<{ msg?: string }> };
+    if (typeof body?.detail === 'string') {
+      msg = body.detail;
+    } else if (Array.isArray(body?.detail)) {
+      const parts = body.detail
+        .map((d) => (typeof d === 'object' && d?.msg ? d.msg : null))
+        .filter(Boolean);
+      if (parts.length > 0) msg = parts.join('; ');
+    }
+  } catch {
+    /* keep msg */
+  }
+  return msg;
+}
+
 async function fetchJSON<T>(url: string, retries = 1): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) {
     const text = await res.text();
-    const msg = `API error ${res.status}: ${text.slice(0, 200)}`;
+    const msg = parseApiError(res.status, text);
     if (res.status >= 500 && retries > 0) {
       await new Promise((r) => setTimeout(r, 500));
       return fetchJSON<T>(url, retries - 1);
@@ -65,7 +83,7 @@ async function postJSON<T>(url: string, body: unknown, retries = 1): Promise<T> 
   });
   if (!res.ok) {
     const text = await res.text();
-    const msg = `API error ${res.status}: ${text.slice(0, 200)}`;
+    const msg = parseApiError(res.status, text);
     if (res.status >= 500 && retries > 0) {
       await new Promise((r) => setTimeout(r, 500));
       return postJSON<T>(url, body, retries - 1);
