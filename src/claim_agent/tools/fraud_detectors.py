@@ -165,24 +165,31 @@ def _detect_damage_vs_value_indicators(claim_data: dict, ctx: ClaimContext | Non
     return indicators
 
 
-def get_description_overlap_evidence(claim_data: dict) -> dict | None:
-    """Return {score, threshold} for incident/damage overlap. None if N/A.
-
-    Used by get_escalation_evidence so the agent can reason over overlap
-    without the rule directly deciding incident_damage_description_mismatch.
-    """
+def _compute_description_overlap(claim_data: dict) -> float | None:
+    """Compute Jaccard overlap between incident and damage descriptions. Returns None if N/A."""
     if not claim_data or not isinstance(claim_data, dict):
         return None
     incident = (claim_data.get("incident_description") or "").strip().lower()
     damage = (claim_data.get("damage_description") or "").strip().lower()
     if not incident or not damage:
         return None
-    overlap_threshold = get_escalation_config()["description_overlap_threshold"]
     words_i = _normalize_words_for_overlap(incident)
     words_d = _normalize_words_for_overlap(damage)
     if not words_i or not words_d:
         return None
-    overlap = len(words_i & words_d) / len(words_i | words_d) if (words_i | words_d) else 0
+    return len(words_i & words_d) / len(words_i | words_d) if (words_i | words_d) else 0
+
+
+def get_description_overlap_evidence(claim_data: dict) -> dict | None:
+    """Return {score, threshold} for incident/damage overlap. None if N/A.
+
+    Used by get_escalation_evidence so the agent can reason over overlap
+    without the rule directly deciding incident_damage_description_mismatch.
+    """
+    overlap = _compute_description_overlap(claim_data)
+    if overlap is None:
+        return None
+    overlap_threshold = get_escalation_config()["description_overlap_threshold"]
     return {"score": round(overlap, 4), "threshold": overlap_threshold}
 
 
@@ -216,17 +223,9 @@ def _detect_description_overlap_indicators(claim_data: dict, ctx: ClaimContext |
     are not falsely flagged as description mismatch.
     """
     indicators: list[str] = []
-    if not claim_data or not isinstance(claim_data, dict):
-        return indicators
-    incident = (claim_data.get("incident_description") or "").strip().lower()
-    damage = (claim_data.get("damage_description") or "").strip().lower()
-    if not incident or not damage:
-        return indicators
-    overlap_threshold = get_escalation_config()["description_overlap_threshold"]
-    words_i = _normalize_words_for_overlap(incident)
-    words_d = _normalize_words_for_overlap(damage)
-    if words_i and words_d:
-        overlap = len(words_i & words_d) / len(words_i | words_d) if (words_i | words_d) else 0
+    overlap = _compute_description_overlap(claim_data)
+    if overlap is not None:
+        overlap_threshold = get_escalation_config()["description_overlap_threshold"]
         if overlap < overlap_threshold:
             indicators.append("incident_damage_description_mismatch")
     return indicators
