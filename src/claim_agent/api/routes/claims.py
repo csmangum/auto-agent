@@ -1031,8 +1031,11 @@ async def _stream_claim_updates(claim_id: str):
                    )""",
                 (claim_id, claim_id),
             ).fetchall()
-            completed_stages = [r["stage_key"] for r in cp_rows if r["stage_key"] in WORKFLOW_STAGES]
-            completed_stages.sort(key=lambda s: WORKFLOW_STAGES.index(s))
+            completed_stages = [
+                r["stage_key"] for r in cp_rows
+                if (r["stage_key"].split(":")[0] if ":" in r["stage_key"] else r["stage_key"]) in WORKFLOW_STAGES
+            ]
+            completed_stages.sort(key=lambda s: WORKFLOW_STAGES.index(s.split(":")[0] if ":" in s else s))
 
         return claim_dict, history_rows, wf_rows, completed_stages
 
