@@ -36,6 +36,8 @@ from claim_agent.crews.after_action_crew import create_after_action_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+from pydantic import ValidationError
+
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
 from claim_agent.models.stage_outputs import (
@@ -601,11 +603,16 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
 
 
 def _parse_escalation_crew_result(result: Any) -> EscalationCheckResult | None:
-    """Extract EscalationCheckResult from escalation crew result."""
+    """Extract EscalationCheckResult from escalation crew result.
+
+    CrewAI may store output_pydantic result in either ``pydantic`` or ``output``
+    depending on version; check both for robustness.
+    """
     tasks_output = getattr(result, "tasks_output", None)
     if not tasks_output or not isinstance(tasks_output, list) or len(tasks_output) == 0:
         return None
-    last_output = getattr(tasks_output[-1], "pydantic", None)
+    last_task = tasks_output[-1]
+    last_output = getattr(last_task, "pydantic", None) or getattr(last_task, "output", None)
     if isinstance(last_output, EscalationCheckResult):
         return last_output
     return None
@@ -656,8 +663,20 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                         "recommended_action": decision.recommended_action,
                         "fraud_indicators": decision.fraud_indicators,
                     }
+            except MidWorkflowEscalation:
+                raise
+            except ValidationError as e:
+                logger.warning(
+                    "Escalation crew output validation failed, falling back to rules: %s",
+                    e,
+                    exc_info=True,
+                )
             except Exception as e:
-                logger.warning("Escalation crew failed, falling back to rules: %s", e)
+                logger.warning(
+                    "Escalation crew failed, falling back to rules: %s",
+                    e,
+                    exc_info=True,
+                )
 
         if escalation_result is None:
             escalation_json = evaluate_escalation_impl(
