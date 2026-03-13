@@ -530,6 +530,13 @@ class Settings(BaseSettings):
                 return value if value >= 1 else None
         return None
 
+    def get_attachment_storage_base_path(self) -> Path:
+        """Return absolute path for attachment storage. Resolves relative paths against project root."""
+        base = Path(self.paths.attachment_storage_path)
+        if base.is_absolute():
+            return base
+        return _default_project_data_dir().parent / self.paths.attachment_storage_path
+
     def get_adapter_backend(self, adapter_name: str) -> str:
         adapter_field = f"{adapter_name}_adapter"
         raw = getattr(self, adapter_field, None)

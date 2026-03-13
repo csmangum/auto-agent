@@ -145,7 +145,7 @@ class TestGenerateDamageImage:
             mock_get.return_value.mock_image.generator_enabled = True
             mock_get.return_value.mock_image.model = "test"
             mock_get.return_value.mock_crew.seed = None
-            mock_get.return_value.paths.attachment_storage_path = str(tmp_path)
+            mock_get.return_value.get_attachment_storage_base_path.return_value = tmp_path
             mock_get.return_value.llm.api_key = "your_openrouter_key"
             mock_get.return_value.llm.api_base = "https://openrouter.ai/api/v1"
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}, clear=False):
@@ -177,7 +177,7 @@ class TestGenerateDamageImage:
             mock_get.return_value.mock_image.generator_enabled = True
             mock_get.return_value.mock_image.model = "test-model"
             mock_get.return_value.mock_crew.seed = 42
-            mock_get.return_value.paths.attachment_storage_path = str(tmp_path)
+            mock_get.return_value.get_attachment_storage_base_path.return_value = tmp_path
             mock_get.return_value.llm.api_key = "sk-real-key"
             mock_get.return_value.llm.api_base = "https://openrouter.ai/api/v1"
 
@@ -228,7 +228,7 @@ class TestGenerateDamageImage:
                 m.return_value.mock_image.generator_enabled = True
                 m.return_value.mock_image.model = "test"
                 m.return_value.mock_crew.seed = 99
-                m.return_value.paths.attachment_storage_path = str(tmp_path)
+                m.return_value.get_attachment_storage_base_path.return_value = tmp_path
                 m.return_value.llm.api_key = "sk-key"
                 m.return_value.llm.api_base = "https://openrouter.ai/api/v1"
                 with patch(
@@ -260,7 +260,7 @@ class TestGenerateDamageImage:
         with patch("claim_agent.mock_crew.image_generator.get_settings") as m:
             m.return_value.mock_image.generator_enabled = True
             m.return_value.mock_crew.seed = 42
-            m.return_value.paths.attachment_storage_path = str(tmp_path)
+            m.return_value.get_attachment_storage_base_path.return_value = tmp_path
             with patch(
                 "claim_agent.mock_crew.image_generator.httpx.Client"
             ) as mc:

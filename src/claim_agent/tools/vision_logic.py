@@ -12,6 +12,7 @@ import litellm
 
 from claim_agent.config import get_settings
 from claim_agent.config.settings import get_adapter_backend, get_mock_crew_config, get_mock_image_config
+from claim_agent.mock_crew.vision_mock import analyze_damage_photo_mock
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,6 @@ def analyze_damage_photo_impl(
 ) -> str:
     """Analyze a damage photo using a vision model or mock (claim-context derived)."""
     if _use_mock_vision():
-        from claim_agent.mock_crew.vision_mock import analyze_damage_photo_mock
         return analyze_damage_photo_mock(image_url, damage_description, claim_context)
 
     result: dict[str, Any] = {

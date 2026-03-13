@@ -269,7 +269,13 @@ class TestJWTSecretValidation:
 
 def test_get_mock_crew_config_returns_dict():
     """get_mock_crew_config returns dict with enabled and seed."""
-    config = settings.get_mock_crew_config()
+    with patch.dict(
+        os.environ,
+        {"MOCK_CREW_ENABLED": "false", "MOCK_CREW_SEED": ""},
+        clear=False,
+    ):
+        reload_settings()
+        config = settings.get_mock_crew_config()
     assert isinstance(config, dict)
     assert "enabled" in config
     assert "seed" in config

@@ -3,6 +3,7 @@
 import json
 from unittest.mock import patch
 
+
 from claim_agent.mock_crew.vision_mock import analyze_damage_photo_mock
 from claim_agent.tools.vision_logic import analyze_damage_photo_impl
 
@@ -62,6 +63,17 @@ class TestAnalyzeDamagePhotoMock:
         result = json.loads(analyze_damage_photo_mock("file://x.jpg", None, None))
         assert result["consistency_with_description"] == "unknown"
 
+    def test_consistency_inconsistent_for_fraud_keywords(self):
+        """Staged/fake/inconsistent in description -> inconsistent (fraud scenario)."""
+        result = json.loads(
+            analyze_damage_photo_mock(
+                "file://x.jpg",
+                "staged accident, bumper damage doesn't match incident",
+                None,
+            )
+        )
+        assert result["consistency_with_description"] == "inconsistent"
+
     def test_uses_claim_context_damage_description(self):
         """Uses claim_context.damage_description when damage_description is None."""
         result = json.loads(
@@ -89,6 +101,18 @@ class TestVisionLogicMockBranch:
                 mock_llm.assert_not_called()
         parsed = json.loads(result)
         assert parsed["severity"] == "low"
+        assert "bumper" in parsed["parts_affected"]
+        assert parsed["error"] is None
+
+    def test_uses_mock_with_mock_crew_fixture(self, mock_crew):
+        """When mock_crew fixture is used, uses mock without calling litellm."""
+        with patch("litellm.completion") as mock_llm:
+            result = analyze_damage_photo_impl(
+                "data:image/jpeg;base64,x",
+                damage_description="bumper dent",
+            )
+            mock_llm.assert_not_called()
+        parsed = json.loads(result)
         assert "bumper" in parsed["parts_affected"]
         assert parsed["error"] is None
 

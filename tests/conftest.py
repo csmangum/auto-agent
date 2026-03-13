@@ -207,6 +207,20 @@ def claim_context(temp_db):
     return ClaimContext.from_defaults(db_path=temp_db)
 
 
+@pytest.fixture()
+def mock_crew(monkeypatch):
+    """Enable Mock Crew for tests: mock vision, claim generation, etc.
+
+    Sets MOCK_CREW_ENABLED=true, VISION_ADAPTER=mock, and optional seed.
+    Resets env after test. Use with temp_db, seeded_temp_db, claim_context.
+    """
+    monkeypatch.setenv("MOCK_CREW_ENABLED", "true")
+    monkeypatch.setenv("VISION_ADAPTER", "mock")
+    monkeypatch.setenv("MOCK_IMAGE_VISION_ANALYSIS_SOURCE", "claim_context")
+    monkeypatch.setenv("MOCK_CREW_SEED", "42")
+    yield
+
+
 @pytest.fixture(scope="session")
 def _preload_embedding_model():
     """Pre-load sentence-transformers so RAG tests share cached model."""

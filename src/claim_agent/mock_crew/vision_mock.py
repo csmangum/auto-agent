@@ -55,6 +55,11 @@ def _infer_parts(text: str) -> list[str]:
     return parts
 
 
+_INCONSISTENT_KEYWORDS = frozenset(
+    {"staged", "fake", "inconsistent", "mismatch", "doesn't match", "does not match"}
+)
+
+
 def _infer_consistency(
     damage_description: str | None,
     parts_affected: list[str],
@@ -64,7 +69,9 @@ def _infer_consistency(
         return "unknown"
     if not parts_affected:
         return "unknown"
-    # If we inferred parts from the description, they're consistent
+    lower = damage_description.lower()
+    if any(kw in lower for kw in _INCONSISTENT_KEYWORDS):
+        return "inconsistent"
     return "consistent"
 
 

@@ -141,11 +141,7 @@ def generate_damage_image(
         )
 
     # Determine output path (and check cache when seed is set)
-    storage_path = get_settings().paths.attachment_storage_path
-    base = Path(storage_path)
-    if not base.is_absolute():
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        base = project_root / storage_path
+    base = get_settings().get_attachment_storage_base_path()
 
     seed = get_settings().mock_crew.seed
     if seed is not None:

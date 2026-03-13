@@ -55,7 +55,11 @@ logger = logging.getLogger(__name__)
 class GenerateClaimRequest(BaseModel):
     """Request body for Mock Crew claim generation."""
 
-    prompt: str = Field(..., description="Natural-language description of the claim to generate")
+    prompt: str = Field(
+        ...,
+        max_length=2000,
+        description="Natural-language description of the claim to generate",
+    )
     submit: bool = Field(
         default=True,
         description="If true, submit the generated claim for processing via the workflow",
@@ -712,7 +716,9 @@ async def generate_and_submit_claim(
 
     Requires MOCK_CREW_ENABLED=true. The LLM produces realistic ClaimInput JSON
     from the prompt (e.g. "partial loss, Honda Accord, parking lot fender bender").
-    If submit=true, the claim is created and the workflow runs.
+    If submit=true, the claim is created and the workflow runs. If submit=false,
+    returns the generated claim JSON without creating or processing it (useful for
+    inspection).
     """
     try:
         claim_input = await asyncio.to_thread(
