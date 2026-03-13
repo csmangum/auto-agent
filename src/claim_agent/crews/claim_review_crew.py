@@ -68,6 +68,10 @@ You have received:
 1. Process trace summary (from Process Auditor)
 2. Compliance checklist (from Compliance Analyst)
 
+REVIEW CONTEXT:
+- Claim ID: {claim_id}
+- Review requested by: {actor_id}
+
 Produce a ClaimReviewReport with:
 - claim_id: {claim_id}
 - overall_pass: true if no critical or high severity issues; false otherwise

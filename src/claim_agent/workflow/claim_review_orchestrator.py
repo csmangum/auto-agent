@@ -64,6 +64,7 @@ def run_claim_review(
         "claim_id": claim_id,
         "claim_data": claim_data,
         "workflow_output": workflow_output,
+        "actor_id": actor_id or "system",
     })
 
     raw = str(

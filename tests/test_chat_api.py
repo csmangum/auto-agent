@@ -201,7 +201,7 @@ class TestChatEndpoint:
         events = _parse_sse_events(resp.text)
         error_events = [e for e in events if e["type"] == "error"]
         assert len(error_events) == 1
-        assert "API unavailable" in error_events[0]["message"]
+        assert "internal error" in error_events[0]["message"].lower()
         assert any(e["type"] == "done" for e in events)
 
     def test_multiple_messages_conversation(self, client):

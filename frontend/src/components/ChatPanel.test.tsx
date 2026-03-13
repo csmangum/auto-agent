@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import ChatPanel from './ChatPanel';
 
@@ -24,6 +24,15 @@ function renderPanel() {
 }
 
 describe('ChatPanel', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.runAllTimers();
+    vi.useRealTimers();
+  });
+
   it('renders floating button in collapsed state', () => {
     renderPanel();
     const button = screen.getByLabelText('Open chat assistant');
