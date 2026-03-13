@@ -265,3 +265,58 @@ class TestJWTSecretValidation:
 
         config = AuthConfig(jwt_secret_raw="b" * 32)
         assert config.jwt_secret == "b" * 32
+
+
+def test_get_mock_crew_config_returns_dict():
+    """get_mock_crew_config returns dict with enabled and seed."""
+    config = settings.get_mock_crew_config()
+    assert isinstance(config, dict)
+    assert "enabled" in config
+    assert "seed" in config
+    assert config["enabled"] is False
+    assert config["seed"] is None
+
+
+def test_get_mock_crew_config_respects_env():
+    """get_mock_crew_config reads MOCK_CREW_ENABLED and MOCK_CREW_SEED."""
+    with patch.dict(
+        os.environ,
+        {"MOCK_CREW_ENABLED": "true", "MOCK_CREW_SEED": "42"},
+        clear=False,
+    ):
+        reload_settings()
+        config = settings.get_mock_crew_config()
+        assert config["enabled"] is True
+        assert config["seed"] == 42
+
+
+def test_get_mock_image_config_returns_dict():
+    """get_mock_image_config returns dict with expected keys."""
+    config = settings.get_mock_image_config()
+    assert isinstance(config, dict)
+    assert "generator_enabled" in config
+    assert "model" in config
+    assert "vision_analysis_source" in config
+    assert config["generator_enabled"] is False
+    assert "gemini" in config["model"].lower() or "flash" in config["model"].lower()
+
+
+def test_get_adapter_backend_vision_default():
+    """get_adapter_backend returns 'real' for vision when unset."""
+    with patch.dict(os.environ, {"VISION_ADAPTER": ""}, clear=False):
+        reload_settings()
+        assert settings.get_adapter_backend("vision") == "real"
+
+
+def test_get_adapter_backend_vision_mock():
+    """get_adapter_backend returns 'mock' for vision when VISION_ADAPTER=mock."""
+    with patch.dict(os.environ, {"VISION_ADAPTER": "mock"}):
+        reload_settings()
+        assert settings.get_adapter_backend("vision") == "mock"
+
+
+def test_get_adapter_backend_vision_invalid_falls_back_to_real():
+    """get_adapter_backend returns 'real' for vision when value is invalid."""
+    with patch.dict(os.environ, {"VISION_ADAPTER": "stub"}):
+        reload_settings()
+        assert settings.get_adapter_backend("vision") == "real"

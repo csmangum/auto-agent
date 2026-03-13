@@ -11,17 +11,35 @@ from urllib.parse import unquote, urlparse
 import litellm
 
 from claim_agent.config import get_settings
+from claim_agent.config.settings import get_adapter_backend, get_mock_crew_config, get_mock_image_config
 
 logger = logging.getLogger(__name__)
 
 MAX_VISION_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
+def _use_mock_vision() -> bool:
+    """Return True if mock vision analysis should be used (no API call)."""
+    if get_adapter_backend("vision") == "mock":
+        return True
+    crew_cfg = get_mock_crew_config()
+    img_cfg = get_mock_image_config()
+    return (
+        crew_cfg.get("enabled") is True
+        and img_cfg.get("vision_analysis_source") == "claim_context"
+    )
+
+
 def analyze_damage_photo_impl(
     image_url: str,
     damage_description: str | None = None,
+    claim_context: dict[str, Any] | None = None,
 ) -> str:
-    """Analyze a damage photo using a vision model."""
+    """Analyze a damage photo using a vision model or mock (claim-context derived)."""
+    if _use_mock_vision():
+        from claim_agent.mock_crew.vision_mock import analyze_damage_photo_mock
+        return analyze_damage_photo_mock(image_url, damage_description, claim_context)
+
     result: dict[str, Any] = {
         "severity": "unknown",
         "parts_affected": [],
