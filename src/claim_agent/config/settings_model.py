@@ -249,6 +249,17 @@ class PathsConfig(BaseSettings):
     claims_db_path: str = Field(
         default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
     )
+    fresh_claims_db_on_startup: bool = Field(
+        default=True,
+        validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
+    )
+
+    @field_validator("fresh_claims_db_on_startup", mode="before")
+    @classmethod
+    def _parse_fresh_db(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
     mock_db_path: str = Field(
         default="data/mock_db.json", validation_alias="MOCK_DB_PATH"
     )

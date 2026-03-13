@@ -39,7 +39,10 @@ _server_logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from claim_agent.db.database import ensure_fresh_db_on_startup
     from claim_agent.events import ensure_webhook_listener_registered
+
+    ensure_fresh_db_on_startup()
     ensure_webhook_listener_registered()
 
     _server_logger.warning(

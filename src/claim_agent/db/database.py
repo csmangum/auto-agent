@@ -159,8 +159,36 @@ def init_db(path: str | None = None) -> None:
         _schema_initialized.add(db_path)
 
 
+def ensure_fresh_db_on_startup() -> None:
+    """If FRESH_CLAIMS_DB_ON_STARTUP is true, delete claims DB and reinitialize.
+
+    Call at server startup (e.g. in lifespan) for simulation/dev runs that need
+    an empty claims database each time.
+    """
+    from claim_agent.config import get_settings
+
+    if not get_settings().paths.fresh_claims_db_on_startup:
+        return
+
+    db_path = get_db_path()
+    p = Path(db_path)
+    if p.exists():
+        p.unlink()
+    with _schema_lock:
+        _schema_initialized.discard(db_path)
+    init_db(db_path)
+
+
+_fresh_db_ensured: bool = False
+
+
 def _ensure_schema(db_path: str) -> None:
     """Run schema once per path. Thread-safe."""
+    global _fresh_db_ensured
+    with _schema_lock:
+        if not _fresh_db_ensured:
+            _fresh_db_ensured = True
+            ensure_fresh_db_on_startup()
     # Fast path: check without lock
     if db_path in _schema_initialized:
         return
