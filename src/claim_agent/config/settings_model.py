@@ -249,6 +249,17 @@ class PathsConfig(BaseSettings):
     claims_db_path: str = Field(
         default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
     )
+    fresh_claims_db_on_startup: bool = Field(
+        default=True,
+        validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
+    )
+
+    @field_validator("fresh_claims_db_on_startup", mode="before")
+    @classmethod
+    def _parse_fresh_db(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
     mock_db_path: str = Field(
         default="data/mock_db.json", validation_alias="MOCK_DB_PATH"
     )
@@ -342,6 +353,69 @@ class AuthConfig(BaseSettings):
 
 
 # ---------------------------------------------------------------------------
+# Mock Crew configuration
+# ---------------------------------------------------------------------------
+
+
+class MockCrewConfig(BaseSettings):
+    """Mock Crew: simulate external interactions for testing."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(default=False, validation_alias="MOCK_CREW_ENABLED")
+    seed: int | None = Field(default=None, validation_alias="MOCK_CREW_SEED")
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("seed", mode="before")
+    @classmethod
+    def _parse_seed(cls, v: Any) -> int | None:
+        if v is None or v == "":
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
+
+class MockImageConfig(BaseSettings):
+    """Mock image generator: OpenRouter image gen + mock vision analysis."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    generator_enabled: bool = Field(
+        default=False, validation_alias="MOCK_IMAGE_GENERATOR_ENABLED"
+    )
+    model: str = Field(
+        default="google/gemini-2.0-flash-exp", validation_alias="MOCK_IMAGE_MODEL"
+    )
+    vision_analysis_source: str = Field(
+        default="claim_context",
+        validation_alias="MOCK_IMAGE_VISION_ANALYSIS_SOURCE",
+    )
+
+    @field_validator("generator_enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
+# ---------------------------------------------------------------------------
 # Adapter backends (dynamic env keys)
 # ---------------------------------------------------------------------------
 
@@ -351,8 +425,10 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "repair_shop": "REPAIR_SHOP_ADAPTER",
     "parts": "PARTS_ADAPTER",
     "siu": "SIU_ADAPTER",
+    "vision": "VISION_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub"})
+VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +456,8 @@ class Settings(BaseSettings):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    mock_crew: MockCrewConfig = Field(default_factory=MockCrewConfig)
+    mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40
@@ -405,6 +483,7 @@ class Settings(BaseSettings):
     repair_shop_adapter: str = Field(default="mock", validation_alias="REPAIR_SHOP_ADAPTER")
     parts_adapter: str = Field(default="mock", validation_alias="PARTS_ADAPTER")
     siu_adapter: str = Field(default="mock", validation_alias="SIU_ADAPTER")
+    vision_adapter: str = Field(default="real", validation_alias="VISION_ADAPTER")
 
     @field_validator("retention_period_years", mode="before")
     @classmethod
@@ -451,10 +530,19 @@ class Settings(BaseSettings):
                 return value if value >= 1 else None
         return None
 
+    def get_attachment_storage_base_path(self) -> Path:
+        """Return absolute path for attachment storage. Resolves relative paths against project root."""
+        base = Path(self.paths.attachment_storage_path)
+        if base.is_absolute():
+            return base
+        return _default_project_data_dir().parent / self.paths.attachment_storage_path
+
     def get_adapter_backend(self, adapter_name: str) -> str:
         adapter_field = f"{adapter_name}_adapter"
         raw = getattr(self, adapter_field, None)
         if raw is None:
-            return "mock"
+            return "mock" if adapter_name != "vision" else "real"
         backend = raw.strip().lower()
+        if adapter_name == "vision":
+            return backend if backend in VALID_VISION_ADAPTER_BACKENDS else "real"
         return backend or "mock"

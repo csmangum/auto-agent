@@ -99,6 +99,25 @@ def get_adapter_backend(adapter_name: str) -> str:
     return get_settings().get_adapter_backend(adapter_name)
 
 
+def get_mock_crew_config() -> dict:
+    """Mock Crew configuration (enabled, seed)."""
+    s = get_settings().mock_crew
+    return {
+        "enabled": s.enabled,
+        "seed": s.seed,
+    }
+
+
+def get_mock_image_config() -> dict:
+    """Mock image generator configuration."""
+    s = get_settings().mock_image
+    return {
+        "generator_enabled": s.generator_enabled,
+        "model": s.model,
+        "vision_analysis_source": s.vision_analysis_source,
+    }
+
+
 # Re-export as module-level names for existing imports (lazy via __getattr__)
 def __getattr__(name: str):
     if name == "DEFAULT_BASE_VALUE":

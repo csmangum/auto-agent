@@ -30,7 +30,8 @@ from claim_agent.api.routes.docs import router as docs_router
 from claim_agent.api.routes.system import router as system_router
 from claim_agent.api.routes.simulation import router as simulation_router
 from claim_agent.config import get_settings
-
+from claim_agent.db.database import ensure_fresh_db_on_startup
+from claim_agent.events import ensure_webhook_listener_registered
 
 import logging
 
@@ -39,7 +40,7 @@ _server_logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from claim_agent.events import ensure_webhook_listener_registered
+    ensure_fresh_db_on_startup()
     ensure_webhook_listener_registered()
 
     _server_logger.warning(
