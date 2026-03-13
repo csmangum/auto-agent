@@ -73,6 +73,73 @@ _KNOWN_MAKES_MODELS = (
 )
 
 
+def _check_mock_crew_enabled() -> None:
+    """Raise ValueError if mock crew is disabled."""
+    crew_cfg = get_mock_crew_config()
+    if not crew_cfg.get("enabled"):
+        raise ValueError(
+            "Mock Crew must be enabled (MOCK_CREW_ENABLED=true) to generate claims."
+        )
+
+
+def _resolve_seed(seed: int | None) -> int | None:
+    """Resolve seed: use provided seed or fall back to config seed."""
+    if seed is None:
+        crew_cfg = get_mock_crew_config()
+        return crew_cfg.get("seed")
+    return seed
+
+
+def _call_llm_for_damage(prompt: str, seed: int | None) -> dict[str, Any]:
+    """Call LLM with damage schema prompt and extract JSON response.
+    
+    Args:
+        prompt: Full prompt to send to LLM.
+        seed: Optional seed for reproducibility.
+        
+    Returns:
+        Parsed JSON dict from LLM response.
+        
+    Raises:
+        ValueError: If LLM returns invalid JSON.
+    """
+    get_llm()
+    model = get_model_name()
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if seed is not None:
+        kwargs["seed"] = seed
+
+    resp = litellm.completion(**kwargs)
+    text = (resp.choices[0].message.content or "").strip()
+    parsed = _extract_json(text)
+    if not parsed:
+        raise ValueError(f"LLM did not return valid JSON. Raw output: {text[:500]}")
+    return parsed
+
+
+def _normalize_incident_date(incident_date: Any) -> str:
+    """Normalize incident_date to YYYY-MM-DD string, with fallback to 7 days ago."""
+    if isinstance(incident_date, str):
+        return incident_date[:10]
+    return (date.today() - timedelta(days=7)).isoformat()
+
+
+def _validate_estimated_damage(est: Any) -> float | None:
+    """Validate and normalize estimated_damage to float or None."""
+    if est is None:
+        return None
+    try:
+        est_float = float(est)
+        if est_float < 0 or est_float > 1e9:
+            return None
+        return est_float
+    except (TypeError, ValueError):
+        return None
+
+
 def _vehicle_filter_from_prompt(prompt: str) -> str | None:
     """Extract vehicle make/model from prompt if mentioned."""
     if not prompt:
@@ -165,13 +232,8 @@ def generate_claim_from_prompt(
     Raises:
         ValueError: If mock crew disabled or no matching policies/vehicles.
     """
-    crew_cfg = get_mock_crew_config()
-    if not crew_cfg.get("enabled"):
-        raise ValueError(
-            "Mock Crew must be enabled (MOCK_CREW_ENABLED=true) to generate claims."
-        )
-    if seed is None:
-        seed = crew_cfg.get("seed")
+    _check_mock_crew_enabled()
+    seed = _resolve_seed(seed)
 
     # 1. Pick policy and vehicle from mock_db (optionally filter by make/model in prompt)
     vehicle_filter = _vehicle_filter_from_prompt(prompt)
@@ -182,8 +244,6 @@ def generate_claim_from_prompt(
     )
 
     # 2. LLM generates incident/damage only
-    get_llm()
-
     vehicle_desc = (
         f"{vehicle['vehicle_year']} {vehicle['vehicle_make']} {vehicle['vehicle_model']} "
         f"(VIN: {vehicle['vin']})"
@@ -196,27 +256,10 @@ User request / scenario: {prompt}
 
 Return only the JSON object, no markdown or explanation."""
 
-    model = get_model_name()
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": [{"role": "user", "content": full_prompt}],
-    }
-    if seed is not None:
-        kwargs["seed"] = seed
-
-    resp = litellm.completion(**kwargs)
-    text = (resp.choices[0].message.content or "").strip()
-    parsed = _extract_json(text)
-    if not parsed:
-        raise ValueError(f"LLM did not return valid JSON. Raw output: {text[:500]}")
+    parsed = _call_llm_for_damage(full_prompt, seed)
 
     # 3. Merge: policy + vehicle (from mock_db) + incident/damage (from LLM)
-    incident_date = parsed.get("incident_date")
-    if isinstance(incident_date, str):
-        incident_date = incident_date[:10]
-    else:
-        # Fallback: recent date
-        incident_date = (date.today() - timedelta(days=7)).isoformat()
+    incident_date = _normalize_incident_date(parsed.get("incident_date"))
 
     claim_data: dict[str, Any] = {
         "policy_number": policy_number,
@@ -259,15 +302,8 @@ def generate_incident_damage_from_vehicle(
     Raises:
         ValueError: If mock crew disabled or LLM returns invalid JSON.
     """
-    crew_cfg = get_mock_crew_config()
-    if not crew_cfg.get("enabled"):
-        raise ValueError(
-            "Mock Crew must be enabled (MOCK_CREW_ENABLED=true) to generate incident details."
-        )
-    if seed is None:
-        seed = crew_cfg.get("seed")
-
-    get_llm()
+    _check_mock_crew_enabled()
+    seed = _resolve_seed(seed)
 
     vehicle_desc = f"{vehicle_year} {vehicle_make} {vehicle_model}"
     scenario = prompt.strip() or "Generate realistic partial loss auto insurance claim details"
@@ -279,34 +315,10 @@ User request / scenario: {scenario}
 
 Return only the JSON object, no markdown or explanation."""
 
-    model = get_model_name()
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": [{"role": "user", "content": full_prompt}],
-    }
-    if seed is not None:
-        kwargs["seed"] = seed
+    parsed = _call_llm_for_damage(full_prompt, seed)
 
-    resp = litellm.completion(**kwargs)
-    text = (resp.choices[0].message.content or "").strip()
-    parsed = _extract_json(text)
-    if not parsed:
-        raise ValueError(f"LLM did not return valid JSON. Raw output: {text[:500]}")
-
-    incident_date = parsed.get("incident_date")
-    if isinstance(incident_date, str):
-        incident_date = incident_date[:10]
-    else:
-        incident_date = (date.today() - timedelta(days=7)).isoformat()
-
-    est = parsed.get("estimated_damage")
-    if est is not None:
-        try:
-            est = float(est)
-            if est < 0 or est > 1e9:
-                est = None
-        except (TypeError, ValueError):
-            est = None
+    incident_date = _normalize_incident_date(parsed.get("incident_date"))
+    est = _validate_estimated_damage(parsed.get("estimated_damage"))
 
     return {
         "incident_date": incident_date,

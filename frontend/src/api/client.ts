@@ -300,7 +300,8 @@ export async function processClaimAsync(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text.slice(0, 200)}`);
+    const msg = parseApiError(res.status, text);
+    throw new Error(msg);
   }
   return res.json() as Promise<ProcessClaimAsyncResponse>;
 }
