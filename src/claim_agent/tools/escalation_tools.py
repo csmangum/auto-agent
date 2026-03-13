@@ -9,7 +9,58 @@ from claim_agent.tools.escalation_logic import (
     detect_fraud_indicators_impl,
     escalate_claim_impl,
     evaluate_escalation_impl,
+    get_escalation_evidence_impl,
 )
+
+
+@tool("Get Escalation Evidence")
+def get_escalation_evidence(
+    claim_data: str,
+    router_output: str,
+    similarity_score: str = "",
+    payout_amount: str = "",
+    router_confidence: str = "",
+) -> str:
+    """Get rule-based evidence for escalation (fraud indicators, overlap score, confidence, etc.). No decisions made.
+
+    Use this to gather evidence, then reason and decide: needs_review, escalation_reasons, priority, recommended_action, fraud_indicators.
+
+    Args:
+        claim_data: JSON string of claim input.
+        router_output: Raw text output from the router classification.
+        similarity_score: Optional numeric string (0-100) for duplicate similarity.
+        payout_amount: Optional numeric string for payout/settlement amount.
+        router_confidence: Optional numeric string (0-1) for router confidence if known.
+    Returns:
+        JSON with fraud_indicators, description_overlap (score, threshold), router_confidence, high_value, similarity_score, ambiguous_similarity.
+    """
+    data = {}
+    if isinstance(claim_data, str) and claim_data.strip():
+        try:
+            data = json.loads(claim_data)
+        except json.JSONDecodeError:
+            data = {}
+    sim = None
+    if similarity_score and str(similarity_score).strip():
+        try:
+            sim = float(similarity_score)
+        except (ValueError, TypeError):
+            pass
+    payout = None
+    if payout_amount and str(payout_amount).strip():
+        try:
+            payout = float(payout_amount)
+        except (ValueError, TypeError):
+            pass
+    conf = None
+    if router_confidence and str(router_confidence).strip():
+        try:
+            conf = float(router_confidence)
+        except (ValueError, TypeError):
+            pass
+    return get_escalation_evidence_impl(
+        data, router_output or "", sim, payout, router_confidence=conf
+    )
 
 
 @tool("Evaluate Escalation")

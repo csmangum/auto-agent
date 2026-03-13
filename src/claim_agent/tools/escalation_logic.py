@@ -13,7 +13,7 @@ from claim_agent.db.audit_events import ACTOR_WORKFLOW, AUDIT_EVENT_ESCALATION
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimType
-from claim_agent.tools.fraud_detectors import run_fraud_detectors
+from claim_agent.tools.fraud_detectors import get_description_overlap_evidence, run_fraud_detectors
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -173,6 +173,56 @@ def detect_fraud_indicators_impl(
     """Check claim for fraud indicators via pluggable detectors. Returns JSON list of indicator strings."""
     indicators = run_fraud_detectors(claim_data or {}, ctx=ctx)
     return json.dumps(indicators)
+
+
+def get_escalation_evidence_impl(
+    claim_data: dict[str, Any],
+    router_output: str,
+    similarity_score: float | None = None,
+    payout_amount: float | None = None,
+    *,
+    router_confidence: float | None = None,
+    ctx: ClaimContext | None = None,
+) -> str:
+    """Return escalation evidence (rule outputs) for agent reasoning. No decisions made here."""
+    esc_config = get_escalation_config()
+    conf_threshold = esc_config["confidence_threshold"]
+    high_value_threshold = esc_config["high_value_threshold"]
+    low_sim, high_sim = esc_config["similarity_ambiguous_range"]
+
+    if router_confidence is not None:
+        confidence = max(0.0, min(1.0, float(router_confidence)))
+    else:
+        confidence = _parse_router_confidence(router_output or "")
+
+    estimated = claim_data.get("estimated_damage") if isinstance(claim_data, dict) else None
+    if isinstance(estimated, str):
+        try:
+            estimated = float(estimated)
+        except ValueError:
+            estimated = None
+    value_to_check = payout_amount if payout_amount is not None else estimated
+    high_value = isinstance(value_to_check, (int, float)) and value_to_check >= high_value_threshold
+
+    ambiguous_similarity = False
+    if similarity_score is not None and low_sim <= similarity_score <= high_sim:
+        ambiguous_similarity = True
+
+    fraud_indicators = run_fraud_detectors(claim_data or {}, ctx=ctx)
+    description_overlap = get_description_overlap_evidence(claim_data or {})
+
+    evidence: dict[str, Any] = {
+        "fraud_indicators": fraud_indicators,
+        "router_confidence": round(confidence, 4),
+        "confidence_threshold": conf_threshold,
+        "high_value": high_value,
+        "high_value_threshold": high_value_threshold,
+        "similarity_score": similarity_score,
+        "ambiguous_similarity": ambiguous_similarity,
+    }
+    if description_overlap is not None:
+        evidence["description_overlap"] = description_overlap
+    return json.dumps(evidence)
 
 
 def compute_escalation_priority_impl(reasons: list[str], fraud_indicators: list[str]) -> str:
