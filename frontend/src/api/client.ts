@@ -276,6 +276,8 @@ export interface ClaimStreamUpdate {
   claim?: Claim;
   history?: AuditEvent[];
   workflows?: WorkflowRun[];
+  /** Completed workflow stage keys for progress indicator */
+  progress?: string[];
   done?: boolean;
   status?: string;
   error?: string;

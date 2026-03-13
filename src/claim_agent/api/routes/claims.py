@@ -30,6 +30,7 @@ from claim_agent.db.constants import (
     SUPPLEMENTABLE_STATUSES,
 )
 from claim_agent.db.database import get_connection, get_db_path
+from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.models.claim import Attachment, ClaimInput
 from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
@@ -994,7 +995,7 @@ async def _stream_claim_updates(claim_id: str):
     elapsed = 0.0
 
     def _fetch_claim_snapshot():
-        """Fetch claim + audit log + workflow runs in one DB transaction.
+        """Fetch claim + audit log + workflow runs + stage progress in one DB transaction.
 
         Intended to be called via asyncio.to_thread so that SQLite access
         does not block the event loop.
@@ -1005,7 +1006,7 @@ async def _stream_claim_updates(claim_id: str):
                 "SELECT * FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if claim_row is None:
-                return None, None, None
+                return None, None, None, None
 
             claim_dict = dict(claim_row)
             _resolve_attachment_urls(claim_dict)
@@ -1021,10 +1022,23 @@ async def _stream_claim_updates(claim_id: str):
                 (claim_id,),
             ).fetchall()
 
-        return claim_dict, history_rows, wf_rows
+            # Completed stages from task_checkpoints (latest run) for progress indicator
+            cp_rows = conn.execute(
+                """SELECT stage_key FROM task_checkpoints
+                   WHERE claim_id = ? AND workflow_run_id = (
+                     SELECT workflow_run_id FROM task_checkpoints
+                     WHERE claim_id = ? ORDER BY id DESC LIMIT 1
+                   )""",
+                (claim_id, claim_id),
+            ).fetchall()
+            completed_stages = [r["stage_key"] for r in cp_rows if r["stage_key"] in WORKFLOW_STAGES]
+            completed_stages.sort(key=lambda s: WORKFLOW_STAGES.index(s))
+
+        return claim_dict, history_rows, wf_rows, completed_stages
 
     while elapsed < _STREAM_MAX_DURATION:
-        claim_dict, history_rows, wf_rows = await asyncio.to_thread(_fetch_claim_snapshot)
+        result = await asyncio.to_thread(_fetch_claim_snapshot)
+        claim_dict, history_rows, wf_rows, completed_stages = result
         if claim_dict is None:
             yield f"data: {json.dumps({'error': 'Claim not found'})}\n\n"
             return
@@ -1033,6 +1047,7 @@ async def _stream_claim_updates(claim_id: str):
             "claim": claim_dict,
             "history": [dict(r) for r in history_rows],
             "workflows": [dict(r) for r in wf_rows],
+            "progress": completed_stages or [],
         }
         yield f"data: {json.dumps(payload)}\n\n"
 
