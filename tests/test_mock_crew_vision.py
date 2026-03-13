@@ -1,10 +1,7 @@
 """Tests for mock crew vision analysis."""
 
 import json
-import os
 from unittest.mock import patch
-
-import pytest
 
 from claim_agent.mock_crew.vision_mock import analyze_damage_photo_mock
 from claim_agent.tools.vision_logic import analyze_damage_photo_impl
