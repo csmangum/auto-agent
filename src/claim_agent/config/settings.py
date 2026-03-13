@@ -109,6 +109,16 @@ def get_mock_crew_config() -> dict:
     }
 
 
+def get_chat_config() -> dict:
+    """Chat agent configuration."""
+    s = get_settings().chat
+    return {
+        "max_tool_rounds": s.max_tool_rounds,
+        "max_message_history": s.max_message_history,
+        "system_prompt_override": s.system_prompt_override,
+    }
+
+
 def get_mock_image_config() -> dict:
     """Mock image generator configuration."""
     s = get_settings().mock_image
