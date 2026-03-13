@@ -75,6 +75,7 @@ class EscalationConfig(BaseSettings):
     vin_claims_days: int = 90
     confidence_decrement_per_pattern: float = 0.15
     description_overlap_threshold: float = 0.1
+    use_agent: bool = True
     sla_hours_critical: int = 24
     sla_hours_high: int = 24
     sla_hours_medium: int = 48

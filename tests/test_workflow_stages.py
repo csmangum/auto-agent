@@ -220,6 +220,180 @@ class TestParseReopenedOutput:
         assert _parse_reopened_output(result) == ClaimType.PARTIAL_LOSS.value
 
 
+class TestParseEscalationCrewResult:
+    """Unit tests for _parse_escalation_crew_result (pydantic vs output attribute)."""
+
+    def test_extracts_from_pydantic_attribute(self):
+        """CrewAI may store output_pydantic result in .pydantic."""
+        from claim_agent.models.stage_outputs import EscalationCheckResult
+        from claim_agent.workflow.stages import _parse_escalation_crew_result
+
+        decision = EscalationCheckResult(
+            needs_review=True,
+            escalation_reasons=["low_confidence"],
+            priority="medium",
+            recommended_action="Review manually.",
+            fraud_indicators=[],
+        )
+        task_out = MagicMock()
+        task_out.pydantic = decision
+        task_out.output = None
+        result = MagicMock(tasks_output=[task_out])
+
+        parsed = _parse_escalation_crew_result(result)
+        assert parsed is not None
+        assert parsed.needs_review is True
+        assert parsed.priority == "medium"
+
+    def test_extracts_from_output_attribute(self):
+        """CrewAI may store output_pydantic result in .output (version-dependent)."""
+        from claim_agent.models.stage_outputs import EscalationCheckResult
+        from claim_agent.workflow.stages import _parse_escalation_crew_result
+
+        decision = EscalationCheckResult(
+            needs_review=False,
+            escalation_reasons=[],
+            priority="low",
+            recommended_action="No action needed.",
+            fraud_indicators=[],
+        )
+        task_out = MagicMock()
+        task_out.pydantic = None
+        task_out.output = decision
+        result = MagicMock(tasks_output=[task_out])
+
+        parsed = _parse_escalation_crew_result(result)
+        assert parsed is not None
+        assert parsed.needs_review is False
+        assert parsed.priority == "low"
+
+    def test_returns_none_when_empty_tasks_output(self):
+        from claim_agent.workflow.stages import _parse_escalation_crew_result
+
+        result = MagicMock(tasks_output=[])
+        assert _parse_escalation_crew_result(result) is None
+
+    def test_returns_none_when_output_not_escalation_check_result(self):
+        from claim_agent.workflow.stages import _parse_escalation_crew_result
+
+        task_out = MagicMock()
+        task_out.pydantic = None
+        task_out.output = "plain text"
+        result = MagicMock(tasks_output=[task_out])
+
+        assert _parse_escalation_crew_result(result) is None
+
+
+class TestEscalationCheckAgentPath:
+    """Integration tests for _stage_escalation_check agent path (use_agent=True)."""
+
+    @patch("claim_agent.workflow.stages._kickoff_with_retry")
+    @patch("claim_agent.workflow.stages.create_escalation_crew")
+    @patch("claim_agent.workflow.stages.get_escalation_config")
+    def test_agent_result_used_when_crew_returns_escalation_check_result(
+        self, mock_config, mock_create_crew, mock_kickoff, temp_db,
+    ):
+        """When use_agent=True and crew returns EscalationCheckResult, that decision is used."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.models.stage_outputs import EscalationCheckResult
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _stage_escalation_check
+
+        mock_config.return_value = {"use_agent": True}
+        mock_create_crew.return_value = MagicMock()
+
+        decision = EscalationCheckResult(
+            needs_review=True,
+            escalation_reasons=["low_confidence"],
+            priority="high",
+            recommended_action="Review claim manually.",
+            fraud_indicators=[],
+        )
+        task_out = MagicMock()
+        task_out.pydantic = decision
+        task_out.output = None
+        crew_result = MagicMock(tasks_output=[task_out])
+        mock_kickoff.return_value = crew_result
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {"vin": "VIN123", "incident_description": "Hit", "damage_description": "Dent"}
+        claim_data_with_id = {**claim_data, "id": claim_id}
+
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+            claim_type="new",
+            raw_output="new\nFirst-time claim.",
+            router_confidence=0.5,
+        )
+
+        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_eval:
+            result = _stage_escalation_check(wf_ctx)
+
+        mock_eval.assert_not_called()
+        assert result is not None
+        assert result.get("status") == "needs_review"
+        assert wf_ctx.escalation_result is not None
+        assert wf_ctx.escalation_result.needs_review is True
+        assert wf_ctx.escalation_result.priority == "high"
+
+    @patch("claim_agent.workflow.stages.get_escalation_config")
+    def test_use_agent_false_skips_crew_and_uses_rules(self, mock_config, temp_db):
+        """When use_agent=False, escalation crew is not called; rules are used."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.workflow.orchestrator import _WorkflowCtx
+        from claim_agent.workflow.stages import _stage_escalation_check
+
+        mock_config.return_value = {"use_agent": False}
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = _make_claim_for_stage_tests(repo)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        claim_data = {
+            "vin": "VIN123",
+            "incident_description": "Minor damage.",
+            "damage_description": "Damage to bumper.",
+            "estimated_damage": 500.0,
+        }
+        claim_data_with_id = {**claim_data, "id": claim_id}
+
+        wf_ctx = _WorkflowCtx(
+            claim_id=claim_id,
+            claim_data=claim_data,
+            claim_data_with_id=claim_data_with_id,
+            inputs={},
+            similarity_score_for_escalation=None,
+            context=ctx,
+            workflow_run_id="run-1",
+            workflow_start_time=0.0,
+            actor_id="test",
+            checkpoints={},
+            claim_type="new",
+            raw_output="possibly duplicate. Unclear.",
+            router_confidence=0.5,
+        )
+
+        with patch("claim_agent.workflow.stages.create_escalation_crew") as mock_crew:
+            with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_eval:
+                mock_eval.return_value = '{"needs_review": true, "escalation_reasons": ["low_confidence"], "priority": "medium", "recommended_action": "Review.", "fraud_indicators": []}'
+                result = _stage_escalation_check(wf_ctx)
+
+        mock_crew.assert_not_called()
+        mock_eval.assert_called_once()
+        assert result is not None
+        assert result.get("status") == "needs_review"
+
+
 class TestRunStage:
     """Unit tests for _run_stage checkpoint wrapper."""
 

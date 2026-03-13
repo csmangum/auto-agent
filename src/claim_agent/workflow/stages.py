@@ -10,10 +10,11 @@ import json
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from claim_agent.config.settings import (
     DUPLICATE_DAYS_WINDOW,
+    get_escalation_config,
     DUPLICATE_SIMILARITY_THRESHOLD,
     DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE,
     HIGH_VALUE_DAMAGE_THRESHOLD,
@@ -23,6 +24,7 @@ from claim_agent.config.settings import (
 )
 from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
+from claim_agent.crews.escalation_crew import create_escalation_crew
 from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
@@ -34,6 +36,8 @@ from claim_agent.crews.after_action_crew import create_after_action_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+from pydantic import ValidationError
+
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
 from claim_agent.models.stage_outputs import (
@@ -598,6 +602,22 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
     return None
 
 
+def _parse_escalation_crew_result(result: Any) -> EscalationCheckResult | None:
+    """Extract EscalationCheckResult from escalation crew result.
+
+    CrewAI may store output_pydantic result in either ``pydantic`` or ``output``
+    depending on version; check both for robustness.
+    """
+    tasks_output = getattr(result, "tasks_output", None)
+    if not tasks_output or not isinstance(tasks_output, list) or len(tasks_output) == 0:
+        return None
+    last_task = tasks_output[-1]
+    last_output = getattr(last_task, "pydantic", None) or getattr(last_task, "output", None)
+    if isinstance(last_output, EscalationCheckResult):
+        return last_output
+    return None
+
+
 def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
     """Run (or restore) the pre-workflow escalation check.
 
@@ -609,15 +629,65 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
         return None
 
     if ctx.claim_type != ClaimType.FRAUD.value:
-        escalation_json = evaluate_escalation_impl(
-            ctx.claim_data,
-            ctx.raw_output,
-            similarity_score=ctx.similarity_score_for_escalation,
-            payout_amount=None,
-            router_confidence=ctx.router_confidence,
-            ctx=ctx.context,
-        )
-        escalation_result = json.loads(escalation_json)
+        escalation_result: dict | None = None
+        use_agent = get_escalation_config().get("use_agent", True)
+
+        if use_agent:
+            try:
+                claim_data_json = json.dumps(ctx.claim_data_with_id, default=str)
+                sim_str = (
+                    str(ctx.similarity_score_for_escalation)
+                    if ctx.similarity_score_for_escalation is not None
+                    else ""
+                )
+                conf_str = (
+                    str(ctx.router_confidence) if ctx.router_confidence is not None else ""
+                )
+                crew = create_escalation_crew(ctx.context.llm)
+                crew_result = _kickoff_with_retry(
+                    crew,
+                    {
+                        "claim_data": claim_data_json,
+                        "router_output": ctx.raw_output or "",
+                        "similarity_score": sim_str,
+                        "payout_amount": "",
+                        "router_confidence": conf_str,
+                    },
+                )
+                decision = _parse_escalation_crew_result(crew_result)
+                if decision is not None:
+                    escalation_result = {
+                        "needs_review": decision.needs_review,
+                        "escalation_reasons": decision.escalation_reasons,
+                        "priority": decision.priority,
+                        "recommended_action": decision.recommended_action,
+                        "fraud_indicators": decision.fraud_indicators,
+                    }
+            except MidWorkflowEscalation:
+                raise
+            except ValidationError as e:
+                logger.warning(
+                    "Escalation crew output validation failed, falling back to rules: %s",
+                    e,
+                    exc_info=True,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Escalation crew failed, falling back to rules: %s",
+                    e,
+                    exc_info=True,
+                )
+
+        if escalation_result is None:
+            escalation_json = evaluate_escalation_impl(
+                ctx.claim_data,
+                ctx.raw_output,
+                similarity_score=ctx.similarity_score_for_escalation,
+                payout_amount=None,
+                router_confidence=ctx.router_confidence,
+                ctx=ctx.context,
+            )
+            escalation_result = json.loads(escalation_json)
         if escalation_result.get("needs_review"):
             reasons = escalation_result.get("escalation_reasons", [])
             priority = escalation_result.get("priority", "low")

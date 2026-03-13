@@ -213,6 +213,46 @@ def test_detect_fraud_indicators_accepts_datetime_object():
     assert isinstance(indicators, list)
 
 
+def test_get_escalation_evidence_returns_evidence_only():
+    """get_escalation_evidence_impl returns rule outputs as evidence, no decisions."""
+    from claim_agent.tools.escalation_logic import get_escalation_evidence_impl
+
+    claim_data = {
+        "policy_number": "POL-001",
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3",
+        "incident_date": "2025-01-20",
+        "incident_description": "Front bumper scratch.",
+        "damage_description": "Scratches on bumper.",
+        "estimated_damage": 500.0,
+    }
+    result = get_escalation_evidence_impl(claim_data, "new\nFirst-time submission.")
+    data = json.loads(result)
+    assert "fraud_indicators" in data
+    assert "router_confidence" in data
+    assert "high_value" in data
+    assert "needs_review" not in data
+    assert "escalation_reasons" not in data
+
+
+def test_get_description_overlap_evidence():
+    """get_description_overlap_evidence returns score and threshold."""
+    from claim_agent.tools.fraud_detectors import get_description_overlap_evidence
+
+    claim_data = {
+        "incident_description": "Rear-ended at stoplight. Bumper hit.",
+        "damage_description": "Rear bumper dented and scratched.",
+    }
+    result = get_description_overlap_evidence(claim_data)
+    assert result is not None
+    assert "score" in result
+    assert "threshold" in result
+    assert 0 <= result["score"] <= 1
+    assert result["threshold"] > 0
+
+
 def test_parse_router_confidence():
     """Router confidence decreases with uncertainty language."""
     from claim_agent.tools.escalation_logic import _parse_router_confidence

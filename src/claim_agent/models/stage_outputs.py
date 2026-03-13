@@ -8,7 +8,11 @@ stages read from these models instead of reaching into the loosely-typed
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+EscalationPriority = Literal["low", "medium", "high", "critical"]
 
 
 class EconomicAnalysisResult(BaseModel):
@@ -65,6 +69,6 @@ class EscalationCheckResult(BaseModel):
 
     needs_review: bool = False
     escalation_reasons: list[str] = Field(default_factory=list)
-    priority: str = "low"
+    priority: EscalationPriority = "low"
     recommended_action: str = ""
     fraud_indicators: list[str] = Field(default_factory=list)

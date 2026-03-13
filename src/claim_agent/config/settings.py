@@ -27,6 +27,7 @@ def get_escalation_config() -> dict:
         "vin_claims_days": s.vin_claims_days,
         "confidence_decrement_per_pattern": s.confidence_decrement_per_pattern,
         "description_overlap_threshold": s.description_overlap_threshold,
+        "use_agent": s.use_agent,
     }
 
 

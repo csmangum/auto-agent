@@ -123,3 +123,21 @@ class TestKnownFraudPatterns:
         # damage_fraud_keywords
         r = run_fraud_detectors({"damage_description": "catastrophic damage"})
         assert "catastrophic" in r
+
+    def test_description_overlap_semantically_consistent_no_mismatch(self):
+        """Incident and damage that align (e.g. rear-ended -> rear bumper) do not get description_mismatch."""
+        claim_data = {
+            "incident_description": "Rear-ended at a stoplight. Other driver hit my bumper while I was stopped.",
+            "damage_description": "Rear bumper dented and scratched. Trunk latch may be misaligned.",
+        }
+        result = run_fraud_detectors(claim_data)
+        assert "incident_damage_description_mismatch" not in result
+
+    def test_description_overlap_unrelated_still_mismatch(self):
+        """Incident and damage with no shared concepts still trigger description_mismatch."""
+        claim_data = {
+            "incident_description": "Hit a deer on the highway at night.",
+            "damage_description": "Kitchen sink leaked and damaged the flooring.",
+        }
+        result = run_fraud_detectors(claim_data)
+        assert "incident_damage_description_mismatch" in result
