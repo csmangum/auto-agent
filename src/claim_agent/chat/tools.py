@@ -159,7 +159,7 @@ def explain_escalation(claim_id: str, *, db_path: str | None = None) -> dict[str
     if claim is None:
         return {"error": f"Claim not found: {claim_id}"}
 
-    history, _ = repo.get_claim_history(claim_id)
+    history, _ = repo.get_claim_history(claim_id, limit=50)
     escalation_events = [
         h for h in history
         if "escalat" in (h.get("action") or "").lower()
@@ -238,7 +238,7 @@ def execute_tool(name: str, arguments: dict[str, Any], *, db_path: str | None = 
         return json.dumps(result, default=str)
     except Exception as exc:
         logger.exception("Tool %s failed: %s", name, exc)
-        return json.dumps({"error": f"Tool execution failed: {exc}"})
+        return json.dumps({"error": "Tool execution failed. Please try again or contact support."})
 
 
 # ---------------------------------------------------------------------------

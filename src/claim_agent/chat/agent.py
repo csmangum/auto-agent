@@ -140,6 +140,23 @@ async def run_chat_agent(
                         "tool_call_id": tc.id,
                         "content": result_str,
                     })
+
+                # If this was the last allowed round, stop looping and notify
+                if _round + 1 >= max_rounds:
+                    logger.warning(
+                        "Chat agent reached max tool-call rounds (%d) without a text response.",
+                        max_rounds,
+                    )
+                    yield _sse_event({
+                        "type": "error",
+                        "message": (
+                            "The assistant reached the maximum number of tool-call steps "
+                            "without producing a final answer. Please try rephrasing your "
+                            "question or breaking it into smaller parts."
+                        ),
+                    })
+                    break
+
                 # Loop back for another LLM call with tool results
                 continue
 
