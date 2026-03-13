@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { RoleSimulationProvider } from './context/RoleSimulationContext';
 import App from './App';
 
 vi.mock('./api/queries', () => ({
@@ -35,9 +36,11 @@ function renderApp(initialPath = '/') {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <App />
-        </MemoryRouter>
+        <RoleSimulationProvider>
+          <MemoryRouter initialEntries={[initialPath]}>
+            <App />
+          </MemoryRouter>
+        </RoleSimulationProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
@@ -92,5 +95,32 @@ describe('App', () => {
   it('renders System Config at /system', () => {
     renderApp('/system');
     expect(screen.getByRole('heading', { name: 'System Configuration' })).toBeInTheDocument();
+  });
+
+  it('renders Simulation landing at /simulate with no role set', () => {
+    localStorage.removeItem('simulation_role');
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'Role Simulation' })).toBeInTheDocument();
+  });
+
+  it('renders Customer portal at /simulate when customer role set', () => {
+    localStorage.setItem('simulation_role', 'customer');
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'My Claims' })).toBeInTheDocument();
+    expect(screen.getByText('Track the status of your insurance claims')).toBeInTheDocument();
+  });
+
+  it('renders Repair Shop portal at /simulate when repair_shop role set', () => {
+    localStorage.setItem('simulation_role', 'repair_shop');
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'Repair Jobs' })).toBeInTheDocument();
+    expect(screen.getByText('Manage vehicle repairs and submit supplemental reports')).toBeInTheDocument();
+  });
+
+  it('renders Third Party portal at /simulate when third_party role set', () => {
+    localStorage.setItem('simulation_role', 'third_party');
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'Cross-Carrier Claims' })).toBeInTheDocument();
+    expect(screen.getByText('Claims involving your policyholders or subrogation demands')).toBeInTheDocument();
   });
 });

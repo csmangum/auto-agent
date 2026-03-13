@@ -10,6 +10,7 @@ import Skills from './pages/Skills';
 import SkillDetail from './pages/SkillDetail';
 import Agents from './pages/Agents';
 import SystemConfig from './pages/SystemConfig';
+import Simulation from './pages/Simulation';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/claims" element={<ClaimsList />} />
           <Route path="/claims/new" element={<NewClaimForm />} />
           <Route path="/claims/:claimId" element={<ClaimDetail />} />
+          <Route path="/simulate" element={<Simulation />} />
           <Route path="/docs" element={<Documentation />} />
           <Route path="/docs/:slug" element={<Documentation />} />
           <Route path="/skills" element={<Skills />} />
