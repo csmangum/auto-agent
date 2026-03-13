@@ -23,6 +23,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Denial / Coverage Dispute](#denial--coverage-dispute-crew) | 3 | Handle denials and coverage disputes (sub-workflow) |
 | [Supplemental](#supplemental-crew) | 3 | Handle additional damage during repair (sub-workflow) |
 | [Human Review Handback](#human-review-handback-crew) | 1 | Process claims returned from human review with a decision (post-escalation) |
+| [Claim Review](#claim-review-crew) | 3 | Supervisor/compliance audit of the claim process (on-demand) |
 
 ---
 
@@ -988,6 +989,59 @@ flowchart LR
 | Agent | Role | Tools |
 |-------|------|-------|
 | Human Review Handback Specialist | Process post-escalation handback | `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision` |
+
+---
+
+## Claim Review Crew
+
+**Location**: `src/claim_agent/crews/claim_review_crew.py`
+
+Performs a supervisor/compliance audit of the claim process. Reviews how the claim was handled (not the claim content) to identify procedural gaps, compliance violations, and handling issues.
+
+### Entry Conditions
+
+- **Trigger**: On-demand via `POST /api/claims/{claim_id}/review` (supervisor role)
+- **Input**: claim_id, claim_data, workflow_output from the latest run
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| Process Auditor | `get_claim_process_context`, `get_claim_notes` |
+| Compliance Analyst | `get_claim_process_context`, `search_california_compliance`, `search_policy_compliance`, `get_compliance_deadlines`, `get_required_disclosures` |
+| Claim Review Supervisor | None (synthesizes findings) |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph ClaimReview["Claim Review Crew"]
+        A[1. Process Auditor: Trace process] --> B[2. Compliance Analyst: Verify rules]
+        B --> C[3. Issue Synthesizer: Produce report]
+    end
+
+    A -.- A1[get_claim_process_context]
+    A -.- A2[Stages, status transitions]
+
+    B -.- B1[search_california_compliance]
+    B -.- B2[FCSP-001 through FCSP-008]
+
+    C -.- C1[ClaimReviewReport]
+```
+
+### Output
+
+`ClaimReviewReport` with:
+- `claim_id`, `overall_pass`
+- `issues`: list of ReviewIssue (category, severity, description, compliance_ref, recommendation)
+- `compliance_checks`: list of ComplianceCheck (provision_id, passed, notes)
+- `recommendations`: overall recommendations
+
+### Integration
+
+- **API**: `POST /claims/{claim_id}/review` (RequireSupervisor)
+- **Persistence**: Report is recorded in `claim_audit_log` with `action="claim_review"`
+- **Tools**: `get_claim_process_context` aggregates claim record, audit log, workflow runs, task checkpoints, and notes
 
 ---
 

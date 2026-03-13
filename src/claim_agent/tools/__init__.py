@@ -90,6 +90,8 @@ __all__ = [
     "send_user_message",
     "record_user_response",
     "check_pending_responses",
+    # Claim review tools
+    "get_claim_process_context",
 ]
 
 
@@ -352,4 +354,9 @@ def __getattr__(name: str):
         from claim_agent.tools.follow_up_tools import check_pending_responses
         setattr(mod, "check_pending_responses", check_pending_responses)
         return check_pending_responses
+    # Claim review tools
+    if name == "get_claim_process_context":
+        from claim_agent.tools.review_tools import get_claim_process_context
+        setattr(mod, "get_claim_process_context", get_claim_process_context)
+        return get_claim_process_context
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

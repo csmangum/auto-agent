@@ -231,6 +231,10 @@ REOPENED_ROUTER = "reopened_router"
 # After-action
 AFTER_ACTION_SUMMARY = "after_action_summary"
 AFTER_ACTION_STATUS = "after_action_status"
+# Claim review (supervisor/compliance)
+PROCESS_AUDITOR = "process_auditor"
+COMPLIANCE_REVIEW_SPECIALIST = "compliance_review_specialist"
+CLAIM_REVIEW_SUPERVISOR = "claim_review_supervisor"
 # Follow-up
 FOLLOW_UP_OUTREACH = "follow_up_outreach"
 MESSAGE_COMPOSITION = "message_composition"
