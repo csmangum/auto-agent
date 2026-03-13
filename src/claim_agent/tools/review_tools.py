@@ -1,15 +1,27 @@
 """Claim review tools for supervisor/compliance process audit."""
 
 import json
+from contextvars import ContextVar
 
 from crewai.tools import tool
 
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 
+# Set by claim_review_orchestrator so tools use the same db as the request
+_claim_review_db_path: ContextVar[str | None] = ContextVar(
+    "claim_review_db_path", default=None
+)
+
+
+def set_claim_review_db_path(db_path: str | None) -> None:
+    """Set db_path for claim review tools (used by orchestrator)."""
+    _claim_review_db_path.set(db_path)
+
 
 def _get_repo() -> ClaimRepository:
-    return ClaimRepository()
+    db_path = _claim_review_db_path.get()
+    return ClaimRepository(db_path=db_path)
 
 
 @tool("Get Claim Process Context")

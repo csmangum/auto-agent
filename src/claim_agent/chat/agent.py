@@ -7,6 +7,7 @@ Responses are streamed as SSE events.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, AsyncGenerator
@@ -118,6 +119,7 @@ async def run_chat_agent(
                         "type": "tool_call",
                         "name": fn_name,
                         "args": fn_args,
+                        "id": tc.id,
                     })
 
                     # Execute tool
@@ -131,6 +133,7 @@ async def run_chat_agent(
                     yield _sse_event({
                         "type": "tool_result",
                         "name": fn_name,
+                        "id": tc.id,
                         "result": result_parsed,
                     })
 
@@ -184,7 +187,6 @@ async def _call_llm(
 
     Runs the blocking litellm call in a thread to avoid blocking the event loop.
     """
-    import asyncio
 
     def _sync_call() -> Any:
         return litellm.completion(

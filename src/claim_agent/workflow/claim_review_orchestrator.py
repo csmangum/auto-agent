@@ -6,6 +6,7 @@ from claim_agent.context import ClaimContext
 from claim_agent.crews.claim_review_crew import create_claim_review_crew
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim_review import ClaimReviewReport
+from claim_agent.tools.review_tools import set_claim_review_db_path
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 
@@ -53,6 +54,10 @@ def run_claim_review(
         "created_at": claim.get("created_at"),
         "updated_at": claim.get("updated_at"),
     }, default=str)
+
+    # Ensure review tools use the same db as this context (for multi-DB/simulation)
+    db_path = getattr(ctx.repo, "_db_path", None)
+    set_claim_review_db_path(db_path)
 
     crew = create_claim_review_crew(ctx.llm)
     result = _kickoff_with_retry(crew, {
