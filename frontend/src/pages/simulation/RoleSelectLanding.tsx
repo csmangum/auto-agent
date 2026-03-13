@@ -5,28 +5,11 @@ import {
   ROLE_DEFINITIONS,
   type SimulationRole,
 } from '../../context/RoleSimulationContext';
+import { ROLE_SELECT_ACCENT_MAP, type SimulationAccent } from '../../utils/theme';
 
 const SIMULATABLE_ROLES = (
   Object.values(ROLE_DEFINITIONS).filter((r) => r.id !== 'adjuster')
 );
-
-const ACCENT_MAP: Record<string, { card: string; hover: string; border: string }> = {
-  emerald: {
-    card: 'hover:bg-emerald-600/5',
-    hover: 'group-hover:text-emerald-400',
-    border: 'hover:border-emerald-500/30',
-  },
-  amber: {
-    card: 'hover:bg-amber-600/5',
-    hover: 'group-hover:text-amber-400',
-    border: 'hover:border-amber-500/30',
-  },
-  purple: {
-    card: 'hover:bg-purple-600/5',
-    hover: 'group-hover:text-purple-400',
-    border: 'hover:border-purple-500/30',
-  },
-};
 
 const ROLE_CAPABILITIES: Record<SimulationRole, string[]> = {
   adjuster: [],
@@ -71,7 +54,9 @@ export default function RoleSelectLanding() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {SIMULATABLE_ROLES.map((r) => {
-          const accents = ACCENT_MAP[r.accent] ?? ACCENT_MAP.emerald;
+          const accents =
+            ROLE_SELECT_ACCENT_MAP[r.accent as SimulationAccent] ??
+            ROLE_SELECT_ACCENT_MAP.emerald;
           const capabilities = ROLE_CAPABILITIES[r.id];
           return (
             <button

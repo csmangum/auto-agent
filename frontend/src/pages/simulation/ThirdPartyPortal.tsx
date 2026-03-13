@@ -118,6 +118,9 @@ function ThirdPartyClaimDetail({ claimId, onBack }: { claimId: string; onBack: (
     );
   }
 
+  // Third-party inter-carrier messages: backend uses user_type for recipient.
+  // Currently filters by 'other'; if backend uses different values (e.g. siu, third_party),
+  // this tab may show no messages until that flow is implemented.
   const followUps = (claim.follow_up_messages ?? []).filter(
     (m) => m.user_type === 'other'
   );

@@ -39,7 +39,7 @@ export default function CustomerClaimView({ claim, history, onBack }: Props) {
     { key: 'dispute' as const, label: 'Dispute', count: null },
   ];
 
-  const canDispute = ['settled', 'dispute_resolved', 'closed'].includes(claim.status);
+  const canDispute = ['settled', 'open'].includes(claim.status);
 
   return (
     <div className="space-y-6 animate-fade-in">

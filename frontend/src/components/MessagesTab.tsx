@@ -4,12 +4,13 @@ import EmptyState from './EmptyState';
 import { formatDateTime } from '../utils/date';
 import { queryKeys } from '../api/queries';
 import type { FollowUpMessage } from '../api/types';
-import { postJSON } from '../api/client';
+import { postClaimFollowUpResponse } from '../api/client';
+import { MESSAGES_TAB_COLORS, type SimulationAccent } from '../utils/theme';
 
 interface MessagesTabProps {
   followUps: FollowUpMessage[];
   claimId: string;
-  accentColor: 'emerald' | 'amber' | 'purple';
+  accentColor: SimulationAccent;
   senderLabel: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -29,56 +30,14 @@ export default function MessagesTab({
   const [submitResult, setSubmitResult] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const colorClasses = {
-    emerald: {
-      text: 'text-emerald-400',
-      hover: 'hover:text-emerald-300',
-      bg: 'bg-emerald-600',
-      hoverBg: 'hover:bg-emerald-500',
-      ring: 'focus:ring-emerald-500/40',
-      resultBg: 'bg-emerald-500/10',
-      resultText: 'text-emerald-400',
-      borderBg: 'bg-emerald-500/5',
-      borderColor: 'border-emerald-500/10',
-      statusBg: 'bg-emerald-500/20',
-      statusText: 'text-emerald-400',
-    },
-    amber: {
-      text: 'text-amber-400',
-      hover: 'hover:text-amber-300',
-      bg: 'bg-amber-600',
-      hoverBg: 'hover:bg-amber-500',
-      ring: 'focus:ring-amber-500/40',
-      resultBg: 'bg-amber-500/10',
-      resultText: 'text-amber-400',
-      borderBg: 'bg-amber-500/5',
-      borderColor: 'border-amber-500/10',
-      statusBg: 'bg-amber-500/20',
-      statusText: 'text-amber-400',
-    },
-    purple: {
-      text: 'text-purple-400',
-      hover: 'hover:text-purple-300',
-      bg: 'bg-purple-600',
-      hoverBg: 'hover:bg-purple-500',
-      ring: 'focus:ring-purple-500/40',
-      resultBg: 'bg-purple-500/10',
-      resultText: 'text-purple-400',
-      borderBg: 'bg-purple-500/5',
-      borderColor: 'border-purple-500/10',
-      statusBg: 'bg-purple-500/20',
-      statusText: 'text-purple-400',
-    },
-  };
-
-  const colors = colorClasses[accentColor];
+  const colors = MESSAGES_TAB_COLORS[accentColor];
 
   async function handleRespond(messageId: number) {
     if (!responseText.trim()) return;
     setSubmitting(true);
     setSubmitResult(null);
     try {
-      await postJSON(`/claims/${claimId}/follow-up/record-response`, {
+      await postClaimFollowUpResponse(claimId, {
         message_id: messageId,
         response_content: responseText.trim(),
       });

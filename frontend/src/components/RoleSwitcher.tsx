@@ -48,7 +48,12 @@ export default function RoleSwitcher() {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div
+            className="fixed inset-0 z-40"
+            data-testid="role-switcher-overlay"
+            onClick={() => setOpen(false)}
+            role="presentation"
+          />
           <div className="absolute bottom-full left-0 right-0 mb-1 z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
             <div className="p-2 border-b border-gray-700/50">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-2">

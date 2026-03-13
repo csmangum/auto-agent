@@ -128,7 +128,7 @@ function RepairJobDetail({ claimId, onBack }: { claimId: string; onBack: () => v
     (m) => m.user_type === 'repair_shop'
   );
   const canSupplement = claim.claim_type === 'partial_loss' &&
-    ['open', 'settled', 'partial_loss', 'processing'].includes(claim.status);
+    ['processing', 'settled'].includes(claim.status);
 
   const tabs = [
     { key: 'details' as const, label: 'Vehicle & Damage' },

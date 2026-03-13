@@ -98,7 +98,29 @@ describe('App', () => {
   });
 
   it('renders Simulation landing at /simulate with no role set', () => {
+    localStorage.removeItem('simulation_role');
     renderApp('/simulate');
     expect(screen.getByRole('heading', { name: 'Role Simulation' })).toBeInTheDocument();
+  });
+
+  it('renders Customer portal at /simulate when customer role set', () => {
+    localStorage.setItem('simulation_role', 'customer');
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'My Claims' })).toBeInTheDocument();
+    expect(screen.getByText('Track the status of your insurance claims')).toBeInTheDocument();
+  });
+
+  it('renders Repair Shop portal at /simulate when repair_shop role set', () => {
+    localStorage.setItem('simulation_role', 'repair_shop');
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'Repair Jobs' })).toBeInTheDocument();
+    expect(screen.getByText('Manage vehicle repairs and submit supplemental reports')).toBeInTheDocument();
+  });
+
+  it('renders Third Party portal at /simulate when third_party role set', () => {
+    localStorage.setItem('simulation_role', 'third_party');
+    renderApp('/simulate');
+    expect(screen.getByRole('heading', { name: 'Cross-Carrier Claims' })).toBeInTheDocument();
+    expect(screen.getByText('Claims involving your policyholders or subrogation demands')).toBeInTheDocument();
   });
 });

@@ -57,7 +57,7 @@ async function fetchJSON<T>(url: string, retries = 1): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function postJSON<T>(url: string, body: unknown): Promise<T> {
+async function postJSON<T>(url: string, body: unknown, retries = 1): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     method: 'POST',
     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
@@ -65,7 +65,12 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text.slice(0, 200)}`);
+    const msg = `API error ${res.status}: ${text.slice(0, 200)}`;
+    if (res.status >= 500 && retries > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      return postJSON<T>(url, body, retries - 1);
+    }
+    throw new Error(msg);
   }
   return res.json() as Promise<T>;
 }
@@ -162,6 +167,25 @@ export const postClaimSupplemental = (
   payload: PostClaimSupplementalPayload
 ): Promise<PostClaimSupplementalResponse> =>
   postJSON<PostClaimSupplementalResponse>(`/claims/${claimId}/supplemental`, payload);
+
+export interface PostClaimFollowUpResponsePayload {
+  message_id: number;
+  response_content: string;
+}
+
+export interface PostClaimFollowUpResponseResponse {
+  success: boolean;
+  message?: string;
+}
+
+export const postClaimFollowUpResponse = (
+  claimId: string,
+  payload: PostClaimFollowUpResponsePayload
+): Promise<PostClaimFollowUpResponseResponse> =>
+  postJSON<PostClaimFollowUpResponseResponse>(
+    `/claims/${claimId}/follow-up/record-response`,
+    payload
+  );
 
 // ---------------------------------------------------------------------------
 // Claim submission and realtime stream
