@@ -65,7 +65,7 @@ def _sse_event(data: dict[str, Any]) -> str:
 
 
 async def run_chat_agent(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     *,
     db_path: str | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -171,8 +171,8 @@ async def run_chat_agent(
         yield _sse_event({"type": "done"})
 
     except Exception as exc:
-        logger.exception("Chat agent error: %s", exc)
-        yield _sse_event({"type": "error", "message": str(exc)})
+        logger.exception("Chat agent error")
+        yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})
         yield _sse_event({"type": "done"})
 
 

@@ -14,6 +14,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<(() => void) | null>(null);
+  const isSendingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -41,7 +42,9 @@ export default function ChatPanel() {
 
   const handleSend = useCallback(() => {
     const text = input.trim();
-    if (!text || streaming) return;
+    if (!text || isSendingRef.current) return;
+
+    isSendingRef.current = true;
 
     const userMsg: ChatMessageType = {
       id: nextMsgId(),
@@ -129,6 +132,7 @@ export default function ChatPanel() {
           }
 
           case 'done':
+            isSendingRef.current = false;
             setStreaming(false);
             break;
 
@@ -145,6 +149,7 @@ export default function ChatPanel() {
               }
               return updated;
             });
+            isSendingRef.current = false;
             setStreaming(false);
             break;
         }
@@ -161,12 +166,13 @@ export default function ChatPanel() {
           }
           return updated;
         });
+        isSendingRef.current = false;
         setStreaming(false);
       },
     );
 
     abortRef.current = abort;
-  }, [input, streaming, messages]);
+  }, [input, messages]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -178,6 +184,7 @@ export default function ChatPanel() {
   const handleClear = () => {
     if (streaming && abortRef.current) {
       abortRef.current();
+      isSendingRef.current = false;
       setStreaming(false);
     }
     setMessages([]);
