@@ -47,8 +47,19 @@ from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverag
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
 from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
+from claim_agent.mock_crew.claim_generator import generate_claim_from_prompt
 
 logger = logging.getLogger(__name__)
+
+
+class GenerateClaimRequest(BaseModel):
+    """Request body for Mock Crew claim generation."""
+
+    prompt: str = Field(..., description="Natural-language description of the claim to generate")
+    submit: bool = Field(
+        default=True,
+        description="If true, submit the generated claim for processing via the workflow",
+    )
 
 
 def get_claim_context() -> ClaimContext:
@@ -689,6 +700,45 @@ def get_claim_workflows(claim_id: str):
         ).fetchall()
 
     return {"claim_id": claim_id, "workflows": [dict(r) for r in rows]}
+
+
+@router.post("/claims/generate")
+async def generate_and_submit_claim(
+    body: GenerateClaimRequest = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Generate claim data via Mock Crew LLM from a prompt, then optionally submit.
+
+    Requires MOCK_CREW_ENABLED=true. The LLM produces realistic ClaimInput JSON
+    from the prompt (e.g. "partial loss, Honda Accord, parking lot fender bender").
+    If submit=true, the claim is created and the workflow runs.
+    """
+    try:
+        claim_input = await asyncio.to_thread(
+            generate_claim_from_prompt,
+            body.prompt,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    claim_data = claim_input.model_dump(mode="json")
+    if not body.submit:
+        return {"claim": claim_data, "submitted": False}
+
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+        claim_input, None, actor_id, ctx=ctx,
+    )
+    result = await asyncio.to_thread(
+        run_claim_workflow,
+        claim_data_with_attachments,
+        None,
+        claim_id,
+        actor_id=actor_id,
+        ctx=ctx,
+    )
+    return {"claim": claim_data, "submitted": True, **result}
 
 
 @router.post("/claims")

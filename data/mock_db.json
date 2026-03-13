@@ -213,6 +213,71 @@
       "comprehensive_deductible": 1000
     }
   },
+  "policy_vehicles": {
+    "POL-001": [
+      { "vin": "1HGBH41JXMN109186", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" },
+      { "vin": "5YJSA1E26HF123456", "vehicle_year": 2022, "vehicle_make": "Tesla", "vehicle_model": "Model 3" }
+    ],
+    "POL-002": [
+      { "vin": "2HGFG3B54CH501234", "vehicle_year": 2020, "vehicle_make": "Honda", "vehicle_model": "Civic" }
+    ],
+    "POL-003": [
+      { "vin": "1C4RJFAG5FC612345", "vehicle_year": 2022, "vehicle_make": "Jeep", "vehicle_model": "Grand Cherokee" },
+      { "vin": "WBA3B1C50EK123456", "vehicle_year": 2014, "vehicle_make": "BMW", "vehicle_model": "328i" }
+    ],
+    "POL-004": [
+      { "vin": "1G1ZD5ST0LF123456", "vehicle_year": 2020, "vehicle_make": "Chevrolet", "vehicle_model": "Camaro" }
+    ],
+    "POL-005": [
+      { "vin": "5FNRL6H76MB012345", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Odyssey" },
+      { "vin": "4T1BF1FK5EU123456", "vehicle_year": 2014, "vehicle_make": "Toyota", "vehicle_model": "Camry" }
+    ],
+    "POL-006": [
+      { "vin": "3VWDP7AJ5HM012345", "vehicle_year": 2017, "vehicle_make": "Volkswagen", "vehicle_model": "Passat" }
+    ],
+    "POL-007": [
+      { "vin": "JM1BL1S58A1234567", "vehicle_year": 2010, "vehicle_make": "Mazda", "vehicle_model": "Mazda3" }
+    ],
+    "POL-008": [
+      { "vin": "2T1BURHE5KC123456", "vehicle_year": 2019, "vehicle_make": "Toyota", "vehicle_model": "Corolla" }
+    ],
+    "POL-009": [
+      { "vin": "1FA6P8TH2L5123456", "vehicle_year": 2020, "vehicle_make": "Ford", "vehicle_model": "Mustang" }
+    ],
+    "POL-010": [
+      { "vin": "1G1YY22G965112345", "vehicle_year": 2009, "vehicle_make": "Chevrolet", "vehicle_model": "Corvette" },
+      { "vin": "5YJ3E1EA1NF123456", "vehicle_year": 2022, "vehicle_make": "Tesla", "vehicle_model": "Model S" }
+    ],
+    "POL-011": [
+      { "vin": "1HGBH41JXMN109187", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" }
+    ],
+    "POL-012": [
+      { "vin": "1C6RR7GT8MS123456", "vehicle_year": 2021, "vehicle_make": "Ram", "vehicle_model": "1500" }
+    ],
+    "POL-014": [
+      { "vin": "5YJSA1E26HF123457", "vehicle_year": 2022, "vehicle_make": "Tesla", "vehicle_model": "Model 3" },
+      { "vin": "1HGBH41JXMN109188", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" }
+    ],
+    "POL-015": [
+      { "vin": "2HGFG3B54CH501235", "vehicle_year": 2020, "vehicle_make": "Honda", "vehicle_model": "Civic" }
+    ],
+    "POL-016": [
+      { "vin": "1C4RJFAG5FC612346", "vehicle_year": 2022, "vehicle_make": "Jeep", "vehicle_model": "Grand Cherokee" }
+    ],
+    "POL-017": [
+      { "vin": "3VWDP7AJ5HM012346", "vehicle_year": 2017, "vehicle_make": "Volkswagen", "vehicle_model": "Passat" }
+    ],
+    "POL-019": [
+      { "vin": "JM1BL1S58A1234568", "vehicle_year": 2010, "vehicle_make": "Mazda", "vehicle_model": "Mazda3" }
+    ],
+    "POL-020": [
+      { "vin": "1FA6P8TH2L5123457", "vehicle_year": 2020, "vehicle_make": "Ford", "vehicle_model": "Mustang" }
+    ],
+    "POL-099": [
+      { "vin": "1HGBH41JXMN109189", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" },
+      { "vin": "5FNRL6H76MB012346", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Odyssey" }
+    ]
+  },
   "claims": [
     {
       "claim_id": "CLM-EXIST01",
