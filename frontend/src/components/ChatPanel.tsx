@@ -185,7 +185,6 @@ export default function ChatPanel() {
     );
 
     abortRef.current = abort;
-  }, [input, messages]);
   }, [input, streaming]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
