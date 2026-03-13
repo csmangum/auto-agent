@@ -22,6 +22,16 @@ export default function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Abort any active SSE stream on unmount to avoid state-update-after-unmount warnings
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) {
+        abortRef.current();
+        abortRef.current = null;
+      }
+    };
+  }, []);
+
   // Focus input when panel opens
   useEffect(() => {
     if (open) {
