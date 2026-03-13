@@ -255,6 +255,17 @@ export function TokenIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** AI / sparkle (generate with AI) */
+export function SparkleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" />
+      <path d="M5 17l.75 1.5 1.5.75-1.5.75L5 21.5l-.75-1.5-1.5-.75 1.5-.75L5 17z" />
+      <path d="M19 17l.75 1.5 1.5.75-1.5.75L19 21.5l-.75-1.5-1.5-.75 1.5-.75L19 17z" />
+    </IconWrapper>
+  );
+}
+
 /** Simulation / role play (theater masks) */
 export function SimulationIcon(props: SVGProps<SVGSVGElement>) {
   return (
