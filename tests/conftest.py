@@ -81,6 +81,14 @@ def _seed_test_data(db_path: str) -> None:
              "2025-01-25", "Backed into pole", "Rear bumper cracked, taillight broken", 1800.0,
              "partial_loss", "processing"),
         )
+        conn.execute(
+            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
+            "vehicle_model, incident_date, incident_description, damage_description, "
+            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("CLM-ARCHIVED", "POL-006", "1HGBH41JXMN109999", 2018, "Honda", "Civic",
+             "2024-06-10", "Old claim", "Minor dent", 800.0,
+             "partial_loss", "archived"),
+        )
 
         # Audit log entries (with actor_id, before_state, after_state for audit trail)
         conn.execute(

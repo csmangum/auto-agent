@@ -783,7 +783,7 @@ export default function NewClaimForm() {
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-400 text-xs font-medium"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      {STAGE_LABELS[stage] ?? stage}
+                      {STAGE_LABELS[stage.split(':')[0]] ?? stage}
                     </span>
                   ))}
                 </div>

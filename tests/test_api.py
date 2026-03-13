@@ -38,12 +38,13 @@ class TestClaimsStats:
         resp = client.get("/api/claims/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_claims"] == 5
+        assert data["total_claims"] == 6
         assert "by_status" in data
         assert "by_type" in data
         assert data["by_status"]["open"] == 1
         assert data["by_status"]["closed"] == 1
         assert data["by_status"]["fraud_suspected"] == 1
+        assert data["by_status"]["archived"] == 1
 
 
 class TestClaimsList:
@@ -65,6 +66,24 @@ class TestClaimsList:
         data = resp.json()
         assert data["total"] == 1
         assert data["claims"][0]["id"] == "CLM-TEST003"
+
+    def test_list_claims_excludes_archived_by_default(self, client):
+        """Archived claims are excluded when include_archived is not set."""
+        resp = client.get("/api/claims")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 5
+        claim_ids = [c["id"] for c in data["claims"]]
+        assert "CLM-ARCHIVED" not in claim_ids
+
+    def test_list_claims_includes_archived_when_requested(self, client):
+        """Archived claims are included when include_archived=true."""
+        resp = client.get("/api/claims?include_archived=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 6
+        claim_ids = [c["id"] for c in data["claims"]]
+        assert "CLM-ARCHIVED" in claim_ids
 
     def test_pagination(self, client):
         resp = client.get("/api/claims?limit=1&offset=0")
@@ -804,7 +823,7 @@ class TestSystemHealth:
         data = resp.json()
         assert data["status"] == "healthy"
         assert data["database"] == "connected"
-        assert data["total_claims"] == 5
+        assert data["total_claims"] == 6
 
 
 class TestAgentsCatalog:
@@ -1577,7 +1596,7 @@ class TestProcessClaimAsyncEndpoint:
         assert "progress" in first_data
         assert first_data["progress"] == ["router", "escalation_check"]
 
-    def test_stream_progress_empty_when_no_checkpoints(self, client):
+    def test_stream_progress_empty_when_no_checkpoints(self, client, seeded_temp_db):
         """Stream payload has empty progress when no task_checkpoints exist."""
         stream_resp = client.get("/api/claims/CLM-TEST001/stream")
         assert stream_resp.status_code == 200
