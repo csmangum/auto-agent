@@ -77,8 +77,8 @@ export default function MessagesTab({
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-medium ${colors.text}`}>{senderLabel}</span>
                 <span className={`text-xs px-2 py-0.5 rounded ${
-                  msg.status === 'responded' ? 'bg-emerald-500/20 text-emerald-400'
-                    : msg.status === 'sent' ? `${colors.statusBg} ${colors.statusText}`
+                  msg.status === 'responded' || msg.status === 'sent'
+                    ? `${colors.statusBg} ${colors.statusText}`
                     : 'bg-gray-500/20 text-gray-400'
                 }`}>
                   {msg.status === 'sent' 
