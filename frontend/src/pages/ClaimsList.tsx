@@ -7,7 +7,7 @@ import { useClaims } from '../api/queries';
 const STATUSES = [
   'pending', 'processing', 'open', 'closed', 'duplicate',
   'fraud_suspected', 'fraud_confirmed', 'needs_review',
-  'partial_loss', 'under_investigation', 'denied', 'settled', 'disputed', 'failed',
+  'partial_loss', 'under_investigation', 'denied', 'settled', 'disputed', 'failed', 'archived',
 ];
 
 const TYPES = [
@@ -24,6 +24,7 @@ export default function ClaimsList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get('status') ?? '';
   const typeFilter = searchParams.get('type') ?? '';
+  const includeArchived = searchParams.get('include_archived') === 'true';
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -38,12 +39,24 @@ export default function ClaimsList() {
     setPage(1);
   }, [searchParams, setSearchParams]);
 
+  const setIncludeArchived = useCallback((checked: boolean) => {
+    const params = new URLSearchParams(searchParams);
+    if (checked) {
+      params.set('include_archived', 'true');
+    } else {
+      params.delete('include_archived');
+    }
+    setSearchParams(params, { replace: true });
+    setPage(1);
+  }, [searchParams, setSearchParams]);
+
   const offset = (page - 1) * pageSize;
   const params = {
     limit: pageSize,
     offset,
     ...(statusFilter && { status: statusFilter }),
     ...(typeFilter && { claim_type: typeFilter }),
+    ...(includeArchived && { include_archived: true }),
   };
   const { data, isLoading, error } = useClaims(params);
   const claims = data?.claims ?? [];
@@ -118,6 +131,16 @@ export default function ClaimsList() {
             </option>
           ))}
         </select>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(e) => setIncludeArchived(e.target.checked)}
+            className="rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500/40"
+          />
+          <span className="text-sm text-gray-300">Include archived</span>
+        </label>
 
         {(statusFilter || typeFilter) && (
           <button

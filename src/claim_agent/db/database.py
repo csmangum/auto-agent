@@ -1,9 +1,12 @@
 """SQLite connection and schema initialization."""
 
+import logging
 import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Tracks which database paths have had schema applied (avoid running on every connection)
 _schema_initialized: set[str] = set()
@@ -173,6 +176,10 @@ def ensure_fresh_db_on_startup() -> None:
     db_path = get_db_path()
     p = Path(db_path)
     if p.exists():
+        logger.warning(
+            "Claims DB wiped on startup (FRESH_CLAIMS_DB_ON_STARTUP=true). "
+            "All claims have been deleted."
+        )
         p.unlink()
     with _schema_lock:
         _schema_initialized.discard(db_path)

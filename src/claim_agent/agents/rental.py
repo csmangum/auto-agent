@@ -10,6 +10,7 @@ from claim_agent.tools import (
     get_claim_notes,
     get_rental_limits,
     process_rental_reimbursement,
+    query_policy_db,
     search_california_compliance,
 )
 from claim_agent.skills import (
@@ -28,6 +29,7 @@ def create_rental_eligibility_specialist_agent(llm: LLMProtocol | None = None):
         goal=skill["goal"],
         backstory=skill["backstory"],
         tools=[
+            query_policy_db,
             check_rental_coverage,
             get_rental_limits,
             search_california_compliance,

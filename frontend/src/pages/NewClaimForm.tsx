@@ -773,7 +773,7 @@ export default function NewClaimForm() {
             </div>
 
             {/* Stage progress */}
-            {!done && progress.length > 0 && (
+            {progress.length > 0 && (
               <div>
                 <h3 className="text-sm font-medium text-gray-300 mb-3">Progress</h3>
                 <div className="flex flex-wrap gap-2">

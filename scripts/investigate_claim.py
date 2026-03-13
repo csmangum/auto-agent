@@ -95,8 +95,8 @@ def main() -> int:
             print(f"  estimated_damage={est_f} >= {esc['high_value_threshold']} -> high_value: {high}")
         except (ValueError, TypeError):
             pass
-    print("  low_confidence: router output contains 'possibly','might be','unclear','unsure','could be','uncertain'")
-    print("  ambiguous_similarity: duplicate_detection similarity in [50,80] range")
+    print(f"  low_confidence: triggered when router_confidence < {esc['confidence_threshold']} (escalation.confidence_threshold; keyword-based only if router_confidence is missing)")
+    print(f"  ambiguous_similarity: duplicate_detection similarity in configured range {esc['similarity_ambiguous_range']}")
     print("  fraud_suspected: fraud detectors return any indicator (keywords, description overlap, etc.)")
 
     print()
