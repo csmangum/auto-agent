@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from typing import Any, AsyncGenerator
 
 import litellm
@@ -21,7 +20,6 @@ from claim_agent.config.llm import (
     get_model_name,
     setup_observability,
 )
-from claim_agent.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
