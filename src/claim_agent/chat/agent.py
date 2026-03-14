@@ -17,7 +17,7 @@ import litellm
 
 from claim_agent.chat.tools import TOOL_DEFINITIONS, execute_tool
 from claim_agent.config.llm import (
-    _PLACEHOLDER_KEYS,
+    ensure_openrouter_api_key,
     get_model_name,
     setup_observability,
 )
@@ -90,11 +90,7 @@ async def run_chat_agent(
 
     # LiteLLM expects OPENROUTER_API_KEY for openrouter/* models; use OPENAI_API_KEY as fallback
     if model.startswith("openrouter/"):
-        env_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
-        if not env_key or env_key in _PLACEHOLDER_KEYS:
-            api_key = (get_settings().llm.api_key or "").strip()
-            if api_key and api_key not in _PLACEHOLDER_KEYS:
-                os.environ["OPENROUTER_API_KEY"] = api_key
+        ensure_openrouter_api_key()
 
     chat_cfg = _get_chat_config()
     max_rounds = chat_cfg.get("max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS)

@@ -23,6 +23,20 @@ _langsmith_initialized = False
 _langsmith_lock = threading.Lock()
 
 
+def ensure_openrouter_api_key() -> None:
+    """Ensure OPENROUTER_API_KEY is set in environment if needed.
+
+    If OPENROUTER_API_KEY is missing or a placeholder, populate it from the
+    configured LLM API key. This is needed because litellm expects
+    OPENROUTER_API_KEY for openrouter/* models.
+    """
+    env_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    if not env_key or env_key in _PLACEHOLDER_KEYS:
+        api_key = (get_settings().llm.api_key or "").strip()
+        if api_key and api_key not in _PLACEHOLDER_KEYS:
+            os.environ["OPENROUTER_API_KEY"] = api_key
+
+
 def setup_observability() -> None:
     """Set up observability features (LangSmith, callbacks).
 
@@ -92,10 +106,7 @@ def get_llm():
     )
 
     if base and "openrouter" in base.lower():
-        # LiteLLM expects OPENROUTER_API_KEY in env when using openrouter/* models
-        env_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
-        if not env_key or env_key in _PLACEHOLDER_KEYS:
-            os.environ["OPENROUTER_API_KEY"] = api_key
+        ensure_openrouter_api_key()
         return LLM(model=model, base_url=base, api_key=api_key)
     return LLM(model=model, api_key=api_key)
 
