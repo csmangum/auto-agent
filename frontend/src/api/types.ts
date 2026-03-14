@@ -164,3 +164,31 @@ export interface SystemHealthData {
   database: string;
   total_claims: number;
 }
+
+// ---------------------------------------------------------------------------
+// Chat Agent types
+// ---------------------------------------------------------------------------
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  toolCalls?: ChatToolCall[];
+}
+
+export interface ChatToolCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+}
+
+export interface ChatStreamEvent {
+  type: 'text' | 'tool_call' | 'tool_result' | 'done' | 'error';
+  content?: string;
+  name?: string;
+  id?: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  message?: string;
+}

@@ -388,6 +388,21 @@ class MockCrewConfig(BaseSettings):
             return None
 
 
+class ChatConfig(BaseSettings):
+    """Chat agent configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="CHAT_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    max_tool_rounds: int = Field(default=5, ge=1, le=20, description="Max tool-call loops per turn")
+    max_message_history: int = Field(default=50, ge=1, le=200, description="Max messages to send to LLM")
+    system_prompt_override: str = Field(default="", description="Custom system prompt (empty = use default)")
+
+
 class MockImageConfig(BaseSettings):
     """Mock image generator: OpenRouter image gen + mock vision analysis."""
 
@@ -459,6 +474,7 @@ class Settings(BaseSettings):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     mock_crew: MockCrewConfig = Field(default_factory=MockCrewConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
+    chat: ChatConfig = Field(default_factory=ChatConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40

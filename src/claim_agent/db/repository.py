@@ -16,6 +16,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_APPROVAL,
     AUDIT_EVENT_ASSIGN,
     AUDIT_EVENT_ATTACHMENTS_UPDATED,
+    AUDIT_EVENT_CLAIM_REVIEW,
     AUDIT_EVENT_CREATED,
     AUDIT_EVENT_ESCALATE_TO_SIU,
     AUDIT_EVENT_FOLLOW_UP_RESPONSE,
@@ -390,6 +391,27 @@ class ClaimRepository:
             # All rows fetched; total is simply the list length — no extra query needed.
             total = len(result)
         return result, total
+
+    def record_claim_review(
+        self,
+        claim_id: str,
+        report_json: str,
+        actor_id: str,
+    ) -> None:
+        """Record a claim review result in the audit log. Raises ClaimNotFoundError if claim does not exist."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_CLAIM_REVIEW, report_json, sanitize_actor_id(actor_id)),
+            )
 
     def add_note(
         self,

@@ -65,6 +65,7 @@ Logic functions access external data (policies, valuations, repair shops, parts,
 | Supplemental | `supplemental_tools.py` | get_original_repair_estimate, calculate_supplemental_estimate, update_repair_authorization |
 | Compliance | `compliance_tools.py` | search_california_compliance |
 | RAG | `rag_tools.py` | search_policy_compliance, get_compliance_deadlines, get_required_disclosures, get_coverage_exclusions, get_total_loss_requirements, get_fraud_detection_guidance, get_repair_standards |
+| Review | `review_tools.py` | get_claim_process_context |
 
 ---
 

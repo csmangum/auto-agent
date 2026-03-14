@@ -65,7 +65,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 export default function NewClaimForm() {
   const { data: policiesData, isLoading: policiesLoading, error: policiesError } = usePolicies();
-  const policies = policiesData?.policies ?? [];
+  const policies = useMemo(() => policiesData?.policies ?? [], [policiesData?.policies]);
   const [form, setForm] = useState<ClaimFormState>(INITIAL_FORM);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);

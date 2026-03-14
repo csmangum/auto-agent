@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import AuthControl from './AuthControl';
+import ChatPanel from './ChatPanel';
 import RoleSwitcher from './RoleSwitcher';
 import SimulationBanner from './SimulationBanner';
 import { DocumentIcon } from './icons';
@@ -148,6 +149,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Chat assistant (floating panel) */}
+      <ChatPanel />
     </div>
   );
 }

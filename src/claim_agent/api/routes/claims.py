@@ -1364,3 +1364,33 @@ async def reprocess_claim(
         ctx=ctx,
     )
     return result
+
+
+@router.post("/claims/{claim_id}/review")
+async def run_claim_review(
+    claim_id: str,
+    auth: AuthContext = RequireSupervisor,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Run supervisor/compliance review on the claim process. Requires supervisor role.
+
+    Returns a ClaimReviewReport with issues, compliance_checks, and recommendations.
+    The report is persisted to the audit log.
+    """
+    from claim_agent.workflow.claim_review_orchestrator import run_claim_review as _run_claim_review
+
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    actor_id = auth.identity if auth.identity != "anonymous" else "claim_review_crew"
+    report = await asyncio.to_thread(
+        _run_claim_review,
+        claim_id,
+        actor_id=actor_id,
+        ctx=ctx,
+    )
+
+    report_json = report.model_dump_json()
+    ctx.repo.record_claim_review(claim_id, report_json, actor_id)
+
+    return report.model_dump(mode="json")
