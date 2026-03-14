@@ -41,7 +41,9 @@ export default function ChatPanel() {
   }, [open]);
 
   const messagesRef = useRef(messages);
-  messagesRef.current = messages;
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -73,7 +75,7 @@ export default function ChatPanel() {
       .filter((m) => m.content || m.role === 'user')
       .map((m) => ({ role: m.role, content: m.content }));
 
-    let currentToolCalls: ChatToolCall[] = [];
+    const currentToolCalls: ChatToolCall[] = [];
     let currentContent = '';
 
     const abort = streamChat(
@@ -185,7 +187,7 @@ export default function ChatPanel() {
     );
 
     abortRef.current = abort;
-  }, [input, streaming]);
+  }, [input]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

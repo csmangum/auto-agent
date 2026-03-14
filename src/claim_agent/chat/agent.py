@@ -173,7 +173,7 @@ async def run_chat_agent(
 
         yield _sse_event({"type": "done"})
 
-    except Exception as exc:
+    except Exception:
         logger.exception("Chat agent error")
         yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})
         yield _sse_event({"type": "done"})
