@@ -73,3 +73,21 @@ class SIUAdapter(ABC):
     def create_case(self, claim_id: str, indicators: list[str]) -> str:
         """Create an SIU case and return the case identifier."""
         ...
+
+    def get_case(self, case_id: str) -> dict[str, Any] | None:
+        """Return case details for an SIU case, or None if not found."""
+        raise NotImplementedError(
+            "SIUAdapter.get_case: override in adapter for SIU case lookup."
+        )
+
+    def add_investigation_note(self, case_id: str, note: str, category: str = "general") -> bool:
+        """Add an investigation note to an SIU case. Returns True on success."""
+        raise NotImplementedError(
+            "SIUAdapter.add_investigation_note: override in adapter for SIU case notes."
+        )
+
+    def update_case_status(self, case_id: str, status: str) -> bool:
+        """Update SIU case status (e.g. open, investigating, referred, closed). Returns True on success."""
+        raise NotImplementedError(
+            "SIUAdapter.update_case_status: override in adapter for SIU case status updates."
+        )

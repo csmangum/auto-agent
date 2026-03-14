@@ -183,8 +183,33 @@ _CREWS_CATALOG = [
             {
                 "name": "Fraud Assessment Specialist",
                 "skill": "fraud_assessment",
-                "tools": ["perform_fraud_assessment", "generate_fraud_report"],
-                "description": "Makes fraud determinations and generates reports",
+                "tools": ["perform_fraud_assessment", "generate_fraud_report", "get_fraud_detection_guidance"],
+                "description": "Makes fraud determinations and SIU referrals",
+            },
+        ],
+    },
+    {
+        "name": "SIU Investigation Crew",
+        "description": "Investigates claims under SIU review. Document verification, records check, case management, state fraud bureau filing. Sub-workflow via POST /claims/{id}/siu-investigate.",
+        "module": "crews/siu_crew.py",
+        "agents": [
+            {
+                "name": "SIU Document Verification Specialist",
+                "skill": "siu_document_verification",
+                "tools": ["verify_document_authenticity", "get_siu_case_details", "add_siu_investigation_note"],
+                "description": "Verifies proof of loss, repair estimates, IDs, photos",
+            },
+            {
+                "name": "SIU Records Investigator",
+                "skill": "siu_records_investigator",
+                "tools": ["check_claimant_investigation_history", "search_claims_db", "get_siu_case_details", "add_siu_investigation_note"],
+                "description": "Checks prior claims, fraud flags, SIU cases on VIN/policy",
+            },
+            {
+                "name": "SIU Case Manager",
+                "skill": "siu_case_manager",
+                "tools": ["get_siu_case_details", "add_siu_investigation_note", "update_siu_case_status", "file_fraud_report_state_bureau", "get_fraud_detection_guidance"],
+                "description": "Synthesizes findings, files state reports, updates case status",
             },
         ],
     },
