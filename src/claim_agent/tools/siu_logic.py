@@ -110,14 +110,15 @@ def check_claimant_investigation_history_impl(
 
     try:
         claim = repo.get_claim(claim_id)
-        vin = vin or (claim.get("vin") if claim else "") or ""
-        policy_number = policy_number or (claim.get("policy_number") if claim else "") or ""
+        if not vin and not policy_number:
+            vin = (claim.get("vin") if claim else "") or ""
+            policy_number = (claim.get("policy_number") if claim else "") or ""
     except Exception:
         pass
 
-    if vin:
+    if vin or policy_number:
         try:
-            all_claims = repo.search_claims(vin=vin, incident_date=None)
+            all_claims = repo.search_claims(vin=vin or None, policy_number=policy_number or None, incident_date=None)
             fraud_claims = [c for c in all_claims if c.get("status") in ("fraud_suspected", "fraud_confirmed") and c.get("id") != claim_id]
             siu_claims = [c for c in all_claims if c.get("siu_case_id") and c.get("id") != claim_id]
             result["prior_claims"] = [

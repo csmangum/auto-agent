@@ -915,27 +915,31 @@ class ClaimRepository:
         self,
         vin: str | None = None,
         incident_date: str | None = None,
+        policy_number: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Search claims by VIN and/or incident_date. Both optional; if both None, returns []."""
+        """Search claims by VIN, policy_number and/or incident_date. All optional; if all None, returns []."""
         vin = None if vin is None else str(vin).strip()
         incident_date = None if incident_date is None else str(incident_date).strip()
-        if not vin and not incident_date:
+        policy_number = None if policy_number is None else str(policy_number).strip()
+        if not vin and not incident_date and not policy_number:
             return []
         with get_connection(self._db_path) as conn:
-            if vin and incident_date:
-                rows = conn.execute(
-                    "SELECT * FROM claims WHERE vin = ? AND incident_date = ?",
-                    (vin, incident_date),
-                ).fetchall()
-            elif vin:
-                rows = conn.execute(
-                    "SELECT * FROM claims WHERE vin = ?", (vin,)
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM claims WHERE incident_date = ?",
-                    (incident_date,),
-                ).fetchall()
+            conditions = []
+            params = []
+            if vin:
+                conditions.append("vin = ?")
+                params.append(vin)
+            if incident_date:
+                conditions.append("incident_date = ?")
+                params.append(incident_date)
+            if policy_number:
+                conditions.append("policy_number = ?")
+                params.append(policy_number)
+            where_clause = " AND ".join(conditions)
+            rows = conn.execute(
+                f"SELECT * FROM claims WHERE {where_clause}",
+                tuple(params),
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def list_claims_for_retention(
