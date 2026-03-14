@@ -65,9 +65,7 @@ def run_siu_investigation(
 
     siu_case_id = claim.get("siu_case_id")
     if not siu_case_id:
-        from claim_agent.adapters.registry import get_siu_adapter
-
-        adapter = ctx.adapters.siu if ctx else get_siu_adapter()
+        adapter = ctx.adapters.siu
         try:
             indicators = ["manual_escalation"]
             workflow_runs = repo.get_workflow_runs(claim_id, limit=5)
@@ -84,7 +82,7 @@ def run_siu_investigation(
                 "Escalate via fraud workflow first to create a case, or use an adapter that supports create_case."
             )
 
-    _llm = llm or (ctx.llm if ctx else None) or get_llm()
+    _llm = llm or ctx.llm or get_llm()
     if ctx.llm is None or llm is not None:
         ctx = ClaimContext(
             repo=ctx.repo,
