@@ -119,7 +119,7 @@ def check_claimant_investigation_history_impl(
         try:
             all_claims = repo.search_claims(vin=vin, incident_date=None)
             fraud_claims = [c for c in all_claims if c.get("status") in ("fraud_suspected", "fraud_confirmed")]
-            siu_claims = [c for c in all_claims if c.get("siu_case_id")]
+            siu_claims = [c for c in all_claims if c.get("siu_case_id") and c.get("id") != claim_id]
             result["prior_claims"] = [
                 {"claim_id": c.get("id"), "status": c.get("status"), "incident_date": c.get("incident_date")}
                 for c in all_claims
