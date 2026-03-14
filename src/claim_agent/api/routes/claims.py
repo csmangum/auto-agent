@@ -601,6 +601,31 @@ def escalate_to_siu(
     return {"claim_id": claim_id, "status": "under_investigation"}
 
 
+@router.post("/claims/{claim_id}/siu-investigate")
+def run_siu_investigation(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Run SIU investigation crew on a claim under investigation.
+
+    Performs document verification, records investigation, and case management.
+    Claim must have status under_investigation or fraud_suspected.
+    Creates SIU case if not already present.
+    """
+    from claim_agent.workflow.siu_orchestrator import run_siu_investigation as _run_siu
+
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    try:
+        result = _run_siu(claim_id, ctx=ctx)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
 def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     """Get a single claim by ID. Includes claim notes and follow-up messages."""

@@ -9,7 +9,14 @@ from claim_agent.tools.fraud_tools import (
     perform_fraud_assessment,
     generate_fraud_report,
 )
-from claim_agent.tools import add_claim_note, detect_fraud_indicators, escalate_claim, get_claim_notes, search_claims_db
+from claim_agent.tools import (
+    add_claim_note,
+    detect_fraud_indicators,
+    escalate_claim,
+    get_claim_notes,
+    get_fraud_detection_guidance,
+    search_claims_db,
+)
 from claim_agent.skills import load_skill, PATTERN_ANALYSIS, CROSS_REFERENCE, FRAUD_ASSESSMENT
 
 
@@ -46,7 +53,14 @@ def create_fraud_assessment_agent(llm: LLMProtocol | None = None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[add_claim_note, perform_fraud_assessment, generate_fraud_report, get_claim_notes, escalate_claim],
+        tools=[
+            add_claim_note,
+            perform_fraud_assessment,
+            generate_fraud_report,
+            get_claim_notes,
+            get_fraud_detection_guidance,
+            escalate_claim,
+        ],
         verbose=True,
         llm=llm,
     )

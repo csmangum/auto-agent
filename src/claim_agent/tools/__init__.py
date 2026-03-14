@@ -92,6 +92,13 @@ __all__ = [
     "check_pending_responses",
     # Claim review tools
     "get_claim_process_context",
+    # SIU investigation tools
+    "get_siu_case_details",
+    "add_siu_investigation_note",
+    "update_siu_case_status",
+    "verify_document_authenticity",
+    "check_claimant_investigation_history",
+    "file_fraud_report_state_bureau",
 ]
 
 
@@ -359,4 +366,29 @@ def __getattr__(name: str):
         from claim_agent.tools.review_tools import get_claim_process_context
         setattr(mod, "get_claim_process_context", get_claim_process_context)
         return get_claim_process_context
+    # SIU investigation tools
+    if name == "get_siu_case_details":
+        from claim_agent.tools.siu_tools import get_siu_case_details
+        setattr(mod, "get_siu_case_details", get_siu_case_details)
+        return get_siu_case_details
+    if name == "add_siu_investigation_note":
+        from claim_agent.tools.siu_tools import add_siu_investigation_note
+        setattr(mod, "add_siu_investigation_note", add_siu_investigation_note)
+        return add_siu_investigation_note
+    if name == "update_siu_case_status":
+        from claim_agent.tools.siu_tools import update_siu_case_status
+        setattr(mod, "update_siu_case_status", update_siu_case_status)
+        return update_siu_case_status
+    if name == "verify_document_authenticity":
+        from claim_agent.tools.siu_tools import verify_document_authenticity
+        setattr(mod, "verify_document_authenticity", verify_document_authenticity)
+        return verify_document_authenticity
+    if name == "check_claimant_investigation_history":
+        from claim_agent.tools.siu_tools import check_claimant_investigation_history
+        setattr(mod, "check_claimant_investigation_history", check_claimant_investigation_history)
+        return check_claimant_investigation_history
+    if name == "file_fraud_report_state_bureau":
+        from claim_agent.tools.siu_tools import file_fraud_report_state_bureau
+        setattr(mod, "file_fraud_report_state_bureau", file_fraud_report_state_bureau)
+        return file_fraud_report_state_bureau
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
