@@ -13,6 +13,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 | [Duplicate](#duplicate-crew) | 3 | Handle potential duplicates |
 | [Total Loss](#total-loss-crew) | 3 | Process total loss claims |
 | [Fraud Detection](#fraud-detection-crew) | 3 | Analyze suspicious claims |
+| [SIU Investigation](#siu-investigation-crew) | 3 | Investigate claims under SIU review (sub-workflow) |
 | [Partial Loss](#partial-loss-crew) | 5 | Handle repairable damage |
 | [Bodily Injury](#bodily-injury-crew) | 3 | Handle injury-related claims |
 | [Reopened](#reopened-crew) | 3 | Validate and route reopened settled claims |
@@ -488,6 +489,82 @@ The Fraud crew is invoked **after**:
 - **AC7:** Final status is `fraud_suspected` on success
 - **AC8:** Task context flows: Cross-reference receives pattern; Assessment receives both
 - **AC9:** Documentation matches this specification
+
+---
+
+## SIU Investigation Crew
+
+**Location**: `src/claim_agent/crews/siu_crew.py`
+
+Investigates claims under Special Investigations Unit review. Performs document verification, records investigation, and case management including state fraud bureau filing. Sub-workflow invoked via `POST /claims/{claim_id}/siu-investigate`.
+
+### Entry Conditions
+
+- **Claim status:** `under_investigation` or `fraud_suspected`
+- **Trigger:** On-demand via `POST /api/claims/{claim_id}/siu-investigate`
+- **SIU case:** Creates case via adapter if not already present (e.g., manual escalation)
+
+### Agents
+
+| Agent | Tools Used |
+|-------|------------|
+| SIU Document Verification Specialist | [`verify_document_authenticity`](tools.md#verify_document_authenticity), [`get_siu_case_details`](tools.md#get_siu_case_details), [`add_siu_investigation_note`](tools.md#add_siu_investigation_note) |
+| SIU Records Investigator | [`check_claimant_investigation_history`](tools.md#check_claimant_investigation_history), [`search_claims_db`](tools.md#search_claims_db), [`get_siu_case_details`](tools.md#get_siu_case_details), [`add_siu_investigation_note`](tools.md#add_siu_investigation_note) |
+| SIU Case Manager | [`get_siu_case_details`](tools.md#get_siu_case_details), [`add_siu_investigation_note`](tools.md#add_siu_investigation_note), [`update_siu_case_status`](tools.md#update_siu_case_status), [`file_fraud_report_state_bureau`](tools.md#file_fraud_report_state_bureau), [`get_fraud_detection_guidance`](tools.md#get_fraud_detection_guidance) |
+
+### Flow Sequence
+
+```mermaid
+flowchart TB
+    subgraph SIU["SIU Investigation Crew"]
+        A[1. Document Verification] --> B[2. Records Investigation] --> C[3. Case Management]
+    end
+    
+    A -.- A1[verify_document_authenticity]
+    A -.- A2[add_siu_investigation_note]
+    
+    B -.- B1[check_claimant_investigation_history]
+    B -.- B2[search_claims_db]
+    
+    C -.- C1[file_fraud_report_state_bureau]
+    C -.- C2[update_siu_case_status]
+```
+
+### Step 1: Document Verification
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | SIU Document Verification Specialist |
+| **Input** | `claim_data` with claim_id, siu_case_id |
+| **Action** | Verify proof of loss, repair estimates, IDs, photos |
+| **Output** | Document verification summary, SIU case notes |
+| **Tools** | `verify_document_authenticity`, `get_siu_case_details`, `add_siu_investigation_note` |
+
+### Step 2: Records Investigation
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | SIU Records Investigator |
+| **Input** | `claim_data` + document verification |
+| **Action** | Check prior claims, fraud flags, SIU cases on VIN/policy |
+| **Output** | prior_claims, prior_fraud_flags, prior_siu_cases, risk_summary |
+| **Tools** | `check_claimant_investigation_history`, `search_claims_db`, `add_siu_investigation_note` |
+
+### Step 3: Case Management
+
+| Aspect | Specification |
+|--------|---------------|
+| **Agent** | SIU Case Manager |
+| **Input** | Document + records findings |
+| **Action** | Synthesize, file state fraud report if required, update case status |
+| **Output** | findings_summary, recommendation, state_report_filed, case_status |
+| **Tools** | `get_siu_case_details`, `file_fraud_report_state_bureau`, `update_siu_case_status`, `get_fraud_detection_guidance` |
+
+### Integration
+
+- **API:** `POST /claims/{claim_id}/siu-investigate` (RequireAdjuster)
+- **Eligible statuses:** `under_investigation`, `fraud_suspected`
+- **SIU case:** Created automatically if missing (manual escalation)
 
 ---
 
