@@ -523,7 +523,7 @@ Add an investigation note to an SIU case.
 |-----------|------|-------------|
 | `case_id` | string | SIU case ID |
 | `note` | string | Note content |
-| `category` | string (optional) | general, document_review, records_check, findings |
+| `category` | string (optional) | general, document_review, claimant_interview, records_check, findings |
 
 **Returns:** JSON with success, case_id, category
 
