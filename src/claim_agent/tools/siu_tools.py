@@ -1,7 +1,5 @@
 """SIU investigation tools for the Special Investigations Unit crew."""
 
-import json
-
 from crewai.tools import tool
 
 from claim_agent.tools.siu_logic import (
