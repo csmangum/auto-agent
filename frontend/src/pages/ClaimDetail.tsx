@@ -63,7 +63,7 @@ export default function ClaimDetail() {
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '📋' },
-    { key: 'tasks', label: `Tasks (${tasks.length})`, icon: '☑️' },
+    { key: 'tasks', label: `Tasks (${claim?.tasks_total ?? tasks.length})`, icon: '☑️' },
     { key: 'documents', label: `Documents (${attachments.length})`, icon: '📎' },
     { key: 'notes', label: `Notes & Follow-ups (${notesFollowUpsCount})`, icon: '💬' },
     { key: 'audit', label: `Audit Log (${history.length})`, icon: '📜' },
@@ -201,6 +201,10 @@ export default function ClaimDetail() {
                               : '📎';
                   const filename = att.url.split('/').pop() ?? `Document ${i + 1}`;
                   const stableKey = `${att.url}-${att.description ?? ''}-${i}`;
+                  const safeHref =
+                    att.url.startsWith('http://') || att.url.startsWith('https://') || att.url.startsWith('/')
+                      ? att.url
+                      : '#';
                   return (
                     <div
                       key={stableKey}
@@ -216,7 +220,7 @@ export default function ClaimDetail() {
                         </div>
                       </div>
                       <a
-                        href={att.url}
+                        href={safeHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="shrink-0 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"

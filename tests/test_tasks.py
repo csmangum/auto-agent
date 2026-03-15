@@ -191,6 +191,14 @@ class TestTaskRepository:
         updated = repo.update_task(task_id, resolution_notes=long_notes)
         assert len(updated["resolution_notes"]) <= 5000
 
+    def test_update_task_empty_title_repo(self, seeded_temp_db):
+        """update_task raises ValueError when title sanitizes to empty."""
+        from claim_agent.db.repository import ClaimRepository
+        repo = ClaimRepository()
+        task_id = repo.create_task("CLM-TEST001", "T", "other")
+        with pytest.raises(ValueError, match="empty"):
+            repo.update_task(task_id, title="   ")
+
     def test_create_task_audit_log_entry(self, seeded_temp_db):
         """Creating a task should write an audit log entry."""
         from claim_agent.db.repository import ClaimRepository
@@ -265,6 +273,15 @@ class TestCreateTask:
             json={"title": "", "task_type": "other"},
         )
         assert resp.status_code == 422
+
+    def test_create_task_title_sanitizes_to_empty_returns_400(self, client):
+        """Title that sanitizes to empty (e.g. whitespace only) returns 400, not 500."""
+        resp = client.post(
+            "/api/claims/CLM-TEST001/tasks",
+            json={"title": "   ", "task_type": "other"},
+        )
+        assert resp.status_code == 400
+        assert "empty" in resp.json().get("detail", "").lower()
 
     def test_create_task_title_too_long_rejected(self, client):
         resp = client.post(
@@ -423,6 +440,17 @@ class TestUpdateTask:
         resp = client.patch("/api/tasks/99999", json={"status": "completed"})
         assert resp.status_code == 404
 
+    def test_update_task_empty_title_rejected(self, client):
+        """Title that sanitizes to empty returns 400."""
+        r = client.post(
+            "/api/claims/CLM-TEST001/tasks",
+            json={"title": "T", "task_type": "other"},
+        )
+        task_id = r.json()["id"]
+        resp = client.patch(f"/api/tasks/{task_id}", json={"title": "   "})
+        assert resp.status_code == 400
+        assert "empty" in resp.json().get("detail", "").lower()
+
     def test_update_invalid_due_date_rejected(self, client):
         r = client.post(
             "/api/claims/CLM-TEST001/tasks",
@@ -550,3 +578,15 @@ class TestClaimDetailIncludesTasks:
         data = resp.json()
         assert data["tasks"] == []
         assert data["tasks_total"] == 0
+
+    def test_claim_detail_truncated_tasks_total(self, client, seeded_temp_db):
+        """When claim has >100 tasks, tasks_total reflects real count, len(tasks) may be 100."""
+        from claim_agent.db.repository import ClaimRepository
+        repo = ClaimRepository()
+        for i in range(101):
+            repo.create_task("CLM-TEST001", f"Task {i}", "other")
+        resp = client.get("/api/claims/CLM-TEST001")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tasks_total"] == 101
+        assert len(data["tasks"]) == 100  # default limit

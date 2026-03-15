@@ -107,6 +107,8 @@ def create_task(
         )
     except ClaimNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     task = ctx.repo.get_task(task_id)
     return task
@@ -209,5 +211,8 @@ def update_task(
             actor_id=actor_id,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        msg = str(e)
+        if "Task not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
     return updated

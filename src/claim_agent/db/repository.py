@@ -1127,6 +1127,8 @@ class ClaimRepository:
         """Update a task. Returns the updated task dict. Raises ValueError if task not found."""
         if title is not None:
             title = sanitize_task_title(title)
+            if not title:
+                raise ValueError("Task title must not be empty after sanitization")
         if description is not None:
             description = sanitize_task_description(description)
         if resolution_notes is not None:

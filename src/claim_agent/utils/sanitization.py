@@ -123,6 +123,17 @@ def _remove_injection_patterns(text: str) -> str:
     return result
 
 
+_DANGEROUS_URL_SCHEMES = ("javascript:", "data:", "vbscript:", "file:")
+
+
+def _is_safe_attachment_url(url: str) -> bool:
+    """Reject javascript:, data:, vbscript:, file: and other dangerous schemes."""
+    if not url or not isinstance(url, str):
+        return False
+    u = url.strip().lower()
+    return not any(u.startswith(s) for s in _DANGEROUS_URL_SCHEMES)
+
+
 def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
     """
     Sanitize claim input to limit prompt injection and abuse.
@@ -183,7 +194,7 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
                             )
                             or None,
                         }
-                        if a["url"]:
+                        if a["url"] and _is_safe_attachment_url(a["url"]):
                             sanitized_attachments.append(a)
                 out[key] = sanitized_attachments
             else:

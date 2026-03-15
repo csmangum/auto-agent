@@ -86,17 +86,37 @@ def test_sanitize_claim_data_attachments():
         "damage_description": "Bumper damage",
         "attachments": [
             {"url": "https://example.com/photo.jpg", "type": "photo", "description": "Damage"},
-            {"url": "file:///tmp/estimate.pdf", "type": "pdf"},
+            {"url": "file:///tmp/estimate.pdf", "type": "pdf"},  # rejected - dangerous scheme
             {"url": "", "type": "other"},  # skipped - empty url
         ],
     }
     out = sanitize_claim_data(data)
-    assert len(out["attachments"]) == 2
+    assert len(out["attachments"]) == 1
     assert out["attachments"][0]["url"] == "https://example.com/photo.jpg"
     assert out["attachments"][0]["type"] == "photo"
     assert out["attachments"][0]["description"] == "Damage"
-    assert out["attachments"][1]["type"] == "pdf"
-    assert out["attachments"][1].get("description") is None
+
+
+def test_sanitize_claim_data_rejects_dangerous_urls():
+    """Attachments with javascript:, data:, vbscript: URLs are rejected."""
+    data = {
+        "policy_number": "POL-001",
+        "vin": "VIN123",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Accord",
+        "incident_date": "2025-01-15",
+        "incident_description": "Rear-ended.",
+        "damage_description": "Bumper damage",
+        "attachments": [
+            {"url": "https://example.com/ok.jpg", "type": "photo"},
+            {"url": "javascript:alert(1)", "type": "photo"},
+            {"url": "data:text/html,<script>alert(1)</script>", "type": "pdf"},
+        ],
+    }
+    out = sanitize_claim_data(data)
+    assert len(out["attachments"]) == 1
+    assert out["attachments"][0]["url"] == "https://example.com/ok.jpg"
 
 
 def test_sanitize_note_preserves_valid_input():

@@ -115,6 +115,9 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
     });
   };
 
+  const errorMsg = mutation.error instanceof Error ? mutation.error.message : '';
+  const isTitleError = mutation.isError && (errorMsg.toLowerCase().includes('title') || errorMsg.toLowerCase().includes('empty'));
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-gray-900/50 rounded-lg p-4 ring-1 ring-gray-700/50" aria-label="Create new task">
       <div>
@@ -126,9 +129,16 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
           onChange={(e) => setTitle(e.target.value)}
           required
           maxLength={500}
-          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          aria-describedby={isTitleError ? 'task-create-title-error' : undefined}
+          aria-invalid={isTitleError}
+          className={`w-full bg-gray-800 border rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isTitleError ? 'border-red-500' : 'border-gray-700'}`}
           placeholder="e.g., Request police report from local PD"
         />
+        {isTitleError && (
+          <p id="task-create-title-error" className="mt-1 text-xs text-red-400">
+            {errorMsg}
+          </p>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -211,9 +221,9 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
           {mutation.isPending ? 'Creating...' : 'Create Task'}
         </button>
       </div>
-      {mutation.isError && (
+      {mutation.isError && !isTitleError && (
         <p className="text-xs text-red-400">
-          {mutation.error instanceof Error ? mutation.error.message : 'Failed to create task'}
+          {errorMsg || 'Failed to create task'}
         </p>
       )}
     </form>
@@ -384,22 +394,23 @@ function TaskCard({ task, claimId }: { task: ClaimTask; claimId: string }) {
 export default function TaskPanel({ claimId, tasks }: TaskPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
 
-  const filteredTasks = tasks.filter((t) => {
+  const filteredTasks = safeTasks.filter((t) => {
     if (filter === 'active') return t.status !== 'completed' && t.status !== 'cancelled';
     if (filter === 'completed') return t.status === 'completed' || t.status === 'cancelled';
     return true;
   });
 
-  const activeCount = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length;
-  const completedCount = tasks.filter(t => t.status === 'completed' || t.status === 'cancelled').length;
+  const activeCount = safeTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length;
+  const completedCount = safeTasks.filter(t => t.status === 'completed' || t.status === 'cancelled').length;
 
   return (
     <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-sm font-semibold text-gray-300">Tasks</h3>
-          {tasks.length > 0 && (
+          {safeTasks.length > 0 && (
             <div className="flex items-center gap-2 text-xs">
               <span className="text-yellow-400">{activeCount} active</span>
               <span className="text-gray-600">·</span>
@@ -421,7 +432,7 @@ export default function TaskPanel({ claimId, tasks }: TaskPanelProps) {
         </div>
       )}
 
-      {tasks.length > 0 && (
+      {safeTasks.length > 0 && (
         <div className="flex gap-1 mb-3" role="group" aria-label="Task filter">
           {(['all', 'active', 'completed'] as const).map((f) => (
             <button
@@ -431,7 +442,7 @@ export default function TaskPanel({ claimId, tasks }: TaskPanelProps) {
               aria-pressed={filter === f}
               aria-label={
                 f === 'all'
-                  ? `Show all tasks (${tasks.length})`
+                  ? `Show all tasks (${safeTasks.length})`
                   : f === 'active'
                     ? `Show active tasks (${activeCount})`
                     : `Show completed tasks (${completedCount})`
@@ -442,7 +453,7 @@ export default function TaskPanel({ claimId, tasks }: TaskPanelProps) {
                   : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700/30'
               }`}
             >
-              {f === 'all' ? `All (${tasks.length})` : f === 'active' ? `Active (${activeCount})` : `Done (${completedCount})`}
+              {f === 'all' ? `All (${safeTasks.length})` : f === 'active' ? `Active (${activeCount})` : `Done (${completedCount})`}
             </button>
           ))}
         </div>
