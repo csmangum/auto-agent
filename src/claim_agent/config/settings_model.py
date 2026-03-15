@@ -500,6 +500,11 @@ class Settings(BaseSettings):
     repair_shop_adapter: str = Field(default="mock", validation_alias="REPAIR_SHOP_ADAPTER")
     parts_adapter: str = Field(default="mock", validation_alias="PARTS_ADAPTER")
     siu_adapter: str = Field(default="mock", validation_alias="SIU_ADAPTER")
+    siu_default_state: str = Field(
+        default="California",
+        validation_alias="SIU_DEFAULT_STATE",
+        description="Fallback state for SIU reporting when claim/policy state is missing",
+    )
     vision_adapter: str = Field(default="real", validation_alias="VISION_ADAPTER")
 
     @field_validator("retention_period_years", mode="before")

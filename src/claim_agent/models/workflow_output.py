@@ -99,3 +99,36 @@ class BIWorkflowOutput(BaseModel):
     policy_bi_limit_per_accident: float | None = Field(
         default=None, description="Policy BI per-accident limit"
     )
+
+
+class SIUInvestigationResult(BaseModel):
+    """Structured output from SIU Case Manager final task."""
+
+    findings_summary: str = Field(
+        default="",
+        description="Synthesis of document verification and records investigation findings",
+    )
+    recommendation: str = Field(
+        default="",
+        description="Outcome: closed_no_fraud, closed_fraud_confirmed, or referred",
+    )
+    case_status: str = Field(
+        default="",
+        description="Final SIU case status: open, investigating, referred, or closed",
+    )
+    state_report_filed: bool = Field(
+        default=False,
+        description="Whether a fraud report was filed with the state bureau",
+    )
+    documents_verified: list[dict] = Field(
+        default_factory=list,
+        description="Summary of documents checked and verification status",
+    )
+    prior_claims_summary: str | None = Field(
+        default=None,
+        description="Summary of prior claims, fraud flags, SIU cases on VIN/policy",
+    )
+    tool_failures_noted: str | None = Field(
+        default=None,
+        description="Any tool failures from prior agents that affected the investigation",
+    )

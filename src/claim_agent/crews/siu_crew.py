@@ -12,6 +12,7 @@ from claim_agent.agents.siu import (
 )
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
+from claim_agent.models.workflow_output import SIUInvestigationResult
 
 
 def create_siu_crew(llm: LLMProtocol | None = None):
@@ -36,15 +37,7 @@ def create_siu_crew(llm: LLMProtocol | None = None):
                 description="""SIU CASE CONTEXT:
 {claim_data}
 
-You are the SIU Document Verification Specialist. The claim has been referred to SIU for investigation.
-
-Steps:
-1. Use get_siu_case_details with the siu_case_id from claim_data to retrieve case context.
-2. Verify key documents: proof_of_loss, repair_estimate, and photos using verify_document_authenticity.
-3. Add investigation notes with add_siu_investigation_note (category: document_review) for each verification.
-4. Document any findings that support or contradict the fraud indicators.
-
-Output a document verification summary: documents checked, verified status, findings, recommendations.""",
+Verify claim documents (proof of loss, repair estimates, IDs, photos). Use siu_case_id from claim_data. Document findings in SIU case notes (category: document_review). If a tool returns error JSON (tool_failure), document it in your notes and continue with available information. Output: documents checked, verified status, findings, recommendations.""",
                 expected_output=(
                     "Document verification summary with documents checked, verified status, "
                     "findings, and recommendations. SIU case notes added for each verification."
@@ -55,16 +48,7 @@ Output a document verification summary: documents checked, verified status, find
                 description="""SIU CASE CONTEXT:
 {claim_data}
 
-You are the SIU Records Investigator. Investigate claimant and vehicle history.
-
-Steps:
-1. Use get_siu_case_details with siu_case_id to understand the case and fraud indicators.
-2. Use check_claimant_investigation_history with claim_id and VIN from claim_data.
-3. Use search_claims_db if additional claims search is needed.
-4. Add investigation notes with add_siu_investigation_note (category: records_check) documenting prior claims, fraud flags, SIU cases.
-5. Assess whether history supports or contradicts the fraud referral.
-
-Output an investigation summary: prior_claims, prior_fraud_flags, prior_siu_cases, risk_summary, pattern_analysis.""",
+Investigate claimant and vehicle history for prior fraud involvement. Use claim_id and VIN from claim_data. Document in SIU case notes (category: records_check). If prior agent had tool failures, note that and proceed with available context. If a tool returns error JSON (tool_failure), document it and continue. Output: prior_claims, prior_fraud_flags, prior_siu_cases, risk_summary, pattern_analysis.""",
                 expected_output=(
                     "Records investigation summary with prior_claims, prior_fraud_flags, "
                     "prior_siu_cases, risk_summary. SIU case notes added for findings."
@@ -76,26 +60,16 @@ Output an investigation summary: prior_claims, prior_fraud_flags, prior_siu_case
                 description="""SIU CASE CONTEXT:
 {claim_data}
 
-You are the SIU Case Manager. Synthesize findings and produce the investigation outcome.
-
-Steps:
-1. Use get_siu_case_details to review full case and prior agent findings.
-2. Use get_fraud_detection_guidance to check state SIU reporting requirements (use state from claim_data or default California).
-3. Synthesize document verification and records investigation into a findings summary.
-4. Determine outcome: closed (no fraud), closed (fraud confirmed), or referred.
-5. If fraud confirmed or referred: use file_fraud_report_state_bureau with claim_id, case_id, state, and indicators.
-6. Use update_siu_case_status to set final status (closed or referred).
-7. Use add_siu_investigation_note (category: findings) with your recommendation.
-8. Use add_claim_note to add the final SIU recommendation to the claim for adjusters.
-
-Output the final investigation report: case_id, claim_id, findings_summary, recommendation, state_report_filed, case_status.""",
+Synthesize findings and produce investigation outcome. Determine outcome: closed_no_fraud, closed_fraud_confirmed, or referred. File state fraud report when required; update case status; add claim note with recommendation. If prior agents had tool failures, include in tool_failures_noted. Produce SIUInvestigationResult with: findings_summary, recommendation, case_status, state_report_filed, documents_verified (list of doc summaries), prior_claims_summary, tool_failures_noted (if any).""",
                 expected_output=(
-                    "Final SIU investigation report with findings_summary, recommendation, "
-                    "state_report_filed (if applicable), case_status. Case status updated. "
-                    "Claim note added with recommendation."
+                    "SIUInvestigationResult: findings_summary, recommendation "
+                    "(closed_no_fraud|closed_fraud_confirmed|referred), case_status, "
+                    "state_report_filed, documents_verified, prior_claims_summary. "
+                    "Case status updated. Claim note added."
                 ),
                 agent_index=2,
                 context_task_indices=[0, 1],
+                output_pydantic=SIUInvestigationResult,
             ),
         ],
         llm=llm,
