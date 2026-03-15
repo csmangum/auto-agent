@@ -298,3 +298,57 @@ class TestRunSiuInvestigation:
         failure_notes = [n for n in claim_notes if "SIU workflow failed" in n.get("note", "")]
         assert len(failure_notes) == 1
         assert "Crew failed" in failure_notes[0]["note"]
+
+    def test_returns_structured_output_when_case_manager_produces_pydantic(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When Case Manager produces SIUInvestigationResult, response includes structured fields."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.models.workflow_output import SIUInvestigationResult
+
+        structured = SIUInvestigationResult(
+            findings_summary="Documents verified. No prior fraud.",
+            recommendation="closed_no_fraud",
+            case_status="closed",
+            state_report_filed=False,
+            documents_verified=[{"type": "proof_of_loss", "verified": True}],
+            prior_claims_summary="No prior claims on VIN.",
+            tool_failures_noted=None,
+        )
+
+        mock_task = MagicMock()
+        mock_task.pydantic = structured
+        mock_task.output = structured
+
+        mock_result = MagicMock()
+        mock_result.raw = "Investigation complete."
+        mock_result.tasks_output = [MagicMock(), MagicMock(), mock_task]
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            lambda crew, inputs: mock_result,
+        )
+
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
+
+        result = run_siu_investigation(
+            claim_under_investigation,
+            llm=mock_llm,
+            ctx=ctx,
+        )
+
+        assert result["claim_id"] == claim_under_investigation
+        assert result["siu_case_id"] is not None
+        assert result["findings_summary"] == "Documents verified. No prior fraud."
+        assert result["recommendation"] == "closed_no_fraud"
+        assert result["case_status"] == "closed"
+        assert result["state_report_filed"] is False
+        assert len(result["documents_verified"]) == 1
+        assert result["documents_verified"][0]["type"] == "proof_of_loss"
+        assert result["prior_claims_summary"] == "No prior claims on VIN."
+        assert result["tool_failures_noted"] is None

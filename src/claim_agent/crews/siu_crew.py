@@ -12,6 +12,7 @@ from claim_agent.agents.siu import (
 )
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
+from claim_agent.models.workflow_output import SIUInvestigationResult
 
 
 def create_siu_crew(llm: LLMProtocol | None = None):
@@ -59,14 +60,16 @@ Investigate claimant and vehicle history for prior fraud involvement. Use claim_
                 description="""SIU CASE CONTEXT:
 {claim_data}
 
-Synthesize findings and produce investigation outcome. Determine outcome: closed (no fraud), closed (fraud confirmed), or referred. File state fraud report when required; update case status; add claim note with recommendation. If prior agents had tool failures, include that in findings_summary so adjusters are informed. Output: findings_summary, recommendation, state_report_filed, case_status.""",
+Synthesize findings and produce investigation outcome. Determine outcome: closed_no_fraud, closed_fraud_confirmed, or referred. File state fraud report when required; update case status; add claim note with recommendation. If prior agents had tool failures, include in tool_failures_noted. Produce SIUInvestigationResult with: findings_summary, recommendation, case_status, state_report_filed, documents_verified (list of doc summaries), prior_claims_summary, tool_failures_noted (if any).""",
                 expected_output=(
-                    "Final SIU investigation report with findings_summary, recommendation, "
-                    "state_report_filed (if applicable), case_status. Case status updated. "
-                    "Claim note added with recommendation."
+                    "SIUInvestigationResult: findings_summary, recommendation "
+                    "(closed_no_fraud|closed_fraud_confirmed|referred), case_status, "
+                    "state_report_filed, documents_verified, prior_claims_summary. "
+                    "Case status updated. Claim note added."
                 ),
                 agent_index=2,
                 context_task_indices=[0, 1],
+                output_pydantic=SIUInvestigationResult,
             ),
         ],
         llm=llm,
