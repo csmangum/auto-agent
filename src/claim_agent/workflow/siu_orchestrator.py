@@ -16,6 +16,7 @@ import json
 import time
 from typing import Any
 
+from claim_agent.config import get_settings
 from claim_agent.config.llm import get_llm
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
@@ -28,8 +29,6 @@ from claim_agent.tools.siu_logic import add_siu_investigation_note_impl
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
-
-DEFAULT_SIU_STATE = "California"
 
 
 def _parse_siu_result(result: Any) -> SIUInvestigationResult | None:
@@ -48,16 +47,18 @@ def _parse_siu_result(result: Any) -> SIUInvestigationResult | None:
     return None
 
 
-def _derive_claim_state(claim: dict[str, Any], ctx: ClaimContext) -> str:
+def _derive_claim_state(
+    claim: dict[str, Any], ctx: ClaimContext
+) -> tuple[str, bool]:
     """Derive state jurisdiction for SIU reporting.
 
     Uses claim.state if present, else policy.state from policy adapter, else
-    DEFAULT_SIU_STATE (California). State is used for fraud bureau filing and
-    get_fraud_detection_guidance.
+    SIU_DEFAULT_STATE from settings. Returns (state, used_default: bool).
+    State is used for fraud bureau filing and get_fraud_detection_guidance.
     """
     state = (claim.get("state") or "").strip()
     if state:
-        return state
+        return state, False
     policy_number = (claim.get("policy_number") or "").strip()
     if policy_number:
         try:
@@ -65,10 +66,11 @@ def _derive_claim_state(claim: dict[str, Any], ctx: ClaimContext) -> str:
             if policy:
                 pstate = (policy.get("state") or "").strip()
                 if pstate:
-                    return pstate
+                    return pstate, False
         except Exception:
             pass
-    return DEFAULT_SIU_STATE
+    default_state = get_settings().siu_default_state or "California"
+    return default_state, True
 
 
 def run_siu_investigation(
@@ -120,8 +122,13 @@ def run_siu_investigation(
         siu_case_id = case_id
         claim = repo.get_claim(claim_id) or claim
 
-    # Derive state for SIU reporting: policy state, claim state, or default California
-    state = _derive_claim_state(claim, ctx)
+    # Derive state for SIU reporting: claim, policy, or SIU_DEFAULT_STATE
+    state, state_from_default = _derive_claim_state(claim, ctx)
+    if state_from_default:
+        logger.info(
+            "SIU state derived from default",
+            extra={"claim_id": claim_id, "state": state},
+        )
 
     claim_data_for_crew = {
         "id": claim.get("id"),
@@ -171,6 +178,9 @@ def run_siu_investigation(
         "workflow_output": workflow_output,
         "summary": summary,
     }
+    if state_from_default:
+        response["state_inferred"] = True
+        response["state"] = state
 
     structured = _parse_siu_result(result)
     if structured is not None:

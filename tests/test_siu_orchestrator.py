@@ -249,10 +249,53 @@ class TestRunSiuInvestigation:
 
         monkeypatch.setattr(ctx.adapters.policy, "get_policy", policy_with_state)
 
-        run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
+        result = run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
 
         claim_data = json.loads(captured_inputs["claim_data"])
         assert claim_data["state"] == "Texas"
+        assert result.get("state_inferred") is not True
+
+    def test_uses_siu_default_state_from_config(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """SIU_DEFAULT_STATE from settings is used when claim/policy have no state."""
+        import json
+
+        captured_inputs = {}
+
+        def fake_kickoff(crew, inputs):
+            captured_inputs.update(inputs)
+            mock_result = MagicMock()
+            mock_result.raw = "Done"
+            return mock_result
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            fake_kickoff,
+        )
+
+        mock_settings = MagicMock()
+        mock_settings.siu_default_state = "Texas"
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.get_settings",
+            lambda: mock_settings,
+        )
+
+        from claim_agent.context import ClaimContext
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=MagicMock())
+        result = run_siu_investigation(
+            claim_under_investigation, llm=MagicMock(), ctx=ctx
+        )
+
+        claim_data = json.loads(captured_inputs["claim_data"])
+        assert claim_data["state"] == "Texas"
+        assert result.get("state_inferred") is True
+        assert result.get("state") == "Texas"
 
     def test_adds_failure_note_when_crew_raises(
         self, claim_under_investigation, temp_db, monkeypatch
