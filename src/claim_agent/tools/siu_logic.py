@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from typing import TYPE_CHECKING, Any
+
+from claim_agent.utils.retry import RETRYABLE_EXCEPTIONS
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -13,6 +16,26 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 GENERIC_ACCESS_DENIED = json.dumps({"error": "Access denied", "message": "Invalid claim or case for this operation"})
+
+# Transient adapter errors (timeout, connection) - tools return error JSON instead of raising
+_ADAPTER_RETRY_ATTEMPTS = 3
+
+
+def _adapter_error_json(
+    message: str,
+    case_id: str | None = None,
+    claim_id: str | None = None,
+    retryable: bool = False,
+) -> str:
+    """Return structured error JSON for adapter failures so agents can document and continue."""
+    payload: dict[str, Any] = {"error": message, "tool_failure": True}
+    if case_id:
+        payload["case_id"] = case_id
+    if claim_id:
+        payload["claim_id"] = claim_id
+    if retryable:
+        payload["retryable"] = True
+    return json.dumps(payload)
 
 
 def _validate_siu_scope(claim_id: str | None = None, case_id: str | None = None) -> str | None:
@@ -38,20 +61,41 @@ VALID_SIU_NOTE_CATEGORIES = frozenset(
 
 
 def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) -> str:
-    """Retrieve SIU case details by case_id."""
+    """Retrieve SIU case details by case_id. Retries on transient failures (timeout, connection)."""
     err = _validate_siu_scope(case_id=case_id)
     if err:
         return err
     from claim_agent.adapters.registry import get_siu_adapter
 
     adapter = ctx.adapters.siu if ctx else get_siu_adapter()
-    try:
-        case = adapter.get_case(case_id)
-    except NotImplementedError:
-        return json.dumps({"error": "SIU case lookup not implemented", "case_id": case_id})
-    if case is None:
-        return json.dumps({"error": "Case not found", "case_id": case_id})
-    return json.dumps(case)
+    for attempt in range(_ADAPTER_RETRY_ATTEMPTS):
+        try:
+            case = adapter.get_case(case_id)
+            if case is None:
+                return json.dumps({"error": "Case not found", "case_id": case_id})
+            return json.dumps(case)
+        except NotImplementedError:
+            return _adapter_error_json("SIU case lookup not implemented", case_id=case_id)
+        except RETRYABLE_EXCEPTIONS as e:
+            if attempt < _ADAPTER_RETRY_ATTEMPTS - 1:
+                wait = 2**attempt  # 1s, 2s
+                logger.warning(
+                    "get_siu_case_details retry %d/%d: %s (wait %.0fs)",
+                    attempt + 1,
+                    _ADAPTER_RETRY_ATTEMPTS,
+                    e,
+                    wait,
+                )
+                time.sleep(wait)
+            else:
+                return _adapter_error_json(
+                    f"SIU case lookup failed after retries: {e!s}", case_id=case_id, retryable=True
+                )
+        except Exception as e:
+            logger.warning("get_siu_case_details failed: %s", e, exc_info=True)
+            return _adapter_error_json(f"SIU case lookup failed: {e!s}", case_id=case_id)
+    # Defensive: unreachable when _ADAPTER_RETRY_ATTEMPTS >= 1; satisfies type checker
+    return _adapter_error_json("SIU case lookup failed: no attempts made", case_id=case_id)
 
 
 def add_siu_investigation_note_impl(
@@ -75,7 +119,13 @@ def add_siu_investigation_note_impl(
     try:
         ok = adapter.add_investigation_note(case_id, note, category_lower)
     except NotImplementedError:
-        return json.dumps({"success": False, "message": "SIU case notes not implemented"})
+        return _adapter_error_json("SIU case notes not implemented", case_id=case_id)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("add_siu_investigation_note failed: %s", e)
+        return _adapter_error_json(f"SIU note add failed: {e!s}", case_id=case_id, retryable=True)
+    except Exception as e:
+        logger.warning("add_siu_investigation_note failed: %s", e, exc_info=True)
+        return _adapter_error_json(f"SIU note add failed: {e!s}", case_id=case_id)
     return json.dumps({"success": ok, "case_id": case_id, "category": category_lower})
 
 
@@ -100,7 +150,13 @@ def update_siu_case_status_impl(
     try:
         ok = adapter.update_case_status(case_id, status_lower)
     except NotImplementedError:
-        return json.dumps({"success": False, "message": "SIU case status update not implemented"})
+        return _adapter_error_json("SIU case status update not implemented", case_id=case_id)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("update_siu_case_status failed: %s", e)
+        return _adapter_error_json(f"SIU status update failed: {e!s}", case_id=case_id, retryable=True)
+    except Exception as e:
+        logger.warning("update_siu_case_status failed: %s", e, exc_info=True)
+        return _adapter_error_json(f"SIU status update failed: {e!s}", case_id=case_id)
     return json.dumps({"success": ok, "case_id": case_id, "status": status_lower})
 
 
@@ -119,27 +175,36 @@ def verify_document_authenticity_impl(
     err = _validate_siu_scope(claim_id=claim_id)
     if err:
         return err
-    # Mock: simulate verification based on document type
-    doc_types = ("proof_of_loss", "repair_estimate", "id", "title", "registration", "photos")
-    doc_lower = (document_type or "").strip().lower() or "unknown"
-    if doc_lower not in doc_types:
-        doc_lower = "other"
+    try:
+        # Mock: simulate verification based on document type
+        doc_types = ("proof_of_loss", "repair_estimate", "id", "title", "registration", "photos")
+        doc_lower = (document_type or "").strip().lower() or "unknown"
+        if doc_lower not in doc_types:
+            doc_lower = "other"
 
-    # Deterministic mock: odd-length claim_id = pass, even = flag for review
-    claim_id_clean = (claim_id or "").strip()
-    mock_pass = len(claim_id_clean) % 2 == 1 if claim_id_clean else True
+        # Deterministic mock: odd-length claim_id = pass, even = flag for review
+        claim_id_clean = (claim_id or "").strip()
+        mock_pass = len(claim_id_clean) % 2 == 1 if claim_id_clean else True
 
-    result: dict[str, Any] = {
-        "document_type": doc_lower,
-        "claim_id": claim_id_clean,
-        "verified": mock_pass,
-        "confidence": "high" if mock_pass else "medium",
-        "findings": [],
-        "recommendation": "Document acceptable" if mock_pass else "Request original for verification",
-    }
-    if not mock_pass:
-        result["findings"].append("Minor inconsistencies; recommend physical inspection")
-    return json.dumps(result)
+        result: dict[str, Any] = {
+            "document_type": doc_lower,
+            "claim_id": claim_id_clean,
+            "verified": mock_pass,
+            "confidence": "high" if mock_pass else "medium",
+            "findings": [],
+            "recommendation": "Document acceptable" if mock_pass else "Request original for verification",
+        }
+        if not mock_pass:
+            result["findings"].append("Minor inconsistencies; recommend physical inspection")
+        return json.dumps(result)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("verify_document_authenticity failed: %s", e)
+        return _adapter_error_json(
+            f"Document verification failed: {e!s}", claim_id=claim_id, retryable=True
+        )
+    except Exception as e:
+        logger.warning("verify_document_authenticity failed: %s", e, exc_info=True)
+        return _adapter_error_json(f"Document verification failed: {e!s}", claim_id=claim_id)
 
 
 def check_claimant_investigation_history_impl(
@@ -149,7 +214,11 @@ def check_claimant_investigation_history_impl(
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
-    """Check claimant and vehicle history for prior fraud flags and investigations."""
+    """Check claimant and vehicle history for prior fraud flags and investigations.
+
+    Uses ClaimRepository (local SQLite). Returns tool_failure JSON on repository
+    failures for consistency with other SIU tools.
+    """
     err = _validate_siu_scope(claim_id=claim_id)
     if err:
         return err
@@ -169,14 +238,19 @@ def check_claimant_investigation_history_impl(
         if not vin and not policy_number and claim:
             vin = (claim.get("vin") or "").strip()
             policy_number = (claim.get("policy_number") or "").strip()
-    except (sqlite3.Error, OSError) as e:
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("check_claimant_investigation_history: get_claim failed: %s", e)
+        return _adapter_error_json(
+            f"Records lookup failed: {e!s}", claim_id=claim_id, retryable=True
+        )
+    except sqlite3.Error as e:
         logger.debug("check_claimant_investigation_history: get_claim failed: %s", e)
     except Exception as e:
-        logger.warning("check_claimant_investigation_history: unexpected get_claim error: %s", e, exc_info=True)
+        logger.warning("check_claimant_investigation_history: get_claim failed: %s", e, exc_info=True)
+        return _adapter_error_json(f"Records lookup failed: {e!s}", claim_id=claim_id)
 
-    if vin or policy_number:
-        try:
-            # Search by VIN and/or policy separately; merge to find prior claims on same vehicle or policy
+    try:
+        if vin or policy_number:
             seen_ids: set[str] = set()
             all_claims: list[dict[str, Any]] = []
             if vin:
@@ -203,10 +277,16 @@ def check_claimant_investigation_history_impl(
                 result["risk_summary"] = "elevated"
             if len(fraud_claims) >= 2 or len(siu_claims) >= 1:
                 result["risk_summary"] = "high"
-        except (sqlite3.Error, OSError) as e:
-            logger.debug("check_claimant_investigation_history: search_claims failed: %s", e)
-        except Exception as e:
-            logger.warning("check_claimant_investigation_history: unexpected error: %s", e, exc_info=True)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("check_claimant_investigation_history: search_claims failed: %s", e)
+        return _adapter_error_json(
+            f"Records lookup failed: {e!s}", claim_id=claim_id, retryable=True
+        )
+    except sqlite3.Error as e:
+        logger.debug("check_claimant_investigation_history: search_claims failed: %s", e)
+    except Exception as e:
+        logger.warning("check_claimant_investigation_history: unexpected error: %s", e, exc_info=True)
+        return _adapter_error_json(f"Records lookup failed: {e!s}", claim_id=claim_id)
 
     return json.dumps(result)
 
@@ -232,15 +312,34 @@ def file_fraud_report_state_bureau_impl(
     except json.JSONDecodeError:
         ind_list = []
 
-    # Mock: simulate filing
-    report_id = f"FRB-{state[:2].upper()}-{claim_id[-6:]}-MOCK"
-    result: dict[str, Any] = {
-        "success": True,
-        "report_id": report_id,
-        "claim_id": claim_id,
-        "case_id": case_id,
-        "state": state,
-        "indicators_count": len(ind_list),
-        "message": f"Fraud report filed with {state} fraud bureau (mock). Report ID: {report_id}",
-    }
-    return json.dumps(result)
+    # Mock: simulate filing. In production this would call state bureau API.
+    # try/except for RETRYABLE_EXCEPTIONS is for future adapter integration.
+    state_code = (state or "California").strip()[:2].upper() or "CA"
+    claim_suffix = (claim_id or "")[-6:] or "MOCK"
+    try:
+        report_id = f"FRB-{state_code}-{claim_suffix}-MOCK"
+        result: dict[str, Any] = {
+            "success": True,
+            "report_id": report_id,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": state or "California",
+            "indicators_count": len(ind_list),
+            "message": f"Fraud report filed with {state or 'California'} fraud bureau (mock). Report ID: {report_id}",
+        }
+        return json.dumps(result)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("file_fraud_report_state_bureau failed: %s", e)
+        return _adapter_error_json(
+            f"State bureau filing failed: {e!s}",
+            case_id=case_id,
+            claim_id=claim_id,
+            retryable=True,
+        )
+    except Exception as e:
+        logger.warning("file_fraud_report_state_bureau failed: %s", e, exc_info=True)
+        return _adapter_error_json(
+            f"State bureau filing failed: {e!s}",
+            case_id=case_id,
+            claim_id=claim_id,
+        )

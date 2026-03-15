@@ -1,5 +1,6 @@
 """Tests for the SIU investigation workflow orchestrator."""
 
+import json
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -203,8 +204,6 @@ class TestRunSiuInvestigation:
         run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
 
         assert "claim_data" in captured_inputs
-        import json
-
         claim_data = json.loads(captured_inputs["claim_data"])
         assert claim_data["id"] == claim_under_investigation
         assert claim_data["siu_case_id"]
@@ -215,8 +214,6 @@ class TestRunSiuInvestigation:
 
     def test_derives_state_from_policy_when_available(self, claim_under_investigation, temp_db, monkeypatch):
         """claim_data state is derived from policy when policy has state."""
-        import json
-
         captured_inputs = {}
 
         def fake_kickoff(crew, inputs):
@@ -249,7 +246,224 @@ class TestRunSiuInvestigation:
 
         monkeypatch.setattr(ctx.adapters.policy, "get_policy", policy_with_state)
 
-        run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
+        result = run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
 
         claim_data = json.loads(captured_inputs["claim_data"])
         assert claim_data["state"] == "Texas"
+        assert result.get("state_inferred") is not True
+
+    def test_uses_siu_default_state_from_config(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """SIU_DEFAULT_STATE from settings is used when claim/policy have no state."""
+        captured_inputs = {}
+
+        def fake_kickoff(crew, inputs):
+            captured_inputs.update(inputs)
+            mock_result = MagicMock()
+            mock_result.raw = "Done"
+            return mock_result
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            fake_kickoff,
+        )
+
+        mock_settings = MagicMock()
+        mock_settings.siu_default_state = "Texas"
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.get_settings",
+            lambda: mock_settings,
+        )
+
+        from claim_agent.context import ClaimContext
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=MagicMock())
+        result = run_siu_investigation(
+            claim_under_investigation, llm=MagicMock(), ctx=ctx
+        )
+
+        claim_data = json.loads(captured_inputs["claim_data"])
+        assert claim_data["state"] == "Texas"
+        assert result.get("state_inferred") is True
+        assert result.get("state") == "Texas"
+
+    def test_adds_failure_note_when_crew_raises(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When crew kickoff raises, orchestrator adds failure note to SIU case and claim."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.context import ClaimContext
+
+        def raise_crew_failed(crew, inputs):
+            raise RuntimeError("Crew failed")
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            raise_crew_failed,
+        )
+
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
+
+        with pytest.raises(RuntimeError, match="Crew failed"):
+            run_siu_investigation(
+                claim_under_investigation,
+                llm=mock_llm,
+                ctx=ctx,
+            )
+
+        claim = ctx.repo.get_claim(claim_under_investigation)
+        case_id = claim["siu_case_id"]
+        assert case_id is not None
+
+        adapter = get_siu_adapter()
+        case = adapter.get_case(case_id)
+        assert case is not None
+        notes = [n for n in case.get("notes", []) if "SIU workflow failed" in n.get("note", "")]
+        assert len(notes) == 1
+        assert "Crew failed" in notes[0]["note"]
+
+        claim_notes = ctx.repo.get_notes(claim_under_investigation)
+        failure_notes = [n for n in claim_notes if "SIU workflow failed" in n.get("note", "")]
+        assert len(failure_notes) == 1
+        assert "Crew failed" in failure_notes[0]["note"]
+
+    def test_returns_structured_output_when_case_manager_produces_pydantic(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When Case Manager produces SIUInvestigationResult, response includes structured fields."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.models.workflow_output import SIUInvestigationResult
+
+        structured = SIUInvestigationResult(
+            findings_summary="Documents verified. No prior fraud.",
+            recommendation="closed_no_fraud",
+            case_status="closed",
+            state_report_filed=False,
+            documents_verified=[{"type": "proof_of_loss", "verified": True}],
+            prior_claims_summary="No prior claims on VIN.",
+            tool_failures_noted=None,
+        )
+
+        mock_task = MagicMock()
+        mock_task.pydantic = structured
+        mock_task.output = structured
+
+        mock_result = MagicMock()
+        mock_result.raw = "Investigation complete."
+        mock_result.tasks_output = [MagicMock(), MagicMock(), mock_task]
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            lambda crew, inputs: mock_result,
+        )
+
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
+
+        result = run_siu_investigation(
+            claim_under_investigation,
+            llm=mock_llm,
+            ctx=ctx,
+        )
+
+        assert result["claim_id"] == claim_under_investigation
+        assert result["siu_case_id"] is not None
+        assert result["findings_summary"] == "Documents verified. No prior fraud."
+        assert result["recommendation"] == "closed_no_fraud"
+        assert result["case_status"] == "closed"
+        assert result["state_report_filed"] is False
+        assert len(result["documents_verified"]) == 1
+        assert result["documents_verified"][0]["type"] == "proof_of_loss"
+        assert result["prior_claims_summary"] == "No prior claims on VIN."
+        assert result["tool_failures_noted"] is None
+
+    def test_falls_back_to_raw_workflow_output_when_pydantic_not_produced(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When Case Manager returns string (LLM failed to produce Pydantic), response uses raw workflow_output."""
+        from claim_agent.context import ClaimContext
+
+        mock_task = MagicMock()
+        mock_task.pydantic = None
+        mock_task.output = "Investigation complete. Case closed. No fraud found."
+
+        mock_result = MagicMock()
+        mock_result.raw = "Investigation complete. Case closed. No fraud found."
+        mock_result.tasks_output = [MagicMock(), MagicMock(), mock_task]
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            lambda crew, inputs: mock_result,
+        )
+
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
+
+        result = run_siu_investigation(
+            claim_under_investigation,
+            llm=mock_llm,
+            ctx=ctx,
+        )
+
+        assert result["claim_id"] == claim_under_investigation
+        assert "workflow_output" in result
+        assert "Investigation complete" in result["workflow_output"]
+        assert "findings_summary" not in result
+        assert "recommendation" not in result
+
+    def test_siu_default_state_empty_falls_back_to_california(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When SIU_DEFAULT_STATE is empty, California is used."""
+        captured_inputs = {}
+
+        def fake_kickoff(crew, inputs):
+            captured_inputs.update(inputs)
+            mock_result = MagicMock()
+            mock_result.raw = "Done"
+            return mock_result
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            fake_kickoff,
+        )
+
+        mock_settings = MagicMock()
+        mock_settings.siu_default_state = ""
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.get_settings",
+            lambda: mock_settings,
+        )
+
+        from claim_agent.context import ClaimContext
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=MagicMock())
+        result = run_siu_investigation(
+            claim_under_investigation, llm=MagicMock(), ctx=ctx
+        )
+
+        claim_data = json.loads(captured_inputs["claim_data"])
+        assert claim_data["state"] == "California"
+        assert result.get("state_inferred") is True

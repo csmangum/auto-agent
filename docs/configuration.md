@@ -56,6 +56,7 @@ Each external-system adapter can be configured independently. See [Adapters](ada
 | `REPAIR_SHOP_ADAPTER` | `mock` | `mock`, `stub` | Repair shop network backend |
 | `PARTS_ADAPTER` | `mock` | `mock`, `stub` | Parts catalog backend |
 | `SIU_ADAPTER` | `mock` | `mock`, `stub` | SIU case management backend |
+| `SIU_DEFAULT_STATE` | `California` | Any state name | Fallback state for SIU fraud bureau reporting when claim/policy state is missing |
 | `VISION_ADAPTER` | `real` | `real`, `mock` | Vision analysis: `real` (litellm) or `mock` (claim-context derived) |
 
 ### Mock Crew (Testing)
