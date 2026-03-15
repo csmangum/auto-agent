@@ -16,6 +16,9 @@ MAX_DENIAL_REASON = 4096
 MAX_POLICYHOLDER_EVIDENCE = 8192
 MAX_REOPENING_REASON = 1000
 MAX_PRIOR_CLAIM_ID = 64
+MAX_TASK_TITLE = 500
+MAX_TASK_DESCRIPTION = 5000
+MAX_RESOLUTION_NOTES = 5000
 
 # Maximum payout amount (dollars) for reviewer-confirmed payout validation
 MAX_PAYOUT = 50_000_000
@@ -84,6 +87,30 @@ def sanitize_policyholder_evidence(text: str | None) -> str | None:
         return None
     t = _sanitize_text(text, MAX_POLICYHOLDER_EVIDENCE)
     return _remove_injection_patterns(t) or None
+
+
+def sanitize_task_title(title: str | None) -> str:
+    """Sanitize task title for prompt injection before storage. Truncates to 500 chars."""
+    if title is None or not isinstance(title, str):
+        return ""
+    t = _sanitize_text(title, MAX_TASK_TITLE)
+    return _remove_injection_patterns(t)
+
+
+def sanitize_task_description(description: str | None) -> str:
+    """Sanitize task description for prompt injection before storage. Truncates to 5000 chars."""
+    if description is None or not isinstance(description, str):
+        return ""
+    t = _sanitize_text(description, MAX_TASK_DESCRIPTION)
+    return _remove_injection_patterns(t)
+
+
+def sanitize_resolution_notes(notes: str | None) -> str:
+    """Sanitize task resolution notes for prompt injection before storage. Truncates to 5000 chars."""
+    if notes is None or not isinstance(notes, str):
+        return ""
+    t = _sanitize_text(notes, MAX_RESOLUTION_NOTES)
+    return _remove_injection_patterns(t)
 
 
 def _remove_injection_patterns(text: str) -> str:
