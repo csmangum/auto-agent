@@ -13,6 +13,12 @@ from crewai.tools import tool
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
+from claim_agent.utils.sanitization import (
+    sanitize_actor_id,
+    sanitize_task_description,
+    sanitize_task_title,
+    sanitize_resolution_notes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +69,12 @@ def create_claim_task(
         JSON with success (bool), task_id (int), and message.
     """
     claim_id = str(claim_id).strip()
-    title = str(title).strip()
+    title = sanitize_task_title(title)
     task_type = str(task_type).strip()
-    description = str(description).strip()
+    description = sanitize_task_description(description)
     priority = str(priority).strip() or "medium"
     assigned_to_val = str(assigned_to).strip() or None
-    created_by = str(created_by).strip() or "workflow"
+    created_by = sanitize_actor_id(created_by) or "workflow"
     due_date_val = str(due_date).strip() or None
 
     if not claim_id:
@@ -138,7 +144,7 @@ def update_claim_task(
         JSON with success (bool) and message.
     """
     status_val = str(status).strip() or None
-    resolution_val = str(resolution_notes).strip() or None
+    resolution_val = sanitize_resolution_notes(resolution_notes) or None
     assigned_val = str(assigned_to).strip() or None
     priority_val = str(priority).strip() or None
 

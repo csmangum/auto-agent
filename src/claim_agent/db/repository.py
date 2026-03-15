@@ -39,7 +39,7 @@ from claim_agent.db.constants import (
 )
 from claim_agent.db.database import get_connection
 from claim_agent.exceptions import ClaimNotFoundError
-from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_note
+from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_note, sanitize_task_title, sanitize_task_description, sanitize_resolution_notes
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 
@@ -1035,6 +1035,11 @@ class ClaimRepository:
         due_date: str | None = None,
     ) -> int:
         """Create a task for a claim. Returns the task id. Raises ClaimNotFoundError if claim does not exist."""
+        title = sanitize_task_title(title)
+        description = sanitize_task_description(description)
+        created_by = sanitize_actor_id(created_by)
+        if not title:
+            raise ValueError("Task title must not be empty after sanitization")
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT id FROM claims WHERE id = ?", (claim_id,)
@@ -1120,6 +1125,13 @@ class ClaimRepository:
         actor_id: str = ACTOR_WORKFLOW,
     ) -> dict[str, Any]:
         """Update a task. Returns the updated task dict. Raises ValueError if task not found."""
+        if title is not None:
+            title = sanitize_task_title(title)
+        if description is not None:
+            description = sanitize_task_description(description)
+        if resolution_notes is not None:
+            resolution_notes = sanitize_resolution_notes(resolution_notes)
+        actor_id = sanitize_actor_id(actor_id)
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT * FROM claim_tasks WHERE id = ?", (task_id,)
@@ -1228,7 +1240,7 @@ class ClaimRepository:
                 ).fetchall()
             }
             overdue = conn.execute(
-                "SELECT COUNT(*) as cnt FROM claim_tasks WHERE due_date IS NOT NULL AND due_date < datetime('now') AND status NOT IN ('completed', 'cancelled')"
+                "SELECT COUNT(*) as cnt FROM claim_tasks WHERE due_date IS NOT NULL AND date(due_date) < date('now') AND status NOT IN ('completed', 'cancelled')"
             ).fetchone()["cnt"]
         return {
             "total": total,

@@ -229,8 +229,9 @@ function TaskCard({ task, claimId }: { task: ClaimTask; claimId: string }) {
     statusMutation.mutate(payload);
   };
 
+  const todayStr = new Date().toISOString().slice(0, 10);
   const isOverdue = task.due_date && task.status !== 'completed' && task.status !== 'cancelled'
-    && new Date(task.due_date) < new Date();
+    && task.due_date < todayStr;
 
   return (
     <div className={`rounded-lg bg-gray-900/50 ring-1 ${isOverdue ? 'ring-red-500/50' : 'ring-gray-700/50'} transition-all`}>
