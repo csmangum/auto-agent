@@ -160,9 +160,12 @@ def run_siu_investigation(
                 add_siu_investigation_note_impl(
                     siu_case_id, failure_note, "general", ctx=ctx
                 )
+            except Exception as note_err:
+                logger.warning("Failed to add SIU case failure note: %s", note_err)
+            try:
                 repo.add_note(claim_id, failure_note, actor_id="system")
             except Exception as note_err:
-                logger.warning("Failed to add SIU failure note: %s", note_err)
+                logger.warning("Failed to add claim failure note: %s", note_err)
             raise
 
     workflow_output = str(
