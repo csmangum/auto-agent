@@ -365,7 +365,7 @@ export default function TaskPanel({ claimId, tasks }: TaskPanelProps) {
   });
 
   const activeCount = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length;
-  const completedCount = tasks.filter(t => t.status === 'completed').length;
+  const completedCount = tasks.filter(t => t.status === 'completed' || t.status === 'cancelled').length;
 
   return (
     <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
