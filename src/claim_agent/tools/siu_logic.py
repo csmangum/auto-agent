@@ -22,7 +22,7 @@ def _validate_siu_scope(claim_id: str | None = None, case_id: str | None = None)
         from claim_agent.observability import get_siu_workflow_scope
         scope = get_siu_workflow_scope()
     except ImportError:
-        return None
+        return GENERIC_ACCESS_DENIED
     if not scope:
         return None
     if case_id is not None and (scope.get("case_id") or "").strip() != (case_id or "").strip():

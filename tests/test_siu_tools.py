@@ -297,7 +297,7 @@ class TestSiuScopeValidation:
             result = get_siu_case_details_impl(case_id)
         data = json.loads(result)
         assert data["case_id"] == case_id
-        assert "error" not in data or "Access denied" not in str(data)
+        assert "error" not in data
 
 
 class TestFileFraudReportStateBureauImpl:
