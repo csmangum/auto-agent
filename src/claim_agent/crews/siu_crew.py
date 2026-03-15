@@ -36,7 +36,7 @@ def create_siu_crew(llm: LLMProtocol | None = None):
                 description="""SIU CASE CONTEXT:
 {claim_data}
 
-Verify claim documents (proof of loss, repair estimates, IDs, photos). Use siu_case_id from claim_data. Document findings in SIU case notes (category: document_review). Output: documents checked, verified status, findings, recommendations.""",
+Verify claim documents (proof of loss, repair estimates, IDs, photos). Use siu_case_id from claim_data. Document findings in SIU case notes (category: document_review). If a tool returns error JSON (tool_failure), document it in your notes and continue with available information. Output: documents checked, verified status, findings, recommendations.""",
                 expected_output=(
                     "Document verification summary with documents checked, verified status, "
                     "findings, and recommendations. SIU case notes added for each verification."
@@ -47,7 +47,7 @@ Verify claim documents (proof of loss, repair estimates, IDs, photos). Use siu_c
                 description="""SIU CASE CONTEXT:
 {claim_data}
 
-Investigate claimant and vehicle history for prior fraud involvement. Use claim_id and VIN from claim_data. Document in SIU case notes (category: records_check). Output: prior_claims, prior_fraud_flags, prior_siu_cases, risk_summary, pattern_analysis.""",
+Investigate claimant and vehicle history for prior fraud involvement. Use claim_id and VIN from claim_data. Document in SIU case notes (category: records_check). If prior agent had tool failures, note that and proceed with available context. If a tool returns error JSON (tool_failure), document it and continue. Output: prior_claims, prior_fraud_flags, prior_siu_cases, risk_summary, pattern_analysis.""",
                 expected_output=(
                     "Records investigation summary with prior_claims, prior_fraud_flags, "
                     "prior_siu_cases, risk_summary. SIU case notes added for findings."
@@ -59,7 +59,7 @@ Investigate claimant and vehicle history for prior fraud involvement. Use claim_
                 description="""SIU CASE CONTEXT:
 {claim_data}
 
-Synthesize findings and produce investigation outcome. Determine outcome: closed (no fraud), closed (fraud confirmed), or referred. File state fraud report when required; update case status; add claim note with recommendation. Output: findings_summary, recommendation, state_report_filed, case_status.""",
+Synthesize findings and produce investigation outcome. Determine outcome: closed (no fraud), closed (fraud confirmed), or referred. File state fraud report when required; update case status; add claim note with recommendation. If prior agents had tool failures, include that in findings_summary so adjusters are informed. Output: findings_summary, recommendation, state_report_filed, case_status.""",
                 expected_output=(
                     "Final SIU investigation report with findings_summary, recommendation, "
                     "state_report_filed (if applicable), case_status. Case status updated. "

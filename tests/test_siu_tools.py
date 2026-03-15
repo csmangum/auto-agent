@@ -56,6 +56,25 @@ class TestGetSiuCaseDetailsImpl:
         assert "error" in data
         assert "not found" in data["error"].lower() or "Case not found" in data["error"]
 
+    def test_returns_error_json_when_adapter_raises(self, monkeypatch):
+        """get_siu_case_details_impl returns error JSON (does not raise) when adapter fails."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.tools.siu_logic import get_siu_case_details_impl
+
+        adapter = get_siu_adapter()
+        case_id = adapter.create_case("CLM-ERR", indicators=[])
+
+        def failing_get_case(cid):
+            raise ConnectionError("Adapter timeout")
+
+        monkeypatch.setattr(adapter, "get_case", failing_get_case)
+
+        result = get_siu_case_details_impl(case_id)
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("tool_failure") is True
+        assert "timeout" in data["error"].lower() or "ConnectionError" in data["error"]
+
 
 class TestAddSiuInvestigationNoteImpl:
     def test_adds_note_successfully(self):

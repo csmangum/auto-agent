@@ -253,3 +253,48 @@ class TestRunSiuInvestigation:
 
         claim_data = json.loads(captured_inputs["claim_data"])
         assert claim_data["state"] == "Texas"
+
+    def test_adds_failure_note_when_crew_raises(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When crew kickoff raises, orchestrator adds failure note to SIU case and claim."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.context import ClaimContext
+
+        def raise_crew_failed(crew, inputs):
+            raise RuntimeError("Crew failed")
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            raise_crew_failed,
+        )
+
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
+
+        with pytest.raises(RuntimeError, match="Crew failed"):
+            run_siu_investigation(
+                claim_under_investigation,
+                llm=mock_llm,
+                ctx=ctx,
+            )
+
+        claim = ctx.repo.get_claim(claim_under_investigation)
+        case_id = claim["siu_case_id"]
+        assert case_id is not None
+
+        adapter = get_siu_adapter()
+        case = adapter.get_case(case_id)
+        assert case is not None
+        notes = [n for n in case.get("notes", []) if "SIU workflow failed" in n.get("note", "")]
+        assert len(notes) == 1
+        assert "Crew failed" in notes[0]["note"]
+
+        claim_notes = ctx.repo.get_notes(claim_under_investigation)
+        failure_notes = [n for n in claim_notes if "SIU workflow failed" in n.get("note", "")]
+        assert len(failure_notes) == 1
+        assert "Crew failed" in failure_notes[0]["note"]

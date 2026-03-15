@@ -3,6 +3,11 @@
 Runs the SIU Investigation crew on claims under Special Investigations Unit
 review. Performs document verification, records investigation, and case
 management including state fraud bureau filing.
+
+Error handling: When tools fail (adapter timeout, external service down), they
+return error JSON instead of raising. Agents document failures in notes and
+continue with partial results. If the crew itself fails, a failure note is added
+to the SIU case and claim so adjusters are informed.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from claim_agent.crews.siu_crew import create_siu_crew
 from claim_agent.db.constants import SIU_INVESTIGATION_STATUSES
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.observability import get_logger, siu_workflow_scope
+from claim_agent.tools.siu_logic import add_siu_investigation_note_impl
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
@@ -119,7 +125,18 @@ def run_siu_investigation(
     _llm = llm or get_llm()
     siu_crew = create_siu_crew(llm=_llm)
     with siu_workflow_scope(claim_id=claim_id, case_id=siu_case_id):
-        result = _kickoff_with_retry(siu_crew, crew_inputs)
+        try:
+            result = _kickoff_with_retry(siu_crew, crew_inputs)
+        except Exception as e:
+            failure_note = f"SIU workflow failed: {e!s}. Adjuster review required."
+            try:
+                add_siu_investigation_note_impl(
+                    siu_case_id, failure_note, "general", ctx=ctx
+                )
+                repo.add_note(claim_id, failure_note, actor_id="system")
+            except Exception as note_err:
+                logger.warning("Failed to add SIU failure note: %s", note_err)
+            raise
 
     workflow_output = str(
         getattr(result, "raw", None)
