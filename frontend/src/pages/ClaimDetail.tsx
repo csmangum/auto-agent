@@ -157,6 +157,7 @@ export default function ClaimDetail() {
 
         {activeTab === 'tasks' && (
           <TaskPanel claimId={claim.id} tasks={tasks} />
+        )}
         {activeTab === 'documents' && (
           <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
             <h3 className="text-sm font-semibold text-gray-300 mb-4">Documents & Attachments</h3>
@@ -179,7 +180,13 @@ export default function ClaimDetail() {
                         ? 'PDF'
                         : att.type === 'estimate'
                           ? 'Estimate'
-                          : 'Document';
+                          : att.type === 'invoice'
+                            ? 'Invoice'
+                            : att.type === 'receipt'
+                              ? 'Receipt'
+                              : att.type === 'other'
+                                ? 'Document'
+                                : att.type || 'Document';
                   const icon =
                     att.type === 'photo'
                       ? '🖼️'
@@ -187,11 +194,16 @@ export default function ClaimDetail() {
                         ? '📄'
                         : att.type === 'estimate'
                           ? '📋'
-                          : '📎';
+                          : att.type === 'invoice'
+                            ? '🧾'
+                            : att.type === 'receipt'
+                              ? '🧾'
+                              : '📎';
                   const filename = att.url.split('/').pop() ?? `Document ${i + 1}`;
+                  const stableKey = `${att.url}-${att.description ?? ''}-${i}`;
                   return (
                     <div
-                      key={i}
+                      key={stableKey}
                       className="flex items-center justify-between gap-4 rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50 hover:ring-gray-600/50 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">

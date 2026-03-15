@@ -138,6 +138,7 @@ export function usePolicies() {
   });
 }
 
+/** For fetching tasks separately from claim; TaskPanel uses claim.tasks from useClaim. */
 export function useClaimTasks(claimId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.claimTasks(claimId ?? ''),
@@ -146,6 +147,7 @@ export function useClaimTasks(claimId: string | undefined) {
   });
 }
 
+/** For future All Tasks dashboard; not yet used in UI. */
 export function useAllTasks(params: {
   status?: string;
   task_type?: string;
@@ -159,6 +161,7 @@ export function useAllTasks(params: {
   });
 }
 
+/** For future All Tasks dashboard; not yet used in UI. */
 export function useTaskStats() {
   return useQuery({
     queryKey: queryKeys.taskStats,

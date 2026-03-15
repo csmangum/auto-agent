@@ -93,6 +93,12 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.claimTasks(claimId) });
+      setTitle('');
+      setTaskType('gather_information');
+      setDescription('');
+      setPriority('medium');
+      setAssignedTo('');
+      setDueDate('');
       onDone();
     },
   });
@@ -110,10 +116,11 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 bg-gray-900/50 rounded-lg p-4 ring-1 ring-gray-700/50">
+    <form onSubmit={handleSubmit} className="space-y-4 bg-gray-900/50 rounded-lg p-4 ring-1 ring-gray-700/50" aria-label="Create new task">
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Title *</label>
+        <label htmlFor="task-create-title" className="block text-xs text-gray-500 mb-1">Title *</label>
         <input
+          id="task-create-title"
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -125,8 +132,9 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Type *</label>
+          <label htmlFor="task-create-type" className="block text-xs text-gray-500 mb-1">Type *</label>
           <select
+            id="task-create-type"
             value={taskType}
             onChange={(e) => setTaskType(e.target.value as TaskType)}
             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -137,8 +145,9 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Priority</label>
+          <label htmlFor="task-create-priority" className="block text-xs text-gray-500 mb-1">Priority</label>
           <select
+            id="task-create-priority"
             value={priority}
             onChange={(e) => setPriority(e.target.value as TaskPriority)}
             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -151,8 +160,9 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
         </div>
       </div>
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Description</label>
+        <label htmlFor="task-create-description" className="block text-xs text-gray-500 mb-1">Description</label>
         <textarea
+          id="task-create-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
@@ -163,8 +173,9 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Assigned To</label>
+          <label htmlFor="task-create-assigned" className="block text-xs text-gray-500 mb-1">Assigned To</label>
           <input
+            id="task-create-assigned"
             type="text"
             value={assignedTo}
             onChange={(e) => setAssignedTo(e.target.value)}
@@ -174,8 +185,9 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Due Date</label>
+          <label htmlFor="task-create-due" className="block text-xs text-gray-500 mb-1">Due Date</label>
           <input
+            id="task-create-due"
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
@@ -236,8 +248,18 @@ function TaskCard({ task, claimId }: { task: ClaimTask; claimId: string }) {
   return (
     <div className={`rounded-lg bg-gray-900/50 ring-1 ${isOverdue ? 'ring-red-500/50' : 'ring-gray-700/50'} transition-all`}>
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={expanded ? `Collapse ${task.title}` : `Expand ${task.title}`}
         className="p-3 cursor-pointer hover:bg-gray-800/30 transition-colors rounded-lg"
         onClick={() => setExpanded(!expanded)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded((prev) => !prev);
+          }
+        }}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2 min-w-0">
@@ -304,7 +326,11 @@ function TaskCard({ task, claimId }: { task: ClaimTask; claimId: string }) {
 
           {task.status !== 'completed' && task.status !== 'cancelled' && (
             <div className="space-y-2">
+              <label htmlFor={`task-resolution-notes-${task.id}`} className="sr-only">
+                Resolution notes (optional)
+              </label>
               <textarea
+                id={`task-resolution-notes-${task.id}`}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
@@ -396,11 +422,20 @@ export default function TaskPanel({ claimId, tasks }: TaskPanelProps) {
       )}
 
       {tasks.length > 0 && (
-        <div className="flex gap-1 mb-3">
+        <div className="flex gap-1 mb-3" role="group" aria-label="Task filter">
           {(['all', 'active', 'completed'] as const).map((f) => (
             <button
               key={f}
+              type="button"
               onClick={() => setFilter(f)}
+              aria-pressed={filter === f}
+              aria-label={
+                f === 'all'
+                  ? `Show all tasks (${tasks.length})`
+                  : f === 'active'
+                    ? `Show active tasks (${activeCount})`
+                    : `Show completed tasks (${completedCount})`
+              }
               className={`px-2.5 py-1 text-xs rounded transition-colors ${
                 filter === f
                   ? 'bg-blue-500/20 text-blue-400'

@@ -5,10 +5,11 @@ that agents or adjusters create during claim processing.
 """
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
@@ -34,6 +35,17 @@ VALID_TASK_TYPES = {t.value for t in TaskType}
 VALID_TASK_PRIORITIES = {p.value for p in TaskPriority}
 
 
+def _validate_due_date(v: Optional[str]) -> Optional[str]:
+    """Validate due_date is YYYY-MM-DD or empty."""
+    if v is None or (isinstance(v, str) and v.strip() == ""):
+        return None
+    try:
+        datetime.fromisoformat(v.strip()).date()
+    except (ValueError, TypeError):
+        raise ValueError("due_date must be YYYY-MM-DD (ISO 8601)")
+    return v.strip()
+
+
 class CreateTaskBody(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="Short description of the task")
     task_type: str = Field(..., description="Task category")
@@ -41,6 +53,11 @@ class CreateTaskBody(BaseModel):
     priority: str = Field(default="medium", description="Task priority")
     assigned_to: Optional[str] = Field(default=None, max_length=200, description="Assignee")
     due_date: Optional[str] = Field(default=None, description="Target date (ISO 8601)")
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_due_date(v)
 
 
 class UpdateTaskBody(BaseModel):
@@ -51,6 +68,11 @@ class UpdateTaskBody(BaseModel):
     assigned_to: Optional[str] = Field(default=None, max_length=200)
     due_date: Optional[str] = None
     resolution_notes: Optional[str] = Field(default=None, max_length=5000)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_due_date(v)
 
 
 @router.post("/claims/{claim_id}/tasks")

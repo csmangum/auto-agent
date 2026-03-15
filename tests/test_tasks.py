@@ -127,11 +127,10 @@ class TestTaskRepository:
     def test_get_task_stats_overdue_uses_date_comparison(self, seeded_temp_db):
         """Tasks due today should NOT be counted as overdue (date comparison, not datetime)."""
         from claim_agent.db.repository import ClaimRepository
-        from claim_agent.db.database import get_connection
         import datetime
         today = datetime.date.today().isoformat()
         repo = ClaimRepository()
-        task_id = repo.create_task("CLM-TEST001", "Due today", "other", due_date=today)
+        repo.create_task("CLM-TEST001", "Due today", "other", due_date=today)
         stats = repo.get_task_stats()
         # Task due today must not be flagged as overdue
         assert stats["overdue"] == 0
@@ -274,6 +273,28 @@ class TestCreateTask:
         )
         assert resp.status_code == 422
 
+    def test_create_task_invalid_due_date_rejected(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/tasks",
+            json={"title": "T", "task_type": "other", "due_date": "tomorrow"},
+        )
+        assert resp.status_code == 422
+
+    def test_create_task_invalid_due_date_format_rejected(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/tasks",
+            json={"title": "T", "task_type": "other", "due_date": "2024-02-30"},
+        )
+        assert resp.status_code == 422
+
+    def test_create_task_valid_due_date_accepted(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/tasks",
+            json={"title": "T", "task_type": "other", "due_date": "2025-12-31"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["due_date"] == "2025-12-31"
+
 
 class TestListClaimTasks:
     def test_list_tasks_empty(self, client):
@@ -401,6 +422,18 @@ class TestUpdateTask:
     def test_update_not_found(self, client):
         resp = client.patch("/api/tasks/99999", json={"status": "completed"})
         assert resp.status_code == 404
+
+    def test_update_invalid_due_date_rejected(self, client):
+        r = client.post(
+            "/api/claims/CLM-TEST001/tasks",
+            json={"title": "T", "task_type": "other"},
+        )
+        task_id = r.json()["id"]
+        resp = client.patch(
+            f"/api/tasks/{task_id}",
+            json={"due_date": "not-a-date"},
+        )
+        assert resp.status_code == 422
 
 
 class TestListAllTasks:
