@@ -222,6 +222,7 @@ class TestWorkflowCheckpoints:
     """Test that run_claim_workflow saves and restores checkpoints."""
 
     @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_task_planner_crew")
     @patch("claim_agent.workflow.stages.create_after_action_crew")
     @patch("claim_agent.workflow.stages.create_router_crew")
     @patch("claim_agent.workflow.stages.create_new_claim_crew")
@@ -229,7 +230,7 @@ class TestWorkflowCheckpoints:
     @patch("claim_agent.workflow.stages.get_router_config")
     def test_full_run_saves_checkpoints(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
-        mock_after_action, mock_escalation, temp_db,
+        mock_after_action, mock_task_planner, mock_escalation, temp_db,
     ):
         from claim_agent.crews.main_crew import run_claim_workflow
 
@@ -248,6 +249,9 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.return_value = _mock_crew_result("New claim processed")
         mock_new_crew.return_value = new_crew_inst
 
+        mock_task_planner.return_value.kickoff.return_value = _mock_crew_result(
+            "Task planning output"
+        )
         mock_after_action.return_value.kickoff.return_value = _mock_crew_result(
             "After-action summary completed."
         )
@@ -279,6 +283,7 @@ class TestWorkflowCheckpoints:
         assert router_cp["claim_type"] == "new"
 
     @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_task_planner_crew")
     @patch("claim_agent.workflow.stages.create_after_action_crew")
     @patch("claim_agent.workflow.stages.create_router_crew")
     @patch("claim_agent.workflow.stages.create_new_claim_crew")
@@ -286,7 +291,7 @@ class TestWorkflowCheckpoints:
     @patch("claim_agent.workflow.stages.get_router_config")
     def test_resume_skips_completed_stages(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
-        mock_after_action, mock_escalation, temp_db,
+        mock_after_action, mock_task_planner, mock_escalation, temp_db,
     ):
         from claim_agent.crews.main_crew import run_claim_workflow
 
@@ -305,6 +310,9 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.return_value = _mock_crew_result("New claim processed")
         mock_new_crew.return_value = new_crew_inst
 
+        mock_task_planner.return_value.kickoff.return_value = _mock_crew_result(
+            "Task planning output"
+        )
         mock_after_action.return_value.kickoff.return_value = _mock_crew_result(
             "After-action summary completed."
         )
@@ -330,6 +338,7 @@ class TestWorkflowCheckpoints:
         # Reset call counts
         router_crew_inst.kickoff.reset_mock()
         new_crew_inst.kickoff.reset_mock()
+        mock_task_planner.return_value.kickoff.reset_mock()
 
         # Resume from same run — all stages checkpointed, nothing should re-run
         result2 = run_claim_workflow(
@@ -350,9 +359,11 @@ class TestWorkflowCheckpoints:
 
         router_crew_inst.kickoff.assert_not_called()
         new_crew_inst.kickoff.assert_not_called()
+        mock_task_planner.return_value.kickoff.assert_not_called()
         assert result2["claim_type"] == "new"
 
     @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_task_planner_crew")
     @patch("claim_agent.workflow.stages.create_after_action_crew")
     @patch("claim_agent.workflow.stages.create_router_crew")
     @patch("claim_agent.workflow.stages.create_new_claim_crew")
@@ -360,7 +371,7 @@ class TestWorkflowCheckpoints:
     @patch("claim_agent.workflow.stages.get_router_config")
     def test_from_stage_reruns_invalidated_stages(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
-        mock_after_action, mock_escalation, temp_db,
+        mock_after_action, mock_task_planner, mock_escalation, temp_db,
     ):
         from claim_agent.crews.main_crew import run_claim_workflow
 
@@ -379,6 +390,9 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.return_value = _mock_crew_result("Run 1 output")
         mock_new_crew.return_value = new_crew_inst
 
+        mock_task_planner.return_value.kickoff.return_value = _mock_crew_result(
+            "Task planning output"
+        )
         mock_after_action.return_value.kickoff.return_value = _mock_crew_result(
             "After-action summary completed."
         )
@@ -403,6 +417,7 @@ class TestWorkflowCheckpoints:
 
         router_crew_inst.kickoff.reset_mock()
         new_crew_inst.kickoff.reset_mock()
+        mock_task_planner.return_value.kickoff.reset_mock()
 
         # Change the crew output for re-run
         new_crew_inst.kickoff.return_value = _mock_crew_result("Run 2 output")
@@ -487,6 +502,7 @@ class TestWorkflowCheckpoints:
         assert "workflow:new" not in cps
 
     @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_task_planner_crew")
     @patch("claim_agent.workflow.stages.create_after_action_crew")
     @patch("claim_agent.workflow.stages.create_router_crew")
     @patch("claim_agent.workflow.stages.create_new_claim_crew")
@@ -494,7 +510,7 @@ class TestWorkflowCheckpoints:
     @patch("claim_agent.workflow.stages.get_router_config")
     def test_no_resume_params_runs_full_workflow(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
-        mock_after_action, mock_escalation, temp_db,
+        mock_after_action, mock_task_planner, mock_escalation, temp_db,
     ):
         """Without resume_run_id, checkpoints from prior runs are ignored."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -514,6 +530,9 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.return_value = _mock_crew_result("Output 1")
         mock_new_crew.return_value = new_crew_inst
 
+        mock_task_planner.return_value.kickoff.return_value = _mock_crew_result(
+            "Task planning output"
+        )
         mock_after_action.return_value.kickoff.return_value = _mock_crew_result(
             "After-action summary completed."
         )
@@ -535,6 +554,7 @@ class TestWorkflowCheckpoints:
 
         router_crew_inst.kickoff.reset_mock()
         new_crew_inst.kickoff.reset_mock()
+        mock_task_planner.return_value.kickoff.reset_mock()
         new_crew_inst.kickoff.return_value = _mock_crew_result("Output 2")
 
         # Second run WITHOUT resume — should re-run everything
@@ -612,6 +632,7 @@ class TestWorkflowCheckpoints:
         assert cps == {}, "Checkpoints should be cleared after mid-workflow escalation"
 
     @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_task_planner_crew")
     @patch("claim_agent.workflow.stages.create_after_action_crew")
     @patch("claim_agent.workflow.stages.create_router_crew")
     @patch("claim_agent.workflow.stages.create_new_claim_crew")
@@ -619,7 +640,7 @@ class TestWorkflowCheckpoints:
     @patch("claim_agent.workflow.stages.get_router_config")
     def test_from_stage_without_resume_run_id_runs_full(
         self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
-        mock_after_action, mock_escalation, temp_db,
+        mock_after_action, mock_task_planner, mock_escalation, temp_db,
     ):
         """from_stage without resume_run_id is ignored and a full run executes."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -639,6 +660,9 @@ class TestWorkflowCheckpoints:
         new_crew_inst.kickoff.return_value = _mock_crew_result("Processed")
         mock_new_crew.return_value = new_crew_inst
 
+        mock_task_planner.return_value.kickoff.return_value = _mock_crew_result(
+            "Task planning output"
+        )
         mock_after_action.return_value.kickoff.return_value = _mock_crew_result(
             "After-action summary completed."
         )
