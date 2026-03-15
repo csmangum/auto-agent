@@ -21,6 +21,8 @@ AUDIT_EVENT_RETENTION = "retention_archived"
 AUDIT_EVENT_FOLLOW_UP_SENT = "follow_up_sent"
 AUDIT_EVENT_FOLLOW_UP_RESPONSE = "follow_up_response"
 AUDIT_EVENT_CLAIM_REVIEW = "claim_review"
+AUDIT_EVENT_TASK_CREATED = "task_created"
+AUDIT_EVENT_TASK_UPDATED = "task_updated"
 
 # Actor identifiers for automated actions
 ACTOR_SYSTEM = "system"
@@ -45,4 +47,6 @@ AUDIT_EVENT_TYPES = (
     AUDIT_EVENT_FOLLOW_UP_SENT,
     AUDIT_EVENT_FOLLOW_UP_RESPONSE,
     AUDIT_EVENT_CLAIM_REVIEW,
+    AUDIT_EVENT_TASK_CREATED,
+    AUDIT_EVENT_TASK_UPDATED,
 )

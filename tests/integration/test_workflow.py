@@ -72,7 +72,7 @@ class TestWorkflowWithMockedLLM:
     
     @pytest.mark.integration
     def test_workflow_creates_claim_in_database(
-        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response
+        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response, mock_llm_instance
     ):
         """Test that workflow creates a claim record in the database."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -82,16 +82,20 @@ class TestWorkflowWithMockedLLM:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                            "Claim processed successfully. Claim ID: CLM-TEST001"
-                        )
-                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                            "After-action summary completed."
-                        )
+                        with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                            mock_llm.return_value = mock_llm_instance
+                            mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                            mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                "Claim processed successfully. Claim ID: CLM-TEST001"
+                            )
+                            mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                "After-action summary completed."
+                            )
+                            mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                "Tasks created."
+                            )
 
-                        result = run_claim_workflow(sample_new_claim)
+                            result = run_claim_workflow(sample_new_claim)
         
         assert "claim_id" in result
         assert result["claim_id"].startswith("CLM-")
@@ -103,7 +107,7 @@ class TestWorkflowWithMockedLLM:
     
     @pytest.mark.integration
     def test_workflow_routes_to_correct_crew(
-        self, integration_db, sample_total_loss_claim, mock_router_response, mock_crew_response
+        self, integration_db, sample_total_loss_claim, mock_router_response, mock_crew_response, mock_llm_instance
     ):
         """Test that payout-ready total loss claims run workflow crew then settlement crew."""
         import json
@@ -128,29 +132,33 @@ class TestWorkflowWithMockedLLM:
                             with patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
                                 with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
                                     with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                        mock_llm.return_value = MagicMock()
-                                        mock_router.return_value.kickoff.return_value = mock_router_response(
-                                            "total_loss", "Vehicle flooded - total destruction."
-                                        )
-                                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                                            "Total loss confirmed. Vehicle value: $15,000.",
-                                            tasks_output=workflow_tasks_output,
-                                        )
-                                        mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                            "Settlement completed. Status: settled."
-                                        )
-                                        mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                            "Subrogation assessment complete. No recovery opportunity."
-                                        )
-                                        mock_salvage.return_value.kickoff.return_value = mock_crew_response(
-                                            "Salvage disposition complete."
-                                        )
-                                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                                            "After-action summary completed."
-                                        )
-                                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                        with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                            mock_llm.return_value = mock_llm_instance
+                                            mock_router.return_value.kickoff.return_value = mock_router_response(
+                                                "total_loss", "Vehicle flooded - total destruction."
+                                            )
+                                            mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                                "Total loss confirmed. Vehicle value: $15,000.",
+                                                tasks_output=workflow_tasks_output,
+                                            )
+                                            mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                                "Settlement completed. Status: settled."
+                                            )
+                                            mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                                "Subrogation assessment complete. No recovery opportunity."
+                                            )
+                                            mock_salvage.return_value.kickoff.return_value = mock_crew_response(
+                                                "Salvage disposition complete."
+                                            )
+                                            mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                                "After-action summary completed."
+                                            )
+                                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                            mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                                "Tasks created."
+                                            )
 
-                                        result = run_claim_workflow(low_value_claim)
+                                            result = run_claim_workflow(low_value_claim)
 
         assert result["claim_type"] == "total_loss"
         mock_crew.assert_called_once()
@@ -170,7 +178,7 @@ class TestWorkflowWithMockedLLM:
 
     @pytest.mark.integration
     def test_partial_loss_runs_shared_settlement_crew(
-        self, integration_db, sample_partial_loss_claim, mock_router_response, mock_crew_response
+        self, integration_db, sample_partial_loss_claim, mock_router_response, mock_crew_response, mock_llm_instance
     ):
         """Test that partial loss workflow hands off to the shared settlement crew."""
         import json
@@ -190,31 +198,35 @@ class TestWorkflowWithMockedLLM:
                     with patch("claim_agent.workflow.stages.create_rental_crew") as mock_rental:
                         with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
                             with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
-                                with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                        mock_llm.return_value = MagicMock()
-                                        mock_router.return_value.kickoff.return_value = mock_router_response(
-                                            "partial_loss", "Repairable fender damage."
-                                        )
-                                        mock_partial.return_value.kickoff.return_value = mock_crew_response(
-                                            "Repair authorization created. insurance_pays: $2,100.",
-                                            tasks_output=workflow_tasks_output,
-                                        )
-                                        mock_rental.return_value.kickoff.return_value = mock_crew_response(
-                                            "Rental eligibility confirmed. Reimbursement processed."
-                                        )
-                                        mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                            "Settlement completed. Status: settled."
-                                        )
-                                        mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                            "Subrogation assessment complete. No recovery opportunity."
-                                        )
-                                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                                            "After-action summary completed."
-                                        )
-                                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                                            with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                                mock_llm.return_value = mock_llm_instance
+                                                mock_router.return_value.kickoff.return_value = mock_router_response(
+                                                    "partial_loss", "Repairable fender damage."
+                                                )
+                                                mock_partial.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Repair authorization created. insurance_pays: $2,100.",
+                                                    tasks_output=workflow_tasks_output,
+                                                )
+                                                mock_rental.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Rental eligibility confirmed. Reimbursement processed."
+                                                )
+                                                mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Settlement completed. Status: settled."
+                                                )
+                                                mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Subrogation assessment complete. No recovery opportunity."
+                                                )
+                                                mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                                    "After-action summary completed."
+                                                )
+                                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                                mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Tasks created."
+                                                )
 
-                                        result = run_claim_workflow(sample_partial_loss_claim)
+                                                result = run_claim_workflow(sample_partial_loss_claim)
 
         assert result["claim_type"] == "partial_loss"
         mock_partial.assert_called_once()
@@ -237,7 +249,7 @@ class TestWorkflowWithMockedLLM:
     
     @pytest.mark.integration
     def test_workflow_records_audit_history(
-        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response
+        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response, mock_llm_instance
     ):
         """Test that workflow actions are recorded in the audit log."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -247,14 +259,18 @@ class TestWorkflowWithMockedLLM:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response("Success")
-                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                            "After-action summary completed."
-                        )
+                        with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                            mock_llm.return_value = mock_llm_instance
+                            mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                            mock_crew.return_value.kickoff.return_value = mock_crew_response("Success")
+                            mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                "After-action summary completed."
+                            )
+                            mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                "Tasks created."
+                            )
 
-                        result = run_claim_workflow(sample_new_claim)
+                            result = run_claim_workflow(sample_new_claim)
         
         repo = ClaimRepository(db_path=integration_db)
         history, _ = repo.get_claim_history(result["claim_id"])
@@ -267,7 +283,7 @@ class TestWorkflowWithMockedLLM:
     
     @pytest.mark.integration
     def test_workflow_handles_failure_gracefully(
-        self, integration_db, sample_new_claim, mock_router_response
+        self, integration_db, sample_new_claim, mock_router_response, mock_llm_instance
     ):
         """Test that workflow failures are properly recorded."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -275,7 +291,7 @@ class TestWorkflowWithMockedLLM:
         
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
-                mock_llm.return_value = MagicMock()
+                mock_llm.return_value = mock_llm_instance
                 mock_router.return_value.kickoff.side_effect = RuntimeError("LLM unavailable")
                 
                 with pytest.raises(RuntimeError, match="LLM unavailable"):
@@ -290,7 +306,7 @@ class TestWorkflowWithMockedLLM:
     
     @pytest.mark.integration
     def test_workflow_saves_workflow_result(
-        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response
+        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response, mock_llm_instance
     ):
         """Test that workflow results are saved to workflow_runs table."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -301,15 +317,19 @@ class TestWorkflowWithMockedLLM:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
                         with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                            mock_llm.return_value = MagicMock()
-                            mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                            mock_crew.return_value.kickoff.return_value = mock_crew_response("Processed!")
-                            mock_after.return_value.kickoff.return_value = mock_crew_response(
-                                "After-action summary completed."
-                            )
-                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                            with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                mock_llm.return_value = mock_llm_instance
+                                mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                                mock_crew.return_value.kickoff.return_value = mock_crew_response("Processed!")
+                                mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                    "After-action summary completed."
+                                )
+                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                    "Tasks created."
+                                )
 
-                            result = run_claim_workflow(sample_new_claim)
+                                result = run_claim_workflow(sample_new_claim)
         
         with get_connection(integration_db) as conn:
             row = conn.execute(
@@ -332,7 +352,7 @@ class TestEscalation:
     
     @pytest.mark.integration
     def test_high_value_claim_triggers_escalation(
-        self, integration_db, mock_router_response
+        self, integration_db, mock_router_response, mock_llm_instance
     ):
         """Test that high value claims are escalated for review."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -353,7 +373,7 @@ class TestEscalation:
         
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
-                mock_llm.return_value = MagicMock()
+                mock_llm.return_value = mock_llm_instance
                 mock_router.return_value.kickoff.return_value = mock_router_response("new")
                 
                 result = run_claim_workflow(high_value_claim)
@@ -365,7 +385,7 @@ class TestEscalation:
     
     @pytest.mark.integration
     def test_fraud_claim_runs_fraud_crew_instead_of_escalation(
-        self, integration_db, sample_fraud_claim, mock_router_response, mock_crew_response
+        self, integration_db, sample_fraud_claim, mock_router_response, mock_crew_response, mock_llm_instance
     ):
         """Test that fraud claims go to fraud crew, not escalation."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -374,16 +394,20 @@ class TestEscalation:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_fraud_detection_crew") as mock_fraud:
                     with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response("fraud")
-                        mock_fraud.return_value.kickoff.return_value = mock_crew_response(
-                            "Fraud indicators detected: staged accident, inflated damages."
-                        )
-                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                            "After-action summary completed."
-                        )
+                        with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                            mock_llm.return_value = mock_llm_instance
+                            mock_router.return_value.kickoff.return_value = mock_router_response("fraud")
+                            mock_fraud.return_value.kickoff.return_value = mock_crew_response(
+                                "Fraud indicators detected: staged accident, inflated damages."
+                            )
+                            mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                "After-action summary completed."
+                            )
+                            mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                "Tasks created."
+                            )
 
-                        result = run_claim_workflow(sample_fraud_claim)
+                            result = run_claim_workflow(sample_fraud_claim)
         
         assert result["claim_type"] == "fraud"
         mock_fraud.assert_called_once()
@@ -399,7 +423,7 @@ class TestReprocessing:
     
     @pytest.mark.integration
     def test_reprocess_existing_claim(
-        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response
+        self, integration_db, sample_new_claim, mock_router_response, mock_crew_response, mock_llm_instance
     ):
         """Test that an existing claim can be reprocessed."""
         from claim_agent.crews.main_crew import run_claim_workflow
@@ -416,14 +440,18 @@ class TestReprocessing:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
                     with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response("Reprocessed!")
-                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                            "After-action summary completed."
-                        )
+                        with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                            mock_llm.return_value = mock_llm_instance
+                            mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                            mock_crew.return_value.kickoff.return_value = mock_crew_response("Reprocessed!")
+                            mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                "After-action summary completed."
+                            )
+                            mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                "Tasks created."
+                            )
 
-                        result = run_claim_workflow(sample_new_claim, existing_claim_id=claim_id)
+                            result = run_claim_workflow(sample_new_claim, existing_claim_id=claim_id)
         
         assert result["claim_id"] == claim_id
         
@@ -432,13 +460,13 @@ class TestReprocessing:
         assert len(history) >= 3  # created + multiple status changes
     
     @pytest.mark.integration
-    def test_reprocess_nonexistent_claim_raises(self, integration_db, sample_new_claim):
+    def test_reprocess_nonexistent_claim_raises(self, integration_db, sample_new_claim, mock_llm_instance):
         """Test that reprocessing a non-existent claim raises ClaimNotFoundError."""
         from claim_agent.crews.main_crew import run_claim_workflow
         from claim_agent.exceptions import ClaimNotFoundError
 
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
-            mock_llm.return_value = MagicMock()
+            mock_llm.return_value = mock_llm_instance
             with pytest.raises(ClaimNotFoundError, match="Claim not found"):
                 run_claim_workflow(sample_new_claim, existing_claim_id="CLM-NONEXIST")
 

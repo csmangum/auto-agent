@@ -95,6 +95,22 @@ def sample_bodily_injury_claim() -> dict[str, Any]:
 # ============================================================================
 
 
+def _mock_llm_for_crew() -> MagicMock:
+    """Return a MagicMock configured for CrewAI Agent validation.
+
+    CrewAI's Agent requires llm.model to be a non-empty string.
+    """
+    m = MagicMock()
+    m.model = "mock-model"
+    return m
+
+
+@pytest.fixture
+def mock_llm_instance() -> MagicMock:
+    """Fixture providing a mock LLM that satisfies CrewAI Agent validation."""
+    return _mock_llm_for_crew()
+
+
 @pytest.fixture
 def mock_router_response() -> Callable[[str, str], MagicMock]:
     """Factory fixture for creating mock router responses."""

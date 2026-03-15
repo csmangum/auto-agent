@@ -243,3 +243,5 @@ RESPONSE_PROCESSING = "response_processing"
 SIU_DOCUMENT_VERIFICATION = "siu_document_verification"
 SIU_RECORDS_INVESTIGATOR = "siu_records_investigator"
 SIU_CASE_MANAGER = "siu_case_manager"
+# Task planning
+TASK_PLANNER = "task_planner"

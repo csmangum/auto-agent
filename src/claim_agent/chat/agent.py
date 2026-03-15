@@ -37,6 +37,8 @@ and investigate claims.
 - Look up insurance policies and vehicles
 - Investigate escalation reasons for claims in needs_review
 - View the human review queue
+- View tasks for claims (pending follow-ups, document requests, inspections, etc.)
+- View aggregate task statistics
 - Explain system configuration (escalation thresholds, fraud settings)
 
 **Guidelines:**

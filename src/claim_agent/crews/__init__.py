@@ -1,12 +1,12 @@
-"""Crews for claim workflows."""
+"""Crews for claim workflows.
+
+Note: create_main_crew, create_router_crew, run_claim_workflow are in main_crew.
+Import them from claim_agent.crews.main_crew to avoid circular import with
+claim_agent.workflow.stages.
+"""
 
 from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
 from claim_agent.crews.factory import AgentConfig, TaskConfig, create_crew
-from claim_agent.crews.main_crew import (
-    create_main_crew,
-    create_router_crew,
-    run_claim_workflow,
-)
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.duplicate_crew import create_duplicate_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
@@ -27,9 +27,6 @@ __all__ = [
     "AgentConfig",
     "TaskConfig",
     "create_crew",
-    "create_main_crew",
-    "create_router_crew",
-    "run_claim_workflow",
     "create_new_claim_crew",
     "create_duplicate_crew",
     "create_total_loss_crew",

@@ -17,6 +17,9 @@ import {
   getSystemHealth,
   getAgentsCatalog,
   getPolicies,
+  getClaimTasks,
+  getAllTasks,
+  getTaskStats,
 } from './client';
 import type { GetClaimsParams } from './client';
 
@@ -34,6 +37,9 @@ export const queryKeys = {
   systemHealth: ['system', 'health'] as const,
   agentsCatalog: ['system', 'agents'] as const,
   policies: ['system', 'policies'] as const,
+  claimTasks: (id: string) => ['claims', id, 'tasks'] as const,
+  allTasks: (params?: Record<string, unknown>) => ['tasks', 'list', params ?? {}] as const,
+  taskStats: ['tasks', 'stats'] as const,
 };
 
 export function useClaimsStats() {
@@ -129,5 +135,36 @@ export function usePolicies() {
   return useQuery({
     queryKey: queryKeys.policies,
     queryFn: getPolicies,
+  });
+}
+
+/** For fetching tasks separately from claim; TaskPanel uses claim.tasks from useClaim. */
+export function useClaimTasks(claimId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.claimTasks(claimId ?? ''),
+    queryFn: () => getClaimTasks(claimId!),
+    enabled: !!claimId,
+  });
+}
+
+/** For future All Tasks dashboard; not yet used in UI. */
+export function useAllTasks(params: {
+  status?: string;
+  task_type?: string;
+  assigned_to?: string;
+  limit?: number;
+  offset?: number;
+} = {}) {
+  return useQuery({
+    queryKey: queryKeys.allTasks(params),
+    queryFn: () => getAllTasks(params),
+  });
+}
+
+/** For future All Tasks dashboard; not yet used in UI. */
+export function useTaskStats() {
+  return useQuery({
+    queryKey: queryKeys.taskStats,
+    queryFn: getTaskStats,
   });
 }

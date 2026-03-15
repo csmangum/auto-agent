@@ -43,6 +43,7 @@ from claim_agent.utils.sanitization import (
     MAX_DENIAL_REASON,
     MAX_PAYOUT,
     MAX_POLICYHOLDER_EVIDENCE,
+    _is_safe_attachment_url,
     sanitize_claim_data,
 )
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
@@ -198,7 +199,12 @@ def _resolve_attachment_urls(claim_dict: dict) -> dict:
 
         for attachment in attachments:
             url = attachment.get("url", "")
-            if not url or url.startswith(("http://", "https://")):
+            if not url:
+                continue
+            if not _is_safe_attachment_url(url):
+                attachment["url"] = "#"
+                continue
+            if url.startswith(("http://", "https://")):
                 continue
             if isinstance(storage, LocalStorageAdapter):
                 stored_name = url.split("/")[-1] if "/" in url else url
@@ -643,6 +649,9 @@ def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     result = _resolve_attachment_urls(row)
     result["notes"] = ctx.repo.get_notes(claim_id)
     result["follow_up_messages"] = ctx.repo.get_follow_up_messages(claim_id)
+    tasks, tasks_total = ctx.repo.get_tasks_for_claim(claim_id)
+    result["tasks"] = tasks
+    result["tasks_total"] = tasks_total
     return result
 
 
