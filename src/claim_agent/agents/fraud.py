@@ -11,6 +11,7 @@ from claim_agent.tools.fraud_tools import (
 )
 from claim_agent.tools import (
     add_claim_note,
+    create_claim_task,
     detect_fraud_indicators,
     escalate_claim,
     get_claim_notes,
@@ -55,6 +56,7 @@ def create_fraud_assessment_agent(llm: LLMProtocol | None = None):
         backstory=skill["backstory"],
         tools=[
             add_claim_note,
+            create_claim_task,
             perform_fraud_assessment,
             generate_fraud_report,
             get_claim_notes,

@@ -26,6 +26,8 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_RETENTION,
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
+    AUDIT_EVENT_TASK_CREATED,
+    AUDIT_EVENT_TASK_UPDATED,
 )
 from claim_agent.db.constants import (
     STATUS_ARCHIVED,
@@ -37,7 +39,7 @@ from claim_agent.db.constants import (
 )
 from claim_agent.db.database import get_connection
 from claim_agent.exceptions import ClaimNotFoundError
-from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_note
+from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_note, sanitize_task_title, sanitize_task_description, sanitize_resolution_notes
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 
@@ -1015,3 +1017,235 @@ class ClaimRepository:
                 payout_amount=row["payout_amount"],
             )
         )
+
+    # ------------------------------------------------------------------
+    # Task management
+    # ------------------------------------------------------------------
+
+    def create_task(
+        self,
+        claim_id: str,
+        title: str,
+        task_type: str,
+        *,
+        description: str = "",
+        priority: str = "medium",
+        assigned_to: str | None = None,
+        created_by: str = ACTOR_WORKFLOW,
+        due_date: str | None = None,
+    ) -> int:
+        """Create a task for a claim. Returns the task id. Raises ClaimNotFoundError if claim does not exist."""
+        title = sanitize_task_title(title)
+        description = sanitize_task_description(description)
+        created_by = sanitize_actor_id(created_by)
+        if not title:
+            raise ValueError("Task title must not be empty after sanitization")
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            cursor = conn.execute(
+                """
+                INSERT INTO claim_tasks
+                    (claim_id, title, task_type, description, status, priority, assigned_to, created_by, due_date)
+                VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                """,
+                (claim_id, title, task_type, description, priority, assigned_to, created_by, due_date),
+            )
+            task_id = cursor.lastrowid
+            details = json.dumps({
+                "task_id": task_id,
+                "title": title,
+                "task_type": task_type,
+                "priority": priority,
+                "assigned_to": assigned_to,
+            })
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_TASK_CREATED, details, created_by),
+            )
+        return int(task_id)
+
+    def get_task(self, task_id: int) -> dict[str, Any] | None:
+        """Fetch a single task by ID."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM claim_tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_tasks_for_claim(
+        self,
+        claim_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List tasks for a claim with optional status filter. Returns (tasks, total)."""
+        conditions = ["claim_id = ?"]
+        params: list[Any] = [claim_id]
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+        where = " AND ".join(conditions)
+        with get_connection(self._db_path) as conn:
+            count_row = conn.execute(
+                f"SELECT COUNT(*) as cnt FROM claim_tasks WHERE {where}",
+                params,
+            ).fetchone()
+            total = count_row["cnt"]
+            rows = conn.execute(
+                f"""SELECT * FROM claim_tasks WHERE {where}
+                    ORDER BY
+                        CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+                        CASE status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END,
+                        created_at DESC
+                    LIMIT ? OFFSET ?""",
+                params + [limit, offset],
+            ).fetchall()
+        return [dict(r) for r in rows], total
+
+    def update_task(
+        self,
+        task_id: int,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        assigned_to: str | None = None,
+        due_date: str | None = None,
+        resolution_notes: str | None = None,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> dict[str, Any]:
+        """Update a task. Returns the updated task dict. Raises ValueError if task not found."""
+        if title is not None:
+            title = sanitize_task_title(title)
+        if description is not None:
+            description = sanitize_task_description(description)
+        if resolution_notes is not None:
+            resolution_notes = sanitize_resolution_notes(resolution_notes)
+        actor_id = sanitize_actor_id(actor_id)
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM claim_tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Task not found: {task_id}")
+
+            updates: list[str] = ["updated_at = datetime('now')"]
+            params: list[Any] = []
+            changes: dict[str, Any] = {}
+
+            for field, value in [
+                ("title", title),
+                ("description", description),
+                ("status", status),
+                ("priority", priority),
+                ("assigned_to", assigned_to),
+                ("due_date", due_date),
+                ("resolution_notes", resolution_notes),
+            ]:
+                if value is not None:
+                    updates.append(f"{field} = ?")
+                    params.append(value)
+                    changes[field] = value
+
+            if not changes:
+                return dict(row)
+
+            params.append(task_id)
+            conn.execute(
+                f"UPDATE claim_tasks SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            details = json.dumps({"task_id": task_id, **changes})
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (row["claim_id"], AUDIT_EVENT_TASK_UPDATED, details, actor_id),
+            )
+            updated = conn.execute(
+                "SELECT * FROM claim_tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+        return dict(updated)
+
+    def list_all_tasks(
+        self,
+        *,
+        status: str | None = None,
+        task_type: str | None = None,
+        assigned_to: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List tasks across all claims with optional filters. Returns (tasks, total)."""
+        conditions: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            conditions.append("ct.status = ?")
+            params.append(status)
+        if task_type is not None:
+            conditions.append("ct.task_type = ?")
+            params.append(task_type)
+        if assigned_to is not None:
+            conditions.append("ct.assigned_to = ?")
+            params.append(assigned_to)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        with get_connection(self._db_path) as conn:
+            count_row = conn.execute(
+                f"SELECT COUNT(*) as cnt FROM claim_tasks ct {where}",
+                params,
+            ).fetchone()
+            total = count_row["cnt"]
+            rows = conn.execute(
+                f"""SELECT ct.* FROM claim_tasks ct {where}
+                    ORDER BY
+                        CASE ct.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+                        CASE ct.status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END,
+                        ct.created_at DESC
+                    LIMIT ? OFFSET ?""",
+                params + [limit, offset],
+            ).fetchall()
+        return [dict(r) for r in rows], total
+
+    def get_task_stats(self) -> dict[str, Any]:
+        """Get aggregate task statistics."""
+        with get_connection(self._db_path) as conn:
+            total = conn.execute("SELECT COUNT(*) as cnt FROM claim_tasks").fetchone()["cnt"]
+            by_status = {
+                r["status"]: r["cnt"]
+                for r in conn.execute(
+                    "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt FROM claim_tasks GROUP BY status"
+                ).fetchall()
+            }
+            by_type = {
+                r["task_type"]: r["cnt"]
+                for r in conn.execute(
+                    "SELECT COALESCE(task_type, 'unknown') as task_type, COUNT(*) as cnt FROM claim_tasks GROUP BY task_type"
+                ).fetchall()
+            }
+            by_priority = {
+                r["priority"]: r["cnt"]
+                for r in conn.execute(
+                    "SELECT COALESCE(priority, 'unknown') as priority, COUNT(*) as cnt FROM claim_tasks GROUP BY priority"
+                ).fetchall()
+            }
+            overdue = conn.execute(
+                "SELECT COUNT(*) as cnt FROM claim_tasks WHERE due_date IS NOT NULL AND date(due_date) < date('now') AND status NOT IN ('completed', 'cancelled')"
+            ).fetchone()["cnt"]
+        return {
+            "total": total,
+            "by_status": by_status,
+            "by_type": by_type,
+            "by_priority": by_priority,
+            "overdue": overdue,
+        }

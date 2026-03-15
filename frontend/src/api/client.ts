@@ -20,6 +20,10 @@ import type {
   SystemConfigData,
   SystemHealthData,
   ChatStreamEvent,
+  ClaimTask,
+  ClaimTasksResponse,
+  AllTasksResponse,
+  TaskStatsResponse,
 } from './types';
 
 const BASE = '/api';
@@ -88,6 +92,24 @@ async function postJSON<T>(url: string, body: unknown, retries = 1): Promise<T> 
     if (res.status >= 500 && retries > 0) {
       await new Promise((r) => setTimeout(r, 500));
       return postJSON<T>(url, body, retries - 1);
+    }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function patchJSON<T>(url: string, body: unknown, retries = 1): Promise<T> {
+  const res = await fetch(`${BASE}${url}`, {
+    method: 'PATCH',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const msg = parseApiError(res.status, text);
+    if (res.status >= 500 && retries > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      return patchJSON<T>(url, body, retries - 1);
     }
     throw new Error(msg);
   }
@@ -438,8 +460,8 @@ export function streamChat(
         }
       }
       if (!receivedDone && !controller.signal.aborted) {
-        onError?.(new Error('Stream ended unexpectedly'));
-      }
+      onError?.(new Error('Stream ended unexpectedly'));
+    }
     } catch (err) {
       if (controller.signal.aborted) return;
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -450,3 +472,64 @@ export function streamChat(
   connect();
   return abort;
 }
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+export interface CreateTaskPayload {
+  title: string;
+  task_type: string;
+  description?: string;
+  priority?: string;
+  assigned_to?: string;
+  due_date?: string;
+}
+
+export interface UpdateTaskPayload {
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: string;
+  assigned_to?: string;
+  due_date?: string;
+  resolution_notes?: string;
+}
+
+export const getClaimTasks = (claimId: string): Promise<ClaimTasksResponse> =>
+  fetchJSON<ClaimTasksResponse>(`/claims/${claimId}/tasks`);
+
+export const createClaimTask = (
+  claimId: string,
+  payload: CreateTaskPayload
+): Promise<ClaimTask> =>
+  postJSON<ClaimTask>(`/claims/${claimId}/tasks`, payload);
+
+export const getAllTasks = (params: {
+  status?: string;
+  task_type?: string;
+  assigned_to?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<AllTasksResponse> => {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.task_type) qs.set('task_type', params.task_type);
+  if (params.assigned_to) qs.set('assigned_to', params.assigned_to);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const q = qs.toString();
+  return fetchJSON<AllTasksResponse>(`/tasks${q ? '?' + q : ''}`);
+};
+
+export const getTaskStats = (): Promise<TaskStatsResponse> =>
+  fetchJSON<TaskStatsResponse>('/tasks/stats');
+
+export const getTask = (taskId: number): Promise<ClaimTask> =>
+  fetchJSON<ClaimTask>(`/tasks/${taskId}`);
+
+export const updateTask = (
+  taskId: number,
+  payload: UpdateTaskPayload
+): Promise<ClaimTask> =>
+  patchJSON<ClaimTask>(`/tasks/${taskId}`, payload);

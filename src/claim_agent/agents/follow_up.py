@@ -12,7 +12,9 @@ from claim_agent.skills import (
 from claim_agent.tools import (
     add_claim_note,
     check_pending_responses,
+    create_claim_task,
     get_claim_notes,
+    get_claim_tasks,
     record_user_response,
     send_user_message,
 )
@@ -25,7 +27,7 @@ def create_outreach_planner_agent(llm: LLMProtocol | None = None, **kwargs) -> A
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[send_user_message, check_pending_responses, get_claim_notes],
+        tools=[send_user_message, check_pending_responses, get_claim_notes, create_claim_task, get_claim_tasks],
         verbose=True,
         llm=llm,
     )
@@ -38,7 +40,7 @@ def create_message_composer_agent(llm: LLMProtocol | None = None, **kwargs) -> A
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[send_user_message, check_pending_responses, get_claim_notes],
+        tools=[send_user_message, check_pending_responses, get_claim_notes, create_claim_task],
         verbose=True,
         llm=llm,
     )

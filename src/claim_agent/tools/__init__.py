@@ -99,6 +99,10 @@ __all__ = [
     "verify_document_authenticity",
     "check_claimant_investigation_history",
     "file_fraud_report_state_bureau",
+    # Task tools
+    "create_claim_task",
+    "update_claim_task",
+    "get_claim_tasks",
 ]
 
 
@@ -391,4 +395,17 @@ def __getattr__(name: str):
         from claim_agent.tools.siu_tools import file_fraud_report_state_bureau
         setattr(mod, "file_fraud_report_state_bureau", file_fraud_report_state_bureau)
         return file_fraud_report_state_bureau
+    # Task tools
+    if name == "create_claim_task":
+        from claim_agent.tools.task_tools import create_claim_task
+        setattr(mod, "create_claim_task", create_claim_task)
+        return create_claim_task
+    if name == "update_claim_task":
+        from claim_agent.tools.task_tools import update_claim_task
+        setattr(mod, "update_claim_task", update_claim_task)
+        return update_claim_task
+    if name == "get_claim_tasks":
+        from claim_agent.tools.task_tools import get_claim_tasks
+        setattr(mod, "get_claim_tasks", get_claim_tasks)
+        return get_claim_tasks
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

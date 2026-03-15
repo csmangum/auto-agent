@@ -44,6 +44,7 @@ export interface Claim {
   review_started_at?: string; // ISO datetime when entered needs_review
   notes?: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
   follow_up_messages?: FollowUpMessage[];
+  tasks?: ClaimTask[];
   /** Attachments: photos, PDFs, estimates, invoices, receipts */
   attachments?: Array<{ url: string; type: string; description?: string }>;
 }
@@ -165,6 +166,69 @@ export interface SystemHealthData {
   status: string;
   database: string;
   total_claims: number;
+}
+
+// ---------------------------------------------------------------------------
+// Task types
+// ---------------------------------------------------------------------------
+
+export type TaskType =
+  | "gather_information"
+  | "contact_witness"
+  | "request_documents"
+  | "schedule_inspection"
+  | "follow_up_claimant"
+  | "review_documents"
+  | "obtain_police_report"
+  | "medical_records_review"
+  | "appraisal"
+  | "subrogation_follow_up"
+  | "siu_referral"
+  | "contact_repair_shop"
+  | "verify_coverage"
+  | "other";
+
+export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" | "blocked";
+
+export type TaskPriority = "low" | "medium" | "high" | "urgent";
+
+export interface ClaimTask {
+  id: number;
+  claim_id: string;
+  title: string;
+  task_type: TaskType;
+  description?: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigned_to?: string;
+  created_by?: string;
+  due_date?: string;
+  resolution_notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ClaimTasksResponse {
+  claim_id: string;
+  tasks: ClaimTask[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AllTasksResponse {
+  tasks: ClaimTask[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TaskStatsResponse {
+  total: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+  by_priority: Record<string, number>;
+  overdue: number;
 }
 
 // ---------------------------------------------------------------------------

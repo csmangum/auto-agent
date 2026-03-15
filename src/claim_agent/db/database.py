@@ -121,6 +121,27 @@ CREATE TABLE IF NOT EXISTS follow_up_messages (
 CREATE INDEX IF NOT EXISTS idx_follow_up_messages_claim_id ON follow_up_messages(claim_id);
 CREATE INDEX IF NOT EXISTS idx_follow_up_messages_status ON follow_up_messages(claim_id, status);
 
+-- Claim tasks: discrete units of future work created by agents or adjusters
+CREATE TABLE IF NOT EXISTS claim_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    assigned_to TEXT,
+    created_by TEXT NOT NULL DEFAULT 'workflow',
+    due_date TEXT,
+    resolution_notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_id ON claim_tasks(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_tasks_status ON claim_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_status ON claim_tasks(claim_id, status);
+
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """
