@@ -68,7 +68,11 @@ def _derive_claim_state(
                 if pstate:
                     return pstate, False
         except Exception:
-            pass
+            logger.warning(
+                "Failed to look up policy state for %r; falling back to SIU_DEFAULT_STATE",
+                policy_number,
+                exc_info=True,
+            )
     default_state = get_settings().siu_default_state or "California"
     return default_state, True
 
