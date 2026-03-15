@@ -75,7 +75,7 @@ def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) 
                 return json.dumps({"error": "Case not found", "case_id": case_id})
             return json.dumps(case)
         except NotImplementedError:
-            return json.dumps({"error": "SIU case lookup not implemented", "case_id": case_id})
+            return _adapter_error_json("SIU case lookup not implemented", case_id=case_id)
         except RETRYABLE_EXCEPTIONS as e:
             if attempt < _ADAPTER_RETRY_ATTEMPTS - 1:
                 wait = 2**attempt  # 1s, 2s
@@ -117,7 +117,7 @@ def add_siu_investigation_note_impl(
     try:
         ok = adapter.add_investigation_note(case_id, note, category_lower)
     except NotImplementedError:
-        return json.dumps({"success": False, "message": "SIU case notes not implemented"})
+        return _adapter_error_json("SIU case notes not implemented", case_id=case_id)
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("add_siu_investigation_note failed: %s", e)
         return _adapter_error_json(f"SIU note add failed: {e!s}", case_id=case_id, retryable=True)
@@ -148,7 +148,7 @@ def update_siu_case_status_impl(
     try:
         ok = adapter.update_case_status(case_id, status_lower)
     except NotImplementedError:
-        return json.dumps({"success": False, "message": "SIU case status update not implemented"})
+        return _adapter_error_json("SIU case status update not implemented", case_id=case_id)
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("update_siu_case_status failed: %s", e)
         return _adapter_error_json(f"SIU status update failed: {e!s}", case_id=case_id, retryable=True)
