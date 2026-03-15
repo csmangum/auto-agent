@@ -6,6 +6,7 @@ import TypeBadge from '../components/TypeBadge';
 import AuditTimeline from '../components/AuditTimeline';
 import EmptyState from '../components/EmptyState';
 import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
+import TaskPanel from '../components/TaskPanel';
 import { useClaim, useClaimHistory, useClaimWorkflows } from '../api/queries';
 import { formatDateTime } from '../utils/date';
 
@@ -27,6 +28,7 @@ export default function ClaimDetail() {
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
   const followUps = claim?.follow_up_messages ?? [];
+  const tasks = claim?.tasks ?? [];
   const notesFollowUpsCount = notes.length + followUps.length;
   const loading = claimLoading || historyLoading || workflowsLoading;
   const error = claimError ?? historyError ?? workflowsError;
@@ -60,6 +62,7 @@ export default function ClaimDetail() {
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '📋' },
+    { key: 'tasks', label: `Tasks (${tasks.length})`, icon: '☑️' },
     { key: 'notes', label: `Notes & Follow-ups (${notesFollowUpsCount})`, icon: '💬' },
     { key: 'audit', label: `Audit Log (${history.length})`, icon: '📜' },
     { key: 'workflows', label: `Workflows (${workflows.length})`, icon: '🔄' },
@@ -148,6 +151,10 @@ export default function ClaimDetail() {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'tasks' && (
+          <TaskPanel claimId={claim.id} tasks={tasks} />
         )}
 
         {activeTab === 'notes' && (
