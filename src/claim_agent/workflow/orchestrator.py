@@ -43,6 +43,7 @@ from claim_agent.workflow.stages import (
     _stage_salvage,
     _stage_settlement,
     _stage_subrogation,
+    _stage_task_creation,
     _stage_workflow_crew,
 )
 
@@ -244,6 +245,7 @@ def run_claim_workflow(
                 _stage_router,
                 _stage_escalation_check,
                 _stage_workflow_crew,
+                _stage_task_creation,
                 _stage_rental,
                 _stage_settlement,
                 _stage_subrogation,

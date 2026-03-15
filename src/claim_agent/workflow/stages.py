@@ -33,6 +33,7 @@ from claim_agent.crews.rental_crew import create_rental_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.crews.subrogation_crew import create_subrogation_crew
 from claim_agent.crews.after_action_crew import create_after_action_crew
+from claim_agent.crews.task_planner_crew import create_task_planner_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
@@ -922,6 +923,27 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         restore=restore,
         run=run,
         get_checkpoint_data=get_checkpoint_data,
+    )
+
+
+def _stage_task_creation(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the task planner crew to create follow-up tasks.
+
+    Analyzes the routed claim and workflow output to generate actionable
+    tasks for adjusters and downstream agents. Always runs regardless of
+    claim type.
+    """
+    return _run_crew_stage(
+        ctx,
+        "task_creation",
+        "task_planner",
+        "task_creation_output",
+        create_crew=lambda c: create_task_planner_crew(c.context.llm),
+        get_inputs=lambda c: {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "workflow_output": c.workflow_output,
+        },
+        combine_label="Task planning output",
     )
 
 
