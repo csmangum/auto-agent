@@ -139,6 +139,42 @@ describe('ClaimDetail', () => {
     expect(screen.getByText('No workflow runs')).toBeInTheDocument();
   });
 
+  it('switches to documents tab and shows empty state when no attachments', () => {
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    expect(screen.getByText('Documents & Attachments')).toBeInTheDocument();
+    expect(screen.getByText('No documents')).toBeInTheDocument();
+  });
+
+  it('shows attachments in documents tab when present', () => {
+    vi.mocked(useClaim).mockReturnValue({
+      data: {
+        ...mockClaim,
+        attachments: [
+          { url: '/api/claims/CLM-001/attachments/invoice.pdf', type: 'pdf', description: 'Medical invoice' },
+          { url: '/api/claims/CLM-001/attachments/photo.jpg', type: 'photo', description: 'Damage photo' },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    expect(screen.getByText('Medical invoice')).toBeInTheDocument();
+    expect(screen.getByText('Damage photo')).toBeInTheDocument();
+    const viewLinks = screen.getAllByText('View →');
+    expect(viewLinks).toHaveLength(2);
+  });
+
   it('shows workflow runs when present', () => {
     vi.mocked(useClaimWorkflows).mockReturnValue({
       data: {

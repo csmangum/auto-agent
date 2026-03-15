@@ -45,6 +45,8 @@ export interface Claim {
   notes?: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
   follow_up_messages?: FollowUpMessage[];
   tasks?: ClaimTask[];
+  /** Attachments: photos, PDFs, estimates, invoices, receipts */
+  attachments?: Array<{ url: string; type: string; description?: string }>;
 }
 
 export interface ClaimsStats {
