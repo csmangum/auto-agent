@@ -12,6 +12,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+GENERIC_ACCESS_DENIED = json.dumps({"error": "Access denied", "message": "Invalid claim or case for this operation"})
+
+
+def _validate_siu_scope(claim_id: str | None = None, case_id: str | None = None) -> str | None:
+    """Validate claim_id/case_id against SIU workflow scope. Returns error JSON string or None if valid."""
+    scope = None
+    try:
+        from claim_agent.observability import get_siu_workflow_scope
+        scope = get_siu_workflow_scope()
+    except ImportError:
+        return GENERIC_ACCESS_DENIED
+    if not scope:
+        return None
+    if case_id is not None and (scope.get("case_id") or "").strip() != (case_id or "").strip():
+        return GENERIC_ACCESS_DENIED
+    if claim_id is not None and (scope.get("claim_id") or "").strip() != (claim_id or "").strip():
+        return GENERIC_ACCESS_DENIED
+    return None
+
 VALID_SIU_CASE_STATUSES = frozenset({"open", "investigating", "referred", "closed"})
 VALID_SIU_NOTE_CATEGORIES = frozenset(
     {"general", "document_review", "claimant_interview", "records_check", "findings"}
@@ -20,6 +39,9 @@ VALID_SIU_NOTE_CATEGORIES = frozenset(
 
 def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) -> str:
     """Retrieve SIU case details by case_id."""
+    err = _validate_siu_scope(case_id=case_id)
+    if err:
+        return err
     from claim_agent.adapters.registry import get_siu_adapter
 
     adapter = ctx.adapters.siu if ctx else get_siu_adapter()
@@ -36,6 +58,9 @@ def add_siu_investigation_note_impl(
     case_id: str, note: str, category: str = "general", *, ctx: ClaimContext | None = None
 ) -> str:
     """Add an investigation note to an SIU case."""
+    err = _validate_siu_scope(case_id=case_id)
+    if err:
+        return err
     from claim_agent.adapters.registry import get_siu_adapter
 
     category_lower = (category or "general").strip().lower()
@@ -58,6 +83,9 @@ def update_siu_case_status_impl(
     case_id: str, status: str, *, ctx: ClaimContext | None = None
 ) -> str:
     """Update SIU case status (open, investigating, referred, closed)."""
+    err = _validate_siu_scope(case_id=case_id)
+    if err:
+        return err
     from claim_agent.adapters.registry import get_siu_adapter
 
     status_lower = (status or "").strip().lower()
@@ -88,6 +116,9 @@ def verify_document_authenticity_impl(
     In production this would integrate with document verification services.
     Returns a structured result indicating verification outcome.
     """
+    err = _validate_siu_scope(claim_id=claim_id)
+    if err:
+        return err
     # Mock: simulate verification based on document type
     doc_types = ("proof_of_loss", "repair_estimate", "id", "title", "registration", "photos")
     doc_lower = (document_type or "").strip().lower() or "unknown"
@@ -119,6 +150,9 @@ def check_claimant_investigation_history_impl(
     ctx: ClaimContext | None = None,
 ) -> str:
     """Check claimant and vehicle history for prior fraud flags and investigations."""
+    err = _validate_siu_scope(claim_id=claim_id)
+    if err:
+        return err
     from claim_agent.db.repository import ClaimRepository
 
     repo = ctx.repo if ctx else ClaimRepository()
@@ -190,6 +224,9 @@ def file_fraud_report_state_bureau_impl(
     Per state requirements (e.g., CA CDI, TX DFR, FL DIFS, NY FBU).
     Mock implementation returns confirmation.
     """
+    err = _validate_siu_scope(claim_id=claim_id, case_id=case_id)
+    if err:
+        return err
     try:
         ind_list = json.loads(indicators) if indicators else []
     except json.JSONDecodeError:

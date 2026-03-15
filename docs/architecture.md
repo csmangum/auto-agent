@@ -21,6 +21,8 @@ flowchart TB
             TL[Total Loss]
             Fraud[Fraud]
             PL[Partial Loss]
+            BI[Bodily Injury]
+            Reopened[Reopened]
         end
     end
 

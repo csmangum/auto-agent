@@ -1,0 +1,12 @@
+{
+  "policy_number": "POL-003",
+  "vin": "2T1BURHE5JC073987",
+  "vehicle_year": 2020,
+  "vehicle_make": "Toyota",
+  "vehicle_model": "Corolla",
+  "prior_claim_id": "CLM-12345678",
+  "reopening_reason": "new_damage",
+  "incident_date": "2025-02-10",
+  "incident_description": "Additional damage discovered during repair",
+  "damage_description": "Hidden frame damage discovered during bumper removal"
+}

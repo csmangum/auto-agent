@@ -17,7 +17,7 @@ from claim_agent.context import ClaimContext
 from claim_agent.crews.siu_crew import create_siu_crew
 from claim_agent.db.constants import SIU_INVESTIGATION_STATUSES
 from claim_agent.exceptions import ClaimNotFoundError
-from claim_agent.observability import get_logger
+from claim_agent.observability import get_logger, siu_workflow_scope
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
@@ -118,7 +118,8 @@ def run_siu_investigation(
 
     _llm = llm or get_llm()
     siu_crew = create_siu_crew(llm=_llm)
-    result = _kickoff_with_retry(siu_crew, crew_inputs)
+    with siu_workflow_scope(claim_id=claim_id, case_id=siu_case_id):
+        result = _kickoff_with_retry(siu_crew, crew_inputs)
 
     workflow_output = str(
         getattr(result, "raw", None)

@@ -407,5 +407,6 @@ The project includes sample claims for testing in `tests/sample_claims/`:
 | `partial_loss_fender.json` | partial_loss |
 | `partial_loss_front_collision.json` | partial_loss |
 | `bodily_injury_claim.json` | bodily_injury |
+| `reopened_claim.json` | reopened |
 
 See [Getting Started](getting-started.md#sample-claims) for usage.

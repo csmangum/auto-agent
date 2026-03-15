@@ -82,6 +82,7 @@ claim-agent history CLM-11EEF959
 | `tests/sample_claims/partial_loss_fender.json` | partial_loss | Fender damage |
 | `tests/sample_claims/partial_loss_front_collision.json` | partial_loss | Front collision |
 | `tests/sample_claims/bodily_injury_claim.json` | bodily_injury | Bodily injury (BI workflow) |
+| `tests/sample_claims/reopened_claim.json` | reopened | Prior settled claim reopened |
 
 See [Claim Types](claim-types.md) for classification criteria.
 
