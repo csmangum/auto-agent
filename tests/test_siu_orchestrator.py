@@ -197,9 +197,10 @@ class TestRunSiuInvestigation:
 
         from claim_agent.context import ClaimContext
 
-        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=None)
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
 
-        run_siu_investigation(claim_under_investigation, ctx=ctx)
+        run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
 
         assert "claim_data" in captured_inputs
         import json
@@ -235,7 +236,8 @@ class TestRunSiuInvestigation:
 
         from claim_agent.context import ClaimContext
 
-        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=None)
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
         original_get_policy = ctx.adapters.policy.get_policy
 
         def policy_with_state(policy_number):
@@ -247,7 +249,7 @@ class TestRunSiuInvestigation:
 
         monkeypatch.setattr(ctx.adapters.policy, "get_policy", policy_with_state)
 
-        run_siu_investigation(claim_under_investigation, ctx=ctx)
+        run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
 
         claim_data = json.loads(captured_inputs["claim_data"])
         assert claim_data["state"] == "Texas"
