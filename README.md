@@ -6,7 +6,7 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 
 - **Workflow Routing** - Router agent classifies claims and delegates to specialized crews
 - **Human-in-the-Loop** - Escalation for fraud indicators, high-value, or low-confidence claims (configurable thresholds)
-- **Five Claim Types** - New, duplicate, total loss, fraud, and partial loss workflows
+- **Seven Claim Types** - New, duplicate, total loss, fraud, partial loss, bodily injury, and reopened workflows
 - **Persistent State** - SQLite database with full audit trail
 - **Observability** - Structured logging, correlation IDs, LLM tracing (LangSmith/LiteLLM), cost and latency metrics
 - **Configuration** - Centralized settings for escalation, fraud, valuation, token budgets (see `.env.example`)
@@ -32,12 +32,16 @@ flowchart TB
     E -->|total_loss| H[Total Loss Crew]
     E -->|fraud| I[Fraud Crew]
     E -->|partial_loss| J[Partial Loss Crew]
+    E -->|bodily_injury| BI[Bodily Injury Crew]
+    E -->|reopened| R[Reopened Crew]
 
     F --> K[Output]
     G --> K
     H --> S[Settlement Crew]
     I --> K
     J --> S
+    BI --> S
+    R --> S
     S --> K
     D --> K
 ```
@@ -90,6 +94,7 @@ claim-agent status CLM-11EEF959
 | `tests/sample_claims/partial_loss_fender.json` | Partial loss |
 | `tests/sample_claims/partial_loss_front_collision.json` | Partial loss |
 | `tests/sample_claims/bodily_injury_claim.json` | Bodily injury (BI workflow) |
+| `tests/sample_claims/reopened_claim.json` | Reopened (prior settled claim) |
 
 ## Documentation
 
@@ -121,12 +126,17 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 ```
 src/claim_agent/
 ├── main.py           # CLI entry point
+├── context.py        # Workflow context helpers
+├── events.py         # Event definitions
 ├── api/              # REST API (FastAPI routes, auth, deps)
 ├── config/           # LLM (llm.py) and centralized settings (settings.py)
 ├── agents/           # Agent definitions
 ├── crews/            # Crew definitions
 ├── skills/           # Agent prompts (markdown)
 ├── tools/            # CrewAI tools
+├── workflow/         # Orchestrators (claim_review, siu, supplemental, handback)
+├── services/         # Business logic services
+├── data/             # Data loaders
 ├── adapters/         # Policy, valuation, repair shop, parts, SIU adapters
 ├── mock_crew/        # Mock claimant, image gen, vision (testing)
 ├── rag/              # RAG pipeline (policy/compliance search)

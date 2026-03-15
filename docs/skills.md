@@ -64,7 +64,19 @@ src/claim_agent/skills/
 ├── human_review_handback.md  # Human Review Handback Specialist
 ├── reopened_validator.md    # Reopened Validator
 ├── prior_claim_loader.md    # Prior Claim Loader
-└── reopened_router.md       # Reopened Router
+├── reopened_router.md       # Reopened Router
+├── task_planner.md          # Task Planner
+├── claim_review_supervisor.md # Claim Review Supervisor
+├── compliance_review_specialist.md # Compliance Review Specialist
+├── process_auditor.md       # Process Auditor
+├── after_action_summary.md  # After Action Summary
+├── after_action_status.md   # After Action Status
+├── follow_up_outreach.md    # Follow-up Outreach
+├── message_composition.md   # Message Composition
+├── response_processing.md   # Response Processing
+├── siu_document_verification.md # SIU Document Verification Specialist
+├── siu_records_investigator.md # SIU Records Investigator
+└── siu_case_manager.md      # SIU Case Manager
 ```
 
 *Additional skills support sub-workflows (Rental, Salvage, Subrogation, Supplemental, Denial/Coverage, Dispute, Bodily Injury, Reopened). See [Crews](crews.md) for full workflow mapping.*
@@ -185,7 +197,7 @@ Claim Router Supervisor
 
 ## Goal
 Classify the claim as 'new', 'duplicate', 'total_loss', 'fraud', 
-or 'partial_loss' based on the claim description and data.
+'partial_loss', 'bodily_injury', or 'reopened' based on the claim description and data.
 
 ## Backstory
 Senior claims manager with expertise in routing and prioritization.
@@ -325,7 +337,7 @@ Define expected outputs clearly:
 ```markdown
 ## Output Format
 Provide classification with:
-- `claim_type`: new / duplicate / total_loss / fraud / partial_loss
+- `claim_type`: new / duplicate / total_loss / fraud / partial_loss / bodily_injury / reopened
 - `confidence`: HIGH / MEDIUM / LOW
 - `reasoning`: Brief explanation
 ```
