@@ -94,6 +94,7 @@ def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) 
         except Exception as e:
             logger.warning("get_siu_case_details failed: %s", e, exc_info=True)
             return _adapter_error_json(f"SIU case lookup failed: {e!s}", case_id=case_id)
+    return _adapter_error_json("SIU case lookup failed: no attempts made", case_id=case_id)
 
 
 def add_siu_investigation_note_impl(
