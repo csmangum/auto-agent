@@ -44,6 +44,8 @@ export interface Claim {
   review_started_at?: string; // ISO datetime when entered needs_review
   notes?: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
   follow_up_messages?: FollowUpMessage[];
+  /** Attachments: photos, PDFs, estimates, invoices, receipts */
+  attachments?: Array<{ url: string; type: string; description?: string }>;
 }
 
 export interface ClaimsStats {

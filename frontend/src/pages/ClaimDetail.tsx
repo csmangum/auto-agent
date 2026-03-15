@@ -27,6 +27,7 @@ export default function ClaimDetail() {
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
   const followUps = claim?.follow_up_messages ?? [];
+  const attachments = claim?.attachments ?? [];
   const notesFollowUpsCount = notes.length + followUps.length;
   const loading = claimLoading || historyLoading || workflowsLoading;
   const error = claimError ?? historyError ?? workflowsError;
@@ -60,6 +61,7 @@ export default function ClaimDetail() {
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '📋' },
+    { key: 'documents', label: `Documents (${attachments.length})`, icon: '📎' },
     { key: 'notes', label: `Notes & Follow-ups (${notesFollowUpsCount})`, icon: '💬' },
     { key: 'audit', label: `Audit Log (${history.length})`, icon: '📜' },
     { key: 'workflows', label: `Workflows (${workflows.length})`, icon: '🔄' },
@@ -147,6 +149,68 @@ export default function ClaimDetail() {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'documents' && (
+          <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+            <h3 className="text-sm font-semibold text-gray-300 mb-4">Documents & Attachments</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Photos, invoices, receipts, estimates, and other supporting documents for this claim.
+            </p>
+            {attachments.length === 0 ? (
+              <EmptyState
+                icon="📎"
+                title="No documents"
+                description="No attachments, invoices, or receipts have been uploaded for this claim."
+              />
+            ) : (
+              <div className="space-y-3">
+                {attachments.map((att, i) => {
+                  const typeLabel =
+                    att.type === 'photo'
+                      ? 'Photo'
+                      : att.type === 'pdf'
+                        ? 'PDF'
+                        : att.type === 'estimate'
+                          ? 'Estimate'
+                          : 'Document';
+                  const icon =
+                    att.type === 'photo'
+                      ? '🖼️'
+                      : att.type === 'pdf'
+                        ? '📄'
+                        : att.type === 'estimate'
+                          ? '📋'
+                          : '📎';
+                  const filename = att.url.split('/').pop() ?? `Document ${i + 1}`;
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-4 rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50 hover:ring-gray-600/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-lg shrink-0">{icon}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-200 truncate">
+                            {att.description ?? filename}
+                          </p>
+                          <p className="text-xs text-gray-500">{typeLabel}</p>
+                        </div>
+                      </div>
+                      <a
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        View →
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
