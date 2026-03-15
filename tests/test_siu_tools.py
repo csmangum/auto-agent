@@ -77,6 +77,19 @@ class TestAddSiuInvestigationNoteImpl:
         assert case_data["notes"][0]["note"] == "Document verified"
         assert case_data["notes"][0]["category"] == "document_review"
 
+    def test_rejects_invalid_category(self):
+        """add_siu_investigation_note_impl returns error JSON for invalid category."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.tools.siu_logic import add_siu_investigation_note_impl
+
+        adapter = get_siu_adapter()
+        case_id = adapter.create_case("CLM-CAT", indicators=[])
+        result = add_siu_investigation_note_impl(case_id, "Note", category="invalid_category")
+        data = json.loads(result)
+        assert data["success"] is False
+        assert "Invalid category" in data["message"]
+        assert "invalid_category" in data["message"]
+
 
 class TestUpdateSiuCaseStatusImpl:
     def test_updates_status_successfully(self):
@@ -94,6 +107,19 @@ class TestUpdateSiuCaseStatusImpl:
         case_result = get_siu_case_details_impl(case_id)
         case_data = json.loads(case_result)
         assert case_data["status"] == "closed"
+
+    def test_rejects_invalid_status(self):
+        """update_siu_case_status_impl returns error JSON for invalid status."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.tools.siu_logic import update_siu_case_status_impl
+
+        adapter = get_siu_adapter()
+        case_id = adapter.create_case("CLM-VALID", indicators=[])
+        result = update_siu_case_status_impl(case_id, "invalid_status")
+        data = json.loads(result)
+        assert data["success"] is False
+        assert "Invalid status" in data["message"]
+        assert "invalid_status" in data["message"]
 
 
 class TestVerifyDocumentAuthenticityImpl:
@@ -162,6 +188,85 @@ class TestCheckClaimantInvestigationHistoryImpl:
         data = json.loads(result)
         assert data["claim_id"] == claim_id
         assert "prior_claims" in data
+
+    def test_returns_elevated_risk_when_prior_fraud_on_same_vin(self, temp_db):
+        """check_claimant_investigation_history_impl returns elevated risk when prior fraud on same VIN."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.tools.siu_logic import check_claimant_investigation_history_impl
+
+        repo = ClaimRepository(db_path=temp_db)
+        shared_vin = "VIN-SHARED-FRAUD"
+        inp_current = ClaimInput(
+            policy_number="POL-CURRENT",
+            vin=shared_vin,
+            vehicle_year=2021,
+            vehicle_make="Honda",
+            vehicle_model="Accord",
+            incident_date="2025-02-01",
+            incident_description="Current claim",
+            damage_description="Minor",
+        )
+        claim_id_current = repo.create_claim(inp_current)
+
+        inp_prior = ClaimInput(
+            policy_number="POL-PRIOR",
+            vin=shared_vin,
+            vehicle_year=2020,
+            vehicle_make="Toyota",
+            vehicle_model="Camry",
+            incident_date="2025-01-10",
+            incident_description="Prior claim",
+            damage_description="Bumper",
+        )
+        claim_id_prior = repo.create_claim(inp_prior)
+        repo.update_claim_status(claim_id_prior, "fraud_suspected", actor_id="fraud_crew")
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        result = check_claimant_investigation_history_impl(claim_id_current, ctx=ctx)
+        data = json.loads(result)
+        assert data["claim_id"] == claim_id_current
+        assert data["risk_summary"] == "elevated"
+        assert claim_id_prior in data["prior_fraud_flags"]
+        assert len(data["prior_claims"]) >= 1
+
+    def test_returns_high_risk_when_prior_siu_on_same_vin(self, temp_db):
+        """check_claimant_investigation_history_impl returns high risk when prior SIU case on same VIN."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.tools.siu_logic import check_claimant_investigation_history_impl
+
+        repo = ClaimRepository(db_path=temp_db)
+        shared_vin = "VIN-SHARED-SIU"
+        inp_current = ClaimInput(
+            policy_number="POL-CURRENT-SIU",
+            vin=shared_vin,
+            vehicle_year=2021,
+            vehicle_make="Honda",
+            vehicle_model="Accord",
+            incident_date="2025-02-15",
+            incident_description="Current claim",
+            damage_description="Minor",
+        )
+        claim_id_current = repo.create_claim(inp_current)
+
+        inp_prior = ClaimInput(
+            policy_number="POL-PRIOR-SIU",
+            vin=shared_vin,
+            vehicle_year=2020,
+            vehicle_make="Toyota",
+            vehicle_model="Camry",
+            incident_date="2025-01-05",
+            incident_description="Prior claim with SIU",
+            damage_description="Total",
+        )
+        claim_id_prior = repo.create_claim(inp_prior)
+        repo.update_claim_siu_case_id(claim_id_prior, "SIU-MOCK-PRIOR", actor_id="fraud_crew")
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+        result = check_claimant_investigation_history_impl(claim_id_current, ctx=ctx)
+        data = json.loads(result)
+        assert data["claim_id"] == claim_id_current
+        assert data["risk_summary"] == "high"
+        assert "SIU-MOCK-PRIOR" in data["prior_siu_cases"]
 
 
 class TestFileFraudReportStateBureauImpl:

@@ -210,3 +210,44 @@ class TestRunSiuInvestigation:
         assert claim_data["vin"]
         assert claim_data["policy_number"]
         assert claim_data["status"] == "under_investigation"
+        assert claim_data["state"] == "California"
+
+    def test_derives_state_from_policy_when_available(self, claim_under_investigation, temp_db, monkeypatch):
+        """claim_data state is derived from policy when policy has state."""
+        import json
+
+        captured_inputs = {}
+
+        def fake_kickoff(crew, inputs):
+            captured_inputs.update(inputs)
+            mock_result = MagicMock()
+            mock_result.raw = "Done"
+            return mock_result
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            fake_kickoff,
+        )
+
+        from claim_agent.context import ClaimContext
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=None)
+        original_get_policy = ctx.adapters.policy.get_policy
+
+        def policy_with_state(policy_number):
+            result = original_get_policy(policy_number)
+            if policy_number == "POL-SIU":
+                base = result or {"status": "active", "coverages": []}
+                return {**base, "state": "Texas"}
+            return result
+
+        monkeypatch.setattr(ctx.adapters.policy, "get_policy", policy_with_state)
+
+        run_siu_investigation(claim_under_investigation, ctx=ctx)
+
+        claim_data = json.loads(captured_inputs["claim_data"])
+        assert claim_data["state"] == "Texas"

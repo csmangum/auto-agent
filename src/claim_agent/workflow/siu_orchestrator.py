@@ -22,6 +22,31 @@ from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
 
+DEFAULT_SIU_STATE = "California"
+
+
+def _derive_claim_state(claim: dict[str, Any], ctx: ClaimContext) -> str:
+    """Derive state jurisdiction for SIU reporting.
+
+    Uses claim.state if present, else policy.state from policy adapter, else
+    DEFAULT_SIU_STATE (California). State is used for fraud bureau filing and
+    get_fraud_detection_guidance.
+    """
+    state = (claim.get("state") or "").strip()
+    if state:
+        return state
+    policy_number = (claim.get("policy_number") or "").strip()
+    if policy_number:
+        try:
+            policy = ctx.adapters.policy.get_policy(policy_number)
+            if policy:
+                pstate = (policy.get("state") or "").strip()
+                if pstate:
+                    return pstate
+        except Exception:
+            pass
+    return DEFAULT_SIU_STATE
+
 
 def run_siu_investigation(
     claim_id: str,
@@ -69,6 +94,9 @@ def run_siu_investigation(
         siu_case_id = case_id
         claim = repo.get_claim(claim_id) or claim
 
+    # Derive state for SIU reporting: policy state, claim state, or default California
+    state = _derive_claim_state(claim, ctx)
+
     claim_data_for_crew = {
         "id": claim.get("id"),
         "claim_id": claim.get("id"),
@@ -83,7 +111,7 @@ def run_siu_investigation(
         "damage_description": claim.get("damage_description"),
         "status": claim.get("status"),
         "claim_type": claim.get("claim_type"),
-        "state": "California",
+        "state": state,
     }
 
     crew_inputs = {"claim_data": json.dumps(claim_data_for_crew)}

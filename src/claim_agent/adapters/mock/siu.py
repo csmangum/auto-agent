@@ -1,5 +1,6 @@
 """Mock SIU adapter -- in-memory implementation for development/testing."""
 
+import copy
 import uuid
 from typing import Any
 
@@ -25,7 +26,7 @@ class MockSIUAdapter(SIUAdapter):
 
     def get_case(self, case_id: str) -> dict[str, Any] | None:
         case = self._cases.get(case_id)
-        return case.copy() if case else None
+        return copy.deepcopy(case) if case else None
 
     def add_investigation_note(self, case_id: str, note: str, category: str = "general") -> bool:
         if case_id not in self._cases:

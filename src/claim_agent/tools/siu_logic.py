@@ -12,6 +12,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+VALID_SIU_CASE_STATUSES = frozenset({"open", "investigating", "referred", "closed"})
+VALID_SIU_NOTE_CATEGORIES = frozenset(
+    {"general", "document_review", "claimant_interview", "records_check", "findings"}
+)
+
 
 def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) -> str:
     """Retrieve SIU case details by case_id."""
@@ -33,12 +38,20 @@ def add_siu_investigation_note_impl(
     """Add an investigation note to an SIU case."""
     from claim_agent.adapters.registry import get_siu_adapter
 
+    category_lower = (category or "general").strip().lower()
+    if category_lower not in VALID_SIU_NOTE_CATEGORIES:
+        return json.dumps({
+            "success": False,
+            "message": f"Invalid category {category!r}; must be one of: {sorted(VALID_SIU_NOTE_CATEGORIES)}",
+            "case_id": case_id,
+        })
+
     adapter = ctx.adapters.siu if ctx else get_siu_adapter()
     try:
-        ok = adapter.add_investigation_note(case_id, note, category)
+        ok = adapter.add_investigation_note(case_id, note, category_lower)
     except NotImplementedError:
         return json.dumps({"success": False, "message": "SIU case notes not implemented"})
-    return json.dumps({"success": ok, "case_id": case_id, "category": category})
+    return json.dumps({"success": ok, "case_id": case_id, "category": category_lower})
 
 
 def update_siu_case_status_impl(
@@ -47,12 +60,20 @@ def update_siu_case_status_impl(
     """Update SIU case status (open, investigating, referred, closed)."""
     from claim_agent.adapters.registry import get_siu_adapter
 
+    status_lower = (status or "").strip().lower()
+    if status_lower not in VALID_SIU_CASE_STATUSES:
+        return json.dumps({
+            "success": False,
+            "message": f"Invalid status {status!r}; must be one of: {sorted(VALID_SIU_CASE_STATUSES)}",
+            "case_id": case_id,
+        })
+
     adapter = ctx.adapters.siu if ctx else get_siu_adapter()
     try:
-        ok = adapter.update_case_status(case_id, status)
+        ok = adapter.update_case_status(case_id, status_lower)
     except NotImplementedError:
         return json.dumps({"success": False, "message": "SIU case status update not implemented"})
-    return json.dumps({"success": ok, "case_id": case_id, "status": status})
+    return json.dumps({"success": ok, "case_id": case_id, "status": status_lower})
 
 
 def verify_document_authenticity_impl(
@@ -121,7 +142,19 @@ def check_claimant_investigation_history_impl(
 
     if vin or policy_number:
         try:
-            all_claims = repo.search_claims(vin=vin or None, policy_number=policy_number or None, incident_date=None)
+            # Search by VIN and/or policy separately; merge to find prior claims on same vehicle or policy
+            seen_ids: set[str] = set()
+            all_claims: list[dict[str, Any]] = []
+            if vin:
+                for c in repo.search_claims(vin=vin, incident_date=None, policy_number=None):
+                    if c.get("id") and c.get("id") not in seen_ids:
+                        seen_ids.add(c["id"])
+                        all_claims.append(c)
+            if policy_number:
+                for c in repo.search_claims(vin=None, incident_date=None, policy_number=policy_number):
+                    if c.get("id") and c.get("id") not in seen_ids:
+                        seen_ids.add(c["id"])
+                        all_claims.append(c)
             fraud_claims = [c for c in all_claims if c.get("status") in ("fraud_suspected", "fraud_confirmed") and c.get("id") != claim_id]
             siu_claims = [c for c in all_claims if c.get("siu_case_id") and c.get("id") != claim_id]
             result["prior_claims"] = [
