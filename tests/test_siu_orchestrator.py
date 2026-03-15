@@ -1,5 +1,6 @@
 """Tests for the SIU investigation workflow orchestrator."""
 
+import json
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -203,8 +204,6 @@ class TestRunSiuInvestigation:
         run_siu_investigation(claim_under_investigation, llm=mock_llm, ctx=ctx)
 
         assert "claim_data" in captured_inputs
-        import json
-
         claim_data = json.loads(captured_inputs["claim_data"])
         assert claim_data["id"] == claim_under_investigation
         assert claim_data["siu_case_id"]
@@ -215,8 +214,6 @@ class TestRunSiuInvestigation:
 
     def test_derives_state_from_policy_when_available(self, claim_under_investigation, temp_db, monkeypatch):
         """claim_data state is derived from policy when policy has state."""
-        import json
-
         captured_inputs = {}
 
         def fake_kickoff(crew, inputs):
@@ -259,8 +256,6 @@ class TestRunSiuInvestigation:
         self, claim_under_investigation, temp_db, monkeypatch
     ):
         """SIU_DEFAULT_STATE from settings is used when claim/policy have no state."""
-        import json
-
         captured_inputs = {}
 
         def fake_kickoff(crew, inputs):
@@ -395,3 +390,80 @@ class TestRunSiuInvestigation:
         assert result["documents_verified"][0]["type"] == "proof_of_loss"
         assert result["prior_claims_summary"] == "No prior claims on VIN."
         assert result["tool_failures_noted"] is None
+
+    def test_falls_back_to_raw_workflow_output_when_pydantic_not_produced(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When Case Manager returns string (LLM failed to produce Pydantic), response uses raw workflow_output."""
+        from claim_agent.context import ClaimContext
+
+        mock_task = MagicMock()
+        mock_task.pydantic = None
+        mock_task.output = "Investigation complete. Case closed. No fraud found."
+
+        mock_result = MagicMock()
+        mock_result.raw = "Investigation complete. Case closed. No fraud found."
+        mock_result.tasks_output = [MagicMock(), MagicMock(), mock_task]
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            lambda crew, inputs: mock_result,
+        )
+
+        mock_llm = MagicMock()
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=mock_llm)
+
+        result = run_siu_investigation(
+            claim_under_investigation,
+            llm=mock_llm,
+            ctx=ctx,
+        )
+
+        assert result["claim_id"] == claim_under_investigation
+        assert "workflow_output" in result
+        assert "Investigation complete" in result["workflow_output"]
+        assert "findings_summary" not in result
+        assert "recommendation" not in result
+
+    def test_siu_default_state_empty_falls_back_to_california(
+        self, claim_under_investigation, temp_db, monkeypatch
+    ):
+        """When SIU_DEFAULT_STATE is empty, California is used."""
+        captured_inputs = {}
+
+        def fake_kickoff(crew, inputs):
+            captured_inputs.update(inputs)
+            mock_result = MagicMock()
+            mock_result.raw = "Done"
+            return mock_result
+
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.create_siu_crew",
+            lambda **kw: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator._kickoff_with_retry",
+            fake_kickoff,
+        )
+
+        mock_settings = MagicMock()
+        mock_settings.siu_default_state = ""
+        monkeypatch.setattr(
+            "claim_agent.workflow.siu_orchestrator.get_settings",
+            lambda: mock_settings,
+        )
+
+        from claim_agent.context import ClaimContext
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db, llm=MagicMock())
+        result = run_siu_investigation(
+            claim_under_investigation, llm=MagicMock(), ctx=ctx
+        )
+
+        claim_data = json.loads(captured_inputs["claim_data"])
+        assert claim_data["state"] == "California"
+        assert result.get("state_inferred") is True

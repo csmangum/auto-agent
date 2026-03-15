@@ -75,6 +75,31 @@ class TestGetSiuCaseDetailsImpl:
         assert data.get("tool_failure") is True
         assert "timeout" in data["error"].lower() or "ConnectionError" in data["error"]
 
+    def test_retries_on_transient_failure_then_succeeds(self, monkeypatch):
+        """get_siu_case_details_impl retries on ConnectionError and succeeds on third attempt."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.tools.siu_logic import get_siu_case_details_impl
+
+        adapter = get_siu_adapter()
+        case_id = adapter.create_case("CLM-RETRY", indicators=[])
+        original_get_case = adapter.get_case
+        call_count = 0
+
+        def patched_get_case(cid):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ConnectionError("Temporary failure")
+            return original_get_case(cid)
+
+        monkeypatch.setattr(adapter, "get_case", patched_get_case)
+
+        result = get_siu_case_details_impl(case_id)
+        data = json.loads(result)
+        assert "error" not in data
+        assert data["case_id"] == case_id
+        assert call_count == 3
+
 
 class TestAddSiuInvestigationNoteImpl:
     def test_adds_note_successfully(self):
@@ -286,6 +311,24 @@ class TestCheckClaimantInvestigationHistoryImpl:
         assert data["claim_id"] == claim_id_current
         assert data["risk_summary"] == "high"
         assert "SIU-MOCK-PRIOR" in data["prior_siu_cases"]
+
+    def test_returns_error_json_when_repository_raises_connection_error(self, temp_db, monkeypatch):
+        """check_claimant_investigation_history_impl returns tool_failure JSON when repo raises ConnectionError."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.tools.siu_logic import check_claimant_investigation_history_impl
+
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
+
+        def failing_get_claim(cid):
+            raise ConnectionError("Database unreachable")
+
+        monkeypatch.setattr(ctx.repo, "get_claim", failing_get_claim)
+
+        result = check_claimant_investigation_history_impl("CLM-ANY", ctx=ctx)
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("tool_failure") is True
+        assert "Records lookup failed" in data["error"]
 
 
 class TestSiuScopeValidation:

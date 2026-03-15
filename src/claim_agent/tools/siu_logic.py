@@ -94,6 +94,7 @@ def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) 
         except Exception as e:
             logger.warning("get_siu_case_details failed: %s", e, exc_info=True)
             return _adapter_error_json(f"SIU case lookup failed: {e!s}", case_id=case_id)
+    # Defensive: unreachable when _ADAPTER_RETRY_ATTEMPTS >= 1; satisfies type checker
     return _adapter_error_json("SIU case lookup failed: no attempts made", case_id=case_id)
 
 
@@ -213,7 +214,11 @@ def check_claimant_investigation_history_impl(
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
-    """Check claimant and vehicle history for prior fraud flags and investigations."""
+    """Check claimant and vehicle history for prior fraud flags and investigations.
+
+    Uses ClaimRepository (local SQLite). Returns tool_failure JSON on repository
+    failures for consistency with other SIU tools.
+    """
     err = _validate_siu_scope(claim_id=claim_id)
     if err:
         return err
@@ -233,14 +238,19 @@ def check_claimant_investigation_history_impl(
         if not vin and not policy_number and claim:
             vin = (claim.get("vin") or "").strip()
             policy_number = (claim.get("policy_number") or "").strip()
-    except (sqlite3.Error, OSError) as e:
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("check_claimant_investigation_history: get_claim failed: %s", e)
+        return _adapter_error_json(
+            f"Records lookup failed: {e!s}", claim_id=claim_id, retryable=True
+        )
+    except sqlite3.Error as e:
         logger.debug("check_claimant_investigation_history: get_claim failed: %s", e)
     except Exception as e:
-        logger.warning("check_claimant_investigation_history: unexpected get_claim error: %s", e, exc_info=True)
+        logger.warning("check_claimant_investigation_history: get_claim failed: %s", e, exc_info=True)
+        return _adapter_error_json(f"Records lookup failed: {e!s}", claim_id=claim_id)
 
-    if vin or policy_number:
-        try:
-            # Search by VIN and/or policy separately; merge to find prior claims on same vehicle or policy
+    try:
+        if vin or policy_number:
             seen_ids: set[str] = set()
             all_claims: list[dict[str, Any]] = []
             if vin:
@@ -267,10 +277,16 @@ def check_claimant_investigation_history_impl(
                 result["risk_summary"] = "elevated"
             if len(fraud_claims) >= 2 or len(siu_claims) >= 1:
                 result["risk_summary"] = "high"
-        except (sqlite3.Error, OSError) as e:
-            logger.debug("check_claimant_investigation_history: search_claims failed: %s", e)
-        except Exception as e:
-            logger.warning("check_claimant_investigation_history: unexpected error: %s", e, exc_info=True)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("check_claimant_investigation_history: search_claims failed: %s", e)
+        return _adapter_error_json(
+            f"Records lookup failed: {e!s}", claim_id=claim_id, retryable=True
+        )
+    except sqlite3.Error as e:
+        logger.debug("check_claimant_investigation_history: search_claims failed: %s", e)
+    except Exception as e:
+        logger.warning("check_claimant_investigation_history: unexpected error: %s", e, exc_info=True)
+        return _adapter_error_json(f"Records lookup failed: {e!s}", claim_id=claim_id)
 
     return json.dumps(result)
 
@@ -297,16 +313,19 @@ def file_fraud_report_state_bureau_impl(
         ind_list = []
 
     # Mock: simulate filing. In production this would call state bureau API.
+    # try/except for RETRYABLE_EXCEPTIONS is for future adapter integration.
+    state_code = (state or "California").strip()[:2].upper() or "CA"
+    claim_suffix = (claim_id or "")[-6:] or "MOCK"
     try:
-        report_id = f"FRB-{state[:2].upper()}-{claim_id[-6:]}-MOCK"
+        report_id = f"FRB-{state_code}-{claim_suffix}-MOCK"
         result: dict[str, Any] = {
             "success": True,
             "report_id": report_id,
             "claim_id": claim_id,
             "case_id": case_id,
-            "state": state,
+            "state": state or "California",
             "indicators_count": len(ind_list),
-            "message": f"Fraud report filed with {state} fraud bureau (mock). Report ID: {report_id}",
+            "message": f"Fraud report filed with {state or 'California'} fraud bureau (mock). Report ID: {report_id}",
         }
         return json.dumps(result)
     except RETRYABLE_EXCEPTIONS as e:

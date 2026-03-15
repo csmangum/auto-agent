@@ -507,6 +507,12 @@ class Settings(BaseSettings):
     )
     vision_adapter: str = Field(default="real", validation_alias="VISION_ADAPTER")
 
+    @field_validator("siu_default_state", mode="before")
+    @classmethod
+    def _coerce_siu_default_state(cls, v: Any) -> str:
+        s = (v or "").strip()
+        return s if s else "California"
+
     @field_validator("retention_period_years", mode="before")
     @classmethod
     def _coerce_retention(cls, v: Any) -> int:

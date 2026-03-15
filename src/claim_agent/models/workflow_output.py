@@ -1,6 +1,17 @@
 """Pydantic models for structured workflow crew outputs."""
 
+from typing import TypedDict
+
 from pydantic import BaseModel, Field
+
+
+class DocumentVerifiedSummary(TypedDict, total=False):
+    """Summary of a document checked during SIU verification."""
+
+    type: str
+    verified: bool
+    findings: list[str]
+    recommendation: str
 
 
 class TotalLossWorkflowOutput(BaseModel):
@@ -120,7 +131,7 @@ class SIUInvestigationResult(BaseModel):
         default=False,
         description="Whether a fraud report was filed with the state bureau",
     )
-    documents_verified: list[dict] = Field(
+    documents_verified: list[DocumentVerifiedSummary] = Field(
         default_factory=list,
         description="Summary of documents checked and verification status",
     )
