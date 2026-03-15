@@ -347,6 +347,56 @@ def test_repository_search_claims_empty_criteria(temp_db):
     assert result == []
 
 
+def test_repository_search_claims_policy_number(temp_db):
+    """ClaimRepository.search_claims finds by policy_number."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-SEARCH",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2021,
+        vehicle_make="Honda",
+        vehicle_model="Accord",
+        incident_date="2025-01-15",
+        incident_description="Rear-ended.",
+        damage_description="Bumper.",
+    )
+    repo.create_claim(claim_input)
+
+    matches = repo.search_claims(policy_number="POL-SEARCH")
+    assert len(matches) == 1
+    assert matches[0]["policy_number"] == "POL-SEARCH"
+    assert matches[0]["vin"] == "1HGBH41JXMN109186"
+
+    empty = repo.search_claims(policy_number="POL-NONEXISTENT")
+    assert empty == []
+
+
+def test_repository_search_claims_combined_filters(temp_db):
+    """ClaimRepository.search_claims finds by vin + policy_number + incident_date."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-COMBO",
+        vin="VIN-COMBO-123",
+        vehicle_year=2021,
+        vehicle_make="Honda",
+        vehicle_model="Accord",
+        incident_date="2025-02-10",
+        incident_description="Combined test.",
+        damage_description="Bumper.",
+    )
+    repo.create_claim(claim_input)
+
+    matches = repo.search_claims(
+        vin="VIN-COMBO-123",
+        policy_number="POL-COMBO",
+        incident_date="2025-02-10",
+    )
+    assert len(matches) == 1
+    assert matches[0]["policy_number"] == "POL-COMBO"
+    assert matches[0]["vin"] == "VIN-COMBO-123"
+    assert matches[0]["incident_date"] == "2025-02-10"
+
+
 def test_repository_add_note_and_get_notes(temp_db):
     """ClaimRepository.add_note and get_notes work for cross-crew communication."""
     repo = ClaimRepository(db_path=temp_db)

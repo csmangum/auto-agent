@@ -342,16 +342,14 @@ class TestReviewQueue:
 
     def test_siu_investigate(self, client, monkeypatch):
         """SIU investigate endpoint invokes SIU crew and returns result."""
-        from claim_agent.workflow import siu_orchestrator
+        import claim_agent.api.routes.claims as claims_mod
 
         mock_result = {
             "claim_id": "CLM-TEST002",
-            "status": "under_investigation",
-            "siu_case_id": "SIU-MOCK-ABC123",
             "workflow_output": "Investigation complete.",
             "summary": "Investigation complete.",
         }
-        monkeypatch.setattr(siu_orchestrator, "run_siu_investigation", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result)
         with get_connection() as conn:
             conn.execute(
                 "UPDATE claims SET status = ? WHERE id = ?",
@@ -361,8 +359,14 @@ class TestReviewQueue:
         assert resp.status_code == 200
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST002"
-        assert data["siu_case_id"] == "SIU-MOCK-ABC123"
-        assert "workflow_output" in data
+        assert data["workflow_output"] == "Investigation complete."
+        assert "summary" in data
+
+    def test_siu_investigate_404_for_missing_claim(self, client):
+        """SIU investigate returns 404 when claim does not exist."""
+        resp = client.post("/api/claims/CLM-NONEXISTENT/siu-investigate")
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"].lower()
 
     def test_siu_investigate_ineligible_status_returns_400(self, client):
         """SIU investigate returns 400 when claim status is not eligible."""
@@ -370,7 +374,8 @@ class TestReviewQueue:
             conn.execute("UPDATE claims SET status = ? WHERE id = ?", ("open", "CLM-TEST002"))
         resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
         assert resp.status_code == 400
-        assert "not eligible" in resp.json()["detail"].lower()
+        detail = resp.json()["detail"].lower()
+        assert "requires status" in detail or "under_investigation" in detail or "fraud_suspected" in detail
 
     def test_follow_up_run(self, client, monkeypatch):
         """Follow-up run endpoint invokes workflow and returns result."""

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -110,11 +111,13 @@ def check_claimant_investigation_history_impl(
 
     try:
         claim = repo.get_claim(claim_id)
-        if not vin and not policy_number:
-            vin = (claim.get("vin") if claim else "") or ""
-            policy_number = (claim.get("policy_number") if claim else "") or ""
-    except Exception:
-        pass
+        if not vin and not policy_number and claim:
+            vin = (claim.get("vin") or "").strip()
+            policy_number = (claim.get("policy_number") or "").strip()
+    except (sqlite3.Error, OSError) as e:
+        logger.debug("check_claimant_investigation_history: get_claim failed: %s", e)
+    except Exception as e:
+        logger.warning("check_claimant_investigation_history: unexpected get_claim error: %s", e, exc_info=True)
 
     if vin or policy_number:
         try:
@@ -133,8 +136,10 @@ def check_claimant_investigation_history_impl(
                 result["risk_summary"] = "elevated"
             if len(fraud_claims) >= 2 or len(siu_claims) >= 1:
                 result["risk_summary"] = "high"
+        except (sqlite3.Error, OSError) as e:
+            logger.debug("check_claimant_investigation_history: search_claims failed: %s", e)
         except Exception as e:
-            logger.debug("check_claimant_investigation_history: %s", e)
+            logger.warning("check_claimant_investigation_history: unexpected error: %s", e, exc_info=True)
 
     return json.dumps(result)
 
