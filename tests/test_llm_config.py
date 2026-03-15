@@ -16,11 +16,14 @@ class TestLLMConfig:
         """Test get_llm raises ValueError when OPENAI_API_KEY is not set."""
         from claim_agent.config.llm import get_llm
 
-        # Save original value
         original_key = os.environ.get("OPENAI_API_KEY")
+        original_base = os.environ.get("OPENAI_API_BASE")
+        original_openrouter = os.environ.get("OPENROUTER_API_KEY")
         try:
-            # Clear the API key (set to empty so pydantic-settings loads it)
             os.environ["OPENAI_API_KEY"] = ""
+            os.environ["OPENAI_API_BASE"] = ""
+            if "OPENROUTER_API_KEY" in os.environ:
+                del os.environ["OPENROUTER_API_KEY"]
             reload_settings()
 
             with pytest.raises(ValueError, match="OPENAI_API_KEY"):
@@ -30,6 +33,14 @@ class TestLLMConfig:
                 os.environ["OPENAI_API_KEY"] = original_key
             elif "OPENAI_API_KEY" in os.environ:
                 del os.environ["OPENAI_API_KEY"]
+            if original_base is not None:
+                os.environ["OPENAI_API_BASE"] = original_base
+            elif "OPENAI_API_BASE" in os.environ:
+                del os.environ["OPENAI_API_BASE"]
+            if original_openrouter is not None:
+                os.environ["OPENROUTER_API_KEY"] = original_openrouter
+            elif "OPENROUTER_API_KEY" in os.environ:
+                del os.environ["OPENROUTER_API_KEY"]
             reload_settings()
 
     def test_get_llm_with_api_key(self):
