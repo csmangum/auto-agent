@@ -21,6 +21,8 @@ from claim_agent.utils.pii_masking import mask_policy_number, mask_vin, mask_dic
 
 # Thread-local storage for claim context
 _context = threading.local()
+# Thread-local storage for SIU workflow scope (IDOR prevention)
+_siu_scope = threading.local()
 
 
 def _get_claim_context() -> dict[str, Any]:
@@ -276,3 +278,29 @@ def claim_context(
         yield
     finally:
         _set_claim_context(old_context)
+
+
+def get_siu_workflow_scope() -> dict[str, str] | None:
+    """Get the current SIU workflow scope (allowed claim_id, case_id) for IDOR validation."""
+    return getattr(_siu_scope, "scope", None)
+
+
+def _set_siu_workflow_scope(scope: dict[str, str] | None) -> None:
+    """Set the SIU workflow scope. Used by siu_orchestrator before running the crew."""
+    _siu_scope.scope = scope
+
+
+@contextmanager
+def siu_workflow_scope(claim_id: str, case_id: str):
+    """Context manager for SIU workflow scope. Validates tool calls against allowed claim/case IDs.
+
+    Usage:
+        with siu_workflow_scope(claim_id="CLM-123", case_id="SIU-MOCK-ABC"):
+            crew.kickoff(...)  # SIU tools validate claim_id/case_id match
+    """
+    old_scope = get_siu_workflow_scope()
+    _set_siu_workflow_scope({"claim_id": claim_id, "case_id": case_id})
+    try:
+        yield
+    finally:
+        _set_siu_workflow_scope(old_scope)

@@ -269,6 +269,37 @@ class TestCheckClaimantInvestigationHistoryImpl:
         assert "SIU-MOCK-PRIOR" in data["prior_siu_cases"]
 
 
+class TestSiuScopeValidation:
+    """Tests for SIU workflow scope (IDOR prevention)."""
+
+    def test_rejects_wrong_case_id_when_scope_set(self):
+        """get_siu_case_details_impl returns access denied when case_id does not match scope."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import get_siu_case_details_impl
+
+        adapter = get_siu_adapter()
+        case_id = adapter.create_case("CLM-123", indicators=[])
+        with siu_workflow_scope(claim_id="CLM-123", case_id=case_id):
+            result = get_siu_case_details_impl("SIU-WRONG-CASE")
+        data = json.loads(result)
+        assert data.get("error") == "Access denied"
+
+    def test_allows_matching_case_id_when_scope_set(self):
+        """get_siu_case_details_impl succeeds when case_id matches scope."""
+        from claim_agent.adapters.registry import get_siu_adapter
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import get_siu_case_details_impl
+
+        adapter = get_siu_adapter()
+        case_id = adapter.create_case("CLM-123", indicators=[])
+        with siu_workflow_scope(claim_id="CLM-123", case_id=case_id):
+            result = get_siu_case_details_impl(case_id)
+        data = json.loads(result)
+        assert data["case_id"] == case_id
+        assert "error" not in data or "Access denied" not in str(data)
+
+
 class TestFileFraudReportStateBureauImpl:
     def test_returns_mock_confirmation(self):
         """file_fraud_report_state_bureau_impl returns success and report_id."""

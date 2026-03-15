@@ -87,7 +87,7 @@ async def chat(
                 yield chunk
         except Exception as exc:
             logger.exception("Chat stream error: %s", exc)
-            yield _sse_event({"type": "error", "message": str(exc)})
+            yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})
             yield _sse_event({"type": "done"})
 
     return StreamingResponse(

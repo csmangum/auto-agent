@@ -3,6 +3,12 @@
 Each function accesses claims data, policies, configuration, etc. and returns
 a JSON-serializable dict.  The companion ``TOOL_DEFINITIONS`` list provides
 OpenAI-compatible function schemas for litellm's ``tools`` parameter.
+
+Security note: Tools that accept claim_id (lookup_claim, get_claim_history,
+get_claim_notes, explain_escalation, get_claim_tasks) do not perform claim-level
+access control. The chat endpoint requires RequireAdjuster (role check). If
+claim-level access control is required (e.g. adjusters restricted to assigned
+claims), add authorization checks before returning claim data.
 """
 
 from __future__ import annotations
