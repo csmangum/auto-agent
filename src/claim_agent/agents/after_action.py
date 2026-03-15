@@ -7,6 +7,7 @@ from claim_agent.tools import (
     add_after_action_note,
     close_claim,
     get_claim_notes,
+    get_claim_tasks,
 )
 from claim_agent.skills import (
     AFTER_ACTION_SUMMARY,
@@ -24,7 +25,7 @@ def create_after_action_summary_agent(
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[add_after_action_note, get_claim_notes],
+        tools=[add_after_action_note, get_claim_notes, get_claim_tasks],
         verbose=True,
         llm=llm,
     )

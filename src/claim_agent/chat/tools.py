@@ -206,6 +206,22 @@ def get_review_queue(*, limit: int = 10, db_path: str | None = None) -> dict[str
     return {"total": total, "showing": len(claims), "claims": claims}
 
 
+def get_claim_tasks(claim_id: str, *, db_path: str | None = None) -> dict[str, Any]:
+    """Get tasks for a claim."""
+    repo = _get_repo(db_path)
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        return {"error": f"Claim not found: {claim_id}"}
+    tasks, total = repo.get_tasks_for_claim(claim_id)
+    return {"claim_id": claim_id, "total": total, "tasks": tasks}
+
+
+def get_task_stats(*, db_path: str | None = None) -> dict[str, Any]:
+    """Get aggregate task statistics across all claims."""
+    repo = _get_repo(db_path)
+    return repo.get_task_stats()
+
+
 # ---------------------------------------------------------------------------
 # Tool dispatcher – maps tool name → callable
 # ---------------------------------------------------------------------------
@@ -220,6 +236,8 @@ TOOL_FUNCTIONS: dict[str, Any] = {
     "lookup_policy": lookup_policy,
     "explain_escalation": explain_escalation,
     "get_review_queue": get_review_queue,
+    "get_claim_tasks": get_claim_tasks,
+    "get_task_stats": get_task_stats,
 }
 
 
@@ -393,6 +411,35 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "description": "Max number of results (1-50, default 10)",
                     },
                 },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_claim_tasks",
+            "description": "Get tasks for a claim. Tasks are discrete follow-up actions like requesting documents, scheduling inspections, contacting witnesses, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "claim_id": {
+                        "type": "string",
+                        "description": "The claim ID to get tasks for",
+                    },
+                },
+                "required": ["claim_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_task_stats",
+            "description": "Get aggregate task statistics: total tasks, breakdown by status/type/priority, overdue count.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
                 "required": [],
             },
         },
