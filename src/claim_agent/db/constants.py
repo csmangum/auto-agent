@@ -32,6 +32,9 @@ SUPPLEMENTABLE_STATUSES = (STATUS_PROCESSING, STATUS_SETTLED)
 # Statuses that allow denial/coverage dispute workflow (denied claims)
 DENIAL_COVERAGE_STATUSES = (STATUS_DENIED,)
 
+# Statuses that allow SIU investigation workflow
+SIU_INVESTIGATION_STATUSES = (STATUS_UNDER_INVESTIGATION, STATUS_FRAUD_SUSPECTED)
+
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
     STATUS_PENDING,

@@ -22,6 +22,7 @@ from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import (
     DENIAL_COVERAGE_STATUSES,
     DISPUTABLE_STATUSES,
+    SIU_INVESTIGATION_STATUSES,
     STATUS_ARCHIVED,
     STATUS_FAILED,
     STATUS_NEEDS_REVIEW,
@@ -47,6 +48,7 @@ from claim_agent.utils.sanitization import (
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
+from claim_agent.workflow.siu_orchestrator import run_siu_investigation as run_siu_investigation_workflow
 from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
 from claim_agent.mock_crew.claim_generator import (
     generate_claim_from_prompt,
@@ -599,6 +601,36 @@ def escalate_to_siu(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"claim_id": claim_id, "status": "under_investigation"}
+
+
+@router.post("/claims/{claim_id}/siu-investigate")
+def run_siu_investigation(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Run SIU investigation crew on a claim under investigation.
+
+    Performs document verification, records investigation, and case management.
+    Claim must have status under_investigation or fraud_suspected.
+    Creates SIU case if not already present.
+    """
+    claim = ctx.repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    status = claim.get("status")
+    if status not in SIU_INVESTIGATION_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"SIU investigation requires status under_investigation or fraud_suspected; got {status!r}",
+        )
+    try:
+        result = run_siu_investigation_workflow(claim_id, ctx=ctx)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])

@@ -76,6 +76,18 @@ class TestFraudDetectionCrewStructure:
         assert len(crew.tasks) == 3
 
 
+class TestSIUCrewStructure:
+    """Structural validation for SIU Investigation crew."""
+
+    def test_creates_valid_crew(self):
+        from claim_agent.crews.siu_crew import create_siu_crew
+
+        crew = create_siu_crew(llm=_mock_llm())
+        _validate_crew_structure(crew)
+        assert len(crew.agents) == 3
+        assert len(crew.tasks) == 3
+
+
 class TestPartialLossCrewStructure:
     """Structural validation for Partial Loss crew."""
 

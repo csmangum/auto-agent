@@ -340,6 +340,43 @@ class TestReviewQueue:
         assert data["claim_id"] == "CLM-TEST002"
         assert data["status"] == "under_investigation"
 
+    def test_siu_investigate(self, client, monkeypatch):
+        """SIU investigate endpoint invokes SIU crew and returns result."""
+        import claim_agent.api.routes.claims as claims_mod
+
+        mock_result = {
+            "claim_id": "CLM-TEST002",
+            "workflow_output": "Investigation complete.",
+            "summary": "Investigation complete.",
+        }
+        monkeypatch.setattr(claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result)
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE claims SET status = ? WHERE id = ?",
+                ("under_investigation", "CLM-TEST002"),
+            )
+        resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST002"
+        assert data["workflow_output"] == "Investigation complete."
+        assert "summary" in data
+
+    def test_siu_investigate_404_for_missing_claim(self, client):
+        """SIU investigate returns 404 when claim does not exist."""
+        resp = client.post("/api/claims/CLM-NONEXISTENT/siu-investigate")
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"].lower()
+
+    def test_siu_investigate_ineligible_status_returns_400(self, client):
+        """SIU investigate returns 400 when claim status is not eligible."""
+        with get_connection() as conn:
+            conn.execute("UPDATE claims SET status = ? WHERE id = ?", ("open", "CLM-TEST002"))
+        resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
+        assert resp.status_code == 400
+        detail = resp.json()["detail"].lower()
+        assert "requires status" in detail or "under_investigation" in detail or "fraud_suspected" in detail
+
     def test_follow_up_run(self, client, monkeypatch):
         """Follow-up run endpoint invokes workflow and returns result."""
         import claim_agent.api.routes.claims as claims_mod
@@ -834,7 +871,7 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 19
+        assert len(crews) == 20
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names

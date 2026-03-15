@@ -149,6 +149,34 @@ class TestMockSIUAdapter:
         assert isinstance(case_id, str)
         assert case_id.startswith("SIU-MOCK-")
 
+    def test_get_case_returns_case_after_create(self):
+        adapter = MockSIUAdapter()
+        case_id = adapter.create_case("CLM-002", ["inflated"])
+        case = adapter.get_case(case_id)
+        assert case is not None
+        assert case["case_id"] == case_id
+        assert case["claim_id"] == "CLM-002"
+        assert case["indicators"] == ["inflated"]
+        assert case["status"] == "open"
+
+    def test_add_investigation_note(self):
+        adapter = MockSIUAdapter()
+        case_id = adapter.create_case("CLM-003", ["staged"])
+        ok = adapter.add_investigation_note(case_id, "Document verified", category="document_review")
+        assert ok is True
+        case = adapter.get_case(case_id)
+        assert len(case["notes"]) == 1
+        assert case["notes"][0]["category"] == "document_review"
+        assert case["notes"][0]["note"] == "Document verified"
+
+    def test_update_case_status(self):
+        adapter = MockSIUAdapter()
+        case_id = adapter.create_case("CLM-004", [])
+        ok = adapter.update_case_status(case_id, "closed")
+        assert ok is True
+        case = adapter.get_case(case_id)
+        assert case["status"] == "closed"
+
     def test_implements_interface(self):
         assert isinstance(MockSIUAdapter(), SIUAdapter)
 

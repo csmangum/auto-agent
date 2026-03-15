@@ -501,6 +501,86 @@ Recommended Action:
 
 ---
 
+## SIU Investigation Tools
+
+### get_siu_case_details
+
+Retrieve SIU case details including indicators, status, and investigation notes.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `case_id` | string | SIU case ID (e.g., SIU-MOCK-ABC12345) |
+
+**Returns:** JSON with case_id, claim_id, indicators, status, notes
+
+### add_siu_investigation_note
+
+Add an investigation note to an SIU case.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `case_id` | string | SIU case ID |
+| `note` | string | Note content |
+| `category` | string (optional) | general, document_review, claimant_interview, records_check, findings |
+
+**Returns:** JSON with success, case_id, category
+
+### update_siu_case_status
+
+Update SIU case status.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `case_id` | string | SIU case ID |
+| `status` | string | open, investigating, referred, closed |
+
+**Returns:** JSON with success, case_id, status
+
+### verify_document_authenticity
+
+Verify document authenticity for SIU investigation.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `document_type` | string | proof_of_loss, repair_estimate, id, title, registration, photos |
+| `claim_id` | string | Claim ID |
+| `document_summary` | string (optional) | Brief description of document |
+
+**Returns:** JSON with verified, confidence, findings, recommendation
+
+### check_claimant_investigation_history
+
+Check claimant and vehicle history for prior fraud flags and SIU cases.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | Claim ID |
+| `vin` | string (optional) | VIN to search |
+| `policy_number` | string (optional) | Policy number |
+
+**Returns:** JSON with prior_claims, prior_fraud_flags, prior_siu_cases, risk_summary
+
+### file_fraud_report_state_bureau
+
+File a fraud report with the state insurance fraud bureau.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | Claim ID |
+| `case_id` | string | SIU case ID |
+| `state` | string (optional) | State jurisdiction (default: California) |
+| `indicators` | string (optional) | JSON array of fraud indicators |
+
+**Returns:** JSON with success, report_id, message
+
+---
+
 ## Partial Loss Tools
 
 ### get_available_repair_shops
