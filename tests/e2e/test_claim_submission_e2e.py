@@ -33,25 +33,30 @@ def test_e2e_submit_new_claim_via_api(
     sample_new_claim,
     mock_router_response,
     mock_crew_response,
+    mock_llm_instance,
 ):
     """Submit new claim via POST /api/claims; assert claim_id, status, history."""
     factory_mod._storage_instance = None
     with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
         with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
             with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
-                with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response("new")
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                            "Claim processed successfully."
-                        )
-                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                            "After-action summary added."
-                        )
-                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                            with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                mock_llm.return_value = mock_llm_instance
+                                mock_router.return_value.kickoff.return_value = mock_router_response("new")
+                                mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                    "Claim processed successfully."
+                                )
+                                mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                    "After-action summary added."
+                                )
+                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                    "Tasks created."
+                                )
 
-                        resp = e2e_client.post("/api/claims", json=sample_new_claim)
+                                resp = e2e_client.post("/api/claims", json=sample_new_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -81,27 +86,32 @@ def test_e2e_submit_duplicate_claim_via_api(
     sample_duplicate_claim,
     mock_router_response,
     mock_crew_response,
+    mock_llm_instance,
 ):
     """Submit duplicate claim via POST /api/claims; assert claim_id, status, history."""
     factory_mod._storage_instance = None
     with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
         with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
             with patch("claim_agent.workflow.stages.create_duplicate_crew") as mock_crew:
-                with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response(
-                            "duplicate", "Matches existing claim."
-                        )
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                            "Duplicate confirmed. Original claim: CLM-001."
-                        )
-                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                            "After-action summary added."
-                        )
-                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                            with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                mock_llm.return_value = mock_llm_instance
+                                mock_router.return_value.kickoff.return_value = mock_router_response(
+                                    "duplicate", "Matches existing claim."
+                                )
+                                mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                    "Duplicate confirmed. Original claim: CLM-001."
+                                )
+                                mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                    "After-action summary added."
+                                )
+                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                    "Tasks created."
+                                )
 
-                        resp = e2e_client.post("/api/claims", json=sample_duplicate_claim)
+                                resp = e2e_client.post("/api/claims", json=sample_duplicate_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -128,6 +138,7 @@ def test_e2e_submit_total_loss_claim_via_api(
     sample_total_loss_claim,
     mock_router_response,
     mock_crew_response,
+    mock_llm_instance,
 ):
     """Submit total loss claim via POST /api/claims; assert claim_id, status, history."""
     # Low damage to avoid escalation
@@ -151,29 +162,33 @@ def test_e2e_submit_total_loss_claim_via_api(
                         with patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
                             with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
                                 with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                    mock_llm.return_value = MagicMock()
-                                    mock_router.return_value.kickoff.return_value = mock_router_response(
-                                        "total_loss", "Vehicle flooded - total destruction."
-                                    )
-                                    mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                                        "Total loss confirmed.",
-                                        tasks_output=workflow_tasks_output,
-                                    )
-                                    mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                        "Settlement completed."
-                                    )
-                                    mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                        "Subrogation assessment complete. No recovery opportunity."
-                                    )
-                                    mock_salvage.return_value.kickoff.return_value = mock_crew_response(
-                                        "Salvage disposition complete."
-                                    )
-                                    mock_after.return_value.kickoff.return_value = mock_crew_response(
-                                        "After-action summary added."
-                                    )
-                                    mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                    with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                        mock_llm.return_value = mock_llm_instance
+                                        mock_router.return_value.kickoff.return_value = mock_router_response(
+                                            "total_loss", "Vehicle flooded - total destruction."
+                                        )
+                                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                            "Total loss confirmed.",
+                                            tasks_output=workflow_tasks_output,
+                                        )
+                                        mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                            "Settlement completed."
+                                        )
+                                        mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                            "Subrogation assessment complete. No recovery opportunity."
+                                        )
+                                        mock_salvage.return_value.kickoff.return_value = mock_crew_response(
+                                            "Salvage disposition complete."
+                                        )
+                                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                            "After-action summary added."
+                                        )
+                                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                        mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                            "Tasks created."
+                                        )
 
-                                    resp = e2e_client.post("/api/claims", json=low_value_claim)
+                                        resp = e2e_client.post("/api/claims", json=low_value_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -200,27 +215,32 @@ def test_e2e_submit_fraud_claim_via_api(
     sample_fraud_claim,
     mock_router_response,
     mock_crew_response,
+    mock_llm_instance,
 ):
     """Submit fraud claim via POST /api/claims; assert claim_id, status, history."""
     factory_mod._storage_instance = None
     with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
         with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
             with patch("claim_agent.workflow.stages.create_fraud_detection_crew") as mock_crew:
-                with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                        mock_llm.return_value = MagicMock()
-                        mock_router.return_value.kickoff.return_value = mock_router_response(
-                            "fraud", "Suspicious indicators."
-                        )
-                        mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                            "Fraud indicators detected."
-                        )
-                        mock_after.return_value.kickoff.return_value = mock_crew_response(
-                            "After-action summary added."
-                        )
-                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                            with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                mock_llm.return_value = mock_llm_instance
+                                mock_router.return_value.kickoff.return_value = mock_router_response(
+                                    "fraud", "Suspicious indicators."
+                                )
+                                mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                    "Fraud indicators detected."
+                                )
+                                mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                    "After-action summary added."
+                                )
+                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                    "Tasks created."
+                                )
 
-                        resp = e2e_client.post("/api/claims", json=sample_fraud_claim)
+                                resp = e2e_client.post("/api/claims", json=sample_fraud_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -247,6 +267,7 @@ def test_e2e_submit_partial_loss_claim_via_api(
     sample_partial_loss_claim,
     mock_router_response,
     mock_crew_response,
+    mock_llm_instance,
 ):
     """Submit partial loss claim via POST /api/claims; assert claim_id, status, history."""
     mock_task = MagicMock()
@@ -266,29 +287,33 @@ def test_e2e_submit_partial_loss_claim_via_api(
                         with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
                             with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
                                 with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                    mock_llm.return_value = MagicMock()
-                                    mock_router.return_value.kickoff.return_value = mock_router_response(
-                                        "partial_loss", "Repairable fender damage."
-                                    )
-                                    mock_partial.return_value.kickoff.return_value = mock_crew_response(
-                                        "Repair authorization created.",
-                                        tasks_output=workflow_tasks_output,
-                                    )
-                                    mock_rental.return_value.kickoff.return_value = mock_crew_response(
-                                        "Rental eligibility confirmed. Reimbursement processed."
-                                    )
-                                    mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                        "Settlement completed."
-                                    )
-                                    mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                        "Subrogation assessment complete. No recovery opportunity."
-                                    )
-                                    mock_after.return_value.kickoff.return_value = mock_crew_response(
-                                        "After-action summary added."
-                                    )
-                                    mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                    with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                        mock_llm.return_value = mock_llm_instance
+                                        mock_router.return_value.kickoff.return_value = mock_router_response(
+                                            "partial_loss", "Repairable fender damage."
+                                        )
+                                        mock_partial.return_value.kickoff.return_value = mock_crew_response(
+                                            "Repair authorization created.",
+                                            tasks_output=workflow_tasks_output,
+                                        )
+                                        mock_rental.return_value.kickoff.return_value = mock_crew_response(
+                                            "Rental eligibility confirmed. Reimbursement processed."
+                                        )
+                                        mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                            "Settlement completed."
+                                        )
+                                        mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                            "Subrogation assessment complete. No recovery opportunity."
+                                        )
+                                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                            "After-action summary added."
+                                        )
+                                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                        mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                            "Tasks created."
+                                        )
 
-                                    resp = e2e_client.post("/api/claims", json=sample_partial_loss_claim)
+                                        resp = e2e_client.post("/api/claims", json=sample_partial_loss_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -315,6 +340,7 @@ def test_e2e_submit_bodily_injury_claim_via_api(
     sample_bodily_injury_claim,
     mock_router_response,
     mock_crew_response,
+    mock_llm_instance,
 ):
     """Submit bodily injury claim via POST /api/claims; assert claim_id, status, history."""
     mock_task = MagicMock()
@@ -336,26 +362,30 @@ def test_e2e_submit_bodily_injury_claim_via_api(
                         with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
                             with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
                                 with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                    mock_llm.return_value = MagicMock()
-                                    mock_router.return_value.kickoff.return_value = mock_router_response(
-                                        "bodily_injury", "Passenger injured in collision."
-                                    )
-                                    mock_bi_crew.return_value.kickoff.return_value = mock_crew_response(
-                                        "BI settlement proposed.",
-                                        tasks_output=workflow_tasks_output,
-                                    )
-                                    mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                        "Settlement completed."
-                                    )
-                                    mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                        "Subrogation assessment complete. No recovery opportunity."
-                                    )
-                                    mock_after.return_value.kickoff.return_value = mock_crew_response(
-                                        "After-action summary added."
-                                    )
-                                    mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                    with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                        mock_llm.return_value = mock_llm_instance
+                                        mock_router.return_value.kickoff.return_value = mock_router_response(
+                                            "bodily_injury", "Passenger injured in collision."
+                                        )
+                                        mock_bi_crew.return_value.kickoff.return_value = mock_crew_response(
+                                            "BI settlement proposed.",
+                                            tasks_output=workflow_tasks_output,
+                                        )
+                                        mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                            "Settlement completed."
+                                        )
+                                        mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                            "Subrogation assessment complete. No recovery opportunity."
+                                        )
+                                        mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                            "After-action summary added."
+                                        )
+                                        mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                        mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                            "Tasks created."
+                                        )
 
-                                    resp = e2e_client.post("/api/claims", json=sample_bodily_injury_claim)
+                                        resp = e2e_client.post("/api/claims", json=sample_bodily_injury_claim)
 
     assert resp.status_code == 200
     data = resp.json()

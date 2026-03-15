@@ -5,7 +5,6 @@ create during claim processing. Examples: requesting documents, scheduling
 inspections, contacting witnesses, gathering additional information.
 """
 
-from datetime import datetime
 from enum import Enum
 from typing import Optional
 
