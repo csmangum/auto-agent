@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from claim_agent.adapters.registry import get_policy_adapter
@@ -448,7 +448,7 @@ def audit_medical_bills_impl(
             }
         )
     records = mr.get("records", [])
-    total_billed = mr.get("total_charges") or sum(r.get("charges", 0) for r in records)
+    total_billed = mr.get("total_charges") if mr.get("total_charges") is not None else sum(r.get("charges", 0) for r in records)
     findings: list[dict[str, Any]] = []
     total_allowed = 0.0
     for r in records:
@@ -512,11 +512,14 @@ def build_treatment_timeline_impl(
     events = []
     for r in records:
         dos = r.get("date_of_service", "")
+        dt = None
         try:
-            dt = datetime.strptime(dos, "%Y-%m-%d").date() if dos else date.today()
+            if dos:
+                dt = datetime.strptime(dos, "%Y-%m-%d").date()
         except (ValueError, TypeError):
-            dt = date.today()
-        dates.append(dt)
+            dt = None
+        if dt is not None:
+            dates.append(dt)
         events.append(
             {
                 "event_date": dos,
@@ -526,10 +529,10 @@ def build_treatment_timeline_impl(
                 "charges": float(r.get("charges", 0)),
             }
         )
-    first = min(dates)
-    last = max(dates)
+    first = min(dates) if dates else None
+    last = max(dates) if dates else None
     duration = (last - first).days if first and last else 0
-    total = mr.get("total_charges") or sum(r.get("charges", 0) for r in records)
+    total = mr.get("total_charges") if mr.get("total_charges") is not None else sum(r.get("charges", 0) for r in records)
     return json.dumps(
         {
             "incident_date": incident_date or None,
