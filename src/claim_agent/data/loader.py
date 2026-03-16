@@ -56,6 +56,36 @@ def load_california_compliance() -> dict[str, Any] | None:
         return None
 
 
+_STATE_TO_FILENAME: dict[str, str] = {
+    "California": "california_auto_compliance.json",
+    "Texas": "texas_auto_compliance.json",
+    "Florida": "florida_auto_compliance.json",
+    "New York": "new_york_auto_compliance.json",
+}
+
+
+def load_state_compliance(state: str) -> dict[str, Any] | None:
+    """Load state auto insurance compliance data from JSON.
+
+    Args:
+        state: Canonical state name (California, Texas, Florida, New York).
+
+    Returns:
+        Compliance data dict or None if file missing or invalid.
+    """
+    filename = _STATE_TO_FILENAME.get(state)
+    if not filename:
+        return None
+    path = _project_data_dir() / filename
+    if not path.exists():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return cast(dict[str, Any], json.load(f))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 _log = logging.getLogger(__name__)
 
 

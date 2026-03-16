@@ -8,8 +8,8 @@ from claim_agent.tools import (
     get_claim_process_context,
     get_compliance_deadlines,
     get_required_disclosures,
-    search_california_compliance,
     search_policy_compliance,
+    search_state_compliance,
 )
 from claim_agent.skills import (
     CLAIM_REVIEW_SUPERVISOR,
@@ -41,7 +41,7 @@ def create_compliance_analyst_agent(llm: LLMProtocol | None = None) -> Agent:
         backstory=skill["backstory"],
         tools=[
             get_claim_process_context,
-            search_california_compliance,
+            search_state_compliance,
             search_policy_compliance,
             get_compliance_deadlines,
             get_required_disclosures,

@@ -804,7 +804,7 @@ Manages loss-of-use (rental) coverage for partial loss claims. Runs as a sequent
 
 | Agent | Tools Used |
 |-------|------------|
-| Rental Eligibility Specialist | [`check_rental_coverage`](tools.md#check_rental_coverage), [`get_rental_limits`](tools.md#get_rental_limits), [`search_california_compliance`](tools.md#search_california_compliance) |
+| Rental Eligibility Specialist | [`check_rental_coverage`](tools.md#check_rental_coverage), [`get_rental_limits`](tools.md#get_rental_limits), [`search_state_compliance`](tools.md#search_state_compliance) |
 | Rental Coordinator | [`get_rental_limits`](tools.md#get_rental_limits) |
 | Reimbursement Processor | [`process_rental_reimbursement`](tools.md#process_rental_reimbursement), [`get_rental_limits`](tools.md#get_rental_limits) |
 
@@ -833,7 +833,7 @@ flowchart TB
 | **Input** | `claim_data`, `workflow_output` (repair duration context) |
 | **Action** | Check policy for rental coverage; get limits; reference CCR 2695.7(l), RCC-001–RCC-004 |
 | **Output** | eligible (bool), daily_limit, aggregate_limit, max_days, message |
-| **Tools** | `check_rental_coverage`, `get_rental_limits`, `search_california_compliance` |
+| **Tools** | `check_rental_coverage`, `get_rental_limits`, `search_state_compliance` |
 
 ### Step 2: Arrange Rental
 
@@ -1085,7 +1085,7 @@ Performs a supervisor/compliance audit of the claim process. Reviews how the cla
 | Agent | Tools Used |
 |-------|------------|
 | Process Auditor | `get_claim_process_context`, `get_claim_notes` |
-| Compliance Analyst | `get_claim_process_context`, `search_california_compliance`, `search_policy_compliance`, `get_compliance_deadlines`, `get_required_disclosures` |
+| Compliance Analyst | `get_claim_process_context`, `search_state_compliance`, `search_policy_compliance`, `get_compliance_deadlines`, `get_required_disclosures` |
 | Claim Review Supervisor | None (synthesizes findings) |
 
 ### Flow Sequence
@@ -1100,7 +1100,7 @@ flowchart TB
     A -.- A1[get_claim_process_context]
     A -.- A2[Stages, status transitions]
 
-    B -.- B1[search_california_compliance]
+    B -.- B1[search_state_compliance]
     B -.- B2[FCSP-001 through FCSP-008]
 
     C -.- C1[ClaimReviewReport]
