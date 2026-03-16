@@ -22,6 +22,7 @@ class TestAssessLiability:
         data = json.loads(result)
         assert data["is_not_at_fault"] is True
         assert data["fault_determination"] == "not_at_fault"
+        assert data["liability_percentage"] == 0.0
 
     def test_at_fault_i_hit(self):
         result = assess_liability_impl(
@@ -30,6 +31,15 @@ class TestAssessLiability:
         data = json.loads(result)
         assert data["is_not_at_fault"] is False
         assert data["fault_determination"] == "at_fault"
+        assert data["liability_percentage"] == 100.0
+
+    def test_unclear_returns_none_liability_percentage(self):
+        result = assess_liability_impl(
+            incident_description="Something happened at the intersection.",
+        )
+        data = json.loads(result)
+        assert data["fault_determination"] == "unclear"
+        assert data["liability_percentage"] is None
 
     def test_third_party_identified(self):
         result = assess_liability_impl(
@@ -165,3 +175,58 @@ class TestRecordRecovery:
         data = json.loads(result)
         assert data["recovery_amount"] == 15000.0
         assert data["recovery_status"] == "full"
+
+    def test_record_recovery_persists_when_case_exists(self, temp_db):
+        """When subrogation case exists, record_recovery persists status and amount."""
+        with get_connection(temp_db) as conn:
+            conn.execute(
+                """
+                INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+                vehicle_model, incident_date, incident_description, damage_description,
+                estimated_damage, claim_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "CLM-REC",
+                    "POL-1",
+                    "1HGBH41JXMN109186",
+                    2021,
+                    "Honda",
+                    "Accord",
+                    "2025-01-15",
+                    "Rear-ended",
+                    "Bumper",
+                    2500.0,
+                    "new",
+                    "open",
+                ),
+            )
+        repo = ClaimRepository(temp_db)
+        repo.create_subrogation_case(
+            claim_id="CLM-REC",
+            case_id="SUB-CLM-REC-001",
+            amount_sought=5000.0,
+        )
+        result = record_recovery_impl(
+            claim_id="CLM-REC",
+            case_id="SUB-CLM-REC-001",
+            recovery_amount=4500.0,
+            recovery_status="partial",
+        )
+        data = json.loads(result)
+        assert data["persisted"] is True
+        cases = repo.get_subrogation_cases_by_claim("CLM-REC")
+        assert len(cases) == 1
+        assert cases[0]["status"] == "partial"
+        assert cases[0]["recovery_amount"] == 4500.0
+
+    def test_record_recovery_not_persisted_when_case_missing(self, temp_db):
+        """When subrogation case does not exist, record_recovery returns persisted=False."""
+        result = record_recovery_impl(
+            claim_id="CLM-NONE",
+            case_id="SUB-NONEXISTENT-001",
+            recovery_amount=1000.0,
+            recovery_status="full",
+        )
+        data = json.loads(result)
+        assert data["persisted"] is False

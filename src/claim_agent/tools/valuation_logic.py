@@ -206,7 +206,12 @@ def calculate_payout_impl(
 
     # Owner-retained salvage deduction
     salvage_deduction = 0.0
-    if owner_retain_salvage and salvage_value is not None and salvage_value > 0:
+    if (
+        owner_retain_salvage
+        and salvage_value is not None
+        and isinstance(salvage_value, (int, float))
+        and salvage_value > 0
+    ):
         salvage_deduction = round(float(salvage_value), 2)
 
     try:
@@ -280,6 +285,7 @@ def calculate_payout_impl(
     gap_insurance_applied = False
     if (
         loan_balance is not None
+        and isinstance(loan_balance, (int, float))
         and loan_balance > 0
         and payout_amount < loan_balance
     ):

@@ -259,7 +259,21 @@ def check_pip_medpay_exhaustion_impl(
         )
     # Mock: assume no-fault states (FL, NY) have PIP; others may have MedPay
     no_fault_states = ("FL", "NY", "NJ", "PA", "HI", "KS", "MA", "MI", "UT")
-    state_upper = (loss_state or "").strip().upper()[:2]
+    # Map full state names to postal abbreviations
+    state_name_to_abbr = {
+        "FLORIDA": "FL",
+        "NEW YORK": "NY",
+        "NEW JERSEY": "NJ",
+        "PENNSYLVANIA": "PA",
+        "HAWAII": "HI",
+        "KANSAS": "KS",
+        "MASSACHUSETTS": "MA",
+        "MICHIGAN": "MI",
+        "UTAH": "UT",
+    }
+    state_input = (loss_state or "").strip().upper()
+    # Check if input is full name or abbreviation
+    state_upper = state_name_to_abbr.get(state_input, state_input[:2] if state_input else "")
     has_pip = state_upper in no_fault_states
     pip_limit = 10_000.0 if state_upper == "FL" else 50_000.0 if state_upper == "NY" else 2_500.0
     # Mock: treat as exhausted if medical charges >= limit or no PIP

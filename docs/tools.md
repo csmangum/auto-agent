@@ -955,7 +955,7 @@ Search California auto insurance compliance/regulatory reference data. Convenien
 
 **Returns:** JSON string with matching compliance entries
 
-**Data Source:** `data/california_auto_compliance.json`
+**Data Source:** Uses the same configured California compliance source as `search_state_compliance` (respects `CA_COMPLIANCE_PATH` setting). Both tools read from the same data; they are interchangeable for California queries.
 
 ---
 

@@ -13,7 +13,7 @@ class TestRAGConstants:
     """Test RAG module constants."""
 
     def test_supported_states(self):
-        assert SUPPORTED_STATES == ("California", "Texas", "Florida", "New York")
+        assert SUPPORTED_STATES == ("California", "Texas", "Florida", "New York", "Georgia")
 
     def test_default_state(self):
         assert DEFAULT_STATE == "California"
@@ -37,6 +37,10 @@ class TestNormalizeState:
     def test_valid_new_york(self):
         assert normalize_state("new york") == "New York"
 
+    def test_valid_georgia(self):
+        assert normalize_state("georgia") == "Georgia"
+        assert normalize_state("Georgia") == "Georgia"
+
     def test_empty_raises(self):
         with pytest.raises(ValueError, match="State cannot be empty"):
             normalize_state("")
@@ -54,3 +58,12 @@ class TestNormalizeState:
     def test_whitespace_stripped(self):
         assert normalize_state("  California  ") == "California"
         assert normalize_state("\tTexas\t") == "Texas"
+
+    def test_accepts_state_abbreviations(self):
+        """State abbreviations (CA, TX, FL, NY, GA) map to canonical names."""
+        assert normalize_state("CA") == "California"
+        assert normalize_state("ca") == "California"
+        assert normalize_state("TX") == "Texas"
+        assert normalize_state("FL") == "Florida"
+        assert normalize_state("NY") == "New York"
+        assert normalize_state("GA") == "Georgia"

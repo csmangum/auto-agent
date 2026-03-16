@@ -186,6 +186,34 @@ class TestCheckPIPMedPayExhaustion:
         assert "error" in data
         assert data["bi_settlement_allowed"] is False
 
+    def test_full_state_name_new_york(self):
+        """Full state name 'New York' correctly maps to NY abbreviation."""
+        result = check_pip_medpay_exhaustion_impl(
+            claim_id="CLM-002",
+            policy_number="POL-002",
+            medical_charges=60_000.0,
+            loss_state="New York",
+        )
+        data = json.loads(result)
+        assert data["has_pip_medpay"] is True
+        assert data["pip_medpay_limit"] == 50_000.0
+        assert data["exhausted"] is True
+        assert data["bi_settlement_allowed"] is True
+
+    def test_full_state_name_florida(self):
+        """Full state name 'Florida' correctly maps to FL abbreviation."""
+        result = check_pip_medpay_exhaustion_impl(
+            claim_id="CLM-003",
+            policy_number="POL-003",
+            medical_charges=15_000.0,
+            loss_state="Florida",
+        )
+        data = json.loads(result)
+        assert data["has_pip_medpay"] is True
+        assert data["pip_medpay_limit"] == 10_000.0
+        assert data["exhausted"] is True
+        assert data["bi_settlement_allowed"] is True
+
 
 class TestCheckCMSReportingRequired:
     """Tests for check_cms_reporting_required_impl."""

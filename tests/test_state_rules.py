@@ -121,6 +121,17 @@ class TestGetComparativeFaultRules:
         assert rules["comparative_fault_type"] == "pure_comparative"
         assert rules["state"] is None
 
+    def test_georgia_modified_51(self):
+        rules = get_comparative_fault_rules("Georgia")
+        assert rules["comparative_fault_type"] == "modified_comparative_51"
+        assert rules["comparative_fault_bar"] == 51.0
+        assert rules["state"] == "Georgia"
+
+    def test_abbreviation_ca_resolves(self):
+        rules = get_comparative_fault_rules("CA")
+        assert rules is not None
+        assert rules["state"] == "California"
+
 
 class TestIsRecoveryEligible:
     def test_pure_comparative_always_eligible(self):
@@ -136,3 +147,8 @@ class TestIsRecoveryEligible:
 
     def test_unknown_state_eligible(self):
         assert is_recovery_eligible(50.0, None) is True
+
+    def test_georgia_51_bar(self):
+        assert is_recovery_eligible(0.0, "Georgia") is True
+        assert is_recovery_eligible(50.0, "Georgia") is True
+        assert is_recovery_eligible(51.0, "Georgia") is False

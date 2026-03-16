@@ -786,7 +786,7 @@ class TestRAGTools:
 
         result = get_compliance_deadlines.run(state="Texas")
         assert isinstance(result, str)
-        assert "Texas" in result or "No deadline" not in result
+        assert "No deadline information found" not in result, f"Got fallback response: {result}"
 
     @pytest.mark.slow
     def test_get_compliance_deadlines_tool_florida(self):
@@ -795,7 +795,7 @@ class TestRAGTools:
 
         result = get_compliance_deadlines.run(state="Florida")
         assert isinstance(result, str)
-        assert "Florida" in result or "No deadline" not in result
+        assert "No deadline information found" not in result, f"Got fallback response: {result}"
 
     @pytest.mark.slow
     def test_get_compliance_deadlines_tool_new_york(self):
@@ -804,7 +804,7 @@ class TestRAGTools:
 
         result = get_compliance_deadlines.run(state="New York")
         assert isinstance(result, str)
-        assert "New York" in result or "No deadline" not in result
+        assert "No deadline information found" not in result, f"Got fallback response: {result}"
     
     @pytest.mark.slow
     def test_get_total_loss_requirements_tool(self):
@@ -822,7 +822,7 @@ class TestRAGTools:
 
         result = get_total_loss_requirements.run(state="Texas")
         assert isinstance(result, str)
-        assert "Texas" in result
+        assert "No total loss requirements found" not in result, f"Got fallback response: {result}"
 
     @pytest.mark.slow
     def test_get_required_disclosures_tool(self):
@@ -841,7 +841,7 @@ class TestRAGTools:
 
         result = get_required_disclosures.run(state="Texas")
         assert isinstance(result, str)
-        assert "Texas" in result or "disclosure" in result.lower()
+        assert "No disclosure requirements found" not in result, f"Got fallback response: {result}"
 
     @pytest.mark.slow
     def test_get_coverage_exclusions_tool(self):

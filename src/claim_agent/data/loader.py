@@ -73,6 +73,8 @@ def load_state_compliance(state: str) -> dict[str, Any] | None:
     Returns:
         Compliance data dict or None if file missing or invalid.
     """
+    if state == "California":
+        return load_california_compliance()
     filename = _STATE_TO_FILENAME.get(state)
     if not filename:
         return None

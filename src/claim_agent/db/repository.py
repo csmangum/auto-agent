@@ -6,7 +6,7 @@ audit entries and does not perform UPDATE or DELETE operations on that table.
 
 import json
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from claim_agent.models.claim import Attachment
 
@@ -1095,7 +1095,7 @@ class ClaimRepository:
         if not row or row[0] is None:
             return None
         try:
-            return json.loads(row[0])
+            return cast(dict[str, Any], json.loads(row[0]))
         except json.JSONDecodeError:
             return None
 
@@ -1141,8 +1141,9 @@ class ClaimRepository:
         dispute_date: str | None = None,
         opposing_carrier: str | None = None,
         status: str | None = None,
+        recovery_amount: float | None = None,
     ) -> None:
-        """Update subrogation case arbitration/metadata fields."""
+        """Update subrogation case arbitration/metadata/recovery fields."""
         updates: list[str] = ["updated_at = datetime('now')"]
         params: list[Any] = []
         if arbitration_status is not None:
@@ -1160,6 +1161,9 @@ class ClaimRepository:
         if status is not None:
             updates.append("status = ?")
             params.append(status)
+        if recovery_amount is not None:
+            updates.append("recovery_amount = ?")
+            params.append(recovery_amount)
         if not params:
             return
         params.append(case_id)

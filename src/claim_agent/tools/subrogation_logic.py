@@ -64,6 +64,7 @@ def assess_liability_impl(
     Returns JSON with:
     - is_not_at_fault: bool
     - fault_determination: "not_at_fault" | "at_fault" | "unclear"
+    - liability_percentage: float | None (0=not at fault, 100=at fault, None=unclear)
     - third_party_identified: bool
     - third_party_notes: str (if any)
     - reasoning: str
@@ -81,14 +82,17 @@ def assess_liability_impl(
     if not_at_fault_score > at_fault_score:
         is_not_at_fault = True
         fault_determination = "not_at_fault"
+        liability_percentage = 0.0
         reasoning = f"Incident description indicates insured was not at fault (score: {not_at_fault_score} vs {at_fault_score})."
     elif at_fault_score > not_at_fault_score:
         is_not_at_fault = False
         fault_determination = "at_fault"
+        liability_percentage = 100.0
         reasoning = f"Incident description suggests insured may have been at fault (score: {at_fault_score} vs {not_at_fault_score})."
     else:
         is_not_at_fault = False
         fault_determination = "unclear"
+        liability_percentage = None
         reasoning = "Insufficient information to determine fault; recommend manual review."
 
     third_party_identified = fault_determination == "not_at_fault" and bool(
@@ -98,6 +102,7 @@ def assess_liability_impl(
     result = {
         "is_not_at_fault": is_not_at_fault,
         "fault_determination": fault_determination,
+        "liability_percentage": liability_percentage,
         "third_party_identified": third_party_identified,
         "third_party_notes": third_party_notes or None,
         "reasoning": reasoning,
@@ -171,7 +176,7 @@ def build_subrogation_case_impl(
         existing = [r for r in repo.get_subrogation_cases_by_claim(claim_id) if r.get("case_id") == case_id]
         if existing:
             # Case already exists; no-op for create (or could update in future)
-            pass
+            result["persisted"] = True
         else:
             repo.create_subrogation_case(
                 claim_id=claim_id,
@@ -180,8 +185,11 @@ def build_subrogation_case_impl(
                 liability_percentage=float(liability_pct) if liability_pct is not None else None,
                 liability_basis=str(liability_basis) if liability_basis else None,
             )
+            result["persisted"] = True
     except Exception as e:
         logger.warning("Failed to persist subrogation case %s: %s", case_id, e)
+        result["persisted"] = False
+        result["persistence_error"] = str(e)
 
     return json.dumps(result)
 
@@ -249,7 +257,7 @@ def record_recovery_impl(
     recovery_status: str = "pending",
     notes: str = "",
 ) -> str:
-    """Record recovery amount and status (mock implementation).
+    """Record recovery amount and status. Persists to subrogation_cases when case exists.
 
     recovery_status: pending | partial | full | closed_no_recovery
     """
@@ -266,4 +274,25 @@ def record_recovery_impl(
         "recorded_at": _utc_now().isoformat().replace("+00:00", "Z"),
         "status": "recorded",
     }
+
+    try:
+        repo = ClaimRepository(get_db_path())
+        existing = [
+            r for r in repo.get_subrogation_cases_by_claim(claim_id)
+            if r.get("case_id") == case_id
+        ]
+        if existing:
+            repo.update_subrogation_case(
+                case_id,
+                status=recovery_status,
+                recovery_amount=recovery_amount,
+            )
+            result["persisted"] = True
+        else:
+            result["persisted"] = False
+    except Exception as e:
+        logger.warning("Failed to persist recovery for case %s: %s", case_id, e)
+        result["persisted"] = False
+        result["persistence_error"] = str(e)
+
     return json.dumps(result)

@@ -260,6 +260,13 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN total_loss_metadata TEXT")
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor = conn.execute("PRAGMA table_info(subrogation_cases)")
+        sc_columns = {row[1] for row in cursor.fetchall()}
+        if "recovery_amount" not in sc_columns:
+            conn.execute("ALTER TABLE subrogation_cases ADD COLUMN recovery_amount REAL")
+    except sqlite3.OperationalError:
+        pass
 
 
 def _run_schema(db_path: str) -> None:

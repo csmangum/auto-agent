@@ -384,21 +384,33 @@ export default function ClaimDetail() {
                           className={`text-xs px-2 py-0.5 rounded ${
                             sc.arbitration_status === 'filed'
                               ? 'bg-amber-500/20 text-amber-400'
-                              : sc.status === 'pending'
-                                ? 'bg-blue-500/20 text-blue-400'
-                                : 'bg-gray-500/20 text-gray-400'
+                              : sc.status === 'full'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : sc.status === 'partial'
+                                  ? 'bg-amber-500/20 text-amber-400'
+                                  : sc.status === 'closed_no_recovery'
+                                    ? 'bg-gray-500/20 text-gray-500'
+                                    : sc.status === 'pending'
+                                      ? 'bg-blue-500/20 text-blue-400'
+                                      : 'bg-gray-500/20 text-gray-400'
                           }`}
                         >
                           {sc.arbitration_status === 'filed'
                             ? `Arbitration: ${sc.arbitration_forum ?? 'filed'}`
-                            : sc.status}
+                            : sc.status.replace(/_/g, ' ')}
                         </span>
                       </div>
-                      {(sc.liability_percentage != null || sc.liability_basis) && (
+                      {(sc.liability_percentage != null || sc.liability_basis || sc.recovery_amount != null) && (
                         <p className="text-xs text-gray-500 mt-2">
                           {sc.liability_percentage != null && `Liability: ${sc.liability_percentage}%`}
                           {sc.liability_percentage != null && sc.liability_basis && ' · '}
                           {sc.liability_basis}
+                          {sc.recovery_amount != null && (
+                            <span>
+                              {sc.liability_percentage != null || sc.liability_basis ? ' · ' : ''}
+                              Recovered: ${Number(sc.recovery_amount).toLocaleString()}
+                            </span>
+                          )}
                         </p>
                       )}
                     </div>

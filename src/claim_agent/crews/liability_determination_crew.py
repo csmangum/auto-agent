@@ -31,7 +31,7 @@ Determine liability for this claim. Use loss_state from claim_data (default Cali
 3. Use search_state_compliance with query "comparative fault" or "liability" and state=loss_state for additional context.
 
 Apply state rules:
-- pure_comparative (CA, NY): recovery reduced by fault %; set recovery_eligible=True if not_at_fault
+- pure_comparative (CA, NY): insured can recover even when partially or mostly at fault; recovery is reduced by fault %; set recovery_eligible=True unless other legal/coverage factors bar recovery
 - modified_comparative_51 (TX, FL): no recovery if insured >= 51% at fault; recovery_eligible only if liability_percentage < 51
 - contributory: recovery_eligible only if liability_percentage is 0
 
