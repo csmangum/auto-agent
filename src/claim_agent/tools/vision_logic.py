@@ -13,6 +13,7 @@ import litellm
 from claim_agent.config import get_settings
 from claim_agent.config.settings import get_adapter_backend, get_mock_crew_config, get_mock_image_config
 from claim_agent.mock_crew.vision_mock import analyze_damage_photo_mock
+from claim_agent.utils.image_metadata import analyze_photo_forensics, extract_exif_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def analyze_damage_photo_impl(
         "parts_affected": [],
         "consistency_with_description": "unknown",
         "notes": "",
+        "photo_forensics": {"anomalies": [], "metadata": {}},
         "error": None,
     }
 
@@ -63,6 +65,11 @@ def analyze_damage_photo_impl(
                 if file_size > MAX_VISION_FILE_BYTES:
                     result["error"] = f"File size ({file_size} bytes) exceeds the limit for vision analysis"
                     return json.dumps(result)
+                exif_metadata = extract_exif_metadata(path)
+                result["photo_forensics"] = analyze_photo_forensics(
+                    exif_metadata,
+                    incident_date=(claim_context or {}).get("incident_date"),
+                )
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode("ascii")
                 ext = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"

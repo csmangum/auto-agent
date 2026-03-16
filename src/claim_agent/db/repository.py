@@ -1564,6 +1564,186 @@ class ClaimRepository:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_claims_by_party_address(
+        self,
+        address: str,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return claims linked to parties at a matching address."""
+        addr = str(address).strip()
+        if not addr:
+            return []
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT c.*
+                FROM claim_parties cp
+                JOIN claims c ON c.id = cp.claim_id
+                WHERE lower(trim(cp.address)) = lower(trim(?))
+                ORDER BY c.created_at DESC
+                LIMIT ?
+                """,
+                (addr, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_claims_by_provider_name(
+        self,
+        provider_name: str,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return claims linked to provider parties with matching name."""
+        name = str(provider_name).strip()
+        if not name:
+            return []
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT c.*
+                FROM claim_parties cp
+                JOIN claims c ON c.id = cp.claim_id
+                WHERE cp.party_type = 'provider'
+                  AND lower(trim(cp.name)) = lower(trim(?))
+                ORDER BY c.created_at DESC
+                LIMIT ?
+                """,
+                (name, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def build_relationship_snapshot(
+        self,
+        *,
+        claim_id: str,
+        max_depth: int = 2,
+        max_nodes: int = 100,
+    ) -> dict[str, Any]:
+        """Build an in-memory relationship graph snapshot from existing claims/parties.
+
+        This is a migration-ready compatibility layer. It derives graph signals from
+        existing tables without requiring dedicated graph persistence.
+        """
+        root_claim = self.get_claim(claim_id)
+        if root_claim is None:
+            return {
+                "claim_id": claim_id,
+                "max_depth": max_depth,
+                "max_nodes": max_nodes,
+                "node_count": 0,
+                "edge_count": 0,
+                "high_risk_link_count": 0,
+                "dense_cluster_detected": False,
+                "signals": [],
+                "nodes": [],
+                "edges": [],
+            }
+
+        root_vin = str(root_claim.get("vin") or "").strip()
+        parties = self.get_claim_parties(claim_id)
+        addresses = {
+            str(p.get("address")).strip()
+            for p in parties
+            if isinstance(p.get("address"), str) and str(p.get("address")).strip()
+        }
+        provider_names = {
+            str(p.get("name")).strip()
+            for p in parties
+            if str(p.get("party_type") or "").strip() == "provider"
+            and isinstance(p.get("name"), str)
+            and str(p.get("name")).strip()
+        }
+
+        related_ids: set[str] = set()
+        if root_vin:
+            for row in self.search_claims(vin=root_vin):
+                rid = str(row.get("id") or "").strip()
+                if rid and rid != claim_id:
+                    related_ids.add(rid)
+        for address in addresses:
+            for row in self.get_claims_by_party_address(address, limit=max_nodes):
+                rid = str(row.get("id") or "").strip()
+                if rid and rid != claim_id:
+                    related_ids.add(rid)
+        for provider_name in provider_names:
+            for row in self.get_claims_by_provider_name(provider_name, limit=max_nodes):
+                rid = str(row.get("id") or "").strip()
+                if rid and rid != claim_id:
+                    related_ids.add(rid)
+
+        if len(related_ids) > max_nodes:
+            related_ids = set(sorted(related_ids)[:max_nodes])
+
+        nodes = [{"id": claim_id, "type": "claim"}]
+        edges: list[dict[str, Any]] = []
+        high_risk_link_count = 0
+        for related_id in sorted(related_ids):
+            related = self.get_claim(related_id)
+            if related is None:
+                continue
+            nodes.append({"id": related_id, "type": "claim"})
+            relation_types: list[str] = []
+            if root_vin and str(related.get("vin") or "").strip() == root_vin:
+                relation_types.append("shared_vin")
+            related_parties = self.get_claim_parties(related_id)
+            related_addresses = {
+                str(p.get("address")).strip()
+                for p in related_parties
+                if isinstance(p.get("address"), str) and str(p.get("address")).strip()
+            }
+            related_providers = {
+                str(p.get("name")).strip()
+                for p in related_parties
+                if str(p.get("party_type") or "").strip() == "provider"
+                and isinstance(p.get("name"), str)
+                and str(p.get("name")).strip()
+            }
+            if addresses & related_addresses:
+                relation_types.append("shared_address")
+            if provider_names & related_providers:
+                relation_types.append("shared_provider")
+            if not relation_types:
+                continue
+            edges.append(
+                {"from": claim_id, "to": related_id, "relations": sorted(set(relation_types))}
+            )
+            if "shared_provider" in relation_types or "shared_address" in relation_types:
+                high_risk_link_count += 1
+
+        edge_count = len(edges)
+        node_count = len(nodes)
+        dense_cluster_detected = edge_count >= 3 or high_risk_link_count >= 2
+        signals: list[str] = []
+        if dense_cluster_detected:
+            signals.append("dense_cluster_detected")
+        if high_risk_link_count >= 2:
+            signals.append("high_risk_links")
+        return {
+            "claim_id": claim_id,
+            "max_depth": max_depth,
+            "max_nodes": max_nodes,
+            "node_count": node_count,
+            "edge_count": edge_count,
+            "high_risk_link_count": high_risk_link_count,
+            "dense_cluster_detected": dense_cluster_detected,
+            "signals": signals,
+            "nodes": nodes,
+            "edges": edges,
+        }
+
+    def get_relationship_index_snapshot(self, *, claim_id: str) -> dict[str, Any]:
+        """Placeholder for future durable graph index implementation.
+
+        Returns a migration-ready shape while current implementation derives data
+        from normalized claims/parties tables.
+        """
+        return {
+            "claim_id": claim_id,
+            "source": "derived_from_claims_and_parties",
+            "status": "not_materialized",
+        }
+
     def list_claims_for_retention(
         self,
         retention_period_years: int,

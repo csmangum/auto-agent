@@ -141,3 +141,56 @@ class TestKnownFraudPatterns:
         }
         result = run_fraud_detectors(claim_data)
         assert "incident_damage_description_mismatch" in result
+
+
+class _DummyCtx:
+    def __init__(self, repo):
+        self.repo = repo
+
+
+class _DummyRepo:
+    def get_claims_by_party_address(self, address: str, *, limit: int = 50):
+        del address, limit
+        return [
+            {"id": "CLM-OLD-1", "incident_date": "2026-01-10", "policy_number": "POL-001"},
+            {"id": "CLM-OLD-2", "incident_date": "2026-01-15", "policy_number": "POL-002"},
+        ]
+
+    def get_claims_by_provider_name(self, provider_name: str, *, limit: int = 100):
+        del provider_name, limit
+        return [{"id": "CLM-1", "status": "fraud_suspected"}, {"id": "CLM-2", "status": "needs_review"}]
+
+    def build_relationship_snapshot(self, *, claim_id: str, max_depth: int = 2, max_nodes: int = 50):
+        del claim_id, max_depth, max_nodes
+        return {"dense_cluster_detected": True, "high_risk_link_count": 2}
+
+    def get_claim_parties(self, claim_id: str):
+        del claim_id
+        return [{"address": "123 Main St"}]
+
+
+class TestExtendedFraudDetectors:
+    def test_geographic_inconsistency_detected(self):
+        claim_data = {"policy_state": "California", "loss_state": "Nevada", "repair_shop_state": "California"}
+        result = run_fraud_detectors(claim_data)
+        assert "geographic_state_inconsistency" in result
+
+    def test_staged_pattern_cluster_detected(self):
+        claim_data = {
+            "incident_description": "Multiple occupants reported whiplash at a four-way intersection.",
+            "damage_description": "Rear bumper damage.",
+        }
+        result = run_fraud_detectors(claim_data)
+        assert "staged_accident_pattern_cluster" in result
+
+    def test_velocity_provider_and_graph_detectors(self):
+        claim_data = {
+            "claim_id": "CLM-NEW-1",
+            "incident_date": "2026-01-20",
+            "claimant_address": "123 Main St",
+            "provider_name": "Ring Shop",
+        }
+        result = run_fraud_detectors(claim_data, ctx=_DummyCtx(_DummyRepo()))
+        assert "high_velocity_same_address" in result
+        assert "provider_ring_suspected" in result
+        assert "relationship_graph_dense_cluster" in result

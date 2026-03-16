@@ -6,6 +6,7 @@ variables (default: ``mock``).
 """
 
 from claim_agent.adapters.registry import (
+    get_claim_search_adapter,
     get_parts_adapter,
     get_policy_adapter,
     get_repair_shop_adapter,
@@ -15,6 +16,7 @@ from claim_agent.adapters.registry import (
 )
 
 __all__ = [
+    "get_claim_search_adapter",
     "get_parts_adapter",
     "get_policy_adapter",
     "get_repair_shop_adapter",

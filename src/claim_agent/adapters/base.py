@@ -93,3 +93,18 @@ class SIUAdapter(ABC):
         raise NotImplementedError(
             "SIUAdapter.update_case_status: override in adapter for SIU case status updates."
         )
+
+
+class ClaimSearchAdapter(ABC):
+    """Interface for cross-carrier claim search (NICB/ISO-style)."""
+
+    @abstractmethod
+    def search_claims(
+        self,
+        *,
+        vin: str | None = None,
+        claimant_name: str | None = None,
+        date_range: tuple[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return external claim-search matches for provided identifiers."""
+        ...

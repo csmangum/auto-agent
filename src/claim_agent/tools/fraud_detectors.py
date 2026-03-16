@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from claim_agent.config.settings import get_escalation_config
 from claim_agent.db.repository import ClaimRepository
@@ -214,6 +214,52 @@ def _normalize_words_for_overlap(text: str) -> set[str]:
     return tokens
 
 
+def _coerce_date(raw: Any) -> datetime | None:
+    if isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, date):
+        return datetime.combine(raw, datetime.min.time())
+    if isinstance(raw, str):
+        try:
+            return datetime.strptime(raw.strip(), "%Y-%m-%d")
+        except ValueError:
+            return None
+    return None
+
+
+def _as_nonempty_str(raw: Any) -> str:
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+def _extract_provider_names(claim_data: dict) -> list[str]:
+    names: list[str] = []
+    candidate_fields = (
+        "provider_name",
+        "repair_shop_name",
+        "medical_provider_name",
+        "doctor_name",
+        "body_shop_name",
+    )
+    for field in candidate_fields:
+        value = claim_data.get(field)
+        if isinstance(value, str) and value.strip():
+            names.append(value.strip())
+    list_fields = ("provider_names", "medical_providers", "repair_shops")
+    for field in list_fields:
+        value = claim_data.get(field)
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    names.append(item.strip())
+                elif isinstance(item, dict):
+                    for key in ("name", "provider_name", "shop_name"):
+                        raw = item.get(key)
+                        if isinstance(raw, str) and raw.strip():
+                            names.append(raw.strip())
+                            break
+    return sorted(set(names))
+
+
 @register_fraud_detector
 def _detect_description_overlap_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
     """Detect low overlap between incident and damage descriptions.
@@ -228,6 +274,157 @@ def _detect_description_overlap_indicators(claim_data: dict, ctx: ClaimContext |
         overlap_threshold = get_escalation_config()["description_overlap_threshold"]
         if overlap < overlap_threshold:
             indicators.append("incident_damage_description_mismatch")
+    return indicators
+
+
+@register_fraud_detector
+def _detect_velocity_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
+    """Detect high claim velocity from the same address across policies."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    incident_dt = _coerce_date(claim_data.get("incident_date"))
+    if incident_dt is None:
+        return indicators
+
+    velocity_days = get_escalation_config().get("vin_claims_days", 90)
+    repo = ctx.repo if ctx else ClaimRepository()
+
+    claim_id = _as_nonempty_str(claim_data.get("claim_id"))
+    addresses: set[str] = set()
+    for key in ("claimant_address", "policy_address", "garaging_address"):
+        addr = _as_nonempty_str(claim_data.get(key))
+        if addr:
+            addresses.add(addr)
+    if claim_id:
+        try:
+            parties = repo.get_claim_parties(claim_id)
+            for party in parties:
+                addr = _as_nonempty_str(party.get("address"))
+                if addr:
+                    addresses.add(addr)
+        except Exception as e:
+            logger.debug("Velocity detector failed to load parties for %s: %s", claim_id, e)
+
+    if not addresses:
+        return indicators
+
+    try:
+        for address in addresses:
+            related = repo.get_claims_by_party_address(address, limit=50)
+            in_window: list[dict[str, Any]] = []
+            for related_claim in related:
+                related_id = _as_nonempty_str(related_claim.get("id"))
+                if claim_id and related_id == claim_id:
+                    continue
+                related_date = _coerce_date(related_claim.get("incident_date"))
+                if related_date is None:
+                    continue
+                if abs((incident_dt - related_date).days) <= velocity_days:
+                    in_window.append(related_claim)
+            distinct_policies = {
+                _as_nonempty_str(item.get("policy_number"))
+                for item in in_window
+                if _as_nonempty_str(item.get("policy_number"))
+            }
+            if len(in_window) >= 2 and len(distinct_policies) >= 2:
+                indicators.append("high_velocity_same_address")
+                break
+    except Exception as e:
+        logger.debug("Velocity detector skipped: %s", e)
+    return indicators
+
+
+@register_fraud_detector
+def _detect_geographic_inconsistency_indicators(
+    claim_data: dict, ctx: ClaimContext | None = None
+) -> list[str]:
+    """Detect state/jurisdiction inconsistencies between policy, loss, and repair location."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    # Keep this detector resilient: only flag when we have at least two non-empty locations.
+    policy_state = _as_nonempty_str(claim_data.get("policy_state"))
+    loss_state = _as_nonempty_str(
+        claim_data.get("loss_state") or claim_data.get("incident_state")
+    )
+    repair_state = _as_nonempty_str(claim_data.get("repair_shop_state"))
+    nonempty = [s for s in (policy_state, loss_state, repair_state) if s]
+    if len(nonempty) < 2:
+        return indicators
+    if len(set(nonempty)) > 1:
+        indicators.append("geographic_state_inconsistency")
+    return indicators
+
+
+@register_fraud_detector
+def _detect_provider_ring_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
+    """Detect recurring providers appearing across suspicious prior claims."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    provider_names = _extract_provider_names(claim_data)
+    if not provider_names:
+        return indicators
+
+    repo = ctx.repo if ctx else ClaimRepository()
+    try:
+        for provider_name in provider_names:
+            related = repo.get_claims_by_provider_name(provider_name, limit=100)
+            suspicious = [
+                row for row in related
+                if _as_nonempty_str(row.get("status"))
+                in {"needs_review", "fraud_suspected", "fraud_confirmed", "under_investigation"}
+            ]
+            if len(suspicious) >= 2:
+                indicators.append("provider_ring_suspected")
+                break
+    except Exception as e:
+        logger.debug("Provider ring detector skipped: %s", e)
+    return indicators
+
+
+@register_fraud_detector
+def _detect_staged_pattern_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
+    """Detect richer staged-accident patterns beyond basic keywords."""
+    del ctx  # detector currently uses claim payload only
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    incident = (claim_data.get("incident_description") or "").strip().lower()
+    if not incident:
+        return indicators
+    occupant_markers = ("multiple occupants", "all passengers", "all injured", "whiplash")
+    intersection_markers = ("intersection", "4-way", "four-way", "stop sign", "traffic light")
+    sudden_stop_markers = ("sudden stop", "brake checked", "rear-ended at low speed")
+    has_occupants = any(m in incident for m in occupant_markers)
+    has_intersection = any(m in incident for m in intersection_markers)
+    has_sudden_stop = any(m in incident for m in sudden_stop_markers)
+    if (has_occupants and has_intersection) or (has_occupants and has_sudden_stop):
+        indicators.append("staged_accident_pattern_cluster")
+    return indicators
+
+
+@register_fraud_detector
+def _detect_relationship_graph_indicators(
+    claim_data: dict, ctx: ClaimContext | None = None
+) -> list[str]:
+    """Detect dense relationship neighborhoods around claim parties/providers/VIN."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    repo = ctx.repo if ctx else ClaimRepository()
+    claim_id = _as_nonempty_str(claim_data.get("claim_id"))
+    if not claim_id:
+        return indicators
+    try:
+        graph = repo.build_relationship_snapshot(claim_id=claim_id, max_depth=2, max_nodes=50)
+        if graph.get("dense_cluster_detected") is True:
+            indicators.append("relationship_graph_dense_cluster")
+        if int(graph.get("high_risk_link_count", 0)) >= 2:
+            indicators.append("relationship_graph_high_risk_links")
+    except Exception as e:
+        logger.debug("Relationship graph detector skipped: %s", e)
     return indicators
 
 
