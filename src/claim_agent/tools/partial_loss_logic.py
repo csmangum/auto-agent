@@ -9,12 +9,12 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from claim_agent.adapters.registry import get_parts_adapter, get_repair_shop_adapter
+from claim_agent.compliance.state_rules import get_total_loss_threshold
 from claim_agent.config.settings import (
     DEFAULT_DEDUCTIBLE,
     LABOR_HOURS_MIN,
     LABOR_HOURS_PAINT_BODY,
     LABOR_HOURS_RNI_PER_PART,
-    PARTIAL_LOSS_THRESHOLD,
 )
 from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.tools.policy_logic import query_policy_db_impl
@@ -326,10 +326,15 @@ def calculate_repair_estimate_impl(
     policy_number: str,
     shop_id: Optional[str] = None,
     part_type_preference: str = "aftermarket",
+    loss_state: Optional[str] = None,
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
-    """Calculate a complete repair estimate for a partial loss claim."""
+    """Calculate a complete repair estimate for a partial loss claim.
+
+    Uses state-specific total loss threshold when loss_state is provided
+    (California: 75%, Florida/Texas: 80%, etc.).
+    """
     shop_adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
 
     parts_result = get_parts_catalog_impl(damage_description, vehicle_make, part_type_preference, ctx=ctx)
@@ -383,7 +388,8 @@ def calculate_repair_estimate_impl(
     vehicle_value_data = json.loads(vehicle_value_result)
     vehicle_value = vehicle_value_data.get("value", 15000)
 
-    is_total_loss = total_estimate >= (PARTIAL_LOSS_THRESHOLD * vehicle_value)
+    threshold = get_total_loss_threshold(loss_state)
+    is_total_loss = total_estimate >= (threshold * vehicle_value)
 
     estimate = {
         "damage_description": damage_description,
@@ -401,7 +407,7 @@ def calculate_repair_estimate_impl(
         "vehicle_value": vehicle_value,
         "repair_to_value_ratio": round(total_estimate / vehicle_value, 2) if vehicle_value > 0 else 0,
         "is_total_loss": is_total_loss,
-        "total_loss_threshold": PARTIAL_LOSS_THRESHOLD,
+        "total_loss_threshold": threshold,
         "part_type_preference": part_type_preference,
         "shop_id": shop_id,
     }
