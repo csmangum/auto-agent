@@ -2,13 +2,16 @@
  * React Query hooks for the Claims System API.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   getClaimsStats,
   getClaims,
   getClaim,
   getClaimHistory,
+  getClaimReserveHistory,
+  getClaimReserveAdequacy,
   getClaimWorkflows,
+  patchClaimReserve,
   getDocs,
   getDoc,
   getSkills,
@@ -21,13 +24,15 @@ import {
   getAllTasks,
   getTaskStats,
 } from './client';
-import type { GetClaimsParams } from './client';
+import type { GetClaimsParams, PatchClaimReserveBody } from './client';
 
 export const queryKeys = {
   claimsStats: ['claims', 'stats'] as const,
   claims: (params: GetClaimsParams) => ['claims', 'list', params] as const,
   claim: (id: string) => ['claims', id] as const,
   claimHistory: (id: string) => ['claims', id, 'history'] as const,
+  claimReserveHistory: (id: string) => ['claims', id, 'reserve-history'] as const,
+  claimReserveAdequacy: (id: string) => ['claims', id, 'reserve-adequacy'] as const,
   claimWorkflows: (id: string) => ['claims', id, 'workflows'] as const,
   docs: ['docs'] as const,
   doc: (slug: string) => ['docs', slug] as const,
@@ -77,6 +82,40 @@ export function useClaimWorkflows(id: string | undefined) {
     queryKey: queryKeys.claimWorkflows(id ?? ''),
     queryFn: () => getClaimWorkflows(id!),
     enabled: !!id,
+  });
+}
+
+export function useClaimReserveHistory(id: string | undefined, limit = 50) {
+  return useQuery<Awaited<ReturnType<typeof getClaimReserveHistory>>, Error>({
+    queryKey: [...queryKeys.claimReserveHistory(id ?? ''), limit],
+    queryFn: () => getClaimReserveHistory(id!, limit),
+    enabled: !!id,
+  });
+}
+
+export function useClaimReserveAdequacy(id: string | undefined) {
+  return useQuery<Awaited<ReturnType<typeof getClaimReserveAdequacy>>, Error>({
+    queryKey: queryKeys.claimReserveAdequacy(id ?? ''),
+    queryFn: () => getClaimReserveAdequacy(id!),
+    enabled: !!id,
+  });
+}
+
+export function usePatchClaimReserve(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    Awaited<ReturnType<typeof patchClaimReserve>>,
+    Error,
+    PatchClaimReserveBody
+  >({
+    mutationFn: (body: PatchClaimReserveBody) => patchClaimReserve(claimId!, body),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimReserveHistory(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimReserveAdequacy(claimId) });
+      }
+    },
   });
 }
 

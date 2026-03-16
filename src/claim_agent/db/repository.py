@@ -12,6 +12,7 @@ from claim_agent.models.claim import Attachment
 
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
+    ACTOR_SYSTEM,
     ACTOR_WORKFLOW,
     AUDIT_EVENT_APPROVAL,
     AUDIT_EVENT_ASSIGN,
@@ -23,6 +24,8 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_FOLLOW_UP_SENT,
     AUDIT_EVENT_REJECTION,
     AUDIT_EVENT_REQUEST_INFO,
+    AUDIT_EVENT_RESERVE_ADJUSTED,
+    AUDIT_EVENT_RESERVE_SET,
     AUDIT_EVENT_RETENTION,
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
@@ -38,9 +41,10 @@ from claim_agent.db.constants import (
     STATUS_PENDING_INFO,
     STATUS_UNDER_INVESTIGATION,
 )
+from claim_agent.config.settings import get_reserve_config
 from claim_agent.db.database import get_connection
 from claim_agent.db.state_machine import validate_transition
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
 from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_note, sanitize_task_title, sanitize_task_description, sanitize_resolution_notes
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
@@ -49,6 +53,22 @@ from claim_agent.models.claim import ClaimInput
 def _generate_claim_id(prefix: str = "CLM") -> str:
     """Generate a unique claim ID."""
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
+
+
+def _check_reserve_authority(
+    amount: float,
+    actor_id: str,
+    *,
+    role: str = "adjuster",
+    skip_authority_check: bool = False,
+) -> None:
+    """Raise ReserveAuthorityError if amount exceeds actor's limit. Workflow/system bypass."""
+    if skip_authority_check or actor_id in (ACTOR_WORKFLOW, ACTOR_SYSTEM):
+        return
+    cfg = get_reserve_config()
+    limit = cfg["supervisor_limit"] if role in ("supervisor", "admin") else cfg["adjuster_limit"]
+    if amount > limit:
+        raise ReserveAuthorityError(amount, limit, actor_id, role)
 
 
 class ClaimRepository:
@@ -102,6 +122,31 @@ class ClaimRepository:
                 """,
                 (claim_id, AUDIT_EVENT_CREATED, STATUS_PENDING, "Claim record created", actor_id, after_state),
             )
+            # Set initial reserve from estimated_damage at FNOL if configured.
+            # FNOL auto-reserve is always treated as a system operation regardless of
+            # the calling actor; no authority-limit check applies.
+            cfg = get_reserve_config()
+            est = claim_input.estimated_damage
+            if cfg.get("initial_reserve_from_estimated_damage", True) and est is not None and est > 0:
+                conn.execute(
+                    "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
+                    (est, claim_id),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (claim_id, None, est, "Initial reserve from estimated_damage at FNOL", ACTOR_SYSTEM),
+                )
+                reserve_state = json.dumps({"reserve_amount": est})
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (claim_id, AUDIT_EVENT_RESERVE_SET, "Initial reserve set from estimated_damage", ACTOR_SYSTEM, reserve_state),
+                )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
         )
@@ -369,6 +414,192 @@ class ClaimRepository:
                     after_state,
                 ),
             )
+
+    def set_reserve(
+        self,
+        claim_id: str,
+        amount: float,
+        *,
+        reason: str = "",
+        actor_id: str = ACTOR_WORKFLOW,
+        role: str = "adjuster",
+        skip_authority_check: bool = False,
+    ) -> None:
+        """Set reserve amount (initial or overwrite). Logs to reserve_history and claim_audit_log."""
+        if amount < 0:
+            raise DomainValidationError("Reserve amount cannot be negative")
+        _check_reserve_authority(amount, actor_id, role=role, skip_authority_check=skip_authority_check)
+        safe_actor = sanitize_actor_id(actor_id)
+        safe_reason = sanitize_note(reason) if reason else ""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT reserve_amount, status FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            old_amount = row["reserve_amount"]
+            claim_status = row["status"]
+            conn.execute(
+                "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
+                (amount, claim_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (claim_id, old_amount, amount, safe_reason or "Reserve set", safe_actor),
+            )
+            before_state = json.dumps({"reserve_amount": old_amount})
+            after_state = json.dumps({"reserve_amount": amount})
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_RESERVE_SET, safe_reason or "Reserve set", safe_actor, before_state, after_state),
+            )
+        emit_claim_event(
+            ClaimEvent(claim_id=claim_id, status=claim_status, summary=f"Reserve set to ${amount:,.2f}")
+        )
+
+    def adjust_reserve(
+        self,
+        claim_id: str,
+        new_amount: float,
+        *,
+        reason: str = "",
+        actor_id: str = ACTOR_WORKFLOW,
+        role: str = "adjuster",
+        skip_authority_check: bool = False,
+    ) -> None:
+        """Adjust reserve amount. Logs to reserve_history and claim_audit_log atomically."""
+        if new_amount < 0:
+            raise DomainValidationError("Reserve amount cannot be negative")
+        _check_reserve_authority(new_amount, actor_id, role=role, skip_authority_check=skip_authority_check)
+        safe_actor = sanitize_actor_id(actor_id)
+        safe_reason = sanitize_note(reason) if reason else ""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT reserve_amount, status FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            old_amount = row["reserve_amount"]
+            claim_status = row["status"]
+            audit_event = AUDIT_EVENT_RESERVE_SET if old_amount is None else AUDIT_EVENT_RESERVE_ADJUSTED
+            default_reason = "Reserve set" if old_amount is None else "Reserve adjusted"
+            conn.execute(
+                "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
+                (new_amount, claim_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (claim_id, old_amount, new_amount, safe_reason or default_reason, safe_actor),
+            )
+            before_state = json.dumps({"reserve_amount": old_amount})
+            after_state = json.dumps({"reserve_amount": new_amount})
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim_id,
+                    audit_event,
+                    safe_reason or default_reason,
+                    safe_actor,
+                    before_state,
+                    after_state,
+                ),
+            )
+        emit_claim_event(
+            ClaimEvent(claim_id=claim_id, status=claim_status, summary=f"Reserve adjusted to ${new_amount:,.2f}")
+        )
+
+    def get_reserve_history(
+        self,
+        claim_id: str,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Fetch reserve history for a claim, most recent first."""
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, claim_id, old_amount, new_amount, reason, actor_id, created_at
+                FROM reserve_history
+                WHERE claim_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (claim_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def check_reserve_adequacy(self, claim_id: str) -> dict[str, Any]:
+        """Check reserve adequacy vs estimated_damage and payout_amount.
+
+        Returns:
+            adequate: True if reserve >= max(estimated_damage, payout or 0)
+            reserve, estimated_damage, payout_amount: values from claim
+            warnings: list of adequacy warnings
+        """
+        claim = self.get_claim(claim_id)
+        if claim is None:
+            raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+        reserve = claim.get("reserve_amount")
+        estimated = claim.get("estimated_damage")
+        payout = claim.get("payout_amount")
+        reserve_val = float(reserve) if reserve is not None else None
+        est_val = float(estimated) if estimated is not None else None
+        payout_val = float(payout) if payout is not None else None
+        warnings: list[str] = []
+        # Benchmark: reserve should be >= estimated_damage, and if payout is set, >= payout
+        benchmark = None
+        if payout_val is not None and payout_val > 0:
+            benchmark = payout_val
+        if est_val is not None and est_val > 0:
+            benchmark = max(benchmark or 0, est_val)
+        if reserve_val is None:
+            if benchmark is not None and benchmark > 0:
+                warnings.append("No reserve set; reserve should be set for actuarial tracking")
+            adequate = benchmark is None or benchmark <= 0
+        else:
+            if benchmark is not None and reserve_val < benchmark:
+                if est_val is not None and est_val == benchmark and (
+                    payout_val is None or payout_val <= 0 or payout_val < benchmark
+                ):
+                    warnings.append(
+                        f"Reserve ${reserve_val:,.2f} is below estimated damage ${benchmark:,.2f}"
+                    )
+                elif payout_val is not None and payout_val == benchmark and (
+                    est_val is None or est_val <= 0 or est_val < benchmark
+                ):
+                    warnings.append(
+                        f"Reserve ${reserve_val:,.2f} is below payout ${benchmark:,.2f}"
+                    )
+                else:
+                    parts = []
+                    if est_val is not None:
+                        parts.append(f"estimated damage ${est_val:,.2f}")
+                    if payout_val is not None:
+                        parts.append(f"payout ${payout_val:,.2f}")
+                    suffix = f" ({', '.join(parts)})" if parts else ""
+                    warnings.append(
+                        f"Reserve ${reserve_val:,.2f} is below benchmark ${benchmark:,.2f}{suffix}"
+                    )
+            adequate = benchmark is None or reserve_val >= benchmark
+        return {
+            "adequate": adequate,
+            "reserve": reserve_val,
+            "estimated_damage": est_val,
+            "payout_amount": payout_val,
+            "warnings": warnings,
+        }
 
     def get_claim_history(
         self,

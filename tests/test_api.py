@@ -5,6 +5,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from claim_agent.config import reload_settings
 from claim_agent.db.database import get_connection
 
 
@@ -738,6 +739,131 @@ class TestDenialCoverage:
         data = resp.json()
         assert data["outcome"] == "escalated"
         assert data["status"] == "needs_review"
+
+
+# -------------------------------------------------------------------
+# Reserve endpoints
+# -------------------------------------------------------------------
+
+class TestReserve:
+    def test_patch_reserve_sets_amount(self, client):
+        """PATCH /claims/{id}/reserve sets reserve and returns 200."""
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": 5000.0, "reason": "Initial estimate"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["reserve_amount"] == 5000.0
+
+        # Verify in DB
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT reserve_amount FROM claims WHERE id = ?", ("CLM-TEST001",)
+            ).fetchone()
+            assert row is not None
+            assert row["reserve_amount"] == 5000.0
+
+    def test_patch_reserve_adjusts_existing(self, client):
+        """PATCH reserve when reserve exists adjusts it."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.adjust_reserve("CLM-TEST002", 3000.0, actor_id="workflow")
+        resp = client.patch(
+            "/api/claims/CLM-TEST002/reserve",
+            json={"reserve_amount": 4500.0, "reason": "Supplemental"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["reserve_amount"] == 4500.0
+
+    def test_patch_reserve_not_found(self, client):
+        resp = client.patch(
+            "/api/claims/CLM-NONEXIST/reserve",
+            json={"reserve_amount": 1000.0},
+        )
+        assert resp.status_code == 404
+
+    def test_patch_reserve_negative_returns_422(self, client):
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": -100.0},
+        )
+        assert resp.status_code == 422
+
+    def test_patch_reserve_adjuster_over_limit_returns_403(self, client, monkeypatch):
+        """Adjuster exceeding authority limit receives 403."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        def low_limit():
+            return {
+                "adjuster_limit": 5000.0,
+                "supervisor_limit": 50000.0,
+                "initial_reserve_from_estimated_damage": True,
+            }
+
+        monkeypatch.setattr(
+            "claim_agent.db.repository.get_reserve_config",
+            low_limit,
+        )
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": 15000.0, "reason": "Supplemental"},
+            headers=_auth_headers("sk-adj"),
+        )
+        assert resp.status_code == 403
+        assert "authority" in resp.json()["detail"].lower()
+
+    def test_get_reserve_history(self, client):
+        """GET /claims/{id}/reserve-history returns history."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.adjust_reserve("CLM-TEST003", 2000.0, actor_id="workflow")
+        resp = client.get("/api/claims/CLM-TEST003/reserve-history")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST003"
+        assert "history" in data
+        assert len(data["history"]) >= 1
+        assert data["history"][0]["new_amount"] == 2000.0
+
+    def test_get_reserve_history_not_found(self, client):
+        resp = client.get("/api/claims/CLM-NONEXIST/reserve-history")
+        assert resp.status_code == 404
+
+    def test_get_reserve_adequacy(self, client):
+        """GET /claims/{id}/reserve/adequacy returns adequacy check."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.adjust_reserve("CLM-TEST001", 5000.0, actor_id="workflow")
+        resp = client.get("/api/claims/CLM-TEST001/reserve/adequacy")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "adequate" in data
+        assert "reserve" in data
+        assert "warnings" in data
+
+    def test_get_reserve_adequacy_not_found(self, client):
+        resp = client.get("/api/claims/CLM-NONEXIST/reserve/adequacy")
+        assert resp.status_code == 404
+
+    def test_get_claim_includes_reserve_amount(self, client):
+        """GET /claims/{id} includes reserve_amount when set."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.adjust_reserve("CLM-TEST001", 7500.0, actor_id="workflow")
+        resp = client.get("/api/claims/CLM-TEST001")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "reserve_amount" in data
+        assert data["reserve_amount"] == 7500.0
 
 
 # -------------------------------------------------------------------

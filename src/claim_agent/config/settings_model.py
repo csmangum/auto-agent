@@ -137,6 +137,44 @@ class ValuationConfig(BaseSettings):
     min_payout_vehicle_value: float = 100
 
 
+class ReserveConfig(BaseSettings):
+    """Reserve management: authority limits and FNOL behavior."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="RESERVE_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    adjuster_limit: float = 10000.0
+    supervisor_limit: float = 50000.0
+    initial_reserve_from_estimated_damage: bool = True
+
+    @field_validator("adjuster_limit", mode="before")
+    @classmethod
+    def _coerce_adjuster_limit(cls, v: Any) -> float:
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 10000.0
+
+    @field_validator("supervisor_limit", mode="before")
+    @classmethod
+    def _coerce_supervisor_limit(cls, v: Any) -> float:
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 50000.0
+
+    @field_validator("initial_reserve_from_estimated_damage", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
 class PartialLossConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PARTIAL_LOSS_",
@@ -464,6 +502,7 @@ class Settings(BaseSettings):
     escalation: EscalationConfig = Field(default_factory=EscalationConfig)
     fraud: FraudConfig = Field(default_factory=FraudConfig)
     valuation: ValuationConfig = Field(default_factory=ValuationConfig)
+    reserve: ReserveConfig = Field(default_factory=ReserveConfig)
     partial_loss: PartialLossConfig = Field(default_factory=PartialLossConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)

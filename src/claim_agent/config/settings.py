@@ -31,6 +31,16 @@ def get_escalation_config() -> dict:
     }
 
 
+def get_reserve_config() -> dict:
+    """Reserve management: authority limits and FNOL behavior."""
+    s = get_settings().reserve
+    return {
+        "adjuster_limit": s.adjuster_limit,
+        "supervisor_limit": s.supervisor_limit,
+        "initial_reserve_from_estimated_damage": s.initial_reserve_from_estimated_damage,
+    }
+
+
 def get_fraud_config() -> dict:
     """Fraud detection thresholds and scores."""
     s = get_settings().fraud

@@ -9,7 +9,9 @@ import type {
   ClaimsListResponse,
   Claim,
   ClaimHistoryResponse,
+  ClaimReserveHistoryResponse,
   ClaimWorkflowsResponse,
+  ReserveAdequacyResponse,
   DocsListResponse,
   DocContentResponse,
   SkillsListResponse,
@@ -146,6 +148,33 @@ export const getClaimHistory = (id: string): Promise<ClaimHistoryResponse> =>
 
 export const getClaimWorkflows = (id: string): Promise<ClaimWorkflowsResponse> =>
   fetchJSON<ClaimWorkflowsResponse>(`/claims/${id}/workflows`);
+
+export const getClaimReserveHistory = (
+  id: string,
+  limit = 50
+): Promise<ClaimReserveHistoryResponse> =>
+  fetchJSON<ClaimReserveHistoryResponse>(`/claims/${id}/reserve-history?limit=${limit}`);
+
+export const getClaimReserveAdequacy = (
+  id: string
+): Promise<ReserveAdequacyResponse> =>
+  fetchJSON<ReserveAdequacyResponse>(`/claims/${id}/reserve/adequacy`);
+
+export interface PatchClaimReserveBody {
+  reserve_amount: number;
+  reason?: string;
+}
+
+export interface PatchClaimReserveResponse {
+  claim_id: string;
+  reserve_amount: number;
+}
+
+export const patchClaimReserve = (
+  id: string,
+  body: PatchClaimReserveBody
+): Promise<PatchClaimReserveResponse> =>
+  patchJSON<PatchClaimReserveResponse>(`/claims/${id}/reserve`, body);
 
 export const getMetrics = (): Promise<unknown> => fetchJSON('/metrics');
 export const getClaimMetrics = (id: string): Promise<unknown> =>

@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, ReserveAuthorityError
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.workflow.handback_orchestrator import run_handback_workflow
@@ -678,6 +678,66 @@ def get_claim_attachment(claim_id: str, key: str):
         raise HTTPException(status_code=404, detail=f"Attachment not found: {key}")
 
     return FileResponse(path=str(file_path), filename=key)
+
+
+class ReserveBody(BaseModel):
+    """Request body for PATCH /claims/{claim_id}/reserve."""
+
+    reserve_amount: float = Field(..., ge=0, description="New reserve amount in dollars")
+    reason: str = Field(default="", max_length=500, description="Reason for change")
+
+
+@router.patch("/claims/{claim_id}/reserve", dependencies=[RequireAdjuster])
+def patch_claim_reserve(
+    claim_id: str,
+    body: ReserveBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Set or adjust reserve amount for a claim. Uses adjust_reserve (handles initial set)."""
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        ctx.repo.adjust_reserve(
+            claim_id,
+            body.reserve_amount,
+            reason=body.reason,
+            actor_id=actor_id,
+            role=auth.role,
+        )
+    except ClaimNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
+    except ReserveAuthorityError as e:
+        raise HTTPException(
+            status_code=403,
+            detail=str(e),
+        ) from e
+    return {"claim_id": claim_id, "reserve_amount": body.reserve_amount}
+
+
+@router.get("/claims/{claim_id}/reserve-history", dependencies=[RequireAdjuster])
+def get_claim_reserve_history(
+    claim_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Get reserve history for a claim, most recent first."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    history = ctx.repo.get_reserve_history(claim_id, limit=limit)
+    return {"claim_id": claim_id, "history": history, "limit": limit}
+
+
+@router.get("/claims/{claim_id}/reserve/adequacy", dependencies=[RequireAdjuster])
+def get_claim_reserve_adequacy(
+    claim_id: str,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Check reserve adequacy vs estimated_damage and payout_amount."""
+    try:
+        result = ctx.repo.check_reserve_adequacy(claim_id)
+    except ClaimNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
+    return result
 
 
 @router.get("/claims/{claim_id}/history", dependencies=[RequireAdjuster])

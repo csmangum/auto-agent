@@ -20,6 +20,7 @@ Definitions for the claim payload and fields used across workflows. Inline field
 | [incident_description](#incident_description) | string | Description of the incident |
 | [damage_description](#damage_description) | string | Description of vehicle damage |
 | [estimated_damage](#estimated_damage) | float | Estimated repair cost (optional) |
+| [reserve_amount](#reserve_amount) | float | Reserve (estimated ultimate cost); set at FNOL and adjusted at material changes |
 | [attachments](#attachments) | array | Optional attachments (photos, PDFs, estimates) |
 | [claim_type](#claim_type) | string | Classification (new, duplicate, total_loss, etc.); set by router or reviewer |
 
@@ -62,6 +63,10 @@ Description of vehicle damage (string). Required for new claims.
 ### estimated_damage
 
 Estimated repair cost in dollars (float, optional).
+
+### reserve_amount
+
+Reserve (estimated ultimate cost) in dollars. Set at FNOL from `estimated_damage` when configured; adjusted via `set_reserve`/`adjust_reserve` at material changes. Used for actuarial tracking, loss projections, and reserve adequacy checks. See [Database](database.md#reserve_history).
 
 ### attachments
 
