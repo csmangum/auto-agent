@@ -194,7 +194,7 @@ class ClaimRepository:
                     party.authorization_status or "pending",
                 ),
             )
-            return cursor.lastrowid
+            return int(cursor.lastrowid)
 
     def get_claim_parties(
         self, claim_id: str, party_type: str | None = None
