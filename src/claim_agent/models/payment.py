@@ -50,13 +50,6 @@ class ClaimPaymentCreate(BaseModel):
     payee_secondary_type: Optional[PayeeType] = Field(default=None)
 
 
-class ClaimPaymentUpdate(BaseModel):
-    """Input for updating payment status."""
-
-    status: PaymentStatus
-    void_reason: Optional[str] = Field(default=None, max_length=500)
-
-
 class ClaimPayment(BaseModel):
     """Full payment record (read model)."""
 
