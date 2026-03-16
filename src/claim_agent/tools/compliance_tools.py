@@ -40,6 +40,11 @@ def get_state_compliance_summary(state: str) -> str:
         JSON with acknowledgment_days, investigation_days, prompt_payment_days,
         total_loss_threshold, siu_referral_threshold, diminished_value_required.
     """
+    if not isinstance(state, str) or not state.strip():
+        return json.dumps({
+            "error": f"Invalid or missing state. Supported: {', '.join(SUPPORTED_STATES)}.",
+            "state": None,
+        })
     try:
         normalized = normalize_state(state.strip())
     except ValueError:
@@ -84,11 +89,21 @@ def get_compliance_due_date_tool(
     Returns:
         JSON with due_date (YYYY-MM-DD) and days.
     """
+    if not isinstance(state, str) or not state.strip():
+        return json.dumps({
+            "error": "State is required and must be a non-empty string.",
+            "due_date": None,
+        })
     try:
         normalized = normalize_state(state.strip())
     except ValueError:
         return json.dumps({
             "error": f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}.",
+            "due_date": None,
+        })
+    if not isinstance(base_date, str) or not base_date.strip():
+        return json.dumps({
+            "error": "base_date is required and must be a non-empty string in YYYY-MM-DD format.",
             "due_date": None,
         })
     try:
