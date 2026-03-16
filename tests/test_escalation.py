@@ -490,6 +490,7 @@ def test_run_claim_workflow_validation_enabled_disagrees_reclassifies(_temp_clai
          patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation), \
          patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_tl_crew, \
          patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner, \
+         patch("claim_agent.workflow.stages.create_liability_determination_crew") as mock_liability, \
          patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settle_crew, \
          patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation, \
          patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage, \
@@ -498,6 +499,7 @@ def test_run_claim_workflow_validation_enabled_disagrees_reclassifies(_temp_clai
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
         mock_tl_crew.return_value.kickoff.return_value = workflow_output
         mock_task_planner.return_value.kickoff.return_value = MagicMock(raw="Tasks created.")
+        mock_liability.return_value.kickoff.return_value = MagicMock(raw="Liability determined.")
         mock_settle_crew.return_value.kickoff.return_value = settlement_output
         mock_subrogation.return_value.kickoff.return_value = MagicMock(raw="Subrogation assessment complete.")
         mock_salvage.return_value.kickoff.return_value = MagicMock(raw="Salvage disposition complete.")
@@ -877,17 +879,19 @@ def test_settlement_crew_handles_mid_workflow_escalation(_temp_claims_db):
         with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
             with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_primary_crew:
                 with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
-                    with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement_crew:
-                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation):
-                            mock_llm.return_value = MagicMock()
-                            mock_router.return_value.kickoff.return_value = MagicMock(
-                                raw="total_loss\nVehicle is a total loss."
-                            )
-                            mock_primary_crew.return_value.kickoff.side_effect = primary_crew_kickoff
-                            mock_task_planner.return_value.kickoff.return_value = MagicMock(raw="Tasks created.")
-                            mock_settlement_crew.return_value.kickoff.side_effect = settlement_crew_kickoff
+                    with patch("claim_agent.workflow.stages.create_liability_determination_crew") as mock_liability:
+                        with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement_crew:
+                            with patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation):
+                                mock_llm.return_value = MagicMock()
+                                mock_router.return_value.kickoff.return_value = MagicMock(
+                                    raw="total_loss\nVehicle is a total loss."
+                                )
+                                mock_primary_crew.return_value.kickoff.side_effect = primary_crew_kickoff
+                                mock_task_planner.return_value.kickoff.return_value = MagicMock(raw="Tasks created.")
+                                mock_liability.return_value.kickoff.return_value = MagicMock(raw="Liability determined.")
+                                mock_settlement_crew.return_value.kickoff.side_effect = settlement_crew_kickoff
 
-                            result = run_claim_workflow(claim_data)
+                                result = run_claim_workflow(claim_data)
 
     assert result["status"] == STATUS_NEEDS_REVIEW
     assert result["needs_review"] is True

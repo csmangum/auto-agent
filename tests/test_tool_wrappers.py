@@ -45,7 +45,7 @@ class TestComplianceTools:
         """Test get_state_compliance_summary with unsupported state returns error."""
         from claim_agent.tools.compliance_tools import get_state_compliance_summary
 
-        result = get_state_compliance_summary.run(state="Georgia")
+        result = get_state_compliance_summary.run(state="Wyoming")
         data = json.loads(result)
         assert "error" in data
         assert data.get("state") is None
