@@ -7,10 +7,11 @@ the system, testing CRUD operations, audit logging, and search functionality.
 import pytest
 
 from claim_agent.db.constants import (
+    STATUS_CLOSED,
+    STATUS_NEEDS_REVIEW,
+    STATUS_OPEN,
     STATUS_PENDING,
     STATUS_PROCESSING,
-    STATUS_OPEN,
-    STATUS_CLOSED,
 )
 
 
@@ -579,7 +580,7 @@ class TestConcurrentAccess:
         claim_id = repo.create_claim(claim_input)
 
         errors = []
-        statuses = ["open", "processing", "needs_review", "closed"]
+        statuses = [STATUS_OPEN, STATUS_PROCESSING, STATUS_NEEDS_REVIEW, STATUS_CLOSED]
 
         def update_status(idx):
             try:
@@ -588,7 +589,7 @@ class TestConcurrentAccess:
                     claim_id,
                     s,
                     actor_id=f"thread-{idx}",
-                    payout_amount=0.0 if s == "closed" else None,
+                    payout_amount=0.0 if s == STATUS_CLOSED else None,
                     skip_validation=True,
                 )
             except Exception as e:

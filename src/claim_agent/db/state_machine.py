@@ -124,7 +124,10 @@ def can_transition(
     Args:
         from_status: Current claim status.
         to_status: Desired new status.
-        claim: Claim dict (for guards). If None, guards that need claim data are skipped.
+        claim: Claim dict (for guards). For close transitions, the close guard is
+            evaluated using claim or {} and payout_amount; when both are None, the
+            guard cannot be satisfied for open/settled, so transitions from those
+            statuses will fail.
         payout_amount: Optional payout being set with this transition.
         actor_id: Actor performing the transition.
         force: If True, skip validation (migrations/seeding).

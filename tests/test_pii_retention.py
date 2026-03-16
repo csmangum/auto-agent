@@ -287,7 +287,14 @@ class TestRetentionRepository:
                 damage_description="Test",
             )
             claim_id = repo.create_claim(claim_input)
-            # Backdate created_at so claim is older than 5 years
+            # Transition to closed (required for archiving) and backdate
+            from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
             with get_connection(db_path) as conn:
                 conn.execute(
                     "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",
@@ -304,10 +311,10 @@ class TestRetentionRepository:
 
     def test_archive_claim(self):
         """archive_claim should set status archived and archived_at."""
+        from claim_agent.db.constants import STATUS_ARCHIVED, STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
         from claim_agent.db.database import init_db
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
-        from claim_agent.db.constants import STATUS_ARCHIVED
 
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
@@ -325,6 +332,11 @@ class TestRetentionRepository:
                 damage_description="Test",
             )
             claim_id = repo.create_claim(claim_input)
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
             repo.archive_claim(claim_id)
 
             claim = repo.get_claim(claim_id)

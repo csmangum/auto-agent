@@ -31,6 +31,7 @@ from claim_agent.db.audit_events import (
 )
 from claim_agent.db.constants import (
     STATUS_ARCHIVED,
+    STATUS_CLOSED,
     STATUS_DENIED,
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
@@ -982,10 +983,11 @@ class ClaimRepository:
         self,
         retention_period_years: int,
     ) -> list[dict[str, Any]]:
-        """List claims older than retention period that are not yet archived.
+        """List closed claims older than retention period that are not yet archived.
 
-        Uses created_at for cutoff. Excludes claims with status archived
-        or a non-null archived_at.
+        Uses created_at for cutoff. Only returns claims with status closed
+        (archiving requires closed->archived transition). Excludes claims
+        with status archived or a non-null archived_at.
         """
         if retention_period_years < 0:
             raise ValueError("retention_period_years must be non-negative")
@@ -996,10 +998,10 @@ class ClaimRepository:
                 SELECT * FROM claims
                 WHERE datetime(created_at) <= datetime('now', ?)
                   AND archived_at IS NULL
-                  AND status != ?
+                  AND status = ?
                 ORDER BY created_at ASC
                 """,
-                (cutoff, STATUS_ARCHIVED),
+                (cutoff, STATUS_CLOSED),
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -1020,6 +1022,13 @@ class ClaimRepository:
             old_status = row["status"]
             if old_status == STATUS_ARCHIVED:
                 return
+            validate_transition(
+                claim_id,
+                old_status,
+                STATUS_ARCHIVED,
+                claim=dict(row),
+                actor_id=actor_id,
+            )
             conn.execute(
                 """
                 UPDATE claims SET status = ?, archived_at = datetime('now'), updated_at = datetime('now')

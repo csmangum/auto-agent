@@ -58,14 +58,16 @@ def close_claim(claim_id: str, reason: str) -> str:
                     "Set payout_amount before closing or transition from denied/duplicate/failed."
                 ),
             })
-        if payout is None:
-            payout = 0.0
+        update_kwargs: dict[str, str | float] = {
+            "details": reason,
+            "actor_id": "After-Action Status",
+        }
+        if payout is not None:
+            update_kwargs["payout_amount"] = payout
         repo.update_claim_status(
             claim_id,
             STATUS_CLOSED,
-            details=reason,
-            payout_amount=payout,
-            actor_id="After-Action Status",
+            **update_kwargs,
         )
         return json.dumps({"success": True, "message": f"Claim {claim_id} closed"})
     except ClaimNotFoundError:

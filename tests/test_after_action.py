@@ -65,7 +65,7 @@ class TestCloseClaimTool:
         assert "reason" in data["message"]
 
     def test_close_claim_from_open_without_payout_fails(self, temp_db):
-        """Close from open/settled without payout recorded returns clear error."""
+        """Close from open without payout recorded returns clear error."""
         from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
