@@ -213,6 +213,75 @@ describe('ClaimDetail', () => {
     expect(screen.getByRole('button', { name: 'Update Reserve' })).toBeInTheDocument();
   });
 
+  it('handles reserve form input changes', () => {
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    
+    const amountInput = screen.getByLabelText(/amount/i);
+    const reasonInput = screen.getByLabelText(/reason/i);
+    
+    fireEvent.change(amountInput, { target: { value: '10000' } });
+    expect(amountInput).toHaveValue(10000);
+    
+    fireEvent.change(reasonInput, { target: { value: 'Supplemental estimate' } });
+    expect(reasonInput).toHaveValue('Supplemental estimate');
+  });
+
+  it('shows reserve adequacy warning when inadequate', () => {
+    vi.mocked(useClaimReserveAdequacy).mockReturnValue({
+      data: {
+        adequate: false,
+        warnings: ['Reserve is below estimated damage'],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    expect(screen.getByText('⚠ Needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Reserve is below estimated damage')).toBeInTheDocument();
+  });
+
+  it('shows reserve history when present', () => {
+    vi.mocked(useClaimReserveHistory).mockReturnValue({
+      data: {
+        claim_id: 'CLM-001',
+        history: [
+          {
+            id: 1,
+            claim_id: 'CLM-001',
+            old_amount: 5000,
+            new_amount: 7500,
+            reason: 'Supplemental estimate',
+            actor_id: 'user@example.com',
+            created_at: '2025-01-16 10:00:00',
+          },
+        ],
+        limit: 50,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    expect(screen.getByText('Supplemental estimate')).toBeInTheDocument();
+    expect(screen.getByText('user@example.com')).toBeInTheDocument();
+  });
+
   it('shows workflow runs when present', () => {
     vi.mocked(useClaimWorkflows).mockReturnValue({
       data: {

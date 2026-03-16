@@ -433,11 +433,12 @@ class ClaimRepository:
         safe_reason = sanitize_note(reason) if reason else ""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT reserve_amount FROM claims WHERE id = ?", (claim_id,)
+                "SELECT reserve_amount, status FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_amount = row["reserve_amount"]
+            claim_status = row["status"]
             conn.execute(
                 "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
                 (amount, claim_id),
@@ -459,7 +460,7 @@ class ClaimRepository:
                 (claim_id, AUDIT_EVENT_RESERVE_SET, safe_reason or "Reserve set", safe_actor, before_state, after_state),
             )
         emit_claim_event(
-            ClaimEvent(claim_id=claim_id, status=None, summary=f"Reserve set to ${amount:,.2f}")
+            ClaimEvent(claim_id=claim_id, status=claim_status, summary=f"Reserve set to ${amount:,.2f}")
         )
 
     def adjust_reserve(
@@ -480,11 +481,12 @@ class ClaimRepository:
         safe_reason = sanitize_note(reason) if reason else ""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT reserve_amount FROM claims WHERE id = ?", (claim_id,)
+                "SELECT reserve_amount, status FROM claims WHERE id = ?", (claim_id,)
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_amount = row["reserve_amount"]
+            claim_status = row["status"]
             audit_event = AUDIT_EVENT_RESERVE_SET if old_amount is None else AUDIT_EVENT_RESERVE_ADJUSTED
             default_reason = "Reserve set" if old_amount is None else "Reserve adjusted"
             conn.execute(
@@ -515,7 +517,7 @@ class ClaimRepository:
                 ),
             )
         emit_claim_event(
-            ClaimEvent(claim_id=claim_id, status=None, summary=f"Reserve adjusted to ${new_amount:,.2f}")
+            ClaimEvent(claim_id=claim_id, status=claim_status, summary=f"Reserve adjusted to ${new_amount:,.2f}")
         )
 
     def get_reserve_history(
