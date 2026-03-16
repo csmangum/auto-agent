@@ -3,9 +3,12 @@
 import json
 
 
+from claim_agent.db.database import get_connection
+from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.subrogation_logic import (
     assess_liability_impl,
     build_subrogation_case_impl,
+    record_arbitration_filing_impl,
     record_recovery_impl,
     send_demand_letter_impl,
 )
@@ -54,6 +57,26 @@ class TestBuildSubrogationCase:
         assert data["third_party_info"]["identified"] is True
         assert "status" in data
 
+    def test_zero_liability_percentage_preserved(self):
+        """Test that 0% liability (not at fault) is correctly preserved."""
+        liability = json.dumps({
+            "is_not_at_fault": True,
+            "liability_percentage": 0,
+            "liability_basis": "Insured 0% at fault - rear-ended",
+        })
+        claim_data = json.dumps({
+            "liability_percentage": 50,
+        })
+        result = build_subrogation_case_impl(
+            claim_id="CLM-456",
+            payout_amount=10000.0,
+            liability_assessment=liability,
+            claim_data_json=claim_data,
+        )
+        data = json.loads(result)
+        assert data["liability_percentage"] == 0.0
+        assert data["liability_basis"] == "Insured 0% at fault - rear-ended"
+
 
 class TestSendDemandLetter:
     def test_send_demand(self):
@@ -67,6 +90,58 @@ class TestSendDemandLetter:
         assert "letter_id" in data
         assert data["letter_id"].startswith("DEM-")
         assert data["amount_sought"] == 15000.0
+
+
+class TestRecordArbitrationFiling:
+    def test_record_arbitration(self, temp_db):
+        # Use temp_db so impl uses same DB; create claim then subrogation case (FK).
+        with get_connection(temp_db) as conn:
+            conn.execute(
+                """
+                INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+                vehicle_model, incident_date, incident_description, damage_description,
+                estimated_damage, claim_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "CLM-123",
+                    "POL-123",
+                    "1HGBH41JXMN109186",
+                    2021,
+                    "Honda",
+                    "Accord",
+                    "2025-01-15",
+                    "Rear-ended",
+                    "Bumper damage",
+                    2500.0,
+                    "new",
+                    "open",
+                ),
+            )
+        repo = ClaimRepository(temp_db)
+        repo.create_subrogation_case(
+            claim_id="CLM-123",
+            case_id="SUB-CLM-123-001",
+            amount_sought=15000.0,
+        )
+        result = record_arbitration_filing_impl(
+            case_id="SUB-CLM-123-001",
+            arbitration_forum="Arbitration Forums Inc.",
+        )
+        data = json.loads(result)
+        assert "confirmation" in data
+        assert data["case_id"] == "SUB-CLM-123-001"
+        assert data["arbitration_status"] == "filed"
+
+    def test_record_arbitration_nonexistent_case_returns_error(self):
+        result = record_arbitration_filing_impl(
+            case_id="SUB-NONEXISTENT-999",
+            arbitration_forum="Arbitration Forums Inc.",
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data["case_id"] == "SUB-NONEXISTENT-999"
+        assert "not found" in data["error"].lower() or "subrogation" in data["error"].lower()
 
 
 class TestRecordRecovery:

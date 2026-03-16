@@ -15,6 +15,8 @@ _CLAIM_DATA_KEYS = (
     "attachments",
     "claim_type",
     "loss_state",
+    "liability_percentage",
+    "liability_basis",
 )
 _CLAIM_DATA_DEFAULTS = {
     "policy_number": "",
@@ -29,6 +31,8 @@ _CLAIM_DATA_DEFAULTS = {
     "attachments": [],
     "claim_type": None,
     "loss_state": None,
+    "liability_percentage": None,
+    "liability_basis": None,
 }
 
 

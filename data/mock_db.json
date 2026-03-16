@@ -10,7 +10,8 @@
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "gap_insurance": true
     },
     "POL-002": {
       "status": "active",
@@ -46,7 +47,8 @@
       "coverages": ["liability", "collision", "comprehensive", "uninsured_motorist"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 500,
-      "comprehensive_deductible": 500
+      "comprehensive_deductible": 500,
+      "gap_insurance": true
     },
     "POL-007": {
       "status": "active",

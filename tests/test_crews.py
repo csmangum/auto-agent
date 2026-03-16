@@ -412,6 +412,25 @@ def test_subrogation_crew_structure():
     assert task1 in task2.context and task2 in task3.context
 
 
+def test_liability_determination_crew_structure():
+    """Verify LiabilityDetermination crew structure: 1 agent, 1 task, output_pydantic."""
+    from crewai import LLM
+    from claim_agent.crews.liability_determination_crew import create_liability_determination_crew
+
+    mock_llm = LLM(model="gpt-4o-mini", api_key="fake-key-for-structural-test")
+    crew = create_liability_determination_crew(llm=mock_llm, use_rag=False)
+
+    assert len(crew.agents) == 1
+    assert len(crew.tasks) == 1
+    agent = crew.agents[0]
+    task = crew.tasks[0]
+    assert "{claim_data}" in task.description and "{workflow_output}" in task.description
+    assert "loss_state" in task.description.lower()
+    assert task.output_pydantic is not None
+    tool_names = [getattr(t, "name", str(t)) for t in (agent.tools or [])]
+    assert any("assess" in n.lower() and "liability" in n.lower() for n in tool_names)
+
+
 @pytest.mark.llm
 @pytest.mark.slow
 @pytest.mark.skipif(SKIP_CREW, reason="No valid LLM API key (OPENAI_API_KEY/OPENROUTER_API_KEY); skip crew integration tests")

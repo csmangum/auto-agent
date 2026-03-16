@@ -9,12 +9,14 @@ from crewai import Agent
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     add_claim_note,
+    calculate_diminished_value,
     calculate_payout,
     evaluate_damage,
     escalate_claim,
     fetch_vehicle_value,
     get_claim_notes,
     get_compliance_deadlines,
+    get_salvage_value,
     get_total_loss_requirements,
     search_policy_compliance,
 )
@@ -119,9 +121,20 @@ def create_payout_agent(
     else:
         skill = load_skill(PAYOUT)
     
-    tools = [add_claim_note, calculate_payout, get_claim_notes, escalate_claim]
+    tools = [
+        add_claim_note,
+        calculate_diminished_value,
+        calculate_payout,
+        get_claim_notes,
+        escalate_claim,
+        get_salvage_value,
+    ]
     if use_rag:
-        tools.extend([get_compliance_deadlines, search_policy_compliance])
+        tools.extend([
+            get_total_loss_requirements,
+            get_compliance_deadlines,
+            search_policy_compliance,
+        ])
     
     return Agent(
         role=skill["role"],

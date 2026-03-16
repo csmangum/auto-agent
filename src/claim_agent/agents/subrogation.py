@@ -9,6 +9,7 @@ from claim_agent.tools import (
     escalate_claim,
     generate_report,
     get_compliance_deadlines,
+    record_arbitration_filing,
     record_recovery,
     search_policy_compliance,
     send_demand_letter,
@@ -92,7 +93,7 @@ def create_recovery_tracker_agent(
     else:
         skill = load_skill(RECOVERY_TRACKER)
 
-    tools = [record_recovery, generate_report, escalate_claim]
+    tools = [record_recovery, record_arbitration_filing, generate_report, escalate_claim]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
 

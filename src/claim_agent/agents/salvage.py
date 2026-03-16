@@ -9,6 +9,7 @@ from claim_agent.tools import (
     get_salvage_value,
     get_total_loss_requirements,
     initiate_title_transfer,
+    record_dmv_salvage_report,
     record_salvage_disposition,
     search_policy_compliance,
 )
@@ -63,7 +64,7 @@ def create_title_specialist_agent(
     else:
         skill = load_skill(TITLE_SPECIALIST)
 
-    tools = [initiate_title_transfer, generate_report, escalate_claim]
+    tools = [initiate_title_transfer, record_dmv_salvage_report, generate_report, escalate_claim]
     if use_rag:
         tools.extend([get_total_loss_requirements, search_policy_compliance])
 

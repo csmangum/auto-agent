@@ -30,6 +30,7 @@ from claim_agent.crews.fraud_detection_crew import create_fraud_detection_crew
 from claim_agent.crews.new_claim_crew import create_new_claim_crew
 from claim_agent.crews.partial_loss_crew import create_partial_loss_crew
 from claim_agent.crews.reopened_crew import create_reopened_crew
+from claim_agent.crews.liability_determination_crew import create_liability_determination_crew
 from claim_agent.crews.rental_crew import create_rental_crew
 from claim_agent.crews.settlement_crew import create_settlement_crew
 from claim_agent.crews.subrogation_crew import create_subrogation_crew
@@ -38,10 +39,11 @@ from claim_agent.crews.task_planner_crew import create_task_planner_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW, STATUS_UNDER_INVESTIGATION
+from claim_agent.rag.constants import DEFAULT_STATE
 from pydantic import ValidationError
 
 from claim_agent.exceptions import MidWorkflowEscalation
-from claim_agent.models.claim import ClaimType, EscalationOutput
+from claim_agent.models.claim import ClaimType, EscalationOutput, LiabilityDeterminationOutput
 from claim_agent.models.stage_outputs import (
     CoverageVerificationResult,
     DuplicateDetectionResult,
@@ -1006,7 +1008,8 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         elif c.claim_type == ClaimType.PARTIAL_LOSS.value:
             crew = create_partial_loss_crew(c.context.llm)
         else:
-            crew = create_total_loss_crew(c.context.llm)
+            loss_state = c.claim_data_with_id.get("loss_state") or DEFAULT_STATE
+            crew = create_total_loss_crew(c.context.llm, state=loss_state, use_rag=True)
 
         try:
             workflow_result = _kickoff_with_retry(crew, crew_inputs)
@@ -1108,6 +1111,102 @@ def _stage_rental(ctx: _WorkflowCtx) -> dict | None:
             "workflow_output": c.workflow_output,
         },
         combine_label="Rental workflow output",
+    )
+
+
+def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
+    """Run (or restore) the liability determination crew before settlement.
+
+    Runs only for settlement-requiring claims. Persists liability_percentage and
+    liability_basis to the claim after crew completes.
+    """
+    if not _requires_settlement(ctx.claim_type):
+        return None
+
+    def run_liability(c: _WorkflowCtx) -> dict | None:
+        _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
+        logger.log_event("crew_started", crew="liability_determination")
+        start = time.time()
+        loss_state = c.claim_data.get("loss_state") or DEFAULT_STATE
+        crew = create_liability_determination_crew(
+            c.context.llm, state=loss_state, use_rag=True
+        )
+        inputs = {
+            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "workflow_output": c.workflow_output,
+        }
+        try:
+            result = _kickoff_with_retry(crew, inputs)
+        except MidWorkflowEscalation as e:
+            return _handle_mid_workflow_escalation(
+                e,
+                claim_id=c.claim_id,
+                claim_type=c.claim_type,
+                raw_output=c.raw_output,
+                context=c.context,
+                workflow_logger=logger,
+                workflow_start_time=c.workflow_start_time,
+                prior_workflow_output=c.workflow_output,
+                actor_id=c.actor_id,
+                stage="liability_determination",
+                payout_amount=c.extracted_payout,
+                workflow_run_id=c.workflow_run_id,
+            )
+        _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
+        output_str = str(
+            getattr(result, "raw", None)
+            or getattr(result, "output", None)
+            or str(result)
+        )
+        logger.log_event(
+            "crew_completed",
+            crew="liability_determination",
+            latency_ms=(time.time() - start) * 1000,
+        )
+        c._last_stage_output = output_str
+        c.workflow_output = _combine_workflow_outputs(
+            c.workflow_output, output_str, label="Liability determination output"
+        )
+        # Extract pydantic output and persist to claim
+        tasks_output = getattr(result, "tasks_output", None)
+        if tasks_output and isinstance(tasks_output, list) and len(tasks_output) > 0:
+            last_task = tasks_output[-1]
+            output = getattr(last_task, "pydantic", None) or getattr(last_task, "output", None)
+            if isinstance(output, LiabilityDeterminationOutput):
+                liab_pct = output.liability_percentage
+                liab_basis = output.liability_basis or ""
+                if liab_pct is not None or liab_basis:
+                    c.context.repo.update_claim_liability(
+                        c.claim_id,
+                        liability_percentage=liab_pct,
+                        liability_basis=liab_basis if liab_basis else None,
+                    )
+                    c.claim_data_with_id["liability_percentage"] = liab_pct
+                    c.claim_data_with_id["liability_basis"] = liab_basis or None
+        return None
+
+    def restore(c: _WorkflowCtx, cp: dict) -> None:
+        output = cp.get("liability_determination_output", "")
+        if output:
+            c.workflow_output = _combine_workflow_outputs(
+                c.workflow_output, output, label="Liability determination output"
+            )
+        # Repopulate structured liability fields so downstream stages (settlement/subrogation) have them.
+        claim = c.context.repo.get_claim(c.claim_id)
+        if claim:
+            if "liability_percentage" in claim:
+                c.claim_data_with_id["liability_percentage"] = claim["liability_percentage"]
+            if "liability_basis" in claim:
+                c.claim_data_with_id["liability_basis"] = claim["liability_basis"]
+
+    return _run_stage(
+        ctx,
+        "liability_determination",
+        restore=restore,
+        run=lambda c: run_liability(c),
+        get_checkpoint_data=lambda c: {  # noqa: B008
+            "liability_determination_output": getattr(c, "_last_stage_output", ""),
+        },
     )
 
 

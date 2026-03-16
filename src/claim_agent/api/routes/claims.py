@@ -654,6 +654,7 @@ def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     tasks, tasks_total = ctx.repo.get_tasks_for_claim(claim_id)
     result["tasks"] = tasks
     result["tasks_total"] = tasks_total
+    result["subrogation_cases"] = ctx.repo.get_subrogation_cases_by_claim(claim_id)
     return result
 
 

@@ -1,6 +1,6 @@
 """RAG module constants: supported states and canonical names."""
 
-SUPPORTED_STATES = ("California", "Texas", "Florida", "New York")
+SUPPORTED_STATES = ("California", "Texas", "Florida", "New York", "Georgia")
 
 DEFAULT_STATE = "California"
 

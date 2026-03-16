@@ -24,6 +24,7 @@ __all__ = [
     "compute_similarity",
     "fetch_vehicle_value",
     "evaluate_damage",
+    "calculate_diminished_value",
     "calculate_payout",
     "generate_report",
     "generate_report_pdf",
@@ -76,10 +77,12 @@ __all__ = [
     "assess_liability",
     "build_subrogation_case",
     "send_demand_letter",
+    "record_arbitration_filing",
     "record_recovery",
     # Salvage tools
     "get_salvage_value",
     "initiate_title_transfer",
+    "record_dmv_salvage_report",
     "record_salvage_disposition",
     # Bodily injury tools
     "query_medical_records",
@@ -144,6 +147,10 @@ def __getattr__(name: str):
         from claim_agent.tools.valuation_tools import evaluate_damage
         setattr(mod, "evaluate_damage", evaluate_damage)
         return evaluate_damage
+    if name == "calculate_diminished_value":
+        from claim_agent.tools.valuation_tools import calculate_diminished_value
+        setattr(mod, "calculate_diminished_value", calculate_diminished_value)
+        return calculate_diminished_value
     if name == "calculate_payout":
         from claim_agent.tools.valuation_tools import calculate_payout
         setattr(mod, "calculate_payout", calculate_payout)
@@ -325,6 +332,10 @@ def __getattr__(name: str):
         from claim_agent.tools.subrogation_tools import send_demand_letter
         setattr(mod, "send_demand_letter", send_demand_letter)
         return send_demand_letter
+    if name == "record_arbitration_filing":
+        from claim_agent.tools.subrogation_tools import record_arbitration_filing
+        setattr(mod, "record_arbitration_filing", record_arbitration_filing)
+        return record_arbitration_filing
     if name == "record_recovery":
         from claim_agent.tools.subrogation_tools import record_recovery
         setattr(mod, "record_recovery", record_recovery)
@@ -338,6 +349,10 @@ def __getattr__(name: str):
         from claim_agent.tools.salvage_tools import initiate_title_transfer
         setattr(mod, "initiate_title_transfer", initiate_title_transfer)
         return initiate_title_transfer
+    if name == "record_dmv_salvage_report":
+        from claim_agent.tools.salvage_tools import record_dmv_salvage_report
+        setattr(mod, "record_dmv_salvage_report", record_dmv_salvage_report)
+        return record_dmv_salvage_report
     if name == "record_salvage_disposition":
         from claim_agent.tools.salvage_tools import record_salvage_disposition
         setattr(mod, "record_salvage_disposition", record_salvage_disposition)
