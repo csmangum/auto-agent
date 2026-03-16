@@ -91,8 +91,18 @@ def seeded_db(integration_db: str) -> Generator[str, None, None]:
     
     for claim_data in sample_claims:
         repo.create_claim(ClaimInput(**claim_data))
-    
+
     yield integration_db
+
+
+@pytest.fixture
+def api_client(integration_db: str):
+    """TestClient bound to integration_db for API integration tests."""
+    from fastapi.testclient import TestClient
+
+    from claim_agent.api.server import app
+
+    return TestClient(app)
 
 
 # ============================================================================

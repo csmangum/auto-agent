@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger(__name__)
@@ -189,29 +189,20 @@ class PaymentConfig(BaseSettings):
     supervisor_limit: float = 25000.0
     executive_limit: float = 100000.0
 
-    @field_validator("adjuster_limit", mode="before")
+    @field_validator(
+        "adjuster_limit", "supervisor_limit", "executive_limit", mode="before"
+    )
     @classmethod
-    def _coerce_adjuster_limit(cls, v: Any) -> float:
+    def _coerce_limit(cls, v: Any, info: ValidationInfo) -> float:
+        defaults = {
+            "adjuster_limit": 5000.0,
+            "supervisor_limit": 25000.0,
+            "executive_limit": 100000.0,
+        }
         try:
             return float(v)
         except (ValueError, TypeError):
-            return 5000.0
-
-    @field_validator("supervisor_limit", mode="before")
-    @classmethod
-    def _coerce_supervisor_limit(cls, v: Any) -> float:
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return 25000.0
-
-    @field_validator("executive_limit", mode="before")
-    @classmethod
-    def _coerce_executive_limit(cls, v: Any) -> float:
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return 100000.0
+            return defaults.get(info.field_name or "adjuster_limit", 5000.0)
 
 
 class PartialLossConfig(BaseSettings):

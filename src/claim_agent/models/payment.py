@@ -1,7 +1,6 @@
 """Pydantic models for claim payments and disbursement workflow."""
 
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -45,28 +44,21 @@ class ClaimPaymentCreate(BaseModel):
     payee: str = Field(..., min_length=1, max_length=500, description="Primary payee name")
     payee_type: PayeeType = Field(..., description="Type of payee")
     payment_method: PaymentMethod = Field(..., description="Disbursement method")
-    check_number: Optional[str] = Field(default=None, max_length=100)
-    payee_secondary: Optional[str] = Field(default=None, max_length=500)
-    payee_secondary_type: Optional[PayeeType] = Field(default=None)
+    check_number: str | None = Field(default=None, max_length=100)
+    payee_secondary: str | None = Field(default=None, max_length=500)
+    payee_secondary_type: PayeeType | None = Field(default=None)
 
 
 class IssuePaymentBody(BaseModel):
     """Request body for issuing a payment."""
 
-    check_number: Optional[str] = Field(default=None, max_length=100)
+    check_number: str | None = Field(default=None, max_length=100)
 
 
 class VoidPaymentBody(BaseModel):
     """Request body for voiding a payment."""
 
-    reason: Optional[str] = Field(default=None, max_length=500)
-
-
-class ClaimPaymentUpdate(BaseModel):
-    """Input for updating payment status."""
-
-    status: PaymentStatus
-    void_reason: Optional[str] = Field(default=None, max_length=500)
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class ClaimPayment(BaseModel):
@@ -78,15 +70,15 @@ class ClaimPayment(BaseModel):
     payee: str
     payee_type: PayeeType
     payment_method: PaymentMethod
-    check_number: Optional[str] = None
+    check_number: str | None = None
     status: PaymentStatus
     authorized_by: str
-    issued_at: Optional[str] = None
-    cleared_at: Optional[str] = None
-    voided_at: Optional[str] = None
-    void_reason: Optional[str] = None
-    payee_secondary: Optional[str] = None
-    payee_secondary_type: Optional[PayeeType] = None
+    issued_at: str | None = None
+    cleared_at: str | None = None
+    voided_at: str | None = None
+    void_reason: str | None = None
+    payee_secondary: str | None = None
+    payee_secondary_type: PayeeType | None = None
     created_at: str
     updated_at: str
 
@@ -94,7 +86,7 @@ class ClaimPayment(BaseModel):
 class ClaimPaymentList(BaseModel):
     """Paginated list of payments."""
 
-    payments: List[ClaimPayment]
+    payments: list[ClaimPayment]
     total: int
     limit: int
     offset: int

@@ -8,6 +8,7 @@ from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
 from claim_agent.db.database import get_db_path
 from claim_agent.db.payment_repository import PaymentRepository
+from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import (
     DomainValidationError,
     ClaimNotFoundError,
@@ -43,19 +44,23 @@ def create_payment(
 ) -> ClaimPayment:
     """Create a new payment (authorized status). Respects payment authority limits."""
     if body.claim_id != claim_id:
-        raise HTTPException(400, "claim_id in path and body must match")
+        raise HTTPException(
+            status_code=400, detail="claim_id in path and body must match"
+        )
     role = auth.role or "adjuster"
     actor_id = auth.identity or "anonymous"
     repo = _get_payment_repo()
     try:
         payment_id = repo.create_payment(body, actor_id=actor_id, role=role)
     except ClaimNotFoundError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(status_code=404, detail=str(e))
     except PaymentAuthorityError as e:
-        raise HTTPException(403, str(e))
+        raise HTTPException(status_code=403, detail=str(e))
     payment = repo.get_payment(payment_id)
     if payment is None:
-        raise HTTPException(500, "Payment created but not found")
+        raise HTTPException(
+            status_code=500, detail="Payment created but not found"
+        )
     return ClaimPayment(**payment)
 
 
@@ -71,6 +76,9 @@ def list_payments(
     offset: int = Query(0, ge=0),
 ) -> ClaimPaymentList:
     """List payments for a claim."""
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    if claim_repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     repo = _get_payment_repo()
     payments, total = repo.get_payments_for_claim(
         claim_id, status=status.value if status else None, limit=limit, offset=offset
@@ -96,9 +104,11 @@ def get_payment(
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
     if payment is None:
-        raise HTTPException(404, "Payment not found")
+        raise HTTPException(status_code=404, detail="Payment not found")
     if payment["claim_id"] != claim_id:
-        raise HTTPException(404, "Payment not found for this claim")
+        raise HTTPException(
+            status_code=404, detail="Payment not found for this claim"
+        )
     return ClaimPayment(**payment)
 
 
@@ -118,17 +128,19 @@ def issue_payment(
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
     if payment is None:
-        raise HTTPException(404, "Payment not found")
+        raise HTTPException(status_code=404, detail="Payment not found")
     if payment["claim_id"] != claim_id:
-        raise HTTPException(404, "Payment not found for this claim")
+        raise HTTPException(
+            status_code=404, detail="Payment not found for this claim"
+        )
     try:
         updated = repo.issue_payment(
             payment_id, check_number=check_number, actor_id=actor_id
         )
     except PaymentNotFoundError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(status_code=404, detail=str(e))
     except DomainValidationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     return ClaimPayment(**updated)
 
 
@@ -146,15 +158,17 @@ def clear_payment(
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
     if payment is None:
-        raise HTTPException(404, "Payment not found")
+        raise HTTPException(status_code=404, detail="Payment not found")
     if payment["claim_id"] != claim_id:
-        raise HTTPException(404, "Payment not found for this claim")
+        raise HTTPException(
+            status_code=404, detail="Payment not found for this claim"
+        )
     try:
         updated = repo.clear_payment(payment_id, actor_id=actor_id)
     except PaymentNotFoundError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(status_code=404, detail=str(e))
     except DomainValidationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     return ClaimPayment(**updated)
 
 
@@ -174,13 +188,15 @@ def void_payment(
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
     if payment is None:
-        raise HTTPException(404, "Payment not found")
+        raise HTTPException(status_code=404, detail="Payment not found")
     if payment["claim_id"] != claim_id:
-        raise HTTPException(404, "Payment not found for this claim")
+        raise HTTPException(
+            status_code=404, detail="Payment not found for this claim"
+        )
     try:
         updated = repo.void_payment(payment_id, reason=reason, actor_id=actor_id)
     except PaymentNotFoundError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(status_code=404, detail=str(e))
     except DomainValidationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     return ClaimPayment(**updated)
