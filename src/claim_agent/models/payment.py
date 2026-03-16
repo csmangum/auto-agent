@@ -50,6 +50,18 @@ class ClaimPaymentCreate(BaseModel):
     payee_secondary_type: Optional[PayeeType] = Field(default=None)
 
 
+class IssuePaymentBody(BaseModel):
+    """Request body for issuing a payment."""
+
+    check_number: Optional[str] = Field(default=None, max_length=100)
+
+
+class VoidPaymentBody(BaseModel):
+    """Request body for voiding a payment."""
+
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
 class ClaimPaymentUpdate(BaseModel):
     """Input for updating payment status."""
 

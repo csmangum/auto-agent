@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
@@ -18,7 +18,9 @@ from claim_agent.models.payment import (
     ClaimPayment,
     ClaimPaymentCreate,
     ClaimPaymentList,
+    IssuePaymentBody,
     PaymentStatus,
+    VoidPaymentBody,
 )
 
 router = APIRouter(tags=["payments"])
@@ -108,10 +110,11 @@ def issue_payment(
     claim_id: str,
     payment_id: int,
     auth: AuthContext = RequireAdjuster,
-    check_number: Optional[str] = Query(None, max_length=100),
+    body: Optional[IssuePaymentBody] = Body(None),
 ) -> ClaimPayment:
     """Transition payment from authorized to issued. Optionally set check_number."""
     actor_id = auth.identity or "anonymous"
+    check_number = body.check_number if body else None
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
     if payment is None:
@@ -163,10 +166,11 @@ def void_payment(
     claim_id: str,
     payment_id: int,
     auth: AuthContext = RequireAdjuster,
-    reason: Optional[str] = Query(None),
+    body: Optional[VoidPaymentBody] = Body(None),
 ) -> ClaimPayment:
     """Void a payment (reversal workflow). Works from authorized or issued."""
     actor_id = auth.identity or "anonymous"
+    reason = body.reason if body else None
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
     if payment is None:
