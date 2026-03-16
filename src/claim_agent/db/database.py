@@ -193,6 +193,27 @@ CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
 
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
+
+-- Claim parties: claimant, policyholder, witness, attorney, provider, lienholder
+CREATE TABLE IF NOT EXISTS claim_parties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    party_type TEXT NOT NULL,
+    name TEXT,
+    email TEXT,
+    phone TEXT,
+    address TEXT,
+    role TEXT,
+    represented_by_id INTEGER,
+    consent_status TEXT DEFAULT 'pending',
+    authorization_status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    FOREIGN KEY (represented_by_id) REFERENCES claim_parties(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_id ON claim_parties(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_id, party_type);
 """
 
 

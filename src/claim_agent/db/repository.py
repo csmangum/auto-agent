@@ -58,6 +58,7 @@ from claim_agent.utils.sanitization import (
 )
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
+from claim_agent.models.party import ClaimPartyInput
 
 
 def _generate_claim_id(prefix: str = "CLM") -> str:
@@ -161,10 +162,106 @@ class ClaimRepository:
                     """,
                     (claim_id, AUDIT_EVENT_RESERVE_SET, "Initial reserve set from estimated_damage", ACTOR_SYSTEM, reserve_state),
                 )
+        if claim_input.parties:
+            for p in claim_input.parties:
+                self.add_claim_party(claim_id, p)
+
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
         )
         return claim_id
+
+    def add_claim_party(self, claim_id: str, party: ClaimPartyInput) -> int:
+        """Insert a claim party. Returns party id."""
+        with get_connection(self._db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO claim_parties (
+                    claim_id, party_type, name, email, phone, address, role,
+                    represented_by_id, consent_status, authorization_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim_id,
+                    party.party_type,
+                    party.name,
+                    party.email,
+                    party.phone,
+                    party.address,
+                    party.role,
+                    party.represented_by_id,
+                    party.consent_status or "pending",
+                    party.authorization_status or "pending",
+                ),
+            )
+            return cursor.lastrowid
+
+    def get_claim_parties(
+        self, claim_id: str, party_type: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch parties for a claim, optionally filtered by party_type."""
+        with get_connection(self._db_path) as conn:
+            if party_type:
+                rows = conn.execute(
+                    "SELECT * FROM claim_parties WHERE claim_id = ? AND party_type = ?",
+                    (claim_id, party_type),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM claim_parties WHERE claim_id = ?", (claim_id,)
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_claim_party_by_type(
+        self, claim_id: str, party_type: str
+    ) -> dict[str, Any] | None:
+        """Get first party of given type for a claim."""
+        parties = self.get_claim_parties(claim_id, party_type=party_type)
+        return parties[0] if parties else None
+
+    def update_claim_party(
+        self, party_id: int, updates: dict[str, Any]
+    ) -> None:
+        """Update a claim party by id. Only provided keys are updated."""
+        allowed = {
+            "name", "email", "phone", "address", "role",
+            "represented_by_id", "consent_status", "authorization_status",
+        }
+        to_set = {k: v for k, v in updates.items() if k in allowed and v is not None}
+        if not to_set:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in to_set)
+        values = list(to_set.values()) + [party_id]
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                f"UPDATE claim_parties SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
+                values,
+            )
+
+    def get_primary_contact_for_user_type(
+        self, claim_id: str, user_type: str
+    ) -> dict[str, Any] | None:
+        """Resolve contact for user_type. If claimant has attorney, return attorney.
+        Maps: claimant->claimant or attorney; policyholder->policyholder.
+        repair_shop/siu/adjuster/other: no party record, return None."""
+        user_type = str(user_type).strip().lower()
+        if user_type == "claimant":
+            claimant = self.get_claim_party_by_type(claim_id, "claimant")
+            if claimant and claimant.get("represented_by_id"):
+                with get_connection(self._db_path) as conn:
+                    row = conn.execute(
+                        "SELECT * FROM claim_parties WHERE id = ? AND claim_id = ?",
+                        (claimant["represented_by_id"], claim_id),
+                    ).fetchone()
+                if row:
+                    attorney = dict(row)
+                    if attorney.get("email") or attorney.get("phone"):
+                        return attorney
+            return claimant if (claimant and (claimant.get("email") or claimant.get("phone"))) else None
+        if user_type == "policyholder":
+            ph = self.get_claim_party_by_type(claim_id, "policyholder")
+            return ph if (ph and (ph.get("email") or ph.get("phone"))) else None
+        return None
 
     def get_claim(self, claim_id: str) -> dict[str, Any] | None:
         """Fetch claim by ID."""

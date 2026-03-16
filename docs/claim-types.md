@@ -22,6 +22,7 @@ Definitions for the claim payload and fields used across workflows. Inline field
 | [estimated_damage](#estimated_damage) | float | Estimated repair cost (optional) |
 | [reserve_amount](#reserve_amount) | float | Reserve (estimated ultimate cost); set at FNOL and adjusted at material changes |
 | [attachments](#attachments) | array | Optional attachments (photos, PDFs, estimates) |
+| [parties](#parties) | array | Optional claim parties (claimant, policyholder, witness, attorney, provider, lienholder) |
 | [claim_type](#claim_type) | string | Classification (new, duplicate, total_loss, etc.); set by router or reviewer |
 
 ### claim_data
@@ -71,6 +72,10 @@ Reserve (estimated ultimate cost) in dollars. Set at FNOL from `estimated_damage
 ### attachments
 
 Optional list of attachments (photos, PDFs, estimates). Default empty array.
+
+### parties
+
+Optional list of claim parties. Each party has: `party_type` (claimant, policyholder, witness, attorney, provider, lienholder), `name`, `email`, `phone`, `role`, `represented_by_id` (attorney ID when represented), `consent_status`, `authorization_status`. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement. See [Database](database.md#claim_parties).
 
 ### claim_type
 
