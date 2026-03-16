@@ -99,9 +99,12 @@ def get_state_rules(state: str | None) -> StateRules | None:
 
 
 def get_total_loss_threshold(state: str | None) -> float:
-    """Return total loss threshold (0.0-1.0) for the state. Default 0.75 if unknown."""
+    """Return total loss threshold (0.0-1.0) for the state. Falls back to configured PARTIAL_LOSS_THRESHOLD if unknown."""
     rules = get_state_rules(state)
-    return rules.total_loss_threshold if rules else 0.75
+    if rules:
+        return rules.total_loss_threshold
+    from claim_agent.config.settings import get_settings
+    return get_settings().partial_loss.threshold
 
 
 def get_prompt_payment_days(state: str | None) -> int:
@@ -142,9 +145,3 @@ def get_siu_referral_threshold(state: str | None) -> int | None:
     """Return mandatory SIU referral fraud score threshold, or None if no mandatory threshold."""
     rules = get_state_rules(state)
     return rules.siu_referral_threshold if rules else None
-
-
-def get_diminished_value_required(state: str | None) -> bool:
-    """Return whether state mandates diminished value consideration."""
-    rules = get_state_rules(state)
-    return rules.diminished_value_required if rules else False

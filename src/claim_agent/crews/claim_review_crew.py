@@ -42,17 +42,17 @@ WORKFLOW OUTPUT (from the run):
 
 CLAIM ID: {claim_id}
 
-Use get_claim_process_context with claim_id to retrieve the full process context. Use search_california_compliance (for CA), search_policy_compliance, get_compliance_deadlines, and get_required_disclosures to look up applicable rules. When claim_data includes loss_state (California, Texas, Florida, New York), pass that state to RAG tools — each state has different deadlines (e.g., CA: 30-day payment, FL: 90-day payment).
+Use get_claim_process_context with claim_id to retrieve the full process context. Use search_california_compliance (for CA), search_policy_compliance, get_compliance_deadlines, and get_required_disclosures to look up applicable rules. When claim_data includes loss_state (California, Texas, Florida, New York), pass that state to RAG tools and use get_compliance_deadlines to obtain state-specific deadlines (CA: 15-day acknowledgment, 40-day investigation, 30-day payment; FL: 14-day acknowledgment, 90-day investigation, 90-day payment; TX: 15-day acknowledgment, 15-day investigation, 30-day payment).
 
 Check these provisions (as applicable to this claim and loss_state):
-- FCSP-001: Acknowledgment within 15 days
-- FCSP-002: Investigation within 40 days
-- FCSP-003: Decision communicated within 40 days
-- FCSP-004: Payment within 30 days of acceptance
-- FCSP-005: Undisputed amounts within 30 days
+- FCSP-001: Acknowledgment (use state-specific deadline)
+- FCSP-002: Investigation (use state-specific deadline)
+- FCSP-003: Decision communicated (use state-specific investigation deadline)
+- FCSP-004: Payment (use state-specific prompt payment deadline)
+- FCSP-005: Undisputed amounts (use state-specific prompt payment deadline)
 - FCSP-006: Written denial requirements (if denied)
-- FCSP-007: Proof of loss forms within 15 days
-- FCSP-008: Additional info requests within 40 days
+- FCSP-007: Proof of loss forms (use state-specific acknowledgment deadline)
+- FCSP-008: Additional info requests (use state-specific investigation deadline)
 - RCC-001 through RCC-004: Rental rules (if partial_loss)
 - Required disclosures: repair shop choice, parts type, appeal rights
 
