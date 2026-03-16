@@ -6,7 +6,7 @@ audit entries and does not perform UPDATE or DELETE operations on that table.
 
 import json
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from claim_agent.models.claim import Attachment
 
@@ -1095,7 +1095,7 @@ class ClaimRepository:
         if not row or row[0] is None:
             return None
         try:
-            return json.loads(row[0])
+            return cast(dict[str, Any], json.loads(row[0]))
         except json.JSONDecodeError:
             return None
 
