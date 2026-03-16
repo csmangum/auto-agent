@@ -94,7 +94,7 @@ def test_authority_limit_blocks_adjuster(temp_db, monkeypatch):
     def low_limit():
         return {"adjuster_limit": 5000.0, "supervisor_limit": 50000.0, "initial_reserve_from_estimated_damage": True}
 
-    monkeypatch.setattr("claim_agent.config.settings.get_reserve_config", low_limit)
+    monkeypatch.setattr("claim_agent.db.repository.get_reserve_config", low_limit)
 
     repo = ClaimRepository(db_path=temp_db)
     claim_input = ClaimInput(
@@ -108,7 +108,7 @@ def test_authority_limit_blocks_adjuster(temp_db, monkeypatch):
         damage_description="Severe",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises(ReserveAuthorityError, match="exceeds adjuster limit"):
+    with pytest.raises(ReserveAuthorityError, match="exceeds authority limit"):
         repo.set_reserve(claim_id, 15000.0, actor_id="adjuster-123")
 
 
@@ -135,7 +135,7 @@ def test_supervisor_can_set_reserve_above_adjuster_limit(temp_db, monkeypatch):
     def limits():
         return {"adjuster_limit": 5000.0, "supervisor_limit": 50000.0, "initial_reserve_from_estimated_damage": True}
 
-    monkeypatch.setattr("claim_agent.config.settings.get_reserve_config", limits)
+    monkeypatch.setattr("claim_agent.db.repository.get_reserve_config", limits)
 
     repo = ClaimRepository(db_path=temp_db)
     claim_input = ClaimInput(
