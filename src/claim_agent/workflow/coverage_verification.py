@@ -130,7 +130,7 @@ def verify_coverage_impl(
             try:
                 ded = float(deductible)
                 est = float(estimated_damage)
-                if est > 0 and ded >= est:
+                if est > 0 and ded > est:
                     return CoverageVerificationResult(
                         denied=True,
                         reason=f"Deductible (${ded:,.0f}) exceeds estimated damage (${est:,.0f})",

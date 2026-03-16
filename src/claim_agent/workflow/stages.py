@@ -125,6 +125,16 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
             reason="Coverage verification disabled",
             details={"enabled": False},
         )
+        ctx.context.repo.save_task_checkpoint(
+            ctx.claim_id,
+            ctx.workflow_run_id,
+            "coverage_verification",
+            json.dumps({
+                "passed": True,
+                "reason": "Coverage verification disabled",
+                "details": {"enabled": False},
+            }),
+        )
         return None
 
     result = verify_coverage_impl(ctx.claim_data, ctx=ctx.context)
