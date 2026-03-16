@@ -14,6 +14,7 @@ _CLAIM_DATA_KEYS = (
     "estimated_damage",
     "attachments",
     "claim_type",
+    "loss_state",
 )
 _CLAIM_DATA_DEFAULTS = {
     "policy_number": "",
@@ -27,6 +28,7 @@ _CLAIM_DATA_DEFAULTS = {
     "estimated_damage": None,
     "attachments": [],
     "claim_type": None,
+    "loss_state": None,
 }
 
 

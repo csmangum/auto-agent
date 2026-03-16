@@ -77,6 +77,10 @@ class ClaimInput(BaseModel):
         default=None,
         description="Pre-determined claim type (e.g., from reviewer override). Only trusted when set via supervisor/reviewer paths; intake endpoints should not accept this.",
     )
+    loss_state: Optional[str] = Field(
+        default=None,
+        description="State/jurisdiction where the loss occurred (e.g., California, Texas, Florida, New York). Used for state-specific compliance rules, deadlines, and total loss thresholds.",
+    )
 
 
 class ClaimOutput(BaseModel):

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS claims (
     damage_description TEXT,
     estimated_damage REAL,
     claim_type TEXT,
+    loss_state TEXT,
     status TEXT DEFAULT 'pending',
     payout_amount REAL,
     reserve_amount REAL,
@@ -204,12 +205,13 @@ def get_db_path() -> str:
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
     """Run schema migrations for existing databases."""
-    # Migration: add archived_at column for retention (2025-03)
     try:
         cursor = conn.execute("PRAGMA table_info(claims)")
-        columns = [row[1] for row in cursor.fetchall()]
+        columns = {row[1] for row in cursor.fetchall()}
         if "archived_at" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN archived_at TEXT")
+        if "loss_state" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN loss_state TEXT")
     except sqlite3.OperationalError:
         pass
 
