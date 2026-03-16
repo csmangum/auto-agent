@@ -258,7 +258,7 @@ class TestWorkflowCheckpoints:
 
         result = run_claim_workflow(
             {
-                "policy_number": "POL-100",
+                "policy_number": "POL-001",
                 "vin": "CPVIN100",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -275,6 +275,7 @@ class TestWorkflowCheckpoints:
 
         repo = ClaimRepository(db_path=temp_db)
         cps = repo.get_task_checkpoints(result["claim_id"], wf_run_id)
+        assert "coverage_verification" in cps
         assert "router" in cps
         assert "escalation_check" in cps
         assert "workflow:new" in cps
@@ -320,7 +321,7 @@ class TestWorkflowCheckpoints:
         # First run
         result1 = run_claim_workflow(
             {
-                "policy_number": "POL-200",
+                "policy_number": "POL-001",
                 "vin": "CPVIN200",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -343,7 +344,7 @@ class TestWorkflowCheckpoints:
         # Resume from same run — all stages checkpointed, nothing should re-run
         result2 = run_claim_workflow(
             {
-                "policy_number": "POL-200",
+                "policy_number": "POL-001",
                 "vin": "CPVIN200",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -400,7 +401,7 @@ class TestWorkflowCheckpoints:
         # First full run
         result1 = run_claim_workflow(
             {
-                "policy_number": "POL-300",
+                "policy_number": "POL-001",
                 "vin": "CPVIN300",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -425,7 +426,7 @@ class TestWorkflowCheckpoints:
         # Resume from "workflow" stage — router should NOT re-run, crew SHOULD
         result2 = run_claim_workflow(
             {
-                "policy_number": "POL-300",
+                "policy_number": "POL-001",
                 "vin": "CPVIN300",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -471,7 +472,7 @@ class TestWorkflowCheckpoints:
         mock_new_crew.return_value = new_crew_inst
 
         claim_data = {
-            "policy_number": "POL-400",
+            "policy_number": "POL-001",
             "vin": "CPVIN400",
             "vehicle_year": 2023,
             "vehicle_make": "Test",
@@ -540,7 +541,7 @@ class TestWorkflowCheckpoints:
         # First run
         result1 = run_claim_workflow(
             {
-                "policy_number": "POL-500",
+                "policy_number": "POL-001",
                 "vin": "CPVIN500",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -560,7 +561,7 @@ class TestWorkflowCheckpoints:
         # Second run WITHOUT resume — should re-run everything
         result2 = run_claim_workflow(
             {
-                "policy_number": "POL-500",
+                "policy_number": "POL-001",
                 "vin": "CPVIN500",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -611,7 +612,7 @@ class TestWorkflowCheckpoints:
 
         result = run_claim_workflow(
             {
-                "policy_number": "POL-600",
+                "policy_number": "POL-001",
                 "vin": "CPVIN600",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",
@@ -669,7 +670,7 @@ class TestWorkflowCheckpoints:
 
         result = run_claim_workflow(
             {
-                "policy_number": "POL-700",
+                "policy_number": "POL-001",
                 "vin": "CPVIN700",
                 "vehicle_year": 2023,
                 "vehicle_make": "Test",

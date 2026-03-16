@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from claim_agent.config.settings import (
     DUPLICATE_DAYS_WINDOW,
+    get_coverage_config,
     get_escalation_config,
     DUPLICATE_SIMILARITY_THRESHOLD,
     DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE,
@@ -36,12 +37,13 @@ from claim_agent.crews.after_action_crew import create_after_action_crew
 from claim_agent.crews.task_planner_crew import create_task_planner_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
-from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW, STATUS_UNDER_INVESTIGATION
 from pydantic import ValidationError
 
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.models.claim import ClaimType, EscalationOutput
 from claim_agent.models.stage_outputs import (
+    CoverageVerificationResult,
     DuplicateDetectionResult,
     EconomicAnalysisResult,
     EnrichedDuplicate,
@@ -83,12 +85,142 @@ from claim_agent.workflow.helpers import (
     _requires_salvage,
     _requires_settlement,
 )
+from claim_agent.workflow.coverage_verification import verify_coverage_impl
 from claim_agent.workflow.routing import create_router_crew, _parse_router_output
 
 if TYPE_CHECKING:
     from claim_agent.workflow.orchestrator import _WorkflowCtx
 
 logger = get_logger(__name__)
+
+
+def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
+    """Run coverage verification as first FNOL gate. Deny or escalate before routing."""
+    if "coverage_verification" in ctx.checkpoints:
+        try:
+            cp = json.loads(ctx.checkpoints["coverage_verification"])
+            if isinstance(cp, dict) and cp.get("passed"):
+                ctx.coverage_result = CoverageVerificationResult(
+                    passed=True,
+                    reason=cp.get("reason", "Restored from checkpoint"),
+                    details=cp.get("details", {}),
+                )
+                logger.info(
+                    "Restored coverage_verification from checkpoint",
+                    extra={"claim_id": ctx.claim_id},
+                )
+                return None
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Failed to restore coverage_verification from checkpoint: %s",
+                exc,
+                extra={"claim_id": ctx.claim_id},
+            )
+            ctx.checkpoints.pop("coverage_verification", None)
+
+    config = get_coverage_config()
+    if not config.get("enabled", True):
+        ctx.coverage_result = CoverageVerificationResult(
+            passed=True,
+            reason="Coverage verification disabled",
+            details={"enabled": False},
+        )
+        return None
+
+    result = verify_coverage_impl(ctx.claim_data, ctx=ctx.context)
+    ctx.coverage_result = result
+
+    if result.denied:
+        reason = result.reason or "Coverage verification failed"
+        ctx.context.repo.deny_claim_at_claimant(
+            ctx.claim_id,
+            reason,
+            actor_id=ctx.actor_id,
+            coverage_verification_details=result.details,
+        )
+        workflow_output = json.dumps({
+            "coverage_verification": "denied",
+            "reason": reason,
+            "details": result.details,
+        })
+        ctx.context.repo.save_workflow_result(
+            ctx.claim_id, "denied", reason, workflow_output
+        )
+        ctx.context.metrics.end_claim(ctx.claim_id, status=STATUS_DENIED)
+        record_claim_outcome(
+            ctx.claim_id, STATUS_DENIED, (time.time() - ctx.workflow_start_time)
+        )
+        ctx.context.metrics.log_claim_summary(ctx.claim_id)
+        logger.log_event(
+            "coverage_denied",
+            reason=reason,
+            extra={"claim_id": ctx.claim_id},
+        )
+        return {
+            "claim_id": ctx.claim_id,
+            "claim_type": "denied",
+            "status": STATUS_DENIED,
+            "router_output": "",
+            "workflow_output": workflow_output,
+            "workflow_run_id": ctx.workflow_run_id,
+            "summary": reason,
+        }
+
+    if result.under_investigation:
+        reason = result.reason or "Coverage under investigation"
+        ctx.context.repo.update_claim_status(
+            ctx.claim_id,
+            STATUS_UNDER_INVESTIGATION,
+            details=reason,
+            actor_id=ctx.actor_id,
+        )
+        ctx.context.repo.insert_coverage_verification_audit(
+            ctx.claim_id,
+            "under_investigation",
+            {"reason": reason, **result.details},
+            actor_id=ctx.actor_id,
+        )
+        workflow_output = json.dumps({
+            "coverage_verification": "under_investigation",
+            "reason": reason,
+            "details": result.details,
+        })
+        ctx.context.repo.save_workflow_result(
+            ctx.claim_id, "under_investigation", reason, workflow_output
+        )
+        ctx.context.metrics.end_claim(ctx.claim_id, status=STATUS_UNDER_INVESTIGATION)
+        record_claim_outcome(
+            ctx.claim_id,
+            STATUS_UNDER_INVESTIGATION,
+            (time.time() - ctx.workflow_start_time),
+        )
+        ctx.context.metrics.log_claim_summary(ctx.claim_id)
+        logger.log_event(
+            "coverage_under_investigation",
+            reason=reason,
+            extra={"claim_id": ctx.claim_id},
+        )
+        return {
+            "claim_id": ctx.claim_id,
+            "claim_type": "under_investigation",
+            "status": STATUS_UNDER_INVESTIGATION,
+            "router_output": "",
+            "workflow_output": workflow_output,
+            "workflow_run_id": ctx.workflow_run_id,
+            "summary": reason,
+        }
+
+    ctx.context.repo.save_task_checkpoint(
+        ctx.claim_id,
+        ctx.workflow_run_id,
+        "coverage_verification",
+        json.dumps({
+            "passed": True,
+            "reason": result.reason,
+            "details": result.details,
+        }),
+    )
+    return None
 
 
 def _stage_economic_analysis(ctx: _WorkflowCtx) -> dict | None:

@@ -14,6 +14,7 @@ from claim_agent.utils.retry import with_llm_retry
 
 
 WORKFLOW_STAGES = (
+    "coverage_verification",
     "economic_analysis", "fraud_prescreening", "duplicate_detection",
     "router", "escalation_check", "workflow",
     "task_creation",

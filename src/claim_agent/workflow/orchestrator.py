@@ -14,6 +14,7 @@ from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.models.stage_outputs import (
+    CoverageVerificationResult,
     DuplicateDetectionResult,
     EconomicAnalysisResult,
     EscalationCheckResult,
@@ -34,6 +35,7 @@ from claim_agent.workflow.helpers import (
 )
 from claim_agent.workflow.stages import (
     _stage_after_action,
+    _stage_coverage_verification,
     _stage_duplicate_detection,
     _stage_economic_analysis,
     _stage_escalation_check,
@@ -98,6 +100,7 @@ class _WorkflowCtx:
     extracted_payout: float | None = None
     _last_stage_output: str = ""
 
+    coverage_result: CoverageVerificationResult | None = None
     economic_result: EconomicAnalysisResult | None = None
     fraud_prescreening_result: FraudPrescreeningResult | None = None
     duplicate_result: DuplicateDetectionResult | None = None
@@ -239,6 +242,7 @@ def run_claim_workflow(
             )
 
             for stage_fn in (
+                _stage_coverage_verification,
                 _stage_economic_analysis,
                 _stage_fraud_prescreening,
                 _stage_duplicate_detection,

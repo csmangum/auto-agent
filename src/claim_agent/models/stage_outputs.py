@@ -72,3 +72,13 @@ class EscalationCheckResult(BaseModel):
     priority: EscalationPriority = "low"
     recommended_action: str = ""
     fraud_indicators: list[str] = Field(default_factory=list)
+
+
+class CoverageVerificationResult(BaseModel):
+    """Output of ``_stage_coverage_verification``."""
+
+    passed: bool = False
+    denied: bool = False
+    under_investigation: bool = False
+    reason: str = ""
+    details: dict = Field(default_factory=dict)
