@@ -149,8 +149,8 @@ def build_subrogation_case_impl(
     if claim_data.get("incident_description"):
         supporting_docs.append("Incident description")
 
-    liability_pct = assessment.get("liability_percentage") or claim_data.get("liability_percentage")
-    liability_basis = assessment.get("liability_basis") or claim_data.get("liability_basis")
+    liability_pct = assessment.get("liability_percentage") if assessment.get("liability_percentage") is not None else claim_data.get("liability_percentage")
+    liability_basis = assessment.get("liability_basis") if assessment.get("liability_basis") is not None else claim_data.get("liability_basis")
 
     result = {
         "case_id": case_id,

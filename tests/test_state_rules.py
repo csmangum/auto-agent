@@ -42,7 +42,6 @@ class TestGetStateRules:
         assert rules.state == "California"
 
     def test_unsupported_state_returns_none(self):
-        assert get_state_rules("Georgia") is None
         assert get_state_rules("Invalid") is None
 
     def test_empty_returns_none(self):
@@ -58,7 +57,6 @@ class TestGetTotalLossThreshold:
         assert get_total_loss_threshold("Florida") == 0.80
 
     def test_unknown_defaults_to_75(self):
-        assert get_total_loss_threshold("Georgia") == 0.75
         assert get_total_loss_threshold(None) == 0.75
 
 
@@ -98,7 +96,7 @@ class TestGetSiuReferralThreshold:
         assert get_siu_referral_threshold("California") == 75
 
     def test_unknown_returns_none(self):
-        assert get_siu_referral_threshold("Georgia") is None
+        assert get_siu_referral_threshold("Invalid") is None
 
 
 class TestGetComparativeFaultRules:
@@ -119,7 +117,7 @@ class TestGetComparativeFaultRules:
         assert rules["comparative_fault_bar"] == 51.0
 
     def test_unknown_defaults_pure(self):
-        rules = get_comparative_fault_rules("Georgia")
+        rules = get_comparative_fault_rules("Invalid")
         assert rules["comparative_fault_type"] == "pure_comparative"
         assert rules["state"] is None
 

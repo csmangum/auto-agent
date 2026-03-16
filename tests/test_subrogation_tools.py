@@ -55,6 +55,26 @@ class TestBuildSubrogationCase:
         assert data["third_party_info"]["identified"] is True
         assert "status" in data
 
+    def test_zero_liability_percentage_preserved(self):
+        """Test that 0% liability (not at fault) is correctly preserved."""
+        liability = json.dumps({
+            "is_not_at_fault": True,
+            "liability_percentage": 0,
+            "liability_basis": "Insured 0% at fault - rear-ended",
+        })
+        claim_data = json.dumps({
+            "liability_percentage": 50,
+        })
+        result = build_subrogation_case_impl(
+            claim_id="CLM-456",
+            payout_amount=10000.0,
+            liability_assessment=liability,
+            claim_data_json=claim_data,
+        )
+        data = json.loads(result)
+        assert data["liability_percentage"] == 0.0
+        assert data["liability_basis"] == "Insured 0% at fault - rear-ended"
+
 
 class TestSendDemandLetter:
     def test_send_demand(self):
