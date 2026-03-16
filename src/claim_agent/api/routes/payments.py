@@ -31,19 +31,19 @@ def _get_payment_repo(ctx: ClaimContext) -> PaymentRepository:
     "/claims/{claim_id}/payments",
     response_model=ClaimPayment,
     status_code=201,
-    dependencies=[Depends(RequireAdjuster)],
+    dependencies=[RequireAdjuster],
 )
 def create_payment(
     claim_id: str,
     body: ClaimPaymentCreate,
     ctx: ClaimContext = Depends(get_claim_context),
-    auth: AuthContext = Depends(RequireAdjuster),
+    auth: AuthContext = RequireAdjuster,
 ) -> ClaimPayment:
     """Create a new payment (authorized status). Respects payment authority limits."""
     if body.claim_id != claim_id:
         raise HTTPException(400, "claim_id in path and body must match")
     role = auth.role or "adjuster"
-    actor_id = auth.actor_id or "anonymous"
+    actor_id = auth.identity or "anonymous"
     repo = _get_payment_repo(ctx)
     try:
         payment_id = repo.create_payment(body, actor_id=actor_id, role=role)
@@ -60,7 +60,7 @@ def create_payment(
 @router.get(
     "/claims/{claim_id}/payments",
     response_model=dict,
-    dependencies=[Depends(RequireAdjuster)],
+    dependencies=[RequireAdjuster],
 )
 def list_payments(
     claim_id: str,
@@ -85,7 +85,7 @@ def list_payments(
 @router.get(
     "/claims/{claim_id}/payments/{payment_id}",
     response_model=ClaimPayment,
-    dependencies=[Depends(RequireAdjuster)],
+    dependencies=[RequireAdjuster],
 )
 def get_payment(
     claim_id: str,
@@ -105,71 +105,80 @@ def get_payment(
 @router.post(
     "/claims/{claim_id}/payments/{payment_id}/issue",
     response_model=ClaimPayment,
-    dependencies=[Depends(RequireAdjuster)],
+    dependencies=[RequireAdjuster],
 )
 def issue_payment(
     claim_id: str,
     payment_id: int,
     ctx: ClaimContext = Depends(get_claim_context),
-    auth: AuthContext = Depends(RequireAdjuster),
+    auth: AuthContext = RequireAdjuster,
     check_number: Optional[str] = Query(None),
 ) -> ClaimPayment:
     """Transition payment from authorized to issued. Optionally set check_number."""
-    actor_id = auth.actor_id or "anonymous"
+    actor_id = auth.identity or "anonymous"
     repo = _get_payment_repo(ctx)
+    payment = repo.get_payment(payment_id)
+    if payment is None:
+        raise HTTPException(404, "Payment not found")
+    if payment["claim_id"] != claim_id:
+        raise HTTPException(404, "Payment not found for this claim")
     try:
         updated = repo.issue_payment(
             payment_id, check_number=check_number, actor_id=actor_id
         )
     except DomainValidationError as e:
         raise HTTPException(400, str(e))
-    if updated["claim_id"] != claim_id:
-        raise HTTPException(404, "Payment not found for this claim")
     return ClaimPayment(**updated)
 
 
 @router.post(
     "/claims/{claim_id}/payments/{payment_id}/clear",
     response_model=ClaimPayment,
-    dependencies=[Depends(RequireAdjuster)],
+    dependencies=[RequireAdjuster],
 )
 def clear_payment(
     claim_id: str,
     payment_id: int,
     ctx: ClaimContext = Depends(get_claim_context),
-    auth: AuthContext = Depends(RequireAdjuster),
+    auth: AuthContext = RequireAdjuster,
 ) -> ClaimPayment:
     """Transition payment from issued to cleared."""
-    actor_id = auth.actor_id or "anonymous"
+    actor_id = auth.identity or "anonymous"
     repo = _get_payment_repo(ctx)
+    payment = repo.get_payment(payment_id)
+    if payment is None:
+        raise HTTPException(404, "Payment not found")
+    if payment["claim_id"] != claim_id:
+        raise HTTPException(404, "Payment not found for this claim")
     try:
         updated = repo.clear_payment(payment_id, actor_id=actor_id)
     except DomainValidationError as e:
         raise HTTPException(400, str(e))
-    if updated["claim_id"] != claim_id:
-        raise HTTPException(404, "Payment not found for this claim")
     return ClaimPayment(**updated)
 
 
 @router.post(
     "/claims/{claim_id}/payments/{payment_id}/void",
     response_model=ClaimPayment,
-    dependencies=[Depends(RequireAdjuster)],
+    dependencies=[RequireAdjuster],
 )
 def void_payment(
     claim_id: str,
     payment_id: int,
     ctx: ClaimContext = Depends(get_claim_context),
-    auth: AuthContext = Depends(RequireAdjuster),
+    auth: AuthContext = RequireAdjuster,
     reason: Optional[str] = Query(None),
 ) -> ClaimPayment:
     """Void a payment (reversal workflow). Works from authorized or issued."""
-    actor_id = auth.actor_id or "anonymous"
+    actor_id = auth.identity or "anonymous"
     repo = _get_payment_repo(ctx)
+    payment = repo.get_payment(payment_id)
+    if payment is None:
+        raise HTTPException(404, "Payment not found")
+    if payment["claim_id"] != claim_id:
+        raise HTTPException(404, "Payment not found for this claim")
     try:
         updated = repo.void_payment(payment_id, reason=reason, actor_id=actor_id)
     except DomainValidationError as e:
         raise HTTPException(400, str(e))
-    if updated["claim_id"] != claim_id:
-        raise HTTPException(404, "Payment not found for this claim")
     return ClaimPayment(**updated)
