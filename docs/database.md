@@ -291,6 +291,8 @@ Defined in `src/claim_agent/db/constants.py`:
 
 ## Status Flow
 
+Status transitions are enforced by the [Claim State Machine](state-machine.md). Invalid transitions raise `InvalidClaimTransitionError`.
+
 ```mermaid
 flowchart TD
     pending["pending (initial)"]
@@ -349,11 +351,16 @@ def update_claim_status(
     details: str | None = None,
     claim_type: str | None = None,
     payout_amount: float | None = None,
+    *,
+    actor_id: str = "workflow",
+    skip_validation: bool = False,
 ) -> None:
     """Update status, optionally claim_type and payout_amount; log state change."""
 ```
 
 - Updates claim status
+- **State machine enforced**: Valid transitions only; invalid transitions raise `InvalidClaimTransitionError`
+- See [State Machine](state-machine.md) for full transition matrix and guards
 - Optionally updates claim_type and payout_amount
 - Creates audit log entry with action `status_change`, actor_id, before_state, after_state
 

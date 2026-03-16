@@ -423,6 +423,13 @@ class TestRepositoryWebhookIntegration:
                 damage_description="Test",
             )
             claim_id = repo.create_claim(claim_input)
+            from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
             with get_connection(db_path) as conn:
                 conn.execute(
                     "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",

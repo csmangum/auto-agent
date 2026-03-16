@@ -7,6 +7,7 @@ import pytest
 
 from claim_agent.config import reload_settings
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
+from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING
 from claim_agent.db.database import get_db_path, get_connection
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
@@ -155,9 +156,9 @@ def test_repository_update_claim_status(temp_db):
         damage_description="Door scratch.",
     )
     claim_id = repo.create_claim(claim_input)
-    repo.update_claim_status(claim_id, "open", details="Intake complete")
+    repo.update_claim_status(claim_id, STATUS_OPEN, details="Intake complete")
     claim = repo.get_claim(claim_id)
-    assert claim["status"] == "open"
+    assert claim["status"] == STATUS_OPEN
 
     history, _ = repo.get_claim_history(claim_id)
     assert len(history) >= 2
@@ -210,8 +211,8 @@ def test_repository_get_claim_history(temp_db):
         damage_description="Door scratch.",
     )
     claim_id = repo.create_claim(claim_input)
-    repo.update_claim_status(claim_id, "processing")
-    repo.update_claim_status(claim_id, "open")
+    repo.update_claim_status(claim_id, STATUS_PROCESSING)
+    repo.update_claim_status(claim_id, STATUS_OPEN)
 
     history, total = repo.get_claim_history(claim_id)
     assert len(history) == 3
@@ -224,7 +225,7 @@ def test_repository_get_claim_history(temp_db):
     assert history[0].get("after_state") is not None
     assert history[1].get("before_state") is not None
     assert history[1].get("after_state") is not None
-    assert history[2]["new_status"] == "open"
+    assert history[2]["new_status"] == STATUS_OPEN
 
 
 def test_repository_get_claim_history_pagination(temp_db):
@@ -242,8 +243,8 @@ def test_repository_get_claim_history_pagination(temp_db):
     )
     claim_id = repo.create_claim(claim_input)
     for _ in range(5):
-        repo.update_claim_status(claim_id, "processing")
-        repo.update_claim_status(claim_id, "open")
+        repo.update_claim_status(claim_id, STATUS_PROCESSING)
+        repo.update_claim_status(claim_id, STATUS_OPEN)
 
     page1, total = repo.get_claim_history(claim_id, limit=3, offset=0)
     assert len(page1) == 3

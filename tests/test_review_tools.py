@@ -38,7 +38,7 @@ def _seed_claim(status: str = "settled", claim_type: str = "partial_loss") -> st
             estimated_damage=4500.0,
         )
     )
-    repo.update_claim_status(claim_id, status, claim_type=claim_type)
+    repo.update_claim_status(claim_id, status, claim_type=claim_type, skip_validation=True)
     repo.save_workflow_result(claim_id, claim_type, '{"claim_type":"partial_loss"}', "Workflow output summary.")
     return claim_id
 

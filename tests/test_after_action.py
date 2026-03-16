@@ -64,6 +64,32 @@ class TestCloseClaimTool:
         assert data["success"] is False
         assert "reason" in data["message"]
 
+    def test_close_claim_from_open_without_payout_fails(self, temp_db):
+        """Close from open without payout recorded returns clear error."""
+        from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.tools.status_tools import close_claim
+
+        repo = ClaimRepository(db_path=temp_db)
+        claim_id = repo.create_claim(ClaimInput(
+            policy_number="POL-001",
+            vin="VIN123",
+            vehicle_year=2021,
+            vehicle_make="Test",
+            vehicle_model="Model",
+            incident_date="2025-01-15",
+            incident_description="Test",
+            damage_description="Test",
+        ))
+        repo.update_claim_status(claim_id, STATUS_PROCESSING)
+        repo.update_claim_status(claim_id, STATUS_OPEN)
+        result = close_claim.run(claim_id=claim_id, reason="Test close")
+        data = json.loads(result)
+        assert data["success"] is False
+        assert "without payout" in data["message"].lower()
+        assert "open" in data["message"].lower()
+
     def test_close_claim_audit_trail(self, seeded_temp_db):
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.tools.status_tools import close_claim
