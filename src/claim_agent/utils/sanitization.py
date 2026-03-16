@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from claim_agent.models.party import AuthorizationStatus, ConsentStatus, PartyType
+
 # Maximum lengths for text fields (characters)
 MAX_INCIDENT_DESCRIPTION = 5000
 MAX_DAMAGE_DESCRIPTION = 3000
@@ -21,6 +23,11 @@ MAX_PRIOR_CLAIM_ID = 64
 MAX_TASK_TITLE = 500
 MAX_TASK_DESCRIPTION = 5000
 MAX_RESOLUTION_NOTES = 5000
+MAX_PARTY_NAME = 256
+MAX_PARTY_EMAIL = 320
+MAX_PARTY_PHONE = 32
+MAX_PARTY_ADDRESS = 500
+MAX_PARTY_ROLE = 128
 
 # Maximum payout amount (dollars) for reviewer-confirmed payout validation
 MAX_PAYOUT = 50_000_000
@@ -214,6 +221,49 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
                         if a["url"] and _is_safe_attachment_url(a["url"]):
                             sanitized_attachments.append(a)
                 out[key] = sanitized_attachments
+            else:
+                out[key] = []
+        elif key == "parties":
+            # Sanitize party list: validate party_type, sanitize text fields
+            if isinstance(value, list):
+                valid_party_types = {pt.value for pt in PartyType}
+                valid_consent = {cs.value for cs in ConsentStatus}
+                valid_auth = {au.value for au in AuthorizationStatus}
+                sanitized_parties = []
+                for item in value:
+                    if isinstance(item, dict):
+                        pt = str(item.get("party_type", "")).strip().lower()
+                        if pt not in valid_party_types:
+                            continue
+                        p: dict[str, Any] = {
+                            "party_type": pt,
+                            "name": _remove_injection_patterns(
+                                _sanitize_text(item.get("name"), MAX_PARTY_NAME)
+                            ) or None,
+                            "email": _remove_injection_patterns(
+                                _sanitize_text(item.get("email"), MAX_PARTY_EMAIL)
+                            ) or None,
+                            "phone": _remove_injection_patterns(
+                                _sanitize_text(item.get("phone"), MAX_PARTY_PHONE)
+                            ) or None,
+                            "address": _remove_injection_patterns(
+                                _sanitize_text(item.get("address"), MAX_PARTY_ADDRESS)
+                            ) or None,
+                            "role": _remove_injection_patterns(
+                                _sanitize_text(item.get("role"), MAX_PARTY_ROLE)
+                            ) or None,
+                            "represented_by_id": None,  # Invalid at creation; set via update
+                            "consent_status": "pending",
+                            "authorization_status": "pending",
+                        }
+                        cs = str(item.get("consent_status", "pending")).strip().lower()
+                        if cs in valid_consent:
+                            p["consent_status"] = cs
+                        au = str(item.get("authorization_status", "pending")).strip().lower()
+                        if au in valid_auth:
+                            p["authorization_status"] = au
+                        sanitized_parties.append(p)
+                out[key] = sanitized_parties
             else:
                 out[key] = []
         else:

@@ -75,7 +75,9 @@ Optional list of attachments (photos, PDFs, estimates). Default empty array.
 
 ### parties
 
-Optional list of claim parties. Each party has: `party_type` (claimant, policyholder, witness, attorney, provider, lienholder), `name`, `email`, `phone`, `role`, `represented_by_id` (attorney ID when represented), `consent_status`, `authorization_status`. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement. See [Database](database.md#claim_parties).
+Optional list of claim parties. Each party has: `party_type` (claimant, policyholder, witness, attorney, provider, lienholder), `name`, `email`, `phone`, `role`, `represented_by_id`, `consent_status`, `authorization_status`. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement. See [Database](database.md#claim_parties).
+
+**represented_by_id**: ID of the attorney party representing this party. Only valid when updating an existing party (attorney must already exist in `claim_parties`). At claim creation, `represented_by_id` is ignored—after the claim is created, update the party record to link a claimant to their attorney.
 
 ### claim_type
 
