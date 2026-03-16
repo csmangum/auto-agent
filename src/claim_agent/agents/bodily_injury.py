@@ -12,9 +12,16 @@ from claim_agent.skills import (
 from claim_agent.tools import (
     add_claim_note,
     assess_injury_severity,
+    audit_medical_bills,
+    build_treatment_timeline,
     calculate_bi_settlement,
+    calculate_loss_of_earnings,
+    check_cms_reporting_required,
+    check_minor_settlement_approval,
+    check_pip_medpay_exhaustion,
     escalate_claim,
     get_claim_notes,
+    get_structured_settlement_option,
     query_medical_records,
 )
 
@@ -37,7 +44,7 @@ def create_bi_intake_specialist_agent(llm: LLMProtocol | None = None):
 
 
 def create_medical_records_reviewer_agent(llm: LLMProtocol | None = None):
-    """Medical Records Reviewer: reviews medical records and assesses injury severity."""
+    """Medical Records Reviewer: reviews medical records, audits bills, builds timeline, assesses severity."""
     skill = load_skill(MEDICAL_RECORDS_REVIEWER)
     return Agent(
         role=skill["role"],
@@ -46,6 +53,8 @@ def create_medical_records_reviewer_agent(llm: LLMProtocol | None = None):
         tools=[
             query_medical_records,
             assess_injury_severity,
+            audit_medical_bills,
+            build_treatment_timeline,
             add_claim_note,
             get_claim_notes,
             escalate_claim,
@@ -56,7 +65,7 @@ def create_medical_records_reviewer_agent(llm: LLMProtocol | None = None):
 
 
 def create_settlement_negotiator_agent(llm: LLMProtocol | None = None):
-    """Settlement Negotiator: proposes BI settlement within policy limits."""
+    """Settlement Negotiator: proposes BI settlement with PIP/CMS/minor/structured checks."""
     skill = load_skill(SETTLEMENT_NEGOTIATOR)
     return Agent(
         role=skill["role"],
@@ -64,6 +73,11 @@ def create_settlement_negotiator_agent(llm: LLMProtocol | None = None):
         backstory=skill["backstory"],
         tools=[
             calculate_bi_settlement,
+            check_pip_medpay_exhaustion,
+            check_cms_reporting_required,
+            check_minor_settlement_approval,
+            get_structured_settlement_option,
+            calculate_loss_of_earnings,
             add_claim_note,
             get_claim_notes,
             escalate_claim,

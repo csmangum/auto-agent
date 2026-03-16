@@ -129,7 +129,7 @@ class BIWorkflowOutput(BaseModel):
         ..., description="Proposed BI settlement amount (insurance payment)"
     )
     medical_charges: float | None = Field(
-        default=None, description="Total medical specials"
+        default=None, description="Total medical specials (post-audit if applicable)"
     )
     pain_suffering: float | None = Field(
         default=None, description="Pain and suffering component"
@@ -143,6 +143,21 @@ class BIWorkflowOutput(BaseModel):
     )
     policy_bi_limit_per_accident: float | None = Field(
         default=None, description="Policy BI per-accident limit"
+    )
+    loss_of_earnings: float | None = Field(
+        default=None, description="Recommended wage loss amount if applicable"
+    )
+    pip_medpay_exhausted: bool | None = Field(
+        default=None, description="Whether PIP/MedPay exhaustion prerequisite met"
+    )
+    cms_reporting_required: bool | None = Field(
+        default=None, description="Whether CMS/Medicare reporting required"
+    )
+    minor_court_approval_required: bool | None = Field(
+        default=None, description="Whether court approval required for minor/incapacitated"
+    )
+    structured_settlement_offered: bool | None = Field(
+        default=None, description="Whether structured settlement option offered"
     )
 
 

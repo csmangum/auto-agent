@@ -88,6 +88,13 @@ __all__ = [
     "query_medical_records",
     "assess_injury_severity",
     "calculate_bi_settlement",
+    "check_pip_medpay_exhaustion",
+    "check_cms_reporting_required",
+    "check_minor_settlement_approval",
+    "get_structured_settlement_option",
+    "calculate_loss_of_earnings",
+    "audit_medical_bills",
+    "build_treatment_timeline",
     # After-action tools
     "close_claim",
     # Follow-up tools
@@ -370,6 +377,34 @@ def __getattr__(name: str):
         from claim_agent.tools.bodily_injury_tools import calculate_bi_settlement
         setattr(mod, "calculate_bi_settlement", calculate_bi_settlement)
         return calculate_bi_settlement
+    if name == "check_pip_medpay_exhaustion":
+        from claim_agent.tools.bodily_injury_tools import check_pip_medpay_exhaustion
+        setattr(mod, "check_pip_medpay_exhaustion", check_pip_medpay_exhaustion)
+        return check_pip_medpay_exhaustion
+    if name == "check_cms_reporting_required":
+        from claim_agent.tools.bodily_injury_tools import check_cms_reporting_required
+        setattr(mod, "check_cms_reporting_required", check_cms_reporting_required)
+        return check_cms_reporting_required
+    if name == "check_minor_settlement_approval":
+        from claim_agent.tools.bodily_injury_tools import check_minor_settlement_approval
+        setattr(mod, "check_minor_settlement_approval", check_minor_settlement_approval)
+        return check_minor_settlement_approval
+    if name == "get_structured_settlement_option":
+        from claim_agent.tools.bodily_injury_tools import get_structured_settlement_option
+        setattr(mod, "get_structured_settlement_option", get_structured_settlement_option)
+        return get_structured_settlement_option
+    if name == "calculate_loss_of_earnings":
+        from claim_agent.tools.bodily_injury_tools import calculate_loss_of_earnings
+        setattr(mod, "calculate_loss_of_earnings", calculate_loss_of_earnings)
+        return calculate_loss_of_earnings
+    if name == "audit_medical_bills":
+        from claim_agent.tools.bodily_injury_tools import audit_medical_bills
+        setattr(mod, "audit_medical_bills", audit_medical_bills)
+        return audit_medical_bills
+    if name == "build_treatment_timeline":
+        from claim_agent.tools.bodily_injury_tools import build_treatment_timeline
+        setattr(mod, "build_treatment_timeline", build_treatment_timeline)
+        return build_treatment_timeline
     # After-action tools
     if name == "close_claim":
         from claim_agent.tools.status_tools import close_claim

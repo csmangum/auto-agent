@@ -264,14 +264,14 @@ _CREWS_CATALOG = [
             {
                 "name": "Medical Records Reviewer",
                 "skill": "medical_records_reviewer",
-                "tools": ["query_medical_records", "assess_injury_severity", "add_claim_note", "get_claim_notes", "escalate_claim"],
-                "description": "Reviews medical records and assesses injury severity",
+                "tools": ["query_medical_records", "assess_injury_severity", "audit_medical_bills", "build_treatment_timeline", "add_claim_note", "get_claim_notes", "escalate_claim"],
+                "description": "Reviews medical records, audits bills, builds timeline, assesses severity",
             },
             {
                 "name": "Settlement Negotiator",
                 "skill": "settlement_negotiator",
-                "tools": ["calculate_bi_settlement", "add_claim_note", "get_claim_notes", "escalate_claim"],
-                "description": "Proposes BI settlement within policy limits",
+                "tools": ["calculate_bi_settlement", "check_pip_medpay_exhaustion", "check_cms_reporting_required", "check_minor_settlement_approval", "get_structured_settlement_option", "calculate_loss_of_earnings", "add_claim_note", "get_claim_notes", "escalate_claim"],
+                "description": "Proposes BI settlement with PIP/CMS/minor/structured checks",
             },
         ],
     },
