@@ -38,6 +38,7 @@ from claim_agent.db.constants import (
     STATUS_UNDER_INVESTIGATION,
 )
 from claim_agent.db.database import get_connection
+from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_note, sanitize_task_title, sanitize_task_description, sanitize_resolution_notes
 from claim_agent.events import ClaimEvent, emit_claim_event
@@ -124,6 +125,7 @@ class ClaimRepository:
         payout_amount: float | None = None,
         *,
         actor_id: str = ACTOR_WORKFLOW,
+        skip_validation: bool = False,
     ) -> None:
         """Update status, optionally claim_type and payout_amount; log state change to audit."""
         with get_connection(self._db_path) as conn:
@@ -135,6 +137,17 @@ class ClaimRepository:
             old_status = row["status"]
             old_claim_type = row["claim_type"]
             old_payout = row["payout_amount"]
+
+            if not skip_validation:
+                claim_dict = dict(row)
+                validate_transition(
+                    claim_id,
+                    old_status,
+                    new_status,
+                    claim=claim_dict,
+                    payout_amount=payout_amount,
+                    actor_id=actor_id,
+                )
 
             before_state = {
                 "status": old_status,
@@ -775,6 +788,13 @@ class ClaimRepository:
         """Reject claim: set status to denied, insert audit, emit event."""
         with get_connection(self._db_path) as conn:
             row = self._ensure_claim_needs_review(conn, claim_id)
+            validate_transition(
+                claim_id,
+                row["status"],
+                STATUS_DENIED,
+                claim=dict(row),
+                actor_id=actor_id,
+            )
             old_status = row["status"]
             old_claim_type = row["claim_type"]
             old_payout = row["payout_amount"]
@@ -812,6 +832,13 @@ class ClaimRepository:
         """Request more information: set status to pending_info, insert audit, emit event."""
         with get_connection(self._db_path) as conn:
             row = self._ensure_claim_needs_review(conn, claim_id)
+            validate_transition(
+                claim_id,
+                row["status"],
+                STATUS_PENDING_INFO,
+                claim=dict(row),
+                actor_id=actor_id,
+            )
             old_status = row["status"]
             old_claim_type = row["claim_type"]
             old_payout = row["payout_amount"]
@@ -848,6 +875,13 @@ class ClaimRepository:
         """Escalate to SIU: set status to under_investigation, insert audit, emit event."""
         with get_connection(self._db_path) as conn:
             row = self._ensure_claim_needs_review(conn, claim_id)
+            validate_transition(
+                claim_id,
+                row["status"],
+                STATUS_UNDER_INVESTIGATION,
+                claim=dict(row),
+                actor_id=actor_id,
+            )
             old_status = row["status"]
             old_claim_type = row["claim_type"]
             old_payout = row["payout_amount"]

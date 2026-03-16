@@ -1,0 +1,62 @@
+# Claim State Machine
+
+The claim lifecycle is enforced by a formal state machine in `src/claim_agent/db/state_machine.py`. Invalid transitions raise `InvalidClaimTransitionError` and are logged for compliance alerting.
+
+## Valid Transitions
+
+| From | Valid To |
+|------|----------|
+| pending | processing, open, needs_review, fraud_suspected |
+| processing | open, duplicate, settled, fraud_suspected, needs_review, failed, under_investigation |
+| open | settled, disputed, needs_review, closed, processing, denied |
+| needs_review | processing, denied, pending_info, under_investigation, closed |
+| denied | needs_review, closed |
+| disputed | dispute_resolved, needs_review |
+| settled | disputed, closed |
+| under_investigation | fraud_suspected, fraud_confirmed, needs_review |
+| fraud_suspected | fraud_confirmed, needs_review |
+| fraud_confirmed | closed |
+| duplicate | closed |
+| failed | closed, processing |
+| dispute_resolved | closed |
+| pending_info | needs_review, processing, closed |
+| closed | archived |
+| archived | (terminal) |
+| partial_loss | closed, settled, needs_review |
+
+## Transition Guards
+
+### Close Guard
+
+Transition to `closed` requires one of:
+
+- `payout_amount` is set (including 0 for administrative closure)
+- `from_status` is `denied`, `duplicate`, or `failed` (no payout required)
+
+This ensures closure is documented (settlement or denial).
+
+## Bypass
+
+- `actor_id="system"` or `force=True` skips validation (for migrations, seeding, or tests)
+- `skip_validation=True` on `update_claim_status()` bypasses the state machine
+
+## Violation Logging
+
+Invalid transition attempts are logged with `logger.warning` and `event=transition_violation`, including:
+
+- `claim_id`, `from_status`, `to_status`, `actor_id`, `reason`
+
+Use log aggregation to alert on compliance violations.
+
+## Usage
+
+```python
+from claim_agent.db.state_machine import can_transition, validate_transition
+
+# Check without raising
+if can_transition("open", "closed", claim={"payout_amount": 1000.0}):
+    repo.update_claim_status(claim_id, "closed", payout_amount=1000.0)
+
+# Validate (raises InvalidClaimTransitionError if invalid)
+validate_transition(claim_id, "open", "closed", claim=claim, payout_amount=1000.0)
+```

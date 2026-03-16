@@ -195,18 +195,70 @@ class TestRepositoryCRUD:
             damage_description="Test",
         ))
         
+        repo.update_claim_status(claim_id, STATUS_PROCESSING)
+        repo.update_claim_status(claim_id, STATUS_OPEN)
         repo.update_claim_status(
             claim_id,
             STATUS_CLOSED,
             claim_type="total_loss",
             payout_amount=15000.00,
-            details="Settlement completed"
+            details="Settlement completed",
         )
         
         claim = repo.get_claim(claim_id)
         assert claim["status"] == STATUS_CLOSED
         assert claim["claim_type"] == "total_loss"
         assert claim["payout_amount"] == 15000.00
+
+    @pytest.mark.integration
+    def test_invalid_transition_raises(self, integration_db):
+        """Verify invalid status transitions raise InvalidClaimTransitionError."""
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.exceptions import InvalidClaimTransitionError
+        from claim_agent.models.claim import ClaimInput
+
+        repo = ClaimRepository(db_path=integration_db)
+        claim_id = repo.create_claim(ClaimInput(
+            policy_number="POL-001",
+            vin="VIN123",
+            vehicle_year=2021,
+            vehicle_make="Test",
+            vehicle_model="Model",
+            incident_date="2025-01-15",
+            incident_description="Test",
+            damage_description="Test",
+        ))
+
+        with pytest.raises(InvalidClaimTransitionError) as exc_info:
+            repo.update_claim_status(claim_id, STATUS_CLOSED)
+        assert exc_info.value.from_status == STATUS_PENDING
+        assert exc_info.value.to_status == STATUS_CLOSED
+
+    @pytest.mark.integration
+    def test_close_without_payout_from_open_raises(self, integration_db):
+        """Verify closing from open without payout raises."""
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.exceptions import InvalidClaimTransitionError
+        from claim_agent.models.claim import ClaimInput
+
+        repo = ClaimRepository(db_path=integration_db)
+        claim_id = repo.create_claim(ClaimInput(
+            policy_number="POL-001",
+            vin="VIN123",
+            vehicle_year=2021,
+            vehicle_make="Test",
+            vehicle_model="Model",
+            incident_date="2025-01-15",
+            incident_description="Test",
+            damage_description="Test",
+        ))
+        repo.update_claim_status(claim_id, STATUS_PROCESSING)
+        repo.update_claim_status(claim_id, STATUS_OPEN)
+
+        with pytest.raises(InvalidClaimTransitionError) as exc_info:
+            repo.update_claim_status(claim_id, STATUS_CLOSED)
+        assert exc_info.value.from_status == STATUS_OPEN
+        assert exc_info.value.to_status == STATUS_CLOSED
 
 
 # ============================================================================
@@ -263,7 +315,12 @@ class TestAuditLog:
         
         repo.update_claim_status(claim_id, STATUS_PROCESSING, details="Starting workflow")
         repo.update_claim_status(claim_id, STATUS_OPEN, details="Intake complete")
-        repo.update_claim_status(claim_id, STATUS_CLOSED, details="Claim resolved")
+        repo.update_claim_status(
+            claim_id,
+            STATUS_CLOSED,
+            details="Claim resolved",
+            payout_amount=0.0,
+        )
         
         history, _ = repo.get_claim_history(claim_id)
         
@@ -527,7 +584,13 @@ class TestConcurrentAccess:
         def update_status(idx):
             try:
                 s = statuses[idx % len(statuses)]
-                repo.update_claim_status(claim_id, s, actor_id=f"thread-{idx}")
+                repo.update_claim_status(
+                    claim_id,
+                    s,
+                    actor_id=f"thread-{idx}",
+                    payout_amount=0.0 if s == "closed" else None,
+                    skip_validation=True,
+                )
             except Exception as e:
                 errors.append(e)
 

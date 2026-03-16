@@ -47,10 +47,14 @@ def close_claim(claim_id: str, reason: str) -> str:
             return json.dumps({"success": False, "message": f"Claim not found: {claim_id}"})
         if claim.get("status") == STATUS_CLOSED:
             return json.dumps({"success": True, "message": f"Claim {claim_id} already closed"})
+        payout = claim.get("payout_amount")
+        if payout is None:
+            payout = 0.0
         repo.update_claim_status(
             claim_id,
             STATUS_CLOSED,
             details=reason,
+            payout_amount=payout,
             actor_id="After-Action Status",
         )
         return json.dumps({"success": True, "message": f"Claim {claim_id} closed"})

@@ -17,6 +17,19 @@ class ClaimNotFoundError(ClaimAgentError):
     """Claim ID does not exist."""
 
 
+class InvalidClaimTransitionError(ClaimAgentError):
+    """Invalid claim status transition (compliance violation)."""
+
+    def __init__(self, claim_id: str, from_status: str, to_status: str, reason: str):
+        self.claim_id = claim_id
+        self.from_status = from_status
+        self.to_status = to_status
+        self.reason = reason
+        super().__init__(
+            f"Invalid claim transition {claim_id}: {from_status!r} -> {to_status!r} — {reason}"
+        )
+
+
 class BudgetExceededError(ClaimAgentError):
     """Token or LLM call budget exceeded."""
 
