@@ -1,7 +1,7 @@
 """Pydantic models for claim payments and disbursement workflow."""
 
 from enum import Enum
-from typing import Literal, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -64,16 +64,25 @@ class ClaimPayment(BaseModel):
     claim_id: str
     amount: float
     payee: str
-    payee_type: str
-    payment_method: str
+    payee_type: PayeeType
+    payment_method: PaymentMethod
     check_number: Optional[str] = None
-    status: str
+    status: PaymentStatus
     authorized_by: str
     issued_at: Optional[str] = None
     cleared_at: Optional[str] = None
     voided_at: Optional[str] = None
     void_reason: Optional[str] = None
     payee_secondary: Optional[str] = None
-    payee_secondary_type: Optional[str] = None
+    payee_secondary_type: Optional[PayeeType] = None
     created_at: str
     updated_at: str
+
+
+class ClaimPaymentList(BaseModel):
+    """Paginated list of payments."""
+
+    payments: List[ClaimPayment]
+    total: int
+    limit: int
+    offset: int

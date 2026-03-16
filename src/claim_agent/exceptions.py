@@ -89,3 +89,7 @@ class PaymentAuthorityError(ClaimAgentError):
         super().__init__(
             f"Payment amount ${amount:,.2f} exceeds authority limit ${limit:,.2f} for role '{role}' (actor={actor_id})"
         )
+
+
+class PaymentNotFoundError(ClaimAgentError):
+    """Payment ID does not exist."""
