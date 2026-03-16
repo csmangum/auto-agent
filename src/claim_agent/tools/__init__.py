@@ -76,6 +76,7 @@ __all__ = [
     "assess_liability",
     "build_subrogation_case",
     "send_demand_letter",
+    "record_arbitration_filing",
     "record_recovery",
     # Salvage tools
     "get_salvage_value",
@@ -325,6 +326,10 @@ def __getattr__(name: str):
         from claim_agent.tools.subrogation_tools import send_demand_letter
         setattr(mod, "send_demand_letter", send_demand_letter)
         return send_demand_letter
+    if name == "record_arbitration_filing":
+        from claim_agent.tools.subrogation_tools import record_arbitration_filing
+        setattr(mod, "record_arbitration_filing", record_arbitration_filing)
+        return record_arbitration_filing
     if name == "record_recovery":
         from claim_agent.tools.subrogation_tools import record_recovery
         setattr(mod, "record_recovery", record_recovery)

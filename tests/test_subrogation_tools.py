@@ -6,6 +6,7 @@ import json
 from claim_agent.tools.subrogation_logic import (
     assess_liability_impl,
     build_subrogation_case_impl,
+    record_arbitration_filing_impl,
     record_recovery_impl,
     send_demand_letter_impl,
 )
@@ -67,6 +68,18 @@ class TestSendDemandLetter:
         assert "letter_id" in data
         assert data["letter_id"].startswith("DEM-")
         assert data["amount_sought"] == 15000.0
+
+
+class TestRecordArbitrationFiling:
+    def test_record_arbitration(self):
+        result = record_arbitration_filing_impl(
+            case_id="SUB-CLM-123-001",
+            arbitration_forum="Arbitration Forums Inc.",
+        )
+        data = json.loads(result)
+        assert "confirmation" in data
+        assert data["case_id"] == "SUB-CLM-123-001"
+        assert data["arbitration_status"] == "filed"
 
 
 class TestRecordRecovery:

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
+
+from claim_agent.db.database import get_db_path
+from claim_agent.db.repository import ClaimRepository
+
+logger = logging.getLogger(__name__)
 
 
 # Use timezone-aware UTC for datetime (datetime.utcnow is deprecated)
@@ -143,6 +149,9 @@ def build_subrogation_case_impl(
     if claim_data.get("incident_description"):
         supporting_docs.append("Incident description")
 
+    liability_pct = assessment.get("liability_percentage") or claim_data.get("liability_percentage")
+    liability_basis = assessment.get("liability_basis") or claim_data.get("liability_basis")
+
     result = {
         "case_id": case_id,
         "claim_id": claim_id,
@@ -151,6 +160,29 @@ def build_subrogation_case_impl(
         "supporting_docs": supporting_docs,
         "status": "case_built",
     }
+    if liability_pct is not None:
+        result["liability_percentage"] = float(liability_pct)
+    if liability_basis:
+        result["liability_basis"] = str(liability_basis)
+
+    # Persist to subrogation_cases table (idempotent: upsert by case_id)
+    try:
+        repo = ClaimRepository(get_db_path())
+        existing = [r for r in repo.get_subrogation_cases_by_claim(claim_id) if r.get("case_id") == case_id]
+        if existing:
+            # Case already exists; no-op for create (or could update in future)
+            pass
+        else:
+            repo.create_subrogation_case(
+                claim_id=claim_id,
+                case_id=case_id,
+                amount_sought=amount_sought,
+                liability_percentage=float(liability_pct) if liability_pct is not None else None,
+                liability_basis=str(liability_basis) if liability_basis else None,
+            )
+    except Exception as e:
+        logger.warning("Failed to persist subrogation case %s: %s", case_id, e)
+
     return json.dumps(result)
 
 
@@ -177,6 +209,40 @@ def send_demand_letter_impl(
         "status": "demand_sent",
     }
     return json.dumps(result)
+
+
+def record_arbitration_filing_impl(
+    case_id: str,
+    arbitration_forum: str = "Arbitration Forums Inc.",
+    dispute_date: str = "",
+) -> str:
+    """Record that a subrogation dispute has been filed for arbitration.
+
+    Returns JSON with confirmation.
+    """
+    from claim_agent.db.database import get_db_path
+    from claim_agent.db.repository import ClaimRepository
+
+    try:
+        repo = ClaimRepository(get_db_path())
+        repo.update_subrogation_case(
+            case_id,
+            arbitration_status="filed",
+            arbitration_forum=arbitration_forum,
+            dispute_date=dispute_date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
+        )
+        return json.dumps({
+            "confirmation": f"Arbitration filing recorded for case {case_id}",
+            "case_id": case_id,
+            "arbitration_forum": arbitration_forum,
+            "arbitration_status": "filed",
+        })
+    except Exception as e:
+        logger.warning("Failed to record arbitration filing for %s: %s", case_id, e)
+        return json.dumps({
+            "error": str(e),
+            "case_id": case_id,
+        })
 
 
 def record_recovery_impl(

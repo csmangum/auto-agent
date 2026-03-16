@@ -127,38 +127,42 @@ class TestWorkflowWithMockedLLM:
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_crew:
-                    with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
-                        with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
-                            with patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
-                                with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
-                                    with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
-                                        with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
-                                            mock_llm.return_value = mock_llm_instance
-                                            mock_router.return_value.kickoff.return_value = mock_router_response(
-                                                "total_loss", "Vehicle flooded - total destruction."
-                                            )
-                                            mock_crew.return_value.kickoff.return_value = mock_crew_response(
-                                                "Total loss confirmed. Vehicle value: $15,000.",
-                                                tasks_output=workflow_tasks_output,
-                                            )
-                                            mock_settlement.return_value.kickoff.return_value = mock_crew_response(
-                                                "Settlement completed. Status: settled."
-                                            )
-                                            mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
-                                                "Subrogation assessment complete. No recovery opportunity."
-                                            )
-                                            mock_salvage.return_value.kickoff.return_value = mock_crew_response(
-                                                "Salvage disposition complete."
-                                            )
-                                            mock_after.return_value.kickoff.return_value = mock_crew_response(
-                                                "After-action summary completed."
-                                            )
-                                            mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
-                                            mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
-                                                "Tasks created."
-                                            )
+                    with patch("claim_agent.workflow.stages.create_liability_determination_crew") as mock_liability:
+                        with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                            with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
+                                with patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage:
+                                    with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
+                                        with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
+                                            with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
+                                                mock_llm.return_value = mock_llm_instance
+                                                mock_router.return_value.kickoff.return_value = mock_router_response(
+                                                    "total_loss", "Vehicle flooded - total destruction."
+                                                )
+                                                mock_crew.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Total loss confirmed. Vehicle value: $15,000.",
+                                                    tasks_output=workflow_tasks_output,
+                                                )
+                                                mock_liability.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Liability determination: not at fault."
+                                                )
+                                                mock_settlement.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Settlement completed. Status: settled."
+                                                )
+                                                mock_subrogation.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Subrogation assessment complete. No recovery opportunity."
+                                                )
+                                                mock_salvage.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Salvage disposition complete."
+                                                )
+                                                mock_after.return_value.kickoff.return_value = mock_crew_response(
+                                                    "After-action summary completed."
+                                                )
+                                                mock_esc.return_value = '{"needs_review": false, "escalation_reasons": [], "priority": "low", "fraud_indicators": [], "recommended_action": ""}'
+                                                mock_task_planner.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Tasks created."
+                                                )
 
-                                            result = run_claim_workflow(low_value_claim)
+                                                result = run_claim_workflow(low_value_claim)
 
         assert result["claim_type"] == "total_loss"
         mock_crew.assert_called_once()
@@ -196,8 +200,9 @@ class TestWorkflowWithMockedLLM:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_partial_loss_crew") as mock_partial:
                     with patch("claim_agent.workflow.stages.create_rental_crew") as mock_rental:
-                        with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
-                            with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
+                        with patch("claim_agent.workflow.stages.create_liability_determination_crew") as mock_liability:
+                            with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement:
+                                with patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation:
                                     with patch("claim_agent.workflow.stages.create_after_action_crew") as mock_after:
                                         with patch("claim_agent.workflow.stages.evaluate_escalation_impl") as mock_esc:
                                             with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
@@ -211,6 +216,9 @@ class TestWorkflowWithMockedLLM:
                                                 )
                                                 mock_rental.return_value.kickoff.return_value = mock_crew_response(
                                                     "Rental eligibility confirmed. Reimbursement processed."
+                                                )
+                                                mock_liability.return_value.kickoff.return_value = mock_crew_response(
+                                                    "Liability determination: not at fault."
                                                 )
                                                 mock_settlement.return_value.kickoff.return_value = mock_crew_response(
                                                     "Settlement completed. Status: settled."

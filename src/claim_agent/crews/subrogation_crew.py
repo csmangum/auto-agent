@@ -26,12 +26,15 @@ def create_subrogation_crew(
                 description="""CLAIM DATA (JSON):
 {claim_data}
 
-WORKFLOW OUTPUT (includes settlement):
+WORKFLOW OUTPUT (includes settlement and liability determination):
 {workflow_output}
 
-Assess liability for subrogation. Use assess_liability with the incident_description from claim_data
-and workflow_output for context. Determine whether the insured was at-fault or not-at-fault,
-and whether a third party can be identified.
+When claim_data contains liability_percentage and liability_basis (from LiabilityDeterminationCrew),
+use those as the primary liability assessment. Otherwise use assess_liability with incident_description
+and workflow_output for context.
+
+Determine whether the insured was at-fault or not-at-fault, and whether a third party can be identified.
+If pre-computed liability exists, respect recovery_eligible from the liability determination output.
 
 If not-at-fault and third party identified: subrogation is recommended.
 If at-fault or unclear: document that no subrogation opportunity exists.
@@ -47,7 +50,9 @@ If the claim is NOT subrogation-eligible (at-fault or unclear): document that no
 will be built and produce a brief no-subrogation summary.
 
 If the claim IS subrogation-eligible (not-at-fault): use build_subrogation_case with claim_id,
-payout_amount from claim_data, and the liability assessment JSON.
+payout_amount from claim_data, and the liability assessment JSON. When claim_data has
+liability_percentage and liability_basis, include them in the liability_assessment passed
+to build_subrogation_case.
 
 Output the subrogation case details (case_id, amount_sought, third_party_info).""",
                 expected_output="Subrogation case built (if eligible) or no-subrogation summary.",

@@ -7,6 +7,7 @@ from crewai.tools import tool
 from claim_agent.tools.subrogation_logic import (
     assess_liability_impl,
     build_subrogation_case_impl,
+    record_arbitration_filing_impl,
     record_recovery_impl,
     send_demand_letter_impl,
 )
@@ -89,6 +90,32 @@ def send_demand_letter(
         claim_id=claim_id,
         amount_sought=amount_sought,
         third_party_info=third_party_info or "",
+    )
+
+
+@tool("Record Arbitration Filing")
+def record_arbitration_filing(
+    case_id: str,
+    arbitration_forum: str = "Arbitration Forums Inc.",
+    dispute_date: str = "",
+) -> str:
+    """Record that a subrogation dispute has been filed for inter-company arbitration.
+
+    Use when the opposing carrier disputes liability and the case is filed with
+    an arbitration forum (e.g., Arbitration Forums Inc.).
+
+    Args:
+        case_id: Subrogation case ID.
+        arbitration_forum: Forum name (default: Arbitration Forums Inc.).
+        dispute_date: Date dispute was filed (YYYY-MM-DD). Defaults to today.
+
+    Returns:
+        JSON with confirmation.
+    """
+    return record_arbitration_filing_impl(
+        case_id=case_id,
+        arbitration_forum=arbitration_forum,
+        dispute_date=dispute_date,
     )
 
 

@@ -8,6 +8,7 @@ from crewai.tools import tool
 from claim_agent.compliance.state_rules import (
     get_state_rules,
     get_compliance_due_date,
+    get_comparative_fault_rules,
 )
 from claim_agent.rag.constants import SUPPORTED_STATES, normalize_state
 from claim_agent.tools.compliance_logic import (
@@ -89,6 +90,25 @@ def get_state_compliance_summary(state: str) -> str:
         "diminished_value_required": rules.diminished_value_required,
         "appraisal_rights": rules.appraisal_rights,
     })
+
+
+@tool("Get Comparative Fault Rules")
+def get_comparative_fault_rules_tool(state: str = "California") -> str:
+    """Get state-specific comparative fault rules for liability determination.
+
+    Use when determining liability and subrogation eligibility. Rules vary by state:
+    - pure_comparative (CA, NY): recovery reduced by fault %; no bar
+    - modified_comparative_51 (TX, FL): no recovery if insured >= 51% at fault
+    - contributory: no recovery if insured has any fault
+
+    Args:
+        state: State jurisdiction - California, Texas, Florida, or New York.
+
+    Returns:
+        JSON with comparative_fault_type, comparative_fault_bar, state.
+    """
+    rules = get_comparative_fault_rules(state)
+    return json.dumps(rules)
 
 
 @tool("Get Compliance Due Date")
