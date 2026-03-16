@@ -1,0 +1,286 @@
+"""Payment repository: CRUD for claim_payments, authority checks, status transitions."""
+
+import json
+from typing import Any
+
+from claim_agent.config.settings import get_payment_config
+from claim_agent.db.audit_events import (
+    ACTOR_SYSTEM,
+    ACTOR_WORKFLOW,
+    AUDIT_EVENT_PAYMENT_AUTHORIZED,
+    AUDIT_EVENT_PAYMENT_CLEARED,
+    AUDIT_EVENT_PAYMENT_ISSUED,
+    AUDIT_EVENT_PAYMENT_VOIDED,
+)
+from claim_agent.db.database import get_connection
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, PaymentAuthorityError, PaymentNotFoundError
+from claim_agent.models.payment import (
+    ClaimPaymentCreate,
+    PaymentStatus,
+)
+from claim_agent.utils.sanitization import sanitize_actor_id
+
+_STATUS_AUTHORIZED = PaymentStatus.AUTHORIZED.value
+_STATUS_ISSUED = PaymentStatus.ISSUED.value
+_STATUS_CLEARED = PaymentStatus.CLEARED.value
+_STATUS_VOIDED = PaymentStatus.VOIDED.value
+
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    _STATUS_AUTHORIZED: {_STATUS_ISSUED, _STATUS_VOIDED},
+    _STATUS_ISSUED: {_STATUS_CLEARED, _STATUS_VOIDED},
+    _STATUS_CLEARED: set(),
+    _STATUS_VOIDED: set(),
+}
+
+
+def _check_payment_authority(
+    amount: float,
+    actor_id: str,
+    *,
+    role: str = "adjuster",
+    skip_authority_check: bool = False,
+) -> None:
+    """Raise PaymentAuthorityError if amount exceeds actor's limit."""
+    if skip_authority_check or actor_id in (ACTOR_WORKFLOW, ACTOR_SYSTEM):
+        return
+    cfg = get_payment_config()
+    if role in ("executive", "admin"):
+        limit = cfg["executive_limit"]
+    elif role in ("supervisor",):
+        limit = cfg["supervisor_limit"]
+    else:
+        limit = cfg["adjuster_limit"]
+    if amount > limit:
+        raise PaymentAuthorityError(amount, limit, actor_id, role)
+
+
+def _validate_status_transition(old_status: str, new_status: str) -> None:
+    """Raise DomainValidationError if transition is invalid."""
+    allowed = _VALID_TRANSITIONS.get(old_status, set())
+    if new_status not in allowed:
+        raise DomainValidationError(
+            f"Invalid payment status transition: {old_status} -> {new_status}"
+        )
+
+
+class PaymentRepository:
+    """Repository for claim payment persistence and audit logging."""
+
+    def __init__(self, db_path: str | None = None):
+        self._db_path = db_path
+
+    def create_payment(
+        self,
+        data: ClaimPaymentCreate,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+        role: str = "adjuster",
+        skip_authority_check: bool = False,
+    ) -> int:
+        """Create a new payment in authorized status. Returns payment id."""
+        _check_payment_authority(
+            data.amount, actor_id, role=role, skip_authority_check=skip_authority_check
+        )
+        safe_actor = sanitize_actor_id(actor_id)
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT id FROM claims WHERE id = ?", (data.claim_id,)
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {data.claim_id}")
+            cursor = conn.execute(
+                """
+                INSERT INTO claim_payments
+                    (claim_id, amount, payee, payee_type, payment_method, check_number,
+                     status, authorized_by, payee_secondary, payee_secondary_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data.claim_id,
+                    data.amount,
+                    data.payee,
+                    data.payee_type.value,
+                    data.payment_method.value,
+                    data.check_number,
+                    _STATUS_AUTHORIZED,
+                    safe_actor,
+                    data.payee_secondary,
+                    data.payee_secondary_type.value if data.payee_secondary_type else None,
+                ),
+            )
+            payment_id = cursor.lastrowid
+            details = json.dumps({
+                "payment_id": payment_id,
+                "amount": data.amount,
+                "payee": data.payee,
+                "payee_type": data.payee_type.value,
+                "payment_method": data.payment_method.value,
+            })
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (data.claim_id, AUDIT_EVENT_PAYMENT_AUTHORIZED, details, safe_actor),
+            )
+        return int(payment_id)
+
+    def get_payment(self, payment_id: int) -> dict[str, Any] | None:
+        """Fetch payment by ID."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_payments_for_claim(
+        self,
+        claim_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List payments for a claim. Returns (payments, total)."""
+        conditions = ["claim_id = ?"]
+        params: list[Any] = [claim_id]
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+        where = " AND ".join(conditions)
+        with get_connection(self._db_path) as conn:
+            count_row = conn.execute(
+                f"SELECT COUNT(*) as cnt FROM claim_payments WHERE {where}",
+                params,
+            ).fetchone()
+            total = count_row["cnt"]
+            rows = conn.execute(
+                f"""
+                SELECT * FROM claim_payments WHERE {where}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset],
+            ).fetchall()
+        return [dict(r) for r in rows], total
+
+    def issue_payment(
+        self,
+        payment_id: int,
+        *,
+        check_number: str | None = None,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> dict[str, Any]:
+        """Transition payment from authorized to issued. Optionally set check_number."""
+        safe_actor = sanitize_actor_id(actor_id)
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
+            ).fetchone()
+            if row is None:
+                raise PaymentNotFoundError(f"Payment not found: {payment_id}")
+            old_status = row["status"]
+            _validate_status_transition(old_status, _STATUS_ISSUED)
+            claim_id = row["claim_id"]
+            updates = ["status = ?", "issued_at = datetime('now')", "updated_at = datetime('now')"]
+            params: list[Any] = [_STATUS_ISSUED]
+            safe_check_number = check_number.strip()[:100] if check_number is not None else None
+            if safe_check_number is not None:
+                updates.append("check_number = ?")
+                params.append(safe_check_number)
+            params.append(payment_id)
+            conn.execute(
+                f"UPDATE claim_payments SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            details = json.dumps({"payment_id": payment_id, "check_number": safe_check_number})
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_PAYMENT_ISSUED, details, safe_actor),
+            )
+            updated = conn.execute(
+                "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
+            ).fetchone()
+        return dict(updated)
+
+    def clear_payment(
+        self,
+        payment_id: int,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> dict[str, Any]:
+        """Transition payment from issued to cleared."""
+        safe_actor = sanitize_actor_id(actor_id)
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
+            ).fetchone()
+            if row is None:
+                raise PaymentNotFoundError(f"Payment not found: {payment_id}")
+            old_status = row["status"]
+            _validate_status_transition(old_status, _STATUS_CLEARED)
+            claim_id = row["claim_id"]
+            conn.execute(
+                """
+                UPDATE claim_payments
+                SET status = ?, cleared_at = datetime('now'), updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (_STATUS_CLEARED, payment_id),
+            )
+            details = json.dumps({"payment_id": payment_id})
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_PAYMENT_CLEARED, details, safe_actor),
+            )
+            updated = conn.execute(
+                "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
+            ).fetchone()
+        return dict(updated)
+
+    def void_payment(
+        self,
+        payment_id: int,
+        *,
+        reason: str | None = None,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> dict[str, Any]:
+        """Void a payment (authorized or issued). Reversal workflow."""
+        safe_actor = sanitize_actor_id(actor_id)
+        safe_reason = (reason or "").strip()[:500] if reason else None
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
+            ).fetchone()
+            if row is None:
+                raise PaymentNotFoundError(f"Payment not found: {payment_id}")
+            old_status = row["status"]
+            _validate_status_transition(old_status, _STATUS_VOIDED)
+            claim_id = row["claim_id"]
+            conn.execute(
+                """
+                UPDATE claim_payments
+                SET status = ?, voided_at = datetime('now'), void_reason = ?,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (_STATUS_VOIDED, safe_reason, payment_id),
+            )
+            details = json.dumps({"payment_id": payment_id, "void_reason": safe_reason})
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_PAYMENT_VOIDED, details, safe_actor),
+            )
+            updated = conn.execute(
+                "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
+            ).fetchone()
+        return dict(updated)

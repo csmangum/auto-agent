@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger(__name__)
@@ -173,6 +173,36 @@ class ReserveConfig(BaseSettings):
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")
+
+
+class PaymentConfig(BaseSettings):
+    """Payment authority limits: adjuster, supervisor, executive."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="PAYMENT_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    adjuster_limit: float = 5000.0
+    supervisor_limit: float = 25000.0
+    executive_limit: float = 100000.0
+
+    @field_validator(
+        "adjuster_limit", "supervisor_limit", "executive_limit", mode="before"
+    )
+    @classmethod
+    def _coerce_limit(cls, v: Any, info: ValidationInfo) -> float:
+        defaults = {
+            "adjuster_limit": 5000.0,
+            "supervisor_limit": 25000.0,
+            "executive_limit": 100000.0,
+        }
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return defaults.get(info.field_name or "adjuster_limit", 5000.0)
 
 
 class PartialLossConfig(BaseSettings):
@@ -503,6 +533,7 @@ class Settings(BaseSettings):
     fraud: FraudConfig = Field(default_factory=FraudConfig)
     valuation: ValuationConfig = Field(default_factory=ValuationConfig)
     reserve: ReserveConfig = Field(default_factory=ReserveConfig)
+    payment: PaymentConfig = Field(default_factory=PaymentConfig)
     partial_loss: PartialLossConfig = Field(default_factory=PartialLossConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)

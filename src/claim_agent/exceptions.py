@@ -76,3 +76,20 @@ class ReserveAuthorityError(ClaimAgentError):
         super().__init__(
             f"Reserve amount ${amount:,.2f} exceeds authority limit ${limit:,.2f} for role '{role}' (actor={actor_id})"
         )
+
+
+class PaymentAuthorityError(ClaimAgentError):
+    """Payment amount exceeds actor's authority limit."""
+
+    def __init__(self, amount: float, limit: float, actor_id: str, role: str = "adjuster"):
+        self.amount = amount
+        self.limit = limit
+        self.actor_id = actor_id
+        self.role = role
+        super().__init__(
+            f"Payment amount ${amount:,.2f} exceeds authority limit ${limit:,.2f} for role '{role}' (actor={actor_id})"
+        )
+
+
+class PaymentNotFoundError(ClaimAgentError):
+    """Payment ID does not exist."""

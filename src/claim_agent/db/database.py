@@ -166,6 +166,30 @@ CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_id ON claim_tasks(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_status ON claim_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_status ON claim_tasks(claim_id, status);
 
+-- Claim payments: disbursement tracking (authorized -> issued -> cleared/voided)
+CREATE TABLE IF NOT EXISTS claim_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    payee TEXT NOT NULL,
+    payee_type TEXT NOT NULL,
+    payment_method TEXT NOT NULL,
+    check_number TEXT,
+    status TEXT NOT NULL DEFAULT 'authorized',
+    authorized_by TEXT NOT NULL,
+    issued_at TEXT,
+    cleared_at TEXT,
+    voided_at TEXT,
+    void_reason TEXT,
+    payee_secondary TEXT,
+    payee_secondary_type TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_payments_claim_id ON claim_payments(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
+
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """
