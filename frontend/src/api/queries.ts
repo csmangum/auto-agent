@@ -86,7 +86,7 @@ export function useClaimWorkflows(id: string | undefined) {
 }
 
 export function useClaimReserveHistory(id: string | undefined, limit = 50) {
-  return useQuery({
+  return useQuery<Awaited<ReturnType<typeof getClaimReserveHistory>>, Error>({
     queryKey: [...queryKeys.claimReserveHistory(id ?? ''), limit],
     queryFn: () => getClaimReserveHistory(id!, limit),
     enabled: !!id,
@@ -94,7 +94,7 @@ export function useClaimReserveHistory(id: string | undefined, limit = 50) {
 }
 
 export function useClaimReserveAdequacy(id: string | undefined) {
-  return useQuery({
+  return useQuery<Awaited<ReturnType<typeof getClaimReserveAdequacy>>, Error>({
     queryKey: queryKeys.claimReserveAdequacy(id ?? ''),
     queryFn: () => getClaimReserveAdequacy(id!),
     enabled: !!id,
@@ -103,7 +103,11 @@ export function useClaimReserveAdequacy(id: string | undefined) {
 
 export function usePatchClaimReserve(claimId: string | undefined) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutation<
+    Awaited<ReturnType<typeof patchClaimReserve>>,
+    Error,
+    PatchClaimReserveBody
+  >({
     mutationFn: (body: PatchClaimReserveBody) => patchClaimReserve(claimId!, body),
     onSuccess: () => {
       if (claimId) {

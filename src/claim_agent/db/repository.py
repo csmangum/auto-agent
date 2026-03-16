@@ -68,7 +68,7 @@ def _check_reserve_authority(
     cfg = get_reserve_config()
     limit = cfg["supervisor_limit"] if role in ("supervisor", "admin") else cfg["adjuster_limit"]
     if amount > limit:
-        raise ReserveAuthorityError(amount, limit, actor_id)
+        raise ReserveAuthorityError(amount, limit, actor_id, role)
 
 
 class ClaimRepository:
@@ -122,11 +122,12 @@ class ClaimRepository:
                 """,
                 (claim_id, AUDIT_EVENT_CREATED, STATUS_PENDING, "Claim record created", actor_id, after_state),
             )
-            # Set initial reserve from estimated_damage at FNOL if configured
+            # Set initial reserve from estimated_damage at FNOL if configured.
+            # FNOL auto-reserve is always treated as a system operation regardless of
+            # the calling actor; no authority-limit check applies.
             cfg = get_reserve_config()
             est = claim_input.estimated_damage
             if cfg.get("initial_reserve_from_estimated_damage", True) and est is not None and est > 0:
-                safe_actor = sanitize_actor_id(actor_id)
                 conn.execute(
                     "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
                     (est, claim_id),
@@ -136,7 +137,7 @@ class ClaimRepository:
                     INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (claim_id, None, est, "Initial reserve from estimated_damage at FNOL", safe_actor),
+                    (claim_id, None, est, "Initial reserve from estimated_damage at FNOL", ACTOR_SYSTEM),
                 )
                 reserve_state = json.dumps({"reserve_amount": est})
                 conn.execute(
@@ -144,7 +145,7 @@ class ClaimRepository:
                     INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (claim_id, AUDIT_EVENT_RESERVE_SET, "Initial reserve set from estimated_damage", safe_actor, reserve_state),
+                    (claim_id, AUDIT_EVENT_RESERVE_SET, "Initial reserve set from estimated_damage", ACTOR_SYSTEM, reserve_state),
                 )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
@@ -429,6 +430,7 @@ class ClaimRepository:
             raise DomainValidationError("Reserve amount cannot be negative")
         _check_reserve_authority(amount, actor_id, role=role, skip_authority_check=skip_authority_check)
         safe_actor = sanitize_actor_id(actor_id)
+        safe_reason = sanitize_note(reason) if reason else ""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT reserve_amount FROM claims WHERE id = ?", (claim_id,)
@@ -445,7 +447,7 @@ class ClaimRepository:
                 INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (claim_id, old_amount, amount, reason or "Reserve set", safe_actor),
+                (claim_id, old_amount, amount, safe_reason or "Reserve set", safe_actor),
             )
             before_state = json.dumps({"reserve_amount": old_amount})
             after_state = json.dumps({"reserve_amount": amount})
@@ -454,7 +456,7 @@ class ClaimRepository:
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, AUDIT_EVENT_RESERVE_SET, reason or "Reserve set", safe_actor, before_state, after_state),
+                (claim_id, AUDIT_EVENT_RESERVE_SET, safe_reason or "Reserve set", safe_actor, before_state, after_state),
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=None, summary=f"Reserve set to ${amount:,.2f}")
@@ -470,11 +472,12 @@ class ClaimRepository:
         role: str = "adjuster",
         skip_authority_check: bool = False,
     ) -> None:
-        """Adjust reserve amount. Uses set_reserve if no prior reserve; otherwise logs as adjustment."""
+        """Adjust reserve amount. Logs to reserve_history and claim_audit_log atomically."""
         if new_amount < 0:
             raise DomainValidationError("Reserve amount cannot be negative")
         _check_reserve_authority(new_amount, actor_id, role=role, skip_authority_check=skip_authority_check)
         safe_actor = sanitize_actor_id(actor_id)
+        safe_reason = sanitize_note(reason) if reason else ""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT reserve_amount FROM claims WHERE id = ?", (claim_id,)
@@ -482,16 +485,8 @@ class ClaimRepository:
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_amount = row["reserve_amount"]
-            if old_amount is None:
-                self.set_reserve(
-                    claim_id,
-                    new_amount,
-                    reason=reason,
-                    actor_id=actor_id,
-                    role=role,
-                    skip_authority_check=skip_authority_check,
-                )
-                return
+            audit_event = AUDIT_EVENT_RESERVE_SET if old_amount is None else AUDIT_EVENT_RESERVE_ADJUSTED
+            default_reason = "Reserve set" if old_amount is None else "Reserve adjusted"
             conn.execute(
                 "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
                 (new_amount, claim_id),
@@ -501,7 +496,7 @@ class ClaimRepository:
                 INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (claim_id, old_amount, new_amount, reason or "Reserve adjusted", safe_actor),
+                (claim_id, old_amount, new_amount, safe_reason or default_reason, safe_actor),
             )
             before_state = json.dumps({"reserve_amount": old_amount})
             after_state = json.dumps({"reserve_amount": new_amount})
@@ -512,8 +507,8 @@ class ClaimRepository:
                 """,
                 (
                     claim_id,
-                    AUDIT_EVENT_RESERVE_ADJUSTED,
-                    reason or "Reserve adjusted",
+                    audit_event,
+                    safe_reason or default_reason,
                     safe_actor,
                     before_state,
                     after_state,
