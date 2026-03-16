@@ -7,6 +7,11 @@ Create Date: 2026-03-15
 Implements reserve management per system-assessment.md:
 - reserve_amount: estimated ultimate cost carrier sets aside
 - reserve_history: append-only audit of reserve changes
+
+Downgrade note: _downgrade_recreate_claims() hardcodes the claims schema.
+If a later migration adds columns to claims, this downgrade will fail because
+claims_new omits those columns. Downgrades are best-effort for SQLite; consider
+running migrations forward-only in production.
 """
 from alembic import op
 from sqlalchemy import text
@@ -81,6 +86,7 @@ def downgrade() -> None:
 
 
 def _downgrade_recreate_claims() -> None:
+    """Recreate claims table without reserve_amount. Schema is fixed at revision 010."""
     op.execute(text("""
         CREATE TABLE claims_new (
             id TEXT PRIMARY KEY,

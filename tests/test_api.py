@@ -5,6 +5,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from claim_agent.config import reload_settings
 from claim_agent.db.database import get_connection
 
 
@@ -790,6 +791,32 @@ class TestReserve:
             json={"reserve_amount": -100.0},
         )
         assert resp.status_code == 422
+
+    def test_patch_reserve_adjuster_over_limit_returns_403(self, client, monkeypatch):
+        """Adjuster exceeding authority limit receives 403."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        def low_limit():
+            return {
+                "adjuster_limit": 5000.0,
+                "supervisor_limit": 50000.0,
+                "initial_reserve_from_estimated_damage": True,
+            }
+
+        monkeypatch.setattr(
+            "claim_agent.db.repository.get_reserve_config",
+            low_limit,
+        )
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": 15000.0, "reason": "Supplemental"},
+            headers=_auth_headers("sk-adj"),
+        )
+        assert resp.status_code == 403
+        assert "authority" in resp.json()["detail"].lower()
 
     def test_get_reserve_history(self, client):
         """GET /claims/{id}/reserve-history returns history."""

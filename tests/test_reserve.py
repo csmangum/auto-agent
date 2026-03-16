@@ -242,7 +242,7 @@ def test_check_reserve_adequacy_inadequate(temp_db):
 
     result = repo.check_reserve_adequacy(claim_id)
     assert result["adequate"] is False
-    assert any("below benchmark" in w for w in result["warnings"])
+    assert any("below" in w for w in result["warnings"])
 
 
 def test_check_reserve_adequacy_nonexistent_raises(temp_db):

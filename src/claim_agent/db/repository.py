@@ -570,10 +570,28 @@ class ClaimRepository:
             adequate = benchmark is None or benchmark <= 0
         else:
             if benchmark is not None and reserve_val < benchmark:
-                warnings.append(
-                    f"Reserve ${reserve_val:,.2f} is below benchmark ${benchmark:,.2f} "
-                    f"(estimated_damage={est_val}, payout_amount={payout_val})"
-                )
+                if est_val is not None and est_val == benchmark and (
+                    payout_val is None or payout_val <= 0 or payout_val < benchmark
+                ):
+                    warnings.append(
+                        f"Reserve ${reserve_val:,.2f} is below estimated damage ${benchmark:,.2f}"
+                    )
+                elif payout_val is not None and payout_val == benchmark and (
+                    est_val is None or est_val <= 0 or est_val < benchmark
+                ):
+                    warnings.append(
+                        f"Reserve ${reserve_val:,.2f} is below payout ${benchmark:,.2f}"
+                    )
+                else:
+                    parts = []
+                    if est_val is not None:
+                        parts.append(f"estimated damage ${est_val:,.2f}")
+                    if payout_val is not None:
+                        parts.append(f"payout ${payout_val:,.2f}")
+                    suffix = f" ({', '.join(parts)})" if parts else ""
+                    warnings.append(
+                        f"Reserve ${reserve_val:,.2f} is below benchmark ${benchmark:,.2f}{suffix}"
+                    )
             adequate = benchmark is None or reserve_val >= benchmark
         return {
             "adequate": adequate,
