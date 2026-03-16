@@ -91,6 +91,9 @@ class ClaimOutput(BaseModel):
     payout_amount: Optional[float] = Field(
         default=None, description="Settlement or insurance payment amount for payout-ready claims"
     )
+    reserve_amount: Optional[float] = Field(
+        default=None, description="Reserve amount (estimated ultimate cost) when relevant"
+    )
     message: Optional[str] = Field(default=None, description="Human-readable summary")
     raw_result: Optional[dict[str, Any]] = Field(
         default=None, description="Full crew output for debugging"

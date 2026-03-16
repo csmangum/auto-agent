@@ -34,6 +34,7 @@ export interface Claim {
   claim_type?: string;
   status: string;
   payout_amount?: number;
+  reserve_amount?: number;
   created_at?: string;
   updated_at?: string;
   /** Review queue fields */
@@ -86,6 +87,30 @@ export interface ClaimHistoryResponse {
   total: number;
   limit: number | null;
   offset: number;
+}
+
+export interface ReserveHistoryEntry {
+  id: number;
+  claim_id: string;
+  old_amount: number | null;
+  new_amount: number;
+  reason: string;
+  actor_id: string;
+  created_at?: string;
+}
+
+export interface ClaimReserveHistoryResponse {
+  claim_id: string;
+  history: ReserveHistoryEntry[];
+  limit: number;
+}
+
+export interface ReserveAdequacyResponse {
+  adequate: boolean;
+  reserve: number | null;
+  estimated_damage: number | null;
+  payout_amount: number | null;
+  warnings: string[];
 }
 
 export interface WorkflowRun {

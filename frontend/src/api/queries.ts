@@ -8,6 +8,8 @@ import {
   getClaims,
   getClaim,
   getClaimHistory,
+  getClaimReserveHistory,
+  getClaimReserveAdequacy,
   getClaimWorkflows,
   getDocs,
   getDoc,
@@ -28,6 +30,8 @@ export const queryKeys = {
   claims: (params: GetClaimsParams) => ['claims', 'list', params] as const,
   claim: (id: string) => ['claims', id] as const,
   claimHistory: (id: string) => ['claims', id, 'history'] as const,
+  claimReserveHistory: (id: string) => ['claims', id, 'reserve-history'] as const,
+  claimReserveAdequacy: (id: string) => ['claims', id, 'reserve-adequacy'] as const,
   claimWorkflows: (id: string) => ['claims', id, 'workflows'] as const,
   docs: ['docs'] as const,
   doc: (slug: string) => ['docs', slug] as const,
@@ -76,6 +80,22 @@ export function useClaimWorkflows(id: string | undefined) {
   return useQuery({
     queryKey: queryKeys.claimWorkflows(id ?? ''),
     queryFn: () => getClaimWorkflows(id!),
+    enabled: !!id,
+  });
+}
+
+export function useClaimReserveHistory(id: string | undefined, limit = 50) {
+  return useQuery({
+    queryKey: [...queryKeys.claimReserveHistory(id ?? ''), limit],
+    queryFn: () => getClaimReserveHistory(id!, limit),
+    enabled: !!id,
+  });
+}
+
+export function useClaimReserveAdequacy(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.claimReserveAdequacy(id ?? ''),
+    queryFn: () => getClaimReserveAdequacy(id!),
     enabled: !!id,
   });
 }

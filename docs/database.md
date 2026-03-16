@@ -30,6 +30,7 @@ The schema is defined in two places and both must be kept in sync:
 erDiagram
     claims ||--o{ claim_audit_log : "has"
     claims ||--o{ workflow_runs : "has"
+    claims ||--o{ reserve_history : "has"
     
     claims {
         text id PK
@@ -45,6 +46,7 @@ erDiagram
         text claim_type
         text status
         real payout_amount
+        real reserve_amount
         text attachments
         text assignee
         text review_started_at
@@ -69,6 +71,16 @@ erDiagram
         text actor_id
         text before_state
         text after_state
+        text created_at
+    }
+    
+    reserve_history {
+        int id PK
+        text claim_id FK
+        real old_amount
+        real new_amount
+        text reason
+        text actor_id
         text created_at
     }
     
@@ -112,6 +124,7 @@ CREATE TABLE IF NOT EXISTS claims (
     claim_type TEXT,
     status TEXT DEFAULT 'pending',
     payout_amount REAL,
+    reserve_amount REAL,
     attachments TEXT DEFAULT '[]',
     assignee TEXT,
     review_started_at TEXT,
@@ -144,6 +157,7 @@ CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 | `claim_type` | TEXT | Classification (new, duplicate, etc.) |
 | `status` | TEXT | Current status |
 | `payout_amount` | REAL | Settlement amount (if applicable) |
+| `reserve_amount` | REAL | Estimated ultimate cost (reserve) set aside for claim |
 | `attachments` | TEXT | JSON array of attachment metadata |
 | `assignee` | TEXT | Adjuster/user ID (review queue) |
 | `review_started_at` | TEXT | When claim entered needs_review |
@@ -206,6 +220,8 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim
 | `escalate_to_siu` | Escalated to Special Investigations Unit |
 | `siu_case_created` | SIU case created by fraud workflow (automated referral) |
 | `assign` | Claim assigned to adjuster |
+| `reserve_set` | Reserve amount set (initial or first) |
+| `reserve_adjusted` | Reserve amount changed |
 
 #### Actor Identity
 
@@ -216,6 +232,34 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim
 #### Retention
 
 Audit log retention is compliance-dependent. Configure via backup/archival policies. The audit table may outlive claims for regulatory requirements. See your compliance team for retention periods.
+
+### reserve_history
+
+Append-only audit of reserve changes. Used for actuarial analysis, compliance, and reserve adequacy tracking. **Append-only**: no UPDATE or DELETE.
+
+```sql
+CREATE TABLE IF NOT EXISTS reserve_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    old_amount REAL,
+    new_amount REAL NOT NULL,
+    reason TEXT DEFAULT '',
+    actor_id TEXT DEFAULT 'workflow',
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_reserve_history_claim_id ON reserve_history(claim_id);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Auto-increment primary key |
+| `claim_id` | TEXT | Foreign key to claims.id |
+| `old_amount` | REAL | Previous reserve (NULL for initial set) |
+| `new_amount` | REAL | New reserve amount |
+| `reason` | TEXT | Reason for change |
+| `actor_id` | TEXT | Who made the change |
+| `created_at` | TEXT | Timestamp |
 
 ### workflow_runs
 

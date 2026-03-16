@@ -63,3 +63,15 @@ class TokenBudgetExceeded(BudgetExceededError):
         self.total_tokens = total_tokens
         self.total_calls = total_calls
         super().__init__(message)
+
+
+class ReserveAuthorityError(ClaimAgentError):
+    """Reserve amount exceeds adjuster authority limit; supervisor approval required."""
+
+    def __init__(self, amount: float, limit: float, actor_id: str):
+        self.amount = amount
+        self.limit = limit
+        self.actor_id = actor_id
+        super().__init__(
+            f"Reserve amount ${amount:,.2f} exceeds adjuster limit ${limit:,.2f} (actor={actor_id})"
+        )

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS claims (
     claim_type TEXT,
     status TEXT DEFAULT 'pending',
     payout_amount REAL,
+    reserve_amount REAL,
     attachments TEXT DEFAULT '[]',
     assignee TEXT,
     review_started_at TEXT,
@@ -120,6 +121,29 @@ CREATE TABLE IF NOT EXISTS follow_up_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_follow_up_messages_claim_id ON follow_up_messages(claim_id);
 CREATE INDEX IF NOT EXISTS idx_follow_up_messages_status ON follow_up_messages(claim_id, status);
+
+-- Reserve history: append-only audit of reserve changes (actuarial, compliance)
+CREATE TABLE IF NOT EXISTS reserve_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    old_amount REAL,
+    new_amount REAL NOT NULL,
+    reason TEXT DEFAULT '',
+    actor_id TEXT DEFAULT 'workflow',
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE TRIGGER IF NOT EXISTS reserve_history_prevent_update
+BEFORE UPDATE ON reserve_history
+BEGIN
+    SELECT RAISE(ABORT, 'reserve_history is append-only: updates are not allowed');
+END;
+CREATE TRIGGER IF NOT EXISTS reserve_history_prevent_delete
+BEFORE DELETE ON reserve_history
+BEGIN
+    SELECT RAISE(ABORT, 'reserve_history is append-only: deletes are not allowed');
+END;
+CREATE INDEX IF NOT EXISTS idx_reserve_history_claim_id ON reserve_history(claim_id);
 
 -- Claim tasks: discrete units of future work created by agents or adjusters
 CREATE TABLE IF NOT EXISTS claim_tasks (

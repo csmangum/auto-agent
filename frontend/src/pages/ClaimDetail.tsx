@@ -7,7 +7,7 @@ import AuditTimeline from '../components/AuditTimeline';
 import EmptyState from '../components/EmptyState';
 import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
 import TaskPanel from '../components/TaskPanel';
-import { useClaim, useClaimHistory, useClaimWorkflows } from '../api/queries';
+import { useClaim, useClaimHistory, useClaimReserveHistory, useClaimReserveAdequacy, useClaimWorkflows } from '../api/queries';
 import { formatDateTime } from '../utils/date';
 
 export default function ClaimDetail() {
@@ -24,6 +24,11 @@ export default function ClaimDetail() {
     isLoading: workflowsLoading,
     error: workflowsError,
   } = useClaimWorkflows(claimId);
+  const {
+    data: reserveHistoryData,
+    isLoading: reserveHistoryLoading,
+  } = useClaimReserveHistory(claimId);
+  const { data: reserveAdequacyData } = useClaimReserveAdequacy(claimId);
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
@@ -31,6 +36,7 @@ export default function ClaimDetail() {
   const tasks = claim?.tasks ?? [];
   const attachments = claim?.attachments ?? [];
   const notesFollowUpsCount = notes.length + followUps.length;
+  const reserveHistory = reserveHistoryData?.history ?? [];
   const loading = claimLoading || historyLoading || workflowsLoading;
   const error = claimError ?? historyError ?? workflowsError;
 
@@ -65,6 +71,7 @@ export default function ClaimDetail() {
     { key: 'overview', label: 'Overview', icon: '📋' },
     { key: 'tasks', label: `Tasks (${claim?.tasks_total ?? tasks.length})`, icon: '☑️' },
     { key: 'documents', label: `Documents (${attachments.length})`, icon: '📎' },
+    { key: 'reserve', label: `Reserve (${reserveHistory.length})`, icon: '💰' },
     { key: 'notes', label: `Notes & Follow-ups (${notesFollowUpsCount})`, icon: '💬' },
     { key: 'audit', label: `Audit Log (${history.length})`, icon: '📜' },
     { key: 'workflows', label: `Workflows (${workflows.length})`, icon: '🔄' },
@@ -76,6 +83,7 @@ export default function ClaimDetail() {
     { label: 'Vehicle', value: `${claim.vehicle_year ?? ''} ${claim.vehicle_make ?? ''} ${claim.vehicle_model ?? ''}`.trim() || '—' },
     { label: 'Incident Date', value: claim.incident_date },
     { label: 'Estimated Damage', value: claim.estimated_damage != null ? `$${Number(claim.estimated_damage).toLocaleString()}` : '—', isMoney: true },
+    { label: 'Reserve Amount', value: claim.reserve_amount != null ? `$${Number(claim.reserve_amount).toLocaleString()}` : '—', isMoney: true },
     { label: 'Payout Amount', value: claim.payout_amount != null ? `$${Number(claim.payout_amount).toLocaleString()}` : '—', isMoney: true, isPayout: claim.payout_amount != null },
     { label: 'Created', value: formatDateTime(claim.created_at) ?? '—' },
     { label: 'Updated', value: formatDateTime(claim.updated_at) ?? '—' },
@@ -157,6 +165,63 @@ export default function ClaimDetail() {
 
         {activeTab === 'tasks' && (
           <TaskPanel claimId={claim.id} tasks={tasks} />
+        )}
+        {activeTab === 'reserve' && (
+          <div className="space-y-6">
+            {reserveAdequacyData && (
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+                <h3 className="text-sm font-semibold text-gray-300 mb-4">Reserve Adequacy</h3>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-sm font-medium ${reserveAdequacyData.adequate ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {reserveAdequacyData.adequate ? '✓ Adequate' : '⚠ Needs attention'}
+                  </span>
+                </div>
+                {reserveAdequacyData.warnings.length > 0 && (
+                  <ul className="text-sm text-amber-400/90 space-y-1 mt-2">
+                    {reserveAdequacyData.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+              <h3 className="text-sm font-semibold text-gray-300 mb-4">Reserve History</h3>
+              {reserveHistoryLoading ? (
+                <div className="h-24 bg-gray-700/30 rounded skeleton-shimmer" />
+              ) : reserveHistory.length === 0 ? (
+                <EmptyState
+                  icon="💰"
+                  title="No reserve history"
+                  description="No reserve changes have been recorded for this claim."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {reserveHistory.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-medium text-blue-400">{entry.actor_id}</span>
+                        <span className="text-xs text-gray-500">
+                          {formatDateTime(entry.created_at)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-300">
+                        {entry.old_amount != null
+                          ? `$${Number(entry.old_amount).toLocaleString()} → $${Number(entry.new_amount).toLocaleString()}`
+                          : `Set to $${Number(entry.new_amount).toLocaleString()}`}
+                      </p>
+                      {entry.reason && (
+                        <p className="text-xs text-gray-500 mt-1">{entry.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
         {activeTab === 'documents' && (
           <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">

@@ -7,10 +7,13 @@ import ClaimDetail from './ClaimDetail';
 vi.mock('../api/queries', () => ({
   useClaim: vi.fn(),
   useClaimHistory: vi.fn(),
+  useClaimReserveHistory: vi.fn(),
+  useClaimReserveAdequacy: vi.fn(),
   useClaimWorkflows: vi.fn(),
 }));
 
-const { useClaim, useClaimHistory, useClaimWorkflows } = await import('../api/queries');
+const { useClaim, useClaimHistory, useClaimReserveHistory, useClaimReserveAdequacy, useClaimWorkflows } =
+  await import('../api/queries');
 
 const mockClaim = {
   id: 'CLM-001',
@@ -54,6 +57,16 @@ describe('ClaimDetail', () => {
     } as never);
     vi.mocked(useClaimHistory).mockReturnValue({
       data: { claim_id: 'CLM-001', history: [], total: 0, limit: null, offset: 0 },
+      isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(useClaimReserveHistory).mockReturnValue({
+      data: { claim_id: 'CLM-001', history: [], limit: 50 },
+      isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(useClaimReserveAdequacy).mockReturnValue({
+      data: null,
       isLoading: false,
       error: null,
     } as never);
