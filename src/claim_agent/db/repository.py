@@ -1141,8 +1141,9 @@ class ClaimRepository:
         dispute_date: str | None = None,
         opposing_carrier: str | None = None,
         status: str | None = None,
+        recovery_amount: float | None = None,
     ) -> None:
-        """Update subrogation case arbitration/metadata fields."""
+        """Update subrogation case arbitration/metadata/recovery fields."""
         updates: list[str] = ["updated_at = datetime('now')"]
         params: list[Any] = []
         if arbitration_status is not None:
@@ -1160,6 +1161,9 @@ class ClaimRepository:
         if status is not None:
             updates.append("status = ?")
             params.append(status)
+        if recovery_amount is not None:
+            updates.append("recovery_amount = ?")
+            params.append(recovery_amount)
         if not params:
             return
         params.append(case_id)

@@ -94,6 +94,7 @@ export interface SubrogationCase {
   dispute_date?: string;
   liability_percentage?: number;
   liability_basis?: string;
+  recovery_amount?: number;
   created_at?: string;
   updated_at?: string;
 }
