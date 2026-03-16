@@ -702,6 +702,7 @@ def patch_claim_reserve(
             body.reserve_amount,
             reason=body.reason,
             actor_id=actor_id,
+            role=auth.role,
         )
     except ClaimNotFoundError:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None

@@ -160,6 +160,22 @@ export const getClaimReserveAdequacy = (
 ): Promise<ReserveAdequacyResponse> =>
   fetchJSON<ReserveAdequacyResponse>(`/claims/${id}/reserve/adequacy`);
 
+export interface PatchClaimReserveBody {
+  reserve_amount: number;
+  reason?: string;
+}
+
+export interface PatchClaimReserveResponse {
+  claim_id: string;
+  reserve_amount: number;
+}
+
+export const patchClaimReserve = (
+  id: string,
+  body: PatchClaimReserveBody
+): Promise<PatchClaimReserveResponse> =>
+  patchJSON<PatchClaimReserveResponse>(`/claims/${id}/reserve`, body);
+
 export const getMetrics = (): Promise<unknown> => fetchJSON('/metrics');
 export const getClaimMetrics = (id: string): Promise<unknown> =>
   fetchJSON(`/metrics/${id}`);

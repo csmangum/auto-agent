@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import type { UseMutationResult } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
 import StatusBadge from '../components/StatusBadge';
 import TypeBadge from '../components/TypeBadge';
@@ -7,8 +8,169 @@ import AuditTimeline from '../components/AuditTimeline';
 import EmptyState from '../components/EmptyState';
 import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
 import TaskPanel from '../components/TaskPanel';
-import { useClaim, useClaimHistory, useClaimReserveHistory, useClaimReserveAdequacy, useClaimWorkflows } from '../api/queries';
+import {
+  useClaim,
+  useClaimHistory,
+  useClaimReserveHistory,
+  useClaimReserveAdequacy,
+  useClaimWorkflows,
+  usePatchClaimReserve,
+} from '../api/queries';
 import { formatDateTime } from '../utils/date';
+import type { ReserveAdequacyResponse, ReserveHistoryEntry } from '../api/types';
+import type { PatchClaimReserveBody } from '../api/client';
+
+interface ReserveTabProps {
+  reserveAmount: number | undefined;
+  reserveHistory: ReserveHistoryEntry[];
+  reserveHistoryLoading: boolean;
+  reserveHistoryError: Error | null;
+  reserveAdequacyData: ReserveAdequacyResponse | undefined;
+  reserveAdequacyError: Error | null;
+  patchReserveMutation: UseMutationResult<
+    { claim_id: string; reserve_amount: number },
+    Error,
+    PatchClaimReserveBody
+  >;
+}
+
+function ReserveTab({
+  reserveAmount,
+  reserveHistory,
+  reserveHistoryLoading,
+  reserveHistoryError,
+  reserveAdequacyData,
+  reserveAdequacyError,
+  patchReserveMutation,
+}: ReserveTabProps) {
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const reserveError = reserveHistoryError ?? reserveAdequacyError;
+
+  const handleAdjustReserve = (e: React.FormEvent) => {
+    e.preventDefault();
+    const num = parseFloat(amount);
+    if (Number.isNaN(num) || num < 0) return;
+    patchReserveMutation.mutate({ reserve_amount: num, reason: reason || undefined });
+    setAmount('');
+    setReason('');
+  };
+
+  return (
+    <div className="space-y-6">
+      {reserveError && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-lg">⚠️</span>
+          <p className="text-sm text-red-400">
+            {reserveError instanceof Error ? reserveError.message : 'Failed to load reserve data'}
+          </p>
+        </div>
+      )}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Adjust Reserve</h3>
+        <form onSubmit={handleAdjustReserve} className="space-y-3">
+          <div>
+            <label htmlFor="reserve-amount" className="block text-xs text-gray-500 mb-1">
+              Amount ($) *
+            </label>
+            <input
+              id="reserve-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={reserveAmount != null ? String(reserveAmount) : 'e.g. 5000'}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="reserve-reason" className="block text-xs text-gray-500 mb-1">
+              Reason (optional)
+            </label>
+            <input
+              id="reserve-reason"
+              type="text"
+              maxLength={500}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Supplemental estimate received"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          {patchReserveMutation.isError && (
+            <p className="text-sm text-red-400">
+              {patchReserveMutation.error instanceof Error
+                ? patchReserveMutation.error.message
+                : 'Failed to update reserve'}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={patchReserveMutation.isPending}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors"
+          >
+            {patchReserveMutation.isPending ? 'Updating…' : 'Update Reserve'}
+          </button>
+        </form>
+      </div>
+      {reserveAdequacyData && (
+        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+          <h3 className="text-sm font-semibold text-gray-300 mb-4">Reserve Adequacy</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className={`text-sm font-medium ${reserveAdequacyData.adequate ? 'text-emerald-400' : 'text-amber-400'}`}
+            >
+              {reserveAdequacyData.adequate ? '✓ Adequate' : '⚠ Needs attention'}
+            </span>
+          </div>
+          {reserveAdequacyData.warnings.length > 0 && (
+            <ul className="text-sm text-amber-400/90 space-y-1 mt-2">
+              {reserveAdequacyData.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Reserve History</h3>
+        {reserveHistoryLoading ? (
+          <div className="h-24 bg-gray-700/30 rounded skeleton-shimmer" />
+        ) : reserveHistory.length === 0 ? (
+          <EmptyState
+            icon="💰"
+            title="No reserve history"
+            description="No reserve changes have been recorded for this claim."
+          />
+        ) : (
+          <div className="space-y-3">
+            {reserveHistory.map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50"
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-xs font-medium text-blue-400">{entry.actor_id}</span>
+                  <span className="text-xs text-gray-500">{formatDateTime(entry.created_at)}</span>
+                </div>
+                <p className="text-sm text-gray-300">
+                  {entry.old_amount != null
+                    ? `$${Number(entry.old_amount).toLocaleString()} → $${Number(entry.new_amount).toLocaleString()}`
+                    : `Set to $${Number(entry.new_amount).toLocaleString()}`}
+                </p>
+                {entry.reason && (
+                  <p className="text-xs text-gray-500 mt-1">{entry.reason}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
@@ -27,8 +189,13 @@ export default function ClaimDetail() {
   const {
     data: reserveHistoryData,
     isLoading: reserveHistoryLoading,
+    error: reserveHistoryError,
   } = useClaimReserveHistory(claimId);
-  const { data: reserveAdequacyData } = useClaimReserveAdequacy(claimId);
+  const {
+    data: reserveAdequacyData,
+    error: reserveAdequacyError,
+  } = useClaimReserveAdequacy(claimId);
+  const patchReserveMutation = usePatchClaimReserve(claimId);
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
@@ -167,61 +334,15 @@ export default function ClaimDetail() {
           <TaskPanel claimId={claim.id} tasks={tasks} />
         )}
         {activeTab === 'reserve' && (
-          <div className="space-y-6">
-            {reserveAdequacyData && (
-              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-4">Reserve Adequacy</h3>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={`text-sm font-medium ${reserveAdequacyData.adequate ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {reserveAdequacyData.adequate ? '✓ Adequate' : '⚠ Needs attention'}
-                  </span>
-                </div>
-                {reserveAdequacyData.warnings.length > 0 && (
-                  <ul className="text-sm text-amber-400/90 space-y-1 mt-2">
-                    {reserveAdequacyData.warnings.map((w, i) => (
-                      <li key={i}>{w}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
-              <h3 className="text-sm font-semibold text-gray-300 mb-4">Reserve History</h3>
-              {reserveHistoryLoading ? (
-                <div className="h-24 bg-gray-700/30 rounded skeleton-shimmer" />
-              ) : reserveHistory.length === 0 ? (
-                <EmptyState
-                  icon="💰"
-                  title="No reserve history"
-                  description="No reserve changes have been recorded for this claim."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {reserveHistory.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50"
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-medium text-blue-400">{entry.actor_id}</span>
-                        <span className="text-xs text-gray-500">
-                          {formatDateTime(entry.created_at)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-300">
-                        {entry.old_amount != null
-                          ? `$${Number(entry.old_amount).toLocaleString()} → $${Number(entry.new_amount).toLocaleString()}`
-                          : `Set to $${Number(entry.new_amount).toLocaleString()}`}
-                      </p>
-                      {entry.reason && (
-                        <p className="text-xs text-gray-500 mt-1">{entry.reason}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <ReserveTab
+            reserveAmount={claim.reserve_amount}
+            reserveHistory={reserveHistory}
+            reserveHistoryLoading={reserveHistoryLoading}
+            reserveHistoryError={reserveHistoryError}
+            reserveAdequacyData={reserveAdequacyData}
+            reserveAdequacyError={reserveAdequacyError}
+            patchReserveMutation={patchReserveMutation}
+          />
         )}
         {activeTab === 'documents' && (
           <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">

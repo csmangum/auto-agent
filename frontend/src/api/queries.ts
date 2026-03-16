@@ -2,7 +2,7 @@
  * React Query hooks for the Claims System API.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   getClaimsStats,
   getClaims,
@@ -11,6 +11,7 @@ import {
   getClaimReserveHistory,
   getClaimReserveAdequacy,
   getClaimWorkflows,
+  patchClaimReserve,
   getDocs,
   getDoc,
   getSkills,
@@ -23,7 +24,7 @@ import {
   getAllTasks,
   getTaskStats,
 } from './client';
-import type { GetClaimsParams } from './client';
+import type { GetClaimsParams, PatchClaimReserveBody } from './client';
 
 export const queryKeys = {
   claimsStats: ['claims', 'stats'] as const,
@@ -97,6 +98,20 @@ export function useClaimReserveAdequacy(id: string | undefined) {
     queryKey: queryKeys.claimReserveAdequacy(id ?? ''),
     queryFn: () => getClaimReserveAdequacy(id!),
     enabled: !!id,
+  });
+}
+
+export function usePatchClaimReserve(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PatchClaimReserveBody) => patchClaimReserve(claimId!, body),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimReserveHistory(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimReserveAdequacy(claimId) });
+      }
+    },
   });
 }
 

@@ -10,10 +10,17 @@ vi.mock('../api/queries', () => ({
   useClaimReserveHistory: vi.fn(),
   useClaimReserveAdequacy: vi.fn(),
   useClaimWorkflows: vi.fn(),
+  usePatchClaimReserve: vi.fn(),
 }));
 
-const { useClaim, useClaimHistory, useClaimReserveHistory, useClaimReserveAdequacy, useClaimWorkflows } =
-  await import('../api/queries');
+const {
+  useClaim,
+  useClaimHistory,
+  useClaimReserveHistory,
+  useClaimReserveAdequacy,
+  useClaimWorkflows,
+  usePatchClaimReserve,
+} = await import('../api/queries');
 
 const mockClaim = {
   id: 'CLM-001',
@@ -73,6 +80,12 @@ describe('ClaimDetail', () => {
     vi.mocked(useClaimWorkflows).mockReturnValue({
       data: { claim_id: 'CLM-001', workflows: [] },
       isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(usePatchClaimReserve).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
       error: null,
     } as never);
   });
@@ -186,6 +199,18 @@ describe('ClaimDetail', () => {
     expect(screen.getByText('Damage photo')).toBeInTheDocument();
     const viewLinks = screen.getAllByText('View →');
     expect(viewLinks).toHaveLength(2);
+  });
+
+  it('switches to reserve tab and shows adjust reserve form', () => {
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    expect(screen.getByText('Adjust Reserve')).toBeInTheDocument();
+    expect(screen.getByLabelText(/amount/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update Reserve' })).toBeInTheDocument();
   });
 
   it('shows workflow runs when present', () => {

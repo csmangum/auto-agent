@@ -130,6 +130,30 @@ def test_workflow_bypasses_authority(temp_db):
     assert claim["reserve_amount"] == 25000.0
 
 
+def test_supervisor_can_set_reserve_above_adjuster_limit(temp_db, monkeypatch):
+    """When actor is supervisor, amount up to supervisor_limit is allowed."""
+    def limits():
+        return {"adjuster_limit": 5000.0, "supervisor_limit": 50000.0, "initial_reserve_from_estimated_damage": True}
+
+    monkeypatch.setattr("claim_agent.config.settings.get_reserve_config", limits)
+
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-SUP",
+        vin="1HGBH41JXMN109200",
+        vehicle_year=2020,
+        vehicle_make="Nissan",
+        vehicle_model="Altima",
+        incident_date="2024-06-01",
+        incident_description="Fender bender",
+        damage_description="Minor scratch",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.set_reserve(claim_id, 15000.0, actor_id="supervisor-1", role="supervisor")
+    claim = repo.get_claim(claim_id)
+    assert claim["reserve_amount"] == 15000.0
+
+
 def test_fnol_sets_initial_reserve_from_estimated_damage(temp_db):
     """create_claim with estimated_damage sets initial reserve when config enabled."""
     repo = ClaimRepository(db_path=temp_db)

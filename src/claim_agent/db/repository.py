@@ -41,6 +41,7 @@ from claim_agent.db.constants import (
     STATUS_PENDING_INFO,
     STATUS_UNDER_INVESTIGATION,
 )
+from claim_agent.config.settings import get_reserve_config
 from claim_agent.db.database import get_connection
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
@@ -58,14 +59,14 @@ def _check_reserve_authority(
     amount: float,
     actor_id: str,
     *,
+    role: str = "adjuster",
     skip_authority_check: bool = False,
 ) -> None:
-    """Raise ReserveAuthorityError if amount exceeds actor's limit. MVP: workflow/system bypass."""
+    """Raise ReserveAuthorityError if amount exceeds actor's limit. Workflow/system bypass."""
     if skip_authority_check or actor_id in (ACTOR_WORKFLOW, ACTOR_SYSTEM):
         return
-    from claim_agent.config.settings import get_reserve_config
-
-    limit = get_reserve_config()["adjuster_limit"]
+    cfg = get_reserve_config()
+    limit = cfg["supervisor_limit"] if role in ("supervisor", "admin") else cfg["adjuster_limit"]
     if amount > limit:
         raise ReserveAuthorityError(amount, limit, actor_id)
 
@@ -122,11 +123,10 @@ class ClaimRepository:
                 (claim_id, AUDIT_EVENT_CREATED, STATUS_PENDING, "Claim record created", actor_id, after_state),
             )
             # Set initial reserve from estimated_damage at FNOL if configured
-            from claim_agent.config.settings import get_reserve_config
-
             cfg = get_reserve_config()
             est = claim_input.estimated_damage
             if cfg.get("initial_reserve_from_estimated_damage", True) and est is not None and est > 0:
+                safe_actor = sanitize_actor_id(actor_id)
                 conn.execute(
                     "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
                     (est, claim_id),
@@ -136,7 +136,7 @@ class ClaimRepository:
                     INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (claim_id, None, est, "Initial reserve from estimated_damage at FNOL", actor_id),
+                    (claim_id, None, est, "Initial reserve from estimated_damage at FNOL", safe_actor),
                 )
                 reserve_state = json.dumps({"reserve_amount": est})
                 conn.execute(
@@ -144,7 +144,7 @@ class ClaimRepository:
                     INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (claim_id, AUDIT_EVENT_RESERVE_SET, "Initial reserve set from estimated_damage", actor_id, reserve_state),
+                    (claim_id, AUDIT_EVENT_RESERVE_SET, "Initial reserve set from estimated_damage", safe_actor, reserve_state),
                 )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
@@ -421,12 +421,14 @@ class ClaimRepository:
         *,
         reason: str = "",
         actor_id: str = ACTOR_WORKFLOW,
+        role: str = "adjuster",
         skip_authority_check: bool = False,
     ) -> None:
         """Set reserve amount (initial or overwrite). Logs to reserve_history and claim_audit_log."""
         if amount < 0:
             raise DomainValidationError("Reserve amount cannot be negative")
-        _check_reserve_authority(amount, actor_id, skip_authority_check=skip_authority_check)
+        _check_reserve_authority(amount, actor_id, role=role, skip_authority_check=skip_authority_check)
+        safe_actor = sanitize_actor_id(actor_id)
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT reserve_amount FROM claims WHERE id = ?", (claim_id,)
@@ -443,7 +445,7 @@ class ClaimRepository:
                 INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (claim_id, old_amount, amount, reason or "Reserve set", actor_id),
+                (claim_id, old_amount, amount, reason or "Reserve set", safe_actor),
             )
             before_state = json.dumps({"reserve_amount": old_amount})
             after_state = json.dumps({"reserve_amount": amount})
@@ -452,7 +454,7 @@ class ClaimRepository:
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, AUDIT_EVENT_RESERVE_SET, reason or "Reserve set", actor_id, before_state, after_state),
+                (claim_id, AUDIT_EVENT_RESERVE_SET, reason or "Reserve set", safe_actor, before_state, after_state),
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=None, summary=f"Reserve set to ${amount:,.2f}")
@@ -465,12 +467,14 @@ class ClaimRepository:
         *,
         reason: str = "",
         actor_id: str = ACTOR_WORKFLOW,
+        role: str = "adjuster",
         skip_authority_check: bool = False,
     ) -> None:
         """Adjust reserve amount. Uses set_reserve if no prior reserve; otherwise logs as adjustment."""
         if new_amount < 0:
             raise DomainValidationError("Reserve amount cannot be negative")
-        _check_reserve_authority(new_amount, actor_id, skip_authority_check=skip_authority_check)
+        _check_reserve_authority(new_amount, actor_id, role=role, skip_authority_check=skip_authority_check)
+        safe_actor = sanitize_actor_id(actor_id)
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT reserve_amount FROM claims WHERE id = ?", (claim_id,)
@@ -478,7 +482,17 @@ class ClaimRepository:
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_amount = row["reserve_amount"]
-            is_initial = old_amount is None
+        if old_amount is None:
+            self.set_reserve(
+                claim_id,
+                new_amount,
+                reason=reason,
+                actor_id=actor_id,
+                role=role,
+                skip_authority_check=skip_authority_check,
+            )
+            return
+        with get_connection(self._db_path) as conn:
             conn.execute(
                 "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
                 (new_amount, claim_id),
@@ -488,9 +502,8 @@ class ClaimRepository:
                 INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (claim_id, old_amount, new_amount, reason or "Reserve adjusted", actor_id),
+                (claim_id, old_amount, new_amount, reason or "Reserve adjusted", safe_actor),
             )
-            audit_action = AUDIT_EVENT_RESERVE_SET if is_initial else AUDIT_EVENT_RESERVE_ADJUSTED
             before_state = json.dumps({"reserve_amount": old_amount})
             after_state = json.dumps({"reserve_amount": new_amount})
             conn.execute(
@@ -498,7 +511,14 @@ class ClaimRepository:
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, audit_action, reason or "Reserve adjusted", actor_id, before_state, after_state),
+                (
+                    claim_id,
+                    AUDIT_EVENT_RESERVE_ADJUSTED,
+                    reason or "Reserve adjusted",
+                    safe_actor,
+                    before_state,
+                    after_state,
+                ),
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=None, summary=f"Reserve adjusted to ${new_amount:,.2f}")
