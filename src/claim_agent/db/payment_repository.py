@@ -13,12 +13,10 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_PAYMENT_VOIDED,
 )
 from claim_agent.db.database import get_connection
-from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, PaymentAuthorityError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, PaymentAuthorityError, PaymentNotFoundError
 from claim_agent.models.payment import (
     ClaimPaymentCreate,
-    PaymentMethod,
     PaymentStatus,
-    PayeeType,
 )
 from claim_agent.utils.sanitization import sanitize_actor_id
 
@@ -180,15 +178,16 @@ class PaymentRepository:
                 "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
             ).fetchone()
             if row is None:
-                raise DomainValidationError(f"Payment not found: {payment_id}")
+                raise PaymentNotFoundError(f"Payment not found: {payment_id}")
             old_status = row["status"]
             _validate_status_transition(old_status, _STATUS_ISSUED)
             claim_id = row["claim_id"]
             updates = ["status = ?", "issued_at = datetime('now')", "updated_at = datetime('now')"]
             params: list[Any] = [_STATUS_ISSUED]
             if check_number is not None:
+                safe_check_number = check_number.strip()[:100]
                 updates.append("check_number = ?")
-                params.append(check_number)
+                params.append(safe_check_number)
             params.append(payment_id)
             conn.execute(
                 f"UPDATE claim_payments SET {', '.join(updates)} WHERE id = ?",
@@ -220,7 +219,7 @@ class PaymentRepository:
                 "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
             ).fetchone()
             if row is None:
-                raise DomainValidationError(f"Payment not found: {payment_id}")
+                raise PaymentNotFoundError(f"Payment not found: {payment_id}")
             old_status = row["status"]
             _validate_status_transition(old_status, _STATUS_CLEARED)
             claim_id = row["claim_id"]
@@ -260,7 +259,7 @@ class PaymentRepository:
                 "SELECT * FROM claim_payments WHERE id = ?", (payment_id,)
             ).fetchone()
             if row is None:
-                raise DomainValidationError(f"Payment not found: {payment_id}")
+                raise PaymentNotFoundError(f"Payment not found: {payment_id}")
             old_status = row["status"]
             _validate_status_transition(old_status, _STATUS_VOIDED)
             claim_id = row["claim_id"]
