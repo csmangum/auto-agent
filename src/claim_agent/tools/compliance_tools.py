@@ -105,6 +105,11 @@ def get_compliance_due_date_tool(
             "due_date": None,
         })
     rules = get_state_rules(normalized)
+    if rules is None:
+        return json.dumps({
+            "error": f"No compliance rules found for state: {normalized}.",
+            "due_date": None,
+        })
     days = (
         rules.acknowledgment_days
         if deadline_type == "acknowledgment"
