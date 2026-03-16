@@ -220,9 +220,6 @@ def record_arbitration_filing_impl(
 
     Returns JSON with confirmation.
     """
-    from claim_agent.db.database import get_db_path
-    from claim_agent.db.repository import ClaimRepository
-
     try:
         repo = ClaimRepository(get_db_path())
         repo.update_subrogation_case(

@@ -865,6 +865,41 @@ class TestReserve:
         assert "reserve_amount" in data
         assert data["reserve_amount"] == 7500.0
 
+    def test_get_claim_includes_subrogation_cases_and_liability(self, client):
+        """GET /claims/{id} includes subrogation_cases and liability fields when set."""
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.update_claim_liability(
+            "CLM-TEST001",
+            liability_percentage=25.0,
+            liability_basis="Rear-ended; insured 25% at fault.",
+        )
+        repo.create_subrogation_case(
+            claim_id="CLM-TEST001",
+            case_id="SUB-CLM-TEST001-001",
+            amount_sought=2500.0,
+            opposing_carrier="Other Carrier Inc.",
+            liability_percentage=25.0,
+            liability_basis="Same as claim.",
+        )
+        resp = client.get("/api/claims/CLM-TEST001")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "liability_percentage" in data
+        assert data["liability_percentage"] == 25.0
+        assert "liability_basis" in data
+        assert "Rear-ended" in data["liability_basis"]
+        assert "subrogation_cases" in data
+        assert len(data["subrogation_cases"]) == 1
+        sc = data["subrogation_cases"][0]
+        assert sc["case_id"] == "SUB-CLM-TEST001-001"
+        assert sc["claim_id"] == "CLM-TEST001"
+        assert sc["amount_sought"] == 2500.0
+        assert sc["opposing_carrier"] == "Other Carrier Inc."
+        assert sc["liability_percentage"] == 25.0
+        assert sc["status"] == "pending"
+
 
 # -------------------------------------------------------------------
 # Metrics endpoints

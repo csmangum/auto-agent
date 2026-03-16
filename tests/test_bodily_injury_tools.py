@@ -5,7 +5,14 @@ from unittest.mock import patch
 
 from claim_agent.tools.bodily_injury_logic import (
     assess_injury_severity_impl,
+    audit_medical_bills_impl,
+    build_treatment_timeline_impl,
     calculate_bi_settlement_impl,
+    calculate_loss_of_earnings_impl,
+    check_cms_reporting_required_impl,
+    check_minor_settlement_approval_impl,
+    check_pip_medpay_exhaustion_impl,
+    get_structured_settlement_option_impl,
     query_medical_records_impl,
 )
 
@@ -149,3 +156,142 @@ class TestCalculateBISettlement:
         data = json.loads(result)
         assert data["policy_bi_limit_per_person"] == 100_000.0
         assert data["policy_bi_limit_per_accident"] == 300_000.0
+
+
+class TestCheckPIPMedPayExhaustion:
+    """Tests for check_pip_medpay_exhaustion_impl."""
+
+    def test_no_fault_state_has_pip(self):
+        """FL state has PIP; exhaustion depends on medical charges vs limit."""
+        result = check_pip_medpay_exhaustion_impl(
+            claim_id="CLM-001",
+            policy_number="POL-001",
+            medical_charges=15_000.0,
+            loss_state="FL",
+        )
+        data = json.loads(result)
+        assert data["has_pip_medpay"] is True
+        assert data["pip_medpay_limit"] == 10_000.0
+        assert data["exhausted"] is True
+        assert data["bi_settlement_allowed"] is True
+
+    def test_empty_claim_id_returns_error(self):
+        """Empty claim_id returns error."""
+        result = check_pip_medpay_exhaustion_impl(
+            claim_id="",
+            policy_number="POL-001",
+            medical_charges=5000.0,
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data["bi_settlement_allowed"] is False
+
+
+class TestCheckCMSReportingRequired:
+    """Tests for check_cms_reporting_required_impl."""
+
+    def test_medicare_eligible_over_threshold_requires_reporting(self):
+        """Medicare beneficiary with settlement >= $750 requires reporting."""
+        result = check_cms_reporting_required_impl(
+            claim_id="CLM-001",
+            settlement_amount=5000.0,
+            claimant_medicare_eligible=True,
+        )
+        data = json.loads(result)
+        assert data["reporting_required"] is True
+        assert data["reporting_threshold"] == 750
+
+    def test_below_threshold_no_reporting(self):
+        """Settlement below $750 does not require reporting."""
+        result = check_cms_reporting_required_impl(
+            claim_id="CLM-001",
+            settlement_amount=500.0,
+            claimant_medicare_eligible=True,
+        )
+        data = json.loads(result)
+        assert data["reporting_required"] is False
+
+
+class TestCheckMinorSettlementApproval:
+    """Tests for check_minor_settlement_approval_impl."""
+
+    def test_minor_requires_court_approval(self):
+        """Claimant under 18 requires court approval."""
+        result = check_minor_settlement_approval_impl(
+            claim_id="CLM-001",
+            claimant_age=12,
+            loss_state="CA",
+        )
+        data = json.loads(result)
+        assert data["claimant_is_minor"] is True
+        assert data["court_approval_required"] is True
+
+
+class TestGetStructuredSettlementOption:
+    """Tests for get_structured_settlement_option_impl."""
+
+    def test_large_settlement_recommends_structure(self):
+        """Settlement >= $100K recommends structured option."""
+        result = get_structured_settlement_option_impl(
+            claim_id="CLM-001",
+            total_settlement=150_000.0,
+        )
+        data = json.loads(result)
+        assert data["recommended"] is True
+        assert data["lump_sum_amount"] > 0
+        assert "periodic_payments" in data
+
+
+class TestCalculateLossOfEarnings:
+    """Tests for calculate_loss_of_earnings_impl."""
+
+    def test_valid_inputs_returns_amount(self):
+        """Valid wage and days missed returns recommended amount."""
+        result = calculate_loss_of_earnings_impl(
+            pre_accident_income=52_000.0,  # annual
+            days_missed=10,
+            income_type="w2",
+        )
+        data = json.loads(result)
+        assert data["recommended_amount"] > 0
+        assert "daily_rate" in data
+        assert data["documentation_required"] is True
+
+
+class TestAuditMedicalBills:
+    """Tests for audit_medical_bills_impl."""
+
+    def test_audit_returns_findings(self):
+        """Audit returns total_allowed and reduction."""
+        mr = json.dumps({
+            "records": [
+                {"provider": "ER", "charges": 3500, "date_of_service": "2024-01-15"},
+                {"provider": "PCP", "charges": 250, "date_of_service": "2024-01-20"},
+            ],
+            "total_charges": 3750,
+        })
+        result = audit_medical_bills_impl(mr)
+        data = json.loads(result)
+        assert "total_billed" in data
+        assert "total_allowed" in data
+        assert "reduction_amount" in data
+        assert data["total_allowed"] <= data["total_billed"]
+
+
+class TestBuildTreatmentTimeline:
+    """Tests for build_treatment_timeline_impl."""
+
+    def test_timeline_from_records(self):
+        """Build timeline from medical records."""
+        mr = json.dumps({
+            "records": [
+                {"provider": "ER", "charges": 3500, "date_of_service": "2024-01-15", "treatment": "Exam", "diagnosis": "Strain"},
+                {"provider": "PCP", "charges": 250, "date_of_service": "2024-01-25", "treatment": "Follow-up", "diagnosis": "Follow-up"},
+            ],
+            "total_charges": 3750,
+        })
+        result = build_treatment_timeline_impl(mr, incident_date="2024-01-10")
+        data = json.loads(result)
+        assert data["treatment_duration_days"] == 10
+        assert len(data["events"]) == 2
+        assert data["total_charges"] == 3750

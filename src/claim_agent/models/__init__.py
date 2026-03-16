@@ -1,5 +1,17 @@
 """Pydantic models for claims."""
 
+from claim_agent.models.bodily_injury import (
+    CMSReportingStatus,
+    LienRecord,
+    LienType,
+    LossOfEarnings,
+    MinorSettlementStatus,
+    PIPMedPayExhaustion,
+    ProviderBill,
+    StructuredSettlementOption,
+    TreatmentEvent,
+    TreatmentTimeline,
+)
 from claim_agent.models.claim import (
     Attachment,
     AttachmentType,
@@ -25,9 +37,19 @@ __all__ = [
     "ClaimReviewReport",
     "ClaimType",
     "ComplianceCheck",
+    "CMSReportingStatus",
     "EscalationOutput",
+    "LienRecord",
+    "LienType",
+    "LossOfEarnings",
+    "MinorSettlementStatus",
+    "PIPMedPayExhaustion",
+    "ProviderBill",
     "ReviewIssue",
     "RouterOutput",
+    "StructuredSettlementOption",
+    "TreatmentEvent",
+    "TreatmentTimeline",
     "UserContext",
     "UserType",
     "ClaimParty",

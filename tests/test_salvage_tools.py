@@ -189,3 +189,14 @@ class TestRecordDmvSalvageReport:
         assert meta is not None
         assert meta["dmv_reference"] == "DMV-12345678-20260316"
         assert meta["salvage_title_status"] == "dmv_reported"
+
+    def test_record_dmv_report_nonexistent_claim_returns_error(self, temp_claim_db):
+        """When claim does not exist, return JSON with error and claim_id."""
+        result = record_dmv_salvage_report_impl(
+            claim_id="CLM-NONEXISTENT",
+            dmv_reference="DMV-999",
+            ctx=None,
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data["claim_id"] == "CLM-NONEXISTENT"

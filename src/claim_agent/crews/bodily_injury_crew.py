@@ -57,20 +57,19 @@ Output a structured intake summary with injury_description, incident_summary, an
 INTAKE SUMMARY (from previous task):
 Use the injury_description and incident_summary from the intake task.
 
-Review medical records and assess injury severity.
+Review medical records, audit bills, build treatment timeline, and assess injury severity.
 
 1. Use query_medical_records with claim_id from claim_data (do not generate or invent a claim_id; it will always be present).
-2. Use assess_injury_severity with:
+2. Use build_treatment_timeline with medical_records_json and incident_date from claim_data. Treatment duration affects settlement value.
+3. Use audit_medical_bills with medical_records_json to check for duplicates, excessive treatment, unrelated conditions. Use total_allowed (not total_billed) for settlement if audit reduces amount.
+4. Use assess_injury_severity with:
    - injury_description from the intake summary (or incident_description/damage_description from claim_data)
    - medical_records_json: the JSON output from query_medical_records
-3. Document the medical review: total_medical_charges, severity, recommended_range_low, recommended_range_high.
-4. Use add_claim_note with:
-   - claim_id from claim_data
-   - actor_id: "Medical Records Reviewer"
-   - note: the medical review findings.
+5. Document the medical review: total_medical_charges (post-audit), severity, treatment_duration_days, audit_findings, recommended_range_low, recommended_range_high.
+6. Use add_claim_note with claim_id, actor_id "Medical Records Reviewer", and the medical review findings.
 
-Output the medical review summary with total_medical_charges, severity, recommended_range_low, recommended_range_high, treatment_summary.""",
-                expected_output="Medical review with total_medical_charges, severity (minor/moderate/severe/catastrophic), recommended_range_low, recommended_range_high, treatment_summary.",
+Output the medical review summary with total_medical_charges, severity, treatment_duration_days, audit_reduction (if any), recommended_range_low, recommended_range_high, treatment_summary.""",
+                expected_output="Medical review with total_medical_charges (post-audit), severity, treatment_duration_days, audit_findings, recommended_range_low, recommended_range_high, treatment_summary.",
                 agent_index=1,
                 context_task_indices=[0],
             ),
@@ -79,25 +78,21 @@ Output the medical review summary with total_medical_charges, severity, recommen
 {claim_data}
 
 INTAKE AND MEDICAL REVIEW (from previous tasks):
-Use injury_description, total_medical_charges, severity from prior tasks.
+Use injury_description, total_medical_charges (post-audit), severity from prior tasks.
 
-Assess liability exposure and propose settlement.
+Assess liability exposure, check prerequisites, and propose settlement.
 
-1. Extract claim_id and policy_number from claim_data.
-2. Use calculate_bi_settlement with:
-   - claim_id from claim_data
-   - policy_number from claim_data
-   - medical_charges: total_medical_charges from medical review
-   - injury_severity: severity from medical review (minor/moderate/severe/catastrophic)
-   - pain_suffering_multiplier: 1.5 for moderate; 1.0 for minor; 2.0+ for severe
-3. From the calculate_bi_settlement result, extract proposed_settlement as payout_amount.
-4. Use add_claim_note with:
-   - claim_id from claim_data
-   - actor_id: "Settlement Negotiator"
-   - note: the settlement rationale.
+1. Extract claim_id, policy_number, loss_state from claim_data.
+2. Use check_pip_medpay_exhaustion with claim_id, policy_number, medical_charges, loss_state. If bi_settlement_allowed is false, escalate_claim (PIP not exhausted).
+3. Use calculate_bi_settlement with claim_id, policy_number, medical_charges, injury_severity, pain_suffering_multiplier (1.5 moderate; 1.0 minor; 2.0+ severe).
+4. If wage loss is indicated in claim_data (e.g., "missed work", "lost wages"), use calculate_loss_of_earnings with pre_accident_income and days_missed. Add recommended_amount to special damages.
+5. Use check_cms_reporting_required with claim_id, settlement_amount, claimant_medicare_eligible (infer from claimant age 65+ or claim data). Document if reporting_required.
+6. Use check_minor_settlement_approval with claim_id, claimant_age (if known), claimant_incapacitated, loss_state. If court_approval_required, note that court approval must be obtained before payout.
+7. If proposed settlement >= $100,000, use get_structured_settlement_option with claim_id and total_settlement. Offer structured option when recommended.
+8. Use add_claim_note with claim_id, actor_id "Settlement Negotiator", and settlement rationale including PIP status, CMS reporting, minor approval, structured option.
 
-Return a structured output with payout_amount (proposed settlement), medical_charges, pain_suffering, injury_severity, policy_bi_limit_per_person, policy_bi_limit_per_accident.""",
-                expected_output="Structured settlement proposal: payout_amount, medical_charges, pain_suffering, injury_severity, policy_bi_limit_per_person, policy_bi_limit_per_accident.",
+Return structured output: payout_amount, medical_charges, pain_suffering, injury_severity, loss_of_earnings (if any), pip_medpay_exhausted, cms_reporting_required, minor_court_approval_required, structured_settlement_offered, policy_bi_limit_per_person, policy_bi_limit_per_accident.""",
+                expected_output="Structured settlement proposal with payout_amount, medical_charges, pain_suffering, injury_severity, loss_of_earnings, pip_medpay_exhausted, cms_reporting_required, minor_court_approval_required, structured_settlement_offered, policy limits.",
                 agent_index=2,
                 context_task_indices=[0, 1],
                 output_pydantic=BIWorkflowOutput,
