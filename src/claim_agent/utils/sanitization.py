@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from claim_agent.models.party import AuthorizationStatus, ConsentStatus, PartyType
+
 # Maximum lengths for text fields (characters)
 MAX_INCIDENT_DESCRIPTION = 5000
 MAX_DAMAGE_DESCRIPTION = 3000
@@ -224,11 +226,9 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
         elif key == "parties":
             # Sanitize party list: validate party_type, sanitize text fields
             if isinstance(value, list):
-                valid_party_types = {
-                    "claimant", "policyholder", "witness", "attorney", "provider", "lienholder"
-                }
-                valid_consent = {"pending", "granted", "revoked"}
-                valid_auth = {"pending", "authorized", "denied"}
+                valid_party_types = {pt.value for pt in PartyType}
+                valid_consent = {cs.value for cs in ConsentStatus}
+                valid_auth = {au.value for au in AuthorizationStatus}
                 sanitized_parties = []
                 for item in value:
                     if isinstance(item, dict):
