@@ -29,8 +29,6 @@ def verify_coverage_impl(
     """Verify policy coverage for the claim before routing.
 
     Checks: policy active, coverage type matches loss type, deductible vs damage.
-    Named insured/driver/territory deferred to under_investigation when policy
-    lacks those fields.
 
     Returns:
         CoverageVerificationResult with passed, denied, or under_investigation.

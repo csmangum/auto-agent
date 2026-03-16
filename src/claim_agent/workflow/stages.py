@@ -154,7 +154,7 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
             "details": result.details,
         })
         ctx.context.repo.save_workflow_result(
-            ctx.claim_id, "denied", reason, workflow_output
+            ctx.claim_id, ctx.claim_type, "", workflow_output
         )
         ctx.context.metrics.end_claim(ctx.claim_id, status=STATUS_DENIED)
         record_claim_outcome(
@@ -168,7 +168,7 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
         )
         return {
             "claim_id": ctx.claim_id,
-            "claim_type": "denied",
+            "claim_type": ctx.claim_type,
             "status": STATUS_DENIED,
             "router_output": "",
             "workflow_output": workflow_output,
@@ -196,7 +196,7 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
             "details": result.details,
         })
         ctx.context.repo.save_workflow_result(
-            ctx.claim_id, "under_investigation", reason, workflow_output
+            ctx.claim_id, ctx.claim_type, "", workflow_output
         )
         ctx.context.metrics.end_claim(ctx.claim_id, status=STATUS_UNDER_INVESTIGATION)
         record_claim_outcome(
@@ -212,7 +212,7 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
         )
         return {
             "claim_id": ctx.claim_id,
-            "claim_type": "under_investigation",
+            "claim_type": ctx.claim_type,
             "status": STATUS_UNDER_INVESTIGATION,
             "router_output": "",
             "workflow_output": workflow_output,
