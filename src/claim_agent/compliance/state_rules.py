@@ -80,6 +80,18 @@ _STATE_RULES: dict[str, StateRules] = {
         comparative_fault_type="pure_comparative",
         comparative_fault_bar=None,
     ),
+    "Georgia": StateRules(
+        state="Georgia",
+        prompt_payment_days=30,
+        total_loss_threshold=0.75,
+        diminished_value_required=True,
+        siu_referral_threshold=75,
+        acknowledgment_days=15,
+        investigation_days=30,
+        appraisal_rights=True,
+        comparative_fault_type="modified_comparative_51",
+        comparative_fault_bar=51.0,
+    ),
     "Texas": StateRules(
         state="Texas",
         prompt_payment_days=30,

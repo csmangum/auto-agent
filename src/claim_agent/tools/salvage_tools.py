@@ -5,6 +5,7 @@ from crewai.tools import tool
 from claim_agent.tools.salvage_logic import (
     get_salvage_value_impl,
     initiate_title_transfer_impl,
+    record_dmv_salvage_report_impl,
     record_salvage_disposition_impl,
 )
 
@@ -74,6 +75,31 @@ def initiate_title_transfer(
         make=make,
         model=model,
         disposition_type=disposition_type,
+    )
+
+
+@tool("Record DMV Salvage Report")
+def record_dmv_salvage_report(
+    claim_id: str,
+    dmv_reference: str,
+    salvage_title_status: str = "dmv_reported",
+) -> str:
+    """Record that salvage title was reported to state DMV.
+
+    Call after initiate_title_transfer to persist dmv_reference and status
+    on the claim for salvage title tracking.
+    Args:
+        claim_id: The claim ID.
+        dmv_reference: DMV reference number from title transfer.
+        salvage_title_status: pending, dmv_reported, or certificate_issued.
+
+    Returns:
+        JSON with recorded DMV report details.
+    """
+    return record_dmv_salvage_report_impl(
+        claim_id=claim_id,
+        dmv_reference=dmv_reference,
+        salvage_title_status=salvage_title_status,
     )
 
 

@@ -45,6 +45,7 @@ WORKFLOW OUTPUT:
 {workflow_output}
 
 Arrange disposition by initiating the title transfer. Use initiate_title_transfer with claim_id from claim_data, vin, vehicle_year, vehicle_make, vehicle_model, and disposition_type from the salvage coordinator's recommendation (auction, owner_retention, or scrap).
+Then call record_dmv_salvage_report with claim_id and dmv_reference from the transfer result to persist salvage title tracking on the claim.
 
 Output the transfer_id and dmv_reference. Use generate_report to document the title transfer initiation.""",
                 expected_output="Title transfer initiated with transfer_id and DMV reference.",

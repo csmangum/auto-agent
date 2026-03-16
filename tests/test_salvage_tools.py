@@ -1,10 +1,14 @@
 """Unit tests for salvage tools."""
 
 import json
+import tempfile
+
+import pytest
 
 from claim_agent.tools.salvage_logic import (
     get_salvage_value_impl,
     initiate_title_transfer_impl,
+    record_dmv_salvage_report_impl,
     record_salvage_disposition_impl,
 )
 
@@ -138,3 +142,50 @@ class TestRecordSalvageDisposition:
         )
         data = json.loads(result)
         assert data["disposition_type"] == "auction"
+
+
+class TestRecordDmvSalvageReport:
+    @pytest.fixture
+    def temp_claim_db(self, monkeypatch):
+        """Create temp DB with a claim for DMV report testing."""
+        import os
+        import sqlite3
+
+        from claim_agent.db.database import init_db
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            path = f.name
+        monkeypatch.setenv("CLAIMS_DB_PATH", path)
+        init_db(path)
+        with sqlite3.connect(path) as conn:
+            conn.execute(
+                "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("CLM-DMV-001", "POL-001", "1HGBH41JXMN109186", 2021, "Honda", "Accord", "processing"),
+            )
+        yield path
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+    def test_record_dmv_report(self, temp_claim_db):
+        from claim_agent.db.repository import ClaimRepository
+
+        # Uses CLAIMS_DB_PATH from monkeypatch in temp_claim_db fixture
+        result = record_dmv_salvage_report_impl(
+            claim_id="CLM-DMV-001",
+            dmv_reference="DMV-12345678-20260316",
+            salvage_title_status="dmv_reported",
+            ctx=None,
+        )
+        data = json.loads(result)
+        assert data["claim_id"] == "CLM-DMV-001"
+        assert data["dmv_reference"] == "DMV-12345678-20260316"
+        assert data["salvage_title_status"] == "dmv_reported"
+        assert "reported_at" in data
+
+        repo = ClaimRepository()
+        meta = repo.get_claim_total_loss_metadata("CLM-DMV-001")
+        assert meta is not None
+        assert meta["dmv_reference"] == "DMV-12345678-20260316"
+        assert meta["salvage_title_status"] == "dmv_reported"

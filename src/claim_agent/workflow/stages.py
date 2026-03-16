@@ -1007,7 +1007,8 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         elif c.claim_type == ClaimType.PARTIAL_LOSS.value:
             crew = create_partial_loss_crew(c.context.llm)
         else:
-            crew = create_total_loss_crew(c.context.llm)
+            loss_state = c.claim_data_with_id.get("loss_state") or "California"
+            crew = create_total_loss_crew(c.context.llm, state=loss_state, use_rag=True)
 
         try:
             workflow_result = _kickoff_with_retry(crew, crew_inputs)

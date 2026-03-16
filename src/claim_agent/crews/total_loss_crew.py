@@ -47,18 +47,21 @@ Use the evaluate_damage tool. If the description suggests total loss (e.g. total
             ),
             TaskConfig(
                 description="""Fetch the current market value for the vehicle using fetch_vehicle_value.
-Use vin, vehicle_year, vehicle_make, vehicle_model from the claim_data.""",
-                expected_output="Vehicle value in dollars, condition, and source.",
+Use vin, vehicle_year, vehicle_make, vehicle_model from the claim_data.
+If comparables are returned, include them for the payout step.
+Use loss_state from claim_data for state-specific valuation requirements.""",
+                expected_output="Vehicle value in dollars, condition, source, and comparables if available.",
                 agent_index=1,
                 context_task_indices=[0],
             ),
             TaskConfig(
                 description="""If total loss: calculate payout using the calculate_payout tool.
-Pass vehicle value from the valuation step and the policy_number from claim_data.
-The tool will look up the deductible and compute payout (vehicle value minus deductible).
-
-Return a structured output with payout_amount (from the tool), vehicle_value, deductible, and calculation from the calculate_payout tool result.""",
-                expected_output="Structured output: payout_amount (float), vehicle_value (float), deductible (float), calculation (str).",
+Pass vehicle value from the valuation step and policy_number from claim_data.
+Use loss_state from claim_data when available for tax/title/fees (required in many states).
+If the policyholder may retain salvage, call get_salvage_value with vin, vehicle_year, vehicle_make, vehicle_model, damage_description, and vehicle_value from claim_data or valuation. Then call calculate_payout with owner_retain_salvage=True and salvage_value from get_salvage_value.
+Use get_total_loss_requirements(state=loss_state) for state-specific requirements.
+Return TotalLossWorkflowOutput with payout_amount, vehicle_value, deductible, calculation, and total_loss_details (acv_base, tax_title_fees, acv_total, salvage_deduction, owner_retain_option, comparable_vehicles from valuation if available).""",
+                expected_output="Structured output: payout_amount, vehicle_value, deductible, calculation, total_loss_details (ACV breakdown, tax/fees, salvage deduction, owner-retain option).",
                 agent_index=2,
                 context_task_indices=[0, 1],
                 output_pydantic=TotalLossWorkflowOutput,

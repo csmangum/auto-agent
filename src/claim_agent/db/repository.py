@@ -1071,6 +1071,34 @@ class ClaimRepository:
             if cursor.rowcount == 0:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
 
+    def update_claim_total_loss_metadata(
+        self,
+        claim_id: str,
+        total_loss_metadata: dict[str, Any],
+    ) -> None:
+        """Update total_loss_metadata JSON on a claim (ACV breakdown, DMV, salvage status)."""
+        meta_json = json.dumps(total_loss_metadata, default=str)
+        with get_connection(self._db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE claims SET total_loss_metadata = ?, updated_at = datetime('now') WHERE id = ?",
+                (meta_json, claim_id),
+            )
+            if cursor.rowcount == 0:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+
+    def get_claim_total_loss_metadata(self, claim_id: str) -> dict[str, Any] | None:
+        """Get total_loss_metadata for a claim, or None if not set."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT total_loss_metadata FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+        if not row or row[0] is None:
+            return None
+        try:
+            return json.loads(row[0])
+        except json.JSONDecodeError:
+            return None
+
     def create_subrogation_case(
         self,
         claim_id: str,

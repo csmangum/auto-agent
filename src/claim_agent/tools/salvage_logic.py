@@ -5,6 +5,10 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from claim_agent.context import ClaimContext
 
 
 logger = logging.getLogger(__name__)
@@ -165,5 +169,39 @@ def record_salvage_disposition_impl(
         "notes": notes or "",
         "recorded_at": _utc_now().isoformat().replace("+00:00", "Z"),
         "message": "Salvage disposition recorded.",
+    }
+    return json.dumps(result)
+
+
+def record_dmv_salvage_report_impl(
+    claim_id: str,
+    dmv_reference: str,
+    *,
+    salvage_title_status: str = "dmv_reported",
+    ctx: ClaimContext | None = None,
+) -> str:
+    """Record that salvage title was reported to state DMV.
+
+    Updates claim total_loss_metadata with dmv_reference, reported_at,
+    salvage_title_status: pending | dmv_reported | certificate_issued.
+    """
+    from claim_agent.db.repository import ClaimRepository
+
+    repo = ctx.repo if ctx else ClaimRepository()
+    existing = repo.get_claim_total_loss_metadata(claim_id) or {}
+    reported_at = _utc_now().isoformat().replace("+00:00", "Z")
+    merged = {
+        **existing,
+        "dmv_reference": dmv_reference,
+        "reported_at": reported_at,
+        "salvage_title_status": salvage_title_status,
+    }
+    repo.update_claim_total_loss_metadata(claim_id, merged)
+    result = {
+        "claim_id": claim_id,
+        "dmv_reference": dmv_reference,
+        "reported_at": reported_at,
+        "salvage_title_status": salvage_title_status,
+        "message": "DMV salvage report recorded.",
     }
     return json.dumps(result)

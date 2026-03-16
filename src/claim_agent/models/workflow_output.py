@@ -14,6 +14,36 @@ class DocumentVerifiedSummary(TypedDict, total=False):
     recommendation: str
 
 
+class TotalLossDetails(BaseModel):
+    """ACV breakdown and total loss settlement details."""
+
+    acv_base: float | None = Field(
+        default=None, description="Base ACV from valuation"
+    )
+    tax_title_fees: float | None = Field(
+        default=None, description="Sales tax, DMV fees, registration"
+    )
+    acv_total: float | None = Field(
+        default=None, description="acv_base + tax_title_fees"
+    )
+    salvage_deduction: float | None = Field(
+        default=None, description="Deduction if owner-retained salvage"
+    )
+    owner_retain_option: bool = Field(
+        default=False, description="Whether owner-retain option was offered"
+    )
+    comparable_vehicles: list[dict] = Field(
+        default_factory=list,
+        description="Comparable vehicles used for valuation",
+    )
+    diminished_value: float | None = Field(
+        default=None, description="Diminished value amount if state requires"
+    )
+    gap_insurance_applied: bool = Field(
+        default=False, description="Whether gap insurance covered shortfall"
+    )
+
+
 class TotalLossWorkflowOutput(BaseModel):
     """Structured output from Total Loss crew final task."""
 
@@ -28,6 +58,10 @@ class TotalLossWorkflowOutput(BaseModel):
     )
     calculation: str | None = Field(
         default=None, description="One-line calculation"
+    )
+    total_loss_details: TotalLossDetails | None = Field(
+        default=None,
+        description="ACV breakdown, comparables, tax/title/fees, salvage deduction",
     )
 
 

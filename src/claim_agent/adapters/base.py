@@ -34,6 +34,8 @@ class ValuationAdapter(ABC):
         """Return valuation data, or ``None`` if no match.
 
         Expected keys when found: ``value`` (float), ``condition`` (str).
+        Optional: ``comparables`` (list of dicts with vin, year, make, model,
+        price, mileage, source) for comparable vehicle analysis.
         """
         ...
 

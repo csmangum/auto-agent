@@ -256,6 +256,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN liability_percentage REAL")
         if "liability_basis" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN liability_basis TEXT")
+        if "total_loss_metadata" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN total_loss_metadata TEXT")
     except sqlite3.OperationalError:
         pass
 
