@@ -103,6 +103,9 @@ __all__ = [
     "create_claim_task",
     "update_claim_task",
     "get_claim_tasks",
+    # Compliance tools (state-specific deadlines)
+    "get_state_compliance_summary",
+    "get_compliance_due_date_tool",
 ]
 
 
@@ -408,4 +411,12 @@ def __getattr__(name: str):
         from claim_agent.tools.task_tools import get_claim_tasks
         setattr(mod, "get_claim_tasks", get_claim_tasks)
         return get_claim_tasks
+    if name == "get_state_compliance_summary":
+        from claim_agent.tools.compliance_tools import get_state_compliance_summary
+        setattr(mod, "get_state_compliance_summary", get_state_compliance_summary)
+        return get_state_compliance_summary
+    if name == "get_compliance_due_date_tool":
+        from claim_agent.tools.compliance_tools import get_compliance_due_date_tool
+        setattr(mod, "get_compliance_due_date_tool", get_compliance_due_date_tool)
+        return get_compliance_due_date_tool
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -99,14 +99,15 @@ class ClaimRepository:
             [a.model_dump(mode="json") for a in claim_input.attachments],
             default=str,
         )
+        loss_state_val = claim_input.loss_state.strip() if claim_input.loss_state else None
         with get_connection(self._db_path) as conn:
             conn.execute(
                 """
                 INSERT INTO claims (
                     id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                     incident_date, incident_description, damage_description, estimated_damage,
-                    claim_type, status, attachments
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    claim_type, loss_state, status, attachments
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     claim_id,
@@ -120,6 +121,7 @@ class ClaimRepository:
                     claim_input.damage_description,
                     claim_input.estimated_damage,
                     None,
+                    loss_state_val,
                     STATUS_PENDING,
                     attachments_json,
                 ),

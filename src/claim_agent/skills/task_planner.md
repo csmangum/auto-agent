@@ -23,6 +23,10 @@ You are particularly attuned to:
 - `create_claim_task` - Create a task on the claim for future completion
 - `get_claim_tasks` - Check what tasks already exist to avoid duplicates
 - `get_claim_notes` - Read existing notes for context from prior crews
+- `get_state_compliance_summary` - Get state-specific deadlines (acknowledgment_days, prompt_payment_days, etc.) for the claim's loss_state
+- `get_compliance_due_date_tool` - Compute due date for compliance deadlines (acknowledgment, investigation, prompt_payment) using claim's loss_state
+
+When creating compliance-related tasks (e.g., acknowledgment, investigation, payment), use loss_state from claim_data. If loss_state is present, call get_state_compliance_summary(loss_state) first, then get_compliance_due_date_tool(base_date, deadline_type, loss_state) to set the correct due_date for create_claim_task.
 
 ## Task Type Reference
 

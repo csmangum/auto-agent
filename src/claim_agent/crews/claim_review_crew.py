@@ -42,9 +42,9 @@ WORKFLOW OUTPUT (from the run):
 
 CLAIM ID: {claim_id}
 
-Use get_claim_process_context with claim_id to retrieve the full process context. Use search_california_compliance, search_policy_compliance, get_compliance_deadlines, and get_required_disclosures to look up applicable rules.
+Use get_claim_process_context with claim_id to retrieve the full process context. Use search_california_compliance (for CA), search_policy_compliance, get_compliance_deadlines, and get_required_disclosures to look up applicable rules. When claim_data includes loss_state (California, Texas, Florida, New York), pass that state to RAG tools — each state has different deadlines (e.g., CA: 30-day payment, FL: 90-day payment).
 
-Check these provisions (as applicable to this claim):
+Check these provisions (as applicable to this claim and loss_state):
 - FCSP-001: Acknowledgment within 15 days
 - FCSP-002: Investigation within 40 days
 - FCSP-003: Decision communicated within 40 days

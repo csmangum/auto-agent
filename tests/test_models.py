@@ -122,6 +122,22 @@ class TestClaimInput:
         dumped = claim.model_dump(mode="json")
         assert dumped["incident_date"] == "2025-01-15"
 
+    def test_valid_with_loss_state(self):
+        """ClaimInput accepts optional loss_state for state-specific compliance."""
+        data = {
+            "policy_number": "POL-001",
+            "vin": "VIN123",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Test",
+            "damage_description": "Test",
+            "loss_state": "California",
+        }
+        claim = ClaimInput(**data)
+        assert claim.loss_state == "California"
+
     def test_valid_with_attachments(self):
         data = {
             "policy_number": "POL-001",

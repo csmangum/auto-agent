@@ -115,8 +115,12 @@ def calculate_repair_estimate(
     policy_number: str,
     shop_id: str | None = None,
     part_type_preference: str = "aftermarket",
+    loss_state: str | None = None,
 ) -> str:
     """Calculate a complete repair estimate including parts and labor.
+
+    Uses state-specific total loss threshold when loss_state is provided
+    (e.g., California 75%, Florida/Texas 80%). Use loss_state from claim_data when available.
 
     Args:
         damage_description: Description of the damage.
@@ -125,6 +129,7 @@ def calculate_repair_estimate(
         policy_number: Policy number for deductible lookup.
         shop_id: Optional shop ID for labor rate.
         part_type_preference: Preferred part type: oem, aftermarket, refurbished.
+        loss_state: State/jurisdiction where loss occurred (California, Texas, Florida, New York).
 
     Returns:
         JSON string with full estimate breakdown: parts, labor, deductible, insurance pays.
@@ -136,6 +141,7 @@ def calculate_repair_estimate(
         policy_number=policy_number,
         shop_id=shop_id,
         part_type_preference=part_type_preference,
+        loss_state=loss_state,
     )
 
 
