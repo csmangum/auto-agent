@@ -118,7 +118,6 @@ def verify_coverage_impl(
             details={
                 "physical_damage_covered": False,
                 "policy_coverages": coverages,
-                "damage_description": damage_description[:100],
             },
         )
 
@@ -137,8 +136,23 @@ def verify_coverage_impl(
                             "estimated_damage": est,
                         },
                     )
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Deductible/damage parse failed: deductible=%r estimated_damage=%r: %s",
+                    deductible,
+                    estimated_damage,
+                    e,
+                    extra={"claim_data_keys": list(claim_data.keys())},
+                )
+                return CoverageVerificationResult(
+                    under_investigation=True,
+                    reason="Unable to compare deductible to damage; requires manual review",
+                    details={
+                        "error": "parse_error",
+                        "deductible": str(deductible)[:50],
+                        "estimated_damage": str(estimated_damage)[:50],
+                    },
+                )
 
     return CoverageVerificationResult(
         passed=True,

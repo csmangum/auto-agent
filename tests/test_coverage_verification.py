@@ -89,6 +89,15 @@ class TestVerifyCoverageImpl:
         result2 = verify_coverage_impl({"policy_number": "   "}, ctx=None)
         assert result2.denied
 
+    def test_denies_when_policy_number_not_string(self):
+        """Non-string policy_number (e.g. int) -> deny; details do not expose raw value."""
+        result = verify_coverage_impl({"policy_number": 12345}, ctx=None)
+        assert result.denied
+        assert "policy" in result.reason.lower() or "invalid" in result.reason.lower()
+        # Details should not expose full raw value inappropriately
+        assert "policy_number" in result.details
+        assert len(str(result.details["policy_number"])) <= 20
+
     def test_under_investigation_when_adapter_error(self):
         """Adapter error -> under_investigation."""
         claim_data = {
@@ -135,6 +144,28 @@ class TestVerifyCoverageImpl:
             result = verify_coverage_impl(claim_data, ctx=ctx)
         assert result.denied
         assert "deductible" in result.reason.lower()
+
+    def test_under_investigation_when_deductible_parse_fails(self):
+        """When deductible/damage parse fails -> under_investigation."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision",
+            "estimated_damage": "N/A",
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.get_coverage_config"
+        ) as mock:
+            mock.return_value = {
+                "enabled": True,
+                "deny_when_deductible_exceeds_damage": True,
+            }
+            ctx = _ctx_with_mock_db(":memory:")
+            result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.under_investigation
+        assert not result.passed
+        assert not result.denied
+        assert "manual review" in result.reason.lower() or "compare" in result.reason.lower()
+        assert result.details.get("error") == "parse_error"
 
 
 class TestCoverageStageIntegration:
