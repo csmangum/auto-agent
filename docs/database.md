@@ -60,6 +60,7 @@ erDiagram
     }
     
     claims ||--o{ task_checkpoints : "has"
+    claims ||--o{ claim_parties : "has"
     
     claim_audit_log {
         int id PK
@@ -100,6 +101,22 @@ erDiagram
         text stage_key
         text output
         text created_at
+    }
+    
+    claim_parties {
+        int id PK
+        text claim_id FK
+        text party_type
+        text name
+        text email
+        text phone
+        text address
+        text role
+        int represented_by_id
+        text consent_status
+        text authorization_status
+        text created_at
+        text updated_at
     }
 ```
 
@@ -314,6 +331,48 @@ CREATE INDEX IF NOT EXISTS idx_task_checkpoints_claim_run ON task_checkpoints(cl
 | `stage_key` | TEXT | Stage identifier (e.g. router, escalation_check, workflow, settlement) |
 | `output` | TEXT | Serialized output from that stage |
 | `created_at` | TEXT | Timestamp |
+
+### claim_parties
+
+Claim parties (claimant, policyholder, witness, attorney, provider, lienholder). Stores identity and contact info for people involved in a claim. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement.
+
+```sql
+CREATE TABLE IF NOT EXISTS claim_parties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    party_type TEXT NOT NULL,
+    name TEXT,
+    email TEXT,
+    phone TEXT,
+    address TEXT,
+    role TEXT,
+    represented_by_id INTEGER,
+    consent_status TEXT DEFAULT 'pending',
+    authorization_status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    FOREIGN KEY (represented_by_id) REFERENCES claim_parties(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_id ON claim_parties(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_id, party_type);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Auto-increment primary key |
+| `claim_id` | TEXT | Foreign key to claims.id |
+| `party_type` | TEXT | claimant, policyholder, witness, attorney, provider, lienholder |
+| `name` | TEXT | Party name |
+| `email` | TEXT | Email for contact |
+| `phone` | TEXT | Phone for SMS/contact |
+| `address` | TEXT | Address (optional) |
+| `role` | TEXT | Role within claim (e.g., driver, passenger, named_insured) |
+| `represented_by_id` | INTEGER | FK to claim_parties.id of attorney representing this party |
+| `consent_status` | TEXT | pending, granted, revoked |
+| `authorization_status` | TEXT | pending, authorized, denied |
+| `created_at` | TEXT | Timestamp |
+| `updated_at` | TEXT | Last update timestamp |
 
 ## Status Constants
 

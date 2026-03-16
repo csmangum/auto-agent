@@ -99,6 +99,7 @@ Steps:
    - supplemental_damage_description from supplemental_data
    - vehicle_make, vehicle_year, policy_number from claim_data
    - shop_id from the original estimate (from intake/workflow output)
+   - loss_state from claim_data when available (for state-specific total loss threshold)
 2. Extract supplemental total_estimate, parts_cost, labor_cost, insurance_pays.
 3. Use update_repair_authorization with:
    - claim_id, shop_id from claim_data/original

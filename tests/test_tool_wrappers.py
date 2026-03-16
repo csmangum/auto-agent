@@ -29,6 +29,103 @@ class TestComplianceTools:
         data = json.loads(result)
         assert "matches" in data or "error" in data
 
+    def test_get_state_compliance_summary_happy_path(self):
+        """Test get_state_compliance_summary with valid state returns rules."""
+        from claim_agent.tools.compliance_tools import get_state_compliance_summary
+
+        result = get_state_compliance_summary.run(state="California")
+        data = json.loads(result)
+        assert data.get("state") == "California"
+        assert "acknowledgment_days" in data
+        assert "investigation_days" in data
+        assert "prompt_payment_days" in data
+        assert "total_loss_threshold" in data
+
+    def test_get_state_compliance_summary_unsupported_state(self):
+        """Test get_state_compliance_summary with unsupported state returns error."""
+        from claim_agent.tools.compliance_tools import get_state_compliance_summary
+
+        result = get_state_compliance_summary.run(state="Georgia")
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("state") is None
+
+    def test_get_state_compliance_summary_empty_state(self):
+        """Test get_state_compliance_summary with empty string returns error."""
+        from claim_agent.tools.compliance_tools import get_state_compliance_summary
+
+        result = get_state_compliance_summary.run(state="")
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("state") is None
+
+    def test_get_compliance_due_date_tool_happy_path(self):
+        """Test get_compliance_due_date_tool with valid inputs returns due date."""
+        from claim_agent.tools.compliance_tools import get_compliance_due_date_tool
+
+        result = get_compliance_due_date_tool.run(
+            base_date="2025-01-15",
+            deadline_type="acknowledgment",
+            state="California",
+        )
+        data = json.loads(result)
+        assert data.get("due_date") == "2025-01-30"
+        assert data.get("days") == 15
+        assert data.get("deadline_type") == "acknowledgment"
+        assert data.get("state") == "California"
+
+    def test_get_compliance_due_date_tool_invalid_base_date(self):
+        """Test get_compliance_due_date_tool with invalid base_date returns error."""
+        from claim_agent.tools.compliance_tools import get_compliance_due_date_tool
+
+        result = get_compliance_due_date_tool.run(
+            base_date="not-a-date",
+            deadline_type="acknowledgment",
+            state="California",
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("due_date") is None
+
+    def test_get_compliance_due_date_tool_empty_state(self):
+        """Test get_compliance_due_date_tool with empty state returns error."""
+        from claim_agent.tools.compliance_tools import get_compliance_due_date_tool
+
+        result = get_compliance_due_date_tool.run(
+            base_date="2025-01-15",
+            deadline_type="acknowledgment",
+            state="",
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("due_date") is None
+
+    def test_get_compliance_due_date_tool_empty_base_date(self):
+        """Test get_compliance_due_date_tool with empty base_date returns error."""
+        from claim_agent.tools.compliance_tools import get_compliance_due_date_tool
+
+        result = get_compliance_due_date_tool.run(
+            base_date="",
+            deadline_type="acknowledgment",
+            state="California",
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("due_date") is None
+
+    def test_get_compliance_due_date_tool_unknown_deadline_type(self):
+        """Test get_compliance_due_date_tool with unknown deadline_type returns error."""
+        from claim_agent.tools.compliance_tools import get_compliance_due_date_tool
+
+        result = get_compliance_due_date_tool.run(
+            base_date="2025-01-15",
+            deadline_type="unknown",
+            state="California",
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data.get("due_date") is None
+
 
 class TestEscalationTools:
     """Tests for escalation_tools.py tool wrappers."""

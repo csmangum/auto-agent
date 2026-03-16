@@ -107,6 +107,33 @@ def test_send_user_message_claimant_no_contact_returns_false(repo, claim_id):
     assert "contact" in data["message"].lower() or "not delivered" in data["message"].lower()
 
 
+def test_send_user_message_claimant_resolves_contact_from_parties(repo, claim_id, monkeypatch):
+    """When claimant has contact in claim_parties, message is delivered without explicit email/phone."""
+    from claim_agent.models.party import ClaimPartyInput
+
+    monkeypatch.setattr(
+        "claim_agent.notifications.user.get_notification_config",
+        lambda: {"email_enabled": True, "sms_enabled": True},
+    )
+    repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(
+            party_type="claimant",
+            name="Jane Doe",
+            email="jane@example.com",
+            phone="555-123-4567",
+        ),
+    )
+    result = send_user_message.run(
+        claim_id=claim_id,
+        user_type="claimant",
+        message_content="Please upload damage photos.",
+    )
+    data = json.loads(result)
+    assert data["success"] is True
+    assert data["message_id"] > 0
+
+
 def test_record_user_response_rejects_blank_claim_id(repo, claim_id):
     """When claim_id is provided but blank/whitespace, return error."""
     msg_id = repo.create_follow_up_message(

@@ -9,6 +9,31 @@ export type UserType =
   | "siu"
   | "other";
 
+/** Party types for claim identity management */
+export type PartyType =
+  | "claimant"
+  | "policyholder"
+  | "witness"
+  | "attorney"
+  | "provider"
+  | "lienholder";
+
+export interface ClaimParty {
+  id: number;
+  claim_id: string;
+  party_type: PartyType;
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  role?: string;
+  represented_by_id?: number;
+  consent_status?: string;
+  authorization_status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface FollowUpMessage {
   id: number;
   claim_id: string;
@@ -45,6 +70,7 @@ export interface Claim {
   review_started_at?: string; // ISO datetime when entered needs_review
   notes?: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
   follow_up_messages?: FollowUpMessage[];
+  parties?: ClaimParty[];
   tasks?: ClaimTask[];
   tasks_total?: number;
   /** Attachments: photos, PDFs, estimates, invoices, receipts */

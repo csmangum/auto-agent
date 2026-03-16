@@ -319,10 +319,36 @@ def test_partial_loss_threshold():
         policy_number="POL-001"
     )
     data = json.loads(result)
-    
+
     assert "is_total_loss" in data
     assert "repair_to_value_ratio" in data
     assert "total_loss_threshold" in data
+
+
+def test_partial_loss_state_specific_threshold():
+    """Test that loss_state affects total loss threshold (CA 75%, FL 80%)."""
+    from claim_agent.tools.partial_loss_logic import calculate_repair_estimate_impl
+
+    # Same damage - CA uses 75%, FL uses 80%
+    damage = "Minor bumper scratch"
+    result_ca = calculate_repair_estimate_impl(
+        damage_description=damage,
+        vehicle_make="Honda",
+        vehicle_year=2021,
+        policy_number="POL-001",
+        loss_state="California",
+    )
+    result_fl = calculate_repair_estimate_impl(
+        damage_description=damage,
+        vehicle_make="Honda",
+        vehicle_year=2021,
+        policy_number="POL-001",
+        loss_state="Florida",
+    )
+    data_ca = json.loads(result_ca)
+    data_fl = json.loads(result_fl)
+    assert data_ca["total_loss_threshold"] == 0.75
+    assert data_fl["total_loss_threshold"] == 0.80
 
 
 def test_mock_db_has_repair_shops():

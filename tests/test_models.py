@@ -122,6 +122,22 @@ class TestClaimInput:
         dumped = claim.model_dump(mode="json")
         assert dumped["incident_date"] == "2025-01-15"
 
+    def test_valid_with_loss_state(self):
+        """ClaimInput accepts optional loss_state for state-specific compliance."""
+        data = {
+            "policy_number": "POL-001",
+            "vin": "VIN123",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Test",
+            "damage_description": "Test",
+            "loss_state": "California",
+        }
+        claim = ClaimInput(**data)
+        assert claim.loss_state == "California"
+
     def test_valid_with_attachments(self):
         data = {
             "policy_number": "POL-001",
@@ -143,6 +159,30 @@ class TestClaimInput:
         assert claim.attachments[0].description == "Damage photo"
         assert claim.attachments[1].type == AttachmentType.ESTIMATE
         assert claim.attachments[1].description is None
+
+    def test_valid_with_parties(self):
+        """ClaimInput accepts optional parties for claim identity management."""
+        data = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Rear-ended.",
+            "damage_description": "Bumper damage.",
+            "parties": [
+                {"party_type": "claimant", "name": "Jane Doe", "email": "jane@example.com"},
+                {"party_type": "policyholder", "name": "John Doe", "phone": "555-123-4567"},
+            ],
+        }
+        claim = ClaimInput(**data)
+        assert claim.parties is not None
+        assert len(claim.parties) == 2
+        assert claim.parties[0].party_type == "claimant"
+        assert claim.parties[0].email == "jane@example.com"
+        assert claim.parties[1].party_type == "policyholder"
+        assert claim.parties[1].phone == "555-123-4567"
 
 
 class TestClaimOutput:

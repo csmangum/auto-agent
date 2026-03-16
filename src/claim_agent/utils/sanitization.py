@@ -190,6 +190,9 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
         elif key == "claim_type":
             # Strip from intake; only trusted when set via DB (reviewer/supervisor paths)
             continue
+        elif key == "loss_state":
+            t = _sanitize_text(value, 64) if value else ""
+            out[key] = t if t else None
         elif key == "attachments":
             # Sanitize attachment list: url, type (photo|pdf|estimate|other), description
             if isinstance(value, list):

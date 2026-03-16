@@ -650,6 +650,7 @@ def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     result = _resolve_attachment_urls(row)
     result["notes"] = ctx.repo.get_notes(claim_id)
     result["follow_up_messages"] = ctx.repo.get_follow_up_messages(claim_id)
+    result["parties"] = ctx.repo.get_claim_parties(claim_id)
     tasks, tasks_total = ctx.repo.get_tasks_for_claim(claim_id)
     result["tasks"] = tasks
     result["tasks_total"] = tasks_total

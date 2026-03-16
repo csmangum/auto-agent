@@ -58,6 +58,16 @@ def send_user_message(
 
     try:
         repo = ClaimRepository()
+        # Resolve contact from claim_parties when not provided (claimant/policyholder)
+        if not email and not phone:
+            try:
+                contact = repo.get_primary_contact_for_user_type(claim_id, user_type)
+                if contact:
+                    email = contact.get("email") or email
+                    phone = contact.get("phone") or phone
+            except Exception:
+                pass
+
         msg_id = repo.create_follow_up_message(
             claim_id, user_type, message_content, actor_id="follow_up_agent"
         )

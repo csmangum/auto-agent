@@ -4,7 +4,18 @@ from crewai import Agent
 
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.skills import load_skill, INTAKE, POLICY_CHECKER, ASSIGNMENT
-from claim_agent.tools import add_claim_note, create_claim_task, escalate_claim, generate_claim_id, generate_report, get_claim_notes, get_claim_tasks, query_policy_db
+from claim_agent.tools import (
+    add_claim_note,
+    create_claim_task,
+    escalate_claim,
+    generate_claim_id,
+    generate_report,
+    get_claim_notes,
+    get_claim_tasks,
+    get_state_compliance_summary,
+    get_compliance_due_date_tool,
+    query_policy_db,
+)
 
 
 def create_intake_agent(llm: LLMProtocol | None = None):
@@ -40,7 +51,17 @@ def create_assignment_agent(llm: LLMProtocol | None = None):
         role=skill["role"],
         goal=skill["goal"],
         backstory=skill["backstory"],
-        tools=[add_claim_note, create_claim_task, get_claim_tasks, generate_claim_id, generate_report, get_claim_notes, escalate_claim],
+        tools=[
+            add_claim_note,
+            create_claim_task,
+            get_claim_tasks,
+            generate_claim_id,
+            generate_report,
+            get_claim_notes,
+            escalate_claim,
+            get_state_compliance_summary,
+            get_compliance_due_date_tool,
+        ],
         verbose=True,
         llm=llm,
     )

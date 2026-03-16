@@ -19,7 +19,11 @@ def _temp_claims_db(tmp_path, monkeypatch):
     init_db(str(db_path))
 
 
-def _seed_claim(status: str = "settled", claim_type: str = "partial_loss") -> str:
+def _seed_claim(
+    status: str = "settled",
+    claim_type: str = "partial_loss",
+    loss_state: str | None = None,
+) -> str:
     """Seed a claim and workflow run, return claim_id."""
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
@@ -36,6 +40,7 @@ def _seed_claim(status: str = "settled", claim_type: str = "partial_loss") -> st
             incident_description="Rear-ended at stoplight.",
             damage_description="Rear bumper damage.",
             estimated_damage=4500.0,
+            loss_state=loss_state,
         )
     )
     repo.update_claim_status(claim_id, status, claim_type=claim_type, skip_validation=True)
@@ -56,6 +61,14 @@ class TestGetClaimProcessContext:
         assert "workflow_runs" in result
         assert len(result["workflow_runs"]) >= 1
         assert "notes" in result
+
+    def test_returns_loss_state_when_present(self):
+        """Regression: get_claim_process_context includes loss_state for compliance review."""
+        from claim_agent.tools.review_tools import get_claim_process_context
+
+        claim_id = _seed_claim(loss_state="Florida")
+        result = json.loads(get_claim_process_context.run(claim_id=claim_id))
+        assert result["claim"]["loss_state"] == "Florida"
 
     def test_raises_for_nonexistent_claim(self):
         from claim_agent.exceptions import ClaimNotFoundError

@@ -7,5 +7,22 @@
   "incident_date": "2025-01-15",
   "incident_description": "Rear-ended at stoplight. Damage to rear bumper and trunk.",
   "damage_description": "Rear bumper and trunk damage.",
-  "estimated_damage": 2500
+  "estimated_damage": 2500,
+  "parties": [
+    {
+      "party_type": "claimant",
+      "name": "Jane Doe",
+      "email": "jane.doe@example.com",
+      "phone": "555-123-4567",
+      "role": "driver",
+      "consent_status": "granted"
+    },
+    {
+      "party_type": "policyholder",
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "phone": "555-987-6543",
+      "role": "named_insured"
+    }
+  ]
 }

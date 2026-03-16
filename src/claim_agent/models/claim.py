@@ -6,6 +6,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from claim_agent.models.party import ClaimPartyInput
+
 
 class AttachmentType(str, Enum):
     """Type of claim attachment."""
@@ -76,6 +78,14 @@ class ClaimInput(BaseModel):
     claim_type: Optional[Literal["new", "duplicate", "total_loss", "partial_loss", "bodily_injury", "fraud", "reopened"]] = Field(
         default=None,
         description="Pre-determined claim type (e.g., from reviewer override). Only trusted when set via supervisor/reviewer paths; intake endpoints should not accept this.",
+    )
+    loss_state: Optional[str] = Field(
+        default=None,
+        description="State/jurisdiction where the loss occurred (e.g., California, Texas, Florida, New York). Used for state-specific compliance rules, deadlines, and total loss thresholds.",
+    )
+    parties: Optional[list[ClaimPartyInput]] = Field(
+        default=None,
+        description="Optional claim parties (claimant, policyholder, witness, attorney, provider, lienholder).",
     )
 
 

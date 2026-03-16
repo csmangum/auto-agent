@@ -95,6 +95,7 @@ def get_claim_process_context(claim_id: str) -> str:
             "payout_amount": claim.get("payout_amount"),
             "created_at": claim.get("created_at"),
             "updated_at": claim.get("updated_at"),
+            "loss_state": claim.get("loss_state"),
         },
         "audit_log": audit_log,
         "workflow_runs": runs_out,

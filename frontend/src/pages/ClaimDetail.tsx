@@ -200,6 +200,7 @@ export default function ClaimDetail() {
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
   const followUps = claim?.follow_up_messages ?? [];
+  const parties = claim?.parties ?? [];
   const tasks = claim?.tasks ?? [];
   const attachments = claim?.attachments ?? [];
   const notesFollowUpsCount = notes.length + followUps.length;
@@ -311,6 +312,51 @@ export default function ClaimDetail() {
                 ))}
               </div>
             </div>
+
+            {/* Descriptions */}
+            {/* Parties */}
+            {parties.length > 0 && (
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+                <h3 className="text-sm font-semibold text-gray-300 mb-4">Parties</h3>
+                <div className="space-y-4">
+                  {parties.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex flex-wrap gap-x-6 gap-y-1 text-sm border-b border-gray-700/50 pb-3 last:border-0 last:pb-0"
+                    >
+                      <span className="font-medium text-gray-200 capitalize">
+                        {p.party_type.replace(/_/g, ' ')}
+                      </span>
+                      {p.name && <span className="text-gray-400">{p.name}</span>}
+                      {p.role && (
+                        <span className="text-gray-500 text-xs">({p.role})</span>
+                      )}
+                      {p.email && (
+                        <a
+                          href={`mailto:${p.email}`}
+                          className="text-blue-400 hover:underline"
+                        >
+                          {p.email}
+                        </a>
+                      )}
+                      {p.phone && (
+                        <a
+                          href={`tel:${p.phone}`}
+                          className="text-blue-400 hover:underline"
+                        >
+                          {p.phone}
+                        </a>
+                      )}
+                      {(p.consent_status || p.authorization_status) && (
+                        <span className="text-gray-500 text-xs">
+                          Consent: {p.consent_status ?? '—'} · Auth: {p.authorization_status ?? '—'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Descriptions */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
