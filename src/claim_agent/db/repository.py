@@ -99,7 +99,9 @@ class ClaimRepository:
             [a.model_dump(mode="json") for a in claim_input.attachments],
             default=str,
         )
-        loss_state_val = claim_input.loss_state.strip() if claim_input.loss_state else None
+        loss_state_val = claim_input.loss_state
+        if loss_state_val is not None:
+            loss_state_val = str(loss_state_val).strip() or None
         with get_connection(self._db_path) as conn:
             conn.execute(
                 """

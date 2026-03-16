@@ -574,6 +574,7 @@ def calculate_supplemental_estimate_impl(
     policy_number: str,
     shop_id: Optional[str] = None,
     part_type_preference: str = "aftermarket",
+    loss_state: Optional[str] = None,
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
@@ -582,6 +583,7 @@ def calculate_supplemental_estimate_impl(
     Reuses calculate_repair_estimate_impl with the supplemental damage description.
     Deductible is typically already applied to the original estimate; supplemental
     insurance_pays is usually the full supplemental amount (no additional deductible).
+    Uses state-specific total loss threshold when loss_state is provided.
     """
     estimate_json = calculate_repair_estimate_impl(
         damage_description=supplemental_damage_description,
@@ -590,6 +592,7 @@ def calculate_supplemental_estimate_impl(
         policy_number=policy_number,
         shop_id=shop_id,
         part_type_preference=part_type_preference,
+        loss_state=loss_state,
         ctx=ctx,
     )
     estimate = json.loads(estimate_json)

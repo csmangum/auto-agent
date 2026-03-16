@@ -12,12 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
 
 from claim_agent.rag.constants import normalize_state
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass

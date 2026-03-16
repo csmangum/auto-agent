@@ -5,6 +5,7 @@ from claim_agent.compliance.state_rules import (
     get_total_loss_threshold,
     get_prompt_payment_days,
     get_compliance_due_date,
+    get_siu_referral_threshold,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "get_total_loss_threshold",
     "get_prompt_payment_days",
     "get_compliance_due_date",
+    "get_siu_referral_threshold",
 ]

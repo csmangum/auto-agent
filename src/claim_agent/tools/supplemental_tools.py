@@ -43,11 +43,14 @@ def calculate_supplemental_estimate(
     policy_number: str,
     shop_id: str | None = None,
     part_type_preference: str = "aftermarket",
+    loss_state: str | None = None,
 ) -> str:
     """Calculate repair estimate for supplemental (additional) damage only.
 
     Use when additional damage was discovered during repair. Estimates parts
     and labor for the new damage. Typically no additional deductible applies.
+    Uses state-specific total loss threshold when loss_state is provided (use
+    loss_state from claim_data when available).
 
     Args:
         supplemental_damage_description: Description of the newly discovered damage.
@@ -56,6 +59,7 @@ def calculate_supplemental_estimate(
         policy_number: Policy number for the claim.
         shop_id: Optional shop ID for labor rate (use same shop as original).
         part_type_preference: Preferred part type: oem, aftermarket, refurbished.
+        loss_state: State/jurisdiction where loss occurred (California, Texas, Florida, New York).
 
     Returns:
         JSON string with parts, labor, total_estimate for the supplemental damage.
@@ -67,6 +71,7 @@ def calculate_supplemental_estimate(
         policy_number=policy_number,
         shop_id=shop_id,
         part_type_preference=part_type_preference,
+        loss_state=loss_state,
     )
 
 
