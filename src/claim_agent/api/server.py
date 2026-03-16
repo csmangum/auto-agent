@@ -31,6 +31,7 @@ from claim_agent.api.routes.system import router as system_router
 from claim_agent.api.routes.simulation import router as simulation_router
 from claim_agent.api.routes.chat import router as chat_router
 from claim_agent.api.routes.tasks import router as tasks_router
+from claim_agent.api.routes.payments import router as payments_router
 from claim_agent.config import get_settings
 from claim_agent.db.database import ensure_fresh_db_on_startup
 from claim_agent.events import ensure_webhook_listener_registered
@@ -211,6 +212,7 @@ app.include_router(system_router, prefix="/api")
 app.include_router(simulation_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
+app.include_router(payments_router, prefix="/api")
 
 
 # Serve frontend static files in production (when built)
