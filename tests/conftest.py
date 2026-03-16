@@ -43,10 +43,10 @@ def _seed_test_data(db_path: str) -> None:
         conn.execute(
             "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
             "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "estimated_damage, claim_type, status, payout_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("CLM-TEST001", "POL-001", "1HGBH41JXMN109186", 2021, "Honda", "Accord",
              "2025-01-15", "Rear-ended at stoplight", "Rear bumper damage", 2500.0,
-             "new", "open"),
+             "new", "open", 2500.0),
         )
         conn.execute(
             "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "

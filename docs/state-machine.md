@@ -37,8 +37,8 @@ This ensures closure is documented (settlement or denial).
 
 ## Bypass
 
-- `actor_id="system"` or `force=True` skips validation (for migrations, seeding, or tests)
-- `skip_validation=True` on `update_claim_status()` bypasses the state machine
+- `actor_id="system"` or `force=True` skips validation when calling `validate_transition()` or `can_transition()` directly (for migrations, seeding, or tests)
+- At the repository layer, use `skip_validation=True` on `update_claim_status()` to bypass the state machine
 
 ## Violation Logging
 

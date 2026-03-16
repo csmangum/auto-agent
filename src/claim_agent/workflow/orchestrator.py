@@ -303,7 +303,10 @@ def run_claim_workflow(
             details = str(e)
             if len(details) > 500:
                 details = details[:500] + "..."
-            repo.update_claim_status(claim_id, STATUS_FAILED, details=details, actor_id=_actor)
+            repo.update_claim_status(
+                claim_id, STATUS_FAILED, details=details, actor_id=_actor,
+                skip_validation=True,
+            )
 
             workflow_duration = (time.time() - workflow_start_time) * 1000
             logger.log_event(

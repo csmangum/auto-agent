@@ -153,6 +153,7 @@ def _run_workflow_background(
                     STATUS_FAILED,
                     details="Background workflow failed",
                     actor_id=ACTOR_WORKFLOW,
+                    skip_validation=True,
                 )
             except Exception:
                 logger.exception(
