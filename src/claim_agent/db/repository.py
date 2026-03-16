@@ -1164,10 +1164,14 @@ class ClaimRepository:
             return
         params.append(case_id)
         with get_connection(self._db_path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 f"UPDATE subrogation_cases SET {', '.join(updates)} WHERE case_id = ?",
                 params,
             )
+            if cursor.rowcount == 0:
+                raise DomainValidationError(
+                    f"Subrogation case not found for case_id={case_id}"
+                )
 
     def get_subrogation_cases_by_claim(self, claim_id: str) -> list[dict[str, Any]]:
         """Fetch all subrogation cases for a claim."""

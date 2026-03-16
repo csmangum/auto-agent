@@ -39,6 +39,7 @@ from claim_agent.crews.task_planner_crew import create_task_planner_crew
 from claim_agent.crews.salvage_crew import create_salvage_crew
 from claim_agent.crews.total_loss_crew import create_total_loss_crew
 from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW, STATUS_UNDER_INVESTIGATION
+from claim_agent.rag.constants import DEFAULT_STATE
 from pydantic import ValidationError
 
 from claim_agent.exceptions import MidWorkflowEscalation
@@ -1007,7 +1008,7 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         elif c.claim_type == ClaimType.PARTIAL_LOSS.value:
             crew = create_partial_loss_crew(c.context.llm)
         else:
-            loss_state = c.claim_data_with_id.get("loss_state") or "California"
+            loss_state = c.claim_data_with_id.get("loss_state") or DEFAULT_STATE
             crew = create_total_loss_crew(c.context.llm, state=loss_state, use_rag=True)
 
         try:
@@ -1126,7 +1127,7 @@ def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
         _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
         logger.log_event("crew_started", crew="liability_determination")
         start = time.time()
-        loss_state = c.claim_data.get("loss_state") or "California"
+        loss_state = c.claim_data.get("loss_state") or DEFAULT_STATE
         crew = create_liability_determination_crew(
             c.context.llm, state=loss_state, use_rag=True
         )
@@ -1190,6 +1191,13 @@ def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
             c.workflow_output = _combine_workflow_outputs(
                 c.workflow_output, output, label="Liability determination output"
             )
+        # Repopulate structured liability fields so downstream stages (settlement/subrogation) have them.
+        claim = c.context.repo.get_claim(c.claim_id)
+        if claim:
+            if "liability_percentage" in claim:
+                c.claim_data_with_id["liability_percentage"] = claim["liability_percentage"]
+            if "liability_basis" in claim:
+                c.claim_data_with_id["liability_basis"] = claim["liability_basis"]
 
     return _run_stage(
         ctx,

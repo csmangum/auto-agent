@@ -119,7 +119,7 @@ def fetch_vehicle_value_impl(
         "condition": "good",
         "source": "mock_kbb_estimated",
     }
-    # Add mock comparables for CA TL-002 (≥2 comparables)
+    # Attach mock comparables whenever adapter returns no valuation (e.g. for TL workflows).
     result["comparables"] = _mock_comparables_for_value(
         default_value, year_int, make or "Unknown", model or "Unknown"
     )

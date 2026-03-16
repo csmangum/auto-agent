@@ -3,6 +3,8 @@
 import json
 
 
+from claim_agent.db.database import get_connection
+from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.subrogation_logic import (
     assess_liability_impl,
     build_subrogation_case_impl,
@@ -91,7 +93,37 @@ class TestSendDemandLetter:
 
 
 class TestRecordArbitrationFiling:
-    def test_record_arbitration(self):
+    def test_record_arbitration(self, temp_db):
+        # Use temp_db so impl uses same DB; create claim then subrogation case (FK).
+        with get_connection(temp_db) as conn:
+            conn.execute(
+                """
+                INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+                vehicle_model, incident_date, incident_description, damage_description,
+                estimated_damage, claim_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "CLM-123",
+                    "POL-123",
+                    "1HGBH41JXMN109186",
+                    2021,
+                    "Honda",
+                    "Accord",
+                    "2025-01-15",
+                    "Rear-ended",
+                    "Bumper damage",
+                    2500.0,
+                    "new",
+                    "open",
+                ),
+            )
+        repo = ClaimRepository(temp_db)
+        repo.create_subrogation_case(
+            claim_id="CLM-123",
+            case_id="SUB-CLM-123-001",
+            amount_sought=15000.0,
+        )
         result = record_arbitration_filing_impl(
             case_id="SUB-CLM-123-001",
             arbitration_forum="Arbitration Forums Inc.",
@@ -100,6 +132,16 @@ class TestRecordArbitrationFiling:
         assert "confirmation" in data
         assert data["case_id"] == "SUB-CLM-123-001"
         assert data["arbitration_status"] == "filed"
+
+    def test_record_arbitration_nonexistent_case_returns_error(self):
+        result = record_arbitration_filing_impl(
+            case_id="SUB-NONEXISTENT-999",
+            arbitration_forum="Arbitration Forums Inc.",
+        )
+        data = json.loads(result)
+        assert "error" in data
+        assert data["case_id"] == "SUB-NONEXISTENT-999"
+        assert "not found" in data["error"].lower() or "subrogation" in data["error"].lower()
 
 
 class TestRecordRecovery:

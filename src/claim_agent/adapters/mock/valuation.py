@@ -8,14 +8,16 @@ from claim_agent.data.loader import load_mock_db
 
 
 def _mock_comparables(base_value: float, year: int, make: str, model: str) -> list[dict[str, Any]]:
-    """Generate 1-2 mock comparable vehicles within ±10% of base value."""
+    """Generate 1-2 mock comparable vehicles within ±10% of base value (deterministic per vehicle)."""
     make = (make or "").strip()
     model = (model or "").strip()
+    seed = f"{year}:{make}:{model}:{base_value}"
+    rng = random.Random(seed)
     comps = []
     for i in range(2):
-        pct = 0.90 + random.random() * 0.20  # 90-110% of base
+        pct = 0.90 + rng.random() * 0.20  # 90-110% of base
         price = round(base_value * pct, 2)
-        mileage = random.randint(25000, 85000) if i == 0 else random.randint(30000, 90000)
+        mileage = rng.randint(25000, 85000) if i == 0 else rng.randint(30000, 90000)
         comps.append({
             "vin": f"MOCK{year}{i:02d}{int(price) % 100000:05d}",
             "year": year,

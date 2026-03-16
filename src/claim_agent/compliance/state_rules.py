@@ -172,7 +172,7 @@ def get_comparative_fault_rules(state: str | None) -> dict:
 
     Returns dict with:
     - comparative_fault_type: pure_comparative | modified_comparative_51 | contributory
-    - comparative_fault_bar: float | None (e.g. 0.51 for 51% bar; None for pure comparative)
+    - comparative_fault_bar: float | None (percentage on 0–100 scale, e.g. 51.0 for 51% bar; None for pure comparative)
     - state: str | None
     """
     rules = get_state_rules(state)
