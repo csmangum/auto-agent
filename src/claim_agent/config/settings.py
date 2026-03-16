@@ -41,6 +41,16 @@ def get_reserve_config() -> dict:
     }
 
 
+def get_payment_config() -> dict:
+    """Payment authority limits: adjuster, supervisor, executive."""
+    s = get_settings().payment
+    return {
+        "adjuster_limit": s.adjuster_limit,
+        "supervisor_limit": s.supervisor_limit,
+        "executive_limit": s.executive_limit,
+    }
+
+
 def get_fraud_config() -> dict:
     """Fraud detection thresholds and scores."""
     s = get_settings().fraud
