@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from claim_agent.data.loader import load_california_compliance, load_state_compliance
+from claim_agent.data.loader import load_state_compliance
 from claim_agent.rag.constants import SUPPORTED_STATES, normalize_state
 
 
@@ -45,25 +45,7 @@ def _gather_matches(
 
 def search_california_compliance_impl(query: str) -> str:
     """Search California auto compliance data by keyword. Empty query returns section summary."""
-    data = load_california_compliance()
-    if not data:
-        return json.dumps({"error": "California compliance data not available", "matches": []})
-    query = (query or "").strip()
-    if not query:
-        summary = {
-            "metadata": data.get("metadata", {}),
-            "sections": [k for k in data.keys() if k != "metadata"],
-        }
-        return json.dumps(summary)
-    matches: list = []
-    for section_key, section_value in data.items():
-        if section_key == "metadata":
-            continue
-        if isinstance(section_value, dict):
-            _gather_matches(section_value, query, section_key, matches)
-        elif _json_contains_query(section_value, query):
-            matches.append({"section": section_key, "content": section_value})
-    return json.dumps({"query": query, "match_count": len(matches), "matches": matches})
+    return search_state_compliance_impl(query, "California")
 
 
 def search_state_compliance_impl(query: str, state: str) -> str:
