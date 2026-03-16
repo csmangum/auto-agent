@@ -89,6 +89,33 @@ class ClaimInput(BaseModel):
     )
 
 
+class LiabilityDeterminationOutput(BaseModel):
+    """Structured output from liability determination crew."""
+
+    liability_percentage: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Insured's share of fault (0-100). None if unclear.",
+    )
+    liability_basis: str = Field(
+        default="",
+        description="Reasoning or source for the liability determination.",
+    )
+    fault_determination: str = Field(
+        ...,
+        description="at_fault | not_at_fault | unclear",
+    )
+    third_party_identified: bool = Field(
+        default=False,
+        description="Whether a third party can be identified for subrogation.",
+    )
+    recovery_eligible: bool = Field(
+        default=False,
+        description="Whether subrogation recovery is eligible per state rules.",
+    )
+
+
 class ClaimOutput(BaseModel):
     """Output from claim processing."""
 
@@ -100,6 +127,16 @@ class ClaimOutput(BaseModel):
     )
     payout_amount: Optional[float] = Field(
         default=None, description="Settlement or insurance payment amount for payout-ready claims"
+    )
+    liability_percentage: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Insured's share of fault (0-100) from liability determination.",
+    )
+    liability_basis: Optional[str] = Field(
+        default=None,
+        description="Reasoning for liability determination.",
     )
     reserve_amount: Optional[float] = Field(
         default=None, description="Reserve amount (estimated ultimate cost) when relevant"

@@ -6,7 +6,7 @@ audit entries and does not perform UPDATE or DELETE operations on that table.
 
 import json
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from claim_agent.models.claim import Attachment
 
@@ -1043,6 +1043,152 @@ class ClaimRepository:
                 f"UPDATE claims SET {', '.join(updates)} WHERE id = ?",
                 params,
             )
+
+    def update_claim_liability(
+        self,
+        claim_id: str,
+        *,
+        liability_percentage: float | None = None,
+        liability_basis: str | None = None,
+    ) -> None:
+        """Update liability determination fields on a claim."""
+        updates: list[str] = ["updated_at = datetime('now')"]
+        params: list[Any] = []
+        if liability_percentage is not None:
+            updates.append("liability_percentage = ?")
+            params.append(liability_percentage)
+        if liability_basis is not None:
+            updates.append("liability_basis = ?")
+            params.append(liability_basis)
+        if not params:
+            return
+        params.append(claim_id)
+        with get_connection(self._db_path) as conn:
+            cursor = conn.execute(
+                f"UPDATE claims SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            if cursor.rowcount == 0:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+
+    def update_claim_total_loss_metadata(
+        self,
+        claim_id: str,
+        total_loss_metadata: dict[str, Any],
+    ) -> None:
+        """Update total_loss_metadata JSON on a claim (ACV breakdown, DMV, salvage status)."""
+        meta_json = json.dumps(total_loss_metadata, default=str)
+        with get_connection(self._db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE claims SET total_loss_metadata = ?, updated_at = datetime('now') WHERE id = ?",
+                (meta_json, claim_id),
+            )
+            if cursor.rowcount == 0:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+
+    def get_claim_total_loss_metadata(self, claim_id: str) -> dict[str, Any] | None:
+        """Get total_loss_metadata for a claim, or None if not set."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT total_loss_metadata FROM claims WHERE id = ?", (claim_id,)
+            ).fetchone()
+        if not row or row[0] is None:
+            return None
+        try:
+            return cast(dict[str, Any], json.loads(row[0]))
+        except json.JSONDecodeError:
+            return None
+
+    def create_subrogation_case(
+        self,
+        claim_id: str,
+        case_id: str,
+        amount_sought: float,
+        *,
+        opposing_carrier: str | None = None,
+        liability_percentage: float | None = None,
+        liability_basis: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a subrogation case record. Returns the created row as dict."""
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO subrogation_cases
+                    (claim_id, case_id, amount_sought, opposing_carrier,
+                     liability_percentage, liability_basis, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending')
+                """,
+                (
+                    claim_id,
+                    case_id,
+                    amount_sought,
+                    opposing_carrier,
+                    liability_percentage,
+                    liability_basis,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM subrogation_cases WHERE case_id = ?", (case_id,)
+            ).fetchone()
+        return dict(row) if row else {}
+
+    def update_subrogation_case(
+        self,
+        case_id: str,
+        *,
+        arbitration_status: str | None = None,
+        arbitration_forum: str | None = None,
+        dispute_date: str | None = None,
+        opposing_carrier: str | None = None,
+        status: str | None = None,
+        recovery_amount: float | None = None,
+    ) -> None:
+        """Update subrogation case arbitration/metadata/recovery fields."""
+        updates: list[str] = ["updated_at = datetime('now')"]
+        params: list[Any] = []
+        if arbitration_status is not None:
+            updates.append("arbitration_status = ?")
+            params.append(arbitration_status)
+        if arbitration_forum is not None:
+            updates.append("arbitration_forum = ?")
+            params.append(arbitration_forum)
+        if dispute_date is not None:
+            updates.append("dispute_date = ?")
+            params.append(dispute_date)
+        if opposing_carrier is not None:
+            updates.append("opposing_carrier = ?")
+            params.append(opposing_carrier)
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+        if recovery_amount is not None:
+            updates.append("recovery_amount = ?")
+            params.append(recovery_amount)
+        if not params:
+            return
+        params.append(case_id)
+        with get_connection(self._db_path) as conn:
+            cursor = conn.execute(
+                f"UPDATE subrogation_cases SET {', '.join(updates)} WHERE case_id = ?",
+                params,
+            )
+            if cursor.rowcount == 0:
+                raise DomainValidationError(
+                    f"Subrogation case not found for case_id={case_id}"
+                )
+
+    def get_subrogation_cases_by_claim(self, claim_id: str) -> list[dict[str, Any]]:
+        """Fetch all subrogation cases for a claim."""
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM subrogation_cases
+                WHERE claim_id = ?
+                ORDER BY created_at DESC
+                """,
+                (claim_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def assign_claim(
         self,

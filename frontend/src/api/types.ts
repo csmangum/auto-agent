@@ -60,6 +60,9 @@ export interface Claim {
   status: string;
   payout_amount?: number;
   reserve_amount?: number;
+  /** Liability determination (from LiabilityDeterminationCrew) */
+  liability_percentage?: number;
+  liability_basis?: string;
   created_at?: string;
   updated_at?: string;
   /** Review queue fields */
@@ -75,6 +78,25 @@ export interface Claim {
   tasks_total?: number;
   /** Attachments: photos, PDFs, estimates, invoices, receipts */
   attachments?: Array<{ url: string; type: string; description?: string }>;
+  /** Subrogation cases with arbitration tracking */
+  subrogation_cases?: SubrogationCase[];
+}
+
+export interface SubrogationCase {
+  id: number;
+  claim_id: string;
+  case_id: string;
+  amount_sought: number;
+  opposing_carrier?: string;
+  status: string;
+  arbitration_status?: string;
+  arbitration_forum?: string;
+  dispute_date?: string;
+  liability_percentage?: number;
+  liability_basis?: string;
+  recovery_amount?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ClaimsStats {

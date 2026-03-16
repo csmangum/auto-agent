@@ -66,8 +66,11 @@ class ValuationAdapter(ABC):
     def get_vehicle_value(
         self, vin: str, year: int, make: str, model: str
     ) -> dict[str, Any] | None:
-        """Return {value, condition} or None if no match."""
+        """Return {value, condition, source?, comparables?} or None if no match.
+        comparables: list of {vin, year, make, model, price, mileage, source}."""
 ```
+
+**CCC/Mitchell/Audatex integration**: Stubs in `adapters/valuation_stubs/` document the expected contract for total loss valuation providers. Each returns ACV + comparables list. Replace with real API calls for production.
 
 ### RepairShopAdapter
 

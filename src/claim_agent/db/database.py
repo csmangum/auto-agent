@@ -214,6 +214,25 @@ CREATE TABLE IF NOT EXISTS claim_parties (
 );
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_id ON claim_parties(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_id, party_type);
+
+-- Subrogation cases: recovery tracking and inter-company arbitration
+CREATE TABLE IF NOT EXISTS subrogation_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    case_id TEXT NOT NULL UNIQUE,
+    amount_sought REAL NOT NULL,
+    opposing_carrier TEXT,
+    status TEXT DEFAULT 'pending',
+    arbitration_status TEXT,
+    arbitration_forum TEXT,
+    dispute_date TEXT,
+    liability_percentage REAL,
+    liability_basis TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_subrogation_cases_claim_id ON subrogation_cases(claim_id);
 """
 
 
@@ -233,6 +252,19 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN archived_at TEXT")
         if "loss_state" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN loss_state TEXT")
+        if "liability_percentage" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN liability_percentage REAL")
+        if "liability_basis" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN liability_basis TEXT")
+        if "total_loss_metadata" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN total_loss_metadata TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor = conn.execute("PRAGMA table_info(subrogation_cases)")
+        sc_columns = {row[1] for row in cursor.fetchall()}
+        if "recovery_amount" not in sc_columns:
+            conn.execute("ALTER TABLE subrogation_cases ADD COLUMN recovery_amount REAL")
     except sqlite3.OperationalError:
         pass
 

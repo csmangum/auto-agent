@@ -35,6 +35,10 @@ class StateRules:
     """Days to complete investigation."""
     appraisal_rights: bool
     """Whether policyholder has appraisal clause invocation rights."""
+    comparative_fault_type: str
+    """pure_comparative | modified_comparative_51 | contributory."""
+    comparative_fault_bar: float | None
+    """Fault % (0-100) above which insured cannot recover (e.g. 51 for 51% bar). None for pure comparative."""
 
 
 # State-specific rules (California, Florida, New York, Texas)
@@ -49,6 +53,8 @@ _STATE_RULES: dict[str, StateRules] = {
         acknowledgment_days=15,
         investigation_days=40,
         appraisal_rights=True,
+        comparative_fault_type="pure_comparative",
+        comparative_fault_bar=None,
     ),
     "Florida": StateRules(
         state="Florida",
@@ -59,6 +65,8 @@ _STATE_RULES: dict[str, StateRules] = {
         acknowledgment_days=14,
         investigation_days=90,
         appraisal_rights=True,
+        comparative_fault_type="modified_comparative_51",
+        comparative_fault_bar=51.0,
     ),
     "New York": StateRules(
         state="New York",
@@ -69,6 +77,20 @@ _STATE_RULES: dict[str, StateRules] = {
         acknowledgment_days=15,
         investigation_days=30,
         appraisal_rights=True,
+        comparative_fault_type="pure_comparative",
+        comparative_fault_bar=None,
+    ),
+    "Georgia": StateRules(
+        state="Georgia",
+        prompt_payment_days=30,
+        total_loss_threshold=0.75,
+        diminished_value_required=True,
+        siu_referral_threshold=75,
+        acknowledgment_days=15,
+        investigation_days=30,
+        appraisal_rights=True,
+        comparative_fault_type="modified_comparative_51",
+        comparative_fault_bar=51.0,
     ),
     "Texas": StateRules(
         state="Texas",
@@ -79,6 +101,8 @@ _STATE_RULES: dict[str, StateRules] = {
         acknowledgment_days=15,
         investigation_days=15,
         appraisal_rights=True,
+        comparative_fault_type="modified_comparative_51",
+        comparative_fault_bar=51.0,
     ),
 }
 
@@ -141,3 +165,46 @@ def get_siu_referral_threshold(state: str | None) -> int | None:
     """Return mandatory SIU referral fraud score threshold, or None if no mandatory threshold."""
     rules = get_state_rules(state)
     return rules.siu_referral_threshold if rules else None
+
+
+def get_comparative_fault_rules(state: str | None) -> dict:
+    """Return comparative fault rules for the state.
+
+    Returns dict with:
+    - comparative_fault_type: pure_comparative | modified_comparative_51 | contributory
+    - comparative_fault_bar: float | None (percentage on 0–100 scale, e.g. 51.0 for 51% bar; None for pure comparative)
+    - state: str | None
+    """
+    rules = get_state_rules(state)
+    if not rules:
+        return {
+            "comparative_fault_type": "pure_comparative",
+            "comparative_fault_bar": None,
+            "state": None,
+        }
+    return {
+        "comparative_fault_type": rules.comparative_fault_type,
+        "comparative_fault_bar": rules.comparative_fault_bar,
+        "state": rules.state,
+    }
+
+
+def is_recovery_eligible(liability_pct: float | None, state: str | None) -> bool:
+    """Return True if subrogation recovery is eligible per state rules.
+
+    - pure_comparative: always eligible (recovery reduced by fault %)
+    - modified_comparative_51: eligible only if insured < 51% at fault
+    - contributory: eligible only if insured 0% at fault
+    """
+    rules = get_state_rules(state)
+    if not rules:
+        return True
+    if liability_pct is None:
+        return True
+    if rules.comparative_fault_type == "pure_comparative":
+        return True
+    if rules.comparative_fault_type == "contributory":
+        return liability_pct <= 0.0
+    if rules.comparative_fault_type == "modified_comparative_51" and rules.comparative_fault_bar is not None:
+        return (liability_pct or 0) < rules.comparative_fault_bar
+    return True

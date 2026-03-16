@@ -8,6 +8,7 @@ from crewai.tools import tool
 from claim_agent.compliance.state_rules import (
     get_state_rules,
     get_compliance_due_date,
+    get_comparative_fault_rules,
 )
 from claim_agent.rag.constants import SUPPORTED_STATES, normalize_state
 from claim_agent.tools.compliance_logic import (
@@ -26,7 +27,7 @@ def search_state_compliance(query: str = "", state: str = "California") -> str:
 
     Args:
         query: Search term (e.g. 'total loss', 'deadline', 'disclosure'). Optional.
-        state: State jurisdiction - California, Texas, Florida, or New York.
+        state: State jurisdiction - California, Texas, Florida, New York, or Georgia.
 
     Returns:
         JSON with match_count and matches (or section summary if query is empty).
@@ -55,7 +56,7 @@ def get_state_compliance_summary(state: str) -> str:
     investigation, prompt payment) to set correct due dates per state.
 
     Args:
-        state: State jurisdiction - California, Texas, Florida, or New York.
+        state: State jurisdiction - California, Texas, Florida, New York, or Georgia.
 
     Returns:
         JSON with acknowledgment_days, investigation_days, prompt_payment_days,
@@ -91,6 +92,25 @@ def get_state_compliance_summary(state: str) -> str:
     })
 
 
+@tool("Get Comparative Fault Rules")
+def get_comparative_fault_rules_tool(state: str = "California") -> str:
+    """Get state-specific comparative fault rules for liability determination.
+
+    Use when determining liability and subrogation eligibility. Rules vary by state:
+    - pure_comparative (CA, NY): recovery reduced by fault %; no bar
+    - modified_comparative_51 (TX, FL): no recovery if insured >= 51% at fault
+    - contributory: no recovery if insured has any fault
+
+    Args:
+        state: State jurisdiction - California, Texas, Florida, New York, or Georgia.
+
+    Returns:
+        JSON with comparative_fault_type, comparative_fault_bar, state.
+    """
+    rules = get_comparative_fault_rules(state)
+    return json.dumps(rules)
+
+
 @tool("Get Compliance Due Date")
 def get_compliance_due_date_tool(
     base_date: str,
@@ -105,7 +125,7 @@ def get_compliance_due_date_tool(
     Args:
         base_date: Reference date in YYYY-MM-DD (e.g., claim receipt, acceptance).
         deadline_type: One of: acknowledgment, investigation, prompt_payment.
-        state: State jurisdiction - California, Texas, Florida, or New York.
+        state: State jurisdiction - California, Texas, Florida, New York, or Georgia.
 
     Returns:
         JSON with due_date (YYYY-MM-DD) and days.

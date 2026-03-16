@@ -6,6 +6,8 @@ from claim_agent.compliance.state_rules import (
     get_prompt_payment_days,
     get_compliance_due_date,
     get_siu_referral_threshold,
+    get_comparative_fault_rules,
+    is_recovery_eligible,
 )
 from datetime import date
 
@@ -40,7 +42,6 @@ class TestGetStateRules:
         assert rules.state == "California"
 
     def test_unsupported_state_returns_none(self):
-        assert get_state_rules("Georgia") is None
         assert get_state_rules("Invalid") is None
 
     def test_empty_returns_none(self):
@@ -56,7 +57,6 @@ class TestGetTotalLossThreshold:
         assert get_total_loss_threshold("Florida") == 0.80
 
     def test_unknown_defaults_to_75(self):
-        assert get_total_loss_threshold("Georgia") == 0.75
         assert get_total_loss_threshold(None) == 0.75
 
 
@@ -96,4 +96,59 @@ class TestGetSiuReferralThreshold:
         assert get_siu_referral_threshold("California") == 75
 
     def test_unknown_returns_none(self):
-        assert get_siu_referral_threshold("Georgia") is None
+        assert get_siu_referral_threshold("Invalid") is None
+
+
+class TestGetComparativeFaultRules:
+    def test_california_pure_comparative(self):
+        rules = get_comparative_fault_rules("California")
+        assert rules["comparative_fault_type"] == "pure_comparative"
+        assert rules["comparative_fault_bar"] is None
+        assert rules["state"] == "California"
+
+    def test_texas_modified_51(self):
+        rules = get_comparative_fault_rules("Texas")
+        assert rules["comparative_fault_type"] == "modified_comparative_51"
+        assert rules["comparative_fault_bar"] == 51.0
+
+    def test_florida_modified_51(self):
+        rules = get_comparative_fault_rules("Florida")
+        assert rules["comparative_fault_type"] == "modified_comparative_51"
+        assert rules["comparative_fault_bar"] == 51.0
+
+    def test_unknown_defaults_pure(self):
+        rules = get_comparative_fault_rules("Invalid")
+        assert rules["comparative_fault_type"] == "pure_comparative"
+        assert rules["state"] is None
+
+    def test_georgia_modified_51(self):
+        rules = get_comparative_fault_rules("Georgia")
+        assert rules["comparative_fault_type"] == "modified_comparative_51"
+        assert rules["comparative_fault_bar"] == 51.0
+        assert rules["state"] == "Georgia"
+
+    def test_abbreviation_ca_resolves(self):
+        rules = get_comparative_fault_rules("CA")
+        assert rules is not None
+        assert rules["state"] == "California"
+
+
+class TestIsRecoveryEligible:
+    def test_pure_comparative_always_eligible(self):
+        assert is_recovery_eligible(0.0, "California") is True
+        assert is_recovery_eligible(99.0, "California") is True
+        assert is_recovery_eligible(None, "California") is True
+
+    def test_modified_51_bar(self):
+        assert is_recovery_eligible(0.0, "Texas") is True
+        assert is_recovery_eligible(50.0, "Texas") is True
+        assert is_recovery_eligible(51.0, "Texas") is False
+        assert is_recovery_eligible(60.0, "Texas") is False
+
+    def test_unknown_state_eligible(self):
+        assert is_recovery_eligible(50.0, None) is True
+
+    def test_georgia_51_bar(self):
+        assert is_recovery_eligible(0.0, "Georgia") is True
+        assert is_recovery_eligible(50.0, "Georgia") is True
+        assert is_recovery_eligible(51.0, "Georgia") is False

@@ -161,6 +161,8 @@ def query_policy_db_impl(
                 result["collision_deductible"] = float(p["collision_deductible"])
             if p.get("comprehensive_deductible") is not None:
                 result["comprehensive_deductible"] = float(p["comprehensive_deductible"])
+            if p.get("gap_insurance") is not None:
+                result["gap_insurance"] = bool(p["gap_insurance"])
             rental = p.get("rental_reimbursement") or p.get("transportation_expenses")
             if rental and isinstance(rental, dict):
                 result["rental_reimbursement"] = rental

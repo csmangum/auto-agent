@@ -203,6 +203,7 @@ export default function ClaimDetail() {
   const parties = claim?.parties ?? [];
   const tasks = claim?.tasks ?? [];
   const attachments = claim?.attachments ?? [];
+  const subrogationCases = claim?.subrogation_cases ?? [];
   const notesFollowUpsCount = notes.length + followUps.length;
   const reserveHistory = reserveHistoryData?.history ?? [];
   const loading = claimLoading || historyLoading || workflowsLoading;
@@ -253,6 +254,10 @@ export default function ClaimDetail() {
     { label: 'Estimated Damage', value: claim.estimated_damage != null ? `$${Number(claim.estimated_damage).toLocaleString()}` : '—', isMoney: true },
     { label: 'Reserve Amount', value: claim.reserve_amount != null ? `$${Number(claim.reserve_amount).toLocaleString()}` : '—', isMoney: true },
     { label: 'Payout Amount', value: claim.payout_amount != null ? `$${Number(claim.payout_amount).toLocaleString()}` : '—', isMoney: true, isPayout: claim.payout_amount != null },
+    ...((claim.liability_percentage != null || claim.liability_basis) ? [
+      { label: 'Liability %', value: claim.liability_percentage != null ? `${claim.liability_percentage}%` : '—' },
+      { label: 'Liability Basis', value: claim.liability_basis ?? '—' },
+    ] : []),
     { label: 'Created', value: formatDateTime(claim.created_at) ?? '—' },
     { label: 'Updated', value: formatDateTime(claim.updated_at) ?? '—' },
   ];
@@ -350,6 +355,63 @@ export default function ClaimDetail() {
                         <span className="text-gray-500 text-xs">
                           Consent: {p.consent_status ?? '—'} · Auth: {p.authorization_status ?? '—'}
                         </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Subrogation cases */}
+            {subrogationCases.length > 0 && (
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+                <h3 className="text-sm font-semibold text-gray-300 mb-4">Subrogation Cases</h3>
+                <div className="space-y-4">
+                  {subrogationCases.map((sc) => (
+                    <div
+                      key={sc.id}
+                      className="rounded-lg bg-gray-900/50 p-4 ring-1 ring-gray-700/50"
+                    >
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                        <span className="font-medium text-gray-200">{sc.case_id}</span>
+                        <span className="text-gray-400">
+                          ${Number(sc.amount_sought).toLocaleString()} sought
+                        </span>
+                        {sc.opposing_carrier && (
+                          <span className="text-gray-500">vs {sc.opposing_carrier}</span>
+                        )}
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded ${
+                            sc.arbitration_status === 'filed'
+                              ? 'bg-amber-500/20 text-amber-400'
+                              : sc.status === 'full'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : sc.status === 'partial'
+                                  ? 'bg-amber-500/20 text-amber-400'
+                                  : sc.status === 'closed_no_recovery'
+                                    ? 'bg-gray-500/20 text-gray-500'
+                                    : sc.status === 'pending'
+                                      ? 'bg-blue-500/20 text-blue-400'
+                                      : 'bg-gray-500/20 text-gray-400'
+                          }`}
+                        >
+                          {sc.arbitration_status === 'filed'
+                            ? `Arbitration: ${sc.arbitration_forum ?? 'filed'}`
+                            : sc.status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      {(sc.liability_percentage != null || sc.liability_basis || sc.recovery_amount != null) && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          {sc.liability_percentage != null && `Liability: ${sc.liability_percentage}%`}
+                          {sc.liability_percentage != null && sc.liability_basis && ' · '}
+                          {sc.liability_basis}
+                          {sc.recovery_amount != null && (
+                            <span>
+                              {sc.liability_percentage != null || sc.liability_basis ? ' · ' : ''}
+                              Recovered: ${Number(sc.recovery_amount).toLocaleString()}
+                            </span>
+                          )}
+                        </p>
                       )}
                     </div>
                   ))}
