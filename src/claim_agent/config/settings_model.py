@@ -175,6 +175,45 @@ class ReserveConfig(BaseSettings):
         return str(v).strip().lower() in ("true", "1", "yes")
 
 
+class PaymentConfig(BaseSettings):
+    """Payment authority limits: adjuster, supervisor, executive."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="PAYMENT_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    adjuster_limit: float = 5000.0
+    supervisor_limit: float = 25000.0
+    executive_limit: float = 100000.0
+
+    @field_validator("adjuster_limit", mode="before")
+    @classmethod
+    def _coerce_adjuster_limit(cls, v: Any) -> float:
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 5000.0
+
+    @field_validator("supervisor_limit", mode="before")
+    @classmethod
+    def _coerce_supervisor_limit(cls, v: Any) -> float:
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 25000.0
+
+    @field_validator("executive_limit", mode="before")
+    @classmethod
+    def _coerce_executive_limit(cls, v: Any) -> float:
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 100000.0
+
+
 class PartialLossConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PARTIAL_LOSS_",
@@ -503,6 +542,7 @@ class Settings(BaseSettings):
     fraud: FraudConfig = Field(default_factory=FraudConfig)
     valuation: ValuationConfig = Field(default_factory=ValuationConfig)
     reserve: ReserveConfig = Field(default_factory=ReserveConfig)
+    payment: PaymentConfig = Field(default_factory=PaymentConfig)
     partial_loss: PartialLossConfig = Field(default_factory=PartialLossConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
