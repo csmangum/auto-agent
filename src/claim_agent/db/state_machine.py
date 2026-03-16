@@ -45,6 +45,7 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     STATUS_PROCESSING: frozenset({
         STATUS_OPEN,
         STATUS_DUPLICATE,
+        STATUS_DENIED,
         STATUS_SETTLED,
         STATUS_FRAUD_SUSPECTED,
         STATUS_NEEDS_REVIEW,

@@ -396,7 +396,7 @@ def test_run_claim_workflow_validation_enabled_agrees_high_confidence(_temp_clai
     from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 
     claim_data = {
-        "policy_number": "POL-002",
+        "policy_number": "POL-001",
         "vin": "5YJSA1E26HF123456",
         "vehicle_year": 2022,
         "vehicle_make": "Tesla",
@@ -839,7 +839,7 @@ def test_settlement_crew_handles_mid_workflow_escalation(_temp_claims_db):
     from claim_agent.tools.escalation_logic import escalate_claim_impl
 
     claim_data = {
-        "policy_number": "POL-002",
+        "policy_number": "POL-001",
         "vin": "5YJSA1E26HF654321",
         "vehicle_year": 2021,
         "vehicle_make": "Tesla",

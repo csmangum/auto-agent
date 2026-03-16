@@ -46,6 +46,20 @@ class RouterConfig(BaseSettings):
             return 0.7
 
 
+class CoverageConfig(BaseSettings):
+    """FNOL coverage verification: gate before routing."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="COVERAGE_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = True
+    deny_when_deductible_exceeds_damage: bool = False
+
+
 def _parse_similarity_range_str(s: str) -> tuple[float, float]:
     """Parse '50,80' or '40,90' format to tuple."""
     parts = s.replace(" ", "").split(",")
@@ -529,6 +543,7 @@ class Settings(BaseSettings):
     )
 
     router: RouterConfig = Field(default_factory=RouterConfig)
+    coverage: CoverageConfig = Field(default_factory=CoverageConfig)
     escalation: EscalationConfig = Field(default_factory=EscalationConfig)
     fraud: FraudConfig = Field(default_factory=FraudConfig)
     valuation: ValuationConfig = Field(default_factory=ValuationConfig)

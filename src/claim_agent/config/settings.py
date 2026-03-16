@@ -7,6 +7,15 @@ backward-compatible access during migration. Prefer get_settings() directly.
 from claim_agent.config import get_settings
 
 
+def get_coverage_config() -> dict:
+    """FNOL coverage verification settings."""
+    s = get_settings().coverage
+    return {
+        "enabled": s.enabled,
+        "deny_when_deductible_exceeds_damage": s.deny_when_deductible_exceeds_damage,
+    }
+
+
 def get_router_config() -> dict:
     """Router classification thresholds and behavior."""
     s = get_settings().router

@@ -18,6 +18,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_ASSIGN,
     AUDIT_EVENT_ATTACHMENTS_UPDATED,
     AUDIT_EVENT_CLAIM_REVIEW,
+    AUDIT_EVENT_COVERAGE_VERIFICATION,
     AUDIT_EVENT_CREATED,
     AUDIT_EVENT_ESCALATE_TO_SIU,
     AUDIT_EVENT_FOLLOW_UP_RESPONSE,
@@ -39,13 +40,22 @@ from claim_agent.db.constants import (
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
     STATUS_PENDING_INFO,
+    STATUS_PROCESSING,
     STATUS_UNDER_INVESTIGATION,
 )
 from claim_agent.config.settings import get_reserve_config
 from claim_agent.db.database import get_connection
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
-from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_note, sanitize_task_title, sanitize_task_description, sanitize_resolution_notes
+from claim_agent.utils.sanitization import (
+    sanitize_actor_id,
+    sanitize_denial_reason,
+    sanitize_note,
+    sanitize_resolution_notes,
+    sanitize_task_description,
+    sanitize_task_title,
+    truncate_audit_json,
+)
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 
@@ -993,6 +1003,20 @@ class ClaimRepository:
             )
         return row
 
+    def _ensure_claim_processing(self, conn: Any, claim_id: str) -> Any:
+        """Fetch claim row and ensure status is processing. For FNOL denial."""
+        row = conn.execute(
+            "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
+        ).fetchone()
+        if row is None:
+            raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+        if row["status"] != STATUS_PROCESSING:
+            raise ValueError(
+                f"Claim {claim_id} is not in processing (status={row['status']}); "
+                "FNOL denial only applies to claims in processing"
+            )
+        return row
+
     def approve_claim(
         self,
         claim_id: str,
@@ -1018,6 +1042,7 @@ class ClaimRepository:
         reason: str | None = None,
     ) -> None:
         """Reject claim: set status to denied, insert audit, emit event."""
+        safe_reason = sanitize_denial_reason(reason) or "Rejected by adjuster"
         with get_connection(self._db_path) as conn:
             row = self._ensure_claim_needs_review(conn, claim_id)
             validate_transition(
@@ -1041,18 +1066,104 @@ class ClaimRepository:
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, AUDIT_EVENT_STATUS_CHANGE, old_status, STATUS_DENIED, reason or "Rejected by adjuster", actor_id, json.dumps(before_state), json.dumps(after_state)),
+                (claim_id, AUDIT_EVENT_STATUS_CHANGE, old_status, STATUS_DENIED, safe_reason, actor_id, json.dumps(before_state), json.dumps(after_state)),
             )
             conn.execute(
                 """
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, AUDIT_EVENT_REJECTION, old_status, STATUS_DENIED, reason or "", actor_id, None, None),
+                (claim_id, AUDIT_EVENT_REJECTION, old_status, STATUS_DENIED, safe_reason, actor_id, None, None),
             )
         emit_claim_event(
-            ClaimEvent(claim_id=claim_id, status=STATUS_DENIED, summary=reason or "Rejected by adjuster")
+            ClaimEvent(claim_id=claim_id, status=STATUS_DENIED, summary=safe_reason)
         )
+
+    def deny_claim_at_claimant(
+        self,
+        claim_id: str,
+        reason: str,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+        coverage_verification_details: dict | None = None,
+    ) -> None:
+        """Deny claim at FNOL (coverage verification). Requires status processing."""
+        safe_reason = sanitize_denial_reason(reason) or "Coverage verification failed"
+        with get_connection(self._db_path) as conn:
+            row = self._ensure_claim_processing(conn, claim_id)
+            validate_transition(
+                claim_id,
+                row["status"],
+                STATUS_DENIED,
+                claim=dict(row),
+                actor_id=actor_id,
+            )
+            old_status = row["status"]
+            old_claim_type = row["claim_type"]
+            old_payout = row["payout_amount"]
+            before_state = {"status": old_status, "claim_type": old_claim_type, "payout_amount": old_payout}
+            after_state = {"status": STATUS_DENIED, "claim_type": old_claim_type, "payout_amount": old_payout}
+            conn.execute(
+                """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
+                (STATUS_DENIED, claim_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_STATUS_CHANGE, old_status, STATUS_DENIED, safe_reason, actor_id, json.dumps(before_state), json.dumps(after_state)),
+            )
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (claim_id, AUDIT_EVENT_REJECTION, old_status, STATUS_DENIED, safe_reason, actor_id, None, None),
+            )
+            if coverage_verification_details:
+                merged = {"outcome": "denied", **coverage_verification_details}
+                conn.execute(
+                    """
+                    INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id,
+                        AUDIT_EVENT_COVERAGE_VERIFICATION,
+                        truncate_audit_json(coverage_verification_details),
+                        actor_id,
+                        truncate_audit_json(merged),
+                    ),
+                )
+        emit_claim_event(
+            ClaimEvent(claim_id=claim_id, status=STATUS_DENIED, summary=safe_reason)
+        )
+
+    def insert_coverage_verification_audit(
+        self,
+        claim_id: str,
+        outcome: str,
+        details: dict,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Insert coverage verification result into audit trail."""
+        merged = {"outcome": outcome, **details}
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    claim_id,
+                    AUDIT_EVENT_COVERAGE_VERIFICATION,
+                    truncate_audit_json(details),
+                    actor_id,
+                    truncate_audit_json(merged),
+                ),
+            )
 
     def request_info_claim(
         self,

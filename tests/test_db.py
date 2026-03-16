@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 from claim_agent.config import reload_settings
-from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
+from claim_agent.db.audit_events import AUDIT_EVENT_COVERAGE_VERIFICATION, AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING
 from claim_agent.db.database import get_db_path, get_connection
 from claim_agent.db.repository import ClaimRepository
@@ -195,6 +195,74 @@ def test_repository_save_workflow_result(temp_db):
     assert row is not None
     assert row["claim_type"] == "new"
     assert "Workflow completed" in row["workflow_output"]
+
+
+def test_deny_claim_at_claimant_requires_processing_status(temp_db):
+    """deny_claim_at_claimant raises when claim is not in processing."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="VIN1",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date="2025-01-10",
+        incident_description="Scratch.",
+        damage_description="Door scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    # Claim starts in pending; deny_claim_at_claimant requires processing
+    with pytest.raises(ValueError, match="not in processing"):
+        repo.deny_claim_at_claimant(claim_id, "Coverage denied")
+    # Move to open - still not processing
+    repo.update_claim_status(claim_id, STATUS_OPEN)
+    with pytest.raises(ValueError, match="not in processing"):
+        repo.deny_claim_at_claimant(claim_id, "Coverage denied")
+
+
+def test_deny_claim_at_claimant_succeeds_when_processing(temp_db):
+    """deny_claim_at_claimant succeeds when claim is in processing."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="VIN1",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date="2025-01-10",
+        incident_description="Scratch.",
+        damage_description="Door scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.update_claim_status(claim_id, STATUS_PROCESSING)
+    repo.deny_claim_at_claimant(claim_id, "Coverage denied", coverage_verification_details={"reason": "test"})
+    claim = repo.get_claim(claim_id)
+    assert claim["status"] == "denied"
+
+
+def test_deny_claim_at_claimant_without_details_omits_coverage_audit(temp_db):
+    """deny_claim_at_claimant with coverage_verification_details=None does not insert coverage audit."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="VIN1",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date="2025-01-10",
+        incident_description="Scratch.",
+        damage_description="Door scratch.",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.update_claim_status(claim_id, STATUS_PROCESSING)
+    repo.deny_claim_at_claimant(claim_id, "Coverage denied", coverage_verification_details=None)
+
+    with get_connection(temp_db) as conn:
+        coverage_rows = conn.execute(
+            "SELECT id FROM claim_audit_log WHERE claim_id = ? AND action = ?",
+            (claim_id, AUDIT_EVENT_COVERAGE_VERIFICATION),
+        ).fetchall()
+    assert len(coverage_rows) == 0
 
 
 def test_repository_get_claim_history(temp_db):

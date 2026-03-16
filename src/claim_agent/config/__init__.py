@@ -9,6 +9,7 @@ from claim_agent.config.settings_model import (
 )
 from claim_agent.config.settings_model import (
     AuthConfig,
+    CoverageConfig,
     EscalationConfig,
     FraudConfig,
     LoggingConfig,
@@ -25,6 +26,7 @@ from claim_agent.config.settings_model import (
 __all__ = [
     "ADAPTER_ENV_KEYS",
     "AuthConfig",
+    "CoverageConfig",
     "EscalationConfig",
     "FraudConfig",
     "LLMConfig",

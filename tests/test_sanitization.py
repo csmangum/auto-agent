@@ -1,6 +1,9 @@
 """Tests for claim input sanitization."""
 
+import json
+
 from claim_agent.utils.sanitization import (
+    MAX_AUDIT_DETAILS,
     MAX_DAMAGE_DESCRIPTION,
     MAX_DENIAL_REASON,
     MAX_NOTE,
@@ -11,6 +14,7 @@ from claim_agent.utils.sanitization import (
     sanitize_note,
     sanitize_policyholder_evidence,
     sanitize_supplemental_damage_description,
+    truncate_audit_json,
 )
 
 
@@ -243,3 +247,20 @@ def test_sanitize_policyholder_evidence_empty_string_returns_none():
     """Empty or whitespace-only string returns None after strip."""
     assert sanitize_policyholder_evidence("") is None
     assert sanitize_policyholder_evidence("   ") is None
+
+
+def test_truncate_audit_json_preserves_small_payload():
+    """Small dict is returned as-is."""
+    obj = {"outcome": "denied", "policy_status": "active"}
+    out = truncate_audit_json(obj)
+    assert json.loads(out) == obj
+
+
+def test_truncate_audit_json_truncates_oversized():
+    """Oversized JSON is replaced with truncated wrapper."""
+    obj = {"large": "x" * 5000}
+    out = truncate_audit_json(obj)
+    parsed = json.loads(out)
+    assert parsed.get("_truncated") is True
+    assert parsed.get("original_length", 0) > MAX_AUDIT_DETAILS
+    assert len(out) <= MAX_AUDIT_DETAILS + 200  # wrapper + preview
