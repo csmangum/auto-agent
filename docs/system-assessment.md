@@ -113,9 +113,9 @@ This assessment is organized into: **Strengths** (what's working well), **Critic
 - Add coverage verification result to audit trail
 - Handle "coverage under investigation" status for cases needing further review
 
-### 2.5 Multi-State Compliance Gaps
+### 2.5 Multi-State Compliance Gaps — Resolved
 
-**Gap:** RAG corpus includes California, Florida, New York, and Texas compliance data, but the system doesn't enforce state-specific rules during processing. There's no mechanism to determine which state's regulations apply to a given claim.
+**Gap (resolved):** RAG corpus includes California, Florida, New York, and Texas compliance data. The system now enforces state-specific rules via `loss_state` on claims, `search_state_compliance`, state rules engine, and RAG tools that accept a state parameter.
 
 **Why it matters:** Each state has different:
 - Prompt payment statutes (California: 30 days; Florida: 90 days; some states: 15 days)

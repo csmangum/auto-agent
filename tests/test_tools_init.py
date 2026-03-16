@@ -79,6 +79,14 @@ class TestToolsLazyLoading:
         data = json.loads(result)
         assert "sections" in data or "error" in data
 
+    def test_search_state_compliance_lazy_load(self):
+        """Test lazy loading of search_state_compliance."""
+        from claim_agent.tools import search_state_compliance
+
+        result = search_state_compliance.run(query="total loss", state="Texas")
+        data = json.loads(result)
+        assert "matches" in data or "error" in data
+
     def test_evaluate_escalation_lazy_load(self):
         """Test lazy loading of evaluate_escalation."""
         from claim_agent.tools import evaluate_escalation

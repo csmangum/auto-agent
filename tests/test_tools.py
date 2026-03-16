@@ -330,6 +330,26 @@ def test_search_california_compliance_missing_file_returns_error():
         os.environ.pop("CA_COMPLIANCE_PATH", None)
 
 
+def test_search_state_compliance_texas():
+    from claim_agent.tools.compliance_logic import search_state_compliance_impl
+
+    result = search_state_compliance_impl("total loss", "Texas")
+    data = json.loads(result)
+    assert "matches" in data
+    assert data["match_count"] >= 1
+    assert data["query"] == "total loss"
+
+
+def test_search_state_compliance_invalid_state_returns_error():
+    from claim_agent.tools.compliance_logic import search_state_compliance_impl
+
+    result = search_state_compliance_impl("deadline", "InvalidState")
+    data = json.loads(result)
+    assert "error" in data
+    assert "match_count" in data
+    assert data["match_count"] == 0
+
+
 def test_calculate_payout_valid_policy():
     """Test payout calculation with valid policy."""
     from claim_agent.tools.valuation_logic import calculate_payout_impl

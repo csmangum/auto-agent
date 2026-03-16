@@ -778,6 +778,33 @@ class TestRAGTools:
         result = get_compliance_deadlines.run(state="California")
         
         assert isinstance(result, str)
+
+    @pytest.mark.slow
+    def test_get_compliance_deadlines_tool_texas(self):
+        """Test compliance deadlines returns Texas data."""
+        from claim_agent.tools.rag_tools import get_compliance_deadlines
+
+        result = get_compliance_deadlines.run(state="Texas")
+        assert isinstance(result, str)
+        assert "No deadline information found" not in result, f"Got fallback response: {result}"
+
+    @pytest.mark.slow
+    def test_get_compliance_deadlines_tool_florida(self):
+        """Test compliance deadlines returns Florida data."""
+        from claim_agent.tools.rag_tools import get_compliance_deadlines
+
+        result = get_compliance_deadlines.run(state="Florida")
+        assert isinstance(result, str)
+        assert "No deadline information found" not in result, f"Got fallback response: {result}"
+
+    @pytest.mark.slow
+    def test_get_compliance_deadlines_tool_new_york(self):
+        """Test compliance deadlines returns New York data."""
+        from claim_agent.tools.rag_tools import get_compliance_deadlines
+
+        result = get_compliance_deadlines.run(state="New York")
+        assert isinstance(result, str)
+        assert "No deadline information found" not in result, f"Got fallback response: {result}"
     
     @pytest.mark.slow
     def test_get_total_loss_requirements_tool(self):
@@ -789,6 +816,15 @@ class TestRAGTools:
         assert isinstance(result, str)
 
     @pytest.mark.slow
+    def test_get_total_loss_requirements_tool_texas(self):
+        """Test total loss requirements returns Texas data."""
+        from claim_agent.tools.rag_tools import get_total_loss_requirements
+
+        result = get_total_loss_requirements.run(state="Texas")
+        assert isinstance(result, str)
+        assert "No total loss requirements found" not in result, f"Got fallback response: {result}"
+
+    @pytest.mark.slow
     def test_get_required_disclosures_tool(self):
         """Test the required disclosures tool."""
         from claim_agent.tools.rag_tools import get_required_disclosures
@@ -797,6 +833,15 @@ class TestRAGTools:
 
         assert isinstance(result, str)
         assert "California" in result or "disclosure" in result.lower() or "No disclosure" in result
+
+    @pytest.mark.slow
+    def test_get_required_disclosures_tool_texas(self):
+        """Test required disclosures returns Texas data."""
+        from claim_agent.tools.rag_tools import get_required_disclosures
+
+        result = get_required_disclosures.run(state="Texas")
+        assert isinstance(result, str)
+        assert "No disclosure requirements found" not in result, f"Got fallback response: {result}"
 
     @pytest.mark.slow
     def test_get_coverage_exclusions_tool(self):

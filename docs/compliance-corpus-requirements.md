@@ -20,13 +20,11 @@ Requirements for a RAG corpus that provides prompt context and agentic search to
 | State | File | Status |
 |-------|------|--------|
 | California | `data/california_auto_compliance.json` | Complete |
-| Texas | — | **Missing** |
-| Florida | — | **Missing** |
-| New York | — | **Missing** |
+| Texas | `data/texas_auto_compliance.json` | Complete |
+| Florida | `data/florida_auto_compliance.json` | Complete |
+| New York | `data/new_york_auto_compliance.json` | Complete |
 
-### Key Gap
-
-Only California has a compliance JSON. Texas, Florida, and New York have policy language but **no compliance data** — no deadlines, no disclosures, no prohibited practices, no state-specific fraud statutes, no repair standards, no total-loss thresholds. Every agent that uses compliance tools (`get_compliance_deadlines`, `get_required_disclosures`, `get_fraud_detection_guidance`, `get_repair_standards`, `get_total_loss_requirements`) returns empty or degraded results for non-CA states.
+All four states are indexed by the RAG retriever. Compliance tools (`get_compliance_deadlines`, `get_required_disclosures`, `get_fraud_detection_guidance`, `get_repair_standards`, `get_total_loss_requirements`, `search_state_compliance`) return state-specific results when passed the appropriate state.
 
 ---
 

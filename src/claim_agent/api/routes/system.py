@@ -283,7 +283,7 @@ _CREWS_CATALOG = [
             {
                 "name": "Rental Eligibility Specialist",
                 "skill": "rental_eligibility_specialist",
-                "tools": ["check_rental_coverage", "get_rental_limits", "search_california_compliance"],
+                "tools": ["check_rental_coverage", "get_rental_limits", "search_state_compliance"],
                 "description": "Checks policy for rental coverage and limits",
             },
             {

@@ -10,7 +10,28 @@ from claim_agent.compliance.state_rules import (
     get_compliance_due_date,
 )
 from claim_agent.rag.constants import SUPPORTED_STATES, normalize_state
-from claim_agent.tools.compliance_logic import search_california_compliance_impl
+from claim_agent.tools.compliance_logic import (
+    search_california_compliance_impl,
+    search_state_compliance_impl,
+)
+
+
+@tool("Search State Auto Compliance")
+def search_state_compliance(query: str = "", state: str = "California") -> str:
+    """Search state auto insurance compliance/regulatory reference data by keyword.
+
+    Use for claims handling rules, deadlines, disclosures, and related regulations.
+    Pass state=loss_state from claim_data for multi-state claims.
+    Pass an empty string for query to get a section summary.
+
+    Args:
+        query: Search term (e.g. 'total loss', 'deadline', 'disclosure'). Optional.
+        state: State jurisdiction - California, Texas, Florida, or New York.
+
+    Returns:
+        JSON with match_count and matches (or section summary if query is empty).
+    """
+    return search_state_compliance_impl(query, state)
 
 
 @tool("Search California Auto Compliance")

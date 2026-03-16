@@ -29,6 +29,7 @@ __all__ = [
     "generate_report_pdf",
     "generate_claim_id",
     "search_california_compliance",
+    "search_state_compliance",
     "evaluate_escalation",
     "escalate_claim",
     "detect_fraud_indicators",
@@ -163,6 +164,10 @@ def __getattr__(name: str):
         from claim_agent.tools.compliance_tools import search_california_compliance
         setattr(mod, "search_california_compliance", search_california_compliance)
         return search_california_compliance
+    if name == "search_state_compliance":
+        from claim_agent.tools.compliance_tools import search_state_compliance
+        setattr(mod, "search_state_compliance", search_state_compliance)
+        return search_state_compliance
     if name == "evaluate_escalation":
         from claim_agent.tools.escalation_tools import evaluate_escalation
         setattr(mod, "evaluate_escalation", evaluate_escalation)

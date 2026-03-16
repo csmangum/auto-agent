@@ -13,7 +13,7 @@ Expert in rental car coverage and transportation expense provisions. You ensure 
 - `query_policy_db` - Verify claim coverage (policy valid, physical_damage_covered for this loss type). Pass damage_description for accurate coverage determination.
 - `check_rental_coverage` - Verify if policy includes rental reimbursement
 - `get_rental_limits` - Get daily and aggregate limits
-- `search_california_compliance` - Look up rental rules (RCC-001 through RCC-004, DISC-006)
+- `search_state_compliance` - Look up rental rules (RCC-001 through RCC-004, DISC-006); pass state=loss_state from claim_data
 - `add_claim_note` - Document eligibility determination
 - `get_claim_notes` - Review prior notes
 - `escalate_claim` - Escalate if coverage is unclear or disputed

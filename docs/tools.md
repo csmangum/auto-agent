@@ -63,7 +63,7 @@ Logic functions access external data (policies, valuations, repair shops, parts,
 | Rental | `rental_tools.py` | check_rental_coverage, get_rental_limits, process_rental_reimbursement |
 | Salvage | `salvage_tools.py` | get_salvage_value, initiate_title_transfer, record_salvage_disposition |
 | Supplemental | `supplemental_tools.py` | get_original_repair_estimate, calculate_supplemental_estimate, update_repair_authorization |
-| Compliance | `compliance_tools.py` | search_california_compliance |
+| Compliance | `compliance_tools.py` | search_state_compliance, search_california_compliance |
 | RAG | `rag_tools.py` | search_policy_compliance, get_compliance_deadlines, get_required_disclosures, get_coverage_exclusions, get_total_loss_requirements, get_fraud_detection_guidance, get_repair_standards |
 | Review | `review_tools.py` | get_claim_process_context |
 
@@ -930,9 +930,23 @@ Update repair authorization with supplemental amounts. Adds supplemental authori
 
 ## Compliance Tools
 
+### search_state_compliance
+
+Search state auto insurance compliance/regulatory reference data. Use for multi-state claims; pass `state=loss_state` from claim_data.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string (optional) | Keyword to search for |
+| `state` | string (default: California) | State jurisdiction — California, Texas, Florida, or New York |
+
+**Returns:** JSON string with matching compliance entries
+
+**Data Source:** `data/{state}_auto_compliance.json` (e.g. `texas_auto_compliance.json`)
+
 ### search_california_compliance
 
-Search California auto insurance compliance/regulatory reference data.
+Search California auto insurance compliance/regulatory reference data. Convenience shorthand for `search_state_compliance(query, "California")`.
 
 **Parameters:**
 | Parameter | Type | Description |
@@ -941,7 +955,7 @@ Search California auto insurance compliance/regulatory reference data.
 
 **Returns:** JSON string with matching compliance entries
 
-**Data Source:** `data/california_auto_compliance.json`
+**Data Source:** Uses the same configured California compliance source as `search_state_compliance` (respects `CA_COMPLIANCE_PATH` setting). Both tools read from the same data; they are interchangeable for California queries.
 
 ---
 

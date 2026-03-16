@@ -1,9 +1,10 @@
-"""California auto insurance compliance lookup logic."""
+"""California and multi-state auto insurance compliance lookup logic."""
 
 import json
 from typing import Any
 
-from claim_agent.data.loader import load_california_compliance
+from claim_agent.data.loader import load_state_compliance
+from claim_agent.rag.constants import SUPPORTED_STATES, normalize_state
 
 
 def _json_contains_query(obj: object, query: str) -> bool:
@@ -44,9 +45,34 @@ def _gather_matches(
 
 def search_california_compliance_impl(query: str) -> str:
     """Search California auto compliance data by keyword. Empty query returns section summary."""
-    data = load_california_compliance()
+    return search_state_compliance_impl(query, "California")
+
+
+def search_state_compliance_impl(query: str, state: str) -> str:
+    """Search state auto compliance data by keyword. Empty query returns section summary.
+
+    Args:
+        query: Search term (e.g. 'total loss', 'deadline', 'disclosure').
+        state: State jurisdiction - California, Texas, Florida, or New York.
+
+    Returns:
+        JSON with match_count and matches (or section summary if query is empty).
+    """
+    try:
+        normalized = normalize_state(state.strip())
+    except ValueError:
+        return json.dumps({
+            "error": f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}.",
+            "match_count": 0,
+            "matches": [],
+        })
+    data = load_state_compliance(normalized)
     if not data:
-        return json.dumps({"error": "California compliance data not available", "matches": []})
+        return json.dumps({
+            "error": f"Compliance data not available for {normalized}",
+            "match_count": 0,
+            "matches": [],
+        })
     query = (query or "").strip()
     if not query:
         summary = {

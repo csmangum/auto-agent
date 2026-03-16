@@ -41,7 +41,7 @@ Step 1 - CLAIM COVERAGE (required before rental):
 Step 2 - RENTAL ELIGIBILITY (only if claim_covered):
 4. Use check_rental_coverage with policy_number.
 5. Use get_rental_limits to get daily_limit, aggregate_limit, and max_days.
-6. Use search_california_compliance with query "rental" for RCC-001 through RCC-004 and DISC-006.
+6. Use search_state_compliance with query "rental" and state=loss_state from claim_data for RCC-001 through RCC-004 and DISC-006.
 7. Determine rental_eligible (true/false).
 
 Output: claim_covered (bool), rental_eligible (bool), daily_limit, aggregate_limit, max_days, and message.""",

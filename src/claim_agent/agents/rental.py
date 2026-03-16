@@ -11,7 +11,7 @@ from claim_agent.tools import (
     get_rental_limits,
     process_rental_reimbursement,
     query_policy_db,
-    search_california_compliance,
+    search_state_compliance,
 )
 from claim_agent.skills import (
     load_skill,
@@ -32,7 +32,7 @@ def create_rental_eligibility_specialist_agent(llm: LLMProtocol | None = None):
             query_policy_db,
             check_rental_coverage,
             get_rental_limits,
-            search_california_compliance,
+            search_state_compliance,
             add_claim_note,
             get_claim_notes,
             escalate_claim,
