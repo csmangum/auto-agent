@@ -13,7 +13,7 @@ class TestRAGConstants:
     """Test RAG module constants."""
 
     def test_supported_states(self):
-        assert SUPPORTED_STATES == ("California", "Texas", "Florida", "New York")
+        assert SUPPORTED_STATES == ("California", "Texas", "Florida", "New York", "Georgia")
 
     def test_default_state(self):
         assert DEFAULT_STATE == "California"
@@ -36,6 +36,10 @@ class TestNormalizeState:
 
     def test_valid_new_york(self):
         assert normalize_state("new york") == "New York"
+
+    def test_valid_georgia(self):
+        assert normalize_state("georgia") == "Georgia"
+        assert normalize_state("Georgia") == "Georgia"
 
     def test_empty_raises(self):
         with pytest.raises(ValueError, match="State cannot be empty"):

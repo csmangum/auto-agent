@@ -171,7 +171,7 @@ def build_subrogation_case_impl(
         existing = [r for r in repo.get_subrogation_cases_by_claim(claim_id) if r.get("case_id") == case_id]
         if existing:
             # Case already exists; no-op for create (or could update in future)
-            pass
+            result["persisted"] = True
         else:
             repo.create_subrogation_case(
                 claim_id=claim_id,
@@ -180,8 +180,11 @@ def build_subrogation_case_impl(
                 liability_percentage=float(liability_pct) if liability_pct is not None else None,
                 liability_basis=str(liability_basis) if liability_basis else None,
             )
+            result["persisted"] = True
     except Exception as e:
         logger.warning("Failed to persist subrogation case %s: %s", case_id, e)
+        result["persisted"] = False
+        result["persistence_error"] = str(e)
 
     return json.dumps(result)
 
