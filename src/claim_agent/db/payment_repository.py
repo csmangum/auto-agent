@@ -184,8 +184,8 @@ class PaymentRepository:
             claim_id = row["claim_id"]
             updates = ["status = ?", "issued_at = datetime('now')", "updated_at = datetime('now')"]
             params: list[Any] = [_STATUS_ISSUED]
-            if check_number is not None:
-                safe_check_number = check_number.strip()[:100]
+            safe_check_number = check_number.strip()[:100] if check_number is not None else None
+            if safe_check_number is not None:
                 updates.append("check_number = ?")
                 params.append(safe_check_number)
             params.append(payment_id)
@@ -193,7 +193,7 @@ class PaymentRepository:
                 f"UPDATE claim_payments SET {', '.join(updates)} WHERE id = ?",
                 params,
             )
-            details = json.dumps({"payment_id": payment_id, "check_number": check_number})
+            details = json.dumps({"payment_id": payment_id, "check_number": safe_check_number})
             conn.execute(
                 """
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
