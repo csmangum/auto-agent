@@ -151,13 +151,21 @@ class ReserveConfig(BaseSettings):
     supervisor_limit: float = 50000.0
     initial_reserve_from_estimated_damage: bool = True
 
-    @field_validator("adjuster_limit", "supervisor_limit", mode="before")
+    @field_validator("adjuster_limit", mode="before")
     @classmethod
-    def _coerce_float(cls, v: Any) -> float:
+    def _coerce_adjuster_limit(cls, v: Any) -> float:
         try:
             return float(v)
         except (ValueError, TypeError):
             return 10000.0
+
+    @field_validator("supervisor_limit", mode="before")
+    @classmethod
+    def _coerce_supervisor_limit(cls, v: Any) -> float:
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 50000.0
 
     @field_validator("initial_reserve_from_estimated_damage", mode="before")
     @classmethod

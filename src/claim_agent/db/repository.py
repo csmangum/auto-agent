@@ -482,17 +482,16 @@ class ClaimRepository:
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             old_amount = row["reserve_amount"]
-        if old_amount is None:
-            self.set_reserve(
-                claim_id,
-                new_amount,
-                reason=reason,
-                actor_id=actor_id,
-                role=role,
-                skip_authority_check=skip_authority_check,
-            )
-            return
-        with get_connection(self._db_path) as conn:
+            if old_amount is None:
+                self.set_reserve(
+                    claim_id,
+                    new_amount,
+                    reason=reason,
+                    actor_id=actor_id,
+                    role=role,
+                    skip_authority_check=skip_authority_check,
+                )
+                return
             conn.execute(
                 "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
                 (new_amount, claim_id),
