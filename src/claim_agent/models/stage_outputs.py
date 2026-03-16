@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 EscalationPriority = Literal["low", "medium", "high", "critical"]
 
@@ -75,10 +75,22 @@ class EscalationCheckResult(BaseModel):
 
 
 class CoverageVerificationResult(BaseModel):
-    """Output of ``_stage_coverage_verification``."""
+    """Output of ``_stage_coverage_verification``.
+
+    Exactly one of passed, denied, under_investigation must be True.
+    """
 
     passed: bool = False
     denied: bool = False
     under_investigation: bool = False
     reason: str = ""
     details: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_mutually_exclusive_outcomes(self) -> "CoverageVerificationResult":
+        outcomes = sum([self.passed, self.denied, self.under_investigation])
+        if outcomes != 1:
+            raise ValueError(
+                f"Exactly one of passed/denied/under_investigation must be True; got {outcomes}"
+            )
+        return self

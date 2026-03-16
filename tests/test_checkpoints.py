@@ -632,6 +632,79 @@ class TestWorkflowCheckpoints:
         )
         assert cps == {}, "Checkpoints should be cleared after mid-workflow escalation"
 
+    @patch("claim_agent.workflow.stages.verify_coverage_impl")
+    @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
+    @patch("claim_agent.workflow.stages.create_task_planner_crew")
+    @patch("claim_agent.workflow.stages.create_after_action_crew")
+    @patch("claim_agent.workflow.stages.create_router_crew")
+    @patch("claim_agent.workflow.stages.create_new_claim_crew")
+    @patch("claim_agent.workflow.orchestrator.get_llm")
+    @patch("claim_agent.workflow.stages.get_router_config")
+    def test_coverage_checkpoint_passed_false_causes_rerun(
+        self, mock_router_config, mock_get_llm, mock_new_crew, mock_router_crew,
+        mock_after_action, mock_task_planner, mock_escalation, mock_verify,
+        temp_db,
+    ):
+        """Invalid or passed=False coverage checkpoint causes re-run of coverage stage."""
+        from claim_agent.models.stage_outputs import CoverageVerificationResult
+        from claim_agent.crews.main_crew import run_claim_workflow
+
+        mock_router_config.return_value = {"confidence_threshold": 0.7}
+        mock_escalation.return_value = json.dumps({"needs_review": False})
+        mock_verify.return_value = CoverageVerificationResult(
+            passed=True, reason="Coverage verified", details={},
+        )
+
+        mock_llm = MagicMock()
+        mock_llm.model = "test-model"
+        mock_get_llm.return_value = mock_llm
+
+        router_crew_inst = MagicMock()
+        router_crew_inst.kickoff.return_value = _mock_router_result("new", 0.95)
+        mock_router_crew.return_value = router_crew_inst
+
+        new_crew_inst = MagicMock()
+        new_crew_inst.kickoff.return_value = _mock_crew_result("Processed")
+        mock_new_crew.return_value = new_crew_inst
+
+        mock_task_planner.return_value.kickoff.return_value = _mock_crew_result(
+            "Task planning output"
+        )
+        mock_after_action.return_value.kickoff.return_value = _mock_crew_result(
+            "After-action summary completed."
+        )
+
+        claim_data = {
+            "policy_number": "POL-001",
+            "vin": "CPVIN-COV-RERUN",
+            "vehicle_year": 2023,
+            "vehicle_make": "Test",
+            "vehicle_model": "Car",
+            "incident_date": "2025-06-01",
+            "incident_description": "Fender bender",
+            "damage_description": "Minor dent",
+        }
+
+        result1 = run_claim_workflow(claim_data, llm=mock_llm)
+        assert result1["status"] == "open"
+        call_count_after_first = mock_verify.call_count
+
+        # Corrupt checkpoint: set passed=False so stage will not restore
+        repo = ClaimRepository(db_path=temp_db)
+        bad_cp = json.dumps({"passed": False, "reason": "corrupted", "details": {}})
+        repo.save_task_checkpoint(
+            result1["claim_id"], result1["workflow_run_id"], "coverage_verification", bad_cp,
+        )
+
+        result2 = run_claim_workflow(
+            claim_data,
+            llm=mock_llm,
+            resume_run_id=result1["workflow_run_id"],
+        )
+        assert result2["status"] == "open"
+        # verify_coverage_impl was called again on resume (corrupt cp caused re-run)
+        assert mock_verify.call_count == call_count_after_first + 1
+
     @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
     @patch("claim_agent.workflow.stages.create_task_planner_crew")
     @patch("claim_agent.workflow.stages.create_after_action_crew")

@@ -1,5 +1,6 @@
 """Input sanitization for claim data to prevent prompt injection and abuse."""
 
+import json
 import re
 from typing import Any
 
@@ -13,6 +14,7 @@ MAX_VIN = 32
 MAX_VEHICLE_MAKE = 64
 MAX_VEHICLE_MODEL = 128
 MAX_DENIAL_REASON = 4096
+MAX_AUDIT_DETAILS = 4096
 MAX_POLICYHOLDER_EVIDENCE = 8192
 MAX_REOPENING_REASON = 1000
 MAX_PRIOR_CLAIM_ID = 64
@@ -77,6 +79,18 @@ def sanitize_denial_reason(text: str | None) -> str:
         return ""
     t = _sanitize_text(text, MAX_DENIAL_REASON)
     return _remove_injection_patterns(t)
+
+
+def truncate_audit_json(obj: dict[str, Any]) -> str:
+    """JSON-dump for audit storage; truncates to MAX_AUDIT_DETAILS if oversized."""
+    s = json.dumps(obj)
+    if len(s) <= MAX_AUDIT_DETAILS:
+        return s
+    return json.dumps({
+        "_truncated": True,
+        "original_length": len(s),
+        "preview": s[:3500],
+    })
 
 
 def sanitize_policyholder_evidence(text: str | None) -> str | None:

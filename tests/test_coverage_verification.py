@@ -7,6 +7,7 @@ import pytest
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import STATUS_DENIED
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.stage_outputs import CoverageVerificationResult
 from claim_agent.workflow.coverage_verification import verify_coverage_impl
 
 
@@ -166,6 +167,40 @@ class TestVerifyCoverageImpl:
         assert not result.denied
         assert "manual review" in result.reason.lower() or "compare" in result.reason.lower()
         assert result.details.get("error") == "parse_error"
+
+    def test_estimated_damage_accepts_int_float_string_numeric(self):
+        """estimated_damage as int, float, or string numeric parses correctly."""
+        ctx = _ctx_with_mock_db(":memory:")
+        base = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision",
+        }
+        # int: passes (POL-001 deductible 500 < 2000)
+        r1 = verify_coverage_impl({**base, "estimated_damage": 2000}, ctx=ctx)
+        assert r1.passed
+        # float: passes
+        r2 = verify_coverage_impl({**base, "estimated_damage": 2000.0}, ctx=ctx)
+        assert r2.passed
+        # string numeric: passes
+        r3 = verify_coverage_impl({**base, "estimated_damage": "2000"}, ctx=ctx)
+        assert r3.passed
+
+
+class TestCoverageVerificationResult:
+    """Tests for CoverageVerificationResult model invariants."""
+
+    def test_exactly_one_outcome_required(self):
+        """Model requires exactly one of passed/denied/under_investigation."""
+        with pytest.raises(ValueError, match="Exactly one"):
+            CoverageVerificationResult()
+        with pytest.raises(ValueError, match="Exactly one"):
+            CoverageVerificationResult(passed=True, denied=True)
+
+    def test_valid_single_outcome(self):
+        """Valid combinations pass validation."""
+        CoverageVerificationResult(passed=True)
+        CoverageVerificationResult(denied=True)
+        CoverageVerificationResult(under_investigation=True)
 
 
 class TestCoverageStageIntegration:

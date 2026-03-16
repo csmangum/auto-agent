@@ -14,13 +14,13 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from claim_agent.config.settings import (
     DUPLICATE_DAYS_WINDOW,
-    get_coverage_config,
-    get_escalation_config,
     DUPLICATE_SIMILARITY_THRESHOLD,
     DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE,
     HIGH_VALUE_DAMAGE_THRESHOLD,
     HIGH_VALUE_VEHICLE_THRESHOLD,
     PRE_ROUTING_FRAUD_DAMAGE_RATIO,
+    get_coverage_config,
+    get_escalation_config,
     get_router_config,
 )
 from claim_agent.crews.bodily_injury_crew import create_bodily_injury_crew
@@ -137,7 +137,7 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
         )
         return None
 
-    result = verify_coverage_impl(ctx.claim_data, ctx=ctx.context)
+    result = verify_coverage_impl(ctx.claim_data, ctx=ctx.context, config=config)
     ctx.coverage_result = result
 
     if result.denied:

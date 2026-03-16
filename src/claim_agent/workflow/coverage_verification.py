@@ -18,6 +18,14 @@ from claim_agent.tools.policy_logic import query_policy_db_impl
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
 
+# Policy result keys from query_policy_db_impl
+_POLICY_VALID = "valid"
+_POLICY_STATUS = "status"
+_POLICY_MESSAGE = "message"
+_POLICY_PHYSICAL_DAMAGE_COVERED = "physical_damage_covered"
+_POLICY_PHYSICAL_DAMAGE_COVERAGES = "physical_damage_coverages"
+_POLICY_DEDUCTIBLE = "deductible"
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,6 +33,7 @@ def verify_coverage_impl(
     claim_data: dict,
     *,
     ctx: ClaimContext | None = None,
+    config: dict | None = None,
 ) -> CoverageVerificationResult:
     """Verify policy coverage for the claim before routing.
 
@@ -33,7 +42,7 @@ def verify_coverage_impl(
     Returns:
         CoverageVerificationResult with passed, denied, or under_investigation.
     """
-    config = get_coverage_config()
+    config = config if config is not None else get_coverage_config()
     if not config.get("enabled", True):
         return CoverageVerificationResult(
             passed=True,
@@ -96,10 +105,10 @@ def verify_coverage_impl(
             details={"error": "parse_error"},
         )
 
-    valid = policy_result.get("valid", False)
+    valid = policy_result.get(_POLICY_VALID, False)
     if not valid:
-        status = policy_result.get("status", "unknown")
-        message = policy_result.get("message", "Policy not found or inactive")
+        status = policy_result.get(_POLICY_STATUS, "unknown")
+        message = policy_result.get(_POLICY_MESSAGE, "Policy not found or inactive")
         return CoverageVerificationResult(
             denied=True,
             reason=message,
@@ -109,9 +118,9 @@ def verify_coverage_impl(
             },
         )
 
-    physical_damage_covered = policy_result.get("physical_damage_covered", False)
+    physical_damage_covered = policy_result.get(_POLICY_PHYSICAL_DAMAGE_COVERED, False)
     if not physical_damage_covered:
-        coverages = policy_result.get("physical_damage_coverages", [])
+        coverages = policy_result.get(_POLICY_PHYSICAL_DAMAGE_COVERAGES, [])
         return CoverageVerificationResult(
             denied=True,
             reason="Loss type not covered under policy (no collision/comprehensive)",
@@ -121,8 +130,12 @@ def verify_coverage_impl(
             },
         )
 
+    # When deny_when_deductible_exceeds_damage: deny only when deductible strictly
+    # exceeds estimated damage. est == ded or est == 0: claim passes (coverage exists;
+    # payout may be $0). Change to ded >= est if business wants to deny when payout
+    # would be zero.
     if config.get("deny_when_deductible_exceeds_damage") and estimated_damage is not None:
-        deductible = policy_result.get("deductible")
+        deductible = policy_result.get(_POLICY_DEDUCTIBLE)
         if deductible is not None:
             try:
                 ded = float(deductible)
@@ -158,8 +171,8 @@ def verify_coverage_impl(
         passed=True,
         reason="Coverage verified",
         details={
-            "policy_status": policy_result.get("status", "active"),
+            "policy_status": policy_result.get(_POLICY_STATUS, "active"),
             "physical_damage_covered": True,
-            "deductible": policy_result.get("deductible"),
+            "deductible": policy_result.get(_POLICY_DEDUCTIBLE),
         },
     )
