@@ -3,11 +3,14 @@
 import json
 import os
 import tempfile
+from datetime import date
 
 import pytest
 
 from claim_agent.db.database import init_db
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.claim import ClaimInput
+from claim_agent.models.party import ClaimPartyInput
 from claim_agent.tools.follow_up_tools import (
     check_pending_responses,
     record_user_response,
@@ -43,8 +46,6 @@ def repo(temp_db):
 
 @pytest.fixture
 def claim_id(repo):
-    from claim_agent.models.claim import ClaimInput
-    from datetime import date
     inp = ClaimInput(
         policy_number="POL-123",
         vin="1HGBH41JXMN109186",
@@ -109,8 +110,6 @@ def test_send_user_message_claimant_no_contact_returns_false(repo, claim_id):
 
 def test_send_user_message_claimant_resolves_contact_from_parties(repo, claim_id, monkeypatch):
     """When claimant has contact in claim_parties, message is delivered without explicit email/phone."""
-    from claim_agent.models.party import ClaimPartyInput
-
     monkeypatch.setattr(
         "claim_agent.notifications.user.get_notification_config",
         lambda: {"email_enabled": True, "sms_enabled": True},
@@ -172,9 +171,6 @@ def test_record_user_response_invalid_message(repo):
 
 def test_record_user_response_rejects_cross_claim_when_claim_id_provided(repo, claim_id):
     """When claim_id is provided, tool rejects message from another claim."""
-    from claim_agent.models.claim import ClaimInput
-    from datetime import date
-
     msg_id = repo.create_follow_up_message(
         claim_id, "claimant", "Please upload photos.", actor_id="workflow"
     )

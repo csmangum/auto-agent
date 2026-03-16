@@ -313,7 +313,6 @@ export default function ClaimDetail() {
               </div>
             </div>
 
-            {/* Descriptions */}
             {/* Parties */}
             {parties.length > 0 && (
               <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">

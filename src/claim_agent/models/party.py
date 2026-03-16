@@ -48,7 +48,8 @@ class ClaimPartyInput(BaseModel):
     )
     represented_by_id: Optional[int] = Field(
         default=None,
-        description="ID of attorney party representing this party",
+        description="ID of attorney party representing this party. Only valid when updating; "
+        "at claim creation this is ignored (attorney IDs do not exist yet).",
     )
     consent_status: Optional[Literal["pending", "granted", "revoked"]] = Field(
         default="pending", description="Consent status"
