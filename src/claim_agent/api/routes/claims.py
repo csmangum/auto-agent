@@ -676,7 +676,8 @@ def get_claim_attachment(claim_id: str, key: str):
     """Serve an attachment file for a claim. Local storage only; S3 uses presigned URLs."""
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT id FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
@@ -721,11 +722,11 @@ def _maybe_update_document_request_on_receipt(
     )
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id FROM claim_tasks WHERE document_request_id = ? AND status NOT IN ('completed', 'cancelled')",
-            (req_id,),
+            text("SELECT id FROM claim_tasks WHERE document_request_id = :req_id AND status NOT IN ('completed', 'cancelled')"),
+            {"req_id": req_id},
         ).fetchall()
         for row in rows:
-            task_id = row["id"]
+            task_id = row_to_dict(row)["id"]
             claim_repo.update_task(task_id, status="completed", resolution_notes="Document received")
 
 
@@ -1067,19 +1068,19 @@ def add_claim_note(
 def get_claim_workflows(claim_id: str):
     """Get workflow runs for a claim."""
     with get_connection() as conn:
-        # Verify claim exists
         claim = conn.execute(
-            "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT id FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
         if claim is None:
             raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
         rows = conn.execute(
-            "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY id ASC",
-            (claim_id,),
+            text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
+            {"claim_id": claim_id},
         ).fetchall()
 
-    return {"claim_id": claim_id, "workflows": [dict(r) for r in rows]}
+    return {"claim_id": claim_id, "workflows": [row_to_dict(r) for r in rows]}
 
 
 @router.get("/claims/{claim_id}/repair-status", dependencies=[RequireAdjuster])
@@ -1087,11 +1088,13 @@ def get_claim_repair_status(claim_id: str):
     """Get repair status and history for a partial loss claim."""
     with get_connection() as conn:
         claim = conn.execute(
-            "SELECT id, claim_type FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT id, claim_type FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
         if claim is None:
             raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-        if claim["claim_type"] != "partial_loss":
+        claim_d = row_to_dict(claim)
+        if claim_d["claim_type"] != "partial_loss":
             raise HTTPException(
                 status_code=400,
                 detail="Repair status only applies to partial_loss claims",
@@ -1627,38 +1630,43 @@ async def _stream_claim_updates(claim_id: str):
         db_path = get_db_path()
         with get_connection(db_path) as conn:
             claim_row = conn.execute(
-                "SELECT * FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT * FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if claim_row is None:
                 return None, None, None, None
 
-            claim_dict = dict(claim_row)
+            claim_dict = row_to_dict(claim_row)
             _resolve_attachment_urls(claim_dict)
 
             history_rows = conn.execute(
-                """SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at
-                   FROM claim_audit_log WHERE claim_id = ? ORDER BY id ASC""",
-                (claim_id,),
+                text("SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at "
+                     "FROM claim_audit_log WHERE claim_id = :claim_id ORDER BY id ASC"),
+                {"claim_id": claim_id},
             ).fetchall()
 
             wf_rows = conn.execute(
-                "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY id ASC",
-                (claim_id,),
+                text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
+                {"claim_id": claim_id},
             ).fetchall()
 
-            # Completed stages from task_checkpoints (latest run) for progress indicator
             cp_rows = conn.execute(
-                """SELECT stage_key FROM task_checkpoints
-                   WHERE claim_id = ? AND workflow_run_id = (
-                     SELECT workflow_run_id FROM task_checkpoints
-                     WHERE claim_id = ? ORDER BY id DESC LIMIT 1
-                   )""",
-                (claim_id, claim_id),
+                text("""
+                SELECT stage_key FROM task_checkpoints
+                WHERE claim_id = :claim_id AND workflow_run_id = (
+                    SELECT workflow_run_id FROM task_checkpoints
+                    WHERE claim_id = :claim_id ORDER BY id DESC LIMIT 1
+                )
+                """),
+                {"claim_id": claim_id},
             ).fetchall()
-            completed_stages = [
-                r["stage_key"] for r in cp_rows
-                if (r["stage_key"].split(":")[0] if ":" in r["stage_key"] else r["stage_key"]) in WORKFLOW_STAGES
-            ]
+            completed_stages = []
+            for r in cp_rows:
+                d = row_to_dict(r)
+                sk = d["stage_key"]
+                stage = sk.split(":")[0] if ":" in sk else sk
+                if stage in WORKFLOW_STAGES:
+                    completed_stages.append(sk)
             completed_stages.sort(key=lambda s: WORKFLOW_STAGES.index(s.split(":")[0] if ":" in s else s))
 
         return claim_dict, history_rows, wf_rows, completed_stages
@@ -1672,8 +1680,8 @@ async def _stream_claim_updates(claim_id: str):
 
         payload = {
             "claim": claim_dict,
-            "history": [dict(r) for r in history_rows],
-            "workflows": [dict(r) for r in wf_rows],
+            "history": [row_to_dict(r) for r in history_rows],
+            "workflows": [row_to_dict(r) for r in wf_rows],
             "progress": completed_stages or [],
         }
         yield f"data: {json.dumps(payload)}\n\n"

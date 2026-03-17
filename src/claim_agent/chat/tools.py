@@ -186,13 +186,13 @@ def explain_escalation(claim_id: str, *, db_path: str | None = None) -> dict[str
     path = db_path or get_db_path()
     with get_connection(path) as conn:
         wf_rows = conn.execute(
-            "SELECT claim_type, workflow_output, created_at FROM workflow_runs "
-            "WHERE claim_id = ? ORDER BY id ASC",
-            (claim_id,),
+            text("SELECT claim_type, workflow_output, created_at FROM workflow_runs "
+                 "WHERE claim_id = :claim_id ORDER BY id ASC"),
+            {"claim_id": claim_id},
         ).fetchall()
     workflow_outputs = []
     for wf in wf_rows:
-        w = dict(wf)
+        w = row_to_dict(wf)
         if w.get("workflow_output"):
             try:
                 parsed = json.loads(w["workflow_output"])

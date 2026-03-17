@@ -353,9 +353,6 @@ def _get_database_url() -> str:
     if settings.paths.database_url:
         return settings.paths.database_url
     path = settings.paths.claims_db_path
-    # SQLite URL: sqlite:///path (absolute) or sqlite:///./path (relative)
-    if path.startswith("/"):
-        return f"sqlite:///{path}"
     return f"sqlite:///{path}"
 
 

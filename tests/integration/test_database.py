@@ -26,11 +26,13 @@ class TestDatabaseInit:
     @pytest.mark.integration
     def test_init_creates_required_tables(self, integration_db):
         """Verify all required tables are created."""
+        from sqlalchemy import text
+
         from claim_agent.db.database import get_connection
-        
+
         with get_connection(integration_db) as conn:
             cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             )
             tables = [row[0] for row in cursor.fetchall()]
         
@@ -469,26 +471,33 @@ class TestWorkflowRuns:
             workflow_output="Claim processed successfully. Assigned to adjuster.",
         )
         
+        from sqlalchemy import text
+
+        from claim_agent.db.database import row_to_dict
+
         with get_connection(integration_db) as conn:
             row = conn.execute(
-                "SELECT * FROM workflow_runs WHERE claim_id = ?",
-                (claim_id,)
+                text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
-        
+
         assert row is not None
-        assert row["claim_type"] == "new"
-        assert "new" in row["router_output"]
-        assert "processed" in row["workflow_output"].lower()
+        row_d = row_to_dict(row)
+        assert row_d["claim_type"] == "new"
+        assert "new" in (row_d.get("router_output") or "")
+        assert "processed" in (row_d.get("workflow_output") or "").lower()
     
     @pytest.mark.integration
     def test_multiple_workflow_runs_for_same_claim(self, integration_db):
         """Test that multiple workflow runs can be saved for reprocessed claims."""
-        from claim_agent.db.database import get_connection
+        from sqlalchemy import text
+
+        from claim_agent.db.database import get_connection, row_to_dict
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
-        
+
         repo = ClaimRepository(db_path=integration_db)
-        
+
         claim_id = repo.create_claim(ClaimInput(
             policy_number="POL-001",
             vin="VIN123",
@@ -499,22 +508,24 @@ class TestWorkflowRuns:
             incident_description="Test",
             damage_description="Test",
         ))
-        
+
         # First workflow run
         repo.save_workflow_result(claim_id, "new", "new", "First run")
-        
+
         # Second workflow run (reprocessed)
         repo.save_workflow_result(claim_id, "partial_loss", "partial_loss", "Second run")
-        
+
         with get_connection(integration_db) as conn:
             rows = conn.execute(
-                "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY created_at",
-                (claim_id,)
+                text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY created_at"),
+                {"claim_id": claim_id},
             ).fetchall()
-        
+
         assert len(rows) == 2
-        assert rows[0]["claim_type"] == "new"
-        assert rows[1]["claim_type"] == "partial_loss"
+        r0 = row_to_dict(rows[0])
+        r1 = row_to_dict(rows[1])
+        assert r0["claim_type"] == "new"
+        assert r1["claim_type"] == "partial_loss"
 
 
 # ============================================================================

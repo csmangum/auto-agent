@@ -21,15 +21,17 @@ def main() -> int:
 
     claim_id = sys.argv[1].strip()
     db_path = get_db_path()
+    # When using PostgreSQL, get_db_path() returns ""; pass None for default connection
+    conn_path = None if not db_path else db_path
 
-    with get_connection(db_path) as conn:
+    with get_connection(conn_path) as conn:
         row = conn.execute(
             text("SELECT * FROM claims WHERE id = :claim_id"),
             {"claim_id": claim_id},
         ).fetchone()
         if not row:
             print(f"Claim {claim_id} not found in database.")
-            print(f"DB path: {db_path}")
+            print(f"DB: {db_path or 'PostgreSQL (DATABASE_URL)'}")
             return 1
 
         claim = row_to_dict(row)

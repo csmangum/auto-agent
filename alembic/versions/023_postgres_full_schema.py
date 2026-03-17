@@ -185,6 +185,32 @@ def upgrade() -> None:
         )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_reserve_history_claim_id ON reserve_history(claim_id)")
+    op.execute("""
+        CREATE OR REPLACE FUNCTION reserve_history_prevent_update()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            RAISE EXCEPTION 'reserve_history is append-only: updates are not allowed';
+        END;
+        $$ LANGUAGE plpgsql
+    """)
+    op.execute("""
+        DROP TRIGGER IF EXISTS reserve_history_prevent_update ON reserve_history;
+        CREATE TRIGGER reserve_history_prevent_update
+        BEFORE UPDATE ON reserve_history FOR EACH ROW EXECUTE PROCEDURE reserve_history_prevent_update()
+    """)
+    op.execute("""
+        CREATE OR REPLACE FUNCTION reserve_history_prevent_delete()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            RAISE EXCEPTION 'reserve_history is append-only: deletes are not allowed';
+        END;
+        $$ LANGUAGE plpgsql
+    """)
+    op.execute("""
+        DROP TRIGGER IF EXISTS reserve_history_prevent_delete ON reserve_history;
+        CREATE TRIGGER reserve_history_prevent_delete
+        BEFORE DELETE ON reserve_history FOR EACH ROW EXECUTE PROCEDURE reserve_history_prevent_delete()
+    """)
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS document_requests (
@@ -296,6 +322,8 @@ def upgrade() -> None:
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_id ON claim_parties(claim_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_id, party_type)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_claim_parties_address_lower ON claim_parties(lower(trim(address)))")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_claim_parties_provider_name ON claim_parties(party_type, lower(trim(name)))")
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS subrogation_cases (
