@@ -1929,6 +1929,8 @@ class ClaimRepository:
         if not title:
             raise ValueError("Task title must not be empty after sanitization")
         # Normalize and validate recurrence fields
+        if recurrence_rule is None and recurrence_interval is not None:
+            recurrence_interval = None
         if recurrence_rule is not None:
             from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES, RECURRENCE_INTERVAL_DAYS
             if recurrence_rule not in VALID_RECURRENCE_RULES:

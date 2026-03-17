@@ -75,6 +75,8 @@ class CreateTaskBody(BaseModel):
     def validate_recurrence_combination(self) -> "CreateTaskBody":
         rule = self.recurrence_rule
         interval = self.recurrence_interval
+        if interval is not None and rule is None:
+            raise ValueError("recurrence_interval requires recurrence_rule to be set")
         if rule == "interval_days" and interval is None:
             raise ValueError("recurrence_interval is required when recurrence_rule is 'interval_days'")
         if rule in ("daily", "weekly") and interval is None:
