@@ -10,8 +10,12 @@ from typing import TYPE_CHECKING, Any, Optional
 from claim_agent.adapters.registry import get_claim_search_adapter, get_siu_adapter
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.tools.fraud_detectors import KNOWN_FRAUD_PATTERNS
-from claim_agent.tools.fraud_utils import as_nonempty_str, coerce_date, extract_provider_names
+from claim_agent.tools.fraud_detectors import (
+    INDICATOR_TO_PATTERN_SCORE,
+    KNOWN_FRAUD_PATTERNS,
+    run_fraud_detectors,
+)
+from claim_agent.tools.fraud_utils import as_trimmed_str, coerce_date
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
@@ -101,97 +105,20 @@ def analyze_claim_patterns_impl(
         except Exception as e:
             logger.debug("Best-effort pattern analysis: could not search claims by VIN: %s", e)
 
-    repo = ctx.repo if ctx else ClaimRepository()
     fraud_cfg = get_fraud_config()
-    claim_id = as_nonempty_str(claim_data.get("claim_id"))
-    incident_dt = coerce_date(claim_data.get("incident_date"))
+    claim_id = as_trimmed_str(claim_data.get("claim_id"))
 
-    # Velocity checks: multiple claims from same address across different policies.
-    addresses: set[str] = set()
-    for key in ("claimant_address", "policy_address", "garaging_address"):
-        address = as_nonempty_str(claim_data.get(key))
-        if address:
-            addresses.add(address)
-    if claim_id:
-        try:
-            parties = repo.get_claim_parties(claim_id)
-            for party in parties:
-                address = as_nonempty_str(party.get("address"))
-                if address:
-                    addresses.add(address)
-        except Exception as e:
-            logger.debug("Could not load claim parties for velocity analysis: %s", e)
-    velocity_hits: list[dict[str, Any]] = []
-    velocity_hit_ids: set[str] = set()
-    if incident_dt and addresses:
-        window_days = int(fraud_cfg.get("velocity_window_days", 30))
-        for address in addresses:
-            try:
-                related = repo.get_claims_by_party_address(address, limit=100)
-            except Exception as e:
-                logger.debug("Velocity lookup failed for address %r: %s", address, e)
-                continue
-            for row in related:
-                related_id = as_nonempty_str(row.get("id"))
-                if claim_id and related_id == claim_id:
-                    continue
-                if related_id in velocity_hit_ids:
-                    continue
-                related_dt = coerce_date(row.get("incident_date"))
-                if related_dt is None:
-                    continue
-                if abs((incident_dt - related_dt).days) <= window_days:
-                    velocity_hits.append(row)
-                    velocity_hit_ids.add(related_id)
-        distinct_policies = {
-            as_nonempty_str(item.get("policy_number"))
-            for item in velocity_hits
-            if as_nonempty_str(item.get("policy_number"))
-        }
-        threshold = int(fraud_cfg.get("velocity_claim_threshold", 2))
-        if len(velocity_hits) >= threshold and len(distinct_policies) >= 2:
-            result["patterns_detected"].append("high_velocity_same_address")
-            result["risk_factors"].append(
-                f"Address-linked velocity: {len(velocity_hits)} nearby claims across "
-                f"{len(distinct_policies)} policies"
-            )
-            result["pattern_score"] += int(fraud_cfg.get("velocity_score", 20))
+    # Run pluggable detectors and map indicators to pattern_score and risk_factors.
+    indicators = run_fraud_detectors(claim_data, ctx)
+    for ind in indicators:
+        if ind in INDICATOR_TO_PATTERN_SCORE:
+            pattern_name, config_key, risk_factor = INDICATOR_TO_PATTERN_SCORE[ind]
+            if pattern_name not in result["patterns_detected"]:
+                result["patterns_detected"].append(pattern_name)
+                result["risk_factors"].append(risk_factor)
+                result["pattern_score"] += int(fraud_cfg.get(config_key, 0))
 
-    # Geographic anomaly checks.
-    policy_state = as_nonempty_str(claim_data.get("policy_state"))
-    loss_state = as_nonempty_str(claim_data.get("loss_state") or claim_data.get("incident_state"))
-    repair_state = as_nonempty_str(claim_data.get("repair_shop_state"))
-    nonempty_states = [state for state in (policy_state, loss_state, repair_state) if state]
-    if len(nonempty_states) >= 2 and len(set(nonempty_states)) > 1:
-        result["patterns_detected"].append("geographic_state_inconsistency")
-        result["risk_factors"].append(
-            f"State mismatch detected across policy/loss/repair locations: {sorted(set(nonempty_states))}"
-        )
-        result["pattern_score"] += int(fraud_cfg.get("geographic_anomaly_score", 15))
-
-    # Relationship graph analysis via migration-ready repository APIs.
-    if claim_id:
-        try:
-            relationship = repo.build_relationship_snapshot(
-                claim_id=claim_id,
-                max_nodes=int(fraud_cfg.get("graph_max_nodes", 100)),
-                max_depth=int(fraud_cfg.get("graph_max_depth", 1)),
-            )
-            if relationship.get("dense_cluster_detected"):
-                result["patterns_detected"].append("relationship_graph_dense_cluster")
-                result["risk_factors"].append("Dense relationship cluster detected")
-                result["pattern_score"] += int(fraud_cfg.get("graph_cluster_score", 25))
-            high_risk_links = int(relationship.get("high_risk_link_count", 0))
-            if high_risk_links >= int(fraud_cfg.get("graph_high_risk_link_threshold", 2)):
-                result["patterns_detected"].append("relationship_graph_high_risk_links")
-                result["risk_factors"].append(
-                    f"Relationship graph has {high_risk_links} high-risk links"
-                )
-                result["pattern_score"] += int(fraud_cfg.get("graph_high_risk_score", 20))
-            result["relationship_analysis"] = relationship
-        except Exception as e:
-            logger.debug("Relationship graph analysis skipped: %s", e)
-
+    # Timing and staged keywords (simple checks, kept inline).
     incident_desc = (claim_data.get("incident_description") or "").lower()
     damage_desc = (claim_data.get("damage_description") or "").lower()
     combined_text = f"{incident_desc} {damage_desc}"
@@ -210,18 +137,18 @@ def analyze_claim_patterns_impl(
             result["pattern_score"] += get_fraud_config()["fraud_keyword_score"]
             break
 
-    occupant_markers = ("multiple occupants", "all passengers", "all injured", "whiplash")
-    intersection_markers = ("intersection", "4-way", "four-way", "stop sign", "traffic light")
-    sudden_stop_markers = ("sudden stop", "brake checked", "rear-ended at low speed")
-    has_occupants = any(marker in incident_desc for marker in occupant_markers)
-    has_intersection = any(marker in incident_desc for marker in intersection_markers)
-    has_sudden_stop = any(marker in incident_desc for marker in sudden_stop_markers)
-    if (has_occupants and has_intersection) or (has_occupants and has_sudden_stop):
-        result["patterns_detected"].append("staged_accident_pattern_cluster")
-        result["risk_factors"].append(
-            "Staged accident pattern cluster (occupants + intersection/sudden-stop pattern)"
-        )
-        result["pattern_score"] += int(fraud_cfg.get("staged_pattern_score", 20))
+    # Relationship analysis: fetch full snapshot for result (detector already ran it).
+    if claim_id:
+        try:
+            repo = ctx.repo if ctx else ClaimRepository()
+            relationship = repo.build_relationship_snapshot(
+                claim_id=claim_id,
+                max_nodes=int(fraud_cfg.get("graph_max_nodes", 100)),
+                max_depth=int(fraud_cfg.get("graph_max_depth", 1)),
+            )
+            result["relationship_analysis"] = relationship
+        except Exception as e:
+            logger.debug("Relationship graph analysis skipped: %s", e)
 
     return json.dumps(result)
 
@@ -313,33 +240,17 @@ def cross_reference_fraud_indicators_impl(
         except Exception as e:
             logger.debug("Best-effort cross-reference: could not check prior fraud claims for VIN: %s", e)
 
-    repo = ctx.repo if ctx else ClaimRepository()
     fraud_cfg = get_fraud_config()
-    provider_names = extract_provider_names(claim_data, repo)
-    for provider_name in provider_names:
-        try:
-            provider_claims = repo.get_claims_by_provider_name(provider_name, limit=200)
-        except Exception as e:
-            logger.debug("Provider lookup failed for %s: %s", provider_name, e)
-            continue
-        suspicious = [
-            row
-            for row in provider_claims
-            if as_nonempty_str(row.get("status"))
-            in {"needs_review", "fraud_suspected", "fraud_confirmed", "under_investigation"}
-        ]
-        if len(suspicious) >= int(fraud_cfg.get("provider_ring_threshold", 2)):
-            result["database_matches"].append("provider_ring_suspected")
-            result["recommendations"].append(
-                f"Provider '{provider_name}' appears in {len(suspicious)} suspicious claims"
-            )
-            result["cross_reference_score"] += int(fraud_cfg.get("provider_ring_score", 20))
-            break
+    xref_indicators = run_fraud_detectors(claim_data, ctx)
+    if "provider_ring_suspected" in xref_indicators:
+        result["database_matches"].append("provider_ring_suspected")
+        result["recommendations"].append("Provider ring suspected across suspicious claims")
+        result["cross_reference_score"] += int(fraud_cfg.get("provider_ring_score", 20))
 
     # ClaimSearch integration seam (NICB/ISO via adapter).
     search_terms = {
-        "vin": as_nonempty_str(claim_data.get("vin")),
-        "claimant_name": as_nonempty_str(claim_data.get("claimant_name")),
+        "vin": as_trimmed_str(claim_data.get("vin")),
+        "claimant_name": as_trimmed_str(claim_data.get("claimant_name")),
     }
     date_range: tuple[str, str] | None = None
     incident_dt = coerce_date(claim_data.get("incident_date"))

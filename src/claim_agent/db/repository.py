@@ -5,6 +5,7 @@ audit entries and does not perform UPDATE or DELETE operations on that table.
 """
 
 import json
+import logging
 import uuid
 from typing import Any, cast
 
@@ -59,6 +60,11 @@ from claim_agent.utils.sanitization import (
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput
+
+# Relation types for build_relationship_snapshot edges
+RELATION_SHARED_VIN = "shared_vin"
+RELATION_SHARED_ADDRESS = "shared_address"
+RELATION_SHARED_PROVIDER = "shared_provider"
 
 
 def _generate_claim_id(prefix: str = "CLM") -> str:
@@ -1627,9 +1633,7 @@ class ClaimRepository:
         """Build an in-memory 1-hop relationship graph snapshot from existing claims/parties.
 
         Finds claims related to the root by shared VIN, shared party address, or shared
-        provider name, using existing repository search helpers. The final batch fetch
-        of related claims and parties uses a single connection; initial lookups may
-        open separate connections per search.
+        provider name. Uses a single connection for all lookups to avoid N+1 churn.
 
         This is a migration-ready compatibility layer. It derives graph signals from
         existing tables without requiring dedicated graph persistence.
@@ -1640,6 +1644,13 @@ class ClaimRepository:
             max_depth: Graph traversal depth (reserved for future multi-hop expansion;
                 currently only 1-hop is implemented).
         """
+        logger = logging.getLogger(__name__)
+        if max_depth > 1:
+            logger.debug(
+                "build_relationship_snapshot max_depth=%s > 1; only 1-hop implemented",
+                max_depth,
+            )
+
         root_claim = self.get_claim(claim_id)
         if root_claim is None:
             return {
@@ -1656,35 +1667,61 @@ class ClaimRepository:
 
         root_vin = str(root_claim.get("vin") or "").strip()
         parties = self.get_claim_parties(claim_id)
-        addresses = {
+        addresses = [
             str(p.get("address")).strip().lower()
             for p in parties
             if isinstance(p.get("address"), str) and str(p.get("address")).strip()
-        }
-        provider_names = {
+        ]
+        provider_names = [
             str(p.get("name")).strip().lower()
             for p in parties
             if str(p.get("party_type") or "").strip() == "provider"
             and isinstance(p.get("name"), str)
             and str(p.get("name")).strip()
-        }
+        ]
 
         related_ids: set[str] = set()
-        if root_vin:
-            for row in self.search_claims(vin=root_vin):
-                rid = str(row.get("id") or "").strip()
-                if rid and rid != claim_id:
-                    related_ids.add(rid)
-        for address in addresses:
-            for row in self.get_claims_by_party_address(address, limit=max_nodes):
-                rid = str(row.get("id") or "").strip()
-                if rid and rid != claim_id:
-                    related_ids.add(rid)
-        for provider_name in provider_names:
-            for row in self.get_claims_by_provider_name(provider_name, limit=max_nodes):
-                rid = str(row.get("id") or "").strip()
-                if rid and rid != claim_id:
-                    related_ids.add(rid)
+        with get_connection(self._db_path) as conn:
+            if root_vin:
+                for row in self.search_claims(vin=root_vin):
+                    rid = str(row.get("id") or "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
+            if addresses:
+                placeholders = ",".join("?" * len(addresses))
+                rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT c.id
+                    FROM claim_parties cp
+                    JOIN claims c ON c.id = cp.claim_id
+                    WHERE lower(trim(cp.address)) IN ({placeholders})
+                    ORDER BY c.created_at DESC
+                    LIMIT ?
+                    """,
+                    (*addresses, max_nodes * len(addresses)),
+                ).fetchall()
+                for r in rows:
+                    rid = str(r[0] if r else "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
+            if provider_names:
+                placeholders = ",".join("?" * len(provider_names))
+                rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT c.id
+                    FROM claim_parties cp
+                    JOIN claims c ON c.id = cp.claim_id
+                    WHERE cp.party_type = 'provider'
+                      AND lower(trim(cp.name)) IN ({placeholders})
+                    ORDER BY c.created_at DESC
+                    LIMIT ?
+                    """,
+                    (*provider_names, max_nodes * len(provider_names)),
+                ).fetchall()
+                for r in rows:
+                    rid = str(r[0] if r else "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
 
         if len(related_ids) > max_nodes:
             related_ids = set(sorted(related_ids)[:max_nodes])
@@ -1718,7 +1755,7 @@ class ClaimRepository:
                 nodes.append({"id": related_id, "type": "claim"})
                 relation_types: list[str] = []
                 if root_vin and str(related.get("vin") or "").strip() == root_vin:
-                    relation_types.append("shared_vin")
+                    relation_types.append(RELATION_SHARED_VIN)
                 related_parties = parties_by_claim_id.get(related_id, [])
                 related_addresses = {
                     str(p.get("address")).strip().lower()
@@ -1732,16 +1769,16 @@ class ClaimRepository:
                     and isinstance(p.get("name"), str)
                     and str(p.get("name")).strip()
                 }
-                if addresses & related_addresses:
-                    relation_types.append("shared_address")
-                if provider_names & related_providers:
-                    relation_types.append("shared_provider")
+                if set(addresses) & related_addresses:
+                    relation_types.append(RELATION_SHARED_ADDRESS)
+                if set(provider_names) & related_providers:
+                    relation_types.append(RELATION_SHARED_PROVIDER)
                 if not relation_types:
                     continue
                 edges.append(
                     {"from": claim_id, "to": related_id, "relations": sorted(set(relation_types))}
                 )
-                if "shared_provider" in relation_types or "shared_address" in relation_types:
+                if RELATION_SHARED_PROVIDER in relation_types or RELATION_SHARED_ADDRESS in relation_types:
                     high_risk_link_count += 1
 
         edge_count = len(edges)

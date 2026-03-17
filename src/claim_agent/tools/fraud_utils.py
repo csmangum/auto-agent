@@ -11,11 +11,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["as_nonempty_str", "coerce_date", "extract_provider_names"]
+__all__ = ["as_trimmed_str", "coerce_date", "extract_provider_names"]
 
 
-def as_nonempty_str(raw: Any) -> str:
-    """Coerce value to non-empty trimmed string, or empty string."""
+def as_trimmed_str(raw: Any) -> str:
+    """Return trimmed string, or empty string for non-string/None."""
     return raw.strip() if isinstance(raw, str) else ""
 
 
@@ -65,12 +65,12 @@ def extract_provider_names(claim_data: dict[str, Any], repo: ClaimRepository) ->
                         names.add(nested.strip())
                         break
 
-    claim_id = as_nonempty_str(claim_data.get("claim_id"))
+    claim_id = as_trimmed_str(claim_data.get("claim_id"))
     if claim_id:
         try:
             parties = repo.get_claim_parties(claim_id, party_type="provider")
             for party in parties:
-                party_name = as_nonempty_str(party.get("name"))
+                party_name = as_trimmed_str(party.get("name"))
                 if party_name:
                     names.add(party_name)
         except Exception as e:
