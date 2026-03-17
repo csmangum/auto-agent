@@ -57,12 +57,16 @@ def _extract_shop_and_auth_from_workflow(workflow_output: str | None) -> tuple[s
 def _pause_repair_if_in_progress(
     claim_id: str,
     original_workflow_output: str | None,
-) -> None:
-    """If repair is in progress, insert paused_supplement status."""
+) -> bool:
+    """If repair is in progress, insert paused_supplement status.
+    
+    Returns:
+        True if repair was paused, False otherwise.
+    """
     status_repo = RepairStatusRepository()
     latest = status_repo.get_repair_status(claim_id)
     if not latest or latest.get("status") not in ACTIVE_REPAIR_STATUSES:
-        return
+        return False
     shop_id, auth_id = _extract_shop_and_auth_from_workflow(original_workflow_output)
     status_repo.insert_repair_status(
         claim_id,
@@ -72,6 +76,7 @@ def _pause_repair_if_in_progress(
         notes="Supplemental damage report filed; repair paused pending approval",
         pause_reason="supplemental_pending",
     )
+    return True
 
 
 def _resume_repair_after_supplemental(
@@ -180,7 +185,7 @@ def run_supplemental_workflow(
     )
 
     # Pause repair status if repair is in progress (supplement pause workflow)
-    _pause_repair_if_in_progress(supplemental_input.claim_id, original_workflow_output)
+    was_paused = _pause_repair_if_in_progress(supplemental_input.claim_id, original_workflow_output)
 
     claim_data_for_crew = {
         "claim_id": claim.get("id"),
@@ -232,8 +237,9 @@ def run_supplemental_workflow(
             claim_status,
             **update_kwargs,
         )
-        # Resume repair after supplemental approval
-        _resume_repair_after_supplemental(supplemental_input.claim_id, original_workflow_output)
+        # Resume repair after supplemental approval (only if it was paused)
+        if was_paused:
+            _resume_repair_after_supplemental(supplemental_input.claim_id, original_workflow_output)
 
     repo.save_workflow_result(
         supplemental_input.claim_id,

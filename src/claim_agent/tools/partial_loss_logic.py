@@ -179,10 +179,10 @@ def _get_policy_parts_preference(
     adapter = ctx.adapters.policy if ctx else get_policy_adapter()
     policy = adapter.get_policy(policy_number) if policy_number else None
     if not policy:
-        return ("aftermarket", [])
+        return ("carrier_default", [])
     pref = policy.get("parts_preference")
     if pref not in ("oem", "aftermarket", "refurbished", "lkq_allowed", "carrier_default"):
-        pref = "aftermarket"
+        pref = "carrier_default"
     oem_cats = policy.get("oem_required_for")
     if not isinstance(oem_cats, list):
         oem_cats = []

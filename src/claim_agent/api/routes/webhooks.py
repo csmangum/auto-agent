@@ -58,7 +58,7 @@ def _claim_has_authorization(claim_id: str, shop_id: str, authorization_id: str 
         wf_output = run.get("workflow_output") or ""
         parsed = _parse_partial_loss_workflow_output(wf_output)
         if not parsed:
-            return False  # Cannot validate; reject when workflow output unparseable
+            continue
         wf_shop = str(parsed.get("shop_id", "")).strip()
         wf_auth = str(parsed.get("authorization_id", "")).strip()
         if shop_id and wf_shop and shop_id != wf_shop:
