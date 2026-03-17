@@ -140,8 +140,6 @@ def assign_repair_shop_impl(
 def calculate_betterment_impl(
     vehicle_year: int,
     parts_cost: float,
-    part_type: str = "aftermarket",
-    vehicle_mileage: Optional[int] = None,
 ) -> tuple[float, float]:
     """Calculate betterment/depreciation on replacement parts.
 
@@ -414,7 +412,7 @@ def calculate_repair_estimate_impl(
     parts_list = parts_data.get("parts", [])
 
     betterment_amount, adjusted_parts_cost = calculate_betterment_impl(
-        vehicle_year, parts_cost, effective_preference
+        vehicle_year, parts_cost
     )
     parts_cost_before_betterment = parts_cost
     if betterment_amount > 0:

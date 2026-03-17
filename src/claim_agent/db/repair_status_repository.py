@@ -53,12 +53,12 @@ class RepairStatusRepository:
                 (
                     claim_id,
                     shop_id,
-                    authorization_id or "",
+                    authorization_id or None,
                     status,
                     now,
-                    notes or "",
-                    paused_at or "",
-                    pause_reason or "",
+                    notes or None,
+                    paused_at or None,
+                    pause_reason or None,
                     now,
                 ),
             )
