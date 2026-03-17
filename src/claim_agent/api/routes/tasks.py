@@ -17,6 +17,7 @@ from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_db_path
 from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES
+from claim_agent.diary.templates import get_compliance_deadline_templates
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
 
@@ -209,8 +210,6 @@ def get_compliance_templates(
     auth: AuthContext = RequireAdjuster,
 ):
     """Get state-specific compliance deadline templates for diary creation."""
-    from claim_agent.diary.templates import get_compliance_deadline_templates
-
     templates = get_compliance_deadline_templates(state)
     return {
         "templates": [

@@ -1,6 +1,10 @@
 """Recurrence rules for claim tasks.
 
 Supports: daily, interval_days (e.g. every 3 days), weekly.
+
+Recurrence is stored on tasks (recurrence_rule, recurrence_interval, parent_task_id)
+but no scheduler currently creates follow-up instances when a recurring task is
+completed. compute_next_due_date is used for planning; execution is future work.
 """
 
 from __future__ import annotations

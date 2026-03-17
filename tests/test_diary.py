@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from claim_agent.db.database import get_connection
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.diary.escalation import run_deadline_escalation
 from claim_agent.diary.recurrence import (
     RECURRENCE_DAILY,
@@ -66,6 +67,65 @@ class TestStatusTransitionTemplates:
     def test_get_templates_no_match(self):
         templates = get_status_transition_templates("closed", "archived")
         assert len(templates) == 0
+
+
+class TestAutoCreateDiaryListener:
+    """Tests for auto-create diary entries at claim status transitions."""
+
+    def test_status_transition_creates_diary_tasks(self, seeded_temp_db):
+        """Status transition (open->settled) triggers diary task creation."""
+        ensure_diary_listener_registered()
+        repo = ClaimRepository()
+
+        # CLM-TEST001 is open with payout; transition to settled
+        repo.update_claim_status("CLM-TEST001", "settled", details="Settlement complete")
+
+        tasks, _ = repo.get_tasks_for_claim("CLM-TEST001")
+        diary_tasks = [t for t in tasks if t.get("auto_created_from", "").startswith("status_transition:")]
+        assert len(diary_tasks) >= 1
+        verify_task = next(
+            (t for t in diary_tasks if "Verify settlement" in t.get("title", "")),
+            None,
+        )
+        assert verify_task is not None
+        assert verify_task["auto_created_from"] == "status_transition:open->settled"
+        assert verify_task["created_by"] == "diary_system"
+        # due_days=1 from template
+        expected_due = (date.today() + timedelta(days=1)).isoformat()
+        assert verify_task["due_date"] == expected_due
+
+    def test_status_transition_pending_to_processing_creates_recurring_task(self, seeded_temp_db):
+        """pending->processing creates task with recurrence_rule and recurrence_interval."""
+        ensure_diary_listener_registered()
+        repo = ClaimRepository()
+
+        # Create claim (starts as pending), then transition to processing
+        from claim_agent.models.claim import ClaimInput
+
+        claim_input = ClaimInput(
+            policy_number="POL-AUTO",
+            vin="1HGBH41JXMN109001",
+            vehicle_year=2022,
+            vehicle_make="Honda",
+            vehicle_model="Accord",
+            incident_date=date(2025, 1, 15),
+            incident_description="Test",
+            damage_description="Test damage",
+        )
+        claim_id = repo.create_claim(claim_input)
+        repo.update_claim_status(claim_id, "processing", details="Started processing")
+
+        tasks, _ = repo.get_tasks_for_claim(claim_id)
+        diary_tasks = [t for t in tasks if t.get("auto_created_from", "").startswith("status_transition:")]
+        assert len(diary_tasks) >= 1
+        follow_up = next(
+            (t for t in diary_tasks if "Follow up on claim processing" in t.get("title", "")),
+            None,
+        )
+        assert follow_up is not None
+        assert follow_up["auto_created_from"] == "status_transition:pending->processing"
+        assert follow_up["recurrence_rule"] == "interval_days"
+        assert follow_up["recurrence_interval"] == 3
 
 
 class TestCreateTaskWithRecurrence:

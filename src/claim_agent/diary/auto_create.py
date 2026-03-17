@@ -64,7 +64,12 @@ def _on_claim_status_change(event: ClaimEvent) -> None:
 
 
 def _get_previous_status(claim_id: str) -> str | None:
-    """Get the previous status from audit log (last status_change before current)."""
+    """Get the previous status from audit log (last status_change before current).
+
+    Assumes status_change is written to claim_audit_log before emit_claim_event
+    is called (as in update_claim_status). If emit ran before the insert, this
+    would return stale or incorrect data.
+    """
     from claim_agent.db.audit_events import AUDIT_EVENT_STATUS_CHANGE
     from claim_agent.db.database import get_connection, get_db_path
 
