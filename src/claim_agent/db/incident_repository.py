@@ -154,8 +154,8 @@ class IncidentRepository:
         *,
         opposing_carrier: str | None = None,
         notes: str | None = None,
-    ) -> int:
-        """Create a link between two claims. Returns link id. Normalizes order for uniqueness."""
+    ) -> int | None:
+        """Create a link between two claims. Returns link id, or None if duplicate. Normalizes order for uniqueness."""
         return self._create_link_internal(
             claim_id_a, claim_id_b, link_type, opposing_carrier, notes
         )
@@ -167,8 +167,11 @@ class IncidentRepository:
         link_type: str,
         opposing_carrier: str | None,
         notes: str | None,
-    ) -> int:
-        """Create claim link. Ensures canonical order (a < b) for uniqueness."""
+    ) -> int | None:
+        """Create claim link. Ensures canonical order (a < b) for uniqueness.
+
+        Returns the new link's ID, or None if the link already exists.
+        """
         a, b = (claim_id_a, claim_id_b) if claim_id_a <= claim_id_b else (claim_id_b, claim_id_a)
         with get_connection(self._db_path) as conn:
             cursor = conn.execute(
@@ -179,7 +182,10 @@ class IncidentRepository:
                 """,
                 (a, b, link_type, opposing_carrier, notes),
             )
-            return int(cursor.lastrowid) if cursor.lastrowid else 0
+            if cursor.lastrowid:
+                return int(cursor.lastrowid)
+            # Link already existed; return None to signal duplicate
+            return None
 
     def get_claim_links(
         self,

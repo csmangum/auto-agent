@@ -1353,13 +1353,30 @@ async def create_incident(
     incident_id, claim_ids = incident_repo.create_incident(sanitized_input, actor_id=actor_id)
 
     if async_mode and claim_ids:
+        scheduling_status: dict[str, str] = {}
         for claim_id in claim_ids:
             claim = ctx.repo.get_claim(claim_id)
             if claim:
                 claim_data = claim_data_from_row(claim)
-                _ = await _try_run_workflow_background(
+                task = await _try_run_workflow_background(
                     claim_id, claim_data, actor_id, ctx=ctx,
                 )
+                scheduling_status[claim_id] = "scheduled" if task is not None else "capacity_exceeded"
+            else:
+                logger.error(
+                    "Claim %s created by incident %s not found when scheduling background workflow; "
+                    "possible data integrity issue",
+                    claim_id,
+                    incident_id,
+                )
+                scheduling_status[claim_id] = "claim_not_found"
+
+        return IncidentOutput(
+            incident_id=incident_id,
+            claim_ids=claim_ids,
+            message=f"Incident {incident_id} created with {len(claim_ids)} claim(s)",
+            background_scheduling=scheduling_status,
+        )
 
     return IncidentOutput(
         incident_id=incident_id,
@@ -1405,6 +1422,11 @@ async def create_claim_link(
         opposing_carrier=link_input.opposing_carrier,
         notes=link_input.notes,
     )
+    if link_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail="A claim link with this combination already exists",
+        )
     return {"link_id": link_id, "message": "Claim link created"}
 
 
