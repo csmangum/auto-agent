@@ -146,6 +146,21 @@ BEGIN
 END;
 CREATE INDEX IF NOT EXISTS idx_reserve_history_claim_id ON reserve_history(claim_id);
 
+-- Document requests: request -> receipt tracking (created before claim_tasks for FK)
+CREATE TABLE IF NOT EXISTS document_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    document_type TEXT NOT NULL,
+    requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+    requested_from TEXT,
+    status TEXT NOT NULL DEFAULT 'requested',
+    received_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_document_requests_claim_id ON document_requests(claim_id);
+
 -- Claim tasks: discrete units of future work created by agents or adjusters
 CREATE TABLE IF NOT EXISTS claim_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,13 +174,36 @@ CREATE TABLE IF NOT EXISTS claim_tasks (
     created_by TEXT NOT NULL DEFAULT 'workflow',
     due_date TEXT,
     resolution_notes TEXT,
+    document_request_id INTEGER,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id) REFERENCES claims(id)
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    FOREIGN KEY (document_request_id) REFERENCES document_requests(id)
 );
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_id ON claim_tasks(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_status ON claim_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_status ON claim_tasks(claim_id, status);
+
+-- Claim documents: structured document metadata (type, received_from, review_status, etc.)
+CREATE TABLE IF NOT EXISTS claim_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    document_type TEXT,
+    received_date TEXT,
+    received_from TEXT,
+    review_status TEXT NOT NULL DEFAULT 'pending',
+    privileged INTEGER NOT NULL DEFAULT 0,
+    retention_date TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    extracted_data TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_id ON claim_documents(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_type ON claim_documents(claim_id, document_type);
+CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_review ON claim_documents(claim_id, review_status);
 
 -- Claim payments: disbursement tracking (authorized -> issued -> cleared/voided)
 CREATE TABLE IF NOT EXISTS claim_payments (
@@ -265,6 +303,61 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         sc_columns = {row[1] for row in cursor.fetchall()}
         if "recovery_amount" not in sc_columns:
             conn.execute("ALTER TABLE subrogation_cases ADD COLUMN recovery_amount REAL")
+    except sqlite3.OperationalError:
+        pass
+    # Document management: claim_documents, document_requests, claim_tasks.document_request_id
+    try:
+        conn.execute(
+            "SELECT 1 FROM claim_documents LIMIT 1"
+        )
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            CREATE TABLE claim_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id TEXT NOT NULL,
+                storage_key TEXT NOT NULL,
+                document_type TEXT,
+                received_date TEXT,
+                received_from TEXT,
+                review_status TEXT NOT NULL DEFAULT 'pending',
+                privileged INTEGER NOT NULL DEFAULT 0,
+                retention_date TEXT,
+                version INTEGER NOT NULL DEFAULT 1,
+                extracted_data TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (claim_id) REFERENCES claims(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_id ON claim_documents(claim_id);
+            CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_type ON claim_documents(claim_id, document_type);
+            CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_review ON claim_documents(claim_id, review_status);
+        """)
+    try:
+        conn.execute("SELECT 1 FROM document_requests LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            CREATE TABLE document_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id TEXT NOT NULL,
+                document_type TEXT NOT NULL,
+                requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+                requested_from TEXT,
+                status TEXT NOT NULL DEFAULT 'requested',
+                received_at TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (claim_id) REFERENCES claims(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_document_requests_claim_id ON document_requests(claim_id);
+        """)
+    try:
+        cursor = conn.execute("PRAGMA table_info(claim_tasks)")
+        ct_columns = {row[1] for row in cursor.fetchall()}
+        if "document_request_id" not in ct_columns:
+            conn.execute(
+                "ALTER TABLE claim_tasks ADD COLUMN document_request_id INTEGER "
+                "REFERENCES document_requests(id)"
+            )
     except sqlite3.OperationalError:
         pass
 

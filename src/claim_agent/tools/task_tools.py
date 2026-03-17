@@ -10,6 +10,7 @@ import logging
 
 from crewai.tools import tool
 
+from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
@@ -37,6 +38,8 @@ def create_claim_task(
     assigned_to: str = "",
     created_by: str = "workflow",
     due_date: str = "",
+    document_type: str = "",
+    requested_from: str = "",
 ) -> str:
     """Create a task on a claim for future completion.
 
@@ -64,6 +67,9 @@ def create_claim_task(
         created_by: Identifier for who created the task (crew name, agent, or 'workflow').
         due_date: Optional target completion date in ISO 8601 format (YYYY-MM-DD).
             Leave empty for no due date.
+        document_type: When task_type is request_documents or obtain_police_report,
+            the type of document requested (police_report, estimate, medical_records, etc.).
+        requested_from: When creating a document request, the party to request from.
 
     Returns:
         JSON with success (bool), task_id (int), and message.
@@ -94,6 +100,8 @@ def create_claim_task(
             "message": f"Invalid priority: {priority}. Must be one of: {', '.join(sorted(VALID_PRIORITIES))}",
         })
 
+    doc_type = str(document_type).strip() or None
+    requested_from_val = str(requested_from).strip() or None
     try:
         task_id = ClaimRepository().create_task(
             claim_id,
@@ -104,6 +112,8 @@ def create_claim_task(
             assigned_to=assigned_to_val,
             created_by=created_by,
             due_date=due_date_val,
+            document_type=doc_type,
+            requested_from=requested_from_val,
         )
         return json.dumps({
             "success": True,
@@ -219,3 +229,69 @@ def get_claim_tasks(claim_id: str) -> str:
     except Exception:
         logger.exception("Unexpected error retrieving tasks for claim %s", claim_id)
         return json.dumps({"tasks": None, "error": "An unexpected error occurred while retrieving tasks"})
+
+
+@tool("Create Document Request")
+def create_document_request(
+    claim_id: str,
+    document_type: str,
+    requested_from: str = "",
+) -> str:
+    """Create a document request to track requested -> received documents.
+
+    Use when you need to formally request a document (police report, medical records,
+    estimate) and track when it is received.
+
+    Args:
+        claim_id: The claim ID.
+        document_type: Type of document (police_report, estimate, medical_records, etc.).
+        requested_from: Party to request from (claimant, police, provider, repair_shop).
+
+    Returns:
+        JSON with success, request_id, request.
+    """
+    claim_id = str(claim_id).strip()
+    document_type = str(document_type).strip()
+    requested_from_val = str(requested_from).strip() or None
+    if not claim_id:
+        return json.dumps({"success": False, "request_id": None, "error": "claim_id is required"})
+    if not document_type:
+        return json.dumps({"success": False, "request_id": None, "error": "document_type is required"})
+    try:
+        doc_repo = DocumentRepository()
+        req_id = doc_repo.create_document_request(
+            claim_id, document_type, requested_from=requested_from_val
+        )
+        req = doc_repo.get_document_request(req_id)
+        return json.dumps({"success": True, "request_id": req_id, "request": req})
+    except ClaimNotFoundError:
+        return json.dumps({"success": False, "request_id": None, "error": f"Claim not found: {claim_id}"})
+    except Exception:
+        logger.exception("Unexpected error creating document request for claim %s", claim_id)
+        return json.dumps({"success": False, "request_id": None, "error": "An unexpected error occurred"})
+
+
+@tool("Get Document Requests")
+def get_document_requests(claim_id: str, status: str = "") -> str:
+    """Retrieve document requests for a claim.
+
+    Use to see what documents have been requested and their status (requested, received, etc.).
+
+    Args:
+        claim_id: The claim ID.
+        status: Optional filter by status (requested, received, partial, overdue).
+
+    Returns:
+        JSON with requests (list), total, error.
+    """
+    claim_id = str(claim_id).strip()
+    status_val = str(status).strip() or None
+    if not claim_id:
+        return json.dumps({"requests": None, "total": 0, "error": "claim_id is required"})
+    try:
+        doc_repo = DocumentRepository()
+        requests, total = doc_repo.list_document_requests(claim_id, status=status_val)
+        return json.dumps({"requests": requests, "total": total, "error": None})
+    except Exception:
+        logger.exception("Unexpected error retrieving document requests for claim %s", claim_id)
+        return json.dumps({"requests": None, "total": 0, "error": "An unexpected error occurred"})

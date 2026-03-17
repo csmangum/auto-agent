@@ -26,6 +26,8 @@ __all__ = [
     "evaluate_damage",
     "calculate_diminished_value",
     "calculate_payout",
+    "classify_document",
+    "extract_document_data",
     "generate_report",
     "generate_report_pdf",
     "generate_claim_id",
@@ -112,8 +114,10 @@ __all__ = [
     "file_fraud_report_state_bureau",
     # Task tools
     "create_claim_task",
-    "update_claim_task",
+    "create_document_request",
     "get_claim_tasks",
+    "get_document_requests",
+    "update_claim_task",
     # Compliance tools (state-specific deadlines)
     "get_state_compliance_summary",
     "get_compliance_due_date_tool",
@@ -162,6 +166,14 @@ def __getattr__(name: str):
         from claim_agent.tools.valuation_tools import calculate_payout
         setattr(mod, "calculate_payout", calculate_payout)
         return calculate_payout
+    if name == "classify_document":
+        from claim_agent.tools.document_tools import classify_document
+        setattr(mod, "classify_document", classify_document)
+        return classify_document
+    if name == "extract_document_data":
+        from claim_agent.tools.document_tools import extract_document_data
+        setattr(mod, "extract_document_data", extract_document_data)
+        return extract_document_data
     if name == "generate_report":
         from claim_agent.tools.document_tools import generate_report
         setattr(mod, "generate_report", generate_report)
@@ -458,6 +470,14 @@ def __getattr__(name: str):
         from claim_agent.tools.task_tools import create_claim_task
         setattr(mod, "create_claim_task", create_claim_task)
         return create_claim_task
+    if name == "create_document_request":
+        from claim_agent.tools.task_tools import create_document_request
+        setattr(mod, "create_document_request", create_document_request)
+        return create_document_request
+    if name == "get_document_requests":
+        from claim_agent.tools.task_tools import get_document_requests
+        setattr(mod, "get_document_requests", get_document_requests)
+        return get_document_requests
     if name == "update_claim_task":
         from claim_agent.tools.task_tools import update_claim_task
         setattr(mod, "update_claim_task", update_claim_task)

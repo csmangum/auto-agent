@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import math
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
@@ -31,12 +32,14 @@ from claim_agent.db.constants import (
     SUPPLEMENTABLE_STATUSES,
 )
 from claim_agent.db.database import get_connection, get_db_path
+from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.models.document import DocumentRequestStatus, DocumentType, ReviewStatus
 from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
-from claim_agent.utils import infer_attachment_type
+from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.rag.constants import normalize_state
 from claim_agent.utils.sanitization import (
     MAX_ACTOR_ID,
@@ -96,6 +99,14 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin")
 RequireSupervisor = require_role("supervisor", "admin")
 
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+# Allowed document upload extensions (security: prevent executable/malicious uploads)
+_ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
+    {"pdf", "jpg", "jpeg", "png", "gif", "webp", "heic", "doc", "docx", "xls", "xlsx"}
+)
+
+# Valid document types for validation
+_VALID_DOCUMENT_TYPES = frozenset(dt.value for dt in DocumentType)
 
 _STREAM_POLL_INTERVAL = 1.0  # seconds between DB polls
 _STREAM_MAX_DURATION = 300  # 5 min timeout
@@ -682,6 +693,248 @@ def get_claim_attachment(claim_id: str, key: str):
     return FileResponse(path=str(file_path), filename=key)
 
 
+def _get_doc_repo():
+    """Document repository with default db path."""
+    return DocumentRepository(db_path=get_db_path())
+
+
+def _maybe_update_document_request_on_receipt(
+    doc_repo: DocumentRepository,
+    claim_repo,
+    claim_id: str,
+    document_type: str,
+) -> None:
+    """When a document is received, update matching pending document_request and complete linked tasks."""
+    pending = doc_repo.find_pending_document_requests_for_type(claim_id, document_type)
+    if not pending:
+        return
+    req = pending[0]
+    req_id = req.get("id")
+    if not req_id:
+        return
+    doc_repo.update_document_request(
+        req_id,
+        status=DocumentRequestStatus.RECEIVED,
+        received_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id FROM claim_tasks WHERE document_request_id = ? AND status NOT IN ('completed', 'cancelled')",
+            (req_id,),
+        ).fetchall()
+        for row in rows:
+            task_id = row["id"]
+            claim_repo.update_task(task_id, status="completed", resolution_notes="Document received")
+
+
+@router.get("/claims/{claim_id}/documents", dependencies=[RequireAdjuster])
+def list_claim_documents(
+    claim_id: str,
+    document_type: Optional[str] = Query(None, description="Filter by document_type"),
+    review_status: Optional[str] = Query(None, description="Filter by review_status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """List documents for a claim with optional filters."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    doc_repo = _get_doc_repo()
+    documents, total = doc_repo.list_documents(
+        claim_id, document_type=document_type, review_status=review_status, limit=limit, offset=offset
+    )
+    storage = get_storage_adapter()
+    for doc in documents:
+        sk = doc.get("storage_key", "")
+        doc["url"] = storage.get_url(claim_id, sk) if sk else None
+    return {"claim_id": claim_id, "documents": documents, "total": total, "limit": limit, "offset": offset}
+
+
+@router.post("/claims/{claim_id}/documents", dependencies=[RequireAdjuster])
+async def upload_claim_document(
+    claim_id: str,
+    file: UploadFile = File(...),
+    document_type: Optional[str] = Query(None, description="Document type (police_report, estimate, etc.)"),
+    received_from: Optional[str] = Query(None, description="Source (claimant, repair_shop, etc.)"),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Upload a document and create a claim_documents record."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename required")
+    ext = (file.filename.rsplit(".", 1)[-1] or "").lower()
+    if ext not in _ALLOWED_DOCUMENT_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed: {', '.join(sorted(_ALLOWED_DOCUMENT_EXTENSIONS))}",
+        )
+    chunks: list[bytes] = []
+    total_size = 0
+    chunk_size = 1024 * 1024
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > _MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds maximum upload size")
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
+        )
+    storage = get_storage_adapter()
+    stored_key = storage.save(claim_id=claim_id, filename=file.filename, content=content)
+    doc_type = document_type or attachment_type_to_document_type(infer_attachment_type(file.filename)).value
+    if doc_type not in _VALID_DOCUMENT_TYPES:
+        doc_type = DocumentType.OTHER.value
+    doc_repo = _get_doc_repo()
+    doc_id = doc_repo.add_document(
+        claim_id,
+        stored_key,
+        document_type=doc_type,
+        received_from=received_from or "claimant",
+    )
+    _maybe_update_document_request_on_receipt(doc_repo, ctx.repo, claim_id, doc_type)
+    doc = doc_repo.get_document(doc_id)
+    if doc:
+        doc["url"] = storage.get_url(claim_id, stored_key)
+    return {"claim_id": claim_id, "document_id": doc_id, "document": doc}
+
+
+class DocumentUpdateBody(BaseModel):
+    """Body for PATCH /claims/{claim_id}/documents/{doc_id}."""
+
+    review_status: Optional[str] = None
+    document_type: Optional[str] = None
+    privileged: Optional[bool] = None
+    retention_date: Optional[str] = None
+
+
+@router.patch("/claims/{claim_id}/documents/{doc_id}", dependencies=[RequireAdjuster])
+def update_claim_document(
+    claim_id: str,
+    doc_id: int,
+    body: DocumentUpdateBody = Body(...),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Update document metadata (review_status, privileged, etc.)."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    doc_repo = _get_doc_repo()
+    doc = doc_repo.get_document(doc_id)
+    if doc is None or doc.get("claim_id") != claim_id:
+        raise HTTPException(status_code=404, detail=f"Document not found: {doc_id}")
+    review: ReviewStatus | None = None
+    if body.review_status is not None:
+        try:
+            review = ReviewStatus(body.review_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid review_status. Must be one of: {[s.value for s in ReviewStatus]}",
+            )
+    if body.document_type is not None and body.document_type not in _VALID_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
+        )
+    updated = doc_repo.update_document_review(
+        doc_id,
+        review_status=review,
+        document_type=body.document_type,
+        privileged=body.privileged,
+        retention_date=body.retention_date,
+    )
+    return {"claim_id": claim_id, "document_id": doc_id, "document": updated}
+
+
+@router.get("/claims/{claim_id}/document-requests", dependencies=[RequireAdjuster])
+def list_document_requests(
+    claim_id: str,
+    status: Optional[str] = Query(None, description="Filter by status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """List document requests for a claim."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    doc_repo = _get_doc_repo()
+    requests, total = doc_repo.list_document_requests(
+        claim_id, status=status, limit=limit, offset=offset
+    )
+    return {"claim_id": claim_id, "requests": requests, "total": total, "limit": limit, "offset": offset}
+
+
+class DocumentRequestCreateBody(BaseModel):
+    """Body for POST /claims/{claim_id}/document-requests."""
+
+    document_type: str = Field(..., min_length=1, description="Type requested (police_report, estimate, etc.)")
+    requested_from: Optional[str] = Field(default=None, description="Party to request from")
+
+
+@router.post("/claims/{claim_id}/document-requests", dependencies=[RequireAdjuster])
+def create_document_request(
+    claim_id: str,
+    body: DocumentRequestCreateBody = Body(...),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Create a document request."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    if body.document_type not in _VALID_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
+        )
+    doc_repo = _get_doc_repo()
+    req_id = doc_repo.create_document_request(
+        claim_id, body.document_type, requested_from=body.requested_from
+    )
+    req = doc_repo.get_document_request(req_id)
+    return {"claim_id": claim_id, "request_id": req_id, "request": req}
+
+
+class DocumentRequestUpdateBody(BaseModel):
+    """Body for PATCH /claims/{claim_id}/document-requests/{req_id}."""
+
+    status: Optional[str] = None
+    received_at: Optional[str] = None
+
+
+@router.patch("/claims/{claim_id}/document-requests/{req_id}", dependencies=[RequireAdjuster])
+def update_document_request(
+    claim_id: str,
+    req_id: int,
+    body: DocumentRequestUpdateBody = Body(...),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Update document request (e.g. mark received)."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    doc_repo = _get_doc_repo()
+    req = doc_repo.get_document_request(req_id)
+    if req is None or req.get("claim_id") != claim_id:
+        raise HTTPException(status_code=404, detail=f"Document request not found: {req_id}")
+    status: DocumentRequestStatus | None = None
+    if body.status is not None:
+        try:
+            status = DocumentRequestStatus(body.status)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {[s.value for s in DocumentRequestStatus]}",
+            )
+    updated = doc_repo.update_document_request(
+        req_id, status=status, received_at=body.received_at
+    )
+    return {"claim_id": claim_id, "request_id": req_id, "request": updated}
+
+
 class ReserveBody(BaseModel):
     """Request body for PATCH /claims/{claim_id}/reserve."""
 
@@ -1025,6 +1278,7 @@ async def _process_claim_with_attachments(
     claim_id = repo.create_claim(claim_input, actor_id=actor_id)
 
     all_attachments = list(claim_input.attachments)
+    doc_repo = DocumentRepository(db_path=get_db_path())
     if buffered_files:
         # Store uploaded files now that the claim record exists.
         storage = get_storage_adapter()
@@ -1040,6 +1294,14 @@ async def _process_claim_with_attachments(
             all_attachments.append(
                 Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
             )
+            doc_type = attachment_type_to_document_type(atype)
+            doc_repo.add_document(
+                claim_id,
+                stored_key,
+                document_type=doc_type,
+                received_from="claimant",
+            )
+            _maybe_update_document_request_on_receipt(doc_repo, repo, claim_id, doc_type.value)
         if all_attachments:
             repo.update_claim_attachments(claim_id, all_attachments, actor_id=actor_id)
 
