@@ -1,6 +1,5 @@
 """Tests for incident-level and multi-vehicle claim support."""
 
-import tempfile
 from datetime import date
 
 import pytest
@@ -119,7 +118,7 @@ def test_create_claim_link(temp_db):
         "opposing_carrier",
         opposing_carrier="Other Insurance Co",
     )
-    assert link_id >= 0
+    assert link_id > 0
     related = repo.get_related_claims(claim_ids[0])
     assert claim_ids[1] in related
 
@@ -160,8 +159,8 @@ def test_bi_allocation_over_limit_proportional():
     assert result.total_demanded == 150000
     assert result.total_allocated == pytest.approx(100000, rel=0.01)
     # c1 gets 2/3, c2 gets 1/3
-    assert result.allocations[0]["allocated"] == pytest.approx(66666.67, rel=1)
-    assert result.allocations[1]["allocated"] == pytest.approx(33333.33, rel=1)
+    assert result.allocations[0]["allocated"] == pytest.approx(66666.67, abs=0.01)
+    assert result.allocations[1]["allocated"] == pytest.approx(33333.33, abs=0.01)
     assert result.allocations[0]["shortfall"] > 0
     assert result.allocations[1]["shortfall"] > 0
 

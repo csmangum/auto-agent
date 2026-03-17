@@ -1,5 +1,6 @@
 """Incident and claim-link repository: CRUD for incidents and related claims."""
 
+import logging
 import uuid
 from typing import Any
 
@@ -8,6 +9,8 @@ from claim_agent.db.audit_events import ACTOR_SYSTEM
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.incident import IncidentInput, VehicleClaimInput
+
+logger = logging.getLogger(__name__)
 
 
 def _generate_incident_id(prefix: str = "INC") -> str:
@@ -28,7 +31,11 @@ class IncidentRepository:
         *,
         actor_id: str = ACTOR_SYSTEM,
     ) -> tuple[str, list[str]]:
-        """Create incident and one claim per vehicle. Returns (incident_id, claim_ids)."""
+        """Create incident and one claim per vehicle. Returns (incident_id, claim_ids).
+
+        The operation is made as atomic as possible: if any claim creation fails,
+        the incident row and any already-created claims are removed before re-raising.
+        """
         incident_id = _generate_incident_id()
         incident_date_str = incident_input.incident_date.isoformat()
         loss_state = incident_input.loss_state
@@ -50,25 +57,45 @@ class IncidentRepository:
             )
 
         claim_ids: list[str] = []
-        for i, vehicle in enumerate(incident_input.vehicles):
-            claim_input = self._vehicle_to_claim_input(
-                vehicle,
-                incident_input.incident_date,
-                incident_input.incident_description,
-                incident_input.loss_state,
-                incident_id,
-            )
-            claim_id = self._claim_repo.create_claim(claim_input, actor_id=actor_id)
-            claim_ids.append(claim_id)
+        try:
+            for vehicle in incident_input.vehicles:
+                claim_input = self._vehicle_to_claim_input(
+                    vehicle,
+                    incident_input.incident_date,
+                    incident_input.incident_description,
+                    incident_input.loss_state,
+                    incident_id,
+                )
+                claim_id = self._claim_repo.create_claim(claim_input, actor_id=actor_id)
+                claim_ids.append(claim_id)
 
-            # Link claims within same incident
-            for j, other_id in enumerate(claim_ids):
-                if other_id != claim_id:
-                    self._create_link_internal(
-                        claim_id, other_id, "same_incident", None, None
-                    )
+                # Link claims within same incident
+                for other_id in claim_ids:
+                    if other_id != claim_id:
+                        self._create_link_internal(
+                            claim_id, other_id, "same_incident", None, None
+                        )
+        except Exception:
+            # Compensating cleanup: remove any created claims and the incident row
+            self._rollback_incident(incident_id, claim_ids)
+            raise
 
         return incident_id, claim_ids
+
+    def _rollback_incident(self, incident_id: str, claim_ids: list[str]) -> None:
+        """Remove incident and associated claims on partial failure (compensating cleanup)."""
+        try:
+            with get_connection(self._db_path) as conn:
+                for claim_id in claim_ids:
+                    conn.execute("DELETE FROM claim_links WHERE claim_id_a = ? OR claim_id_b = ?", (claim_id, claim_id))
+                    conn.execute("DELETE FROM claims WHERE id = ?", (claim_id,))
+                conn.execute("DELETE FROM incidents WHERE id = ?", (incident_id,))
+        except Exception:
+            logger.exception(
+                "Failed to fully roll back incident %s (claims: %s); database may be inconsistent",
+                incident_id,
+                claim_ids,
+            )
 
     def _vehicle_to_claim_input(
         self,
