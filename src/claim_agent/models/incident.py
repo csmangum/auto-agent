@@ -5,22 +5,12 @@ Claims are linked to incidents for coordinated handling.
 """
 
 from datetime import date
-from enum import Enum
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
 from claim_agent.models.claim import Attachment
 from claim_agent.models.party import ClaimPartyInput
-
-
-class ClaimLinkType(str, Enum):
-    """Type of relationship between two claims."""
-
-    SAME_INCIDENT = "same_incident"
-    OPPOSING_CARRIER = "opposing_carrier"
-    SUBROGATION = "subrogation"
-    CROSS_CARRIER = "cross_carrier"
 
 
 class VehicleClaimInput(BaseModel):
