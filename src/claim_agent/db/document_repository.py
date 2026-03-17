@@ -1,7 +1,7 @@
 """Document repository: CRUD for claim_documents and document_requests."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from claim_agent.db.database import get_connection
@@ -52,7 +52,7 @@ class DocumentRepository:
     ) -> int:
         """Add a document record. Returns document id."""
         if received_date is None:
-            received_date = datetime.utcnow().strftime("%Y-%m-%d")
+            received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         doc_type = document_type.value if isinstance(document_type, DocumentType) else document_type
         ext_json = json.dumps(extracted_data) if extracted_data else None
         with get_connection(self._db_path) as conn:

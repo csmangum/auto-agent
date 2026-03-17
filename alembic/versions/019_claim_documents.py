@@ -9,6 +9,8 @@ Implements Document Management System:
 - document_requests: request -> receipt tracking
 - claim_tasks.document_request_id: link tasks to document requests
 """
+import json
+
 from alembic import op
 from sqlalchemy import text
 
@@ -67,18 +69,21 @@ def upgrade() -> None:
     ))
 
     conn = op.get_bind()
-    cursor = conn.execute(text("PRAGMA table_info(claim_tasks)"))
-    columns = {row[1] for row in cursor.fetchall()}
-    if "document_request_id" not in columns:
-        op.execute(text(
-            "ALTER TABLE claim_tasks ADD COLUMN document_request_id INTEGER "
-            "REFERENCES document_requests(id)"
-        ))
+    # claim_tasks may not exist in alembic-only fresh installs (created by database.py)
+    tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+    if "claim_tasks" in tables:
+        cursor = conn.execute(text("PRAGMA table_info(claim_tasks)"))
+        columns = {row[1] for row in cursor.fetchall()}
+        if "document_request_id" not in columns:
+            op.execute(text(
+                "ALTER TABLE claim_tasks ADD COLUMN document_request_id INTEGER "
+                "REFERENCES document_requests(id)"
+            ))
 
     # Data migration: existing attachments -> claim_documents
-    import json
     rows = conn.execute(text("SELECT id, attachments FROM claims WHERE attachments IS NOT NULL AND attachments != '[]'")).fetchall()
     type_map = {"photo": "photo", "pdf": "pdf", "estimate": "estimate", "other": "other"}
+    seen: set[tuple[str, str]] = set()  # (claim_id, storage_key) for deduplication
     for row in rows:
         claim_id = row[0]
         raw = row[1] or "[]"
@@ -91,19 +96,27 @@ def upgrade() -> None:
             if not url or url.startswith(("http://", "https://", "file://")):
                 continue
             storage_key = url.split("/")[-1] if "/" in url else url
+            if (claim_id, storage_key) in seen:
+                continue
+            seen.add((claim_id, storage_key))
             doc_type = type_map.get((att.get("type") or "other").lower(), "other")
             conn.execute(
                 text("""
                     INSERT INTO claim_documents
                     (claim_id, storage_key, document_type, received_from, review_status)
-                    VALUES (?, ?, ?, 'claimant', 'pending')
+                    VALUES (:claim_id, :storage_key, :doc_type, 'claimant', 'pending')
                 """),
-                (claim_id, storage_key, doc_type),
+                {"claim_id": claim_id, "storage_key": storage_key, "doc_type": doc_type},
             )
 
 
 def downgrade() -> None:
     conn = op.get_bind()
+    tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+    if "claim_tasks" not in tables:
+        op.execute(text("DROP TABLE IF EXISTS document_requests"))
+        op.execute(text("DROP TABLE IF EXISTS claim_documents"))
+        return
     cursor = conn.execute(text("PRAGMA table_info(claim_tasks)"))
     columns = {row[1] for row in cursor.fetchall()}
     if "document_request_id" in columns:

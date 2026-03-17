@@ -1652,6 +1652,123 @@ class TestProcessClaimEndpoint:
 
 
 # -------------------------------------------------------------------
+# Document Management API (RequireAdjuster)
+# -------------------------------------------------------------------
+
+
+class TestDocumentAPI:
+    """Tests for document and document-request endpoints."""
+
+    @pytest.fixture(autouse=True)
+    def _auth(self, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        yield
+
+    def test_list_documents_404_claim_not_found(self, client):
+        resp = client.get("/api/claims/CLM-NONEXISTENT/documents", headers={"X-API-Key": "sk-adj"})
+        assert resp.status_code == 404
+
+    def test_list_documents_empty(self, client):
+        resp = client.get("/api/claims/CLM-TEST001/documents", headers={"X-API-Key": "sk-adj"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["documents"] == []
+        assert data["total"] == 0
+
+    def test_upload_document_success(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+
+        resp = client.post(
+            "/api/claims/CLM-TEST001/documents",
+            files=[("file", ("report.pdf", b"fake pdf content", "application/pdf"))],
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert "document_id" in data
+        assert data["document"]["document_type"] == "pdf"
+        assert data["document"]["storage_key"]
+
+    def test_upload_document_disallowed_extension_returns_400(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        resp = client.post(
+            "/api/claims/CLM-TEST001/documents",
+            files=[("file", ("malware.exe", b"fake exe", "application/octet-stream"))],
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 400
+        assert "not allowed" in resp.json()["detail"].lower()
+
+    def test_upload_document_invalid_document_type_returns_400(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        resp = client.post(
+            "/api/claims/CLM-TEST001/documents",
+            files=[("file", ("doc.pdf", b"content", "application/pdf"))],
+            params={"document_type": "invalid_type"},
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 400
+        assert "document_type" in resp.json()["detail"].lower()
+
+    def test_update_document_invalid_review_status_returns_400(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+
+        upload = client.post(
+            "/api/claims/CLM-TEST001/documents",
+            files=[("file", ("doc.pdf", b"content", "application/pdf"))],
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert upload.status_code == 200
+        doc_id = upload.json()["document_id"]
+
+        resp = client.patch(
+            f"/api/claims/CLM-TEST001/documents/{doc_id}",
+            json={"review_status": "invalid_status"},
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 400
+        assert "review_status" in resp.json()["detail"].lower()
+
+    def test_create_document_request_invalid_type_returns_400(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/document-requests",
+            json={"document_type": "invalid_type"},
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 400
+        assert "document_type" in resp.json()["detail"].lower()
+
+    def test_update_document_request_invalid_status_returns_400(self, client):
+        from claim_agent.db.document_repository import DocumentRepository
+        from claim_agent.db.database import get_db_path
+
+        doc_repo = DocumentRepository(db_path=get_db_path())
+        req_id = doc_repo.create_document_request("CLM-TEST001", "estimate")
+
+        resp = client.patch(
+            f"/api/claims/CLM-TEST001/document-requests/{req_id}",
+            json={"status": "invalid_status"},
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 400
+        assert "status" in resp.json()["detail"].lower()
+
+    def test_list_document_requests(self, client):
+        resp = client.get("/api/claims/CLM-TEST001/document-requests", headers={"X-API-Key": "sk-adj"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert "requests" in data
+        assert "total" in data
+
+
+# -------------------------------------------------------------------
 # POST /claims/process/async and GET /claims/{id}/stream
 # -------------------------------------------------------------------
 

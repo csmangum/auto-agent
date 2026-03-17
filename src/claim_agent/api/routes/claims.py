@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import math
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
@@ -34,7 +35,7 @@ from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.models.claim import Attachment, ClaimInput
-from claim_agent.models.document import DocumentRequestStatus, ReviewStatus
+from claim_agent.models.document import DocumentRequestStatus, DocumentType, ReviewStatus
 from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
@@ -98,6 +99,14 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin")
 RequireSupervisor = require_role("supervisor", "admin")
 
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+# Allowed document upload extensions (security: prevent executable/malicious uploads)
+_ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
+    {"pdf", "jpg", "jpeg", "png", "gif", "webp", "heic", "doc", "docx", "xls", "xlsx"}
+)
+
+# Valid document types for validation
+_VALID_DOCUMENT_TYPES = frozenset(dt.value for dt in DocumentType)
 
 _STREAM_POLL_INTERVAL = 1.0  # seconds between DB polls
 _STREAM_MAX_DURATION = 300  # 5 min timeout
@@ -696,8 +705,6 @@ def _maybe_update_document_request_on_receipt(
     document_type: str,
 ) -> None:
     """When a document is received, update matching pending document_request and complete linked tasks."""
-    from datetime import datetime
-
     pending = doc_repo.find_pending_document_requests_for_type(claim_id, document_type)
     if not pending:
         return
@@ -708,7 +715,7 @@ def _maybe_update_document_request_on_receipt(
     doc_repo.update_document_request(
         req_id,
         status=DocumentRequestStatus.RECEIVED,
-        received_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        received_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
     with get_connection() as conn:
         rows = conn.execute(
@@ -756,6 +763,12 @@ async def upload_claim_document(
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename required")
+    ext = (file.filename.rsplit(".", 1)[-1] or "").lower()
+    if ext not in _ALLOWED_DOCUMENT_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed: {', '.join(sorted(_ALLOWED_DOCUMENT_EXTENSIONS))}",
+        )
     chunks: list[bytes] = []
     total_size = 0
     chunk_size = 1024 * 1024
@@ -771,6 +784,13 @@ async def upload_claim_document(
     storage = get_storage_adapter()
     stored_key = storage.save(claim_id=claim_id, filename=file.filename, content=content)
     doc_type = document_type or attachment_type_to_document_type(infer_attachment_type(file.filename)).value
+    if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
+        )
+    if doc_type not in _VALID_DOCUMENT_TYPES:
+        doc_type = DocumentType.OTHER.value
     doc_repo = _get_doc_repo()
     doc_id = doc_repo.add_document(
         claim_id,
@@ -808,7 +828,20 @@ def update_claim_document(
     doc = doc_repo.get_document(doc_id)
     if doc is None or doc.get("claim_id") != claim_id:
         raise HTTPException(status_code=404, detail=f"Document not found: {doc_id}")
-    review = ReviewStatus(body.review_status) if body.review_status else None
+    review: ReviewStatus | None = None
+    if body.review_status is not None:
+        try:
+            review = ReviewStatus(body.review_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid review_status. Must be one of: {[s.value for s in ReviewStatus]}",
+            )
+    if body.document_type is not None and body.document_type not in _VALID_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
+        )
     updated = doc_repo.update_document_review(
         doc_id,
         review_status=review,
@@ -853,6 +886,11 @@ def create_document_request(
     """Create a document request."""
     if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    if body.document_type not in _VALID_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
+        )
     doc_repo = _get_doc_repo()
     req_id = doc_repo.create_document_request(
         claim_id, body.document_type, requested_from=body.requested_from
@@ -882,7 +920,15 @@ def update_document_request(
     req = doc_repo.get_document_request(req_id)
     if req is None or req.get("claim_id") != claim_id:
         raise HTTPException(status_code=404, detail=f"Document request not found: {req_id}")
-    status = DocumentRequestStatus(body.status) if body.status else None
+    status: DocumentRequestStatus | None = None
+    if body.status is not None:
+        try:
+            status = DocumentRequestStatus(body.status)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {[s.value for s in DocumentRequestStatus]}",
+            )
     updated = doc_repo.update_document_request(
         req_id, status=status, received_at=body.received_at
     )

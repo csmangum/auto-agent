@@ -5,6 +5,7 @@ import pytest
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    OCRAdapter,
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
@@ -19,8 +20,10 @@ from claim_agent.adapters.mock import (
     MockSIUAdapter,
     MockValuationAdapter,
 )
+from claim_agent.adapters.mock.ocr import MockOCRAdapter
 from claim_agent.adapters.registry import (
     get_claim_search_adapter,
+    get_ocr_adapter,
     get_parts_adapter,
     get_policy_adapter,
     get_repair_shop_adapter,
@@ -30,6 +33,7 @@ from claim_agent.adapters.registry import (
 )
 from claim_agent.adapters.stub import (
     StubClaimSearchAdapter,
+    StubOCRAdapter,
     StubPartsAdapter,
     StubPolicyAdapter,
     StubRepairShopAdapter,
@@ -66,6 +70,10 @@ class TestABCEnforcement:
     def test_claim_search_adapter_is_abstract(self):
         with pytest.raises(TypeError):
             ClaimSearchAdapter()  # type: ignore[abstract]
+
+    def test_ocr_adapter_is_abstract(self):
+        with pytest.raises(TypeError):
+            OCRAdapter()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +208,58 @@ class TestMockClaimSearchAdapter:
         assert isinstance(MockClaimSearchAdapter(), ClaimSearchAdapter)
 
 
+class TestMockOCRAdapter:
+    def test_extract_estimate_returns_structured_data(self, tmp_path):
+        adapter = MockOCRAdapter()
+        path = tmp_path / "estimate.pdf"
+        path.write_bytes(b"fake")
+        result = adapter.extract_structured_data(path, "estimate")
+        assert result is not None
+        assert "line_items" in result
+        assert "total" in result
+        assert "parts_cost" in result
+        assert "labor_cost" in result
+
+    def test_extract_police_report_returns_structured_data(self, tmp_path):
+        adapter = MockOCRAdapter()
+        path = tmp_path / "report.pdf"
+        path.write_bytes(b"fake")
+        result = adapter.extract_structured_data(path, "police_report")
+        assert result is not None
+        assert "incident_date" in result
+        assert "report_number" in result
+        assert "parties" in result
+
+    def test_extract_medical_record_returns_structured_data(self, tmp_path):
+        adapter = MockOCRAdapter()
+        path = tmp_path / "medical.pdf"
+        path.write_bytes(b"fake")
+        result = adapter.extract_structured_data(path, "medical_record")
+        assert result is not None
+        assert "diagnoses" in result
+        assert "charges" in result
+        assert "provider" in result
+
+    def test_extract_unsupported_type_returns_none(self, tmp_path):
+        adapter = MockOCRAdapter()
+        path = tmp_path / "other.pdf"
+        path.write_bytes(b"fake")
+        result = adapter.extract_structured_data(path, "other")
+        assert result is None
+
+    def test_implements_interface(self):
+        assert isinstance(MockOCRAdapter(), OCRAdapter)
+
+
+class TestStubOCRAdapter:
+    def test_extract_returns_none(self, tmp_path):
+        adapter = StubOCRAdapter()
+        path = tmp_path / "doc.pdf"
+        path.write_bytes(b"fake")
+        result = adapter.extract_structured_data(path, "estimate")
+        assert result is None
+
+
 # ---------------------------------------------------------------------------
 # Stub adapter tests
 # ---------------------------------------------------------------------------
@@ -251,6 +311,7 @@ class TestRegistry:
         assert isinstance(get_parts_adapter(), MockPartsAdapter)
         assert isinstance(get_siu_adapter(), MockSIUAdapter)
         assert isinstance(get_claim_search_adapter(), MockClaimSearchAdapter)
+        assert isinstance(get_ocr_adapter(), MockOCRAdapter)
 
     def test_stub_backend_via_env(self, monkeypatch):
         reset_adapters()
@@ -260,12 +321,14 @@ class TestRegistry:
         monkeypatch.setenv("PARTS_ADAPTER", "stub")
         monkeypatch.setenv("SIU_ADAPTER", "stub")
         monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "stub")
+        monkeypatch.setenv("OCR_ADAPTER", "stub")
         assert isinstance(get_policy_adapter(), StubPolicyAdapter)
         assert isinstance(get_valuation_adapter(), StubValuationAdapter)
         assert isinstance(get_repair_shop_adapter(), StubRepairShopAdapter)
         assert isinstance(get_parts_adapter(), StubPartsAdapter)
         assert isinstance(get_siu_adapter(), StubSIUAdapter)
         assert isinstance(get_claim_search_adapter(), StubClaimSearchAdapter)
+        assert isinstance(get_ocr_adapter(), StubOCRAdapter)
 
     def test_singleton_returns_same_instance(self):
         reset_adapters()
