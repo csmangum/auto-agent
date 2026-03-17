@@ -192,6 +192,34 @@ def reset_adapters():
 
 
 @pytest.fixture(autouse=True)
+def reset_diary_listener():
+    """Reset diary listener registration state between tests."""
+    import claim_agent.diary.auto_create as diary_module
+    from claim_agent.events import unregister_claim_event_listener
+    
+    # Store original state
+    original_state = diary_module._diary_listener_registered
+    
+    # Reset to initial state
+    if diary_module._diary_listener_registered:
+        try:
+            unregister_claim_event_listener(diary_module._on_claim_status_change)
+        except Exception:
+            pass
+    diary_module._diary_listener_registered = False
+    
+    yield
+    
+    # Clean up after test
+    if diary_module._diary_listener_registered:
+        try:
+            unregister_claim_event_listener(diary_module._on_claim_status_change)
+        except Exception:
+            pass
+    diary_module._diary_listener_registered = original_state
+
+
+@pytest.fixture(autouse=True)
 def reset_global_metrics():
     """Reset the global ClaimMetrics singleton before and after each test."""
     try:

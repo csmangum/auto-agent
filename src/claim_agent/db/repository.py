@@ -1913,6 +1913,10 @@ class ClaimRepository:
         document_request_id: int | None = None,
         document_type: str | None = None,
         requested_from: str | None = None,
+        recurrence_rule: str | None = None,
+        recurrence_interval: int | None = None,
+        parent_task_id: int | None = None,
+        auto_created_from: str | None = None,
     ) -> int:
         """Create a task for a claim. Returns the task id. Raises ClaimNotFoundError if claim does not exist.
 
@@ -1924,6 +1928,27 @@ class ClaimRepository:
         created_by = sanitize_actor_id(created_by)
         if not title:
             raise ValueError("Task title must not be empty after sanitization")
+        # Normalize and validate recurrence fields
+        if recurrence_rule is None and recurrence_interval is not None:
+            recurrence_interval = None
+        if recurrence_rule is not None:
+            from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES, RECURRENCE_INTERVAL_DAYS
+            if recurrence_rule not in VALID_RECURRENCE_RULES:
+                raise ValueError(
+                    f"Invalid recurrence_rule '{recurrence_rule}'. "
+                    f"Must be one of: {', '.join(sorted(VALID_RECURRENCE_RULES))}"
+                )
+            if recurrence_rule == RECURRENCE_INTERVAL_DAYS:
+                if recurrence_interval is None:
+                    raise ValueError("recurrence_interval is required when recurrence_rule is 'interval_days'")
+                if recurrence_interval < 1:
+                    raise ValueError("recurrence_interval must be >= 1")
+            else:
+                # daily/weekly: default interval to 1
+                if recurrence_interval is None:
+                    recurrence_interval = 1
+                elif recurrence_interval < 1:
+                    raise ValueError("recurrence_interval must be >= 1")
         doc_req_id = document_request_id
         if doc_req_id is None and document_type and task_type in ("request_documents", "obtain_police_report"):
             from claim_agent.db.document_repository import DocumentRepository
@@ -1940,10 +1965,13 @@ class ClaimRepository:
             cursor = conn.execute(
                 """
                 INSERT INTO claim_tasks
-                    (claim_id, title, task_type, description, status, priority, assigned_to, created_by, due_date, document_request_id)
-                VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+                    (claim_id, title, task_type, description, status, priority, assigned_to, created_by, due_date, document_request_id, recurrence_rule, recurrence_interval, parent_task_id, auto_created_from)
+                VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (claim_id, title, task_type, description, priority, assigned_to, created_by, due_date, doc_req_id),
+                (
+                    claim_id, title, task_type, description, priority, assigned_to, created_by, due_date,
+                    doc_req_id, recurrence_rule, recurrence_interval, parent_task_id, auto_created_from,
+                ),
             )
             task_id = cursor.lastrowid
             details = json.dumps({
@@ -2001,6 +2029,72 @@ class ClaimRepository:
                 params + [limit, offset],
             ).fetchall()
         return [dict(r) for r in rows], total
+
+    def list_overdue_tasks(
+        self,
+        *,
+        max_escalation_level: int | None = None,
+        min_escalation_level: int | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List overdue tasks (due_date < today, status not completed/cancelled).
+
+        Args:
+            max_escalation_level: If set, only include tasks with escalation_level <= this.
+            min_escalation_level: If set, only include tasks with escalation_level >= this.
+            limit: Max tasks to return.
+        """
+        conditions = [
+            "due_date IS NOT NULL",
+            "date(due_date) < date('now')",
+            "status NOT IN ('completed', 'cancelled')",
+        ]
+        params: list[Any] = []
+        if max_escalation_level is not None:
+            conditions.append("COALESCE(escalation_level, 0) <= ?")
+            params.append(max_escalation_level)
+        if min_escalation_level is not None:
+            conditions.append("COALESCE(escalation_level, 0) >= ?")
+            params.append(min_escalation_level)
+        where = " AND ".join(conditions)
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM claim_tasks WHERE {where}
+                ORDER BY due_date ASC
+                LIMIT ?
+                """,
+                params + [limit],
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_task_overdue_notified(self, task_id: int) -> None:
+        """Mark task as overdue notification sent (escalation_level=1)."""
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                """
+                UPDATE claim_tasks SET
+                    escalation_level = 1,
+                    escalation_notified_at = datetime('now'),
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (task_id,),
+            )
+
+    def mark_task_supervisor_escalated(self, task_id: int) -> None:
+        """Mark task as escalated to supervisor (escalation_level=2)."""
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                """
+                UPDATE claim_tasks SET
+                    escalation_level = 2,
+                    escalation_escalated_at = datetime('now'),
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (task_id,),
+            )
 
     def update_task(
         self,

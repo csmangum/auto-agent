@@ -34,6 +34,7 @@ from claim_agent.api.routes.tasks import router as tasks_router
 from claim_agent.api.routes.payments import router as payments_router
 from claim_agent.config import get_settings
 from claim_agent.db.database import ensure_fresh_db_on_startup
+from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
 
 import logging
@@ -45,6 +46,7 @@ _server_logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI):
     ensure_fresh_db_on_startup()
     ensure_webhook_listener_registered()
+    ensure_diary_listener_registered()
 
     _server_logger.warning(
         "Rate limiting and approve locks use in-memory storage. "
