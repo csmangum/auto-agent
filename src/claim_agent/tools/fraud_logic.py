@@ -394,12 +394,20 @@ def cross_reference_fraud_indicators_impl(
         "vin": _as_nonempty_str(claim_data.get("vin")),
         "claimant_name": _as_nonempty_str(claim_data.get("claimant_name")),
     }
+    date_range: tuple[str, str] | None = None
+    incident_dt = _coerce_date(claim_data.get("incident_date"))
+    if incident_dt:
+        window_days = int(fraud_cfg.get("velocity_window_days", 30))
+        start_dt = incident_dt - timedelta(days=window_days)
+        end_dt = incident_dt + timedelta(days=window_days)
+        date_range = (start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
     if search_terms["vin"] or search_terms["claimant_name"]:
         try:
             _claim_search = ctx.adapters.claim_search if ctx else get_claim_search_adapter()
             matches = _claim_search.search_claims(
                 vin=search_terms["vin"] or None,
                 claimant_name=search_terms["claimant_name"] or None,
+                date_range=date_range,
             )
             if len(matches) >= int(fraud_cfg.get("claimsearch_match_threshold", 2)):
                 result["database_matches"].append("cross_carrier_claimsearch_matches")

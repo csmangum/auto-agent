@@ -11,7 +11,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Callable
 
-from claim_agent.config.settings import get_escalation_config
+from claim_agent.config.settings import get_escalation_config, get_fraud_config
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
@@ -287,7 +287,7 @@ def _detect_velocity_indicators(claim_data: dict, ctx: ClaimContext | None = Non
     if incident_dt is None:
         return indicators
 
-    velocity_days = get_escalation_config().get("vin_claims_days", 90)
+    velocity_days = get_fraud_config()["velocity_window_days"]
     repo = ctx.repo if ctx else ClaimRepository()
 
     claim_id = _as_nonempty_str(claim_data.get("claim_id"))
@@ -376,7 +376,8 @@ def _detect_provider_ring_indicators(claim_data: dict, ctx: ClaimContext | None 
                 if _as_nonempty_str(row.get("status"))
                 in {"needs_review", "fraud_suspected", "fraud_confirmed", "under_investigation"}
             ]
-            if len(suspicious) >= 2:
+            threshold = get_fraud_config().get("provider_ring_threshold", 2)
+            if len(suspicious) >= threshold:
                 indicators.append("provider_ring_suspected")
                 break
     except Exception as e:
@@ -418,10 +419,16 @@ def _detect_relationship_graph_indicators(
     if not claim_id:
         return indicators
     try:
-        graph = repo.build_relationship_snapshot(claim_id=claim_id, max_depth=2, max_nodes=50)
+        fraud_cfg = get_fraud_config()
+        graph = repo.build_relationship_snapshot(
+            claim_id=claim_id,
+            max_depth=int(fraud_cfg.get("graph_max_depth", 2)),
+            max_nodes=int(fraud_cfg.get("graph_max_nodes", 100)),
+        )
         if graph.get("dense_cluster_detected") is True:
             indicators.append("relationship_graph_dense_cluster")
-        if int(graph.get("high_risk_link_count", 0)) >= 2:
+        high_risk_threshold = int(fraud_cfg.get("graph_high_risk_link_threshold", 2))
+        if int(graph.get("high_risk_link_count", 0)) >= high_risk_threshold:
             indicators.append("relationship_graph_high_risk_links")
     except Exception as e:
         logger.debug("Relationship graph detector skipped: %s", e)

@@ -55,6 +55,6 @@ class MockClaimSearchAdapter(ClaimSearchAdapter):
 
         if date_range:
             start, end = date_range
-            for match in matches:
-                match["date_range"] = {"start": start, "end": end}
+            dr = {"start": start, "end": end}
+            return [{**m, "date_range": dr} for m in matches]
         return matches
