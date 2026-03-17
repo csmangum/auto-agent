@@ -126,6 +126,21 @@ class FraudConfig(BaseSettings):
     medium_risk_threshold: int = 30
     critical_risk_threshold: int = 75
     critical_indicator_count: int = 5
+    velocity_window_days: int = 30
+    velocity_claim_threshold: int = 2
+    velocity_score: int = 20
+    geographic_anomaly_score: int = 15
+    provider_ring_threshold: int = 2
+    provider_ring_score: int = 20
+    graph_max_depth: int = 2
+    graph_max_nodes: int = 100
+    graph_cluster_score: int = 25
+    graph_high_risk_link_threshold: int = 2
+    graph_high_risk_score: int = 20
+    staged_pattern_score: int = 20
+    claimsearch_match_threshold: int = 2
+    claimsearch_match_score: int = 25
+    photo_exif_anomaly_score: int = 10
 
     @field_validator("multiple_claims_days", mode="before")
     @classmethod
@@ -134,6 +149,50 @@ class FraudConfig(BaseSettings):
             return int(v)
         except (ValueError, TypeError):
             return 90
+
+    @field_validator(
+        "velocity_window_days",
+        "velocity_claim_threshold",
+        "velocity_score",
+        "geographic_anomaly_score",
+        "provider_ring_threshold",
+        "provider_ring_score",
+        "graph_max_depth",
+        "graph_max_nodes",
+        "graph_cluster_score",
+        "graph_high_risk_link_threshold",
+        "graph_high_risk_score",
+        "staged_pattern_score",
+        "claimsearch_match_threshold",
+        "claimsearch_match_score",
+        "photo_exif_anomaly_score",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_positive_int(cls, v: Any, info: ValidationInfo) -> int:
+        defaults = {
+            "velocity_window_days": 30,
+            "velocity_claim_threshold": 2,
+            "velocity_score": 20,
+            "geographic_anomaly_score": 15,
+            "provider_ring_threshold": 2,
+            "provider_ring_score": 20,
+            "graph_max_depth": 2,
+            "graph_max_nodes": 100,
+            "graph_cluster_score": 25,
+            "graph_high_risk_link_threshold": 2,
+            "graph_high_risk_score": 20,
+            "staged_pattern_score": 20,
+            "claimsearch_match_threshold": 2,
+            "claimsearch_match_score": 25,
+            "photo_exif_anomaly_score": 10,
+        }
+        fallback = defaults.get(info.field_name or "", 1)
+        try:
+            value = int(v)
+            return value if value > 0 else fallback
+        except (ValueError, TypeError):
+            return fallback
 
 
 class ValuationConfig(BaseSettings):
@@ -523,6 +582,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "repair_shop": "REPAIR_SHOP_ADAPTER",
     "parts": "PARTS_ADAPTER",
     "siu": "SIU_ADAPTER",
+    "claim_search": "CLAIM_SEARCH_ADAPTER",
     "vision": "VISION_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub"})
@@ -585,6 +645,7 @@ class Settings(BaseSettings):
     repair_shop_adapter: str = Field(default="mock", validation_alias="REPAIR_SHOP_ADAPTER")
     parts_adapter: str = Field(default="mock", validation_alias="PARTS_ADAPTER")
     siu_adapter: str = Field(default="mock", validation_alias="SIU_ADAPTER")
+    claim_search_adapter: str = Field(default="mock", validation_alias="CLAIM_SEARCH_ADAPTER")
     siu_default_state: str = Field(
         default="California",
         validation_alias="SIU_DEFAULT_STATE",

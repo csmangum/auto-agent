@@ -7,10 +7,15 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Optional
 
-from claim_agent.adapters.registry import get_siu_adapter
+from claim_agent.adapters.registry import get_claim_search_adapter, get_siu_adapter
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.tools.fraud_detectors import KNOWN_FRAUD_PATTERNS
+from claim_agent.tools.fraud_detectors import (
+    INDICATOR_TO_PATTERN_SCORE,
+    KNOWN_FRAUD_PATTERNS,
+    run_fraud_detectors,
+)
+from claim_agent.tools.fraud_utils import as_trimmed_str, coerce_date
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
@@ -100,6 +105,20 @@ def analyze_claim_patterns_impl(
         except Exception as e:
             logger.debug("Best-effort pattern analysis: could not search claims by VIN: %s", e)
 
+    fraud_cfg = get_fraud_config()
+    claim_id = as_trimmed_str(claim_data.get("claim_id"))
+
+    # Run pluggable detectors and map indicators to pattern_score and risk_factors.
+    indicators = run_fraud_detectors(claim_data, ctx)
+    for ind in indicators:
+        if ind in INDICATOR_TO_PATTERN_SCORE:
+            pattern_name, config_key, risk_factor = INDICATOR_TO_PATTERN_SCORE[ind]
+            if pattern_name not in result["patterns_detected"]:
+                result["patterns_detected"].append(pattern_name)
+                result["risk_factors"].append(risk_factor)
+                result["pattern_score"] += int(fraud_cfg.get(config_key, 0))
+
+    # Timing and staged keywords (simple checks, kept inline).
     incident_desc = (claim_data.get("incident_description") or "").lower()
     damage_desc = (claim_data.get("damage_description") or "").lower()
     combined_text = f"{incident_desc} {damage_desc}"
@@ -117,6 +136,19 @@ def analyze_claim_patterns_impl(
             result["risk_factors"].append(f"Staged accident keyword: '{keyword}'")
             result["pattern_score"] += get_fraud_config()["fraud_keyword_score"]
             break
+
+    # Relationship analysis: fetch full snapshot for result (detector already ran it).
+    if claim_id:
+        try:
+            repo = ctx.repo if ctx else ClaimRepository()
+            relationship = repo.build_relationship_snapshot(
+                claim_id=claim_id,
+                max_nodes=int(fraud_cfg.get("graph_max_nodes", 100)),
+                max_depth=int(fraud_cfg.get("graph_max_depth", 1)),
+            )
+            result["relationship_analysis"] = relationship
+        except Exception as e:
+            logger.debug("Relationship graph analysis skipped: %s", e)
 
     return json.dumps(result)
 
@@ -208,6 +240,44 @@ def cross_reference_fraud_indicators_impl(
         except Exception as e:
             logger.debug("Best-effort cross-reference: could not check prior fraud claims for VIN: %s", e)
 
+    fraud_cfg = get_fraud_config()
+    xref_indicators = run_fraud_detectors(claim_data, ctx)
+    if "provider_ring_suspected" in xref_indicators:
+        result["database_matches"].append("provider_ring_suspected")
+        result["recommendations"].append("Provider ring suspected across suspicious claims")
+        result["cross_reference_score"] += int(fraud_cfg.get("provider_ring_score", 20))
+
+    # ClaimSearch integration seam (NICB/ISO via adapter).
+    search_terms = {
+        "vin": as_trimmed_str(claim_data.get("vin")),
+        "claimant_name": as_trimmed_str(claim_data.get("claimant_name")),
+    }
+    date_range: tuple[str, str] | None = None
+    incident_dt = coerce_date(claim_data.get("incident_date"))
+    if incident_dt:
+        window_days = int(fraud_cfg.get("velocity_window_days", 30))
+        start_dt = incident_dt - timedelta(days=window_days)
+        end_dt = incident_dt + timedelta(days=window_days)
+        date_range = (start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
+    if search_terms["vin"] or search_terms["claimant_name"]:
+        try:
+            _claim_search = ctx.adapters.claim_search if ctx else get_claim_search_adapter()
+            matches = _claim_search.search_claims(
+                vin=search_terms["vin"] or None,
+                claimant_name=search_terms["claimant_name"] or None,
+                date_range=date_range,
+            )
+            if len(matches) >= int(fraud_cfg.get("claimsearch_match_threshold", 2)):
+                result["database_matches"].append("cross_carrier_claimsearch_matches")
+                result["recommendations"].append(
+                    f"Found {len(matches)} cross-carrier claim-search match(es)"
+                )
+                result["cross_reference_score"] += int(fraud_cfg.get("claimsearch_match_score", 25))
+        except NotImplementedError:
+            logger.debug("ClaimSearch adapter stub in use; skipping external claim-search cross-reference")
+        except Exception as e:
+            logger.debug("ClaimSearch cross-reference skipped due to error: %s", e)
+
     score = result["cross_reference_score"]
     if score >= get_fraud_config()["high_risk_threshold"]:
         result["risk_level"] = "high"
@@ -225,6 +295,7 @@ def perform_fraud_assessment_impl(
     claim_data: dict[str, Any],
     pattern_analysis: Optional[dict[str, Any]] = None,
     cross_reference: Optional[dict[str, Any]] = None,
+    photo_forensics: Optional[dict[str, Any]] = None,
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
@@ -297,6 +368,26 @@ def perform_fraud_assessment_impl(
         "risk_factors": pattern_analysis.get("risk_factors", []),
         "cross_reference_recommendations": cross_reference.get("recommendations", []),
     }
+
+    fraud_cfg = get_fraud_config()
+    if photo_forensics is None and isinstance(claim_data.get("photo_forensics"), dict):
+        photo_forensics = claim_data.get("photo_forensics")
+    if photo_forensics:
+        anomalies = photo_forensics.get("anomalies", [])
+        if isinstance(anomalies, list):
+            normalized = [str(item) for item in anomalies if str(item).strip()]
+        else:
+            normalized = []
+        if normalized:
+            exif_score = int(fraud_cfg.get("photo_exif_anomaly_score", 10))
+            result["fraud_score"] += exif_score * len(normalized)
+            for anomaly in normalized:
+                if anomaly not in result["fraud_indicators"]:
+                    result["fraud_indicators"].append(anomaly)
+            result["assessment_details"]["photo_forensics"] = {
+                "anomalies": normalized,
+                "score_added": exif_score * len(normalized),
+            }
 
     total_score = result["fraud_score"]
     indicator_count = len(result["fraud_indicators"])

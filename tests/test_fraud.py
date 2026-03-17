@@ -9,6 +9,7 @@ from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.audit_events import AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
+from claim_agent.models.party import ClaimPartyInput
 from claim_agent.tools.fraud_detectors import KNOWN_FRAUD_PATTERNS
 from claim_agent.tools.fraud_logic import (
     analyze_claim_patterns_impl,
@@ -90,6 +91,47 @@ class TestFraudCrossReference:
             "damage" in match for match in result["database_matches"]
         )
         assert has_damage_flag or result["cross_reference_score"] > 0
+
+    def test_claimsearch_matches_detected(self):
+        """ClaimSearch mock adapter contributes cross-carrier match signal."""
+        claim_data = {
+            "vin": "FRAUD-123",
+            "claimant_name": "John Doe",
+            "incident_description": "Collision claim",
+            "damage_description": "Rear damage",
+        }
+        result = json.loads(cross_reference_fraud_indicators_impl(claim_data))
+        assert "cross_carrier_claimsearch_matches" in result["database_matches"]
+        assert result["cross_reference_score"] > 0
+
+    def test_provider_ring_detected_from_claim_parties(self, temp_db):
+        """Provider recurrence across suspicious claims is flagged."""
+        repo = ClaimRepository()
+        shared_provider = "Suspicious Repair LLC"
+        for idx in range(3):
+            claim_id = repo.create_claim(
+                ClaimInput(
+                    policy_number=f"POL-PROVIDER-{idx}",
+                    vin=f"VIN-PROVIDER-{idx}",
+                    vehicle_year=2020,
+                    vehicle_make="Honda",
+                    vehicle_model="Civic",
+                    incident_date=date(2026, 1, idx + 1),
+                    incident_description="Collision",
+                    damage_description="Body damage",
+                    estimated_damage=3000,
+                )
+            )
+            repo.add_claim_party(
+                claim_id,
+                ClaimPartyInput(party_type="provider", name=shared_provider),
+            )
+            repo.update_claim_status(claim_id, "needs_review", skip_validation=True)
+
+        result = json.loads(
+            cross_reference_fraud_indicators_impl({"provider_name": shared_provider})
+        )
+        assert "provider_ring_suspected" in result["database_matches"]
 
 
 class TestFraudAssessment:
@@ -291,6 +333,26 @@ class TestFraudAssessment:
         assert result["siu_case_id"].startswith("SIU-MOCK-")
         assert result["siu_case_id_persisted"] is False
         assert any("Failed to persist siu_case_id" in m for m in cap.messages)
+
+    def test_photo_forensics_anomalies_increase_score(self):
+        """EXIF/photo anomalies are incorporated into final fraud score and indicators."""
+        claim_data = {
+            "vin": "PHOTO123",
+            "incident_date": "2026-01-20",
+            "incident_description": "Minor collision",
+            "damage_description": "Rear bumper scratch",
+        }
+        result = json.loads(
+            perform_fraud_assessment_impl(
+                claim_data,
+                pattern_analysis={"pattern_score": 0, "patterns_detected": [], "claim_history": [], "risk_factors": []},
+                cross_reference={"cross_reference_score": 0, "database_matches": [], "fraud_keywords_found": [], "recommendations": []},
+                photo_forensics={"anomalies": ["photo_missing_exif", "photo_editing_software_detected"]},
+            )
+        )
+        assert result["fraud_score"] >= 20
+        assert "photo_missing_exif" in result["fraud_indicators"]
+        assert "photo_forensics" in result["assessment_details"]
 
 
 class TestFraudConfig:

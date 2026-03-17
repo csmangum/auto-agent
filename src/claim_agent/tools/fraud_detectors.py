@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from claim_agent.config.settings import get_escalation_config
+from claim_agent.config.settings import get_escalation_config, get_fraud_config
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.tools.fraud_utils import as_trimmed_str, coerce_date, extract_provider_names
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
@@ -43,6 +44,24 @@ KNOWN_FRAUD_PATTERNS = {
         "no witnesses",
         "brake checked",
         "sudden stop",
+    ],
+    "staged_pattern_occupant_markers": [
+        "multiple occupants",
+        "all passengers",
+        "all injured",
+        "whiplash",
+    ],
+    "staged_pattern_intersection_markers": [
+        "intersection",
+        "4-way",
+        "four-way",
+        "stop sign",
+        "traffic light",
+    ],
+    "staged_pattern_sudden_stop_markers": [
+        "sudden stop",
+        "brake checked",
+        "rear-ended at low speed",
     ],
     "suspicious_claim_keywords": [
         "staged",
@@ -231,6 +250,166 @@ def _detect_description_overlap_indicators(claim_data: dict, ctx: ClaimContext |
     return indicators
 
 
+@register_fraud_detector
+def _detect_velocity_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
+    """Detect high claim velocity from the same address across policies."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    incident_dt = coerce_date(claim_data.get("incident_date"))
+    if incident_dt is None:
+        return indicators
+
+    velocity_days = get_fraud_config()["velocity_window_days"]
+    repo = ctx.repo if ctx else ClaimRepository()
+
+    claim_id = as_trimmed_str(claim_data.get("claim_id"))
+    addresses: set[str] = set()
+    for key in ("claimant_address", "policy_address", "garaging_address"):
+        addr = as_trimmed_str(claim_data.get(key))
+        if addr:
+            addresses.add(addr)
+    if claim_id:
+        try:
+            parties = repo.get_claim_parties(claim_id)
+            for party in parties:
+                addr = as_trimmed_str(party.get("address"))
+                if addr:
+                    addresses.add(addr)
+        except Exception as e:
+            logger.debug("Velocity detector failed to load parties for %s: %s", claim_id, e)
+
+    if not addresses:
+        return indicators
+
+    try:
+        for address in addresses:
+            related = repo.get_claims_by_party_address(address, limit=50)
+            in_window: list[dict[str, Any]] = []
+            for related_claim in related:
+                related_id = as_trimmed_str(related_claim.get("id"))
+                if claim_id and related_id == claim_id:
+                    continue
+                related_date = coerce_date(related_claim.get("incident_date"))
+                if related_date is None:
+                    continue
+                if abs((incident_dt - related_date).days) <= velocity_days:
+                    in_window.append(related_claim)
+            distinct_policies = {
+                as_trimmed_str(item.get("policy_number"))
+                for item in in_window
+                if as_trimmed_str(item.get("policy_number"))
+            }
+            threshold = int(get_fraud_config().get("velocity_claim_threshold", 2))
+            if len(in_window) >= threshold and len(distinct_policies) >= 2:
+                indicators.append("high_velocity_same_address")
+                break
+    except Exception as e:
+        logger.debug("Velocity detector skipped: %s", e)
+    return indicators
+
+
+@register_fraud_detector
+def _detect_geographic_inconsistency_indicators(
+    claim_data: dict, ctx: ClaimContext | None = None
+) -> list[str]:
+    """Detect state/jurisdiction inconsistencies between policy, loss, and repair location."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    # Keep this detector resilient: only flag when we have at least two non-empty locations.
+    policy_state = as_trimmed_str(claim_data.get("policy_state"))
+    loss_state = as_trimmed_str(
+        claim_data.get("loss_state") or claim_data.get("incident_state")
+    )
+    repair_state = as_trimmed_str(claim_data.get("repair_shop_state"))
+    nonempty = [s for s in (policy_state, loss_state, repair_state) if s]
+    if len(nonempty) < 2:
+        return indicators
+    if len(set(nonempty)) > 1:
+        indicators.append("geographic_state_inconsistency")
+    return indicators
+
+
+@register_fraud_detector
+def _detect_provider_ring_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
+    """Detect recurring providers appearing across suspicious prior claims."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    
+    repo = ctx.repo if ctx else ClaimRepository()
+    provider_names = extract_provider_names(claim_data, repo)
+    if not provider_names:
+        return indicators
+
+    try:
+        for provider_name in provider_names:
+            related = repo.get_claims_by_provider_name(provider_name, limit=100)
+            suspicious = [
+                row for row in related
+                if as_trimmed_str(row.get("status"))
+                in {"needs_review", "fraud_suspected", "fraud_confirmed", "under_investigation"}
+            ]
+            threshold = get_fraud_config().get("provider_ring_threshold", 2)
+            if len(suspicious) >= threshold:
+                indicators.append("provider_ring_suspected")
+                break
+    except Exception as e:
+        logger.debug("Provider ring detector skipped: %s", e)
+    return indicators
+
+
+@register_fraud_detector
+def _detect_staged_pattern_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
+    """Detect richer staged-accident patterns beyond basic keywords."""
+    del ctx  # detector currently uses claim payload only
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    incident = (claim_data.get("incident_description") or "").strip().lower()
+    if not incident:
+        return indicators
+    occupant_markers = KNOWN_FRAUD_PATTERNS["staged_pattern_occupant_markers"]
+    intersection_markers = KNOWN_FRAUD_PATTERNS["staged_pattern_intersection_markers"]
+    sudden_stop_markers = KNOWN_FRAUD_PATTERNS["staged_pattern_sudden_stop_markers"]
+    has_occupants = any(m in incident for m in occupant_markers)
+    has_intersection = any(m in incident for m in intersection_markers)
+    has_sudden_stop = any(m in incident for m in sudden_stop_markers)
+    if (has_occupants and has_intersection) or (has_occupants and has_sudden_stop):
+        indicators.append("staged_accident_pattern_cluster")
+    return indicators
+
+
+@register_fraud_detector
+def _detect_relationship_graph_indicators(
+    claim_data: dict, ctx: ClaimContext | None = None
+) -> list[str]:
+    """Detect dense relationship neighborhoods around claim parties/providers/VIN."""
+    indicators: list[str] = []
+    if not claim_data or not isinstance(claim_data, dict):
+        return indicators
+    repo = ctx.repo if ctx else ClaimRepository()
+    claim_id = as_trimmed_str(claim_data.get("claim_id"))
+    if not claim_id:
+        return indicators
+    try:
+        fraud_cfg = get_fraud_config()
+        graph = repo.build_relationship_snapshot(
+            claim_id=claim_id,
+            max_nodes=int(fraud_cfg.get("graph_max_nodes", 100)),
+            max_depth=int(fraud_cfg.get("graph_max_depth", 1)),
+        )
+        if graph.get("dense_cluster_detected") is True:
+            indicators.append("relationship_graph_dense_cluster")
+        high_risk_threshold = int(fraud_cfg.get("graph_high_risk_link_threshold", 2))
+        if int(graph.get("high_risk_link_count", 0)) >= high_risk_threshold:
+            indicators.append("relationship_graph_high_risk_links")
+    except Exception as e:
+        logger.debug("Relationship graph detector skipped: %s", e)
+    return indicators
+
+
 def run_fraud_detectors(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
     """Run all registered fraud detectors and return combined unique indicators."""
     seen: set[str] = set()
@@ -242,3 +421,34 @@ def run_fraud_detectors(claim_data: dict, ctx: ClaimContext | None = None) -> li
         except Exception as e:
             logger.warning("Fraud detector %s failed: %s", detector.__name__, e)
     return sorted(seen)
+
+
+# Mapping from detector indicator to (pattern_name, fraud_config_key, risk_factor_template).
+# Used by fraud_logic to derive pattern_score and risk_factors from run_fraud_detectors output.
+INDICATOR_TO_PATTERN_SCORE: dict[str, tuple[str, str, str]] = {
+    "high_velocity_same_address": (
+        "high_velocity_same_address",
+        "velocity_score",
+        "Address-linked velocity detected",
+    ),
+    "geographic_state_inconsistency": (
+        "geographic_state_inconsistency",
+        "geographic_anomaly_score",
+        "State mismatch detected across policy/loss/repair locations",
+    ),
+    "relationship_graph_dense_cluster": (
+        "relationship_graph_dense_cluster",
+        "graph_cluster_score",
+        "Dense relationship cluster detected",
+    ),
+    "relationship_graph_high_risk_links": (
+        "relationship_graph_high_risk_links",
+        "graph_high_risk_score",
+        "Relationship graph has high-risk links",
+    ),
+    "staged_accident_pattern_cluster": (
+        "staged_accident_pattern_cluster",
+        "staged_pattern_score",
+        "Staged accident pattern cluster (occupants + intersection/sudden-stop pattern)",
+    ),
+}

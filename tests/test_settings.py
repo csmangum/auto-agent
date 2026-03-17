@@ -45,6 +45,12 @@ def test_get_fraud_config_returns_dict():
     assert "multiple_claims_days" in config
     assert "high_risk_threshold" in config
     assert "critical_risk_threshold" in config
+    # New fraud detection keys (velocity, graph, claimsearch, exif)
+    assert "velocity_window_days" in config
+    assert "claimsearch_match_threshold" in config
+    assert "graph_max_nodes" in config
+    assert "provider_ring_threshold" in config
+    assert "photo_exif_anomaly_score" in config
 
 
 def test_valuation_constants_are_numeric():

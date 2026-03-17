@@ -74,6 +74,21 @@ def get_fraud_config() -> dict:
         "medium_risk_threshold": s.medium_risk_threshold,
         "critical_risk_threshold": s.critical_risk_threshold,
         "critical_indicator_count": s.critical_indicator_count,
+        "velocity_window_days": s.velocity_window_days,
+        "velocity_claim_threshold": s.velocity_claim_threshold,
+        "velocity_score": s.velocity_score,
+        "geographic_anomaly_score": s.geographic_anomaly_score,
+        "provider_ring_threshold": s.provider_ring_threshold,
+        "provider_ring_score": s.provider_ring_score,
+        "graph_max_depth": s.graph_max_depth,
+        "graph_max_nodes": s.graph_max_nodes,
+        "graph_cluster_score": s.graph_cluster_score,
+        "graph_high_risk_link_threshold": s.graph_high_risk_link_threshold,
+        "graph_high_risk_score": s.graph_high_risk_score,
+        "staged_pattern_score": s.staged_pattern_score,
+        "claimsearch_match_threshold": s.claimsearch_match_threshold,
+        "claimsearch_match_score": s.claimsearch_match_score,
+        "photo_exif_anomaly_score": s.photo_exif_anomaly_score,
     }
 
 

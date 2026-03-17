@@ -5,6 +5,7 @@ audit entries and does not perform UPDATE or DELETE operations on that table.
 """
 
 import json
+import logging
 import uuid
 from typing import Any, cast
 
@@ -59,6 +60,11 @@ from claim_agent.utils.sanitization import (
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput
+
+# Relation types for build_relationship_snapshot edges
+RELATION_SHARED_VIN = "shared_vin"
+RELATION_SHARED_ADDRESS = "shared_address"
+RELATION_SHARED_PROVIDER = "shared_provider"
 
 
 def _generate_claim_id(prefix: str = "CLM") -> str:
@@ -1567,6 +1573,245 @@ class ClaimRepository:
                 tuple(params),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_claims_by_party_address(
+        self,
+        address: str,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return claims linked to parties at a matching address."""
+        addr = str(address).strip()
+        if not addr:
+            return []
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT c.*
+                FROM claim_parties cp
+                JOIN claims c ON c.id = cp.claim_id
+                WHERE lower(trim(cp.address)) = lower(trim(?))
+                ORDER BY c.created_at DESC
+                LIMIT ?
+                """,
+                (addr, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_claims_by_provider_name(
+        self,
+        provider_name: str,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return claims linked to provider parties with matching name."""
+        name = str(provider_name).strip()
+        if not name:
+            return []
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT c.*
+                FROM claim_parties cp
+                JOIN claims c ON c.id = cp.claim_id
+                WHERE cp.party_type = 'provider'
+                  AND lower(trim(cp.name)) = lower(trim(?))
+                ORDER BY c.created_at DESC
+                LIMIT ?
+                """,
+                (name, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def build_relationship_snapshot(
+        self,
+        *,
+        claim_id: str,
+        max_nodes: int = 100,
+        max_depth: int = 1,
+    ) -> dict[str, Any]:
+        """Build an in-memory 1-hop relationship graph snapshot from existing claims/parties.
+
+        Finds claims related to the root by shared VIN, shared party address, or shared
+        provider name. Uses a single connection for all lookups to avoid N+1 churn.
+
+        This is a migration-ready compatibility layer. It derives graph signals from
+        existing tables without requiring dedicated graph persistence.
+
+        Args:
+            claim_id: Root claim ID.
+            max_nodes: Maximum related claim nodes to include.
+            max_depth: Graph traversal depth (reserved for future multi-hop expansion;
+                currently only 1-hop is implemented).
+        """
+        logger = logging.getLogger(__name__)
+        if max_depth > 1:
+            logger.debug(
+                "build_relationship_snapshot max_depth=%s > 1; only 1-hop implemented",
+                max_depth,
+            )
+
+        root_claim = self.get_claim(claim_id)
+        if root_claim is None:
+            return {
+                "claim_id": claim_id,
+                "max_nodes": max_nodes,
+                "node_count": 0,
+                "edge_count": 0,
+                "high_risk_link_count": 0,
+                "dense_cluster_detected": False,
+                "signals": [],
+                "nodes": [],
+                "edges": [],
+            }
+
+        root_vin = str(root_claim.get("vin") or "").strip()
+        parties = self.get_claim_parties(claim_id)
+        addresses = [
+            str(p.get("address")).strip().lower()
+            for p in parties
+            if isinstance(p.get("address"), str) and str(p.get("address")).strip()
+        ]
+        provider_names = [
+            str(p.get("name")).strip().lower()
+            for p in parties
+            if str(p.get("party_type") or "").strip() == "provider"
+            and isinstance(p.get("name"), str)
+            and str(p.get("name")).strip()
+        ]
+
+        related_ids: set[str] = set()
+        with get_connection(self._db_path) as conn:
+            if root_vin:
+                for row in self.search_claims(vin=root_vin):
+                    rid = str(row.get("id") or "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
+            if addresses:
+                placeholders = ",".join("?" * len(addresses))
+                rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT c.id
+                    FROM claim_parties cp
+                    JOIN claims c ON c.id = cp.claim_id
+                    WHERE lower(trim(cp.address)) IN ({placeholders})
+                    ORDER BY c.created_at DESC
+                    LIMIT ?
+                    """,
+                    (*addresses, max_nodes * len(addresses)),
+                ).fetchall()
+                for r in rows:
+                    rid = str(r[0] if r else "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
+            if provider_names:
+                placeholders = ",".join("?" * len(provider_names))
+                rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT c.id
+                    FROM claim_parties cp
+                    JOIN claims c ON c.id = cp.claim_id
+                    WHERE cp.party_type = 'provider'
+                      AND lower(trim(cp.name)) IN ({placeholders})
+                    ORDER BY c.created_at DESC
+                    LIMIT ?
+                    """,
+                    (*provider_names, max_nodes * len(provider_names)),
+                ).fetchall()
+                for r in rows:
+                    rid = str(r[0] if r else "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
+
+        if len(related_ids) > max_nodes:
+            related_ids = set(sorted(related_ids)[:max_nodes])
+
+        nodes = [{"id": claim_id, "type": "claim"}]
+        edges: list[dict[str, Any]] = []
+        high_risk_link_count = 0
+
+        if related_ids:
+            sorted_related = sorted(related_ids)
+            placeholders = ",".join("?" * len(sorted_related))
+            with get_connection(self._db_path) as conn:
+                claim_rows = conn.execute(
+                    f"SELECT * FROM claims WHERE id IN ({placeholders})",
+                    sorted_related,
+                ).fetchall()
+                party_rows = conn.execute(
+                    f"SELECT * FROM claim_parties WHERE claim_id IN ({placeholders})",
+                    sorted_related,
+                ).fetchall()
+            related_claims_by_id = {dict(r)["id"]: dict(r) for r in claim_rows}
+            parties_by_claim_id: dict[str, list[dict[str, Any]]] = {}
+            for row in party_rows:
+                p = dict(row)
+                parties_by_claim_id.setdefault(p["claim_id"], []).append(p)
+
+            for related_id in sorted_related:
+                related = related_claims_by_id.get(related_id)
+                if related is None:
+                    continue
+                nodes.append({"id": related_id, "type": "claim"})
+                relation_types: list[str] = []
+                if root_vin and str(related.get("vin") or "").strip() == root_vin:
+                    relation_types.append(RELATION_SHARED_VIN)
+                related_parties = parties_by_claim_id.get(related_id, [])
+                related_addresses = {
+                    str(p.get("address")).strip().lower()
+                    for p in related_parties
+                    if isinstance(p.get("address"), str) and str(p.get("address")).strip()
+                }
+                related_providers = {
+                    str(p.get("name")).strip().lower()
+                    for p in related_parties
+                    if str(p.get("party_type") or "").strip() == "provider"
+                    and isinstance(p.get("name"), str)
+                    and str(p.get("name")).strip()
+                }
+                if set(addresses) & related_addresses:
+                    relation_types.append(RELATION_SHARED_ADDRESS)
+                if set(provider_names) & related_providers:
+                    relation_types.append(RELATION_SHARED_PROVIDER)
+                if not relation_types:
+                    continue
+                edges.append(
+                    {"from": claim_id, "to": related_id, "relations": sorted(set(relation_types))}
+                )
+                if RELATION_SHARED_PROVIDER in relation_types or RELATION_SHARED_ADDRESS in relation_types:
+                    high_risk_link_count += 1
+
+        edge_count = len(edges)
+        node_count = len(nodes)
+        dense_cluster_detected = edge_count >= 3 or high_risk_link_count >= 2
+        signals: list[str] = []
+        if dense_cluster_detected:
+            signals.append("dense_cluster_detected")
+        if high_risk_link_count >= 2:
+            signals.append("high_risk_links")
+        return {
+            "claim_id": claim_id,
+            "max_nodes": max_nodes,
+            "node_count": node_count,
+            "edge_count": edge_count,
+            "high_risk_link_count": high_risk_link_count,
+            "dense_cluster_detected": dense_cluster_detected,
+            "signals": signals,
+            "nodes": nodes,
+            "edges": edges,
+        }
+
+    def get_relationship_index_snapshot(self, *, claim_id: str) -> dict[str, Any]:
+        """Placeholder for future durable graph index implementation.
+
+        Returns a migration-ready shape while current implementation derives data
+        from normalized claims/parties tables.
+        """
+        return {
+            "claim_id": claim_id,
+            "source": "derived_from_claims_and_parties",
+            "status": "not_materialized",
+        }
 
     def list_claims_for_retention(
         self,
