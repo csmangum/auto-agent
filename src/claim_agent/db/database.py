@@ -175,6 +175,13 @@ CREATE TABLE IF NOT EXISTS claim_tasks (
     due_date TEXT,
     resolution_notes TEXT,
     document_request_id INTEGER,
+    recurrence_rule TEXT,
+    recurrence_interval INTEGER,
+    parent_task_id INTEGER REFERENCES claim_tasks(id),
+    escalation_level INTEGER NOT NULL DEFAULT 0,
+    escalation_notified_at TEXT,
+    escalation_escalated_at TEXT,
+    auto_created_from TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id),
@@ -183,6 +190,8 @@ CREATE TABLE IF NOT EXISTS claim_tasks (
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_id ON claim_tasks(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_status ON claim_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_claim_tasks_claim_status ON claim_tasks(claim_id, status);
+CREATE INDEX IF NOT EXISTS idx_claim_tasks_due_date ON claim_tasks(due_date) WHERE due_date IS NOT NULL AND status NOT IN ('completed', 'cancelled');
+CREATE INDEX IF NOT EXISTS idx_claim_tasks_parent_task ON claim_tasks(parent_task_id) WHERE parent_task_id IS NOT NULL;
 
 -- Claim documents: structured document metadata (type, received_from, review_status, etc.)
 CREATE TABLE IF NOT EXISTS claim_documents (
@@ -358,6 +367,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 "ALTER TABLE claim_tasks ADD COLUMN document_request_id INTEGER "
                 "REFERENCES document_requests(id)"
             )
+        for col, typ in [
+            ("recurrence_rule", "TEXT"),
+            ("recurrence_interval", "INTEGER"),
+            ("parent_task_id", "INTEGER REFERENCES claim_tasks(id)"),
+            ("escalation_level", "INTEGER NOT NULL DEFAULT 0"),
+            ("escalation_notified_at", "TEXT"),
+            ("escalation_escalated_at", "TEXT"),
+            ("auto_created_from", "TEXT"),
+        ]:
+            if col not in ct_columns:
+                conn.execute(f"ALTER TABLE claim_tasks ADD COLUMN {col} {typ}")
     except sqlite3.OperationalError:
         pass
 
