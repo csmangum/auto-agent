@@ -1647,12 +1647,12 @@ class ClaimRepository:
         root_vin = str(root_claim.get("vin") or "").strip()
         parties = self.get_claim_parties(claim_id)
         addresses = {
-            str(p.get("address")).strip()
+            str(p.get("address")).strip().lower()
             for p in parties
             if isinstance(p.get("address"), str) and str(p.get("address")).strip()
         }
         provider_names = {
-            str(p.get("name")).strip()
+            str(p.get("name")).strip().lower()
             for p in parties
             if str(p.get("party_type") or "").strip() == "provider"
             and isinstance(p.get("name"), str)
@@ -1692,12 +1692,12 @@ class ClaimRepository:
                 relation_types.append("shared_vin")
             related_parties = self.get_claim_parties(related_id)
             related_addresses = {
-                str(p.get("address")).strip()
+                str(p.get("address")).strip().lower()
                 for p in related_parties
                 if isinstance(p.get("address"), str) and str(p.get("address")).strip()
             }
             related_providers = {
-                str(p.get("name")).strip()
+                str(p.get("name")).strip().lower()
                 for p in related_parties
                 if str(p.get("party_type") or "").strip() == "provider"
                 and isinstance(p.get("name"), str)

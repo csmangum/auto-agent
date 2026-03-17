@@ -109,7 +109,7 @@ def analyze_damage_photo_impl(
         match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
-            result.update({k: v for k, v in parsed.items() if k in result})
+            result.update({k: v for k, v in parsed.items() if k in result and k != "photo_forensics"})
         else:
             result["notes"] = text[:500]
     except Exception as e:

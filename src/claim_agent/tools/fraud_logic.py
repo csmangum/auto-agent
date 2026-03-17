@@ -11,29 +11,13 @@ from claim_agent.adapters.registry import get_claim_search_adapter, get_siu_adap
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.fraud_detectors import KNOWN_FRAUD_PATTERNS
+from claim_agent.tools.fraud_utils import _as_nonempty_str, _coerce_date
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
-
-
-def _as_nonempty_str(raw: Any) -> str:
-    return raw.strip() if isinstance(raw, str) else ""
-
-
-def _coerce_date(raw: Any) -> datetime | None:
-    if isinstance(raw, datetime):
-        return raw
-    if isinstance(raw, date):
-        return datetime.combine(raw, datetime.min.time())
-    if isinstance(raw, str):
-        try:
-            return datetime.strptime(raw.strip(), "%Y-%m-%d")
-        except ValueError:
-            return None
-    return None
 
 
 def _extract_provider_names(claim_data: dict[str, Any], repo: ClaimRepository) -> list[str]:
@@ -179,6 +163,7 @@ def analyze_claim_patterns_impl(
         except Exception as e:
             logger.debug("Could not load claim parties for velocity analysis: %s", e)
     velocity_hits: list[dict[str, Any]] = []
+    velocity_hit_ids: set[str] = set()
     if incident_dt and addresses:
         window_days = int(fraud_cfg.get("velocity_window_days", 30))
         for address in addresses:
@@ -191,11 +176,14 @@ def analyze_claim_patterns_impl(
                 related_id = _as_nonempty_str(row.get("id"))
                 if claim_id and related_id == claim_id:
                     continue
+                if related_id in velocity_hit_ids:
+                    continue
                 related_dt = _coerce_date(row.get("incident_date"))
                 if related_dt is None:
                     continue
                 if abs((incident_dt - related_dt).days) <= window_days:
                     velocity_hits.append(row)
+                    velocity_hit_ids.add(related_id)
         distinct_policies = {
             _as_nonempty_str(item.get("policy_number"))
             for item in velocity_hits

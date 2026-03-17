@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from claim_agent.config.settings import get_escalation_config, get_fraud_config
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.tools.fraud_utils import _as_nonempty_str, _coerce_date
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
@@ -214,23 +215,6 @@ def _normalize_words_for_overlap(text: str) -> set[str]:
     return tokens
 
 
-def _coerce_date(raw: Any) -> datetime | None:
-    if isinstance(raw, datetime):
-        return raw
-    if isinstance(raw, date):
-        return datetime.combine(raw, datetime.min.time())
-    if isinstance(raw, str):
-        try:
-            return datetime.strptime(raw.strip(), "%Y-%m-%d")
-        except ValueError:
-            return None
-    return None
-
-
-def _as_nonempty_str(raw: Any) -> str:
-    return raw.strip() if isinstance(raw, str) else ""
-
-
 def _extract_provider_names(claim_data: dict) -> list[str]:
     names: list[str] = []
     candidate_fields = (
@@ -327,7 +311,8 @@ def _detect_velocity_indicators(claim_data: dict, ctx: ClaimContext | None = Non
                 for item in in_window
                 if _as_nonempty_str(item.get("policy_number"))
             }
-            if len(in_window) >= 2 and len(distinct_policies) >= 2:
+            threshold = int(get_fraud_config().get("velocity_claim_threshold", 2))
+            if len(in_window) >= threshold and len(distinct_policies) >= 2:
                 indicators.append("high_velocity_same_address")
                 break
     except Exception as e:
