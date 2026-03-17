@@ -1621,10 +1621,13 @@ class ClaimRepository:
         self,
         *,
         claim_id: str,
-        max_depth: int = 2,
         max_nodes: int = 100,
     ) -> dict[str, Any]:
-        """Build an in-memory relationship graph snapshot from existing claims/parties.
+        """Build an in-memory 1-hop relationship graph snapshot from existing claims/parties.
+
+        Finds claims related to the root by shared VIN, shared party address, or shared
+        provider name. Uses a single database connection and batch queries to avoid N+1
+        performance issues.
 
         This is a migration-ready compatibility layer. It derives graph signals from
         existing tables without requiring dedicated graph persistence.
@@ -1633,7 +1636,6 @@ class ClaimRepository:
         if root_claim is None:
             return {
                 "claim_id": claim_id,
-                "max_depth": max_depth,
                 "max_nodes": max_nodes,
                 "node_count": 0,
                 "edge_count": 0,
@@ -1682,38 +1684,57 @@ class ClaimRepository:
         nodes = [{"id": claim_id, "type": "claim"}]
         edges: list[dict[str, Any]] = []
         high_risk_link_count = 0
-        for related_id in sorted(related_ids):
-            related = self.get_claim(related_id)
-            if related is None:
-                continue
-            nodes.append({"id": related_id, "type": "claim"})
-            relation_types: list[str] = []
-            if root_vin and str(related.get("vin") or "").strip() == root_vin:
-                relation_types.append("shared_vin")
-            related_parties = self.get_claim_parties(related_id)
-            related_addresses = {
-                str(p.get("address")).strip().lower()
-                for p in related_parties
-                if isinstance(p.get("address"), str) and str(p.get("address")).strip()
-            }
-            related_providers = {
-                str(p.get("name")).strip().lower()
-                for p in related_parties
-                if str(p.get("party_type") or "").strip() == "provider"
-                and isinstance(p.get("name"), str)
-                and str(p.get("name")).strip()
-            }
-            if addresses & related_addresses:
-                relation_types.append("shared_address")
-            if provider_names & related_providers:
-                relation_types.append("shared_provider")
-            if not relation_types:
-                continue
-            edges.append(
-                {"from": claim_id, "to": related_id, "relations": sorted(set(relation_types))}
-            )
-            if "shared_provider" in relation_types or "shared_address" in relation_types:
-                high_risk_link_count += 1
+
+        if related_ids:
+            sorted_related = sorted(related_ids)
+            placeholders = ",".join("?" * len(sorted_related))
+            with get_connection(self._db_path) as conn:
+                claim_rows = conn.execute(
+                    f"SELECT * FROM claims WHERE id IN ({placeholders})",
+                    sorted_related,
+                ).fetchall()
+                party_rows = conn.execute(
+                    f"SELECT * FROM claim_parties WHERE claim_id IN ({placeholders})",
+                    sorted_related,
+                ).fetchall()
+            related_claims_by_id = {dict(r)["id"]: dict(r) for r in claim_rows}
+            parties_by_claim_id: dict[str, list[dict[str, Any]]] = {}
+            for row in party_rows:
+                p = dict(row)
+                parties_by_claim_id.setdefault(p["claim_id"], []).append(p)
+
+            for related_id in sorted_related:
+                related = related_claims_by_id.get(related_id)
+                if related is None:
+                    continue
+                nodes.append({"id": related_id, "type": "claim"})
+                relation_types: list[str] = []
+                if root_vin and str(related.get("vin") or "").strip() == root_vin:
+                    relation_types.append("shared_vin")
+                related_parties = parties_by_claim_id.get(related_id, [])
+                related_addresses = {
+                    str(p.get("address")).strip().lower()
+                    for p in related_parties
+                    if isinstance(p.get("address"), str) and str(p.get("address")).strip()
+                }
+                related_providers = {
+                    str(p.get("name")).strip().lower()
+                    for p in related_parties
+                    if str(p.get("party_type") or "").strip() == "provider"
+                    and isinstance(p.get("name"), str)
+                    and str(p.get("name")).strip()
+                }
+                if addresses & related_addresses:
+                    relation_types.append("shared_address")
+                if provider_names & related_providers:
+                    relation_types.append("shared_provider")
+                if not relation_types:
+                    continue
+                edges.append(
+                    {"from": claim_id, "to": related_id, "relations": sorted(set(relation_types))}
+                )
+                if "shared_provider" in relation_types or "shared_address" in relation_types:
+                    high_risk_link_count += 1
 
         edge_count = len(edges)
         node_count = len(nodes)
@@ -1725,7 +1746,6 @@ class ClaimRepository:
             signals.append("high_risk_links")
         return {
             "claim_id": claim_id,
-            "max_depth": max_depth,
             "max_nodes": max_nodes,
             "node_count": node_count,
             "edge_count": edge_count,
