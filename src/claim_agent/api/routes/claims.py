@@ -781,14 +781,14 @@ async def upload_claim_document(
             raise HTTPException(status_code=413, detail="File exceeds maximum upload size")
         chunks.append(chunk)
     content = b"".join(chunks)
-    storage = get_storage_adapter()
-    stored_key = storage.save(claim_id=claim_id, filename=file.filename, content=content)
-    doc_type = document_type or attachment_type_to_document_type(infer_attachment_type(file.filename)).value
     if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
         )
+    storage = get_storage_adapter()
+    stored_key = storage.save(claim_id=claim_id, filename=file.filename, content=content)
+    doc_type = document_type or attachment_type_to_document_type(infer_attachment_type(file.filename)).value
     if doc_type not in _VALID_DOCUMENT_TYPES:
         doc_type = DocumentType.OTHER.value
     doc_repo = _get_doc_repo()

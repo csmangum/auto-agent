@@ -146,7 +146,7 @@ def _classify_document_vision(file_path: Path, storage_key: str) -> tuple[str, s
         return _classify_document_mock(storage_key)
     with open(file_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
-    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}" if ext in ("png", "gif", "webp") else "image/jpeg"
+    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}" if ext in ("png", "gif", "webp", "heic") else "image/jpeg"
     content = f"data:{mime};base64,{b64}"
     model = get_settings().llm.vision_model.strip() or "gpt-4o"
     prompt = """Classify this insurance claim document image. Return a JSON object with:
