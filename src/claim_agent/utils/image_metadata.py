@@ -7,7 +7,7 @@ from typing import Any
 
 try:
     from PIL import ExifTags, Image
-except Exception:  # pragma: no cover - optional dependency guard
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency guard
     ExifTags = None  # type: ignore[assignment]
     Image = None  # type: ignore[assignment]
 

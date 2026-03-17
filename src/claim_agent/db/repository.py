@@ -1622,15 +1622,23 @@ class ClaimRepository:
         *,
         claim_id: str,
         max_nodes: int = 100,
+        max_depth: int = 1,
     ) -> dict[str, Any]:
         """Build an in-memory 1-hop relationship graph snapshot from existing claims/parties.
 
         Finds claims related to the root by shared VIN, shared party address, or shared
-        provider name. Uses a single database connection and batch queries to avoid N+1
-        performance issues.
+        provider name, using existing repository search helpers. The final batch fetch
+        of related claims and parties uses a single connection; initial lookups may
+        open separate connections per search.
 
         This is a migration-ready compatibility layer. It derives graph signals from
         existing tables without requiring dedicated graph persistence.
+
+        Args:
+            claim_id: Root claim ID.
+            max_nodes: Maximum related claim nodes to include.
+            max_depth: Graph traversal depth (reserved for future multi-hop expansion;
+                currently only 1-hop is implemented).
         """
         root_claim = self.get_claim(claim_id)
         if root_claim is None:

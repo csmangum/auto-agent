@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from claim_agent.config.settings import get_escalation_config, get_fraud_config
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.tools.fraud_utils import _as_nonempty_str, _coerce_date, _extract_provider_names
+from claim_agent.tools.fraud_utils import as_nonempty_str, coerce_date, extract_provider_names
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
@@ -238,24 +238,24 @@ def _detect_velocity_indicators(claim_data: dict, ctx: ClaimContext | None = Non
     indicators: list[str] = []
     if not claim_data or not isinstance(claim_data, dict):
         return indicators
-    incident_dt = _coerce_date(claim_data.get("incident_date"))
+    incident_dt = coerce_date(claim_data.get("incident_date"))
     if incident_dt is None:
         return indicators
 
     velocity_days = get_fraud_config()["velocity_window_days"]
     repo = ctx.repo if ctx else ClaimRepository()
 
-    claim_id = _as_nonempty_str(claim_data.get("claim_id"))
+    claim_id = as_nonempty_str(claim_data.get("claim_id"))
     addresses: set[str] = set()
     for key in ("claimant_address", "policy_address", "garaging_address"):
-        addr = _as_nonempty_str(claim_data.get(key))
+        addr = as_nonempty_str(claim_data.get(key))
         if addr:
             addresses.add(addr)
     if claim_id:
         try:
             parties = repo.get_claim_parties(claim_id)
             for party in parties:
-                addr = _as_nonempty_str(party.get("address"))
+                addr = as_nonempty_str(party.get("address"))
                 if addr:
                     addresses.add(addr)
         except Exception as e:
@@ -269,18 +269,18 @@ def _detect_velocity_indicators(claim_data: dict, ctx: ClaimContext | None = Non
             related = repo.get_claims_by_party_address(address, limit=50)
             in_window: list[dict[str, Any]] = []
             for related_claim in related:
-                related_id = _as_nonempty_str(related_claim.get("id"))
+                related_id = as_nonempty_str(related_claim.get("id"))
                 if claim_id and related_id == claim_id:
                     continue
-                related_date = _coerce_date(related_claim.get("incident_date"))
+                related_date = coerce_date(related_claim.get("incident_date"))
                 if related_date is None:
                     continue
                 if abs((incident_dt - related_date).days) <= velocity_days:
                     in_window.append(related_claim)
             distinct_policies = {
-                _as_nonempty_str(item.get("policy_number"))
+                as_nonempty_str(item.get("policy_number"))
                 for item in in_window
-                if _as_nonempty_str(item.get("policy_number"))
+                if as_nonempty_str(item.get("policy_number"))
             }
             threshold = int(get_fraud_config().get("velocity_claim_threshold", 2))
             if len(in_window) >= threshold and len(distinct_policies) >= 2:
@@ -300,11 +300,11 @@ def _detect_geographic_inconsistency_indicators(
     if not claim_data or not isinstance(claim_data, dict):
         return indicators
     # Keep this detector resilient: only flag when we have at least two non-empty locations.
-    policy_state = _as_nonempty_str(claim_data.get("policy_state"))
-    loss_state = _as_nonempty_str(
+    policy_state = as_nonempty_str(claim_data.get("policy_state"))
+    loss_state = as_nonempty_str(
         claim_data.get("loss_state") or claim_data.get("incident_state")
     )
-    repair_state = _as_nonempty_str(claim_data.get("repair_shop_state"))
+    repair_state = as_nonempty_str(claim_data.get("repair_shop_state"))
     nonempty = [s for s in (policy_state, loss_state, repair_state) if s]
     if len(nonempty) < 2:
         return indicators
@@ -321,7 +321,7 @@ def _detect_provider_ring_indicators(claim_data: dict, ctx: ClaimContext | None 
         return indicators
     
     repo = ctx.repo if ctx else ClaimRepository()
-    provider_names = _extract_provider_names(claim_data, repo)
+    provider_names = extract_provider_names(claim_data, repo)
     if not provider_names:
         return indicators
 
@@ -330,7 +330,7 @@ def _detect_provider_ring_indicators(claim_data: dict, ctx: ClaimContext | None 
             related = repo.get_claims_by_provider_name(provider_name, limit=100)
             suspicious = [
                 row for row in related
-                if _as_nonempty_str(row.get("status"))
+                if as_nonempty_str(row.get("status"))
                 in {"needs_review", "fraud_suspected", "fraud_confirmed", "under_investigation"}
             ]
             threshold = get_fraud_config().get("provider_ring_threshold", 2)
@@ -372,7 +372,7 @@ def _detect_relationship_graph_indicators(
     if not claim_data or not isinstance(claim_data, dict):
         return indicators
     repo = ctx.repo if ctx else ClaimRepository()
-    claim_id = _as_nonempty_str(claim_data.get("claim_id"))
+    claim_id = as_nonempty_str(claim_data.get("claim_id"))
     if not claim_id:
         return indicators
     try:
@@ -380,6 +380,7 @@ def _detect_relationship_graph_indicators(
         graph = repo.build_relationship_snapshot(
             claim_id=claim_id,
             max_nodes=int(fraud_cfg.get("graph_max_nodes", 100)),
+            max_depth=int(fraud_cfg.get("graph_max_depth", 1)),
         )
         if graph.get("dense_cluster_detected") is True:
             indicators.append("relationship_graph_dense_cluster")

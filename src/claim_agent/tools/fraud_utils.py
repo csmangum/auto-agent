@@ -11,13 +11,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["as_nonempty_str", "coerce_date", "extract_provider_names"]
 
-def _as_nonempty_str(raw: Any) -> str:
+
+def as_nonempty_str(raw: Any) -> str:
     """Coerce value to non-empty trimmed string, or empty string."""
     return raw.strip() if isinstance(raw, str) else ""
 
 
-def _coerce_date(raw: Any) -> datetime | None:
+def coerce_date(raw: Any) -> datetime | None:
     """Coerce value to datetime. Accepts datetime, date, or ISO date string."""
     if isinstance(raw, datetime):
         return raw
@@ -31,7 +33,7 @@ def _coerce_date(raw: Any) -> datetime | None:
     return None
 
 
-def _extract_provider_names(claim_data: dict[str, Any], repo: ClaimRepository) -> list[str]:
+def extract_provider_names(claim_data: dict[str, Any], repo: ClaimRepository) -> list[str]:
     """Extract provider names from claim data and database parties.
     
     Searches claim payload for provider-related fields and queries the database
@@ -63,12 +65,12 @@ def _extract_provider_names(claim_data: dict[str, Any], repo: ClaimRepository) -
                         names.add(nested.strip())
                         break
 
-    claim_id = _as_nonempty_str(claim_data.get("claim_id"))
+    claim_id = as_nonempty_str(claim_data.get("claim_id"))
     if claim_id:
         try:
             parties = repo.get_claim_parties(claim_id, party_type="provider")
             for party in parties:
-                party_name = _as_nonempty_str(party.get("name"))
+                party_name = as_nonempty_str(party.get("name"))
                 if party_name:
                     names.add(party_name)
         except Exception as e:

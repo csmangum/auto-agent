@@ -160,8 +160,8 @@ class _DummyRepo:
         del provider_name, limit
         return [{"id": "CLM-1", "status": "fraud_suspected"}, {"id": "CLM-2", "status": "needs_review"}]
 
-    def build_relationship_snapshot(self, *, claim_id: str, max_nodes: int = 50):
-        del claim_id, max_nodes
+    def build_relationship_snapshot(self, *, claim_id: str, max_nodes: int = 50, max_depth: int = 1):
+        del claim_id, max_nodes, max_depth
         return {"dense_cluster_detected": True, "high_risk_link_count": 2}
 
     def get_claim_parties(self, claim_id: str):
