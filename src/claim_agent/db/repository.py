@@ -109,14 +109,15 @@ class ClaimRepository:
         loss_state_val = claim_input.loss_state
         if loss_state_val is not None:
             loss_state_val = str(loss_state_val).strip() or None
+        incident_id_val = claim_input.incident_id
         with get_connection(self._db_path) as conn:
             conn.execute(
                 """
                 INSERT INTO claims (
                     id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                     incident_date, incident_description, damage_description, estimated_damage,
-                    claim_type, loss_state, status, attachments
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    claim_type, loss_state, status, attachments, incident_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     claim_id,
@@ -133,6 +134,7 @@ class ClaimRepository:
                     loss_state_val,
                     STATUS_PENDING,
                     attachments_json,
+                    incident_id_val,
                 ),
             )
             after_state = json.dumps({"status": STATUS_PENDING, "claim_type": None, "payout_amount": None})

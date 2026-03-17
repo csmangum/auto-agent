@@ -122,6 +122,166 @@ class TestClaimsList:
         assert resp.status_code == 422
 
 
+class TestIncidentsAndClaimLinks:
+    """Test incident creation, claim links, related claims, and BI allocation."""
+
+    def test_create_incident(self, client):
+        """POST /api/incidents creates incident and claims."""
+        payload = {
+            "incident_date": "2025-01-15",
+            "incident_description": "Two-car collision at intersection",
+            "loss_state": "CA",
+            "vehicles": [
+                {
+                    "policy_number": "POL-INC1",
+                    "vin": "VIN-INCIDENT-001",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Honda",
+                    "vehicle_model": "Accord",
+                    "damage_description": "Rear bumper damage",
+                    "estimated_damage": 2500.0,
+                },
+                {
+                    "policy_number": "POL-INC2",
+                    "vin": "VIN-INCIDENT-002",
+                    "vehicle_year": 2020,
+                    "vehicle_make": "Toyota",
+                    "vehicle_model": "Camry",
+                    "damage_description": "Front end damage",
+                    "estimated_damage": 3500.0,
+                },
+            ],
+        }
+        resp = client.post("/api/incidents", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["incident_id"].startswith("INC-")
+        assert len(data["claim_ids"]) == 2
+        assert data["message"] is not None
+
+    def test_get_incident(self, client):
+        """GET /api/incidents/{id} returns incident and claims."""
+        payload = {
+            "incident_date": "2025-01-15",
+            "incident_description": "Get incident test",
+            "vehicles": [
+                {
+                    "policy_number": "POL-GET",
+                    "vin": "VIN-GET-001",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Honda",
+                    "vehicle_model": "Accord",
+                    "damage_description": "Test",
+                    "estimated_damage": 1000.0,
+                },
+            ],
+        }
+        create_resp = client.post("/api/incidents", json=payload)
+        assert create_resp.status_code == 200
+        incident_id = create_resp.json()["incident_id"]
+
+        resp = client.get(f"/api/incidents/{incident_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["incident"]["id"] == incident_id
+        assert len(data["claims"]) == 1
+
+    def test_get_incident_not_found(self, client):
+        """GET /api/incidents/{id} returns 404 for non-existent incident."""
+        resp = client.get("/api/incidents/INC-NOTFOUND")
+        assert resp.status_code == 404
+
+    def test_create_claim_link(self, client):
+        """POST /api/claim-links creates link between two claims."""
+        payload = {
+            "claim_id_a": "CLM-TEST001",
+            "claim_id_b": "CLM-TEST002",
+            "link_type": "opposing_carrier",
+            "opposing_carrier": "Acme Insurance",
+        }
+        resp = client.post("/api/claim-links", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "link_id" in data
+        assert data["message"] == "Claim link created"
+
+    def test_create_claim_link_duplicate_returns_409(self, client):
+        """Creating duplicate claim link returns 409."""
+        payload = {
+            "claim_id_a": "CLM-TEST001",
+            "claim_id_b": "CLM-TEST003",
+            "link_type": "same_incident",
+        }
+        resp1 = client.post("/api/claim-links", json=payload)
+        assert resp1.status_code == 200
+        resp2 = client.post("/api/claim-links", json=payload)
+        assert resp2.status_code == 409
+        assert "already exists" in resp2.json()["detail"].lower()
+
+    def test_create_claim_link_self_link_returns_422(self, client):
+        """Linking claim to itself returns 422."""
+        payload = {
+            "claim_id_a": "CLM-TEST001",
+            "claim_id_b": "CLM-TEST001",
+            "link_type": "same_incident",
+        }
+        resp = client.post("/api/claim-links", json=payload)
+        assert resp.status_code == 422
+
+    def test_create_claim_link_claim_not_found(self, client):
+        """Creating link with non-existent claim returns 404."""
+        payload = {
+            "claim_id_a": "CLM-TEST001",
+            "claim_id_b": "CLM-NOTFOUND",
+            "link_type": "same_incident",
+        }
+        resp = client.post("/api/claim-links", json=payload)
+        assert resp.status_code == 404
+
+    def test_get_related_claims(self, client):
+        """GET /api/claims/{id}/related returns related claim IDs."""
+        payload = {
+            "claim_id_a": "CLM-TEST001",
+            "claim_id_b": "CLM-TEST002",
+            "link_type": "same_incident",
+        }
+        client.post("/api/claim-links", json=payload)
+        resp = client.get("/api/claims/CLM-TEST001/related")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert "CLM-TEST002" in data["related_claim_ids"]
+
+    def test_bi_allocation(self, client):
+        """POST /api/bi-allocation returns allocation result."""
+        payload = {
+            "claim_id": "CLM-TEST001",
+            "claimant_demands": [
+                {"claimant_id": "P1", "demanded_amount": 50000.0},
+                {"claimant_id": "P2", "demanded_amount": 30000.0},
+            ],
+            "bi_per_accident_limit": 50000.0,
+            "allocation_method": "proportional",
+        }
+        resp = client.post("/api/bi-allocation", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["total_demanded"] == 80000.0
+        assert data["limit_exceeded"] is True
+        assert len(data["allocations"]) == 2
+
+    def test_bi_allocation_claim_not_found(self, client):
+        """BI allocation for non-existent claim returns 404."""
+        payload = {
+            "claim_id": "CLM-NOTFOUND",
+            "claimant_demands": [{"claimant_id": "P1", "demanded_amount": 10000.0}],
+            "bi_per_accident_limit": 50000.0,
+        }
+        resp = client.post("/api/bi-allocation", json=payload)
+        assert resp.status_code == 404
+
+
 class TestClaimDetail:
     def test_get_existing(self, client):
         resp = client.get("/api/claims/CLM-TEST001")

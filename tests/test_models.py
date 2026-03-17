@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
+from claim_agent.models.incident import ClaimLinkInput
 from claim_agent.models.claim import (
     AttachmentType,
     ClaimInput,
@@ -184,6 +185,22 @@ class TestClaimInput:
         assert claim.parties[1].party_type == "policyholder"
         assert claim.parties[1].phone == "555-123-4567"
 
+    def test_valid_with_incident_id(self):
+        """ClaimInput accepts optional incident_id for multi-vehicle incidents."""
+        data = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Two-car collision.",
+            "damage_description": "Front damage.",
+            "incident_id": "INC-ABC12345",
+        }
+        claim = ClaimInput(**data)
+        assert claim.incident_id == "INC-ABC12345"
+
 
 class TestClaimOutput:
     """Test ClaimOutput validation."""
@@ -301,3 +318,26 @@ class TestUserType:
         assert ctx.user_type == UserType.REPAIR_SHOP
         assert ctx.identifier == "SHOP-001"
         assert ctx.email == "shop@example.com"
+
+
+class TestClaimLinkInput:
+    """Test ClaimLinkInput validation."""
+
+    def test_valid_link(self):
+        link = ClaimLinkInput(
+            claim_id_a="CLM-001",
+            claim_id_b="CLM-002",
+            link_type="same_incident",
+        )
+        assert link.claim_id_a == "CLM-001"
+        assert link.claim_id_b == "CLM-002"
+        assert link.link_type == "same_incident"
+
+    def test_self_link_raises(self):
+        """Linking a claim to itself raises ValidationError."""
+        with pytest.raises(ValidationError, match="linked to itself"):
+            ClaimLinkInput(
+                claim_id_a="CLM-001",
+                claim_id_b="CLM-001",
+                link_type="same_incident",
+            )

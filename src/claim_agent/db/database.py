@@ -13,6 +13,17 @@ _schema_initialized: set[str] = set()
 _schema_lock = threading.RLock()
 
 SCHEMA_SQL = """
+-- Incidents table: groups multiple claims under one event (multi-vehicle accident)
+CREATE TABLE IF NOT EXISTS incidents (
+    id TEXT PRIMARY KEY,
+    incident_date TEXT NOT NULL,
+    incident_description TEXT,
+    loss_state TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_incident_date ON incidents(incident_date);
+
 -- Claims table (main record)
 CREATE TABLE IF NOT EXISTS claims (
     id TEXT PRIMARY KEY,
@@ -38,9 +49,26 @@ CREATE TABLE IF NOT EXISTS claims (
     priority TEXT,
     siu_case_id TEXT,
     archived_at TEXT,
+    incident_id TEXT REFERENCES incidents(id),
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Claim links: typed relationships between claims (same_incident, opposing_carrier, etc.)
+CREATE TABLE IF NOT EXISTS claim_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id_a TEXT NOT NULL,
+    claim_id_b TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    opposing_carrier TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id_a) REFERENCES claims(id),
+    FOREIGN KEY (claim_id_b) REFERENCES claims(id),
+    UNIQUE (claim_id_a, claim_id_b, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_links_claim_a ON claim_links(claim_id_a);
+CREATE INDEX IF NOT EXISTS idx_claim_links_claim_b ON claim_links(claim_id_b);
 
 -- Audit log (state changes). Append-only: no UPDATE or DELETE.
 CREATE TABLE IF NOT EXISTS claim_audit_log (
@@ -240,6 +268,7 @@ CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
 
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
+CREATE INDEX IF NOT EXISTS idx_claims_incident_id ON claims(incident_id);
 
 -- Claim parties: claimant, policyholder, witness, attorney, provider, lienholder
 CREATE TABLE IF NOT EXISTS claim_parties (
@@ -323,8 +352,44 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN liability_basis TEXT")
         if "total_loss_metadata" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN total_loss_metadata TEXT")
+        if "incident_id" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN incident_id TEXT")
     except sqlite3.OperationalError:
         pass
+    # Incidents and claim_links for multi-vehicle support
+    try:
+        conn.execute("SELECT 1 FROM incidents LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            CREATE TABLE incidents (
+                id TEXT PRIMARY KEY,
+                incident_date TEXT NOT NULL,
+                incident_description TEXT,
+                loss_state TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_incidents_incident_date ON incidents(incident_date);
+        """)
+    try:
+        conn.execute("SELECT 1 FROM claim_links LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            CREATE TABLE claim_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id_a TEXT NOT NULL,
+                claim_id_b TEXT NOT NULL,
+                link_type TEXT NOT NULL,
+                opposing_carrier TEXT,
+                notes TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (claim_id_a) REFERENCES claims(id),
+                FOREIGN KEY (claim_id_b) REFERENCES claims(id),
+                UNIQUE (claim_id_a, claim_id_b, link_type)
+            );
+            CREATE INDEX IF NOT EXISTS idx_claim_links_claim_a ON claim_links(claim_id_a);
+            CREATE INDEX IF NOT EXISTS idx_claim_links_claim_b ON claim_links(claim_id_b);
+        """)
     try:
         cursor = conn.execute("PRAGMA table_info(subrogation_cases)")
         sc_columns = {row[1] for row in cursor.fetchall()}
