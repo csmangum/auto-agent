@@ -28,6 +28,7 @@ class TestAnalyzeDamagePhotoImpl:
         parsed = json.loads(result)
         assert parsed["severity"] == "low"
         assert "bumper" in parsed["parts_affected"]
+        assert "photo_forensics" in parsed
         mock_completion.assert_called_once()
 
     def test_file_path_outside_allowed_base_returns_error(self):

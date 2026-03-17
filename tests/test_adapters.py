@@ -4,6 +4,7 @@
 import pytest
 
 from claim_agent.adapters.base import (
+    ClaimSearchAdapter,
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
@@ -11,6 +12,7 @@ from claim_agent.adapters.base import (
     ValuationAdapter,
 )
 from claim_agent.adapters.mock import (
+    MockClaimSearchAdapter,
     MockPartsAdapter,
     MockPolicyAdapter,
     MockRepairShopAdapter,
@@ -18,6 +20,7 @@ from claim_agent.adapters.mock import (
     MockValuationAdapter,
 )
 from claim_agent.adapters.registry import (
+    get_claim_search_adapter,
     get_parts_adapter,
     get_policy_adapter,
     get_repair_shop_adapter,
@@ -26,6 +29,7 @@ from claim_agent.adapters.registry import (
     reset_adapters,
 )
 from claim_agent.adapters.stub import (
+    StubClaimSearchAdapter,
     StubPartsAdapter,
     StubPolicyAdapter,
     StubRepairShopAdapter,
@@ -58,6 +62,10 @@ class TestABCEnforcement:
     def test_siu_adapter_is_abstract(self):
         with pytest.raises(TypeError):
             SIUAdapter()  # type: ignore[abstract]
+
+    def test_claim_search_adapter_is_abstract(self):
+        with pytest.raises(TypeError):
+            ClaimSearchAdapter()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +189,17 @@ class TestMockSIUAdapter:
         assert isinstance(MockSIUAdapter(), SIUAdapter)
 
 
+class TestMockClaimSearchAdapter:
+    def test_search_returns_list(self):
+        adapter = MockClaimSearchAdapter()
+        result = adapter.search_claims(vin="TEST-FRAUD-123")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_implements_interface(self):
+        assert isinstance(MockClaimSearchAdapter(), ClaimSearchAdapter)
+
+
 # ---------------------------------------------------------------------------
 # Stub adapter tests
 # ---------------------------------------------------------------------------
@@ -214,6 +233,10 @@ class TestStubAdapters:
         with pytest.raises(NotImplementedError, match="StubSIUAdapter"):
             StubSIUAdapter().create_case("CLM-001", ["staged"])
 
+    def test_stub_claim_search_raises(self):
+        with pytest.raises(NotImplementedError, match="StubClaimSearchAdapter"):
+            StubClaimSearchAdapter().search_claims(vin="VIN123")
+
 
 # ---------------------------------------------------------------------------
 # Registry tests
@@ -227,6 +250,7 @@ class TestRegistry:
         assert isinstance(get_repair_shop_adapter(), MockRepairShopAdapter)
         assert isinstance(get_parts_adapter(), MockPartsAdapter)
         assert isinstance(get_siu_adapter(), MockSIUAdapter)
+        assert isinstance(get_claim_search_adapter(), MockClaimSearchAdapter)
 
     def test_stub_backend_via_env(self, monkeypatch):
         reset_adapters()
@@ -235,11 +259,13 @@ class TestRegistry:
         monkeypatch.setenv("REPAIR_SHOP_ADAPTER", "stub")
         monkeypatch.setenv("PARTS_ADAPTER", "stub")
         monkeypatch.setenv("SIU_ADAPTER", "stub")
+        monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "stub")
         assert isinstance(get_policy_adapter(), StubPolicyAdapter)
         assert isinstance(get_valuation_adapter(), StubValuationAdapter)
         assert isinstance(get_repair_shop_adapter(), StubRepairShopAdapter)
         assert isinstance(get_parts_adapter(), StubPartsAdapter)
         assert isinstance(get_siu_adapter(), StubSIUAdapter)
+        assert isinstance(get_claim_search_adapter(), StubClaimSearchAdapter)
 
     def test_singleton_returns_same_instance(self):
         reset_adapters()

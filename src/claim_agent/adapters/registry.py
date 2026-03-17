@@ -10,6 +10,7 @@ import threading
 from typing import Any, TypeVar, cast
 
 from claim_agent.adapters.base import (
+    ClaimSearchAdapter,
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
@@ -80,6 +81,12 @@ def get_siu_adapter() -> SIUAdapter:
     from claim_agent.adapters.stub import StubSIUAdapter
     from claim_agent.adapters.mock.siu import MockSIUAdapter
     return _get_or_create_adapter("siu", StubSIUAdapter, MockSIUAdapter)
+
+
+def get_claim_search_adapter() -> ClaimSearchAdapter:
+    from claim_agent.adapters.stub import StubClaimSearchAdapter
+    from claim_agent.adapters.mock.claim_search import MockClaimSearchAdapter
+    return _get_or_create_adapter("claim_search", StubClaimSearchAdapter, MockClaimSearchAdapter)
 
 
 def reset_adapters() -> None:

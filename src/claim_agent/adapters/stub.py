@@ -8,6 +8,7 @@ building production adapters.
 from typing import Any
 
 from claim_agent.adapters.base import (
+    ClaimSearchAdapter,
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
@@ -100,4 +101,20 @@ class StubSIUAdapter(SIUAdapter):
         raise NotImplementedError(
             "StubSIUAdapter: connect to a real SIU case-management system. "
             "Expected return: case_id string."
+        )
+
+
+class StubClaimSearchAdapter(ClaimSearchAdapter):
+    """Placeholder for a real NICB/ISO ClaimSearch integration."""
+
+    def search_claims(
+        self,
+        *,
+        vin: str | None = None,
+        claimant_name: str | None = None,
+        date_range: tuple[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        raise NotImplementedError(
+            "StubClaimSearchAdapter: connect to a real NICB/ISO ClaimSearch API. "
+            "Expected return: list of external claim match dicts."
         )

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from claim_agent.adapters.base import (
+    ClaimSearchAdapter,
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
@@ -32,12 +33,14 @@ class AdapterRegistry:
     repair_shop: RepairShopAdapter
     parts: PartsAdapter
     siu: SIUAdapter
+    claim_search: ClaimSearchAdapter
 
     @classmethod
     def from_defaults(cls) -> AdapterRegistry:
         """Build from the existing thread-safe singleton factories."""
         # Inline import to avoid circular dependency with adapters.registry
         from claim_agent.adapters.registry import (
+            get_claim_search_adapter,
             get_parts_adapter,
             get_policy_adapter,
             get_repair_shop_adapter,
@@ -51,6 +54,7 @@ class AdapterRegistry:
             repair_shop=get_repair_shop_adapter(),
             parts=get_parts_adapter(),
             siu=get_siu_adapter(),
+            claim_search=get_claim_search_adapter(),
         )
 
 
