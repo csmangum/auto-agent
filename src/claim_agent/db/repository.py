@@ -1928,6 +1928,25 @@ class ClaimRepository:
         created_by = sanitize_actor_id(created_by)
         if not title:
             raise ValueError("Task title must not be empty after sanitization")
+        # Normalize and validate recurrence fields
+        if recurrence_rule is not None:
+            from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES, RECURRENCE_INTERVAL_DAYS
+            if recurrence_rule not in VALID_RECURRENCE_RULES:
+                raise ValueError(
+                    f"Invalid recurrence_rule '{recurrence_rule}'. "
+                    f"Must be one of: {', '.join(sorted(VALID_RECURRENCE_RULES))}"
+                )
+            if recurrence_rule == RECURRENCE_INTERVAL_DAYS:
+                if recurrence_interval is None:
+                    raise ValueError("recurrence_interval is required when recurrence_rule is 'interval_days'")
+                if recurrence_interval < 1:
+                    raise ValueError("recurrence_interval must be >= 1")
+            else:
+                # daily/weekly: default interval to 1
+                if recurrence_interval is None:
+                    recurrence_interval = 1
+                elif recurrence_interval < 1:
+                    raise ValueError("recurrence_interval must be >= 1")
         doc_req_id = document_request_id
         if doc_req_id is None and document_type and task_type in ("request_documents", "obtain_police_report"):
             from claim_agent.db.document_repository import DocumentRepository

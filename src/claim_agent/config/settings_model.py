@@ -342,6 +342,7 @@ class DiaryConfig(BaseSettings):
     auto_create_on_status_change: bool = True
     escalation_hours_before_supervisor: int = Field(
         default=24,
+        ge=0,
         description="Hours after overdue notification before escalating to supervisor",
     )
 

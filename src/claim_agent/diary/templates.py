@@ -22,19 +22,15 @@ class ComplianceDeadlineTemplate:
 
 def get_compliance_deadline_templates(
     state: str | None,
-    base_date_str: str | None = None,
 ) -> list[ComplianceDeadlineTemplate]:
     """Return state-specific compliance deadline templates for diary creation.
 
     Args:
         state: Loss state (California, Texas, etc.). Uses defaults if None.
-        base_date_str: Optional YYYY-MM-DD for due date calculation.
 
     Returns:
         List of templates with title, task_type, description, days, state.
     """
-    from datetime import date
-
     rules = get_state_rules(state) if state else None
     templates: list[ComplianceDeadlineTemplate] = []
 
