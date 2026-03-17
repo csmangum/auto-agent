@@ -215,7 +215,6 @@ def analyze_claim_patterns_impl(
         try:
             relationship = repo.build_relationship_snapshot(
                 claim_id=claim_id,
-                max_depth=int(fraud_cfg.get("graph_max_depth", 2)),
                 max_nodes=int(fraud_cfg.get("graph_max_nodes", 100)),
             )
             if relationship.get("dense_cluster_detected"):

@@ -103,8 +103,13 @@ def analyze_photo_forensics(
 ) -> dict[str, Any]:
     """Analyze EXIF metadata for simple fraud-oriented anomalies."""
     anomalies: list[str] = []
+    errors = metadata.get("errors") or []
+    extraction_failed = any(
+        isinstance(e, str) and (e == "pillow_unavailable" or e.startswith("exif_error:"))
+        for e in errors
+    )
     has_exif = bool(metadata.get("has_exif"))
-    if not has_exif:
+    if not has_exif and not extraction_failed:
         anomalies.append("photo_missing_exif")
 
     captured_raw = metadata.get("captured_at")
@@ -140,7 +145,7 @@ def analyze_photo_forensics(
             anomalies.append("photo_editing_software_detected")
 
     gps = metadata.get("gps")
-    if gps is None:
+    if gps is None and not extraction_failed:
         anomalies.append("photo_missing_gps")
 
     return {
