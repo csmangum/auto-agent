@@ -81,8 +81,10 @@ def _global_options(
 ) -> None:
     """Global options applied before any command."""
     _setup_logging(debug=debug, json_format=json_format)
+    from claim_agent.diary.auto_create import ensure_diary_listener_registered
     from claim_agent.events import ensure_webhook_listener_registered
     ensure_webhook_listener_registered()
+    ensure_diary_listener_registered()
 
 
 @app.command()
@@ -433,6 +435,20 @@ def retention_enforce(
 
     if failed:
         sys.exit(1)
+
+
+@app.command("diary-escalate")
+def diary_escalate(
+    db_path: Annotated[
+        Optional[str],
+        typer.Option("--db", help="Path to claims database"),
+    ] = None,
+) -> None:
+    """Run deadline escalation: notify overdue tasks, escalate to supervisor after threshold."""
+    from claim_agent.diary.escalation import run_deadline_escalation
+
+    result = run_deadline_escalation(db_path=db_path or get_db_path())
+    typer.echo(json.dumps(result, indent=2))
 
 
 @app.command()

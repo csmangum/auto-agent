@@ -46,6 +46,9 @@ def _validate_due_date(v: Optional[str]) -> Optional[str]:
     return v.strip()
 
 
+VALID_RECURRENCE_RULES = frozenset({"daily", "interval_days", "weekly"})
+
+
 class CreateTaskBody(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="Short description of the task")
     task_type: str = Field(..., description="Task category")
@@ -53,11 +56,22 @@ class CreateTaskBody(BaseModel):
     priority: str = Field(default="medium", description="Task priority")
     assigned_to: Optional[str] = Field(default=None, max_length=200, description="Assignee")
     due_date: Optional[str] = Field(default=None, description="Target date (ISO 8601)")
+    recurrence_rule: Optional[str] = Field(default=None, description="daily, interval_days, weekly")
+    recurrence_interval: Optional[int] = Field(default=None, ge=1, description="For interval_days: every N days")
 
     @field_validator("due_date")
     @classmethod
     def validate_due_date(cls, v: Optional[str]) -> Optional[str]:
         return _validate_due_date(v)
+
+    @field_validator("recurrence_rule")
+    @classmethod
+    def validate_recurrence_rule(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
+        if v.strip() in VALID_RECURRENCE_RULES:
+            return v.strip()
+        raise ValueError(f"recurrence_rule must be one of: {', '.join(sorted(VALID_RECURRENCE_RULES))}")
 
 
 class UpdateTaskBody(BaseModel):
@@ -104,6 +118,8 @@ def create_task(
             assigned_to=body.assigned_to,
             created_by=actor_id,
             due_date=body.due_date,
+            recurrence_rule=body.recurrence_rule,
+            recurrence_interval=body.recurrence_interval,
         )
     except ClaimNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -164,6 +180,41 @@ def get_task_stats(
 ):
     """Get aggregate task statistics."""
     return ctx.repo.get_task_stats()
+
+
+@router.get("/tasks/overdue")
+def list_overdue_tasks(
+    limit: int = Query(100, ge=1, le=500),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """List overdue tasks (due_date passed, not completed/cancelled)."""
+    tasks = ctx.repo.list_overdue_tasks(limit=limit)
+    return {"tasks": tasks, "total": len(tasks)}
+
+
+@router.get("/diary/compliance-templates")
+def get_compliance_templates(
+    state: Optional[str] = Query(None, description="Loss state for state-specific deadlines"),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Get state-specific compliance deadline templates for diary creation."""
+    from claim_agent.diary.templates import get_compliance_deadline_templates
+
+    templates = get_compliance_deadline_templates(state)
+    return {
+        "templates": [
+            {
+                "deadline_type": t.deadline_type,
+                "title": t.title,
+                "task_type": t.task_type,
+                "description": t.description,
+                "days": t.days,
+                "state": t.state,
+            }
+            for t in templates
+        ],
+    }
 
 
 @router.get("/tasks/{task_id}")
