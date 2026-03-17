@@ -429,10 +429,15 @@ class PathsConfig(BaseSettings):
         default=False,
         validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
     )
+    run_migrations_on_startup: bool = Field(
+        default=True,
+        validation_alias="RUN_MIGRATIONS_ON_STARTUP",
+        description="Run alembic upgrade head on API startup when using PostgreSQL. Set to false to run migrations as a separate deploy step.",
+    )
 
-    @field_validator("fresh_claims_db_on_startup", mode="before")
+    @field_validator("fresh_claims_db_on_startup", "run_migrations_on_startup", mode="before")
     @classmethod
-    def _parse_fresh_db(cls, v: Any) -> bool:
+    def _parse_bool_env(cls, v: Any) -> bool:
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")

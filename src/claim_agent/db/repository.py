@@ -1634,7 +1634,9 @@ class ClaimRepository:
         if older_than_hours is not None:
             if older_than_hours < 0:
                 raise ValueError("older_than_hours must be non-negative")
-            cutoff = (datetime.now(timezone.utc) - timedelta(hours=older_than_hours)).isoformat()
+            # Use SQLite-compatible format (YYYY-MM-DD HH:MM:SS) for lexicographic comparison
+            cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
+            cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
             conditions.append("review_started_at IS NOT NULL AND review_started_at <= :cutoff")
             params["cutoff"] = cutoff
         where = " AND ".join(conditions)
@@ -1943,7 +1945,9 @@ class ClaimRepository:
         """
         if retention_period_years < 0:
             raise ValueError("retention_period_years must be non-negative")
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_period_years * 365)).isoformat()
+        # Use SQLite-compatible format (YYYY-MM-DD HH:MM:SS) for lexicographic comparison
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=retention_period_years * 365)
+        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
                 text("""

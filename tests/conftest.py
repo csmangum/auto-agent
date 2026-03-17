@@ -184,7 +184,7 @@ def _seed_test_data(db_path: str) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_settings():
+def _reset_settings(request):
     """Reset the settings singleton so each test gets fresh config from env."""
     import claim_agent.config as _cfg
     import claim_agent.api.deps as _deps
@@ -192,8 +192,13 @@ def _reset_settings():
 
     _cfg._settings = None
     _deps._auth_warning_logged = False
-    # Unit tests use SQLite; unset DATABASE_URL so we don't connect to PostgreSQL
-    _prev_db_url = os.environ.pop("DATABASE_URL", None)
+    # Unit tests use SQLite; unset DATABASE_URL so we don't connect to PostgreSQL.
+    # Preserve DATABASE_URL for PostgreSQL integration tests (test_postgres module).
+    is_postgres_test = (
+        request.module is not None
+        and "test_postgres" in getattr(request.module, "__name__", "")
+    )
+    _prev_db_url = os.environ.pop("DATABASE_URL", None) if not is_postgres_test else None
     reset_engine_cache()
     yield
     _cfg._settings = None

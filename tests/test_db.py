@@ -1,10 +1,10 @@
 """Tests for database and ClaimRepository."""
 
 import os
-import sqlite3
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from claim_agent.config import reload_settings
 from claim_agent.db.audit_events import AUDIT_EVENT_COVERAGE_VERIFICATION, AUDIT_EVENT_SIU_CASE_CREATED
@@ -70,7 +70,7 @@ def test_audit_log_prevents_update(temp_db):
         damage_description="Roof dents.",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises((sqlite3.IntegrityError, Exception), match="append-only"):
+    with pytest.raises(IntegrityError, match="append-only"):
         with get_connection(temp_db) as conn:
             conn.execute(
                 text("UPDATE claim_audit_log SET details = 'tampered' WHERE claim_id = :claim_id"),
@@ -92,7 +92,7 @@ def test_audit_log_prevents_delete(temp_db):
         damage_description="Interior soaked.",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises((sqlite3.IntegrityError, Exception), match="append-only"):
+    with pytest.raises(IntegrityError, match="append-only"):
         with get_connection(temp_db) as conn:
             conn.execute(
                 text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),

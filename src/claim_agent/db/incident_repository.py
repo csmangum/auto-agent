@@ -8,11 +8,25 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.audit_events import ACTOR_SYSTEM
+from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.incident import IncidentInput, VehicleClaimInput
+
+
+def _is_unique_constraint_violation(exc: IntegrityError) -> bool:
+    """True if the IntegrityError is from a unique constraint (duplicate), not FK/NOT NULL etc."""
+    orig = getattr(exc, "orig", None)
+    if orig is None:
+        return False
+    # PostgreSQL: pgcode 23505 = unique_violation
+    if hasattr(orig, "pgcode") and orig.pgcode == "23505":
+        return True
+    # SQLite: message contains "UNIQUE constraint failed"
+    msg = str(orig).lower()
+    return "unique constraint failed" in msg or "unique constraint" in msg
+
 
 logger = logging.getLogger(__name__)
 
@@ -194,8 +208,10 @@ class IncidentRepository:
                 )
                 row = result.fetchone()
                 return int(row[0]) if row else None
-        except IntegrityError:
-            return None
+        except IntegrityError as e:
+            if _is_unique_constraint_violation(e):
+                return None  # Duplicate link
+            raise
 
     def get_claim_links(
         self,
