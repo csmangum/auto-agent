@@ -19,6 +19,7 @@ from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.crews.supplemental_crew import create_supplemental_crew
 from claim_agent.db.constants import SUPPLEMENTABLE_STATUSES
+from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.supplemental import SupplementalInput
 from claim_agent.observability import get_logger
@@ -26,6 +27,77 @@ from claim_agent.utils.sanitization import sanitize_supplemental_damage_descript
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
+
+
+ACTIVE_REPAIR_STATUSES = frozenset({"disassembly", "repair", "paint", "reassembly"})
+
+
+def _extract_shop_and_auth_from_workflow(workflow_output: str | None) -> tuple[str, str]:
+    """Extract shop_id and authorization_id from partial loss workflow output."""
+    shop_id, auth_id = "unknown", ""
+    if not workflow_output:
+        return (shop_id, auth_id)
+    try:
+        if workflow_output.strip().startswith("{"):
+            data = json.loads(workflow_output)
+        else:
+            data = {}
+            for line in workflow_output.split("\n"):
+                for part in line.split(","):
+                    if ":" in part:
+                        k, v = part.split(":", 1)
+                        data[k.strip().strip('"\'')] = v.strip().strip('"\'').strip()
+        shop_id = str(data.get("shop_id", shop_id)).strip() or shop_id
+        auth_id = str(data.get("authorization_id", auth_id)).strip()
+    except json.JSONDecodeError:
+        pass
+    return (shop_id, auth_id)
+
+
+def _pause_repair_if_in_progress(
+    repo: Any,
+    claim_id: str,
+    original_workflow_output: str | None,
+) -> None:
+    """If repair is in progress, insert paused_supplement status."""
+    status_repo = RepairStatusRepository()
+    latest = status_repo.get_repair_status(claim_id)
+    if not latest or latest.get("status") not in ACTIVE_REPAIR_STATUSES:
+        return
+    shop_id, auth_id = _extract_shop_and_auth_from_workflow(original_workflow_output)
+    status_repo.insert_repair_status(
+        claim_id,
+        shop_id,
+        "paused_supplement",
+        authorization_id=auth_id or None,
+        notes="Supplemental damage report filed; repair paused pending approval",
+        pause_reason="supplemental_pending",
+    )
+
+
+def _resume_repair_after_supplemental(
+    repo: Any,
+    claim_id: str,
+    original_workflow_output: str | None,
+) -> None:
+    """After supplemental approval, insert prior status to resume repair."""
+    status_repo = RepairStatusRepository()
+    history = status_repo.get_repair_status_history(claim_id, limit=20)
+    prior_status = "repair"
+    for h in reversed(history):
+        if h.get("status") == "paused_supplement":
+            continue
+        if h.get("status") in ACTIVE_REPAIR_STATUSES:
+            prior_status = h["status"]
+            break
+    shop_id, auth_id = _extract_shop_and_auth_from_workflow(original_workflow_output)
+    status_repo.insert_repair_status(
+        claim_id,
+        shop_id,
+        prior_status,
+        authorization_id=auth_id or None,
+        notes="Supplemental approved; repair resumed",
+    )
 
 
 def _get_latest_partial_loss_workflow_output(repo: Any, claim_id: str) -> str | None:
@@ -105,6 +177,13 @@ def run_supplemental_workflow(
         },
     )
 
+    original_workflow_output = _get_latest_partial_loss_workflow_output(
+        repo, supplemental_input.claim_id
+    )
+
+    # Pause repair status if repair is in progress (supplement pause workflow)
+    _pause_repair_if_in_progress(repo, supplemental_input.claim_id, original_workflow_output)
+
     claim_data_for_crew = {
         "claim_id": claim.get("id"),
         "policy_number": claim.get("policy_number"),
@@ -120,10 +199,6 @@ def run_supplemental_workflow(
         "claim_type": claim.get("claim_type"),
         "status": claim.get("status"),
     }
-
-    original_workflow_output = _get_latest_partial_loss_workflow_output(
-        repo, supplemental_input.claim_id
-    )
 
     supplemental_for_crew = supplemental_input.model_dump(mode="json")
     supplemental_for_crew["supplemental_damage_description"] = sanitize_supplemental_damage_description(
@@ -159,6 +234,8 @@ def run_supplemental_workflow(
             claim_status,
             **update_kwargs,
         )
+        # Resume repair after supplemental approval
+        _resume_repair_after_supplemental(repo, supplemental_input.claim_id, original_workflow_output)
 
     repo.save_workflow_result(
         supplemental_input.claim_id,
