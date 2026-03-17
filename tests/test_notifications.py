@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from sqlalchemy import text
 
+from claim_agent.config import reload_settings
 from claim_agent.config.settings import get_notification_config, get_webhook_config
 from tests.conftest import LogCaptureHandler
 from claim_agent.notifications.claimant import notify_claimant
@@ -34,6 +35,7 @@ class TestWebhookConfig:
 
     def test_urls_from_webhook_url(self):
         with patch.dict(os.environ, {"WEBHOOK_URL": "https://example.com/hook", "WEBHOOK_URLS": ""}):
+            reload_settings()
             config = get_webhook_config()
             assert config["urls"] == ["https://example.com/hook"]
 
@@ -42,6 +44,7 @@ class TestWebhookConfig:
             os.environ,
             {"WEBHOOK_URLS": "https://a.com/hook, https://b.com/hook", "WEBHOOK_URL": ""},
         ):
+            reload_settings()
             config = get_webhook_config()
             assert config["urls"] == ["https://a.com/hook", "https://b.com/hook"]
 
@@ -52,6 +55,7 @@ class TestWebhookConfig:
 
     def test_max_retries_override(self):
         with patch.dict(os.environ, {"WEBHOOK_MAX_RETRIES": "3"}):
+            reload_settings()
             config = get_webhook_config()
             assert config["max_retries"] == 3
 
@@ -62,6 +66,7 @@ class TestWebhookConfig:
 
     def test_enabled_false(self):
         with patch.dict(os.environ, {"WEBHOOK_ENABLED": "false"}):
+            reload_settings()
             config = get_webhook_config()
             assert config["enabled"] is False
 
@@ -256,6 +261,7 @@ class TestDispatchWebhook:
                         "WEBHOOK_SECRET": "test-secret",
                     },
                 ):
+                    reload_settings()
                     dispatch_webhook("claim.submitted", {"claim_id": "CLM-ABC"})
                     mock_deliver.assert_called_once()
                     assert mock_deliver.call_args[0][0] == "https://example.com/webhook"
@@ -327,6 +333,7 @@ class TestNotifyClaimant:
         claimant_logger.setLevel(logging.INFO)
         try:
             with patch.dict(os.environ, {"NOTIFICATION_EMAIL_ENABLED": "true"}):
+                reload_settings()
                 notify_claimant("receipt_acknowledged", "CLM-123", email="a@b.com")
         finally:
             claimant_logger.removeHandler(cap)
@@ -341,6 +348,7 @@ class TestNotifyClaimant:
         claimant_logger.setLevel(logging.INFO)
         try:
             with patch.dict(os.environ, {"NOTIFICATION_SMS_ENABLED": "true"}):
+                reload_settings()
                 notify_claimant("claim_closed", "CLM-456", phone="+15551234567")
         finally:
             claimant_logger.removeHandler(cap)

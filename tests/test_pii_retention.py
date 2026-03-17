@@ -6,6 +6,7 @@ import tempfile
 from unittest import mock
 
 import pytest
+from sqlalchemy import text
 
 
 class TestPIIMasking:
@@ -297,8 +298,8 @@ class TestRetentionRepository:
             )
             with get_connection(db_path) as conn:
                 conn.execute(
-                    "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",
-                    (claim_id,),
+                    text("UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = :id"),
+                    {"id": claim_id},
                 )
             claims = repo.list_claims_for_retention(5)
             assert len(claims) == 1

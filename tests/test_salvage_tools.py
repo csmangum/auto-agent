@@ -151,11 +151,13 @@ class TestRecordDmvSalvageReport:
         import os
         import sqlite3
 
+        from claim_agent.config import reload_settings
         from claim_agent.db.database import init_db
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             path = f.name
         monkeypatch.setenv("CLAIMS_DB_PATH", path)
+        reload_settings()
         init_db(path)
         with sqlite3.connect(path) as conn:
             conn.execute(

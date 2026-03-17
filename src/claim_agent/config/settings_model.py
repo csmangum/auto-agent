@@ -304,12 +304,19 @@ class WebhookConfig(BaseSettings):
     )
 
     urls_raw: str = Field(default="", validation_alias="WEBHOOK_URLS")
-    url: str = ""
+    url: str = Field(default="", validation_alias="WEBHOOK_URL")
     secret: str = ""
     max_retries: int = 5
     enabled: bool = True
     shop_url: str | None = None
     dead_letter_path: str | None = None
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_enabled(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
 
     @property
     def urls(self) -> list[str]:
@@ -330,6 +337,13 @@ class NotificationConfig(BaseSettings):
 
     email_enabled: bool = False
     sms_enabled: bool = False
+
+    @field_validator("email_enabled", "sms_enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
 
 
 class DiaryConfig(BaseSettings):
