@@ -1093,6 +1093,11 @@ def get_claim_repair_status(claim_id: str):
         ).fetchone()
         if claim is None:
             raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+        if claim["claim_type"] != "partial_loss":
+            raise HTTPException(
+                status_code=400,
+                detail="Repair status only applies to partial_loss claims",
+            )
     repo = RepairStatusRepository(db_path=get_db_path())
     latest = repo.get_repair_status(claim_id)
     history = repo.get_repair_status_history(claim_id)

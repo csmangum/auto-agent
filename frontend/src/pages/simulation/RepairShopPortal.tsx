@@ -218,7 +218,7 @@ function RepairJobDetail({ claimId, onBack }: { claimId: string; onBack: () => v
 }
 
 function RepairProgressTab({ claimId, canUpdate }: { claimId: string; canUpdate: boolean }) {
-  const { data, isLoading } = useClaimRepairStatus(claimId);
+  const { data, isLoading, isError, error } = useClaimRepairStatus(claimId);
   const postStatus = usePostClaimRepairStatus(claimId);
   const latest = data?.latest;
   const history = data?.history ?? [];
@@ -240,6 +240,16 @@ function RepairProgressTab({ claimId, canUpdate }: { claimId: string; canUpdate:
     return (
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
         <div className="h-32 bg-gray-700/50 rounded skeleton-shimmer" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <p className="text-sm text-red-400">
+          {error instanceof Error ? error.message : 'Failed to load repair status'}
+        </p>
       </div>
     );
   }

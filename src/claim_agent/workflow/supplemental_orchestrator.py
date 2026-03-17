@@ -29,7 +29,7 @@ from claim_agent.workflow.helpers import _kickoff_with_retry
 logger = get_logger(__name__)
 
 
-ACTIVE_REPAIR_STATUSES = frozenset({"disassembly", "repair", "paint", "reassembly"})
+ACTIVE_REPAIR_STATUSES = frozenset({"disassembly", "parts_ordered", "repair", "paint", "reassembly", "qa"})
 
 
 def _extract_shop_and_auth_from_workflow(workflow_output: str | None) -> tuple[str, str]:

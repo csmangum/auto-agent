@@ -75,7 +75,7 @@ async def repair_status_webhook(request: Request) -> Response:
 
     Payload: claim_id, shop_id, authorization_id (optional), status, notes (optional).
     Status: received, disassembly, parts_ordered, repair, paint, reassembly, qa, ready, paused_supplement.
-    When WEBHOOK_SECRET is set, requests must include X-Webhook-Signature: sha256=<hex>.
+    Requests must include X-Webhook-Signature: sha256=<hex> (WEBHOOK_SECRET is required).
     """
     body = await request.body()
     config = get_webhook_config()
