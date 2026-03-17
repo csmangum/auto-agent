@@ -5,10 +5,12 @@ implementation should connect to.  Use these as starting points when
 building production adapters.
 """
 
+from pathlib import Path
 from typing import Any
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    OCRAdapter,
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
@@ -118,3 +120,10 @@ class StubClaimSearchAdapter(ClaimSearchAdapter):
             "StubClaimSearchAdapter: connect to a real NICB/ISO ClaimSearch API. "
             "Expected return: list of external claim match dicts."
         )
+
+
+class StubOCRAdapter(OCRAdapter):
+    """Placeholder for a real OCR service (Tesseract, Azure Document Intelligence, etc.)."""
+
+    def extract_structured_data(self, file_path: Path, document_type: str) -> dict[str, Any] | None:
+        return None

@@ -1910,13 +1910,27 @@ class ClaimRepository:
         assigned_to: str | None = None,
         created_by: str = ACTOR_WORKFLOW,
         due_date: str | None = None,
+        document_request_id: int | None = None,
+        document_type: str | None = None,
+        requested_from: str | None = None,
     ) -> int:
-        """Create a task for a claim. Returns the task id. Raises ClaimNotFoundError if claim does not exist."""
+        """Create a task for a claim. Returns the task id. Raises ClaimNotFoundError if claim does not exist.
+
+        When task_type is request_documents or obtain_police_report and document_type is provided,
+        creates a document_request and links it to the task.
+        """
         title = sanitize_task_title(title)
         description = sanitize_task_description(description)
         created_by = sanitize_actor_id(created_by)
         if not title:
             raise ValueError("Task title must not be empty after sanitization")
+        doc_req_id = document_request_id
+        if doc_req_id is None and document_type and task_type in ("request_documents", "obtain_police_report"):
+            from claim_agent.db.document_repository import DocumentRepository
+            doc_repo = DocumentRepository(db_path=self._db_path)
+            doc_req_id = doc_repo.create_document_request(
+                claim_id, document_type, requested_from=requested_from
+            )
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 "SELECT id FROM claims WHERE id = ?", (claim_id,)
@@ -1926,10 +1940,10 @@ class ClaimRepository:
             cursor = conn.execute(
                 """
                 INSERT INTO claim_tasks
-                    (claim_id, title, task_type, description, status, priority, assigned_to, created_by, due_date)
-                VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                    (claim_id, title, task_type, description, status, priority, assigned_to, created_by, due_date, document_request_id)
+                VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
                 """,
-                (claim_id, title, task_type, description, priority, assigned_to, created_by, due_date),
+                (claim_id, title, task_type, description, priority, assigned_to, created_by, due_date, doc_req_id),
             )
             task_id = cursor.lastrowid
             details = json.dumps({

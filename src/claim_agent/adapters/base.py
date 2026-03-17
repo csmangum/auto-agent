@@ -6,7 +6,23 @@ Concrete implementations live in ``mock/`` (current behavior) and
 """
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
+
+
+class OCRAdapter(ABC):
+    """Interface for OCR / structured data extraction from documents."""
+
+    @abstractmethod
+    def extract_structured_data(self, file_path: Path, document_type: str) -> dict[str, Any] | None:
+        """Extract structured data from document.
+
+        Returns None if unsupported or extraction fails.
+        Expected keys for estimates: line_items, total, parts_cost, labor_cost.
+        For police_report: incident_date, parties, report_number.
+        For medical_record: diagnoses, charges, provider.
+        """
+        ...
 
 
 class PolicyAdapter(ABC):

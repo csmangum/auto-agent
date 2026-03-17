@@ -21,6 +21,17 @@ from claim_agent.models.claim import (
     EscalationOutput,
     RouterOutput,
 )
+from claim_agent.models.document import (
+    ClaimDocument,
+    ClaimDocumentCreate,
+    ClaimDocumentUpdate,
+    DocumentRequest,
+    DocumentRequestCreate,
+    DocumentRequestStatus,
+    DocumentRequestUpdate,
+    DocumentType,
+    ReviewStatus,
+)
 from claim_agent.models.claim_review import (
     ClaimReviewReport,
     ComplianceCheck,
@@ -32,6 +43,15 @@ from claim_agent.models.user import UserContext, UserType
 __all__ = [
     "Attachment",
     "AttachmentType",
+    "ClaimDocument",
+    "ClaimDocumentCreate",
+    "ClaimDocumentUpdate",
+    "DocumentRequest",
+    "DocumentRequestCreate",
+    "DocumentRequestStatus",
+    "DocumentRequestUpdate",
+    "DocumentType",
+    "ReviewStatus",
     "ClaimInput",
     "ClaimOutput",
     "ClaimReviewReport",

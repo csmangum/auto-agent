@@ -584,6 +584,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "siu": "SIU_ADAPTER",
     "claim_search": "CLAIM_SEARCH_ADAPTER",
     "vision": "VISION_ADAPTER",
+    "ocr": "OCR_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
@@ -652,6 +653,7 @@ class Settings(BaseSettings):
         description="Fallback state for SIU reporting when claim/policy state is missing",
     )
     vision_adapter: str = Field(default="real", validation_alias="VISION_ADAPTER")
+    ocr_adapter: str = Field(default="mock", validation_alias="OCR_ADAPTER")
 
     @field_validator("siu_default_state", mode="before")
     @classmethod

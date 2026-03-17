@@ -11,6 +11,7 @@ from typing import Any, TypeVar, cast
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    OCRAdapter,
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
@@ -87,6 +88,12 @@ def get_claim_search_adapter() -> ClaimSearchAdapter:
     from claim_agent.adapters.stub import StubClaimSearchAdapter
     from claim_agent.adapters.mock.claim_search import MockClaimSearchAdapter
     return _get_or_create_adapter("claim_search", StubClaimSearchAdapter, MockClaimSearchAdapter)
+
+
+def get_ocr_adapter() -> OCRAdapter:
+    from claim_agent.adapters.stub import StubOCRAdapter
+    from claim_agent.adapters.mock.ocr import MockOCRAdapter
+    return _get_or_create_adapter("ocr", StubOCRAdapter, MockOCRAdapter)
 
 
 def reset_adapters() -> None:
