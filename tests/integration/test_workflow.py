@@ -297,7 +297,7 @@ class TestWorkflowWithMockedLLM:
         from claim_agent.crews.main_crew import run_claim_workflow
         from sqlalchemy import text
 
-        from claim_agent.db.database import get_connection
+        from claim_agent.db.database import get_connection, row_to_dict
 
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
@@ -312,7 +312,8 @@ class TestWorkflowWithMockedLLM:
             row = conn.execute(text("SELECT id, status FROM claims")).fetchone()
         
         assert row is not None
-        assert row["status"] == "failed"
+        row_d = row_to_dict(row)
+        assert row_d["status"] == "failed"
     
     @pytest.mark.integration
     def test_workflow_saves_workflow_result(
@@ -322,7 +323,7 @@ class TestWorkflowWithMockedLLM:
         from claim_agent.crews.main_crew import run_claim_workflow
         from sqlalchemy import text
 
-        from claim_agent.db.database import get_connection
+        from claim_agent.db.database import get_connection, row_to_dict
 
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
@@ -350,8 +351,9 @@ class TestWorkflowWithMockedLLM:
             ).fetchone()
         
         assert row is not None
-        assert row["claim_type"] == "new"
-        assert "Processed!" in row["workflow_output"]
+        row_d = row_to_dict(row)
+        assert row_d["claim_type"] == "new"
+        assert "Processed!" in row_d["workflow_output"]
 
 
 # ============================================================================
