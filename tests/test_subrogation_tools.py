@@ -2,6 +2,7 @@
 
 import json
 
+from sqlalchemy import text
 
 from claim_agent.db.database import get_connection
 from claim_agent.db.repository import ClaimRepository
@@ -107,26 +108,28 @@ class TestRecordArbitrationFiling:
         # Use temp_db so impl uses same DB; create claim then subrogation case (FK).
         with get_connection(temp_db) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
                 vehicle_model, incident_date, incident_description, damage_description,
                 estimated_damage, claim_type, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "CLM-123",
-                    "POL-123",
-                    "1HGBH41JXMN109186",
-                    2021,
-                    "Honda",
-                    "Accord",
-                    "2025-01-15",
-                    "Rear-ended",
-                    "Bumper damage",
-                    2500.0,
-                    "new",
-                    "open",
-                ),
+                VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                        :incident_date, :incident_description, :damage_description,
+                        :estimated_damage, :claim_type, :status)
+                """),
+                {
+                    "id": "CLM-123",
+                    "policy_number": "POL-123",
+                    "vin": "1HGBH41JXMN109186",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Honda",
+                    "vehicle_model": "Accord",
+                    "incident_date": "2025-01-15",
+                    "incident_description": "Rear-ended",
+                    "damage_description": "Bumper damage",
+                    "estimated_damage": 2500.0,
+                    "claim_type": "new",
+                    "status": "open",
+                },
             )
         repo = ClaimRepository(temp_db)
         repo.create_subrogation_case(
@@ -180,26 +183,28 @@ class TestRecordRecovery:
         """When subrogation case exists, record_recovery persists status and amount."""
         with get_connection(temp_db) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
                 vehicle_model, incident_date, incident_description, damage_description,
                 estimated_damage, claim_type, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "CLM-REC",
-                    "POL-1",
-                    "1HGBH41JXMN109186",
-                    2021,
-                    "Honda",
-                    "Accord",
-                    "2025-01-15",
-                    "Rear-ended",
-                    "Bumper",
-                    2500.0,
-                    "new",
-                    "open",
-                ),
+                VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                        :incident_date, :incident_description, :damage_description,
+                        :estimated_damage, :claim_type, :status)
+                """),
+                {
+                    "id": "CLM-REC",
+                    "policy_number": "POL-1",
+                    "vin": "1HGBH41JXMN109186",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Honda",
+                    "vehicle_model": "Accord",
+                    "incident_date": "2025-01-15",
+                    "incident_description": "Rear-ended",
+                    "damage_description": "Bumper",
+                    "estimated_damage": 2500.0,
+                    "claim_type": "new",
+                    "status": "open",
+                },
             )
         repo = ClaimRepository(temp_db)
         repo.create_subrogation_case(

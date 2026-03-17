@@ -31,6 +31,7 @@ def test_query_policy_db_not_found():
 
 def test_search_claims_db():
     """Search uses SQLite; seed a claim in a temp DB then search."""
+    from claim_agent.config import reload_settings
     from claim_agent.db.database import init_db
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
@@ -41,6 +42,7 @@ def test_search_claims_db():
     try:
         init_db(path)
         os.environ["CLAIMS_DB_PATH"] = path
+        reload_settings()
         repo = ClaimRepository(db_path=path)
         repo.create_claim(
             ClaimInput(
@@ -318,9 +320,11 @@ def test_search_california_compliance_ccr_reference():
 
 
 def test_search_california_compliance_missing_file_returns_error():
+    from claim_agent.config import reload_settings
     from claim_agent.tools.compliance_logic import search_california_compliance_impl
 
     os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/california_auto_compliance.json"
+    reload_settings()
     try:
         result = search_california_compliance_impl("deadline")
         data = json.loads(result)

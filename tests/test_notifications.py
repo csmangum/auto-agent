@@ -7,6 +7,7 @@ import os
 import tempfile
 from unittest.mock import patch
 
+from sqlalchemy import text
 
 from claim_agent.config.settings import get_notification_config, get_webhook_config
 from tests.conftest import LogCaptureHandler
@@ -432,8 +433,8 @@ class TestRepositoryWebhookIntegration:
             )
             with get_connection(db_path) as conn:
                 conn.execute(
-                    "UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = ?",
-                    (claim_id,),
+                    text("UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = :id"),
+                    {"id": claim_id},
                 )
 
             with patch("claim_agent.db.repository.emit_claim_event") as mock:

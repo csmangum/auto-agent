@@ -98,29 +98,36 @@ def _assert_workflow_run_recorded(
 
 def _seed_db_for_workflows(db_path: str) -> None:
     """Seed database with claims required for standalone workflow scenarios."""
+    from sqlalchemy import text
+
     from claim_agent.db.database import get_connection, init_db
 
     init_db(db_path)
     with get_connection(db_path) as conn:
         # CLM-SUP01: partial_loss, processing (for supplemental)
         conn.execute(
-            """INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
             vehicle_model, incident_date, incident_description, damage_description,
-            estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "CLM-SUP01",
-                "POL-001",
-                "1HGBH41JXMN109186",
-                2021,
-                "Honda",
-                "Accord",
-                "2025-01-15",
-                "Rear-ended",
-                "Rear bumper damage",
-                2500.0,
-                "partial_loss",
-                "processing",
-            ),
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {
+                "id": "CLM-SUP01",
+                "policy_number": "POL-001",
+                "vin": "1HGBH41JXMN109186",
+                "vehicle_year": 2021,
+                "vehicle_make": "Honda",
+                "vehicle_model": "Accord",
+                "incident_date": "2025-01-15",
+                "incident_description": "Rear-ended",
+                "damage_description": "Rear bumper damage",
+                "estimated_damage": 2500.0,
+                "claim_type": "partial_loss",
+                "status": "processing",
+            },
         )
         partial_output = json.dumps({
             "total_estimate": 2100.0,
@@ -128,72 +135,89 @@ def _seed_db_for_workflows(db_path: str) -> None:
             "authorization_id": "RA-001",
         })
         conn.execute(
-            """INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
-            VALUES (?, ?, ?, ?)""",
-            ("CLM-SUP01", "partial_loss", "partial_loss", partial_output),
+            text("""
+            INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
+            VALUES (:claim_id, :claim_type, :router_output, :workflow_output)
+            """),
+            {"claim_id": "CLM-SUP01", "claim_type": "partial_loss", "router_output": "partial_loss", "workflow_output": partial_output},
         )
 
         # CLM-DIS01: new, open total_loss (for dispute)
         conn.execute(
-            """INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
             vehicle_model, incident_date, incident_description, damage_description,
-            estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "CLM-DIS01",
-                "POL-002",
-                "5YJSA1E26HF123456",
-                2020,
-                "Tesla",
-                "Model 3",
-                "2025-01-20",
-                "Flood damage",
-                "Submerged",
-                45000.0,
-                "total_loss",
-                "open",
-            ),
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {
+                "id": "CLM-DIS01",
+                "policy_number": "POL-002",
+                "vin": "5YJSA1E26HF123456",
+                "vehicle_year": 2020,
+                "vehicle_make": "Tesla",
+                "vehicle_model": "Model 3",
+                "incident_date": "2025-01-20",
+                "incident_description": "Flood damage",
+                "damage_description": "Submerged",
+                "estimated_damage": 45000.0,
+                "claim_type": "total_loss",
+                "status": "open",
+            },
         )
 
         # CLM-DEN01: denied (for denial/coverage)
         conn.execute(
-            """INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
             vehicle_model, incident_date, incident_description, damage_description,
-            estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "CLM-DEN01",
-                "POL-003",
-                "3VWDX7AJ5DM999999",
-                2019,
-                "Volkswagen",
-                "Jetta",
-                "2025-01-22",
-                "Staged accident",
-                "Front bumper",
-                35000.0,
-                "fraud",
-                "denied",
-            ),
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {
+                "id": "CLM-DEN01",
+                "policy_number": "POL-003",
+                "vin": "3VWDX7AJ5DM999999",
+                "vehicle_year": 2019,
+                "vehicle_make": "Volkswagen",
+                "vehicle_model": "Jetta",
+                "incident_date": "2025-01-22",
+                "incident_description": "Staged accident",
+                "damage_description": "Front bumper",
+                "estimated_damage": 35000.0,
+                "claim_type": "fraud",
+                "status": "denied",
+            },
         )
 
         # CLM-HB01: needs_review (for handback)
         conn.execute(
-            """INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
             vehicle_model, incident_date, incident_description, damage_description,
-            estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "CLM-HB01",
-                "POL-004",
-                "2HGFG3B54CH123456",
-                2022,
-                "Toyota",
-                "Camry",
-                "2025-01-25",
-                "Minor scratch",
-                "Minor scratch",
-                500.0,
-                "partial_loss",
-                "needs_review",
-            ),
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {
+                "id": "CLM-HB01",
+                "policy_number": "POL-004",
+                "vin": "2HGFG3B54CH123456",
+                "vehicle_year": 2022,
+                "vehicle_make": "Toyota",
+                "vehicle_model": "Camry",
+                "incident_date": "2025-01-25",
+                "incident_description": "Minor scratch",
+                "damage_description": "Minor scratch",
+                "estimated_damage": 500.0,
+                "claim_type": "partial_loss",
+                "status": "needs_review",
+            },
         )
 
 

@@ -487,8 +487,8 @@ class TestReviewQueue:
     def test_request_info(self, client):
         with get_connection() as conn:
             conn.execute(
-                "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
-                ("needs_review", "high", "2025-01-26T12:00:00Z", "CLM-TEST003"),
+                text("UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"),
+                {"status": "needs_review", "priority": "high", "due_at": "2025-01-26T12:00:00Z", "id": "CLM-TEST003"},
             )
         resp = client.post(
             "/api/claims/CLM-TEST003/review/request-info",
@@ -502,8 +502,8 @@ class TestReviewQueue:
     def test_escalate_to_siu(self, client):
         with get_connection() as conn:
             conn.execute(
-                "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
-                ("needs_review", "high", "2025-01-26T12:00:00Z", "CLM-TEST002"),
+                text("UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"),
+                {"status": "needs_review", "priority": "high", "due_at": "2025-01-26T12:00:00Z", "id": "CLM-TEST002"},
             )
         resp = client.post("/api/claims/CLM-TEST002/review/escalate-to-siu")
         assert resp.status_code == 200
@@ -523,8 +523,8 @@ class TestReviewQueue:
         monkeypatch.setattr(claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result)
         with get_connection() as conn:
             conn.execute(
-                "UPDATE claims SET status = ? WHERE id = ?",
-                ("under_investigation", "CLM-TEST002"),
+                text("UPDATE claims SET status = :status WHERE id = :id"),
+                {"status": "under_investigation", "id": "CLM-TEST002"},
             )
         resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
         assert resp.status_code == 200
@@ -1069,7 +1069,8 @@ class TestReserve:
         # Verify in DB
         with get_connection() as conn:
             row = conn.execute(
-                "SELECT reserve_amount FROM claims WHERE id = ?", ("CLM-TEST001",)
+                text("SELECT reserve_amount FROM claims WHERE id = :id"),
+                {"id": "CLM-TEST001"},
             ).fetchone()
             assert row is not None
             assert row["reserve_amount"] == 5000.0
@@ -1990,8 +1991,7 @@ class TestProcessClaimEndpoint:
         # Find the claim created by create_claim (first audit entry, before workflow runs)
         with get_connection() as conn:
             rows = conn.execute(
-                "SELECT claim_id, actor_id FROM claim_audit_log WHERE action = 'created' "
-                "ORDER BY id DESC LIMIT 1"
+                text("SELECT claim_id, actor_id FROM claim_audit_log WHERE action = 'created' ORDER BY id DESC LIMIT 1")
             ).fetchone()
         assert rows
         # actor_id for 'created' comes from process_claim's create_claim; should be key identity
@@ -2301,9 +2301,14 @@ class TestProcessClaimAsyncEndpoint:
         run_id = "run-progress-test"
         with get_connection(seeded_temp_db) as conn:
             conn.execute(
-                """INSERT INTO task_checkpoints (claim_id, workflow_run_id, stage_key, output)
-                   VALUES (?, ?, ?, ?), (?, ?, ?, ?)""",
-                (claim_id, run_id, "router", "{}", claim_id, run_id, "escalation_check", "{}"),
+                text("""
+                INSERT INTO task_checkpoints (claim_id, workflow_run_id, stage_key, output)
+                VALUES (:claim_id, :run_id, :sk1, :out1), (:claim_id2, :run_id2, :sk2, :out2)
+                """),
+                {
+                    "claim_id": claim_id, "run_id": run_id, "sk1": "router", "out1": "{}",
+                    "claim_id2": claim_id, "run_id2": run_id, "sk2": "escalation_check", "out2": "{}",
+                },
             )
 
         stream_resp = client.get(f"/api/claims/{claim_id}/stream")

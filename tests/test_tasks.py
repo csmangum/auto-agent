@@ -2,6 +2,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 
 @pytest.fixture(autouse=True)
@@ -208,8 +209,8 @@ class TestTaskRepository:
         repo.create_task("CLM-TEST001", "Audit test", "other")
         with get_connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM claim_audit_log WHERE claim_id = ? AND action = ?",
-                ("CLM-TEST001", AUDIT_EVENT_TASK_CREATED),
+                text("SELECT * FROM claim_audit_log WHERE claim_id = :claim_id AND action = :action"),
+                {"claim_id": "CLM-TEST001", "action": AUDIT_EVENT_TASK_CREATED},
             ).fetchall()
         assert len(rows) == 1
 
@@ -223,8 +224,8 @@ class TestTaskRepository:
         repo.update_task(task_id, status="completed")
         with get_connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM claim_audit_log WHERE claim_id = ? AND action = ?",
-                ("CLM-TEST001", AUDIT_EVENT_TASK_UPDATED),
+                text("SELECT * FROM claim_audit_log WHERE claim_id = :claim_id AND action = :action"),
+                {"claim_id": "CLM-TEST001", "action": AUDIT_EVENT_TASK_UPDATED},
             ).fetchall()
         assert len(rows) == 1
 
