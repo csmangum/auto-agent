@@ -130,7 +130,12 @@ class TestEscalation:
         task = repo.get_task(task_id)
         assert task["escalation_level"] == 1
         assert task["escalation_notified_at"] is not None
-        mock_webhook.assert_called_with("task.overdue", mock_webhook.call_args[0][1])
+        mock_webhook.assert_called_once()
+        call_event, call_payload = mock_webhook.call_args[0]
+        assert call_event == "task.overdue"
+        assert call_payload["task_id"] == task_id
+        assert call_payload["claim_id"] == "CLM-TEST001"
+        assert call_payload["due_date"] == yesterday
 
     def test_run_escalation_supervisor_after_threshold(self, seeded_temp_db):
         """Task at level 1 with notified_at past threshold gets supervisor escalation."""
