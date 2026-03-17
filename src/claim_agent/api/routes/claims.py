@@ -687,7 +687,11 @@ def get_claim_status(claim_id: str, ctx: ClaimContext = Depends(get_claim_contex
             if stage in WORKFLOW_STAGES:
                 completed_stages.append(sk)
         completed_stages.sort(
-            key=lambda s: WORKFLOW_STAGES.index(s.split(":")[0] if ":" in s else s)
+            key=lambda s: (
+                WORKFLOW_STAGES.index(stg)
+                if (stg := (s.split(":")[0] if ":" in s else s)) in WORKFLOW_STAGES
+                else len(WORKFLOW_STAGES)
+            )
         )
 
     latest_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
@@ -1249,6 +1253,7 @@ async def generate_and_submit_claim(
                 raise HTTPException(
                     status_code=503,
                     detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
                 )
 
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
@@ -1321,6 +1326,7 @@ async def create_claim(
                 raise HTTPException(
                     status_code=503,
                     detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
                 )
 
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
@@ -1545,6 +1551,7 @@ async def process_claim(
                 raise HTTPException(
                     status_code=503,
                     detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
                 )
 
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
@@ -1692,18 +1699,21 @@ async def process_claim_async(
 ):
     """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
     Use GET /claims/{claim_id}/stream to receive realtime updates."""
+    max_tasks = get_settings().max_concurrent_background_tasks
+    async with _background_tasks_lock:
+        if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+            raise HTTPException(
+                status_code=503,
+                detail="Too many concurrent background tasks. Retry later.",
+                headers={"Retry-After": "60"},
+            )
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id, ctx=ctx,
     )
-    task = await _try_run_workflow_background(
+    _run_workflow_background(
         claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
     )
-    if task is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Too many concurrent background tasks. Retry later.",
-        )
     return {"claim_id": claim_id}
 
 
@@ -1757,7 +1767,13 @@ async def _stream_claim_updates(claim_id: str):
                 stage = sk.split(":")[0] if ":" in sk else sk
                 if stage in WORKFLOW_STAGES:
                     completed_stages.append(sk)
-            completed_stages.sort(key=lambda s: WORKFLOW_STAGES.index(s.split(":")[0] if ":" in s else s))
+            completed_stages.sort(
+                key=lambda s: (
+                    WORKFLOW_STAGES.index(stg)
+                    if (stg := (s.split(":")[0] if ":" in s else s)) in WORKFLOW_STAGES
+                    else len(WORKFLOW_STAGES)
+                )
+            )
 
         return claim_dict, history_rows, wf_rows, completed_stages
 

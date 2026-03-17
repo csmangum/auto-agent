@@ -1788,12 +1788,56 @@ class TestPostClaimsJson:
         resp = client.post("/api/claims", json=VALID_CLAIM_PAYLOAD, params={"async": "true"})
         assert resp.status_code == 503
         assert "Too many concurrent" in resp.json()["detail"]
+        assert resp.headers.get("Retry-After") == "60"
 
     def test_post_claims_validation_error_returns_422(self, client, monkeypatch):
         """ClaimInput validation errors produce 422 (FastAPI default)."""
         bad_claim = {**VALID_CLAIM_PAYLOAD, "vehicle_year": "not-a-number"}
         resp = client.post("/api/claims", json=bad_claim)
         assert resp.status_code == 422
+
+
+class TestGenerateClaimEndpoint:
+    """Tests for POST /api/claims/generate."""
+
+    def test_generate_async_returns_503_when_at_capacity(self, client, monkeypatch, tmp_path):
+        """POST /api/claims/generate?async=true&submit=true returns 503 when at capacity."""
+        from claim_agent.models.claim import ClaimInput
+
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.api.routes.claims as claims_mod
+        from claim_agent.config import get_settings
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
+        monkeypatch.setattr(
+            claims_mod,
+            "generate_claim_from_prompt",
+            lambda _: ClaimInput.model_validate(VALID_CLAIM_PAYLOAD),
+        )
+
+        real_tasks = claims_mod._background_tasks
+
+        class AtCapacitySet:
+            def add(self, x):
+                real_tasks.add(x)
+
+            def discard(self, x):
+                real_tasks.discard(x)
+
+            def __len__(self):
+                return len(real_tasks) + 1
+
+        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+
+        resp = client.post(
+            "/api/claims/generate",
+            json={"prompt": "parking lot fender bender", "submit": True},
+            params={"async": "true"},
+        )
+        assert resp.status_code == 503
+        assert "Too many concurrent" in resp.json()["detail"]
+        assert resp.headers.get("Retry-After") == "60"
 
 
 class TestProcessClaimEndpoint:
@@ -2126,6 +2170,43 @@ class TestProcessClaimAsyncEndpoint:
         assert "claim_id" in data
         assert data["claim_id"].startswith("CLM-")
 
+    def test_process_claim_async_returns_503_without_creating_claim(self, client, monkeypatch, tmp_path):
+        """POST /claims/process/async returns 503 when at capacity and does NOT create a claim."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.api.routes.claims as claims_mod
+        from claim_agent.config import get_settings
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
+        real_tasks = claims_mod._background_tasks
+
+        class AtCapacitySet:
+            def add(self, x):
+                real_tasks.add(x)
+
+            def discard(self, x):
+                real_tasks.discard(x)
+
+            def __len__(self):
+                return len(real_tasks) + 1
+
+        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+
+        with get_connection() as conn:
+            count_before = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
+
+        resp = client.post(
+            "/api/claims/process/async",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+        )
+        assert resp.status_code == 503
+        assert "Too many concurrent" in resp.json()["detail"]
+        assert resp.headers.get("Retry-After") == "60"
+
+        with get_connection() as conn:
+            count_after = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
+        assert count_after == count_before, "No claim should be created when 503 is returned"
+
     def test_stream_returns_sse_events(self, client, monkeypatch, tmp_path):
         """Stream endpoint returns SSE-formatted events for existing claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
@@ -2263,3 +2344,12 @@ class TestProcessClaimAsyncEndpoint:
         """GET /claims/{claim_id}/status returns 404 for non-existent claim."""
         resp = client.get("/api/claims/CLM-NONEXISTENT/status")
         assert resp.status_code == 404
+
+    def test_get_claim_status_empty_progress_when_no_checkpoints(self, client, seeded_temp_db):
+        """GET /claims/{claim_id}/status returns progress=[] and workflow_run_id=null when no checkpoints."""
+        resp = client.get("/api/claims/CLM-TEST002/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST002"
+        assert data["progress"] == []
+        assert data["workflow_run_id"] is None
