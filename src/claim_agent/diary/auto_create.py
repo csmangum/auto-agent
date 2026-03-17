@@ -16,10 +16,11 @@ _diary_listener_registered = False
 
 def _on_claim_status_change(event: ClaimEvent) -> None:
     """Create diary entries for status transitions."""
-    templates = get_status_transition_templates(
-        _get_previous_status(event.claim_id) or "pending",
-        event.status,
-    )
+    prev_status = _get_previous_status(event.claim_id)
+    if prev_status is None or prev_status == event.status:
+        return
+    
+    templates = get_status_transition_templates(prev_status, event.status)
     if not templates:
         return
 

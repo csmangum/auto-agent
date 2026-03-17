@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from claim_agent.compliance.state_rules import get_compliance_due_date, get_state_rules
+from claim_agent.compliance.state_rules import get_state_rules
 
 
 @dataclass

@@ -114,7 +114,11 @@ def create_claim_task(
         try:
             recur_interval_val = int(recurrence_interval)
         except ValueError:
-            recur_interval_val = 1
+            return json.dumps({
+                "success": False,
+                "task_id": None,
+                "message": f"Invalid recurrence_interval: must be a positive integer, got '{recurrence_interval}'",
+            })
     if recur_rule and recur_rule not in VALID_RECURRENCE_RULES:
         return json.dumps({
             "success": False,

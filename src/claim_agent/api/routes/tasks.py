@@ -16,6 +16,7 @@ from claim_agent.api.deps import require_role
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_db_path
+from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
 
@@ -44,9 +45,6 @@ def _validate_due_date(v: Optional[str]) -> Optional[str]:
     except (ValueError, TypeError):
         raise ValueError("due_date must be YYYY-MM-DD (ISO 8601)")
     return v.strip()
-
-
-VALID_RECURRENCE_RULES = frozenset({"daily", "interval_days", "weekly"})
 
 
 class CreateTaskBody(BaseModel):
