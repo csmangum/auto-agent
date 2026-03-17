@@ -7,7 +7,7 @@ Claims are linked to incidents for coordinated handling.
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from claim_agent.models.claim import Attachment
 from claim_agent.models.party import ClaimPartyInput
@@ -74,6 +74,13 @@ class IncidentOutput(BaseModel):
         description="Claim IDs created for each vehicle",
     )
     message: Optional[str] = Field(default=None, description="Human-readable summary")
+    background_scheduling: Optional[dict[str, str]] = Field(
+        default=None,
+        description=(
+            "Per-claim background scheduling result when async=true. "
+            "Values: 'scheduled' or 'capacity_exceeded'."
+        ),
+    )
 
 
 class ClaimLinkInput(BaseModel):
@@ -89,6 +96,12 @@ class ClaimLinkInput(BaseModel):
         description="Carrier name when link_type is opposing_carrier or cross_carrier",
     )
     notes: Optional[str] = Field(default=None, description="Optional notes")
+
+    @model_validator(mode="after")
+    def validate_no_self_link(self) -> "ClaimLinkInput":
+        if self.claim_id_a == self.claim_id_b:
+            raise ValueError("A claim cannot be linked to itself (claim_id_a must differ from claim_id_b)")
+        return self
 
 
 class BIAllocationInput(BaseModel):

@@ -203,3 +203,97 @@ def test_bi_allocation_severity_weighted():
     # Equal weights should split 50/50
     assert result.allocations[0]["allocated"] == pytest.approx(40000, abs=1)
     assert result.allocations[1]["allocated"] == pytest.approx(40000, abs=1)
+
+
+def test_bi_allocation_severity_weighted_unequal_weights():
+    """Higher severity weight receives larger share of the limit."""
+    # c1 has severity 3.0, c2 has severity 1.0 -> 3:1 ratio
+    result = allocate_bi_limits(
+        BIAllocationInput(
+            claim_id="CLM-123",
+            claimant_demands=[
+                {"claimant_id": "c1", "demanded_amount": 100000, "injury_severity": 3.0},
+                {"claimant_id": "c2", "demanded_amount": 100000, "injury_severity": 1.0},
+            ],
+            bi_per_accident_limit=80000,
+            allocation_method="severity_weighted",
+        )
+    )
+    assert result.limit_exceeded is True
+    assert result.total_allocated == pytest.approx(80000, abs=1)
+    # c1 should receive 3/4 of the limit (60000), c2 should receive 1/4 (20000)
+    assert result.allocations[0]["allocated"] == pytest.approx(60000, abs=1)
+    assert result.allocations[1]["allocated"] == pytest.approx(20000, abs=1)
+
+
+def test_bi_allocation_severity_weighted_redistribution():
+    """Excess capacity from a low-demand claimant is redistributed to others."""
+    # c1 demands only 10000 but equal weight would give 40000 -> excess redistributed to c2
+    result = allocate_bi_limits(
+        BIAllocationInput(
+            claim_id="CLM-123",
+            claimant_demands=[
+                {"claimant_id": "c1", "demanded_amount": 10000, "injury_severity": 5.0},
+                {"claimant_id": "c2", "demanded_amount": 100000, "injury_severity": 5.0},
+            ],
+            bi_per_accident_limit=80000,
+            allocation_method="severity_weighted",
+        )
+    )
+    assert result.limit_exceeded is True
+    # Full limit should be allocated (no under-allocation after redistribution)
+    assert result.total_allocated == pytest.approx(80000, abs=1)
+    # c1 is satisfied at their full demand; c2 gets the rest
+    assert result.allocations[0]["allocated"] == pytest.approx(10000, abs=1)
+    assert result.allocations[1]["allocated"] == pytest.approx(70000, abs=1)
+
+
+def test_create_claim_link_self_link_rejected():
+    """Linking a claim to itself should raise a Pydantic ValidationError."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="cannot be linked to itself"):
+        from claim_agent.models.incident import ClaimLinkInput
+        ClaimLinkInput(
+            claim_id_a="CLM-001",
+            claim_id_b="CLM-001",
+            link_type="same_incident",
+        )
+
+
+def test_create_claim_link_duplicate_returns_none(temp_db):
+    """Creating the same link twice returns None on the second call."""
+    repo = IncidentRepository(db_path=temp_db)
+    incident_input = IncidentInput(
+        incident_date=date(2025, 3, 15),
+        incident_description="Test accident",
+        vehicles=[
+            VehicleClaimInput(
+                policy_number="POL-A",
+                vin="VIN-A",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                damage_description="Minor dent",
+            ),
+            VehicleClaimInput(
+                policy_number="POL-B",
+                vin="VIN-B",
+                vehicle_year=2021,
+                vehicle_make="Toyota",
+                vehicle_model="Corolla",
+                damage_description="Rear bumper",
+            ),
+        ],
+    )
+    _, claim_ids = repo.create_incident(incident_input)
+
+    # Create an explicit opposing_carrier link (distinct from the same_incident link
+    # automatically created during incident creation, so it must succeed)
+    link_id = repo.create_claim_link(claim_ids[0], claim_ids[1], "opposing_carrier")
+    assert link_id is not None
+
+    # Submitting the identical link a second time must return None (duplicate detected)
+    duplicate_id = repo.create_claim_link(claim_ids[0], claim_ids[1], "opposing_carrier")
+    assert duplicate_id is None
+

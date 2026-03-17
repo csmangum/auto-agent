@@ -13,6 +13,17 @@ _schema_initialized: set[str] = set()
 _schema_lock = threading.RLock()
 
 SCHEMA_SQL = """
+-- Incidents table: groups multiple claims under one event (multi-vehicle accident)
+CREATE TABLE IF NOT EXISTS incidents (
+    id TEXT PRIMARY KEY,
+    incident_date TEXT NOT NULL,
+    incident_description TEXT,
+    loss_state TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_incident_date ON incidents(incident_date);
+
 -- Claims table (main record)
 CREATE TABLE IF NOT EXISTS claims (
     id TEXT PRIMARY KEY,
@@ -38,10 +49,26 @@ CREATE TABLE IF NOT EXISTS claims (
     priority TEXT,
     siu_case_id TEXT,
     archived_at TEXT,
-    incident_id TEXT,
+    incident_id TEXT REFERENCES incidents(id),
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Claim links: typed relationships between claims (same_incident, opposing_carrier, etc.)
+CREATE TABLE IF NOT EXISTS claim_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id_a TEXT NOT NULL,
+    claim_id_b TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    opposing_carrier TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id_a) REFERENCES claims(id),
+    FOREIGN KEY (claim_id_b) REFERENCES claims(id),
+    UNIQUE (claim_id_a, claim_id_b, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_links_claim_a ON claim_links(claim_id_a);
+CREATE INDEX IF NOT EXISTS idx_claim_links_claim_b ON claim_links(claim_id_b);
 
 -- Audit log (state changes). Append-only: no UPDATE or DELETE.
 CREATE TABLE IF NOT EXISTS claim_audit_log (
