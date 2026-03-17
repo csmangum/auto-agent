@@ -1281,6 +1281,52 @@ async def create_claim(
     return result
 
 
+def _sanitize_incident_data(incident_dict: dict) -> dict:
+    """Sanitize incident input data to prevent prompt injection and abuse.
+    
+    Applies sanitization to incident-level and vehicle-level claim data
+    before creating claims via the incident repository.
+    """
+    from typing import Any
+    
+    sanitized: dict[str, Any] = {}
+    
+    # Sanitize incident-level fields
+    for key, value in incident_dict.items():
+        if key == "incident_description":
+            sanitized[key] = sanitize_claim_data({"incident_description": value}).get("incident_description", "")
+        elif key == "loss_state":
+            sanitized[key] = sanitize_claim_data({"loss_state": value}).get("loss_state")
+        elif key == "vehicles":
+            # Sanitize each vehicle's claim data
+            if isinstance(value, list):
+                sanitized_vehicles = []
+                for vehicle in value:
+                    if isinstance(vehicle, dict):
+                        # Convert vehicle to claim-like dict for sanitization
+                        vehicle_claim_dict = {
+                            "policy_number": vehicle.get("policy_number"),
+                            "vin": vehicle.get("vin"),
+                            "vehicle_year": vehicle.get("vehicle_year"),
+                            "vehicle_make": vehicle.get("vehicle_make"),
+                            "vehicle_model": vehicle.get("vehicle_model"),
+                            "damage_description": vehicle.get("damage_description"),
+                            "estimated_damage": vehicle.get("estimated_damage"),
+                            "attachments": vehicle.get("attachments", []),
+                            "loss_state": vehicle.get("loss_state"),
+                            "parties": vehicle.get("parties", []),
+                        }
+                        sanitized_vehicle_dict = sanitize_claim_data(vehicle_claim_dict)
+                        sanitized_vehicles.append(sanitized_vehicle_dict)
+                sanitized[key] = sanitized_vehicles
+            else:
+                sanitized[key] = []
+        else:
+            sanitized[key] = value
+    
+    return sanitized
+
+
 @router.post("/incidents", response_model=IncidentOutput)
 async def create_incident(
     incident_input: IncidentInput = Body(..., description="Multi-vehicle incident data"),
@@ -1294,8 +1340,17 @@ async def create_incident(
     linked to the incident. Claims are automatically linked as same_incident.
     """
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    
+    # Sanitize incident data before processing
+    incident_dict = incident_input.model_dump(mode="python")
+    sanitized_incident = _sanitize_incident_data(incident_dict)
+    try:
+        sanitized_input = IncidentInput.model_validate(sanitized_incident)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid incident data: {e}") from e
+    
     incident_repo = IncidentRepository(db_path=get_db_path())
-    incident_id, claim_ids = incident_repo.create_incident(incident_input, actor_id=actor_id)
+    incident_id, claim_ids = incident_repo.create_incident(sanitized_input, actor_id=actor_id)
 
     if async_mode and claim_ids:
         for claim_id in claim_ids:

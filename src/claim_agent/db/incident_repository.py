@@ -83,12 +83,19 @@ class IncidentRepository:
         return incident_id, claim_ids
 
     def _rollback_incident(self, incident_id: str, claim_ids: list[str]) -> None:
-        """Remove incident and associated claims on partial failure (compensating cleanup)."""
+        """Remove incident and associated claims on partial failure (compensating cleanup).
+        
+        Note: Cannot delete claims with audit log entries due to foreign key constraints
+        and append-only triggers. Instead, we mark them as failed and archived.
+        """
         try:
             with get_connection(self._db_path) as conn:
                 for claim_id in claim_ids:
                     conn.execute("DELETE FROM claim_links WHERE claim_id_a = ? OR claim_id_b = ?", (claim_id, claim_id))
-                    conn.execute("DELETE FROM claims WHERE id = ?", (claim_id,))
+                    conn.execute(
+                        "UPDATE claims SET status = 'failed', archived_at = datetime('now') WHERE id = ?",
+                        (claim_id,)
+                    )
                 conn.execute("DELETE FROM incidents WHERE id = ?", (incident_id,))
         except Exception:
             logger.exception(

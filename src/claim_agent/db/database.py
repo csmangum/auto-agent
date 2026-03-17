@@ -363,8 +363,6 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_claim_links_claim_a ON claim_links(claim_id_a);
             CREATE INDEX IF NOT EXISTS idx_claim_links_claim_b ON claim_links(claim_id_b);
         """)
-    except sqlite3.OperationalError:
-        pass
     try:
         cursor = conn.execute("PRAGMA table_info(subrogation_cases)")
         sc_columns = {row[1] for row in cursor.fetchall()}

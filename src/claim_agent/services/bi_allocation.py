@@ -87,13 +87,17 @@ def _allocate_severity_weighted_with_redistribution(
         if total_weight == 0:
             break
 
+        shares = [
+            remaining_limit * (weights[i] / total_weight) if active[i] else 0.0
+            for i in range(n)
+        ]
         any_satisfied = False
 
         for i in range(n):
             if not active[i]:
                 continue
 
-            share = remaining_limit * (weights[i] / total_weight)
+            share = shares[i]
             unmet = demanded[i] - allocated[i]
             if unmet <= share:
                 allocated[i] += unmet

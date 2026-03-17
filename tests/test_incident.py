@@ -182,3 +182,24 @@ def test_bi_allocation_equal():
     assert result.total_allocated == 100000
     assert result.allocations[0]["allocated"] == 50000
     assert result.allocations[1]["allocated"] == 50000
+
+
+def test_bi_allocation_severity_weighted():
+    """Severity weighted allocation distributes by injury severity weights."""
+    result = allocate_bi_limits(
+        BIAllocationInput(
+            claim_id="CLM-123",
+            claimant_demands=[
+                {"claimant_id": "c1", "demanded_amount": 100000, "injury_severity": 1.0},
+                {"claimant_id": "c2", "demanded_amount": 100000, "injury_severity": 1.0},
+            ],
+            bi_per_accident_limit=80000,
+            allocation_method="severity_weighted",
+        )
+    )
+    assert result.limit_exceeded is True
+    # Should allocate full 80000, not under-allocate due to in-loop mutation bug
+    assert result.total_allocated == pytest.approx(80000, abs=1)
+    # Equal weights should split 50/50
+    assert result.allocations[0]["allocated"] == pytest.approx(40000, abs=1)
+    assert result.allocations[1]["allocated"] == pytest.approx(40000, abs=1)
