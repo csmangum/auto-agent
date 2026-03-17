@@ -184,6 +184,22 @@ class TestClaimInput:
         assert claim.parties[1].party_type == "policyholder"
         assert claim.parties[1].phone == "555-123-4567"
 
+    def test_valid_with_incident_id(self):
+        """ClaimInput accepts optional incident_id for multi-vehicle incidents."""
+        data = {
+            "policy_number": "POL-001",
+            "vin": "1HGBH41JXMN109186",
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "incident_date": "2025-01-15",
+            "incident_description": "Two-car collision.",
+            "damage_description": "Front damage.",
+            "incident_id": "INC-ABC12345",
+        }
+        claim = ClaimInput(**data)
+        assert claim.incident_id == "INC-ABC12345"
+
 
 class TestClaimOutput:
     """Test ClaimOutput validation."""
