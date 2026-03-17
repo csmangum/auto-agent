@@ -653,6 +653,55 @@ def run_siu_investigation(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+@router.get("/claims/{claim_id}/status", dependencies=[RequireAdjuster])
+def get_claim_status(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+    """Lightweight status polling endpoint for async claim processing.
+
+    Returns claim_id, status, claim_type, progress (completed workflow stages),
+    and workflow_run_id. Use for efficient polling when POST returned claim_id
+    immediately. For real-time updates, use GET /claims/{claim_id}/stream (SSE).
+    """
+    claim_dict = ctx.repo.get_claim(claim_id)
+    if claim_dict is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    status = claim_dict.get("status") or ""
+    claim_type = claim_dict.get("claim_type") or ""
+
+    completed_stages: list[str] = []
+    with get_connection() as conn:
+        cp_rows = conn.execute(
+            text("""
+            SELECT stage_key FROM task_checkpoints
+            WHERE claim_id = :claim_id AND workflow_run_id = (
+                SELECT workflow_run_id FROM task_checkpoints
+                WHERE claim_id = :claim_id ORDER BY id DESC LIMIT 1
+            )
+            """),
+            {"claim_id": claim_id},
+        ).fetchall()
+        for r in cp_rows:
+            d = row_to_dict(r)
+            sk = d.get("stage_key", "")
+            stage = sk.split(":")[0] if ":" in sk else sk
+            if stage in WORKFLOW_STAGES:
+                completed_stages.append(sk)
+        completed_stages.sort(
+            key=lambda s: WORKFLOW_STAGES.index(s.split(":")[0] if ":" in s else s)
+        )
+
+    latest_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
+
+    return {
+        "claim_id": claim_id,
+        "status": status,
+        "claim_type": claim_type,
+        "progress": completed_stages,
+        "workflow_run_id": latest_run_id,
+        "created_at": claim_dict.get("created_at"),
+    }
+
+
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
 def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     """Get a single claim by ID. Includes claim notes and follow-up messages."""
@@ -1168,6 +1217,7 @@ def update_claim_repair_status(
 @router.post("/claims/generate")
 async def generate_and_submit_claim(
     body: GenerateClaimRequest = Body(...),
+    async_mode: bool = Query(False, alias="async", description="If submit=true, return claim_id immediately and process in background"),
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
@@ -1177,7 +1227,8 @@ async def generate_and_submit_claim(
     from the prompt (e.g. "partial loss, Honda Accord, parking lot fender bender").
     If submit=true, the claim is created and the workflow runs. If submit=false,
     returns the generated claim JSON without creating or processing it (useful for
-    inspection).
+    inspection). When async=true and submit=true, returns claim_id immediately;
+    use GET /claims/{claim_id}/status or /stream to poll for completion.
     """
     try:
         claim_input = await asyncio.to_thread(
@@ -1195,6 +1246,18 @@ async def generate_and_submit_claim(
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim_input, None, actor_id, ctx=ctx,
     )
+
+    if async_mode:
+        task = await _try_run_workflow_background(
+            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        )
+        if task is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Too many concurrent background tasks. Retry later.",
+            )
+        return {"claim": claim_data, "submitted": True, "claim_id": claim_id}
+
     result = await asyncio.to_thread(
         run_claim_workflow,
         claim_data_with_attachments,
@@ -1454,6 +1517,7 @@ async def allocate_bi(
 async def process_claim(
     claim: str = Form(..., description="Claim data as JSON string"),
     files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
+    async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
@@ -1463,11 +1527,25 @@ async def process_claim(
       incident_date, incident_description, damage_description, estimated_damage (optional),
       attachments (optional list of {url, type, description}).
     - files: Optional multipart files (photos, PDFs, estimates). Stored via configured backend.
+    - async: If true, returns claim_id immediately; workflow runs in background. Use
+      GET /claims/{claim_id}/status to poll or GET /claims/{claim_id}/stream for SSE updates.
     """
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id, ctx=ctx,
     )
+
+    if async_mode:
+        task = await _try_run_workflow_background(
+            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        )
+        if task is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Too many concurrent background tasks. Retry later.",
+            )
+        return {"claim_id": claim_id}
+
     result = await asyncio.to_thread(
         run_claim_workflow,
         claim_data_with_attachments,

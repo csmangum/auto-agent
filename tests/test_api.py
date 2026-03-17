@@ -1839,6 +1839,22 @@ class TestProcessClaimEndpoint:
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST-MOCK"
 
+    def test_valid_claim_async_returns_claim_id_only(self, client, monkeypatch, tmp_path):
+        """POST /claims/process?async=true returns claim_id immediately."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        self._mock_workflow(monkeypatch)
+
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            params={"async": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "claim_id" in data
+        assert "status" not in data
+        assert "claim_type" not in data
+
     def test_invalid_json_in_claim_field(self, client, monkeypatch):
         """Malformed JSON in the 'claim' form field returns 400."""
         self._mock_workflow(monkeypatch)
@@ -2230,3 +2246,20 @@ class TestProcessClaimAsyncEndpoint:
         first_data = json.loads(lines[0][5:].strip())
         assert "progress" in first_data
         assert first_data["progress"] == []
+
+    def test_get_claim_status_returns_lightweight_payload(self, client, seeded_temp_db):
+        """GET /claims/{claim_id}/status returns claim_id, status, claim_type, progress."""
+        resp = client.get("/api/claims/CLM-TEST001/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert "status" in data
+        assert "claim_type" in data
+        assert "progress" in data
+        assert isinstance(data["progress"], list)
+        assert "created_at" in data
+
+    def test_get_claim_status_not_found_returns_404(self, client):
+        """GET /claims/{claim_id}/status returns 404 for non-existent claim."""
+        resp = client.get("/api/claims/CLM-NONEXISTENT/status")
+        assert resp.status_code == 404
