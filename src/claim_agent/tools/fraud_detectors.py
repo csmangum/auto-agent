@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from claim_agent.config.settings import get_escalation_config, get_fraud_config
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.tools.fraud_utils import _as_nonempty_str, _coerce_date
+from claim_agent.tools.fraud_utils import _as_nonempty_str, _coerce_date, _extract_provider_names
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
@@ -215,35 +215,6 @@ def _normalize_words_for_overlap(text: str) -> set[str]:
     return tokens
 
 
-def _extract_provider_names(claim_data: dict) -> list[str]:
-    names: list[str] = []
-    candidate_fields = (
-        "provider_name",
-        "repair_shop_name",
-        "medical_provider_name",
-        "doctor_name",
-        "body_shop_name",
-    )
-    for field in candidate_fields:
-        value = claim_data.get(field)
-        if isinstance(value, str) and value.strip():
-            names.append(value.strip())
-    list_fields = ("provider_names", "medical_providers", "repair_shops")
-    for field in list_fields:
-        value = claim_data.get(field)
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, str) and item.strip():
-                    names.append(item.strip())
-                elif isinstance(item, dict):
-                    for key in ("name", "provider_name", "shop_name"):
-                        raw = item.get(key)
-                        if isinstance(raw, str) and raw.strip():
-                            names.append(raw.strip())
-                            break
-    return sorted(set(names))
-
-
 @register_fraud_detector
 def _detect_description_overlap_indicators(claim_data: dict, ctx: ClaimContext | None = None) -> list[str]:
     """Detect low overlap between incident and damage descriptions.
@@ -348,11 +319,12 @@ def _detect_provider_ring_indicators(claim_data: dict, ctx: ClaimContext | None 
     indicators: list[str] = []
     if not claim_data or not isinstance(claim_data, dict):
         return indicators
-    provider_names = _extract_provider_names(claim_data)
+    
+    repo = ctx.repo if ctx else ClaimRepository()
+    provider_names = _extract_provider_names(claim_data, repo)
     if not provider_names:
         return indicators
 
-    repo = ctx.repo if ctx else ClaimRepository()
     try:
         for provider_name in provider_names:
             related = repo.get_claims_by_provider_name(provider_name, limit=100)

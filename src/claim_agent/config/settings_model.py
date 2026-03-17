@@ -190,7 +190,7 @@ class FraudConfig(BaseSettings):
         fallback = defaults.get(info.field_name or "", 1)
         try:
             value = int(v)
-            return value if value >= 0 else fallback
+            return value if value > 0 else fallback
         except (ValueError, TypeError):
             return fallback
 

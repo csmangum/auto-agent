@@ -11,54 +11,13 @@ from claim_agent.adapters.registry import get_claim_search_adapter, get_siu_adap
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.fraud_detectors import KNOWN_FRAUD_PATTERNS
-from claim_agent.tools.fraud_utils import _as_nonempty_str, _coerce_date
+from claim_agent.tools.fraud_utils import _as_nonempty_str, _coerce_date, _extract_provider_names
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
-
-
-def _extract_provider_names(claim_data: dict[str, Any], repo: ClaimRepository) -> list[str]:
-    names: set[str] = set()
-    for key in (
-        "provider_name",
-        "repair_shop_name",
-        "medical_provider_name",
-        "doctor_name",
-        "body_shop_name",
-    ):
-        raw = claim_data.get(key)
-        if isinstance(raw, str) and raw.strip():
-            names.add(raw.strip())
-
-    for key in ("provider_names", "medical_providers", "repair_shops"):
-        raw = claim_data.get(key)
-        if not isinstance(raw, list):
-            continue
-        for item in raw:
-            if isinstance(item, str) and item.strip():
-                names.add(item.strip())
-            elif isinstance(item, dict):
-                for nested_key in ("name", "provider_name", "shop_name"):
-                    nested = item.get(nested_key)
-                    if isinstance(nested, str) and nested.strip():
-                        names.add(nested.strip())
-                        break
-
-    claim_id = _as_nonempty_str(claim_data.get("claim_id"))
-    if claim_id:
-        try:
-            parties = repo.get_claim_parties(claim_id, party_type="provider")
-            for party in parties:
-                party_name = _as_nonempty_str(party.get("name"))
-                if party_name:
-                    names.add(party_name)
-        except Exception as e:
-            logger.debug("Unable to load provider parties for claim %s: %s", claim_id, e)
-
-    return sorted(names)
 
 
 def analyze_claim_patterns_impl(
