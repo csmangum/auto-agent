@@ -1242,20 +1242,24 @@ async def generate_and_submit_claim(
     if not body.submit:
         return {"claim": claim_data, "submitted": False}
 
+    if async_mode:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                )
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim_input, None, actor_id, ctx=ctx,
     )
 
     if async_mode:
-        task = await _try_run_workflow_background(
+        _run_workflow_background(
             claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
         )
-        if task is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
-            )
         return {"claim": claim_data, "submitted": True, "claim_id": claim_id}
 
     result = await asyncio.to_thread(
@@ -1310,20 +1314,24 @@ async def create_claim(
     Use for programmatic access: portals, batch ingestion, third-party integrations.
     For file uploads, use POST /api/claims/process with multipart form.
     """
+    if async_mode:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                )
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim_input, None, actor_id, ctx=ctx,
     )
 
     if async_mode:
-        task = await _try_run_workflow_background(
+        _run_workflow_background(
             claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
         )
-        if task is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
-            )
         return {"claim_id": claim_id}
 
     result = await asyncio.to_thread(
@@ -1530,20 +1538,24 @@ async def process_claim(
     - async: If true, returns claim_id immediately; workflow runs in background. Use
       GET /claims/{claim_id}/status to poll or GET /claims/{claim_id}/stream for SSE updates.
     """
+    if async_mode:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                )
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id, ctx=ctx,
     )
 
     if async_mode:
-        task = await _try_run_workflow_background(
+        _run_workflow_background(
             claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
         )
-        if task is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
-            )
         return {"claim_id": claim_id}
 
     result = await asyncio.to_thread(
