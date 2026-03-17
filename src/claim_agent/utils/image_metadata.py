@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, cast
 
 try:
     from PIL import ExifTags, Image
@@ -36,8 +36,10 @@ def _gps_to_decimal(gps: dict[str, Any]) -> tuple[float, float] | None:
     lon_vals = [_to_float(v) for v in lon_raw]
     if any(v is None for v in (*lat_vals, *lon_vals)):
         return None
-    lat = float(lat_vals[0]) + float(lat_vals[1]) / 60 + float(lat_vals[2]) / 3600
-    lon = float(lon_vals[0]) + float(lon_vals[1]) / 60 + float(lon_vals[2]) / 3600
+    lat_f = cast(list[float], lat_vals)
+    lon_f = cast(list[float], lon_vals)
+    lat = lat_f[0] + lat_f[1] / 60 + lat_f[2] / 3600
+    lon = lon_f[0] + lon_f[1] / 60 + lon_f[2] / 3600
     if lat_ref == "S":
         lat *= -1
     if lon_ref == "W":
