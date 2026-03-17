@@ -329,6 +329,24 @@ class NotificationConfig(BaseSettings):
     sms_enabled: bool = False
 
 
+class DiaryConfig(BaseSettings):
+    """Calendar/diary system: escalation and auto-create."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="DIARY_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    auto_create_on_status_change: bool = True
+    escalation_hours_before_supervisor: int = Field(
+        default=24,
+        ge=0,
+        description="Hours after overdue notification before escalating to supervisor",
+    )
+
+
 class TracingConfig(BaseSettings):
     model_config = SettingsConfigDict(
         extra="ignore",
@@ -613,6 +631,7 @@ class Settings(BaseSettings):
     partial_loss: PartialLossConfig = Field(default_factory=PartialLossConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
+    diary: DiaryConfig = Field(default_factory=DiaryConfig)
     tracing: TracingConfig = Field(default_factory=TracingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)

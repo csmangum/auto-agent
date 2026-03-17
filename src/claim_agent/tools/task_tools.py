@@ -12,6 +12,7 @@ from crewai.tools import tool
 
 from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
 from claim_agent.utils.sanitization import (
@@ -40,6 +41,8 @@ def create_claim_task(
     due_date: str = "",
     document_type: str = "",
     requested_from: str = "",
+    recurrence_rule: str = "",
+    recurrence_interval: str = "",
 ) -> str:
     """Create a task on a claim for future completion.
 
@@ -51,6 +54,7 @@ def create_claim_task(
     - Follow up on medical records
     - Refer to SIU for investigation
     - Verify policy coverage details
+    - Recurring: check repair status every 3 days (recurrence_rule=interval_days, recurrence_interval=3)
 
     Args:
         claim_id: The claim ID (e.g., CLM-XXXXXXXX).
@@ -70,6 +74,8 @@ def create_claim_task(
         document_type: When task_type is request_documents or obtain_police_report,
             the type of document requested (police_report, estimate, medical_records, etc.).
         requested_from: When creating a document request, the party to request from.
+        recurrence_rule: For recurring tasks: daily, interval_days, weekly. Leave empty for one-time.
+        recurrence_interval: For interval_days: e.g. 3 for every 3 days. For daily/weekly: 1.
 
     Returns:
         JSON with success (bool), task_id (int), and message.
@@ -102,6 +108,31 @@ def create_claim_task(
 
     doc_type = str(document_type).strip() or None
     requested_from_val = str(requested_from).strip() or None
+    recur_rule = str(recurrence_rule).strip() or None
+    recur_interval_val: int | None = None
+    if str(recurrence_interval).strip():
+        try:
+            recur_interval_val = int(recurrence_interval)
+            if recur_interval_val < 1:
+                raise ValueError("must be >= 1")
+        except ValueError:
+            return json.dumps({
+                "success": False,
+                "task_id": None,
+                "message": f"Invalid recurrence_interval: must be a positive integer, got '{recurrence_interval}'",
+            })
+    if recur_rule and recur_rule not in VALID_RECURRENCE_RULES:
+        return json.dumps({
+            "success": False,
+            "task_id": None,
+            "message": f"Invalid recurrence_rule: {recur_rule}. Use: daily, interval_days, weekly.",
+        })
+    if recur_rule == "interval_days" and recur_interval_val is None:
+        return json.dumps({
+            "success": False,
+            "task_id": None,
+            "message": "recurrence_interval is required when recurrence_rule is 'interval_days'",
+        })
     try:
         task_id = ClaimRepository().create_task(
             claim_id,
@@ -114,6 +145,8 @@ def create_claim_task(
             due_date=due_date_val,
             document_type=doc_type,
             requested_from=requested_from_val,
+            recurrence_rule=recur_rule,
+            recurrence_interval=recur_interval_val,
         )
         return json.dumps({
             "success": True,
@@ -219,6 +252,10 @@ def get_claim_tasks(claim_id: str) -> str:
                 "due_date": t.get("due_date"),
                 "description": t.get("description", ""),
                 "resolution_notes": t.get("resolution_notes"),
+                "recurrence_rule": t.get("recurrence_rule"),
+                "recurrence_interval": t.get("recurrence_interval"),
+                "escalation_level": t.get("escalation_level", 0),
+                "auto_created_from": t.get("auto_created_from"),
                 "created_at": t.get("created_at"),
             }
             for t in tasks
