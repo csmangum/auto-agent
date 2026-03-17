@@ -34,7 +34,7 @@ def run_deadline_escalation(*, db_path: str | None = None) -> dict[str, int]:
             logger.warning("task_overdue_notify_failed task_id=%s: %s", task["id"], e)
 
     # Level 1: notified, check if past escalation threshold -> escalate to supervisor
-    overdue_notified = repo.list_overdue_tasks(max_escalation_level=1)
+    overdue_notified = repo.list_overdue_tasks(min_escalation_level=1, max_escalation_level=1)
     for task in overdue_notified:
         if _should_escalate_to_supervisor(task, config.escalation_hours_before_supervisor):
             try:

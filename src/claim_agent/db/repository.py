@@ -2032,12 +2032,14 @@ class ClaimRepository:
         self,
         *,
         max_escalation_level: int | None = None,
+        min_escalation_level: int | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """List overdue tasks (due_date < today, status not completed/cancelled).
 
         Args:
             max_escalation_level: If set, only include tasks with escalation_level <= this.
+            min_escalation_level: If set, only include tasks with escalation_level >= this.
             limit: Max tasks to return.
         """
         conditions = [
@@ -2049,6 +2051,9 @@ class ClaimRepository:
         if max_escalation_level is not None:
             conditions.append("COALESCE(escalation_level, 0) <= ?")
             params.append(max_escalation_level)
+        if min_escalation_level is not None:
+            conditions.append("COALESCE(escalation_level, 0) >= ?")
+            params.append(min_escalation_level)
         where = " AND ".join(conditions)
         with get_connection(self._db_path) as conn:
             rows = conn.execute(

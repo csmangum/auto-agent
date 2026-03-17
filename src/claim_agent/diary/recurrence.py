@@ -41,7 +41,7 @@ def compute_next_due_date(
     interval = max(1, recurrence_interval)
 
     if recurrence_rule == RECURRENCE_DAILY:
-        return from_date + timedelta(days=1)
+        return from_date + timedelta(days=interval)
     if recurrence_rule == RECURRENCE_INTERVAL_DAYS:
         return from_date + timedelta(days=interval)
     if recurrence_rule == RECURRENCE_WEEKLY:
