@@ -1333,6 +1333,10 @@ async def create_claim_link(
     Use for: opposing_carrier (your insured hit their insured), subrogation,
     cross_carrier, or same_incident when linking claims from different submissions.
     """
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    for cid in (link_input.claim_id_a, link_input.claim_id_b):
+        if claim_repo.get_claim(cid) is None:
+            raise HTTPException(status_code=404, detail=f"Claim not found: {cid}")
     incident_repo = IncidentRepository(db_path=get_db_path())
     link_id = incident_repo.create_claim_link(
         link_input.claim_id_a,
