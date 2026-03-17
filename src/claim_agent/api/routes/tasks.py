@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
@@ -70,6 +70,16 @@ class CreateTaskBody(BaseModel):
         if v.strip() in VALID_RECURRENCE_RULES:
             return v.strip()
         raise ValueError(f"recurrence_rule must be one of: {', '.join(sorted(VALID_RECURRENCE_RULES))}")
+
+    @model_validator(mode="after")
+    def validate_recurrence_combination(self) -> "CreateTaskBody":
+        rule = self.recurrence_rule
+        interval = self.recurrence_interval
+        if rule == "interval_days" and interval is None:
+            raise ValueError("recurrence_interval is required when recurrence_rule is 'interval_days'")
+        if rule in ("daily", "weekly") and interval is None:
+            self.recurrence_interval = 1
+        return self
 
 
 class UpdateTaskBody(BaseModel):

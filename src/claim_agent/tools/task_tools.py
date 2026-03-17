@@ -113,6 +113,8 @@ def create_claim_task(
     if str(recurrence_interval).strip():
         try:
             recur_interval_val = int(recurrence_interval)
+            if recur_interval_val < 1:
+                raise ValueError("must be >= 1")
         except ValueError:
             return json.dumps({
                 "success": False,
@@ -124,6 +126,12 @@ def create_claim_task(
             "success": False,
             "task_id": None,
             "message": f"Invalid recurrence_rule: {recur_rule}. Use: daily, interval_days, weekly.",
+        })
+    if recur_rule == "interval_days" and recur_interval_val is None:
+        return json.dumps({
+            "success": False,
+            "task_id": None,
+            "message": "recurrence_interval is required when recurrence_rule is 'interval_days'",
         })
     try:
         task_id = ClaimRepository().create_task(
