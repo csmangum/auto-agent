@@ -9,7 +9,19 @@ import MessagesTab from '../../components/MessagesTab';
 import { formatDateTime } from '../../utils/date';
 import { queryKeys } from '../../api/queries';
 import { postClaimSupplemental } from '../../api/client';
+import { useClaimRepairStatus, usePostClaimRepairStatus } from '../../api/queries';
 import type { Claim, FollowUpMessage } from '../../api/types';
+
+const REPAIR_STATUS_ORDER = [
+  'received',
+  'disassembly',
+  'parts_ordered',
+  'repair',
+  'paint',
+  'reassembly',
+  'qa',
+  'ready',
+] as const;
 
 const REPAIR_RELEVANT_STATUSES = new Set([
   'partial_loss', 'open', 'settled', 'processing', 'pending',
@@ -102,7 +114,7 @@ export default function RepairShopPortal() {
 
 function RepairJobDetail({ claimId, onBack }: { claimId: string; onBack: () => void }) {
   const { data: claim, isLoading, error } = useClaim(claimId);
-  const [activeTab, setActiveTab] = useState<'details' | 'supplement' | 'messages'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'progress' | 'supplement' | 'messages'>('details');
 
   if (isLoading) {
     return (
@@ -129,9 +141,11 @@ function RepairJobDetail({ claimId, onBack }: { claimId: string; onBack: () => v
   );
   const canSupplement = claim.claim_type === 'partial_loss' &&
     ['processing', 'settled'].includes(claim.status);
+  const canUpdateProgress = claim.claim_type === 'partial_loss';
 
   const tabs = [
     { key: 'details' as const, label: 'Vehicle & Damage' },
+    { key: 'progress' as const, label: 'Repair Progress' },
     { key: 'supplement' as const, label: 'Supplemental' },
     { key: 'messages' as const, label: `Messages (${followUps.length})` },
   ];
@@ -182,6 +196,9 @@ function RepairJobDetail({ claimId, onBack }: { claimId: string; onBack: () => v
 
       <div className="animate-fade-in" key={activeTab}>
         {activeTab === 'details' && <VehicleDamageTab claim={claim} />}
+        {activeTab === 'progress' && (
+          <RepairProgressTab claimId={claim.id} canUpdate={canUpdateProgress} />
+        )}
         {activeTab === 'supplement' && (
           <SupplementalTab claimId={claim.id} canSupplement={canSupplement} status={claim.status} claimType={claim.claim_type} />
         )}
@@ -196,6 +213,120 @@ function RepairJobDetail({ claimId, onBack }: { claimId: string; onBack: () => v
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function RepairProgressTab({ claimId, canUpdate }: { claimId: string; canUpdate: boolean }) {
+  const { data, isLoading, isError, error } = useClaimRepairStatus(claimId);
+  const postStatus = usePostClaimRepairStatus(claimId);
+  const latest = data?.latest;
+  const history = data?.history ?? [];
+
+  const currentIdx = latest
+    ? REPAIR_STATUS_ORDER.indexOf(latest.status as (typeof REPAIR_STATUS_ORDER)[number])
+    : -1;
+
+  async function handleStatusChange(status: string) {
+    if (!canUpdate || postStatus.isPending) return;
+    try {
+      await postStatus.mutateAsync({ status });
+    } catch {
+      // Error shown via postStatus.isError below
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <div className="h-32 bg-gray-700/50 rounded skeleton-shimmer" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <p className="text-sm text-red-400">
+          {error instanceof Error ? error.message : 'Failed to load repair status'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Repair Progress</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Track repair stages: received → disassembly → parts ordered → repair → paint → reassembly → QA → ready.
+        </p>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          {REPAIR_STATUS_ORDER.map((status, idx) => {
+            const isPast = currentIdx > idx;
+            const isCurrent = latest?.status === status;
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => canUpdate && handleStatusChange(status)}
+                disabled={!canUpdate || postStatus.isPending}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  isCurrent
+                    ? 'bg-amber-600 text-white'
+                    : isPast
+                      ? 'bg-gray-600/50 text-gray-400'
+                      : 'bg-gray-700/50 text-gray-500 hover:bg-gray-600/50'
+                } ${!canUpdate ? 'cursor-default' : ''}`}
+              >
+                {status.replace(/_/g, ' ')}
+              </button>
+            );
+          })}
+        </div>
+
+        {postStatus.isError && (
+          <p className="text-sm text-red-400 mb-2">
+            {postStatus.error instanceof Error
+              ? postStatus.error.message
+              : 'Failed to update repair status'}
+          </p>
+        )}
+
+        {latest && (
+          <div className="text-xs text-gray-500">
+            Current: {latest.status === 'paused_supplement'
+              ? 'Repair paused – supplemental pending'
+              : latest.status.replace(/_/g, ' ')}
+            {latest.status_updated_at && ` • ${formatDateTime(latest.status_updated_at) ?? ''}`}
+            {latest.notes && ` • ${latest.notes}`}
+            {data?.cycle_time_days != null && latest.status === 'ready' && (
+              <span className="block mt-1 text-amber-400/80">
+                Cycle time: {data.cycle_time_days} days
+              </span>
+            )}
+          </div>
+        )}
+
+        {!latest && canUpdate && (
+          <p className="text-xs text-gray-500">Click a stage to record progress.</p>
+        )}
+      </div>
+
+      {history.length > 0 && (
+        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+          <h3 className="text-sm font-semibold text-gray-300 mb-3">Status History</h3>
+          <ul className="space-y-2 max-h-48 overflow-y-auto">
+            {[...history].reverse().map((h) => (
+              <li key={h.id} className="flex justify-between text-xs text-gray-400">
+                <span>{h.status.replace(/_/g, ' ')}</span>
+                <span>{formatDateTime(h.status_updated_at) ?? '—'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

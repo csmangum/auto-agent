@@ -144,6 +144,68 @@ def test_get_parts_catalog_oem_preference():
     assert data_oem["total_parts_cost"] > data_aftermarket["total_parts_cost"]
 
 
+def test_get_parts_catalog_oem_required_categories():
+    """Test oem_required_categories forces OEM for safety parts."""
+    from claim_agent.tools.partial_loss_logic import get_parts_catalog_impl
+
+    result = get_parts_catalog_impl(
+        damage_description="Airbag deployed",
+        vehicle_make="Honda",
+        part_type_preference="aftermarket",
+        oem_required_categories=["safety"],
+    )
+    data = json.loads(result)
+    assert data["parts_count"] >= 1
+    for part in data.get("parts", []):
+        if part.get("category") == "safety":
+            assert part.get("selected_type") == "oem"
+
+
+def test_calculate_betterment_impl():
+    """Test betterment calculation when enabled."""
+    from claim_agent.tools.partial_loss_logic import calculate_betterment_impl
+
+    # Disabled by default - returns 0
+    betterment, adjusted = calculate_betterment_impl(2020, 1000.0)
+    assert betterment == 0.0
+    assert adjusted == 1000.0
+
+
+def test_calculate_betterment_when_enabled(monkeypatch):
+    """Test betterment applies when PARTIAL_LOSS_BETTERMENT_ENABLED=true."""
+    monkeypatch.setenv("PARTIAL_LOSS_BETTERMENT_ENABLED", "true")
+    monkeypatch.setenv("PARTIAL_LOSS_BETTERMENT_MIN_VEHICLE_AGE_YEARS", "1")
+    monkeypatch.setenv("PARTIAL_LOSS_BETTERMENT_DEPRECIATION_RATE_PER_YEAR", "0.01")
+
+    import claim_agent.config as _cfg
+    _cfg._settings = None
+
+    from claim_agent.tools.partial_loss_logic import calculate_betterment_impl
+
+    # 5-year-old vehicle, 1% per year = 5% depreciation on $1000 = $50
+    betterment, adjusted = calculate_betterment_impl(2020, 1000.0)
+    assert betterment > 0
+    assert adjusted < 1000.0
+    assert betterment + adjusted == 1000.0
+
+
+def test_calculate_repair_estimate_policy_parts_preference():
+    """Test policy parts_preference and oem_required_for override agent preference."""
+    from claim_agent.tools.partial_loss_logic import calculate_repair_estimate_impl
+
+    # POL-011 has parts_preference: oem
+    result = calculate_repair_estimate_impl(
+        damage_description="Front bumper",
+        vehicle_make="Honda",
+        vehicle_year=2021,
+        policy_number="POL-011",
+        part_type_preference="aftermarket",
+    )
+    data = json.loads(result)
+    assert data["part_type_preference"] == "oem"
+    assert data["parts_cost"] > 0
+
+
 def test_create_parts_order():
     """Test creating a parts order."""
     from claim_agent.tools.partial_loss_logic import create_parts_order_impl

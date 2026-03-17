@@ -11,7 +11,9 @@
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
       "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
-      "gap_insurance": true
+      "gap_insurance": true,
+      "parts_preference": "aftermarket",
+      "oem_required_for": ["safety"]
     },
     "POL-002": {
       "status": "active",
@@ -40,7 +42,9 @@
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 250,
       "comprehensive_deductible": 250,
-      "rental_reimbursement": { "daily_limit": 40, "aggregate_limit": 1200, "max_days": 30 }
+      "rental_reimbursement": { "daily_limit": 40, "aggregate_limit": 1200, "max_days": 30 },
+      "parts_preference": "aftermarket",
+      "oem_required_for": ["safety"]
     },
     "POL-006": {
       "status": "active",
@@ -82,7 +86,9 @@
       "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "parts_preference": "oem",
+      "oem_required_for": ["safety"]
     },
     "POL-012": {
       "status": "active",

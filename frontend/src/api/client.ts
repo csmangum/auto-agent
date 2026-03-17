@@ -286,6 +286,43 @@ export const postClaimSupplemental = (
 ): Promise<PostClaimSupplementalResponse> =>
   postJSON<PostClaimSupplementalResponse>(`/claims/${claimId}/supplemental`, payload);
 
+export interface RepairStatusRecord {
+  id: number;
+  claim_id: string;
+  shop_id: string;
+  authorization_id?: string;
+  status: string;
+  status_updated_at: string;
+  notes?: string;
+  paused_at?: string;
+  pause_reason?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ClaimRepairStatusResponse {
+  claim_id: string;
+  latest: RepairStatusRecord | null;
+  history: RepairStatusRecord[];
+  cycle_time_days?: number | null;
+}
+
+export const getClaimRepairStatus = (claimId: string): Promise<ClaimRepairStatusResponse> =>
+  fetchJSON<ClaimRepairStatusResponse>(`/claims/${claimId}/repair-status`);
+
+export interface PostClaimRepairStatusPayload {
+  status: string;
+  shop_id?: string;
+  authorization_id?: string;
+  notes?: string;
+}
+
+export const postClaimRepairStatus = (
+  claimId: string,
+  payload: PostClaimRepairStatusPayload
+): Promise<{ ok: boolean; repair_status_id: number }> =>
+  postJSON<{ ok: boolean; repair_status_id: number }>(`/claims/${claimId}/repair-status`, payload);
+
 export interface PostClaimFollowUpResponsePayload {
   message_id: number;
   response_content: string;

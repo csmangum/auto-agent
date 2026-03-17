@@ -290,6 +290,9 @@ class PartialLossConfig(BaseSettings):
     labor_hours_rni_per_part: float = 1.5
     labor_hours_paint_body: float = 2.0
     labor_hours_min: float = 2.0
+    betterment_enabled: bool = False
+    betterment_min_vehicle_age_years: int = 5
+    betterment_depreciation_rate_per_year: float = 0.005
 
 
 class WebhookConfig(BaseSettings):

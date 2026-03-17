@@ -8,8 +8,9 @@ import uuid
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Optional, cast
 
-from claim_agent.adapters.registry import get_parts_adapter, get_repair_shop_adapter
+from claim_agent.adapters.registry import get_parts_adapter, get_policy_adapter, get_repair_shop_adapter
 from claim_agent.compliance.state_rules import get_total_loss_threshold
+from claim_agent.config import get_settings
 from claim_agent.config.settings import (
     DEFAULT_DEDUCTIBLE,
     LABOR_HOURS_MIN,
@@ -136,11 +137,63 @@ def assign_repair_shop_impl(
     return json.dumps(assignment)
 
 
+def calculate_betterment_impl(
+    vehicle_year: int,
+    parts_cost: float,
+) -> tuple[float, float]:
+    """Calculate betterment/depreciation on replacement parts.
+
+    When replacing parts with new OEM/aftermarket, the vehicle may be "bettered"
+    (e.g. new bumper on 10-year-old car). Carriers often apply depreciation.
+
+    Returns:
+        (betterment_amount, adjusted_parts_cost)
+    """
+    cfg = get_settings().partial_loss
+    if not cfg.betterment_enabled or parts_cost <= 0:
+        return (0.0, parts_cost)
+
+    from datetime import datetime
+
+    current_year = datetime.now().year
+    vehicle_age_years = max(0, current_year - vehicle_year)
+    if vehicle_age_years < cfg.betterment_min_vehicle_age_years:
+        return (0.0, parts_cost)
+
+    rate = cfg.betterment_depreciation_rate_per_year
+    # Apply depreciation per year of vehicle age (e.g. 0.5% per year)
+    betterment_multiplier = min(1.0, vehicle_age_years * rate)
+    betterment_amount = round(parts_cost * betterment_multiplier, 2)
+    adjusted_parts_cost = round(parts_cost - betterment_amount, 2)
+    return (betterment_amount, max(0.0, adjusted_parts_cost))
+
+
+def _get_policy_parts_preference(
+    policy_number: str,
+    *,
+    ctx: ClaimContext | None = None,
+) -> tuple[str, list[str]]:
+    """Get parts_preference and oem_required_for from policy. Returns (preference, oem_categories)."""
+    adapter = ctx.adapters.policy if ctx else get_policy_adapter()
+    policy = adapter.get_policy(policy_number) if policy_number else None
+    if not policy:
+        return ("carrier_default", [])
+    pref = policy.get("parts_preference")
+    if pref not in ("oem", "aftermarket", "refurbished", "lkq_allowed", "carrier_default"):
+        pref = "carrier_default"
+    oem_cats = policy.get("oem_required_for")
+    if not isinstance(oem_cats, list):
+        oem_cats = []
+    oem_cats = [str(c).lower().strip() for c in oem_cats if c]
+    return (pref, oem_cats)
+
+
 def get_parts_catalog_impl(
     damage_description: str,
     vehicle_make: str,
     part_type_preference: str = "aftermarket",
     *,
+    oem_required_categories: list[str] | None = None,
     ctx: ClaimContext | None = None,
 ) -> str:
     """Get recommended parts from catalog based on damage description."""
@@ -199,10 +252,16 @@ def get_parts_catalog_impl(
                     not compatible_makes or vehicle_make_norm in compatible_norm
                 )
 
-                selected_type = part_type_preference
-                if part_type_preference == "oem":
+                part_category = (part.get("category") or "").lower().strip()
+                force_oem = oem_required_categories and part_category in [
+                    c.lower() for c in oem_required_categories
+                ]
+                effective_preference = "oem" if force_oem else part_type_preference
+
+                selected_type = effective_preference
+                if effective_preference == "oem":
                     price = part.get("oem_price")
-                elif part_type_preference == "refurbished":
+                elif effective_preference == "refurbished":
                     price = part.get("refurbished_price") or part.get("aftermarket_price")
                 else:
                     price = part.get("aftermarket_price") or part.get("oem_price")
@@ -334,13 +393,30 @@ def calculate_repair_estimate_impl(
 
     Uses state-specific total loss threshold when loss_state is provided
     (California: 75%, Florida/Texas: 80%, etc.).
+    Policy parts_preference and oem_required_for override part_type_preference when set.
     """
     shop_adapter = ctx.adapters.repair_shop if ctx else get_repair_shop_adapter()
 
-    parts_result = get_parts_catalog_impl(damage_description, vehicle_make, part_type_preference, ctx=ctx)
+    policy_pref, oem_cats = _get_policy_parts_preference(policy_number, ctx=ctx)
+    effective_preference = policy_pref if policy_pref != "carrier_default" else part_type_preference
+
+    parts_result = get_parts_catalog_impl(
+        damage_description,
+        vehicle_make,
+        effective_preference,
+        oem_required_categories=oem_cats or None,
+        ctx=ctx,
+    )
     parts_data = json.loads(parts_result)
     parts_cost = parts_data.get("total_parts_cost", 0.0)
     parts_list = parts_data.get("parts", [])
+
+    betterment_amount, adjusted_parts_cost = calculate_betterment_impl(
+        vehicle_year, parts_cost
+    )
+    parts_cost_before_betterment = parts_cost
+    if betterment_amount > 0:
+        parts_cost = adjusted_parts_cost
 
     labor_rate = _get_shop_labor_rate(shop_id, 75.0, ctx=ctx)
 
@@ -408,8 +484,10 @@ def calculate_repair_estimate_impl(
         "repair_to_value_ratio": round(total_estimate / vehicle_value, 2) if vehicle_value > 0 else 0,
         "is_total_loss": is_total_loss,
         "total_loss_threshold": threshold,
-        "part_type_preference": part_type_preference,
+        "part_type_preference": effective_preference,
         "shop_id": shop_id,
+        "betterment_amount": betterment_amount,
+        "parts_cost_before_betterment": parts_cost_before_betterment if betterment_amount > 0 else None,
     }
 
     return json.dumps(estimate)
@@ -454,6 +532,7 @@ def generate_repair_authorization_impl(
             "Supplemental authorization required for additional costs over 10%",
             "Original damaged parts must be retained for inspection if requested",
         ],
+        "parts_authorization": repair_estimate.get("part_type_preference", "aftermarket"),
         "shop_webhook_url": shop.get("webhook_url"),
     }
 

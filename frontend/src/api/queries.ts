@@ -11,7 +11,9 @@ import {
   getClaimReserveHistory,
   getClaimReserveAdequacy,
   getClaimWorkflows,
+  getClaimRepairStatus,
   patchClaimReserve,
+  postClaimRepairStatus,
   getDocs,
   getDoc,
   getSkills,
@@ -24,6 +26,7 @@ import {
   getAllTasks,
   getTaskStats,
 } from './client';
+import type { PostClaimRepairStatusPayload } from './client';
 import type { GetClaimsParams, PatchClaimReserveBody } from './client';
 
 export const queryKeys = {
@@ -34,6 +37,7 @@ export const queryKeys = {
   claimReserveHistory: (id: string) => ['claims', id, 'reserve-history'] as const,
   claimReserveAdequacy: (id: string) => ['claims', id, 'reserve-adequacy'] as const,
   claimWorkflows: (id: string) => ['claims', id, 'workflows'] as const,
+  claimRepairStatus: (id: string) => ['claims', id, 'repair-status'] as const,
   docs: ['docs'] as const,
   doc: (slug: string) => ['docs', slug] as const,
   skills: ['skills'] as const,
@@ -82,6 +86,27 @@ export function useClaimWorkflows(id: string | undefined) {
     queryKey: queryKeys.claimWorkflows(id ?? ''),
     queryFn: () => getClaimWorkflows(id!),
     enabled: !!id,
+  });
+}
+
+export function useClaimRepairStatus(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.claimRepairStatus(id ?? ''),
+    queryFn: () => getClaimRepairStatus(id!),
+    enabled: !!id,
+  });
+}
+
+export function usePostClaimRepairStatus(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PostClaimRepairStatusPayload) =>
+      postClaimRepairStatus(claimId!, payload),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimRepairStatus(claimId) });
+      }
+    },
   });
 }
 

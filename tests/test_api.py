@@ -1,5 +1,7 @@
 """Tests for the FastAPI backend API endpoints."""
 
+import hashlib
+import hmac
 import json
 import time
 import pytest
@@ -7,6 +9,13 @@ from fastapi.testclient import TestClient
 
 from claim_agent.config import reload_settings
 from claim_agent.db.database import get_connection
+
+
+def _webhook_repair_status_headers(payload: dict, secret: str = "test-secret") -> dict:
+    """Build headers with valid HMAC signature for repair-status webhook."""
+    body = json.dumps(payload).encode("utf-8")
+    sig = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return {"X-Webhook-Signature": f"sha256={sig}"}
 
 
 @pytest.fixture(autouse=True)
@@ -631,6 +640,142 @@ class TestSupplemental:
         assert data["combined_insurance_pays"] == 2050.0
         assert "workflow_output" in data
         assert "summary" in data
+
+
+class TestRepairStatus:
+    """Tests for GET/POST /claims/{claim_id}/repair-status and POST /webhooks/repair-status."""
+
+    def test_get_repair_status_404(self, client):
+        resp = client.get("/api/claims/CLM-NOTEXIST/repair-status")
+        assert resp.status_code == 404
+
+    def test_get_repair_status_success(self, client):
+        resp = client.get("/api/claims/CLM-TEST005/repair-status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST005"
+        assert data["latest"] is None
+        assert data["history"] == []
+
+    def test_post_repair_status_wrong_claim_type_returns_400(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST001/repair-status",
+            json={"status": "received"},
+        )
+        assert resp.status_code == 400
+        assert "partial_loss" in resp.json()["detail"].lower()
+
+    def test_post_repair_status_invalid_status_returns_400(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST005/repair-status",
+            json={"status": "invalid_stage"},
+        )
+        assert resp.status_code == 400
+
+    def test_post_repair_status_success(self, client):
+        resp = client.post(
+            "/api/claims/CLM-TEST005/repair-status",
+            json={"status": "received", "notes": "Vehicle dropped off"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["repair_status_id"] > 0
+
+        resp2 = client.get("/api/claims/CLM-TEST005/repair-status")
+        assert resp2.status_code == 200
+        d2 = resp2.json()
+        assert d2["latest"] is not None
+        assert d2["latest"]["status"] == "received"
+        assert len(d2["history"]) >= 1
+
+    def test_webhook_repair_status_success(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", "test-secret")
+        reload_settings()
+        payload = {
+            "claim_id": "CLM-TEST005",
+            "shop_id": "SHOP-001",
+            "authorization_id": "RA-ABC12345",
+            "status": "disassembly",
+        }
+        body = json.dumps(payload).encode("utf-8")
+        headers = _webhook_repair_status_headers(payload)
+        resp = client.post(
+            "/api/webhooks/repair-status",
+            content=body,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["repair_status_id"] > 0
+
+    def test_webhook_repair_status_404(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", "test-secret")
+        reload_settings()
+        payload = {"claim_id": "CLM-NOTEXIST", "shop_id": "SHOP-001", "status": "received"}
+        body = json.dumps(payload).encode("utf-8")
+        headers = _webhook_repair_status_headers(payload)
+        resp = client.post(
+            "/api/webhooks/repair-status",
+            content=body,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 404
+
+    def test_get_repair_status_includes_cycle_time_when_ready(self, client):
+        """Cycle time computed when both received and ready in history."""
+        client.post(
+            "/api/claims/CLM-TEST005/repair-status",
+            json={"status": "received"},
+        )
+        client.post(
+            "/api/claims/CLM-TEST005/repair-status",
+            json={"status": "ready"},
+        )
+        resp = client.get("/api/claims/CLM-TEST005/repair-status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "cycle_time_days" in data
+        assert data["cycle_time_days"] is not None
+        assert data["cycle_time_days"] >= 0
+
+    def test_webhook_repair_status_wrong_claim_type_returns_400(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", "test-secret")
+        reload_settings()
+        payload = {"claim_id": "CLM-TEST001", "shop_id": "SHOP-001", "status": "received"}
+        body = json.dumps(payload).encode("utf-8")
+        headers = _webhook_repair_status_headers(payload)
+        resp = client.post(
+            "/api/webhooks/repair-status",
+            content=body,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+    def test_webhook_repair_status_401_when_secret_unset(self, client):
+        """Webhook rejects when WEBHOOK_SECRET is not set."""
+        payload = {"claim_id": "CLM-TEST005", "shop_id": "SHOP-001", "status": "received"}
+        resp = client.post("/api/webhooks/repair-status", json=payload)
+        assert resp.status_code == 401
+        assert "signature" in resp.json().get("detail", "").lower()
+
+    def test_webhook_repair_status_401_when_signature_missing(self, client, monkeypatch):
+        """Webhook rejects when secret is set but X-Webhook-Signature header is missing."""
+        monkeypatch.setenv("WEBHOOK_SECRET", "test-secret")
+        reload_settings()
+        payload = {"claim_id": "CLM-TEST005", "shop_id": "SHOP-001", "status": "received"}
+        resp = client.post("/api/webhooks/repair-status", json=payload)
+        assert resp.status_code == 401
+
+    def test_webhook_repair_status_401_when_signature_invalid(self, client, monkeypatch):
+        """Webhook rejects when secret is set but signature does not match."""
+        monkeypatch.setenv("WEBHOOK_SECRET", "test-secret")
+        reload_settings()
+        payload = {"claim_id": "CLM-TEST005", "shop_id": "SHOP-001", "status": "received"}
+        headers = {"X-Webhook-Signature": "sha256=" + "0" * 64}
+        resp = client.post("/api/webhooks/repair-status", json=payload, headers=headers)
+        assert resp.status_code == 401
 
 
 class TestDenialCoverage:
