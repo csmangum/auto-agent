@@ -166,7 +166,7 @@ def test_calculate_betterment_impl():
     from claim_agent.tools.partial_loss_logic import calculate_betterment_impl
 
     # Disabled by default - returns 0
-    betterment, adjusted = calculate_betterment_impl(2020, 1000.0, "aftermarket")
+    betterment, adjusted = calculate_betterment_impl(2020, 1000.0)
     assert betterment == 0.0
     assert adjusted == 1000.0
 
@@ -183,7 +183,7 @@ def test_calculate_betterment_when_enabled(monkeypatch):
     from claim_agent.tools.partial_loss_logic import calculate_betterment_impl
 
     # 5-year-old vehicle, 1% per year = 5% depreciation on $1000 = $50
-    betterment, adjusted = calculate_betterment_impl(2020, 1000.0, "aftermarket")
+    betterment, adjusted = calculate_betterment_impl(2020, 1000.0)
     assert betterment > 0
     assert adjusted < 1000.0
     assert betterment + adjusted == 1000.0
