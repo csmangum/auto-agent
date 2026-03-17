@@ -87,6 +87,10 @@ class ClaimInput(BaseModel):
         default=None,
         description="Optional claim parties (claimant, policyholder, witness, attorney, provider, lienholder).",
     )
+    incident_id: Optional[str] = Field(
+        default=None,
+        description="Optional incident ID when claim is part of a multi-vehicle incident.",
+    )
 
 
 class LiabilityDeterminationOutput(BaseModel):

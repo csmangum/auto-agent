@@ -33,15 +33,23 @@ from claim_agent.db.constants import (
     VALID_REPAIR_STATUSES,
 )
 from claim_agent.db.database import get_connection, get_db_path
+from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.models.incident import (
+    BIAllocationInput,
+    ClaimLinkInput,
+    IncidentInput,
+    IncidentOutput,
+)
 from claim_agent.models.document import DocumentRequestStatus, DocumentType, ReviewStatus
 from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
+from claim_agent.services.bi_allocation import allocate_bi_limits
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.rag.constants import normalize_state
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
@@ -1271,6 +1279,104 @@ async def create_claim(
         ctx=ctx,
     )
     return result
+
+
+@router.post("/incidents", response_model=IncidentOutput)
+async def create_incident(
+    incident_input: IncidentInput = Body(..., description="Multi-vehicle incident data"),
+    async_mode: bool = Query(False, alias="async", description="Process each claim in background"),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Create an incident with multiple vehicle claims (multi-vehicle accident).
+
+    One incident can involve multiple vehicles; each vehicle becomes a separate claim
+    linked to the incident. Claims are automatically linked as same_incident.
+    """
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    incident_repo = IncidentRepository(db_path=get_db_path())
+    incident_id, claim_ids = incident_repo.create_incident(incident_input, actor_id=actor_id)
+
+    if async_mode and claim_ids:
+        for claim_id in claim_ids:
+            claim = ctx.repo.get_claim(claim_id)
+            if claim:
+                claim_data = claim_data_from_row(claim)
+                _ = await _try_run_workflow_background(
+                    claim_id, claim_data, actor_id, ctx=ctx,
+                )
+
+    return IncidentOutput(
+        incident_id=incident_id,
+        claim_ids=claim_ids,
+        message=f"Incident {incident_id} created with {len(claim_ids)} claim(s)",
+    )
+
+
+@router.get("/incidents/{incident_id}")
+async def get_incident(
+    incident_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Get incident details and linked claims."""
+    incident_repo = IncidentRepository(db_path=get_db_path())
+    incident = incident_repo.get_incident(incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    claims = incident_repo.get_claims_by_incident(incident_id)
+    return {"incident": incident, "claims": claims}
+
+
+@router.post("/claim-links")
+async def create_claim_link(
+    link_input: ClaimLinkInput = Body(..., description="Link between two claims"),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Link two claims for cross-carrier or same-incident coordination.
+
+    Use for: opposing_carrier (your insured hit their insured), subrogation,
+    cross_carrier, or same_incident when linking claims from different submissions.
+    """
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    for cid in (link_input.claim_id_a, link_input.claim_id_b):
+        if claim_repo.get_claim(cid) is None:
+            raise HTTPException(status_code=404, detail=f"Claim not found: {cid}")
+    incident_repo = IncidentRepository(db_path=get_db_path())
+    link_id = incident_repo.create_claim_link(
+        link_input.claim_id_a,
+        link_input.claim_id_b,
+        link_input.link_type,
+        opposing_carrier=link_input.opposing_carrier,
+        notes=link_input.notes,
+    )
+    return {"link_id": link_id, "message": "Claim link created"}
+
+
+@router.get("/claims/{claim_id}/related")
+async def get_related_claims(
+    claim_id: str,
+    link_type: Optional[str] = Query(None, description="Filter by link type"),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Get claims related to this claim (same incident, opposing carrier, etc.)."""
+    incident_repo = IncidentRepository(db_path=get_db_path())
+    related = incident_repo.get_related_claims(claim_id, link_type=link_type)
+    return {"claim_id": claim_id, "related_claim_ids": related}
+
+
+@router.post("/bi-allocation")
+async def allocate_bi(
+    allocation_input: BIAllocationInput = Body(..., description="BI limit allocation request"),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Allocate BI per-accident limit across multiple claimants when demands exceed limit.
+
+    Use when multiple BI claimants exceed the policy's per_accident limit.
+    Methods: proportional (default), severity_weighted, equal.
+    """
+    result = allocate_bi_limits(allocation_input)
+    return result.model_dump()
 
 
 @router.post("/claims/process")

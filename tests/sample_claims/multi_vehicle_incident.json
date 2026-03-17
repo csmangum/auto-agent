@@ -1,0 +1,25 @@
+{
+  "incident_date": "2025-03-15",
+  "incident_description": "Two-car collision at intersection. Vehicle 1 ran red light and struck Vehicle 2.",
+  "loss_state": "CA",
+  "vehicles": [
+    {
+      "policy_number": "POL-001",
+      "vin": "1HGBH41JXMN109186",
+      "vehicle_year": 2020,
+      "vehicle_make": "Honda",
+      "vehicle_model": "Accord",
+      "damage_description": "Front bumper and hood damage",
+      "estimated_damage": 4500
+    },
+    {
+      "policy_number": "POL-002",
+      "vin": "2HGFG3B54CH501234",
+      "vehicle_year": 2022,
+      "vehicle_make": "Toyota",
+      "vehicle_model": "Camry",
+      "damage_description": "Driver side door and quarter panel damage",
+      "estimated_damage": 6200
+    }
+  ]
+}
