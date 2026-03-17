@@ -2,9 +2,13 @@
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
-from claim_agent.db.database import get_connection
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
+from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.audit_events import ACTOR_SYSTEM
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
@@ -44,16 +48,16 @@ class IncidentRepository:
 
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO incidents (id, incident_date, incident_description, loss_state)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    incident_id,
-                    incident_date_str,
-                    incident_input.incident_description,
-                    loss_state,
-                ),
+                VALUES (:id, :incident_date, :description, :loss_state)
+                """),
+                {
+                    "id": incident_id,
+                    "incident_date": incident_date_str,
+                    "description": incident_input.incident_description,
+                    "loss_state": loss_state,
+                },
             )
 
         claim_ids: list[str] = []
@@ -91,12 +95,15 @@ class IncidentRepository:
         try:
             with get_connection(self._db_path) as conn:
                 for claim_id in claim_ids:
-                    conn.execute("DELETE FROM claim_links WHERE claim_id_a = ? OR claim_id_b = ?", (claim_id, claim_id))
                     conn.execute(
-                        "UPDATE claims SET status = 'failed', archived_at = datetime('now'), incident_id = NULL WHERE id = ?",
-                        (claim_id,),
+                        text("DELETE FROM claim_links WHERE claim_id_a = :cid OR claim_id_b = :cid"),
+                        {"cid": claim_id},
                     )
-                conn.execute("DELETE FROM incidents WHERE id = ?", (incident_id,))
+                    conn.execute(
+                        text("UPDATE claims SET status = 'failed', archived_at = :now, incident_id = NULL WHERE id = :cid"),
+                        {"cid": claim_id, "now": datetime.now(timezone.utc).isoformat()},
+                    )
+                conn.execute(text("DELETE FROM incidents WHERE id = :id"), {"id": incident_id})
         except Exception:
             logger.exception(
                 "Failed to fully roll back incident %s (claims: %s); database may be inconsistent",
@@ -133,18 +140,19 @@ class IncidentRepository:
         """Fetch incident by ID."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT * FROM incidents WHERE id = ?", (incident_id,)
+                text("SELECT * FROM incidents WHERE id = :id"),
+                {"id": incident_id},
             ).fetchone()
-        return dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_claims_by_incident(self, incident_id: str) -> list[dict[str, Any]]:
         """Fetch all claims linked to an incident."""
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                "SELECT * FROM claims WHERE incident_id = ? ORDER BY created_at ASC",
-                (incident_id,),
+                text("SELECT * FROM claims WHERE incident_id = :id ORDER BY created_at ASC"),
+                {"id": incident_id},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def create_claim_link(
         self,
@@ -173,18 +181,20 @@ class IncidentRepository:
         Returns the new link's ID, or None if the link already exists.
         """
         a, b = (claim_id_a, claim_id_b) if claim_id_a <= claim_id_b else (claim_id_b, claim_id_a)
-        with get_connection(self._db_path) as conn:
-            cursor = conn.execute(
-                """
-                INSERT OR IGNORE INTO claim_links
-                    (claim_id_a, claim_id_b, link_type, opposing_carrier, notes)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (a, b, link_type, opposing_carrier, notes),
-            )
-            if cursor.lastrowid:
-                return int(cursor.lastrowid)
-            # Link already existed; return None to signal duplicate
+        try:
+            with get_connection(self._db_path) as conn:
+                result = conn.execute(
+                    text("""
+                    INSERT INTO claim_links
+                        (claim_id_a, claim_id_b, link_type, opposing_carrier, notes)
+                    VALUES (:a, :b, :link_type, :opposing_carrier, :notes)
+                    RETURNING id
+                    """),
+                    {"a": a, "b": b, "link_type": link_type, "opposing_carrier": opposing_carrier, "notes": notes},
+                )
+                row = result.fetchone()
+                return int(row[0]) if row else None
+        except IntegrityError:
             return None
 
     def get_claim_links(
@@ -197,23 +207,23 @@ class IncidentRepository:
         with get_connection(self._db_path) as conn:
             if link_type:
                 rows = conn.execute(
-                    """
+                    text("""
                     SELECT * FROM claim_links
-                    WHERE (claim_id_a = ? OR claim_id_b = ?) AND link_type = ?
+                    WHERE (claim_id_a = :cid OR claim_id_b = :cid) AND link_type = :link_type
                     ORDER BY created_at DESC
-                    """,
-                    (claim_id, claim_id, link_type),
+                    """),
+                    {"cid": claim_id, "link_type": link_type},
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    """
+                    text("""
                     SELECT * FROM claim_links
-                    WHERE claim_id_a = ? OR claim_id_b = ?
+                    WHERE claim_id_a = :cid OR claim_id_b = :cid
                     ORDER BY created_at DESC
-                    """,
-                    (claim_id, claim_id),
+                    """),
+                    {"cid": claim_id},
                 ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_related_claims(
         self,

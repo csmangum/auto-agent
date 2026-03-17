@@ -18,11 +18,10 @@ target_metadata = None
 
 
 def get_url() -> str:
-    """Database URL from settings."""
-    from claim_agent.config import get_settings
+    """Database URL from settings. Uses DATABASE_URL if set, else sqlite:///path."""
+    from claim_agent.db.database import _get_database_url
 
-    path = get_settings().paths.claims_db_path
-    return f"sqlite:///{path}"
+    return _get_database_url()
 
 
 def run_migrations_offline() -> None:

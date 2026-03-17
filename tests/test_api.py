@@ -6,6 +6,7 @@ import json
 import time
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from claim_agent.config import reload_settings
 from claim_agent.db.database import get_connection
@@ -541,7 +542,10 @@ class TestReviewQueue:
     def test_siu_investigate_ineligible_status_returns_400(self, client):
         """SIU investigate returns 400 when claim status is not eligible."""
         with get_connection() as conn:
-            conn.execute("UPDATE claims SET status = ? WHERE id = ?", ("open", "CLM-TEST002"))
+            conn.execute(
+                text("UPDATE claims SET status = :status WHERE id = :id"),
+                {"status": "open", "id": "CLM-TEST002"},
+            )
         resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
         assert resp.status_code == 400
         detail = resp.json()["detail"].lower()
@@ -1895,7 +1899,7 @@ class TestProcessClaimEndpoint:
         self._mock_workflow(monkeypatch)
 
         with get_connection() as conn:
-            count_before = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
+            count_before = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
 
         resp = client.post(
             "/api/claims/process",
@@ -1905,7 +1909,7 @@ class TestProcessClaimEndpoint:
         assert resp.status_code == 200
 
         with get_connection() as conn:
-            count_after = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
+            count_after = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
             # Exactly one new claim (no duplicate creation)
             assert count_after == count_before + 1
 

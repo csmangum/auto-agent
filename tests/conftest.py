@@ -33,6 +33,8 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 # Point to project data for mock_db
 os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
 
+from sqlalchemy import text
+
 from claim_agent.db.database import get_connection, init_db
 
 
@@ -41,90 +43,127 @@ def _seed_test_data(db_path: str) -> None:
     with get_connection(db_path) as conn:
         # Claims
         conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status, payout_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST001", "POL-001", "1HGBH41JXMN109186", 2021, "Honda", "Accord",
-             "2025-01-15", "Rear-ended at stoplight", "Rear bumper damage", 2500.0,
-             "new", "open", 2500.0),
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            vehicle_model, incident_date, incident_description, damage_description,
+            estimated_damage, claim_type, status, payout_amount)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :payout_amount)
+            """),
+            {"id": "CLM-TEST001", "policy_number": "POL-001", "vin": "1HGBH41JXMN109186",
+             "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord",
+             "incident_date": "2025-01-15", "incident_description": "Rear-ended at stoplight",
+             "damage_description": "Rear bumper damage", "estimated_damage": 2500.0,
+             "claim_type": "new", "status": "open", "payout_amount": 2500.0},
         )
         conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST002", "POL-002", "5YJSA1E26HF123456", 2020, "Tesla", "Model 3",
-             "2025-01-20", "Flash flood", "Vehicle submerged", 45000.0,
-             "total_loss", "closed"),
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            vehicle_model, incident_date, incident_description, damage_description,
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {"id": "CLM-TEST002", "policy_number": "POL-002", "vin": "5YJSA1E26HF123456",
+             "vehicle_year": 2020, "vehicle_make": "Tesla", "vehicle_model": "Model 3",
+             "incident_date": "2025-01-20", "incident_description": "Flash flood",
+             "damage_description": "Vehicle submerged", "estimated_damage": 45000.0,
+             "claim_type": "total_loss", "status": "closed"},
         )
         conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST003", "POL-003", "3VWDX7AJ5DM999999", 2019, "Volkswagen", "Jetta",
-             "2025-01-22", "Staged accident", "Front bumper destroyed", 35000.0,
-             "fraud", "fraud_suspected"),
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            vehicle_model, incident_date, incident_description, damage_description,
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {"id": "CLM-TEST003", "policy_number": "POL-003", "vin": "3VWDX7AJ5DM999999",
+             "vehicle_year": 2019, "vehicle_make": "Volkswagen", "vehicle_model": "Jetta",
+             "incident_date": "2025-01-22", "incident_description": "Staged accident",
+             "damage_description": "Front bumper destroyed", "estimated_damage": 35000.0,
+             "claim_type": "fraud", "status": "fraud_suspected"},
         )
         conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status, priority, due_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST004", "POL-004", "2HGFG3B54CH123456", 2022, "Toyota", "Camry",
-             "2025-01-25", "Low confidence routing", "Minor scratch", 500.0,
-             "new", "needs_review", "high", "2025-01-26T12:00:00Z"),
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            vehicle_model, incident_date, incident_description, damage_description,
+            estimated_damage, claim_type, status, priority, due_at)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :priority, :due_at)
+            """),
+            {"id": "CLM-TEST004", "policy_number": "POL-004", "vin": "2HGFG3B54CH123456",
+             "vehicle_year": 2022, "vehicle_make": "Toyota", "vehicle_model": "Camry",
+             "incident_date": "2025-01-25", "incident_description": "Low confidence routing",
+             "damage_description": "Minor scratch", "estimated_damage": 500.0,
+             "claim_type": "new", "status": "needs_review", "priority": "high",
+             "due_at": "2025-01-26T12:00:00Z"},
         )
         conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-TEST005", "POL-005", "2T1BURHE5JC073987", 2022, "Toyota", "Corolla",
-             "2025-01-25", "Backed into pole", "Rear bumper cracked, taillight broken", 1800.0,
-             "partial_loss", "processing"),
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            vehicle_model, incident_date, incident_description, damage_description,
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {"id": "CLM-TEST005", "policy_number": "POL-005", "vin": "2T1BURHE5JC073987",
+             "vehicle_year": 2022, "vehicle_make": "Toyota", "vehicle_model": "Corolla",
+             "incident_date": "2025-01-25", "incident_description": "Backed into pole",
+             "damage_description": "Rear bumper cracked, taillight broken", "estimated_damage": 1800.0,
+             "claim_type": "partial_loss", "status": "processing"},
         )
         conn.execute(
-            "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, "
-            "vehicle_model, incident_date, incident_description, damage_description, "
-            "estimated_damage, claim_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("CLM-ARCHIVED", "POL-006", "1HGBH41JXMN109999", 2018, "Honda", "Civic",
-             "2024-06-10", "Old claim", "Minor dent", 800.0,
-             "partial_loss", "archived"),
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            vehicle_model, incident_date, incident_description, damage_description,
+            estimated_damage, claim_type, status)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status)
+            """),
+            {"id": "CLM-ARCHIVED", "policy_number": "POL-006", "vin": "1HGBH41JXMN109999",
+             "vehicle_year": 2018, "vehicle_make": "Honda", "vehicle_model": "Civic",
+             "incident_date": "2024-06-10", "incident_description": "Old claim",
+             "damage_description": "Minor dent", "estimated_damage": 800.0,
+             "claim_type": "partial_loss", "status": "archived"},
         )
 
-        # Audit log entries (with actor_id, before_state, after_state for audit trail)
+        # Audit log entries
         conn.execute(
-            "INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                "CLM-TEST001",
-                "created",
-                "pending",
-                "Claim record created",
-                "workflow",
-                '{"status": "pending", "claim_type": null, "payout_amount": null}',
-            ),
+            text("""
+            INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
+            VALUES (:claim_id, :action, :new_status, :details, :actor_id, :after_state)
+            """),
+            {"claim_id": "CLM-TEST001", "action": "created", "new_status": "pending",
+             "details": "Claim record created", "actor_id": "workflow",
+             "after_state": '{"status": "pending", "claim_type": null, "payout_amount": null}'},
         )
         conn.execute(
-            "INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                "CLM-TEST001",
-                "status_change",
-                "pending",
-                "open",
-                "Processed successfully",
-                "workflow",
-                '{"status": "pending", "claim_type": null, "payout_amount": null}',
-                '{"status": "open", "claim_type": "new", "payout_amount": null}',
-            ),
+            text("""
+            INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+            VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+            """),
+            {"claim_id": "CLM-TEST001", "action": "status_change", "old_status": "pending",
+             "new_status": "open", "details": "Processed successfully", "actor_id": "workflow",
+             "before_state": '{"status": "pending", "claim_type": null, "payout_amount": null}',
+             "after_state": '{"status": "open", "claim_type": "new", "payout_amount": null}'},
         )
 
         # Workflow run
         conn.execute(
-            "INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output) "
-            "VALUES (?, ?, ?, ?)",
-            ("CLM-TEST001", "new", "new\nFirst-time claim", "Claim assigned and opened"),
+            text("""
+            INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
+            VALUES (:claim_id, :claim_type, :router_output, :workflow_output)
+            """),
+            {"claim_id": "CLM-TEST001", "claim_type": "new", "router_output": "new\nFirst-time claim",
+             "workflow_output": "Claim assigned and opened"},
         )
-        # Partial loss workflow run (for supplemental tests)
         partial_loss_output = json.dumps({
             "total_estimate": 2100.0,
             "parts_cost": 550.0,
@@ -135,9 +174,12 @@ def _seed_test_data(db_path: str) -> None:
             "shop_name": "Quality Auto Repair",
         })
         conn.execute(
-            "INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output) "
-            "VALUES (?, ?, ?, ?)",
-            ("CLM-TEST005", "partial_loss", "partial_loss", partial_loss_output),
+            text("""
+            INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
+            VALUES (:claim_id, :claim_type, :router_output, :workflow_output)
+            """),
+            {"claim_id": "CLM-TEST005", "claim_type": "partial_loss", "router_output": "partial_loss",
+             "workflow_output": partial_loss_output},
         )
 
 
@@ -146,21 +188,32 @@ def _reset_settings():
     """Reset the settings singleton so each test gets fresh config from env."""
     import claim_agent.config as _cfg
     import claim_agent.api.deps as _deps
+    from claim_agent.db.database import reset_engine_cache
+
     _cfg._settings = None
     _deps._auth_warning_logged = False
+    # Unit tests use SQLite; unset DATABASE_URL so we don't connect to PostgreSQL
+    _prev_db_url = os.environ.pop("DATABASE_URL", None)
+    reset_engine_cache()
     yield
     _cfg._settings = None
     _deps._auth_warning_logged = False
+    reset_engine_cache()
+    if _prev_db_url is not None:
+        os.environ["DATABASE_URL"] = _prev_db_url
 
 
 @pytest.fixture(autouse=True)
 def temp_db():
     """Use a temporary SQLite DB for tests."""
+    from claim_agent.config import reload_settings
+
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     init_db(path)
     prev = os.environ.get("CLAIMS_DB_PATH")
     os.environ["CLAIMS_DB_PATH"] = path
+    reload_settings()  # Ensure settings pick up CLAIMS_DB_PATH for API routes
     try:
         yield path
     finally:

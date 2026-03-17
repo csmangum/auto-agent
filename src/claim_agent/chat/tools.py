@@ -22,7 +22,9 @@ from claim_agent.config.settings import (
     get_fraud_config,
 )
 from claim_agent.data.loader import load_mock_db
-from claim_agent.db.database import get_connection, get_db_path
+from sqlalchemy import text
+
+from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.repository import ClaimRepository
 
 logger = logging.getLogger(__name__)
@@ -64,28 +66,31 @@ def search_claims(
 ) -> dict[str, Any]:
     """Search claims with optional filters.  Returns a list and total count."""
     conditions: list[str] = []
-    params: list[Any] = []
+    params: dict[str, Any] = {"limit": min(max(limit, 1), 50)}
     if status:
-        conditions.append("status = ?")
-        params.append(status)
+        conditions.append("status = :status")
+        params["status"] = status
     if claim_type:
-        conditions.append("claim_type = ?")
-        params.append(claim_type)
+        conditions.append("claim_type = :claim_type")
+        params["claim_type"] = claim_type
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    effective_limit = min(max(limit, 1), 50)
     path = db_path or get_db_path()
     with get_connection(path) as conn:
-        total = conn.execute(f"SELECT COUNT(*) as cnt FROM claims {where}", params).fetchone()["cnt"]
+        total = conn.execute(
+            text(f"SELECT COUNT(*) as cnt FROM claims {where}"), params
+        ).fetchone()[0]
         rows = conn.execute(
-            f"SELECT id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model, "
-            f"claim_type, status, estimated_damage, payout_amount, created_at "
-            f"FROM claims {where} ORDER BY created_at DESC LIMIT ?",
-            params + [effective_limit],
+            text(
+                f"SELECT id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model, "
+                f"claim_type, status, estimated_damage, payout_amount, created_at "
+                f"FROM claims {where} ORDER BY created_at DESC LIMIT :limit"
+            ),
+            params,
         ).fetchall()
     return {
         "total": total,
         "showing": len(rows),
-        "claims": [dict(r) for r in rows],
+        "claims": [row_to_dict(r) for r in rows],
     }
 
 
@@ -113,19 +118,23 @@ def get_claims_stats(*, db_path: str | None = None) -> dict[str, Any]:
     """Get aggregate claims statistics."""
     path = db_path or get_db_path()
     with get_connection(path) as conn:
-        total = conn.execute("SELECT COUNT(*) as cnt FROM claims").fetchone()["cnt"]
+        total = conn.execute(text("SELECT COUNT(*) as cnt FROM claims")).fetchone()[0]
         by_status = {
-            r["status"]: r["cnt"]
+            (d := row_to_dict(r))["status"]: d["cnt"]
             for r in conn.execute(
-                "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt "
-                "FROM claims GROUP BY status ORDER BY cnt DESC"
+                text(
+                    "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt "
+                    "FROM claims GROUP BY status ORDER BY cnt DESC"
+                )
             ).fetchall()
         }
         by_type = {
-            r["claim_type"]: r["cnt"]
+            (d := row_to_dict(r))["claim_type"]: d["cnt"]
             for r in conn.execute(
-                "SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt "
-                "FROM claims GROUP BY claim_type ORDER BY cnt DESC"
+                text(
+                    "SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt "
+                    "FROM claims GROUP BY claim_type ORDER BY cnt DESC"
+                )
             ).fetchall()
         }
     return {"total_claims": total, "by_status": by_status, "by_type": by_type}

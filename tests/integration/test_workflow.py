@@ -295,19 +295,21 @@ class TestWorkflowWithMockedLLM:
     ):
         """Test that workflow failures are properly recorded."""
         from claim_agent.crews.main_crew import run_claim_workflow
+        from sqlalchemy import text
+
         from claim_agent.db.database import get_connection
-        
+
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 mock_llm.return_value = mock_llm_instance
                 mock_router.return_value.kickoff.side_effect = RuntimeError("LLM unavailable")
-                
+
                 with pytest.raises(RuntimeError, match="LLM unavailable"):
                     run_claim_workflow(sample_new_claim)
-        
+
         # Verify claim was marked as failed
         with get_connection(integration_db) as conn:
-            row = conn.execute("SELECT id, status FROM claims").fetchone()
+            row = conn.execute(text("SELECT id, status FROM claims")).fetchone()
         
         assert row is not None
         assert row["status"] == "failed"
@@ -318,8 +320,10 @@ class TestWorkflowWithMockedLLM:
     ):
         """Test that workflow results are saved to workflow_runs table."""
         from claim_agent.crews.main_crew import run_claim_workflow
+        from sqlalchemy import text
+
         from claim_agent.db.database import get_connection
-        
+
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
                 with patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew:
@@ -341,8 +345,8 @@ class TestWorkflowWithMockedLLM:
         
         with get_connection(integration_db) as conn:
             row = conn.execute(
-                "SELECT * FROM workflow_runs WHERE claim_id = ?",
-                (result["claim_id"],)
+                text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id"),
+                {"claim_id": result["claim_id"]},
             ).fetchone()
         
         assert row is not None

@@ -41,11 +41,13 @@ class TestDatabaseInit:
     @pytest.mark.integration
     def test_claims_table_has_required_columns(self, integration_db):
         """Verify claims table has all required columns."""
+        from sqlalchemy import text
+
         from claim_agent.db.database import get_connection
-        
+
         with get_connection(integration_db) as conn:
-            cursor = conn.execute("PRAGMA table_info(claims)")
-            columns = {row[1] for row in cursor.fetchall()}
+            result = conn.execute(text("PRAGMA table_info(claims)"))
+            columns = {row[1] for row in result.fetchall()}
         
         required_columns = {
             "id", "policy_number", "vin", "vehicle_year", "vehicle_make",

@@ -18,6 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute(text(
         "CREATE INDEX IF NOT EXISTS idx_claim_parties_address_lower "
         "ON claim_parties(lower(trim(address)))"
@@ -29,5 +31,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute(text("DROP INDEX IF EXISTS idx_claim_parties_provider_name"))
     op.execute(text("DROP INDEX IF EXISTS idx_claim_parties_address_lower"))

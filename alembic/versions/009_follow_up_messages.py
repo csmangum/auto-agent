@@ -18,6 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     conn = op.get_bind()
     tables = {
         row[0]
@@ -57,6 +59,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute(text("DROP INDEX IF EXISTS idx_follow_up_messages_status"))
     op.execute(text("DROP INDEX IF EXISTS idx_follow_up_messages_claim_id"))
     op.execute(text("DROP TABLE IF EXISTS follow_up_messages"))

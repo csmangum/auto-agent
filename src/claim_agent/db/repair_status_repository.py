@@ -3,7 +3,9 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from claim_agent.db.database import get_connection, get_db_path
+from sqlalchemy import text
+
+from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 
 
 def parse_iso_ts(ts: str | None) -> datetime | None:
@@ -24,7 +26,7 @@ class RepairStatusRepository:
     """Repository for repair status persistence."""
 
     def __init__(self, db_path: str | None = None) -> None:
-        self._db_path = db_path or get_db_path()
+        self._db_path = db_path if db_path is not None else get_db_path()
 
     def insert_repair_status(
         self,
@@ -43,43 +45,46 @@ class RepairStatusRepository:
         """
         now = _now_iso()
         with get_connection(self._db_path) as conn:
-            cursor = conn.execute(
-                """
+            result = conn.execute(
+                text("""
                 INSERT INTO repair_status
                     (claim_id, shop_id, authorization_id, status, status_updated_at,
                      notes, paused_at, pause_reason, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    shop_id,
-                    authorization_id or None,
-                    status,
-                    now,
-                    notes or None,
-                    paused_at or None,
-                    pause_reason or None,
-                    now,
-                ),
+                VALUES (:claim_id, :shop_id, :auth_id, :status, :now,
+                        :notes, :paused_at, :pause_reason, :now2)
+                RETURNING id
+                """),
+                {
+                    "claim_id": claim_id,
+                    "shop_id": shop_id,
+                    "auth_id": authorization_id or None,
+                    "status": status,
+                    "now": now,
+                    "notes": notes or None,
+                    "paused_at": paused_at or None,
+                    "pause_reason": pause_reason or None,
+                    "now2": now,
+                },
             )
-            return cursor.lastrowid or 0
+            row = result.fetchone()
+            return row[0] if row else 0
 
     def get_repair_status(self, claim_id: str) -> dict[str, Any] | None:
         """Fetch the latest repair status for a claim."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                """
+                text("""
                 SELECT id, claim_id, shop_id, authorization_id, status,
                        status_updated_at, notes, paused_at, pause_reason,
                        created_at, updated_at
                 FROM repair_status
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY id DESC
                 LIMIT 1
-                """,
-                (claim_id,),
+                """),
+                {"claim_id": claim_id},
             ).fetchone()
-        return dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_repair_status_history(
         self,
@@ -90,18 +95,18 @@ class RepairStatusRepository:
         """Fetch repair status history for a claim, oldest first (for cycle time)."""
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT id, claim_id, shop_id, authorization_id, status,
                        status_updated_at, notes, paused_at, pause_reason,
                        created_at, updated_at
                 FROM repair_status
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY id ASC
-                LIMIT ?
-                """,
-                (claim_id, limit),
+                LIMIT :limit
+                """),
+                {"claim_id": claim_id, "limit": limit},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_cycle_time_days(self, claim_id: str) -> float | None:
         """Compute repair cycle time in days: from first 'received' to first 'ready'.

@@ -24,6 +24,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     conn = op.get_bind()
     cursor = conn.execute(text("PRAGMA table_info(claims)"))
     columns = {row[1] for row in cursor.fetchall()}
@@ -69,6 +71,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute(text("DROP INDEX IF EXISTS idx_reserve_history_claim_id"))
     op.execute(text("DROP TRIGGER IF EXISTS reserve_history_prevent_delete"))
     op.execute(text("DROP TRIGGER IF EXISTS reserve_history_prevent_update"))

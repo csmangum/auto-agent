@@ -412,6 +412,19 @@ class PathsConfig(BaseSettings):
     claims_db_path: str = Field(
         default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
     )
+    database_url: str | None = Field(
+        default=None,
+        validation_alias="DATABASE_URL",
+        description="PostgreSQL URL. If set, use PostgreSQL; else use SQLite at claims_db_path.",
+    )
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
     fresh_claims_db_on_startup: bool = Field(
         default=False,
         validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",

@@ -1,16 +1,31 @@
-"""SQLite connection and schema initialization."""
+"""Database connection and schema initialization.
+
+Supports SQLite (default) and PostgreSQL. When DATABASE_URL is set, uses
+PostgreSQL with connection pooling. Otherwise uses SQLite at claims_db_path.
+"""
 
 import logging
 import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
 
 # Tracks which database paths have had schema applied (avoid running on every connection)
 _schema_initialized: set[str] = set()
 _schema_lock = threading.RLock()
+
+# SQLAlchemy engine (lazy init). For PostgreSQL: single engine. For SQLite: default engine.
+_engine: Engine | None = None
+_engine_lock = threading.Lock()
+# SQLite engines for override paths (e.g. tests)
+_sqlite_engines: dict[str, Engine] = {}
 
 SCHEMA_SQL = """
 -- Incidents table: groups multiple claims under one event (multi-vehicle accident)
@@ -330,11 +345,82 @@ CREATE INDEX IF NOT EXISTS idx_repair_status_shop_status ON repair_status(shop_i
 """
 
 
-def get_db_path() -> str:
-    """Return path to SQLite database from settings."""
+def _get_database_url() -> str:
+    """Return database URL: DATABASE_URL if set, else sqlite:///path."""
     from claim_agent.config import get_settings
 
+    settings = get_settings()
+    if settings.paths.database_url:
+        return settings.paths.database_url
+    path = settings.paths.claims_db_path
+    # SQLite URL: sqlite:///path (absolute) or sqlite:///./path (relative)
+    if path.startswith("/"):
+        return f"sqlite:///{path}"
+    return f"sqlite:///{path}"
+
+
+def _is_postgres() -> bool:
+    """True if using PostgreSQL (DATABASE_URL set)."""
+    from claim_agent.config import get_settings
+
+    return bool(get_settings().paths.database_url)
+
+
+def _get_engine() -> Engine:
+    """Return SQLAlchemy engine. Lazy init with connection pooling for PostgreSQL."""
+    global _engine
+    if _engine is not None:
+        return _engine
+    with _engine_lock:
+        if _engine is not None:
+            return _engine
+        url = _get_database_url()
+        if _is_postgres():
+            _engine = create_engine(url, pool_size=5, max_overflow=10)
+        else:
+            _engine = create_engine(url, poolclass=NullPool)
+    return _engine
+
+
+def _get_engine_for_path(path: str | None) -> Engine:
+    """Return engine for the given path. For PostgreSQL, path is ignored."""
+    if _is_postgres():
+        return _get_engine()
+    from claim_agent.config import get_settings
+
+    settings = get_settings()
+    db_path = path or settings.paths.claims_db_path
+    if db_path == settings.paths.claims_db_path:
+        return _get_engine()
+    with _engine_lock:
+        if db_path not in _sqlite_engines:
+            url = f"sqlite:///{db_path}" if db_path.startswith("/") else f"sqlite:///{db_path}"
+            _sqlite_engines[db_path] = create_engine(url, poolclass=NullPool)
+        return _sqlite_engines[db_path]
+
+
+def reset_engine_cache() -> None:
+    """Clear cached engines. Use when config (e.g. DATABASE_URL) changes (e.g. tests)."""
+    global _engine
+    with _engine_lock:
+        _engine = None
+        _sqlite_engines.clear()
+
+
+def get_db_path() -> str:
+    """Return path to SQLite database from settings. For PostgreSQL, returns path from URL or empty."""
+    from claim_agent.config import get_settings
+
+    if _is_postgres():
+        return ""  # No file path for PostgreSQL
     return get_settings().paths.claims_db_path
+
+
+def row_to_dict(row: Any) -> dict[str, Any]:
+    """Convert a database row to dict. Works with sqlite3.Row and SQLAlchemy Row."""
+    if hasattr(row, "_mapping"):
+        return dict(row._mapping)
+    return dict(row)
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
@@ -466,7 +552,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
 
 def _run_schema(db_path: str) -> None:
-    """Create tables if they do not exist. Caller must manage _schema_initialized."""
+    """Create tables if they do not exist (SQLite only). Caller must manage _schema_initialized."""
+    if _is_postgres():
+        return  # PostgreSQL uses Alembic only
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
@@ -475,8 +563,12 @@ def _run_schema(db_path: str) -> None:
 
 
 def init_db(path: str | None = None) -> None:
-    """Create tables if they do not exist."""
-    db_path = path or get_db_path()
+    """Create tables if they do not exist. SQLite only; PostgreSQL uses Alembic."""
+    from claim_agent.config import get_settings
+
+    if _is_postgres():
+        return
+    db_path = path or get_settings().paths.claims_db_path
     _run_schema(db_path)
     with _schema_lock:
         _schema_initialized.add(db_path)
@@ -485,15 +577,17 @@ def init_db(path: str | None = None) -> None:
 def ensure_fresh_db_on_startup() -> None:
     """If FRESH_CLAIMS_DB_ON_STARTUP is true, delete claims DB and reinitialize.
 
-    Call at server startup (e.g. in lifespan) for simulation/dev runs that need
-    an empty claims database each time.
+    SQLite only. For PostgreSQL, run alembic downgrade base && upgrade head.
+    Call at server startup (e.g. in lifespan) for simulation/dev runs.
     """
     from claim_agent.config import get_settings
 
+    if _is_postgres():
+        return
     if not get_settings().paths.fresh_claims_db_on_startup:
         return
 
-    db_path = get_db_path()
+    db_path = get_settings().paths.claims_db_path
     p = Path(db_path)
     if p.exists():
         logger.warning(
@@ -528,14 +622,18 @@ def _ensure_schema(db_path: str) -> None:
 
 @contextmanager
 def get_connection(path: str | None = None):
-    """Context manager yielding a database connection. Ensures schema exists once per path."""
-    db_path = path or get_db_path()
-    p = Path(db_path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    _ensure_schema(db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    """Context manager yielding a SQLAlchemy Connection. Ensures schema exists for SQLite."""
+    from claim_agent.config import get_settings
+
+    db_path = path or get_settings().paths.claims_db_path
+    if not _is_postgres():
+        p = Path(db_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_schema(db_path)
+    engine = _get_engine_for_path(path)
+    conn = engine.connect()
+    if not _is_postgres():
+        conn.execute(text("PRAGMA foreign_keys = ON"))
     try:
         yield conn
         conn.commit()

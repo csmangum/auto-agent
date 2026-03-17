@@ -15,6 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute("""
         CREATE TABLE IF NOT EXISTS claims (
             id TEXT PRIMARY KEY,
@@ -62,6 +64,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute("DROP INDEX IF EXISTS idx_claims_incident_date")
     op.execute("DROP INDEX IF EXISTS idx_claims_vin")
     op.execute("DROP TABLE IF EXISTS workflow_runs")

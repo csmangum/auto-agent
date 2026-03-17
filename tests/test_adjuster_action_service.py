@@ -3,6 +3,8 @@
 import pytest
 
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+from sqlalchemy import text
+
 from claim_agent.db.database import get_connection
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
@@ -35,8 +37,8 @@ def test_assign_delegates_to_repo(service, repo):
     claim_id = repo.create_claim(claim_input)
     with get_connection(repo._db_path) as conn:
         conn.execute(
-            "UPDATE claims SET status = ? WHERE id = ?",
-            (STATUS_NEEDS_REVIEW, claim_id),
+            text("UPDATE claims SET status = :status WHERE id = :id"),
+            {"status": STATUS_NEEDS_REVIEW, "id": claim_id},
         )
 
     service.assign(claim_id, "adjuster-1", actor_id="workflow")
@@ -83,8 +85,8 @@ def test_reject_delegates_to_repo(service, repo, temp_db):
     claim_id = repo.create_claim(claim_input)
     with get_connection(repo._db_path) as conn:
         conn.execute(
-            "UPDATE claims SET status = ? WHERE id = ?",
-            (STATUS_NEEDS_REVIEW, claim_id),
+            text("UPDATE claims SET status = :status WHERE id = :id"),
+            {"status": STATUS_NEEDS_REVIEW, "id": claim_id},
         )
 
     service.reject(claim_id, actor_id="workflow", reason="Duplicate")
@@ -113,8 +115,8 @@ def test_request_info_delegates_to_repo(service, repo, temp_db):
     claim_id = repo.create_claim(claim_input)
     with get_connection(repo._db_path) as conn:
         conn.execute(
-            "UPDATE claims SET status = ? WHERE id = ?",
-            (STATUS_NEEDS_REVIEW, claim_id),
+            text("UPDATE claims SET status = :status WHERE id = :id"),
+            {"status": STATUS_NEEDS_REVIEW, "id": claim_id},
         )
 
     service.request_info(claim_id, actor_id="workflow", note="Need photos")
@@ -137,8 +139,8 @@ def test_escalate_to_siu_delegates_to_repo(service, repo, temp_db):
     claim_id = repo.create_claim(claim_input)
     with get_connection(repo._db_path) as conn:
         conn.execute(
-            "UPDATE claims SET status = ? WHERE id = ?",
-            (STATUS_NEEDS_REVIEW, claim_id),
+            text("UPDATE claims SET status = :status WHERE id = :id"),
+            {"status": STATUS_NEEDS_REVIEW, "id": claim_id},
         )
 
     service.escalate_to_siu(claim_id, actor_id="workflow")
@@ -161,8 +163,8 @@ def test_approve_delegates_to_repo(service, repo, temp_db):
     claim_id = repo.create_claim(claim_input)
     with get_connection(repo._db_path) as conn:
         conn.execute(
-            "UPDATE claims SET status = ? WHERE id = ?",
-            (STATUS_NEEDS_REVIEW, claim_id),
+            text("UPDATE claims SET status = :status WHERE id = :id"),
+            {"status": STATUS_NEEDS_REVIEW, "id": claim_id},
         )
 
     service.approve(claim_id, actor_id="workflow")

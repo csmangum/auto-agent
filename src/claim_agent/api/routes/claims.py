@@ -32,7 +32,9 @@ from claim_agent.db.constants import (
     SUPPLEMENTABLE_STATUSES,
     VALID_REPAIR_STATUSES,
 )
-from claim_agent.db.database import get_connection, get_db_path
+from sqlalchemy import text
+
+from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
@@ -253,44 +255,28 @@ def _resolve_attachment_urls(claim_dict: dict) -> dict:
 def get_claims_stats():
     """Aggregate statistics: count by status, count by type, totals."""
     with get_connection() as conn:
-        # Total count
-        total = conn.execute("SELECT COUNT(*) as cnt FROM claims").fetchone()["cnt"]
-
-        # By status
-        rows = conn.execute(
-            "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt "
-            "FROM claims GROUP BY status ORDER BY cnt DESC"
+        total = conn.execute(text("SELECT COUNT(*) as cnt FROM claims")).fetchone()[0]
+        status_rows = conn.execute(
+            text("SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt FROM claims GROUP BY status ORDER BY cnt DESC")
         ).fetchall()
-        by_status = {r["status"]: r["cnt"] for r in rows}
-
-        # By type
-        rows = conn.execute(
-            "SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt "
-            "FROM claims GROUP BY claim_type ORDER BY cnt DESC"
+        by_status = {row_to_dict(r)["status"]: row_to_dict(r)["cnt"] for r in status_rows}
+        type_rows = conn.execute(
+            text("SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt FROM claims GROUP BY claim_type ORDER BY cnt DESC")
         ).fetchall()
-        by_type = {r["claim_type"]: r["cnt"] for r in rows}
-
-        # Date range
+        by_type = {row_to_dict(r)["claim_type"]: row_to_dict(r)["cnt"] for r in type_rows}
         date_row = conn.execute(
-            "SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM claims"
+            text("SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM claims")
         ).fetchone()
-
-        # Recent audit events count
-        audit_count = conn.execute(
-            "SELECT COUNT(*) as cnt FROM claim_audit_log"
-        ).fetchone()["cnt"]
-
-        # Workflow runs count
-        workflow_count = conn.execute(
-            "SELECT COUNT(*) as cnt FROM workflow_runs"
-        ).fetchone()["cnt"]
+        date_d = row_to_dict(date_row) if date_row else {}
+        audit_count = conn.execute(text("SELECT COUNT(*) as cnt FROM claim_audit_log")).fetchone()[0]
+        workflow_count = conn.execute(text("SELECT COUNT(*) as cnt FROM workflow_runs")).fetchone()[0]
 
     return {
         "total_claims": total,
         "by_status": by_status,
         "by_type": by_type,
-        "earliest_claim": date_row["earliest"],
-        "latest_claim": date_row["latest"],
+        "earliest_claim": date_d.get("earliest"),
+        "latest_claim": date_d.get("latest"),
         "total_audit_events": audit_count,
         "total_workflow_runs": workflow_count,
     }
@@ -306,36 +292,40 @@ def list_claims(
 ):
     """List claims with optional filtering. Archived claims are excluded by default."""
     conditions = []
-    params: list = []
+    params: dict[str, Any] = {}
 
     if status:
-        conditions.append("status = ?")
-        params.append(status)
+        conditions.append("status = :status")
+        params["status"] = status
     if not include_archived and (status is None or status != STATUS_ARCHIVED):
-        conditions.append("status != ?")
-        params.append(STATUS_ARCHIVED)
+        conditions.append("status != :archived")
+        params["archived"] = STATUS_ARCHIVED
     if claim_type:
-        conditions.append("claim_type = ?")
-        params.append(claim_type)
+        conditions.append("claim_type = :claim_type")
+        params["claim_type"] = claim_type
 
     where = ""
     if conditions:
         where = "WHERE " + " AND ".join(conditions)
 
+    params["limit"] = limit
+    params["offset"] = offset
+    count_params = {k: v for k, v in params.items() if k in ("status", "archived", "claim_type")}
+
     with get_connection() as conn:
-        # Get total for pagination
         count_row = conn.execute(
-            f"SELECT COUNT(*) as cnt FROM claims {where}", params
+            text(f"SELECT COUNT(*) as cnt FROM claims {where}"),
+            count_params,
         ).fetchone()
-        total = count_row["cnt"]
+        total = count_row[0] if count_row else 0
 
         rows = conn.execute(
-            f"SELECT * FROM claims {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            params + [limit, offset],
+            text(f"SELECT * FROM claims {where} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"),
+            params,
         ).fetchall()
 
     return {
-        "claims": [_resolve_attachment_urls(dict(r)) for r in rows],
+        "claims": [_resolve_attachment_urls(row_to_dict(r)) for r in rows],
         "total": total,
         "limit": limit,
         "offset": offset,

@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+from sqlalchemy import text
 
 from claim_agent.utils.retry import with_llm_retry
 
@@ -836,7 +837,7 @@ def test_workflow_failure_sets_status_failed():
                     run_claim_workflow(claim_data)
         repo = ClaimRepository(db_path=path)
         with get_connection(path) as conn:
-            row = conn.execute("SELECT id FROM claims").fetchone()
+            row = conn.execute(text("SELECT id FROM claims")).fetchone()
         assert row is not None
         claim_id = row[0]
         claim = repo.get_claim(claim_id)

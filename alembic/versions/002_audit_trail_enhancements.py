@@ -30,6 +30,8 @@ def _columns_exist(conn, table: str) -> set[str]:
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     conn = op.get_bind()
     existing = _columns_exist(conn, "claim_audit_log")
     if "actor_id" not in existing:
@@ -60,6 +62,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     # Drop append-only triggers before table recreation
     op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_update"))
     op.execute(text("DROP TRIGGER IF EXISTS claim_audit_log_prevent_delete"))
