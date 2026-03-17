@@ -280,6 +280,24 @@ CREATE TABLE IF NOT EXISTS subrogation_cases (
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_subrogation_cases_claim_id ON subrogation_cases(claim_id);
+
+-- Repair status: partial loss repair progress (received -> disassembly -> ... -> ready)
+CREATE TABLE IF NOT EXISTS repair_status (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    shop_id TEXT NOT NULL,
+    authorization_id TEXT,
+    status TEXT NOT NULL,
+    status_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    notes TEXT,
+    paused_at TEXT,
+    pause_reason TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_repair_status_claim_id ON repair_status(claim_id);
+CREATE INDEX IF NOT EXISTS idx_repair_status_shop_status ON repair_status(shop_id, status);
 """
 
 
@@ -380,28 +398,6 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE claim_tasks ADD COLUMN {col} {typ}")
     except sqlite3.OperationalError:
         pass
-    # Repair status: partial loss repair progress tracking
-    try:
-        conn.execute("SELECT 1 FROM repair_status LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE repair_status (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                claim_id TEXT NOT NULL,
-                shop_id TEXT NOT NULL,
-                authorization_id TEXT,
-                status TEXT NOT NULL,
-                status_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                notes TEXT,
-                paused_at TEXT,
-                pause_reason TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (claim_id) REFERENCES claims(id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_repair_status_claim_id ON repair_status(claim_id);
-            CREATE INDEX IF NOT EXISTS idx_repair_status_shop_status ON repair_status(shop_id, status);
-        """)
 
 
 def _run_schema(db_path: str) -> None:

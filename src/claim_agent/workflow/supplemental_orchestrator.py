@@ -55,7 +55,6 @@ def _extract_shop_and_auth_from_workflow(workflow_output: str | None) -> tuple[s
 
 
 def _pause_repair_if_in_progress(
-    repo: Any,
     claim_id: str,
     original_workflow_output: str | None,
 ) -> None:
@@ -76,7 +75,6 @@ def _pause_repair_if_in_progress(
 
 
 def _resume_repair_after_supplemental(
-    repo: Any,
     claim_id: str,
     original_workflow_output: str | None,
 ) -> None:
@@ -182,7 +180,7 @@ def run_supplemental_workflow(
     )
 
     # Pause repair status if repair is in progress (supplement pause workflow)
-    _pause_repair_if_in_progress(repo, supplemental_input.claim_id, original_workflow_output)
+    _pause_repair_if_in_progress(supplemental_input.claim_id, original_workflow_output)
 
     claim_data_for_crew = {
         "claim_id": claim.get("id"),
@@ -235,7 +233,7 @@ def run_supplemental_workflow(
             **update_kwargs,
         )
         # Resume repair after supplemental approval
-        _resume_repair_after_supplemental(repo, supplemental_input.claim_id, original_workflow_output)
+        _resume_repair_after_supplemental(supplemental_input.claim_id, original_workflow_output)
 
     repo.save_workflow_result(
         supplemental_input.claim_id,

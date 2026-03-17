@@ -232,7 +232,7 @@ function RepairProgressTab({ claimId, canUpdate }: { claimId: string; canUpdate:
     try {
       await postStatus.mutateAsync({ status });
     } catch {
-      // Error shown via mutation state
+      // Error shown via postStatus.isError below
     }
   }
 
@@ -275,6 +275,14 @@ function RepairProgressTab({ claimId, canUpdate }: { claimId: string; canUpdate:
             );
           })}
         </div>
+
+        {postStatus.isError && (
+          <p className="text-sm text-red-400 mb-2">
+            {postStatus.error instanceof Error
+              ? postStatus.error.message
+              : 'Failed to update repair status'}
+          </p>
+        )}
 
         {latest && (
           <div className="text-xs text-gray-500">

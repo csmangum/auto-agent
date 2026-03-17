@@ -30,6 +30,7 @@ from claim_agent.db.constants import (
     STATUS_PENDING,
     STATUS_PROCESSING,
     SUPPLEMENTABLE_STATUSES,
+    VALID_REPAIR_STATUSES,
 )
 from claim_agent.db.database import get_connection, get_db_path
 from claim_agent.db.repository import ClaimRepository
@@ -43,6 +44,7 @@ from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.rag.constants import normalize_state
+from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
 from claim_agent.utils.sanitization import (
     MAX_ACTOR_ID,
     MAX_DENIAL_REASON,
@@ -1112,12 +1114,6 @@ class RepairStatusUpdateBody(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
-VALID_REPAIR_STATUSES = frozenset({
-    "received", "disassembly", "parts_ordered", "repair",
-    "paint", "reassembly", "qa", "ready", "paused_supplement",
-})
-
-
 @router.post("/claims/{claim_id}/repair-status", dependencies=[RequireAdjuster])
 def update_claim_repair_status(
     claim_id: str,
@@ -1141,8 +1137,6 @@ def update_claim_repair_status(
     shop_id = body.shop_id
     auth_id = body.authorization_id
     if not shop_id or not auth_id:
-        from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
-
         runs = claim_repo.get_workflow_runs(claim_id, limit=5)
         for run in runs:
             if run.get("claim_type") != "partial_loss":

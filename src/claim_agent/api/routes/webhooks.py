@@ -6,9 +6,10 @@ import json
 import logging
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from claim_agent.config.settings import get_webhook_config
+from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from claim_agent.db.database import get_db_path
 from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.repository import ClaimRepository
@@ -17,23 +18,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-VALID_REPAIR_STATUSES = frozenset({
-    "received",
-    "disassembly",
-    "parts_ordered",
-    "repair",
-    "paint",
-    "reassembly",
-    "qa",
-    "ready",
-    "paused_supplement",
-})
-
 
 def _verify_webhook_signature(body: bytes, signature_header: str | None, secret: str) -> bool:
-    """Verify HMAC-SHA256 signature. Returns True if valid or secret empty."""
-    if not secret or not signature_header:
-        return not secret  # No secret => no verification required
+    """Verify HMAC-SHA256 signature. Secret is required for repair-status webhook."""
+    if not secret or not secret.strip():
+        return False  # Secret required; reject when unset
+    if not signature_header or not signature_header.strip():
+        return False
     if not signature_header.startswith("sha256="):
         return False
     received = signature_header[7:]
@@ -67,7 +58,7 @@ def _claim_has_authorization(claim_id: str, shop_id: str, authorization_id: str 
         wf_output = run.get("workflow_output") or ""
         parsed = _parse_partial_loss_workflow_output(wf_output)
         if not parsed:
-            return True  # Partial loss run exists; accept if we can't parse
+            return False  # Cannot validate; reject when workflow output unparseable
         wf_shop = str(parsed.get("shop_id", "")).strip()
         wf_auth = str(parsed.get("authorization_id", "")).strip()
         if shop_id and wf_shop and shop_id != wf_shop:
@@ -108,10 +99,10 @@ async def repair_status_webhook(request: Request) -> Response:
 
     try:
         parsed = RepairStatusWebhookPayload(**payload)
-    except Exception as e:
+    except ValidationError:
         return JSONResponse(
             status_code=400,
-            content={"detail": str(e)},
+            content={"detail": "Invalid payload"},
         )
 
     if parsed.status not in VALID_REPAIR_STATUSES:

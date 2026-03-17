@@ -35,6 +35,19 @@ DENIAL_COVERAGE_STATUSES = (STATUS_DENIED,)
 # Statuses that allow SIU investigation workflow
 SIU_INVESTIGATION_STATUSES = (STATUS_UNDER_INVESTIGATION, STATUS_FRAUD_SUSPECTED)
 
+# Repair status stages for partial loss (received -> ... -> ready, paused_supplement)
+VALID_REPAIR_STATUSES = frozenset({
+    "received",
+    "disassembly",
+    "parts_ordered",
+    "repair",
+    "paint",
+    "reassembly",
+    "qa",
+    "ready",
+    "paused_supplement",
+})
+
 # All allowed claim statuses (single source of truth for validation/docs)
 CLAIM_STATUSES = (
     STATUS_PENDING,
