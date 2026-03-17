@@ -5,7 +5,7 @@ import json
 import logging
 import math
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -1283,12 +1283,10 @@ async def create_claim(
 
 def _sanitize_incident_data(incident_dict: dict) -> dict:
     """Sanitize incident input data to prevent prompt injection and abuse.
-    
+
     Applies sanitization to incident-level and vehicle-level claim data
     before creating claims via the incident repository.
     """
-    from typing import Any
-    
     sanitized: dict[str, Any] = {}
     
     # Sanitize incident-level fields
@@ -1452,6 +1450,9 @@ async def allocate_bi(
     Use when multiple BI claimants exceed the policy's per_accident limit.
     Methods: proportional (default), severity_weighted, equal.
     """
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    if claim_repo.get_claim(allocation_input.claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {allocation_input.claim_id}")
     result = allocate_bi_limits(allocation_input)
     return result.model_dump()
 

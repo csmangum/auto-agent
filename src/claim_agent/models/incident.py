@@ -104,6 +104,24 @@ class ClaimLinkInput(BaseModel):
         return self
 
 
+class ClaimantDemandInput(BaseModel):
+    """Single claimant demand for BI allocation."""
+
+    claimant_id: Optional[str] = Field(
+        default=None, description="Claimant or party identifier",
+    )
+    party_id: Optional[str] = Field(
+        default=None, description="Alternate identifier (used if claimant_id not set)",
+    )
+    demanded_amount: float = Field(..., ge=0, description="Demanded amount in dollars")
+    injury_severity: Optional[float] = Field(
+        default=None,
+        ge=0.1,
+        le=10.0,
+        description="Severity weight 1-10 for severity_weighted allocation",
+    )
+
+
 class BIAllocationInput(BaseModel):
     """Input for BI coverage limit allocation across multiple claimants.
 
@@ -111,9 +129,9 @@ class BIAllocationInput(BaseModel):
     """
 
     claim_id: str = Field(..., description="Claim ID (policy with BI limits)")
-    claimant_demands: list[dict] = Field(
+    claimant_demands: list[ClaimantDemandInput] = Field(
         ...,
-        description="List of {claimant_id/party_id, demanded_amount, injury_severity?}",
+        description="List of claimant demands with demanded_amount, claimant_id/party_id, injury_severity?",
     )
     bi_per_accident_limit: float = Field(
         ...,

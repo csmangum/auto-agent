@@ -40,6 +40,7 @@ from claim_agent.models.claim_review import (
 from claim_agent.models.incident import (
     BIAllocationInput,
     BIAllocationResult,
+    ClaimantDemandInput,
     ClaimLinkInput,
     IncidentInput,
     IncidentOutput,
@@ -51,6 +52,7 @@ from claim_agent.models.user import UserContext, UserType
 __all__ = [
     "BIAllocationInput",
     "BIAllocationResult",
+    "ClaimantDemandInput",
     "ClaimLinkInput",
     "IncidentInput",
     "IncidentOutput",

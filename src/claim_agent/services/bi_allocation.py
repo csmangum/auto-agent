@@ -4,7 +4,11 @@ When total BI demands exceed the policy's per_accident limit, allocate
 proportionally (or by severity/equal) across claimants.
 """
 
-from claim_agent.models.incident import BIAllocationInput, BIAllocationResult
+from claim_agent.models.incident import (
+    BIAllocationInput,
+    BIAllocationResult,
+    ClaimantDemandInput,
+)
 
 
 def _allocate_equal_with_redistribution(demands: list[dict], limit: float) -> list[dict]:
@@ -123,6 +127,16 @@ def _allocate_severity_weighted_with_redistribution(
     return allocations
 
 
+def _demand_to_dict(d: ClaimantDemandInput, i: int) -> dict:
+    """Convert ClaimantDemandInput to dict for internal allocation functions."""
+    claimant_id = d.claimant_id or d.party_id or f"claimant_{i}"
+    return {
+        "claimant_id": claimant_id,
+        "demanded_amount": d.demanded_amount,
+        "injury_severity": d.injury_severity,
+    }
+
+
 def allocate_bi_limits(input_data: BIAllocationInput) -> BIAllocationResult:
     """Allocate BI per-accident limit across multiple claimants.
 
@@ -131,7 +145,7 @@ def allocate_bi_limits(input_data: BIAllocationInput) -> BIAllocationResult:
     - severity_weighted: weights by injury_severity (1-10), then proportional
     - equal: split limit equally among claimants
     """
-    demands = input_data.claimant_demands
+    demands = [_demand_to_dict(d, i) for i, d in enumerate(input_data.claimant_demands)]
     limit = input_data.bi_per_accident_limit
     method = input_data.allocation_method
 

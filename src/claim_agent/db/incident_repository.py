@@ -93,8 +93,8 @@ class IncidentRepository:
                 for claim_id in claim_ids:
                     conn.execute("DELETE FROM claim_links WHERE claim_id_a = ? OR claim_id_b = ?", (claim_id, claim_id))
                     conn.execute(
-                        "UPDATE claims SET status = 'failed', archived_at = datetime('now') WHERE id = ?",
-                        (claim_id,)
+                        "UPDATE claims SET status = 'failed', archived_at = datetime('now'), incident_id = NULL WHERE id = ?",
+                        (claim_id,),
                     )
                 conn.execute("DELETE FROM incidents WHERE id = ?", (incident_id,))
         except Exception:

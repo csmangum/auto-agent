@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
+from claim_agent.models.incident import ClaimLinkInput
 from claim_agent.models.claim import (
     AttachmentType,
     ClaimInput,
@@ -317,3 +318,26 @@ class TestUserType:
         assert ctx.user_type == UserType.REPAIR_SHOP
         assert ctx.identifier == "SHOP-001"
         assert ctx.email == "shop@example.com"
+
+
+class TestClaimLinkInput:
+    """Test ClaimLinkInput validation."""
+
+    def test_valid_link(self):
+        link = ClaimLinkInput(
+            claim_id_a="CLM-001",
+            claim_id_b="CLM-002",
+            link_type="same_incident",
+        )
+        assert link.claim_id_a == "CLM-001"
+        assert link.claim_id_b == "CLM-002"
+        assert link.link_type == "same_incident"
+
+    def test_self_link_raises(self):
+        """Linking a claim to itself raises ValidationError."""
+        with pytest.raises(ValidationError, match="linked to itself"):
+            ClaimLinkInput(
+                claim_id_a="CLM-001",
+                claim_id_b="CLM-001",
+                link_type="same_incident",
+            )
