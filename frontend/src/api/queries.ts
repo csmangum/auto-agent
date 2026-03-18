@@ -25,6 +25,7 @@ import {
   getClaimTasks,
   getAllTasks,
   getTaskStats,
+  getCostBreakdown,
 } from './client';
 import type { PostClaimRepairStatusPayload } from './client';
 import type { GetClaimsParams, PatchClaimReserveBody } from './client';
@@ -49,6 +50,7 @@ export const queryKeys = {
   claimTasks: (id: string) => ['claims', id, 'tasks'] as const,
   allTasks: (params?: Record<string, unknown>) => ['tasks', 'list', params ?? {}] as const,
   taskStats: ['tasks', 'stats'] as const,
+  costBreakdown: ['metrics', 'cost'] as const,
 };
 
 export function useClaimsStats() {
@@ -230,5 +232,13 @@ export function useTaskStats() {
   return useQuery({
     queryKey: queryKeys.taskStats,
     queryFn: getTaskStats,
+  });
+}
+
+/** LLM cost breakdown: by crew, by claim type, daily spend. */
+export function useCostBreakdown() {
+  return useQuery({
+    queryKey: queryKeys.costBreakdown,
+    queryFn: getCostBreakdown,
   });
 }

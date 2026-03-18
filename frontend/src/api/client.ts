@@ -180,6 +180,27 @@ export const getMetrics = (): Promise<unknown> => fetchJSON('/metrics');
 export const getClaimMetrics = (id: string): Promise<unknown> =>
   fetchJSON(`/metrics/${id}`);
 
+export interface CostBreakdown {
+  global_stats: {
+    total_claims: number;
+    total_llm_calls: number;
+    total_tokens: number;
+    total_cost_usd: number;
+    avg_cost_per_claim: number;
+    avg_tokens_per_claim: number;
+    by_crew: Record<string, { total_cost_usd: number; total_tokens: number; total_calls: number }>;
+    by_claim_type: Record<string, { total_cost_usd: number; total_tokens: number; total_claims: number; total_calls: number }>;
+  };
+  by_crew: Record<string, { total_cost_usd: number; total_tokens: number; total_calls: number }>;
+  by_claim_type: Record<string, { total_cost_usd: number; total_tokens: number; total_claims: number; total_calls: number }>;
+  daily: Record<string, { total_cost_usd: number; total_tokens: number; claims: number }>;
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
+export const getCostBreakdown = (): Promise<CostBreakdown> =>
+  fetchJSON<CostBreakdown>('/metrics/cost');
+
 export const getDocs = (): Promise<DocsListResponse> =>
   fetchJSON<DocsListResponse>('/docs');
 

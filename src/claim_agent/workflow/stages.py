@@ -73,7 +73,7 @@ from claim_agent.workflow.duplicate_detection import (
     _damage_tags_overlap,
     _extract_damage_tags,
 )
-from claim_agent.workflow.budget import _check_token_budget, _record_crew_llm_usage
+from claim_agent.workflow.budget import _check_token_budget, _record_crew_usage_delta
 from claim_agent.workflow.escalation import (
     _escalate_low_router_confidence,
     _escalate_low_router_confidence_response,
@@ -475,6 +475,13 @@ def _run_crew_stage_body(
             workflow_run_id=ctx.workflow_run_id,
         )
     _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    _record_crew_usage_delta(
+        ctx.claim_id,
+        ctx.context.llm,
+        ctx.context.metrics,
+        crew_name,
+        ctx.claim_type or None,
+    )
     output_str = str(
         getattr(result, "raw", None)
         or getattr(result, "output", None)
@@ -616,6 +623,10 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
     )
 
     _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
+    _record_crew_usage_delta(
+        ctx.claim_id, ctx.context.llm, ctx.context.metrics, "router", claim_type=None
+    )
+    ctx.context.metrics.update_claim_type(ctx.claim_id, ctx.claim_type)
 
     router_config = get_router_config()
     confidence_threshold = router_config["confidence_threshold"]
@@ -892,8 +903,12 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 priority=priority,
                 duration_ms=workflow_duration,
             )
-            _record_crew_llm_usage(
-                claim_id=ctx.claim_id, llm=ctx.context.llm, metrics=ctx.context.metrics
+            _record_crew_usage_delta(
+                ctx.claim_id,
+                ctx.context.llm,
+                ctx.context.metrics,
+                "escalation",
+                ctx.claim_type,
             )
             ctx.context.metrics.end_claim(ctx.claim_id, status="escalated")
             record_claim_outcome(ctx.claim_id, "escalated", (time.time() - ctx.workflow_start_time))
@@ -987,6 +1002,13 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
                     workflow_start_time=c.workflow_start_time,
                     workflow_run_id=c.workflow_run_id,
                 )
+            _record_crew_usage_delta(
+                c.claim_id,
+                c.context.llm,
+                c.context.metrics,
+                "reopened",
+                c.claim_type,
+            )
             reopened_output = str(
                 getattr(reopened_result, "raw", None)
                 or getattr(reopened_result, "output", None)
@@ -1026,6 +1048,13 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             )
 
         _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
+        _record_crew_usage_delta(
+            c.claim_id,
+            c.context.llm,
+            c.context.metrics,
+            c.claim_type,
+            c.claim_type,
+        )
         crew_latency = (time.time() - crew_start) * 1000
         routed_output = str(
             getattr(workflow_result, "raw", None)
@@ -1153,6 +1182,13 @@ def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
                 workflow_run_id=c.workflow_run_id,
             )
         _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
+        _record_crew_usage_delta(
+            c.claim_id,
+            c.context.llm,
+            c.context.metrics,
+            "liability_determination",
+            c.claim_type,
+        )
         output_str = str(
             getattr(result, "raw", None)
             or getattr(result, "output", None)

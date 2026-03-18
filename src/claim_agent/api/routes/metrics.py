@@ -28,6 +28,16 @@ async def get_global_metrics():
     }
 
 
+@router.get("/metrics/cost", dependencies=[RequireSupervisor])
+async def get_cost_breakdown():
+    """Get cost breakdown for dashboard: by crew, by claim type, daily totals.
+
+    Supports cost alerting and spend tracking.
+    """
+    metrics = get_metrics()
+    return metrics.get_cost_breakdown()
+
+
 @router.get("/metrics/{claim_id}", dependencies=[RequireSupervisor])
 async def get_claim_metrics(claim_id: str):
     """Get metrics for a specific claim."""

@@ -1,7 +1,8 @@
 """Small stateless helpers shared across workflow modules."""
 
-from typing import Any
+from typing import Any, Callable
 
+from claim_agent.config.llm import get_llm, get_llm_fallback_chain
 from claim_agent.db.constants import (
     STATUS_CLOSED,
     STATUS_DUPLICATE,
@@ -104,14 +105,38 @@ def _extract_payout_from_workflow_result(result: Any, claim_type: str) -> float 
     return None
 
 
-def _kickoff_with_retry(crew: Any, inputs: dict[str, Any]) -> Any:
-    """Run crew.kickoff with retry on transient failures."""
+def _kickoff_with_retry(
+    crew: Any,
+    inputs: dict[str, Any],
+    create_crew_with_llm: Callable[[Any], Any] | None = None,
+) -> Any:
+    """Run crew.kickoff with retry on transient failures.
 
-    @with_llm_retry()
-    def _call() -> Any:
-        return crew.kickoff(inputs=inputs)
+    When create_crew_with_llm is provided, on retry after exhausting attempts
+    for the current model, tries fallback models from OPENAI_FALLBACK_MODELS.
+    """
+    models = get_llm_fallback_chain()
+    last_exc: BaseException | None = None
+    use_fallback = create_crew_with_llm is not None and len(models) > 1
 
-    return _call()
+    for i, model_name in enumerate(models):
+        current_crew = create_crew_with_llm(get_llm(model_name)) if (use_fallback and i > 0) else crew
+
+        @with_llm_retry()
+        def _call(c: Any = current_crew) -> Any:
+            return c.kickoff(inputs=inputs)
+
+        try:
+            return _call()
+        except Exception as e:
+            last_exc = e
+            if not use_fallback or model_name == models[-1]:
+                raise
+            continue
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("kickoff failed with no exception")
 
 
 def _checkpoint_keys_to_invalidate(from_stage: str, checkpoints: dict[str, str]) -> list[str]:

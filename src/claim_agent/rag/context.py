@@ -17,6 +17,10 @@ from claim_agent.rag.retriever import PolicyRetriever, get_retriever
 # Maximum number of context entries to cache per RAGContextProvider
 CONTEXT_CACHE_MAXSIZE = 100
 
+# Prompt caching: policy/compliance lookups are repeated across claims.
+# Increase for high-volume processing. RAG context uses skill:state:claim_type.
+RAG_PROMPT_CACHE_MAXSIZE = 200
+
 
 class _LRUCache(OrderedDict):
     """Bounded LRU cache; evicts oldest when full."""

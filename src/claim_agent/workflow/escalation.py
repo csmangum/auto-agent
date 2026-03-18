@@ -18,7 +18,7 @@ from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import MidWorkflowEscalation
 from claim_agent.observability import get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
-from claim_agent.workflow.budget import _record_crew_llm_usage
+from claim_agent.workflow.budget import _record_crew_usage_delta
 from claim_agent.workflow.helpers import _combine_workflow_outputs
 
 if TYPE_CHECKING:
@@ -108,7 +108,13 @@ def _escalate_low_router_confidence(
         priority="medium",
         duration_ms=workflow_duration,
     )
-    _record_crew_llm_usage(claim_id=claim_id, llm=context.llm, metrics=metrics)
+    _record_crew_usage_delta(
+        claim_id=claim_id,
+        llm=context.llm,
+        metrics=metrics,
+        crew="escalation",
+        claim_type=claim_type,
+    )
     metrics.end_claim(claim_id, status="escalated")
     record_claim_outcome(
         claim_id, "escalated", (time.time() - workflow_start_time)
@@ -218,7 +224,13 @@ def _handle_mid_workflow_escalation(
         priority=e.priority,
         duration_ms=workflow_duration,
     )
-    _record_crew_llm_usage(claim_id=claim_id, llm=context.llm, metrics=metrics)
+    _record_crew_usage_delta(
+        claim_id=claim_id,
+        llm=context.llm,
+        metrics=metrics,
+        crew="escalation",
+        claim_type=claim_type,
+    )
     metrics.end_claim(claim_id, status="escalated")
     record_claim_outcome(
         claim_id, "escalated", (time.time() - workflow_start_time)

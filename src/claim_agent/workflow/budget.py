@@ -66,7 +66,38 @@ def _check_token_budget(claim_id: str, metrics: Any, llm: LLMProtocol | None = N
         )
 
 
-def _record_crew_llm_usage(claim_id: str, llm: LLMProtocol | None, metrics: Any) -> None:
+def _record_crew_usage_delta(
+    claim_id: str,
+    llm: LLMProtocol | None,
+    metrics: Any,
+    crew: str,
+    claim_type: str | None = None,
+) -> None:
+    """Record token delta for a crew (per-crew cost attribution). Call after each crew kickoff."""
+    if llm is None:
+        return
+    usage = _get_llm_usage_snapshot(llm)
+    if usage is None:
+        return
+    prompt_tokens, completion_tokens, _ = usage
+    model = llm.model if isinstance(llm.model, str) else get_model_name()
+    metrics.record_crew_usage_delta(
+        claim_id=claim_id,
+        current_prompt=prompt_tokens,
+        current_completion=completion_tokens,
+        model=model,
+        crew=crew,
+        claim_type=claim_type,
+    )
+
+
+def _record_crew_llm_usage(
+    claim_id: str,
+    llm: LLMProtocol | None,
+    metrics: Any,
+    crew: str | None = None,
+    claim_type: str | None = None,
+) -> None:
     """Record CrewAI LLM token usage and cost into metrics for this claim.
 
     CrewAI uses native SDK (OpenAI etc.) for standard models, so LiteLLM callbacks
@@ -88,4 +119,6 @@ def _record_crew_llm_usage(claim_id: str, llm: LLMProtocol | None, metrics: Any)
         cost_usd=None,
         latency_ms=0.0,
         status="success",
+        crew=crew,
+        claim_type=claim_type,
     )

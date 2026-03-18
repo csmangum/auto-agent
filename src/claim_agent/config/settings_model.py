@@ -478,6 +478,19 @@ class LLMConfig(BaseSettings):
     api_base: str = Field(default="", validation_alias="OPENAI_API_BASE")
     model_name: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL_NAME")
     vision_model: str = Field(default="gpt-4o", validation_alias="OPENAI_VISION_MODEL")
+    fallback_models: str = Field(
+        default="",
+        validation_alias="OPENAI_FALLBACK_MODELS",
+        description="Comma-separated fallback models when primary is down or over budget",
+    )
+
+    def get_fallback_chain(self) -> list[str]:
+        """Return [primary, fallback1, fallback2, ...] for model fallback strategy."""
+        primary = (self.model_name or "gpt-4o-mini").strip()
+        if not self.fallback_models.strip():
+            return [primary]
+        fallbacks = [m.strip() for m in self.fallback_models.split(",") if m.strip()]
+        return [primary] + fallbacks
 
 
 _DEFAULT_CORS_ORIGINS = [

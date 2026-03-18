@@ -65,8 +65,11 @@ def setup_observability() -> None:
         _langsmith_initialized = True
 
 
-def get_llm():
+def get_llm(model_name: str | None = None):
     """Return the configured LLM for agents. Requires OPENAI_API_KEY.
+
+    Args:
+        model_name: Override model (for fallback chain). Default uses primary.
 
     Returns:
         Configured LLM instance.
@@ -96,7 +99,7 @@ def get_llm():
             "replace placeholder values like 'your_openrouter_key' with a real key"
         )
 
-    model = llm_cfg.model_name.strip() or "gpt-4o-mini"
+    model = (model_name or llm_cfg.model_name or "gpt-4o-mini").strip()
 
     # Log LLM configuration
     logger.debug(
@@ -109,6 +112,11 @@ def get_llm():
         ensure_openrouter_api_key()
         return LLM(model=model, base_url=base, api_key=api_key)
     return LLM(model=model, api_key=api_key)
+
+
+def get_llm_fallback_chain() -> list[str]:
+    """Return model names for fallback strategy: primary → fallback1 → fallback2 → error."""
+    return get_settings().llm.get_fallback_chain()
 
 
 def get_model_name() -> str:

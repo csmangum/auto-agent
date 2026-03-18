@@ -3,6 +3,7 @@ import type { SVGProps } from 'react';
 import {
   AgentsIcon,
   ClaimsIcon,
+  CurrencyIcon,
   DashboardIcon,
   DocsIcon,
   EscalationIcon,
@@ -28,6 +29,7 @@ export const NAV_ICONS = {
   skills: SkillsIcon,
   agents: AgentsIcon,
   system: SystemIcon,
+  cost: CurrencyIcon,
   simulate: SimulationIcon,
 } as const;
 
