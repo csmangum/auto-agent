@@ -87,7 +87,7 @@ def test_create_ucspa_compliance_tasks_creates_tasks(temp_db):
 
 
 def test_record_acknowledgment(temp_db):
-    """record_acknowledgment sets acknowledged_at."""
+    """record_acknowledgment sets acknowledged_at and is idempotent."""
     repo = ClaimRepository(db_path=temp_db)
     claim_input = ClaimInput(
         policy_number="POL-001",
@@ -100,10 +100,19 @@ def test_record_acknowledgment(temp_db):
         damage_description="Test",
     )
     claim_id = repo.create_claim(claim_input)
-    repo.record_acknowledgment(claim_id)
 
+    # First call: acknowledged_at is set and True is returned.
+    result = repo.record_acknowledgment(claim_id)
+    assert result is True
     claim = repo.get_claim(claim_id)
-    assert claim.get("acknowledged_at") is not None
+    first_ts = claim.get("acknowledged_at")
+    assert first_ts is not None
+
+    # Second call: acknowledged_at must not be overwritten (returns False).
+    result2 = repo.record_acknowledgment(claim_id)
+    assert result2 is False
+    claim2 = repo.get_claim(claim_id)
+    assert claim2.get("acknowledged_at") == first_ts
 
 
 def test_record_denial_letter(temp_db):

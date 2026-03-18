@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, cast
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from claim_agent.models.claim import Attachment
 
@@ -209,12 +210,18 @@ class ClaimRepository:
         # UCSPA: set state-specific deadlines and create compliance tasks at FNOL
         try:
             _apply_ucspa_at_fnol(self, claim_id, loss_state_val)
-        except Exception as e:
+        except (OperationalError, ProgrammingError) as e:
+            # Columns absent if migration 026 has not been applied yet; warn and continue.
             logging.getLogger(__name__).warning(
                 "ucspa_at_fnol_failed claim_id=%s: %s (run alembic upgrade head if UCSPA columns missing)",
                 claim_id,
                 e,
             )
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "ucspa_at_fnol_unexpected_error claim_id=%s", claim_id
+            )
+            raise
 
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
@@ -1542,23 +1549,51 @@ class ClaimRepository:
         claim_id: str,
         *,
         actor_id: str = ACTOR_WORKFLOW,
-    ) -> None:
-        """Record UCSPA claim acknowledgment (receipt acknowledged within deadline)."""
+    ) -> bool:
+        """Record UCSPA claim acknowledgment (receipt acknowledged within deadline).
+
+        Only sets ``acknowledged_at`` on the first call; subsequent calls are
+        no-ops for the timestamp (but still raise :exc:`ClaimNotFoundError` if
+        the claim does not exist).
+
+        Returns:
+            ``True`` if ``acknowledged_at`` was newly set, ``False`` if it was
+            already recorded (idempotent no-op for the timestamp).
+        """
+        safe_actor = sanitize_actor_id(actor_id)
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             result = conn.execute(
-                text("UPDATE claims SET acknowledged_at = :now, updated_at = :now WHERE id = :claim_id"),
+                text("""
+                UPDATE claims
+                SET acknowledged_at = COALESCE(acknowledged_at, :now),
+                    updated_at = :now
+                WHERE id = :claim_id
+                """),
                 {"now": now, "claim_id": claim_id},
             )
             if result.rowcount == 0:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (:claim_id, :action, :details, :actor_id)
-                """),
-                {"claim_id": claim_id, "action": AUDIT_EVENT_ACKNOWLEDGED, "details": "Claim receipt acknowledged", "actor_id": actor_id},
-            )
+            # Determine whether acknowledged_at was newly set by reading it back.
+            row = conn.execute(
+                text("SELECT acknowledged_at FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            newly_set = row is not None and row_to_dict(row).get("acknowledged_at") == now
+            if newly_set:
+                conn.execute(
+                    text("""
+                    INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                    VALUES (:claim_id, :action, :details, :actor_id)
+                    """),
+                    {
+                        "claim_id": claim_id,
+                        "action": AUDIT_EVENT_ACKNOWLEDGED,
+                        "details": "Claim receipt acknowledged",
+                        "actor_id": safe_actor,
+                    },
+                )
+        return newly_set
 
     def record_denial_letter(
         self,
@@ -1570,6 +1605,7 @@ class ClaimRepository:
     ) -> None:
         """Record UCSPA-compliant denial letter (written, specific, with appeal rights)."""
         safe_reason = sanitize_denial_reason(denial_reason) or "Coverage denied"
+        safe_actor = sanitize_actor_id(actor_id)
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             result = conn.execute(
@@ -1590,7 +1626,7 @@ class ClaimRepository:
                     "claim_id": claim_id,
                     "action": AUDIT_EVENT_DENIAL_LETTER,
                     "details": f"Denial letter sent: {safe_reason[:200]}",
-                    "actor_id": actor_id,
+                    "actor_id": safe_actor,
                     "after_state": json.dumps({"denial_reason": safe_reason, "denial_letter_sent_at": now}),
                 },
             )
