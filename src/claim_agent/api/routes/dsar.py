@@ -30,7 +30,7 @@ class AccessRequestInput(BaseModel):
 
 
 @router.post("/access")
-async def dsar_submit_access(
+def dsar_submit_access(
     body: AccessRequestInput = Body(...),
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:
@@ -45,11 +45,16 @@ async def dsar_submit_access(
         verification_data["policy_number"] = body.policy_number
     if body.vin:
         verification_data["vin"] = body.vin
-    if not verification_data:
+    
+    has_claim_id = bool(body.claim_id)
+    has_both_policy_and_vin = bool(body.policy_number) and bool(body.vin)
+    
+    if not (has_claim_id or has_both_policy_and_vin):
         raise HTTPException(
             status_code=400,
             detail="Provide either claim_id or (policy_number and vin) for verification",
         )
+    
     request_id = submit_access_request(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
@@ -59,7 +64,7 @@ async def dsar_submit_access(
 
 
 @router.get("/requests/{request_id}")
-async def dsar_get_request(
+def dsar_get_request(
     request_id: str,
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:
@@ -71,7 +76,7 @@ async def dsar_get_request(
 
 
 @router.get("/requests")
-async def dsar_list_requests(
+def dsar_list_requests(
     status: Optional[str] = Query(None, description="Filter by status"),
     request_type: Optional[str] = Query(None, description="Filter by request_type (access|deletion)"),
     limit: int = Query(100, ge=1, le=1000, description="Max items to return"),
@@ -101,7 +106,7 @@ class DeletionRequestInput(BaseModel):
 
 
 @router.post("/deletion")
-async def dsar_submit_deletion(
+def dsar_submit_deletion(
     body: DeletionRequestInput = Body(...),
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:
@@ -113,11 +118,16 @@ async def dsar_submit_deletion(
         verification_data["policy_number"] = body.policy_number
     if body.vin:
         verification_data["vin"] = body.vin
-    if not verification_data:
+    
+    has_claim_id = bool(body.claim_id)
+    has_both_policy_and_vin = bool(body.policy_number) and bool(body.vin)
+    
+    if not (has_claim_id or has_both_policy_and_vin):
         raise HTTPException(
             status_code=400,
             detail="Provide either claim_id or (policy_number and vin) for verification",
         )
+    
     request_id = submit_deletion_request(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
@@ -127,7 +137,7 @@ async def dsar_submit_deletion(
 
 
 @router.post("/deletion/fulfill/{request_id}")
-async def dsar_fulfill_deletion(
+def dsar_fulfill_deletion(
     request_id: str,
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:
@@ -143,7 +153,7 @@ async def dsar_fulfill_deletion(
 
 
 @router.post("/consent-revoke")
-async def dsar_consent_revoke(
+def dsar_consent_revoke(
     body: ConsentRevokeInput = Body(...),
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:
@@ -156,7 +166,7 @@ async def dsar_consent_revoke(
 
 
 @router.post("/requests/{request_id}/fulfill")
-async def dsar_fulfill_access(
+def dsar_fulfill_access(
     request_id: str,
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:

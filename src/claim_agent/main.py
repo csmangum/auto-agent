@@ -410,9 +410,14 @@ def dsar_access(
         verification_data["policy_number"] = policy_number
     if vin:
         verification_data["vin"] = vin
-    if not verification_data:
+    
+    has_claim_id = bool(claim_id)
+    has_both_policy_and_vin = bool(policy_number) and bool(vin)
+    
+    if not (has_claim_id or has_both_policy_and_vin):
         typer.echo("Error: Provide --claim-id or (--policy and --vin) for verification", err=True)
         raise typer.Exit(1)
+    
     request_id = submit_access_request(
         claimant_identifier=claimant_email,
         verification_data=verification_data,
@@ -447,9 +452,14 @@ def dsar_deletion(
         verification_data["policy_number"] = policy_number
     if vin:
         verification_data["vin"] = vin
-    if not verification_data:
+    
+    has_claim_id = bool(claim_id)
+    has_both_policy_and_vin = bool(policy_number) and bool(vin)
+    
+    if not (has_claim_id or has_both_policy_and_vin):
         typer.echo("Error: Provide --claim-id or (--policy and --vin) for verification", err=True)
         raise typer.Exit(1)
+    
     request_id = submit_deletion_request(
         claimant_identifier=claimant_email,
         verification_data=verification_data,

@@ -72,7 +72,8 @@ def upgrade() -> None:
                 id SERIAL PRIMARY KEY,
                 request_id TEXT NOT NULL,
                 export_path TEXT,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (request_id) REFERENCES dsar_requests(request_id)
             )
         """)
         op.execute("CREATE INDEX IF NOT EXISTS idx_dsar_exports_request_id ON dsar_exports(request_id)")
