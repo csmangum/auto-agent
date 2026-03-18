@@ -4,7 +4,6 @@ from datetime import date
 
 from claim_agent.compliance.ucspa import (
     get_ucspa_deadlines,
-    create_ucspa_compliance_tasks,
     claims_with_deadlines_approaching,
 )
 from claim_agent.db.repository import ClaimRepository
