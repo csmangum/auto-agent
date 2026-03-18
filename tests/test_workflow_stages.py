@@ -833,17 +833,21 @@ class TestStageDuplicateDetection:
     """Unit tests for _stage_duplicate_detection."""
 
     @patch("claim_agent.workflow.stages._check_for_duplicates")
-    def test_rebuilds_inputs_with_enriched_claim_data(self, mock_check, temp_db):
+    @patch("claim_agent.utils.llm_data_minimization.get_settings")
+    def test_rebuilds_inputs_with_enriched_claim_data(self, mock_get_settings, mock_check, temp_db):
         """_stage_duplicate_detection rebuilds ctx.inputs with claim_data_with_id."""
         from claim_agent.context import ClaimContext
         from claim_agent.workflow.orchestrator import _WorkflowCtx
         from claim_agent.workflow.stages import _stage_duplicate_detection
 
         mock_check.return_value = []
+        mock_settings = MagicMock()
+        mock_settings.privacy.llm_data_minimization = False
+        mock_get_settings.return_value = mock_settings
 
         ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_data = {"vin": "VIN123", "incident_description": "Hit", "damage_description": "Dent"}
-        claim_data_with_id = {**claim_data, "id": "CLM-1"}
+        claim_data_with_id = {**claim_data, "claim_id": "CLM-1"}
         wf_ctx = _WorkflowCtx(
             claim_id="CLM-1",
             claim_data=claim_data,
@@ -861,4 +865,5 @@ class TestStageDuplicateDetection:
 
         assert result is None
         assert "claim_data" in wf_ctx.inputs
-        assert json.loads(wf_ctx.inputs["claim_data"]) == claim_data_with_id
+        expected = {**claim_data_with_id, "definitive_duplicate": False}
+        assert json.loads(wf_ctx.inputs["claim_data"]) == expected
