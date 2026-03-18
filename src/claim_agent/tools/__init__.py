@@ -112,6 +112,8 @@ __all__ = [
     "verify_document_authenticity",
     "check_claimant_investigation_history",
     "file_fraud_report_state_bureau",
+    "file_nicb_report",
+    "file_niss_report",
     # Task tools
     "create_claim_task",
     "create_document_request",
@@ -121,6 +123,7 @@ __all__ = [
     # Compliance tools (state-specific deadlines)
     "get_state_compliance_summary",
     "get_compliance_due_date_tool",
+    "get_fraud_report_template_tool",
 ]
 
 
@@ -465,6 +468,14 @@ def __getattr__(name: str):
         from claim_agent.tools.siu_tools import file_fraud_report_state_bureau
         setattr(mod, "file_fraud_report_state_bureau", file_fraud_report_state_bureau)
         return file_fraud_report_state_bureau
+    if name == "file_nicb_report":
+        from claim_agent.tools.siu_tools import file_nicb_report
+        setattr(mod, "file_nicb_report", file_nicb_report)
+        return file_nicb_report
+    if name == "file_niss_report":
+        from claim_agent.tools.siu_tools import file_niss_report
+        setattr(mod, "file_niss_report", file_niss_report)
+        return file_niss_report
     # Task tools
     if name == "create_claim_task":
         from claim_agent.tools.task_tools import create_claim_task
@@ -494,4 +505,8 @@ def __getattr__(name: str):
         from claim_agent.tools.compliance_tools import get_compliance_due_date_tool
         setattr(mod, "get_compliance_due_date_tool", get_compliance_due_date_tool)
         return get_compliance_due_date_tool
+    if name == "get_fraud_report_template_tool":
+        from claim_agent.tools.compliance_tools import get_fraud_report_template_tool
+        setattr(mod, "get_fraud_report_template_tool", get_fraud_report_template_tool)
+        return get_fraud_report_template_tool
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

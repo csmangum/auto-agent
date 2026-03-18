@@ -5,6 +5,7 @@ from datetime import date
 
 from crewai.tools import tool
 
+from claim_agent.compliance.fraud_report_templates import get_fraud_report_template as get_template_impl
 from claim_agent.compliance.state_rules import (
     get_state_rules,
     get_compliance_due_date,
@@ -90,6 +91,34 @@ def get_state_compliance_summary(state: str) -> str:
         "diminished_value_required": rules.diminished_value_required,
         "appraisal_rights": rules.appraisal_rights,
     })
+
+
+@tool("Get Fraud Report Template")
+def get_fraud_report_template_tool(state: str = "California") -> str:
+    """Get state-specific fraud report form template for Department of Insurance filing.
+
+    Use when preparing to file a fraud report with the state bureau. Returns
+    required fields, filing deadline, and bureau contact info.
+
+    Args:
+        state: State jurisdiction - California, Texas, Florida, New York, or Georgia.
+
+    Returns:
+        JSON with form_id, form_name, required_fields, filing_deadline_days,
+        bureau_name, bureau_url.
+    """
+    if not isinstance(state, str) or not state.strip():
+        return json.dumps({
+            "error": "State is required and must be a non-empty string.",
+            "template": None,
+        })
+    template = get_template_impl(state.strip())
+    if not template:
+        return json.dumps({
+            "error": f"Unsupported state. Supported: {', '.join(SUPPORTED_STATES)}.",
+            "template": None,
+        })
+    return json.dumps({"template": template})
 
 
 @tool("Get Comparative Fault Rules")

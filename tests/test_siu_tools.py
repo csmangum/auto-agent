@@ -375,3 +375,108 @@ class TestFileFraudReportStateBureauImpl:
         assert data["claim_id"] == "CLM-001"
         assert data["case_id"] == "SIU-001"
         assert data["state"] == "California"
+
+    def test_persists_filing_for_audit(self, temp_db):
+        """file_fraud_report_state_bureau_impl persists filing to fraud_report_filings."""
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
+
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-FRAUD",
+                vin="VIN-FRAUD",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident",
+                damage_description="Inflated damage",
+                estimated_damage=5000,
+            )
+        )
+        case_id = "SIU-MOCK-FILING"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_fraud_report_state_bureau_impl(
+                claim_id, case_id, state="California", indicators='["staged", "inflated"]'
+            )
+        data = json.loads(result)
+        assert data["success"] is True
+        filings = repo.get_fraud_filings_for_claim(claim_id)
+        assert len(filings) == 1
+        assert filings[0]["filing_type"] == "state_bureau"
+        assert filings[0]["report_id"] == data["report_id"]
+        assert filings[0]["state"] == "California"
+        assert filings[0]["indicators_count"] == 2
+
+    def test_file_nicb_report_persists(self, temp_db):
+        """file_nicb_report_impl persists to fraud_report_filings."""
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import file_nicb_report_impl
+
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-NICB",
+                vin="VIN-NICB",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Vehicle theft",
+                damage_description="Stolen",
+                estimated_damage=15000,
+            )
+        )
+        case_id = "SIU-MOCK-NICB"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_nicb_report_impl(claim_id, case_id, "theft", '["theft"]')
+        data = json.loads(result)
+        assert data["success"] is True
+        assert "NICB-" in data["report_id"]
+        filings = repo.get_fraud_filings_for_claim(claim_id)
+        nicb_filings = [f for f in filings if f["filing_type"] == "nicb"]
+        assert len(nicb_filings) == 1
+        assert nicb_filings[0]["report_id"] == data["report_id"]
+
+    def test_file_niss_report_persists(self, temp_db):
+        """file_niss_report_impl persists to fraud_report_filings."""
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import file_niss_report_impl
+
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-NISS",
+                vin="VIN-NISS",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Fraud",
+                damage_description="Staged",
+                estimated_damage=5000,
+            )
+        )
+        case_id = "SIU-MOCK-NISS"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_niss_report_impl(claim_id, case_id, "fraud", '["staged"]')
+        data = json.loads(result)
+        assert data["success"] is True
+        assert "NISS-" in data["report_id"]
+        filings = repo.get_fraud_filings_for_claim(claim_id)
+        niss_filings = [f for f in filings if f["filing_type"] == "niss"]
+        assert len(niss_filings) == 1
+        assert niss_filings[0]["report_id"] == data["report_id"]

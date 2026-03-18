@@ -189,6 +189,43 @@ class TestFraudAssessment:
         assert result["siu_case_id"].startswith("SIU-MOCK-")
         assert result["siu_case_id_persisted"] is True
 
+    def test_mandatory_referral_when_state_threshold_met(self, temp_db):
+        """When fraud score meets state SIU referral threshold, mandatory_referral_applied is set."""
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-STATE",
+                vin="STATE123",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident. Multiple occupants injured.",
+                damage_description="Inflated damage. Pre-existing. Complete destruction.",
+                estimated_damage=50000,
+            )
+        )
+        claim_data = {
+            "claim_id": claim_id,
+            "state": "California",
+            "vin": "STATE123",
+            "incident_date": "2026-01-15",
+            "incident_description": (
+                "Staged accident. Multiple occupants all injured. Witnesses left."
+            ),
+            "damage_description": (
+                "Inflated pre-existing fabricated damage. Complete destruction."
+            ),
+            "estimated_damage": 50000,
+        }
+        result = json.loads(perform_fraud_assessment_impl(claim_data))
+        assert result["siu_referral"] is True
+        assert result["fraud_score"] >= 75
+        assert result["mandatory_referral_applied"] is True
+        assert result["state_referral_threshold"] == 75
+        assert "mandatory_referral_reason" in result["assessment_details"]
+        assert "California" in result["assessment_details"]["mandatory_referral_reason"]
+
     def test_critical_risk_triggers_block(self, temp_db):
         """Critical risk claims should be blocked; input is designed to exceed critical_risk_threshold and critical_indicator_count."""
         repo = ClaimRepository()

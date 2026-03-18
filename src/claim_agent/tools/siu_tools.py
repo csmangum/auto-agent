@@ -6,6 +6,8 @@ from claim_agent.tools.siu_logic import (
     add_siu_investigation_note_impl,
     check_claimant_investigation_history_impl,
     file_fraud_report_state_bureau_impl,
+    file_nicb_report_impl,
+    file_niss_report_impl,
     get_siu_case_details_impl,
     update_siu_case_status_impl,
     verify_document_authenticity_impl,
@@ -94,6 +96,52 @@ def check_claimant_investigation_history(
         JSON with prior_claims, prior_fraud_flags, prior_siu_cases, risk_summary.
     """
     return check_claimant_investigation_history_impl(claim_id, vin=vin, policy_number=policy_number)
+
+
+@tool("File NICB Report")
+def file_nicb_report(
+    claim_id: str,
+    case_id: str,
+    report_type: str = "theft",
+    indicators: str = "[]",
+) -> str:
+    """File a report with NICB (National Insurance Crime Bureau).
+
+    Required for vehicle theft, salvage, and certain fraud referrals per state law.
+
+    Args:
+        claim_id: The claim ID.
+        case_id: The SIU case ID.
+        report_type: Type of report - theft, salvage, or fraud.
+        indicators: JSON array of fraud indicators.
+
+    Returns:
+        JSON with success, report_id, message.
+    """
+    return file_nicb_report_impl(claim_id, case_id, report_type, indicators)
+
+
+@tool("File NISS Report")
+def file_niss_report(
+    claim_id: str,
+    case_id: str,
+    report_type: str = "fraud",
+    indicators: str = "[]",
+) -> str:
+    """File a report with NISS (National Insurance Special Investigation System).
+
+    Required for certain fraud referrals and cross-carrier reporting.
+
+    Args:
+        claim_id: The claim ID.
+        case_id: The SIU case ID.
+        report_type: Type of report - fraud or referral.
+        indicators: JSON array of fraud indicators.
+
+    Returns:
+        JSON with success, report_id, message.
+    """
+    return file_niss_report_impl(claim_id, case_id, report_type, indicators)
 
 
 @tool("File Fraud Report State Bureau")
