@@ -54,6 +54,9 @@ s3 = [
 jwt = [
     "PyJWT>=2.0.0",
 ]
+redis = [
+    "redis>=5.0.0",
+]
 
 [project.scripts]
 claim-agent = "claim_agent.main:main"

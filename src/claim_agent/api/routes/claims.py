@@ -7,11 +7,16 @@ import math
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.auth import AuthContext
+from claim_agent.api.idempotency import (
+    get_idempotency_key_and_cached,
+    release_idempotency_on_error,
+    store_response_if_idempotent,
+)
 from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
 from claim_agent.exceptions import ClaimNotFoundError, ReserveAuthorityError
@@ -1220,6 +1225,7 @@ def update_claim_repair_status(
 
 @router.post("/claims/generate")
 async def generate_and_submit_claim(
+    request: Request,
     body: GenerateClaimRequest = Body(...),
     async_mode: bool = Query(False, alias="async", description="If submit=true, return claim_id immediately and process in background"),
     auth: AuthContext = RequireAdjuster,
@@ -1246,36 +1252,47 @@ async def generate_and_submit_claim(
     if not body.submit:
         return {"claim": claim_data, "submitted": False}
 
-    if async_mode:
-        max_tasks = get_settings().max_concurrent_background_tasks
-        async with _background_tasks_lock:
-            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
-                )
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
 
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim_input, None, actor_id, ctx=ctx,
-    )
+    try:
+        if async_mode:
+            max_tasks = get_settings().max_concurrent_background_tasks
+            async with _background_tasks_lock:
+                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                    release_idempotency_on_error(idem_key)
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Too many concurrent background tasks. Retry later.",
+                        headers={"Retry-After": "60"},
+                    )
 
-    if async_mode:
-        _run_workflow_background(
-            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+        claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+            claim_input, None, actor_id, ctx=ctx,
         )
-        return {"claim": claim_data, "submitted": True, "claim_id": claim_id}
 
-    result = await asyncio.to_thread(
-        run_claim_workflow,
-        claim_data_with_attachments,
-        None,
-        claim_id,
-        actor_id=actor_id,
-        ctx=ctx,
-    )
-    return {"claim": claim_data, "submitted": True, **result}
+        if async_mode:
+            _run_workflow_background(
+                claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+            )
+            result = {"claim": claim_data, "submitted": True, "claim_id": claim_id}
+        else:
+            result = await asyncio.to_thread(
+                run_claim_workflow,
+                claim_data_with_attachments,
+                None,
+                claim_id,
+                actor_id=actor_id,
+                ctx=ctx,
+            )
+            result = {"claim": claim_data, "submitted": True, **result}
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
 
 
 @router.post("/claims/generate-incident-details")
@@ -1309,6 +1326,7 @@ async def generate_incident_details(
 
 @router.post("/claims")
 async def create_claim(
+    request: Request,
     claim_input: ClaimInput = Body(..., description="Claim data as JSON"),
     async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
     auth: AuthContext = RequireAdjuster,
@@ -1319,36 +1337,46 @@ async def create_claim(
     Use for programmatic access: portals, batch ingestion, third-party integrations.
     For file uploads, use POST /api/claims/process with multipart form.
     """
-    if async_mode:
-        max_tasks = get_settings().max_concurrent_background_tasks
-        async with _background_tasks_lock:
-            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
-                )
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
 
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim_input, None, actor_id, ctx=ctx,
-    )
+    try:
+        if async_mode:
+            max_tasks = get_settings().max_concurrent_background_tasks
+            async with _background_tasks_lock:
+                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                    release_idempotency_on_error(idem_key)
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Too many concurrent background tasks. Retry later.",
+                        headers={"Retry-After": "60"},
+                    )
 
-    if async_mode:
-        _run_workflow_background(
-            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+        claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+            claim_input, None, actor_id, ctx=ctx,
         )
-        return {"claim_id": claim_id}
 
-    result = await asyncio.to_thread(
-        run_claim_workflow,
-        claim_data_with_attachments,
-        None,
-        claim_id,
-        actor_id=actor_id,
-        ctx=ctx,
-    )
-    return result
+        if async_mode:
+            _run_workflow_background(
+                claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+            )
+            result = {"claim_id": claim_id}
+        else:
+            result = await asyncio.to_thread(
+                run_claim_workflow,
+                claim_data_with_attachments,
+                None,
+                claim_id,
+                actor_id=actor_id,
+                ctx=ctx,
+            )
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
 
 
 def _sanitize_incident_data(incident_dict: dict) -> dict:
@@ -1397,6 +1425,7 @@ def _sanitize_incident_data(incident_dict: dict) -> dict:
 
 @router.post("/incidents", response_model=IncidentOutput)
 async def create_incident(
+    request: Request,
     incident_input: IncidentInput = Body(..., description="Multi-vehicle incident data"),
     async_mode: bool = Query(False, alias="async", description="Process each claim in background"),
     auth: AuthContext = RequireAdjuster,
@@ -1407,50 +1436,60 @@ async def create_incident(
     One incident can involve multiple vehicles; each vehicle becomes a separate claim
     linked to the incident. Claims are automatically linked as same_incident.
     """
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    
-    # Sanitize incident data before processing
-    incident_dict = incident_input.model_dump(mode="python")
-    sanitized_incident = _sanitize_incident_data(incident_dict)
+
     try:
-        sanitized_input = IncidentInput.model_validate(sanitized_incident)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid incident data: {e}") from e
-    
-    incident_repo = IncidentRepository(db_path=get_db_path())
-    incident_id, claim_ids = incident_repo.create_incident(sanitized_input, actor_id=actor_id)
+        # Sanitize incident data before processing
+        incident_dict = incident_input.model_dump(mode="python")
+        sanitized_incident = _sanitize_incident_data(incident_dict)
+        try:
+            sanitized_input = IncidentInput.model_validate(sanitized_incident)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid incident data: {e}") from e
 
-    if async_mode and claim_ids:
-        scheduling_status: dict[str, str] = {}
-        for claim_id in claim_ids:
-            claim = ctx.repo.get_claim(claim_id)
-            if claim:
-                claim_data = claim_data_from_row(claim)
-                task = await _try_run_workflow_background(
-                    claim_id, claim_data, actor_id, ctx=ctx,
-                )
-                scheduling_status[claim_id] = "scheduled" if task is not None else "capacity_exceeded"
-            else:
-                logger.error(
-                    "Claim %s created by incident %s not found when scheduling background workflow; "
-                    "possible data integrity issue",
-                    claim_id,
-                    incident_id,
-                )
-                scheduling_status[claim_id] = "claim_not_found"
+        incident_repo = IncidentRepository(db_path=get_db_path())
+        incident_id, claim_ids = incident_repo.create_incident(sanitized_input, actor_id=actor_id)
 
-        return IncidentOutput(
-            incident_id=incident_id,
-            claim_ids=claim_ids,
-            message=f"Incident {incident_id} created with {len(claim_ids)} claim(s)",
-            background_scheduling=scheduling_status,
-        )
+        if async_mode and claim_ids:
+            scheduling_status: dict[str, str] = {}
+            for claim_id in claim_ids:
+                claim = ctx.repo.get_claim(claim_id)
+                if claim:
+                    claim_data = claim_data_from_row(claim)
+                    task = await _try_run_workflow_background(
+                        claim_id, claim_data, actor_id, ctx=ctx,
+                    )
+                    scheduling_status[claim_id] = "scheduled" if task is not None else "capacity_exceeded"
+                else:
+                    logger.error(
+                        "Claim %s created by incident %s not found when scheduling background workflow; "
+                        "possible data integrity issue",
+                        claim_id,
+                        incident_id,
+                    )
+                    scheduling_status[claim_id] = "claim_not_found"
 
-    return IncidentOutput(
-        incident_id=incident_id,
-        claim_ids=claim_ids,
-        message=f"Incident {incident_id} created with {len(claim_ids)} claim(s)",
-    )
+            result = IncidentOutput(
+                incident_id=incident_id,
+                claim_ids=claim_ids,
+                message=f"Incident {incident_id} created with {len(claim_ids)} claim(s)",
+                background_scheduling=scheduling_status,
+            )
+        else:
+            result = IncidentOutput(
+                incident_id=incident_id,
+                claim_ids=claim_ids,
+                message=f"Incident {incident_id} created with {len(claim_ids)} claim(s)",
+            )
+        store_response_if_idempotent(idem_key, 200, result.model_dump(mode="json"))
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
 
 
 @router.get("/incidents/{incident_id}")
@@ -1529,6 +1568,7 @@ async def allocate_bi(
 
 @router.post("/claims/process")
 async def process_claim(
+    request: Request,
     claim: str = Form(..., description="Claim data as JSON string"),
     files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
     async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
@@ -1544,36 +1584,46 @@ async def process_claim(
     - async: If true, returns claim_id immediately; workflow runs in background. Use
       GET /claims/{claim_id}/status to poll or GET /claims/{claim_id}/stream for SSE updates.
     """
-    if async_mode:
-        max_tasks = get_settings().max_concurrent_background_tasks
-        async with _background_tasks_lock:
-            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
-                )
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
 
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim, files, actor_id, ctx=ctx,
-    )
+    try:
+        if async_mode:
+            max_tasks = get_settings().max_concurrent_background_tasks
+            async with _background_tasks_lock:
+                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                    release_idempotency_on_error(idem_key)
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Too many concurrent background tasks. Retry later.",
+                        headers={"Retry-After": "60"},
+                    )
 
-    if async_mode:
-        _run_workflow_background(
-            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+        claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+            claim, files, actor_id, ctx=ctx,
         )
-        return {"claim_id": claim_id}
 
-    result = await asyncio.to_thread(
-        run_claim_workflow,
-        claim_data_with_attachments,
-        None,  # llm
-        claim_id,  # existing_claim_id
-        actor_id=actor_id,
-        ctx=ctx,
-    )
-    return result
+        if async_mode:
+            _run_workflow_background(
+                claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+            )
+            result = {"claim_id": claim_id}
+        else:
+            result = await asyncio.to_thread(
+                run_claim_workflow,
+                claim_data_with_attachments,
+                None,  # llm
+                claim_id,  # existing_claim_id
+                actor_id=actor_id,
+                ctx=ctx,
+            )
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
 
 
 async def _process_claim_with_attachments(
@@ -1692,6 +1742,7 @@ def _prepare_claim_for_workflow(
 
 @router.post("/claims/process/async")
 async def process_claim_async(
+    request: Request,
     claim: str = Form(..., description="Claim data as JSON string"),
     files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
     auth: AuthContext = RequireAdjuster,
@@ -1699,22 +1750,33 @@ async def process_claim_async(
 ):
     """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
     Use GET /claims/{claim_id}/stream to receive realtime updates."""
-    max_tasks = get_settings().max_concurrent_background_tasks
-    async with _background_tasks_lock:
-        if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-            raise HTTPException(
-                status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
-                headers={"Retry-After": "60"},
-            )
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-        claim, files, actor_id, ctx=ctx,
-    )
-    _run_workflow_background(
-        claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
-    )
-    return {"claim_id": claim_id}
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
+
+    try:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                release_idempotency_on_error(idem_key)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
+                )
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+        claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
+            claim, files, actor_id, ctx=ctx,
+        )
+        _run_workflow_background(
+            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        )
+        result = {"claim_id": claim_id}
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
 
 
 async def _stream_claim_updates(claim_id: str):
