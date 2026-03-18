@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+from sqlalchemy import text
 
 from claim_agent.utils.retry import with_llm_retry
 
@@ -816,6 +817,7 @@ def test_check_for_duplicates_invalid_incident_date_on_match_gets_999():
 
 def test_workflow_failure_sets_status_failed():
     """When workflow raises, claim status is set to 'failed' and audit log updated."""
+    from claim_agent.config import reload_settings
     from claim_agent.crews.main_crew import run_claim_workflow
     from claim_agent.db.database import get_connection, init_db
     from claim_agent.db.repository import ClaimRepository
@@ -828,6 +830,7 @@ def test_workflow_failure_sets_status_failed():
     try:
         init_db(path)
         os.environ["CLAIMS_DB_PATH"] = path
+        reload_settings()  # Ensure workflow uses this DB path
         with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
             mock_llm.return_value = None
             with patch("claim_agent.workflow.stages.create_router_crew") as m:
@@ -836,7 +839,7 @@ def test_workflow_failure_sets_status_failed():
                     run_claim_workflow(claim_data)
         repo = ClaimRepository(db_path=path)
         with get_connection(path) as conn:
-            row = conn.execute("SELECT id FROM claims").fetchone()
+            row = conn.execute(text("SELECT id FROM claims")).fetchone()
         assert row is not None
         claim_id = row[0]
         claim = repo.get_claim(claim_id)

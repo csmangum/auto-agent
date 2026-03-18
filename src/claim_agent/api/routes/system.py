@@ -3,6 +3,7 @@
 import logging
 
 from fastapi import APIRouter
+from sqlalchemy import text
 
 from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
@@ -545,7 +546,7 @@ def health_check():
     """Health check with database connectivity."""
     try:
         with get_connection() as conn:
-            count = conn.execute("SELECT COUNT(*) as cnt FROM claims").fetchone()["cnt"]
+            count = conn.execute(text("SELECT COUNT(*) as cnt FROM claims")).fetchone()[0]
         db_status = "connected"
     except Exception as e:
         count = 0

@@ -6,6 +6,7 @@ import json
 import time
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from claim_agent.config import reload_settings
 from claim_agent.db.database import get_connection
@@ -486,8 +487,8 @@ class TestReviewQueue:
     def test_request_info(self, client):
         with get_connection() as conn:
             conn.execute(
-                "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
-                ("needs_review", "high", "2025-01-26T12:00:00Z", "CLM-TEST003"),
+                text("UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"),
+                {"status": "needs_review", "priority": "high", "due_at": "2025-01-26T12:00:00Z", "id": "CLM-TEST003"},
             )
         resp = client.post(
             "/api/claims/CLM-TEST003/review/request-info",
@@ -501,8 +502,8 @@ class TestReviewQueue:
     def test_escalate_to_siu(self, client):
         with get_connection() as conn:
             conn.execute(
-                "UPDATE claims SET status = ?, priority = ?, due_at = ? WHERE id = ?",
-                ("needs_review", "high", "2025-01-26T12:00:00Z", "CLM-TEST002"),
+                text("UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"),
+                {"status": "needs_review", "priority": "high", "due_at": "2025-01-26T12:00:00Z", "id": "CLM-TEST002"},
             )
         resp = client.post("/api/claims/CLM-TEST002/review/escalate-to-siu")
         assert resp.status_code == 200
@@ -522,8 +523,8 @@ class TestReviewQueue:
         monkeypatch.setattr(claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result)
         with get_connection() as conn:
             conn.execute(
-                "UPDATE claims SET status = ? WHERE id = ?",
-                ("under_investigation", "CLM-TEST002"),
+                text("UPDATE claims SET status = :status WHERE id = :id"),
+                {"status": "under_investigation", "id": "CLM-TEST002"},
             )
         resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
         assert resp.status_code == 200
@@ -541,7 +542,10 @@ class TestReviewQueue:
     def test_siu_investigate_ineligible_status_returns_400(self, client):
         """SIU investigate returns 400 when claim status is not eligible."""
         with get_connection() as conn:
-            conn.execute("UPDATE claims SET status = ? WHERE id = ?", ("open", "CLM-TEST002"))
+            conn.execute(
+                text("UPDATE claims SET status = :status WHERE id = :id"),
+                {"status": "open", "id": "CLM-TEST002"},
+            )
         resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
         assert resp.status_code == 400
         detail = resp.json()["detail"].lower()
@@ -608,6 +612,7 @@ class TestReviewQueue:
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
         monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
         resp = client.post("/api/claims/CLM-TEST004/review/approve", headers=_auth_headers("sk-sup"))
@@ -620,6 +625,7 @@ class TestReviewQueue:
         """Adjuster gets 403 for approve (supervisor+ only)."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.post(
             "/api/claims/CLM-TEST004/review/approve",
             headers={"X-API-Key": "sk-adj"},
@@ -630,6 +636,7 @@ class TestReviewQueue:
         """Approve on claim not in needs_review returns 409."""
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         # CLM-TEST001 has status "open"
         resp = client.post("/api/claims/CLM-TEST001/review/approve", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 409
@@ -641,6 +648,7 @@ class TestReviewQueue:
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: {})
         resp = client.post(
             "/api/claims/CLM-TEST004/review/approve",
@@ -1065,10 +1073,11 @@ class TestReserve:
         # Verify in DB
         with get_connection() as conn:
             row = conn.execute(
-                "SELECT reserve_amount FROM claims WHERE id = ?", ("CLM-TEST001",)
+                text("SELECT reserve_amount FROM claims WHERE id = :id"),
+                {"id": "CLM-TEST001"},
             ).fetchone()
             assert row is not None
-            assert row["reserve_amount"] == 5000.0
+            assert row[0] == 5000.0
 
     def test_patch_reserve_adjusts_existing(self, client):
         """PATCH reserve when reserve exists adjusts it."""
@@ -1214,6 +1223,7 @@ class TestMetrics:
     def test_global_metrics_empty(self, client, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/metrics", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 200
         data = resp.json()
@@ -1222,6 +1232,7 @@ class TestMetrics:
     def test_claim_metrics_not_found(self, client, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/metrics/CLM-TEST001", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 404
 
@@ -1297,6 +1308,7 @@ def _set_admin_auth(monkeypatch):
     """Set up admin auth for tests that need admin-level endpoints."""
     monkeypatch.setenv("API_KEYS", "sk-admin:admin")
     monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+    reload_settings()
 
 
 class TestSystemConfig:
@@ -1359,6 +1371,7 @@ class TestPoliciesEndpoint:
         """Adjuster can access policies endpoint."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/system/policies", headers=_auth_headers("sk-adj"))
         assert resp.status_code == 200
 
@@ -1366,6 +1379,7 @@ class TestPoliciesEndpoint:
         """Policies response has correct structure and policy/vehicle shape."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/system/policies", headers=_auth_headers("sk-adj"))
         assert resp.status_code == 200
         data = resp.json()
@@ -1387,6 +1401,7 @@ class TestPoliciesEndpoint:
         """Policies returns 401 when auth required and no key provided."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/system/policies")
         assert resp.status_code == 401
 
@@ -1422,30 +1437,35 @@ class TestApiKeyAuth:
         """Health endpoint is always accessible without auth."""
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/health")
         assert resp.status_code == 200
 
     def test_protected_endpoint_requires_key(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats")
         assert resp.status_code == 401
 
     def test_protected_endpoint_accepts_x_api_key(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats", headers={"X-API-Key": "secret123"})
         assert resp.status_code == 200
 
     def test_protected_endpoint_accepts_bearer(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats", headers={"Authorization": "Bearer secret123"})
         assert resp.status_code == 200
 
     def test_invalid_key_returns_401(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats", headers={"X-API-Key": "wrong-key"})
         assert resp.status_code == 401
         assert "Invalid" in resp.json()["detail"]
@@ -1454,6 +1474,7 @@ class TestApiKeyAuth:
         """POST /api/claims returns 401 when auth is required and no key provided."""
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         payload = {
             "policy_number": "POL-001",
             "vin": "1HGBH41JXMN109186",
@@ -1478,6 +1499,7 @@ class TestRBAC:
     def _set_api_keys(self, monkeypatch, keys: str):
         monkeypatch.setenv("API_KEYS", keys)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
 
     def test_adjuster_can_access_claims(self, client, monkeypatch):
         """Adjuster can access claims endpoints."""
@@ -1567,6 +1589,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "admin"},
             self._JWT_SECRET,
@@ -1584,6 +1607,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "admin", "exp": int(time.time()) - 3600},
             self._JWT_SECRET,
@@ -1601,6 +1625,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "admin"},
             self._WRONG_SECRET,
@@ -1618,6 +1643,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"role": "admin"},
             self._JWT_SECRET,
@@ -1635,6 +1661,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "superadmin"},
             self._JWT_SECRET,
@@ -1784,12 +1811,56 @@ class TestPostClaimsJson:
         resp = client.post("/api/claims", json=VALID_CLAIM_PAYLOAD, params={"async": "true"})
         assert resp.status_code == 503
         assert "Too many concurrent" in resp.json()["detail"]
+        assert resp.headers.get("Retry-After") == "60"
 
     def test_post_claims_validation_error_returns_422(self, client, monkeypatch):
         """ClaimInput validation errors produce 422 (FastAPI default)."""
         bad_claim = {**VALID_CLAIM_PAYLOAD, "vehicle_year": "not-a-number"}
         resp = client.post("/api/claims", json=bad_claim)
         assert resp.status_code == 422
+
+
+class TestGenerateClaimEndpoint:
+    """Tests for POST /api/claims/generate."""
+
+    def test_generate_async_returns_503_when_at_capacity(self, client, monkeypatch, tmp_path):
+        """POST /api/claims/generate?async=true&submit=true returns 503 when at capacity."""
+        from claim_agent.models.claim import ClaimInput
+
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.api.routes.claims as claims_mod
+        from claim_agent.config import get_settings
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
+        monkeypatch.setattr(
+            claims_mod,
+            "generate_claim_from_prompt",
+            lambda _: ClaimInput.model_validate(VALID_CLAIM_PAYLOAD),
+        )
+
+        real_tasks = claims_mod._background_tasks
+
+        class AtCapacitySet:
+            def add(self, x):
+                real_tasks.add(x)
+
+            def discard(self, x):
+                real_tasks.discard(x)
+
+            def __len__(self):
+                return len(real_tasks) + 1
+
+        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+
+        resp = client.post(
+            "/api/claims/generate",
+            json={"prompt": "parking lot fender bender", "submit": True},
+            params={"async": "true"},
+        )
+        assert resp.status_code == 503
+        assert "Too many concurrent" in resp.json()["detail"]
+        assert resp.headers.get("Retry-After") == "60"
 
 
 class TestProcessClaimEndpoint:
@@ -1834,6 +1905,22 @@ class TestProcessClaimEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST-MOCK"
+
+    def test_valid_claim_async_returns_claim_id_only(self, client, monkeypatch, tmp_path):
+        """POST /claims/process?async=true returns claim_id immediately."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        self._mock_workflow(monkeypatch)
+
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            params={"async": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "claim_id" in data
+        assert "status" not in data
+        assert "claim_type" not in data
 
     def test_invalid_json_in_claim_field(self, client, monkeypatch):
         """Malformed JSON in the 'claim' form field returns 400."""
@@ -1895,7 +1982,7 @@ class TestProcessClaimEndpoint:
         self._mock_workflow(monkeypatch)
 
         with get_connection() as conn:
-            count_before = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
+            count_before = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
 
         resp = client.post(
             "/api/claims/process",
@@ -1905,7 +1992,7 @@ class TestProcessClaimEndpoint:
         assert resp.status_code == 200
 
         with get_connection() as conn:
-            count_after = conn.execute("SELECT COUNT(*) as c FROM claims").fetchone()["c"]
+            count_after = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
             # Exactly one new claim (no duplicate creation)
             assert count_after == count_before + 1
 
@@ -1914,6 +2001,7 @@ class TestProcessClaimEndpoint:
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         monkeypatch.setenv("API_KEYS", "sk-audit-test:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         import claim_agent.storage.factory as factory_mod
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
@@ -1926,12 +2014,11 @@ class TestProcessClaimEndpoint:
         # Find the claim created by create_claim (first audit entry, before workflow runs)
         with get_connection() as conn:
             rows = conn.execute(
-                "SELECT claim_id, actor_id FROM claim_audit_log WHERE action = 'created' "
-                "ORDER BY id DESC LIMIT 1"
+                text("SELECT claim_id, actor_id FROM claim_audit_log WHERE action = 'created' ORDER BY id DESC LIMIT 1")
             ).fetchone()
         assert rows
         # actor_id for 'created' comes from process_claim's create_claim; should be key identity
-        assert rows["actor_id"].startswith("key-"), f"Expected key identity, got {rows['actor_id']}"
+        assert rows[1].startswith("key-"), f"Expected key identity, got {rows[1]}"
 
     def test_attachment_download_returns_file(self, client, monkeypatch, tmp_path):
         """GET /claims/{claim_id}/attachments/{key} serves the file for local storage."""
@@ -1967,6 +2054,8 @@ class TestDocumentAPI:
     @pytest.fixture(autouse=True)
     def _auth(self, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         yield
 
     def test_list_documents_404_claim_not_found(self, client):
@@ -2106,6 +2195,43 @@ class TestProcessClaimAsyncEndpoint:
         assert "claim_id" in data
         assert data["claim_id"].startswith("CLM-")
 
+    def test_process_claim_async_returns_503_without_creating_claim(self, client, monkeypatch, tmp_path):
+        """POST /claims/process/async returns 503 when at capacity and does NOT create a claim."""
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.api.routes.claims as claims_mod
+        from claim_agent.config import get_settings
+
+        settings = get_settings()
+        monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
+        real_tasks = claims_mod._background_tasks
+
+        class AtCapacitySet:
+            def add(self, x):
+                real_tasks.add(x)
+
+            def discard(self, x):
+                real_tasks.discard(x)
+
+            def __len__(self):
+                return len(real_tasks) + 1
+
+        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+
+        with get_connection() as conn:
+            count_before = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
+
+        resp = client.post(
+            "/api/claims/process/async",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+        )
+        assert resp.status_code == 503
+        assert "Too many concurrent" in resp.json()["detail"]
+        assert resp.headers.get("Retry-After") == "60"
+
+        with get_connection() as conn:
+            count_after = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
+        assert count_after == count_before, "No claim should be created when 503 is returned"
+
     def test_stream_returns_sse_events(self, client, monkeypatch, tmp_path):
         """Stream endpoint returns SSE-formatted events for existing claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
@@ -2200,9 +2326,14 @@ class TestProcessClaimAsyncEndpoint:
         run_id = "run-progress-test"
         with get_connection(seeded_temp_db) as conn:
             conn.execute(
-                """INSERT INTO task_checkpoints (claim_id, workflow_run_id, stage_key, output)
-                   VALUES (?, ?, ?, ?), (?, ?, ?, ?)""",
-                (claim_id, run_id, "router", "{}", claim_id, run_id, "escalation_check", "{}"),
+                text("""
+                INSERT INTO task_checkpoints (claim_id, workflow_run_id, stage_key, output)
+                VALUES (:claim_id, :run_id, :sk1, :out1), (:claim_id2, :run_id2, :sk2, :out2)
+                """),
+                {
+                    "claim_id": claim_id, "run_id": run_id, "sk1": "router", "out1": "{}",
+                    "claim_id2": claim_id, "run_id2": run_id, "sk2": "escalation_check", "out2": "{}",
+                },
             )
 
         stream_resp = client.get(f"/api/claims/{claim_id}/stream")
@@ -2226,3 +2357,29 @@ class TestProcessClaimAsyncEndpoint:
         first_data = json.loads(lines[0][5:].strip())
         assert "progress" in first_data
         assert first_data["progress"] == []
+
+    def test_get_claim_status_returns_lightweight_payload(self, client, seeded_temp_db):
+        """GET /claims/{claim_id}/status returns claim_id, status, claim_type, progress."""
+        resp = client.get("/api/claims/CLM-TEST001/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert "status" in data
+        assert "claim_type" in data
+        assert "progress" in data
+        assert isinstance(data["progress"], list)
+        assert "created_at" in data
+
+    def test_get_claim_status_not_found_returns_404(self, client):
+        """GET /claims/{claim_id}/status returns 404 for non-existent claim."""
+        resp = client.get("/api/claims/CLM-NONEXISTENT/status")
+        assert resp.status_code == 404
+
+    def test_get_claim_status_empty_progress_when_no_checkpoints(self, client, seeded_temp_db):
+        """GET /claims/{claim_id}/status returns progress=[] and workflow_run_id=null when no checkpoints."""
+        resp = client.get("/api/claims/CLM-TEST002/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST002"
+        assert data["progress"] == []
+        assert data["workflow_run_id"] is None

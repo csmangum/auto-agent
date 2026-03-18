@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import threading
 
+from sqlalchemy import text
+
 from claim_agent.db.constants import (
     STATUS_CLOSED,
     STATUS_DUPLICATE,
@@ -142,13 +144,13 @@ def _update_gauges() -> None:
     try:
         with get_connection() as conn:
             in_progress = conn.execute(
-                "SELECT COUNT(*) as cnt FROM claims WHERE status = ?",
-                (STATUS_PROCESSING,),
-            ).fetchone()["cnt"]
+                text("SELECT COUNT(*) as cnt FROM claims WHERE status = :status"),
+                {"status": STATUS_PROCESSING},
+            ).fetchone()[0]
             review = conn.execute(
-                "SELECT COUNT(*) as cnt FROM claims WHERE status = ?",
-                (STATUS_NEEDS_REVIEW,),
-            ).fetchone()["cnt"]
+                text("SELECT COUNT(*) as cnt FROM claims WHERE status = :status"),
+                {"status": STATUS_NEEDS_REVIEW},
+            ).fetchone()[0]
             _claims_in_progress.set(in_progress)
             _review_queue_size.set(review)
     except Exception:

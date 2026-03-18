@@ -7,7 +7,10 @@ audit entries and does not perform UPDATE or DELETE operations on that table.
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
+
+from sqlalchemy import text
 
 from claim_agent.models.claim import Attachment
 
@@ -45,7 +48,7 @@ from claim_agent.db.constants import (
     STATUS_UNDER_INVESTIGATION,
 )
 from claim_agent.config.settings import get_reserve_config
-from claim_agent.db.database import get_connection
+from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
 from claim_agent.utils.sanitization import (
@@ -110,65 +113,66 @@ class ClaimRepository:
         if loss_state_val is not None:
             loss_state_val = str(loss_state_val).strip() or None
         incident_id_val = claim_input.incident_id
+        now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO claims (
                     id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                     incident_date, incident_description, damage_description, estimated_damage,
                     claim_type, loss_state, status, attachments, incident_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    claim_input.policy_number,
-                    claim_input.vin,
-                    claim_input.vehicle_year,
-                    claim_input.vehicle_make,
-                    claim_input.vehicle_model,
-                    claim_input.incident_date.isoformat(),
-                    claim_input.incident_description,
-                    claim_input.damage_description,
-                    claim_input.estimated_damage,
-                    None,
-                    loss_state_val,
-                    STATUS_PENDING,
-                    attachments_json,
-                    incident_id_val,
-                ),
+                ) VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                         :incident_date, :incident_description, :damage_description, :estimated_damage,
+                         :claim_type, :loss_state, :status, :attachments, :incident_id)
+                """),
+                {
+                    "id": claim_id,
+                    "policy_number": claim_input.policy_number,
+                    "vin": claim_input.vin,
+                    "vehicle_year": claim_input.vehicle_year,
+                    "vehicle_make": claim_input.vehicle_make,
+                    "vehicle_model": claim_input.vehicle_model,
+                    "incident_date": claim_input.incident_date.isoformat(),
+                    "incident_description": claim_input.incident_description,
+                    "damage_description": claim_input.damage_description,
+                    "estimated_damage": claim_input.estimated_damage,
+                    "claim_type": None,
+                    "loss_state": loss_state_val,
+                    "status": STATUS_PENDING,
+                    "attachments": attachments_json,
+                    "incident_id": incident_id_val,
+                },
             )
             after_state = json.dumps({"status": STATUS_PENDING, "claim_type": None, "payout_amount": None})
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_CREATED, STATUS_PENDING, "Claim record created", actor_id, after_state),
+                VALUES (:claim_id, :action, :new_status, :details, :actor_id, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_CREATED, "new_status": STATUS_PENDING, "details": "Claim record created", "actor_id": actor_id, "after_state": after_state},
             )
             # Set initial reserve from estimated_damage at FNOL if configured.
-            # FNOL auto-reserve is always treated as a system operation regardless of
-            # the calling actor; no authority-limit check applies.
             cfg = get_reserve_config()
             est = claim_input.estimated_damage
             if cfg.get("initial_reserve_from_estimated_damage", True) and est is not None and est > 0:
                 conn.execute(
-                    "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
-                    (est, claim_id),
+                    text("UPDATE claims SET reserve_amount = :est, updated_at = :now WHERE id = :id"),
+                    {"est": est, "now": now, "id": claim_id},
                 )
                 conn.execute(
-                    """
+                    text("""
                     INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (claim_id, None, est, "Initial reserve from estimated_damage at FNOL", ACTOR_SYSTEM),
+                    VALUES (:claim_id, :old_amount, :new_amount, :reason, :actor_id)
+                    """),
+                    {"claim_id": claim_id, "old_amount": None, "new_amount": est, "reason": "Initial reserve from estimated_damage at FNOL", "actor_id": ACTOR_SYSTEM},
                 )
                 reserve_state = json.dumps({"reserve_amount": est})
                 conn.execute(
-                    """
+                    text("""
                     INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (claim_id, AUDIT_EVENT_RESERVE_SET, "Initial reserve set from estimated_damage", ACTOR_SYSTEM, reserve_state),
+                    VALUES (:claim_id, :action, :details, :actor_id, :after_state)
+                    """),
+                    {"claim_id": claim_id, "action": AUDIT_EVENT_RESERVE_SET, "details": "Initial reserve set from estimated_damage", "actor_id": ACTOR_SYSTEM, "after_state": reserve_state},
                 )
         if claim_input.parties:
             for p in claim_input.parties:
@@ -182,27 +186,30 @@ class ClaimRepository:
     def add_claim_party(self, claim_id: str, party: ClaimPartyInput) -> int:
         """Insert a claim party. Returns party id."""
         with get_connection(self._db_path) as conn:
-            cursor = conn.execute(
-                """
+            result = conn.execute(
+                text("""
                 INSERT INTO claim_parties (
                     claim_id, party_type, name, email, phone, address, role,
                     represented_by_id, consent_status, authorization_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    party.party_type,
-                    party.name,
-                    party.email,
-                    party.phone,
-                    party.address,
-                    party.role,
-                    party.represented_by_id,
-                    party.consent_status or "pending",
-                    party.authorization_status or "pending",
-                ),
+                ) VALUES (:claim_id, :party_type, :name, :email, :phone, :address, :role,
+                         :represented_by_id, :consent_status, :authorization_status)
+                RETURNING id
+                """),
+                {
+                    "claim_id": claim_id,
+                    "party_type": party.party_type,
+                    "name": party.name,
+                    "email": party.email,
+                    "phone": party.phone,
+                    "address": party.address,
+                    "role": party.role,
+                    "represented_by_id": party.represented_by_id,
+                    "consent_status": party.consent_status or "pending",
+                    "authorization_status": party.authorization_status or "pending",
+                },
             )
-            return int(cursor.lastrowid)
+            rid = result.fetchone()
+            return int(rid[0]) if rid else 0
 
     def get_claim_parties(
         self, claim_id: str, party_type: str | None = None
@@ -211,14 +218,15 @@ class ClaimRepository:
         with get_connection(self._db_path) as conn:
             if party_type:
                 rows = conn.execute(
-                    "SELECT * FROM claim_parties WHERE claim_id = ? AND party_type = ?",
-                    (claim_id, party_type),
+                    text("SELECT * FROM claim_parties WHERE claim_id = :claim_id AND party_type = :party_type"),
+                    {"claim_id": claim_id, "party_type": party_type},
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM claim_parties WHERE claim_id = ?", (claim_id,)
+                    text("SELECT * FROM claim_parties WHERE claim_id = :claim_id"),
+                    {"claim_id": claim_id},
                 ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_claim_party_by_type(
         self, claim_id: str, party_type: str
@@ -238,13 +246,14 @@ class ClaimRepository:
         to_set = {k: v for k, v in updates.items() if k in allowed and v is not None}
         if not to_set:
             return
-        set_clause = ", ".join(f"{k} = ?" for k in to_set)
-        values = list(to_set.values()) + [party_id]
+        now = datetime.now(timezone.utc).isoformat()
+        set_parts = [f"{k} = :{k}" for k in to_set] + ["updated_at = :now"]
+        set_clause = ", ".join(set_parts)
+        params: dict[str, Any] = dict(to_set)
+        params["now"] = now
+        params["id"] = party_id
         with get_connection(self._db_path) as conn:
-            conn.execute(
-                f"UPDATE claim_parties SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
-                values,
-            )
+            conn.execute(text(f"UPDATE claim_parties SET {set_clause} WHERE id = :id"), params)
 
     def get_primary_contact_for_user_type(
         self, claim_id: str, user_type: str
@@ -258,11 +267,11 @@ class ClaimRepository:
             if claimant and claimant.get("represented_by_id"):
                 with get_connection(self._db_path) as conn:
                     row = conn.execute(
-                        "SELECT * FROM claim_parties WHERE id = ? AND claim_id = ?",
-                        (claimant["represented_by_id"], claim_id),
+                        text("SELECT * FROM claim_parties WHERE id = :id AND claim_id = :claim_id"),
+                        {"id": claimant["represented_by_id"], "claim_id": claim_id},
                     ).fetchone()
                 if row:
-                    attorney = dict(row)
+                    attorney = row_to_dict(row)
                     if attorney.get("email") or attorney.get("phone"):
                         return attorney
             return claimant if (claimant and (claimant.get("email") or claimant.get("phone"))) else None
@@ -275,11 +284,12 @@ class ClaimRepository:
         """Fetch claim by ID."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT * FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT * FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
         if row is None:
             return None
-        return dict(row)
+        return row_to_dict(row)
 
     def update_claim_status(
         self,
@@ -293,18 +303,21 @@ class ClaimRepository:
         skip_validation: bool = False,
     ) -> None:
         """Update status, optionally claim_type and payout_amount; log state change to audit."""
+        now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            old_status = row["status"]
-            old_claim_type = row["claim_type"]
-            old_payout = row["payout_amount"]
+            row_d = row_to_dict(row)
+            old_status = row_d["status"]
+            old_claim_type = row_d["claim_type"]
+            old_payout = row_d["payout_amount"]
 
             if not skip_validation:
-                claim_dict = dict(row)
+                claim_dict = row_d
                 validate_transition(
                     claim_id,
                     old_status,
@@ -328,43 +341,43 @@ class ClaimRepository:
             # Explicit parameterized queries (no dynamic SQL)
             if claim_type is not None and payout_amount is not None:
                 conn.execute(
-                    """UPDATE claims SET status = ?, claim_type = ?, payout_amount = ?,
-                       updated_at = datetime('now') WHERE id = ?""",
-                    (new_status, claim_type, payout_amount, claim_id),
+                    text("""UPDATE claims SET status = :status, claim_type = :claim_type, payout_amount = :payout_amount,
+                       updated_at = :now WHERE id = :claim_id"""),
+                    {"status": new_status, "claim_type": claim_type, "payout_amount": payout_amount, "now": now, "claim_id": claim_id},
                 )
             elif claim_type is not None:
                 conn.execute(
-                    """UPDATE claims SET status = ?, claim_type = ?,
-                       updated_at = datetime('now') WHERE id = ?""",
-                    (new_status, claim_type, claim_id),
+                    text("""UPDATE claims SET status = :status, claim_type = :claim_type,
+                       updated_at = :now WHERE id = :claim_id"""),
+                    {"status": new_status, "claim_type": claim_type, "now": now, "claim_id": claim_id},
                 )
             elif payout_amount is not None:
                 conn.execute(
-                    """UPDATE claims SET status = ?, payout_amount = ?,
-                       updated_at = datetime('now') WHERE id = ?""",
-                    (new_status, payout_amount, claim_id),
+                    text("""UPDATE claims SET status = :status, payout_amount = :payout_amount,
+                       updated_at = :now WHERE id = :claim_id"""),
+                    {"status": new_status, "payout_amount": payout_amount, "now": now, "claim_id": claim_id},
                 )
             else:
                 conn.execute(
-                    """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
-                    (new_status, claim_id),
+                    text("""UPDATE claims SET status = :status, updated_at = :now WHERE id = :claim_id"""),
+                    {"status": new_status, "now": now, "claim_id": claim_id},
                 )
 
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    AUDIT_EVENT_STATUS_CHANGE,
-                    old_status,
-                    new_status,
-                    details or "",
-                    actor_id,
-                    json.dumps(before_state),
-                    json.dumps(after_state),
-                ),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_STATUS_CHANGE,
+                    "old_status": old_status,
+                    "new_status": new_status,
+                    "details": details or "",
+                    "actor_id": actor_id,
+                    "before_state": json.dumps(before_state),
+                    "after_state": json.dumps(after_state),
+                },
             )
 
         final_claim_type = claim_type if claim_type is not None else old_claim_type
@@ -389,11 +402,11 @@ class ClaimRepository:
         """Save workflow run result to workflow_runs."""
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, claim_type, router_output, workflow_output),
+                VALUES (:claim_id, :claim_type, :router_output, :workflow_output)
+                """),
+                {"claim_id": claim_id, "claim_type": claim_type, "router_output": router_output, "workflow_output": workflow_output},
             )
 
     def get_workflow_runs(
@@ -404,16 +417,16 @@ class ClaimRepository:
         """Fetch workflow run records for a claim, most recent first."""
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT claim_type, router_output, workflow_output, created_at
                 FROM workflow_runs
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY created_at DESC
-                LIMIT ?
-                """,
-                (claim_id, limit),
+                LIMIT :limit
+                """),
+                {"claim_id": claim_id, "limit": limit},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def save_task_checkpoint(
         self,
@@ -425,12 +438,18 @@ class ClaimRepository:
         """Persist a stage checkpoint. Replaces any existing checkpoint for the same key."""
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
-                INSERT OR REPLACE INTO task_checkpoints
-                    (claim_id, workflow_run_id, stage_key, output)
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, workflow_run_id, stage_key, output),
+                text("""
+                INSERT INTO task_checkpoints (claim_id, workflow_run_id, stage_key, output)
+                VALUES (:claim_id, :workflow_run_id, :stage_key, :output)
+                ON CONFLICT (claim_id, workflow_run_id, stage_key)
+                DO UPDATE SET output = EXCLUDED.output
+                """),
+                {
+                    "claim_id": claim_id,
+                    "workflow_run_id": workflow_run_id,
+                    "stage_key": stage_key,
+                    "output": output,
+                },
             )
 
     def get_task_checkpoints(
@@ -441,13 +460,13 @@ class ClaimRepository:
         """Load all checkpoints for a workflow run. Returns {stage_key: output_json}."""
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT stage_key, output FROM task_checkpoints
-                WHERE claim_id = ? AND workflow_run_id = ?
-                """,
-                (claim_id, workflow_run_id),
+                WHERE claim_id = :claim_id AND workflow_run_id = :workflow_run_id
+                """),
+                {"claim_id": claim_id, "workflow_run_id": workflow_run_id},
             ).fetchall()
-        return {row["stage_key"]: row["output"] for row in rows}
+        return {(d := row_to_dict(r))["stage_key"]: d["output"] for r in rows}
 
     def delete_task_checkpoints(
         self,
@@ -461,36 +480,43 @@ class ClaimRepository:
             return
         with get_connection(self._db_path) as conn:
             if stage_keys is not None:
-                placeholders = ",".join("?" for _ in stage_keys)
+                params: dict[str, Any] = {
+                    "claim_id": claim_id,
+                    "workflow_run_id": workflow_run_id,
+                }
+                for i, sk in enumerate(stage_keys):
+                    params[f"sk{i}"] = sk
+                placeholders = ", ".join(f":sk{i}" for i in range(len(stage_keys)))
                 conn.execute(
-                    f"""
+                    text(f"""
                     DELETE FROM task_checkpoints
-                    WHERE claim_id = ? AND workflow_run_id = ? AND stage_key IN ({placeholders})
-                    """,
-                    [claim_id, workflow_run_id, *stage_keys],
+                    WHERE claim_id = :claim_id AND workflow_run_id = :workflow_run_id
+                    AND stage_key IN ({placeholders})
+                    """),
+                    params,
                 )
             else:
                 conn.execute(
-                    """
+                    text("""
                     DELETE FROM task_checkpoints
-                    WHERE claim_id = ? AND workflow_run_id = ?
-                    """,
-                    (claim_id, workflow_run_id),
+                    WHERE claim_id = :claim_id AND workflow_run_id = :workflow_run_id
+                    """),
+                    {"claim_id": claim_id, "workflow_run_id": workflow_run_id},
                 )
 
     def get_latest_checkpointed_run_id(self, claim_id: str) -> str | None:
         """Return the most recent workflow_run_id that has checkpoints for this claim."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                """
+                text("""
                 SELECT workflow_run_id FROM task_checkpoints
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY id DESC
                 LIMIT 1
-                """,
-                (claim_id,),
+                """),
+                {"claim_id": claim_id},
             ).fetchone()
-        return row["workflow_run_id"] if row else None
+        return row_to_dict(row)["workflow_run_id"] if row else None
 
     def update_claim_attachments(
         self,
@@ -506,32 +532,34 @@ class ClaimRepository:
         )
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT attachments FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT attachments FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            before_attachments = row["attachments"] or "[]"
+            row_d = row_to_dict(row)
+            before_attachments = row_d["attachments"] or "[]"
             cursor = conn.execute(
-                "UPDATE claims SET attachments = ?, updated_at = datetime('now') WHERE id = ?",
-                (attachments_json, claim_id),
+                text("UPDATE claims SET attachments = :attachments, updated_at = CURRENT_TIMESTAMP WHERE id = :claim_id"),
+                {"attachments": attachments_json, "claim_id": claim_id},
             )
             if cursor.rowcount == 0:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             before_state = before_attachments  # already a serialized JSON array
             after_state = attachments_json      # already a serialized JSON array
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    AUDIT_EVENT_ATTACHMENTS_UPDATED,
-                    f"Attachments updated: {len(attachments)} file(s)",
-                    actor_id,
-                    before_state,
-                    after_state,
-                ),
+                VALUES (:claim_id, :action, :details, :actor_id, :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_ATTACHMENTS_UPDATED,
+                    "details": f"Attachments updated: {len(attachments)} file(s)",
+                    "actor_id": actor_id,
+                    "before_state": before_state,
+                    "after_state": after_state,
+                },
             )
 
     def set_reserve(
@@ -552,31 +580,46 @@ class ClaimRepository:
         safe_reason = sanitize_note(reason) if reason else ""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT reserve_amount, status FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT reserve_amount, status FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            old_amount = row["reserve_amount"]
-            claim_status = row["status"]
+            row_d = row_to_dict(row)
+            old_amount = row_d["reserve_amount"]
+            claim_status = row_d["status"]
             conn.execute(
-                "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
-                (amount, claim_id),
+                text("UPDATE claims SET reserve_amount = :amount, updated_at = CURRENT_TIMESTAMP WHERE id = :claim_id"),
+                {"amount": amount, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (claim_id, old_amount, amount, safe_reason or "Reserve set", safe_actor),
+                VALUES (:claim_id, :old_amount, :new_amount, :reason, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "old_amount": old_amount,
+                    "new_amount": amount,
+                    "reason": safe_reason or "Reserve set",
+                    "actor_id": safe_actor,
+                },
             )
             before_state = json.dumps({"reserve_amount": old_amount})
             after_state = json.dumps({"reserve_amount": amount})
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_RESERVE_SET, safe_reason or "Reserve set", safe_actor, before_state, after_state),
+                VALUES (:claim_id, :action, :details, :actor_id, :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_RESERVE_SET,
+                    "details": safe_reason or "Reserve set",
+                    "actor_id": safe_actor,
+                    "before_state": before_state,
+                    "after_state": after_state,
+                },
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=claim_status, summary=f"Reserve set to ${amount:,.2f}")
@@ -600,40 +643,48 @@ class ClaimRepository:
         safe_reason = sanitize_note(reason) if reason else ""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT reserve_amount, status FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT reserve_amount, status FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            old_amount = row["reserve_amount"]
-            claim_status = row["status"]
+            row_d = row_to_dict(row)
+            old_amount = row_d["reserve_amount"]
+            claim_status = row_d["status"]
             audit_event = AUDIT_EVENT_RESERVE_SET if old_amount is None else AUDIT_EVENT_RESERVE_ADJUSTED
             default_reason = "Reserve set" if old_amount is None else "Reserve adjusted"
             conn.execute(
-                "UPDATE claims SET reserve_amount = ?, updated_at = datetime('now') WHERE id = ?",
-                (new_amount, claim_id),
+                text("UPDATE claims SET reserve_amount = :new_amount, updated_at = CURRENT_TIMESTAMP WHERE id = :claim_id"),
+                {"new_amount": new_amount, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (claim_id, old_amount, new_amount, safe_reason or default_reason, safe_actor),
+                VALUES (:claim_id, :old_amount, :new_amount, :reason, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "old_amount": old_amount,
+                    "new_amount": new_amount,
+                    "reason": safe_reason or default_reason,
+                    "actor_id": safe_actor,
+                },
             )
             before_state = json.dumps({"reserve_amount": old_amount})
             after_state = json.dumps({"reserve_amount": new_amount})
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    audit_event,
-                    safe_reason or default_reason,
-                    safe_actor,
-                    before_state,
-                    after_state,
-                ),
+                VALUES (:claim_id, :action, :details, :actor_id, :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": audit_event,
+                    "details": safe_reason or default_reason,
+                    "actor_id": safe_actor,
+                    "before_state": before_state,
+                    "after_state": after_state,
+                },
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=claim_status, summary=f"Reserve adjusted to ${new_amount:,.2f}")
@@ -648,16 +699,16 @@ class ClaimRepository:
         """Fetch reserve history for a claim, most recent first."""
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT id, claim_id, old_amount, new_amount, reason, actor_id, created_at
                 FROM reserve_history
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY id DESC
-                LIMIT ?
-                """,
-                (claim_id, limit),
+                LIMIT :limit
+                """),
+                {"claim_id": claim_id, "limit": limit},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def check_reserve_adequacy(self, claim_id: str) -> dict[str, Any]:
         """Check reserve adequacy vs estimated_damage and payout_amount.
@@ -733,26 +784,34 @@ class ClaimRepository:
             (rows, total_count). When limit is None, returns all rows.
         """
         with get_connection(self._db_path) as conn:
-            query = """
-                SELECT id, claim_id, action, old_status, new_status, details,
-                       actor_id, before_state, after_state, created_at
-                FROM claim_audit_log
-                WHERE claim_id = ?
-                ORDER BY id ASC
-            """
-            params: tuple[Any, ...] = (claim_id,)
+            params: dict[str, Any] = {"claim_id": claim_id}
             if limit is not None:
-                # Only run COUNT(*) when paginating; fetching a page doesn't
-                # give us the total for free.
                 count_row = conn.execute(
-                    "SELECT COUNT(*) FROM claim_audit_log WHERE claim_id = ?",
-                    (claim_id,),
+                    text("SELECT COUNT(*) FROM claim_audit_log WHERE claim_id = :claim_id"),
+                    {"claim_id": claim_id},
                 ).fetchone()
                 total = count_row[0] if count_row else 0
-                query += " LIMIT ? OFFSET ?"
-                params = (claim_id, limit, offset)
+                params["limit"] = limit
+                params["offset"] = offset
+                query = text("""
+                    SELECT id, claim_id, action, old_status, new_status, details,
+                           actor_id, before_state, after_state, created_at
+                    FROM claim_audit_log
+                    WHERE claim_id = :claim_id
+                    ORDER BY id ASC
+                    LIMIT :limit OFFSET :offset
+                """)
+            else:
+                total = 0
+                query = text("""
+                    SELECT id, claim_id, action, old_status, new_status, details,
+                           actor_id, before_state, after_state, created_at
+                    FROM claim_audit_log
+                    WHERE claim_id = :claim_id
+                    ORDER BY id ASC
+                """)
             rows = conn.execute(query, params).fetchall()
-        result = [dict(r) for r in rows]
+        result = [row_to_dict(r) for r in rows]
         if limit is None:
             # All rows fetched; total is simply the list length — no extra query needed.
             total = len(result)
@@ -767,16 +826,17 @@ class ClaimRepository:
         """Record a claim review result in the audit log. Raises ClaimNotFoundError if claim does not exist."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT id FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_CLAIM_REVIEW, report_json, sanitize_actor_id(actor_id)),
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_CLAIM_REVIEW, "details": report_json, "actor_id": sanitize_actor_id(actor_id)},
             )
 
     def add_note(
@@ -788,36 +848,38 @@ class ClaimRepository:
         """Append a note to a claim. Raises ClaimNotFoundError if claim does not exist."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT id FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_notes (claim_id, note, actor_id)
-                VALUES (?, ?, ?)
-                """,
-                (claim_id, sanitize_note(note), sanitize_actor_id(actor_id)),
+                VALUES (:claim_id, :note, :actor_id)
+                """),
+                {"claim_id": claim_id, "note": sanitize_note(note), "actor_id": sanitize_actor_id(actor_id)},
             )
 
     def get_notes(self, claim_id: str) -> list[dict[str, Any]]:
         """Get all notes for a claim, ordered by created_at ascending. Raises ClaimNotFoundError if claim does not exist."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT id FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             rows = conn.execute(
-                """
+                text("""
                 SELECT id, claim_id, note, actor_id, created_at
                 FROM claim_notes
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY created_at ASC
-                """,
-                (claim_id,),
+                """),
+                {"claim_id": claim_id},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def create_follow_up_message(
         self,
@@ -830,43 +892,57 @@ class ClaimRepository:
         """Create a follow-up message record. Returns the message id. Raises ClaimNotFoundError if claim does not exist."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT id FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            cursor = conn.execute(
-                """
+            result = conn.execute(
+                text("""
                 INSERT INTO follow_up_messages (claim_id, user_type, message_content, status, actor_id)
-                VALUES (?, ?, ?, 'pending', ?)
-                """,
-                (claim_id, user_type, sanitize_note(message_content), actor_id),
+                VALUES (:claim_id, :user_type, :message_content, 'pending', :actor_id)
+                RETURNING id
+                """),
+                {
+                    "claim_id": claim_id,
+                    "user_type": user_type,
+                    "message_content": sanitize_note(message_content),
+                    "actor_id": actor_id,
+                },
             )
-            msg_id = cursor.lastrowid
+            row = result.fetchone()
+            msg_id = row[0] if row else 0
         return int(msg_id)
 
     def mark_follow_up_sent(self, message_id: int) -> None:
         """Mark a follow-up message as sent (status=sent) and log audit."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT claim_id, user_type, actor_id FROM follow_up_messages WHERE id = ?",
-                (message_id,),
+                text("SELECT claim_id, user_type, actor_id FROM follow_up_messages WHERE id = :message_id"),
+                {"message_id": message_id},
             ).fetchone()
             if row is None:
                 raise ValueError(f"Follow-up message not found: {message_id}")
-            claim_id = row["claim_id"]
-            user_type = row["user_type"]
-            actor_id = row["actor_id"]
+            row_d = row_to_dict(row)
+            claim_id = row_d["claim_id"]
+            user_type = row_d["user_type"]
+            actor_id = row_d["actor_id"]
             conn.execute(
-                "UPDATE follow_up_messages SET status = 'sent' WHERE id = ?",
-                (message_id,),
+                text("UPDATE follow_up_messages SET status = 'sent' WHERE id = :message_id"),
+                {"message_id": message_id},
             )
             details = json.dumps({"user_type": user_type, "message_id": message_id})
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_FOLLOW_UP_SENT, details, actor_id),
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_FOLLOW_UP_SENT,
+                    "details": details,
+                    "actor_id": actor_id,
+                },
             )
 
     def record_follow_up_response(
@@ -888,32 +964,38 @@ class ClaimRepository:
         """
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT claim_id, user_type FROM follow_up_messages WHERE id = ?",
-                (message_id,),
+                text("SELECT claim_id, user_type FROM follow_up_messages WHERE id = :message_id"),
+                {"message_id": message_id},
             ).fetchone()
             if row is None:
                 raise ValueError(f"Follow-up message not found: {message_id}")
-            claim_id = row["claim_id"]
-            user_type = row["user_type"]
+            row_d = row_to_dict(row)
+            claim_id = row_d["claim_id"]
+            user_type = row_d["user_type"]
             if expected_claim_id is not None and claim_id != expected_claim_id:
                 raise ValueError(
                     f"Follow-up message {message_id} does not belong to claim {expected_claim_id}"
                 )
             conn.execute(
-                """
+                text("""
                 UPDATE follow_up_messages
-                SET status = 'responded', response_content = ?, responded_at = datetime('now')
-                WHERE id = ?
-                """,
-                (sanitize_note(response_content), message_id),
+                SET status = 'responded', response_content = :response_content, responded_at = CURRENT_TIMESTAMP
+                WHERE id = :message_id
+                """),
+                {"response_content": sanitize_note(response_content), "message_id": message_id},
             )
             details = json.dumps({"user_type": user_type, "message_id": message_id})
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_FOLLOW_UP_RESPONSE, details, actor_id),
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_FOLLOW_UP_RESPONSE,
+                    "details": details,
+                    "actor_id": actor_id,
+                },
             )
 
     def get_pending_follow_ups(
@@ -925,50 +1007,52 @@ class ClaimRepository:
         """Get pending or sent (not yet responded) follow-up messages for a claim."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT id FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             if user_type:
                 rows = conn.execute(
-                    """
+                    text("""
                     SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
                     FROM follow_up_messages
-                    WHERE claim_id = ? AND user_type = ? AND status IN ('pending', 'sent')
+                    WHERE claim_id = :claim_id AND user_type = :user_type AND status IN ('pending', 'sent')
                     ORDER BY created_at DESC
-                    """,
-                    (claim_id, user_type),
+                    """),
+                    {"claim_id": claim_id, "user_type": user_type},
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    """
+                    text("""
                     SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
                     FROM follow_up_messages
-                    WHERE claim_id = ? AND status IN ('pending', 'sent')
+                    WHERE claim_id = :claim_id AND status IN ('pending', 'sent')
                     ORDER BY created_at DESC
-                    """,
-                    (claim_id,),
+                    """),
+                    {"claim_id": claim_id},
                 ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_follow_up_messages(self, claim_id: str) -> list[dict[str, Any]]:
         """Get all follow-up messages for a claim."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT id FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             rows = conn.execute(
-                """
+                text("""
                 SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
                 FROM follow_up_messages
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY created_at DESC
-                """,
-                (claim_id,),
+                """),
+                {"claim_id": claim_id},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def insert_audit_entry(
         self,
@@ -985,11 +1069,20 @@ class ClaimRepository:
         """Insert an audit log entry without changing claim status."""
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, action, old_status, new_status, details or "", actor_id, before_state, after_state),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": action,
+                    "old_status": old_status,
+                    "new_status": new_status,
+                    "details": details or "",
+                    "actor_id": actor_id,
+                    "before_state": before_state,
+                    "after_state": after_state,
+                },
             )
 
     def update_claim_siu_case_id(
@@ -1006,21 +1099,20 @@ class ClaimRepository:
         after a transient failure will therefore produce multiple
         siu_case_created entries for the same claim in claim_audit_log.
         """
+        now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
-            cursor = conn.execute(
-                """
-                UPDATE claims SET siu_case_id = ?, updated_at = datetime('now') WHERE id = ?
-                """,
-                (siu_case_id, claim_id),
+            result = conn.execute(
+                text("UPDATE claims SET siu_case_id = :siu_case_id, updated_at = :now WHERE id = :claim_id"),
+                {"siu_case_id": siu_case_id, "now": now, "claim_id": claim_id},
             )
-            if cursor.rowcount == 0:
+            if result.rowcount == 0:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_SIU_CASE_CREATED, f"SIU case created: {siu_case_id}", actor_id),
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_SIU_CASE_CREATED, "details": f"SIU case created: {siu_case_id}", "actor_id": actor_id},
             )
 
     def update_claim_review_metadata(
@@ -1032,23 +1124,22 @@ class ClaimRepository:
         review_started_at: str | None = None,
     ) -> None:
         """Update review metadata (priority, due_at, review_started_at) on a claim."""
-        updates: list[str] = ["updated_at = datetime('now')"]
-        params: list[Any] = []
+        set_parts: list[str] = ["updated_at = CURRENT_TIMESTAMP"]
+        params: dict[str, Any] = {"claim_id": claim_id}
         if priority is not None:
-            updates.append("priority = ?")
-            params.append(priority)
+            set_parts.append("priority = :priority")
+            params["priority"] = priority
         if due_at is not None:
-            updates.append("due_at = ?")
-            params.append(due_at)
+            set_parts.append("due_at = :due_at")
+            params["due_at"] = due_at
         if review_started_at is not None:
-            updates.append("review_started_at = ?")
-            params.append(review_started_at)
-        if not params:
+            set_parts.append("review_started_at = :review_started_at")
+            params["review_started_at"] = review_started_at
+        if len(params) <= 1:
             return
-        params.append(claim_id)
         with get_connection(self._db_path) as conn:
             conn.execute(
-                f"UPDATE claims SET {', '.join(updates)} WHERE id = ?",
+                text(f"UPDATE claims SET {', '.join(set_parts)} WHERE id = :claim_id"),
                 params,
             )
 
@@ -1060,20 +1151,19 @@ class ClaimRepository:
         liability_basis: str | None = None,
     ) -> None:
         """Update liability determination fields on a claim."""
-        updates: list[str] = ["updated_at = datetime('now')"]
-        params: list[Any] = []
+        set_parts: list[str] = ["updated_at = CURRENT_TIMESTAMP"]
+        params: dict[str, Any] = {"claim_id": claim_id}
         if liability_percentage is not None:
-            updates.append("liability_percentage = ?")
-            params.append(liability_percentage)
+            set_parts.append("liability_percentage = :liability_percentage")
+            params["liability_percentage"] = liability_percentage
         if liability_basis is not None:
-            updates.append("liability_basis = ?")
-            params.append(liability_basis)
-        if not params:
+            set_parts.append("liability_basis = :liability_basis")
+            params["liability_basis"] = liability_basis
+        if len(params) <= 1:
             return
-        params.append(claim_id)
         with get_connection(self._db_path) as conn:
             cursor = conn.execute(
-                f"UPDATE claims SET {', '.join(updates)} WHERE id = ?",
+                text(f"UPDATE claims SET {', '.join(set_parts)} WHERE id = :claim_id"),
                 params,
             )
             if cursor.rowcount == 0:
@@ -1088,8 +1178,8 @@ class ClaimRepository:
         meta_json = json.dumps(total_loss_metadata, default=str)
         with get_connection(self._db_path) as conn:
             cursor = conn.execute(
-                "UPDATE claims SET total_loss_metadata = ?, updated_at = datetime('now') WHERE id = ?",
-                (meta_json, claim_id),
+                text("UPDATE claims SET total_loss_metadata = :meta_json, updated_at = CURRENT_TIMESTAMP WHERE id = :claim_id"),
+                {"meta_json": meta_json, "claim_id": claim_id},
             )
             if cursor.rowcount == 0:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
@@ -1098,12 +1188,17 @@ class ClaimRepository:
         """Get total_loss_metadata for a claim, or None if not set."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT total_loss_metadata FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT total_loss_metadata FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
-        if not row or row[0] is None:
+        if not row:
+            return None
+        row_d = row_to_dict(row)
+        val = row_d.get("total_loss_metadata")
+        if val is None:
             return None
         try:
-            return cast(dict[str, Any], json.loads(row[0]))
+            return cast(dict[str, Any], json.loads(val))
         except json.JSONDecodeError:
             return None
 
@@ -1120,25 +1215,27 @@ class ClaimRepository:
         """Create a subrogation case record. Returns the created row as dict."""
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO subrogation_cases
                     (claim_id, case_id, amount_sought, opposing_carrier,
                      liability_percentage, liability_basis, status)
-                VALUES (?, ?, ?, ?, ?, ?, 'pending')
-                """,
-                (
-                    claim_id,
-                    case_id,
-                    amount_sought,
-                    opposing_carrier,
-                    liability_percentage,
-                    liability_basis,
-                ),
+                VALUES (:claim_id, :case_id, :amount_sought, :opposing_carrier,
+                        :liability_percentage, :liability_basis, 'pending')
+                """),
+                {
+                    "claim_id": claim_id,
+                    "case_id": case_id,
+                    "amount_sought": amount_sought,
+                    "opposing_carrier": opposing_carrier,
+                    "liability_percentage": liability_percentage,
+                    "liability_basis": liability_basis,
+                },
             )
             row = conn.execute(
-                "SELECT * FROM subrogation_cases WHERE case_id = ?", (case_id,)
+                text("SELECT * FROM subrogation_cases WHERE case_id = :case_id"),
+                {"case_id": case_id},
             ).fetchone()
-        return dict(row) if row else {}
+        return row_to_dict(row) if row else {}
 
     def update_subrogation_case(
         self,
@@ -1152,32 +1249,31 @@ class ClaimRepository:
         recovery_amount: float | None = None,
     ) -> None:
         """Update subrogation case arbitration/metadata/recovery fields."""
-        updates: list[str] = ["updated_at = datetime('now')"]
-        params: list[Any] = []
+        set_parts: list[str] = ["updated_at = CURRENT_TIMESTAMP"]
+        params: dict[str, Any] = {"case_id": case_id}
         if arbitration_status is not None:
-            updates.append("arbitration_status = ?")
-            params.append(arbitration_status)
+            set_parts.append("arbitration_status = :arbitration_status")
+            params["arbitration_status"] = arbitration_status
         if arbitration_forum is not None:
-            updates.append("arbitration_forum = ?")
-            params.append(arbitration_forum)
+            set_parts.append("arbitration_forum = :arbitration_forum")
+            params["arbitration_forum"] = arbitration_forum
         if dispute_date is not None:
-            updates.append("dispute_date = ?")
-            params.append(dispute_date)
+            set_parts.append("dispute_date = :dispute_date")
+            params["dispute_date"] = dispute_date
         if opposing_carrier is not None:
-            updates.append("opposing_carrier = ?")
-            params.append(opposing_carrier)
+            set_parts.append("opposing_carrier = :opposing_carrier")
+            params["opposing_carrier"] = opposing_carrier
         if status is not None:
-            updates.append("status = ?")
-            params.append(status)
+            set_parts.append("status = :status")
+            params["status"] = status
         if recovery_amount is not None:
-            updates.append("recovery_amount = ?")
-            params.append(recovery_amount)
-        if not params:
+            set_parts.append("recovery_amount = :recovery_amount")
+            params["recovery_amount"] = recovery_amount
+        if len(params) <= 1:
             return
-        params.append(case_id)
         with get_connection(self._db_path) as conn:
             cursor = conn.execute(
-                f"UPDATE subrogation_cases SET {', '.join(updates)} WHERE case_id = ?",
+                text(f"UPDATE subrogation_cases SET {', '.join(set_parts)} WHERE case_id = :case_id"),
                 params,
             )
             if cursor.rowcount == 0:
@@ -1189,14 +1285,14 @@ class ClaimRepository:
         """Fetch all subrogation cases for a claim."""
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT * FROM subrogation_cases
-                WHERE claim_id = ?
+                WHERE claim_id = :claim_id
                 ORDER BY created_at DESC
-                """,
-                (claim_id,),
+                """),
+                {"claim_id": claim_id},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def assign_claim(
         self,
@@ -1207,70 +1303,76 @@ class ClaimRepository:
     ) -> None:
         """Assign claim to an adjuster. Sets review_started_at if not already set.
         Only claims with status needs_review can be assigned."""
+        now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT assignee, status FROM claims WHERE id = ?",
-                (claim_id,),
+                text("SELECT assignee, status FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            if row["status"] != STATUS_NEEDS_REVIEW:
+            row_d = row_to_dict(row)
+            if row_d["status"] != STATUS_NEEDS_REVIEW:
                 raise ValueError(
-                    f"Claim {claim_id} is not in needs_review (status={row['status']}); "
+                    f"Claim {claim_id} is not in needs_review (status={row_d['status']}); "
                     "only claims in the review queue can be assigned"
                 )
-            old_assignee = row["assignee"]
+            old_assignee = row_d["assignee"]
             conn.execute(
-                """
-                UPDATE claims SET assignee = ?,
-                    review_started_at = COALESCE(review_started_at, datetime('now')),
-                    updated_at = datetime('now')
-                WHERE id = ?
-                """,
-                (assignee_id, claim_id),
+                text("""
+                UPDATE claims SET assignee = :assignee,
+                    review_started_at = COALESCE(review_started_at, :now),
+                    updated_at = :now
+                WHERE id = :claim_id
+                """),
+                {"assignee": assignee_id, "now": now, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    AUDIT_EVENT_ASSIGN,
-                    f"Assigned to {assignee_id}",
-                    actor_id,
-                    json.dumps({"assignee": old_assignee}),
-                    json.dumps({"assignee": assignee_id}),
-                ),
+                VALUES (:claim_id, :action, :details, :actor_id, :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_ASSIGN,
+                    "details": f"Assigned to {assignee_id}",
+                    "actor_id": actor_id,
+                    "before_state": json.dumps({"assignee": old_assignee}),
+                    "after_state": json.dumps({"assignee": assignee_id}),
+                },
             )
 
     def _ensure_claim_needs_review(self, conn: Any, claim_id: str) -> Any:
         """Fetch claim row and ensure status is needs_review. Raises if not found or wrong status."""
         row = conn.execute(
-            "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
         if row is None:
             raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-        if row["status"] != STATUS_NEEDS_REVIEW:
+        row_d = row_to_dict(row)
+        if row_d["status"] != STATUS_NEEDS_REVIEW:
             raise ValueError(
-                f"Claim {claim_id} is not in needs_review (status={row['status']}); "
+                f"Claim {claim_id} is not in needs_review (status={row_d['status']}); "
                 "adjuster actions only apply to claims in the review queue"
             )
-        return row
+        return row_d
 
     def _ensure_claim_processing(self, conn: Any, claim_id: str) -> Any:
         """Fetch claim row and ensure status is processing. For FNOL denial."""
         row = conn.execute(
-            "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
         if row is None:
             raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-        if row["status"] != STATUS_PROCESSING:
+        row_d = row_to_dict(row)
+        if row_d["status"] != STATUS_PROCESSING:
             raise ValueError(
-                f"Claim {claim_id} is not in processing (status={row['status']}); "
+                f"Claim {claim_id} is not in processing (status={row_d['status']}); "
                 "FNOL denial only applies to claims in processing"
             )
-        return row
+        return row_d
 
     def approve_claim(
         self,
@@ -1282,11 +1384,11 @@ class ClaimRepository:
         with get_connection(self._db_path) as conn:
             row = self._ensure_claim_needs_review(conn, claim_id)
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_APPROVAL, row["status"], None, "Approved for continued processing", actor_id, None, None),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_APPROVAL, "old_status": row["status"], "new_status": None, "details": "Approved for continued processing", "actor_id": actor_id, "before_state": None, "after_state": None},
             )
 
     def reject_claim(
@@ -1304,7 +1406,7 @@ class ClaimRepository:
                 claim_id,
                 row["status"],
                 STATUS_DENIED,
-                claim=dict(row),
+                claim=row_to_dict(row),
                 actor_id=actor_id,
             )
             old_status = row["status"]
@@ -1312,23 +1414,24 @@ class ClaimRepository:
             old_payout = row["payout_amount"]
             before_state = {"status": old_status, "claim_type": old_claim_type, "payout_amount": old_payout}
             after_state = {"status": STATUS_DENIED, "claim_type": old_claim_type, "payout_amount": old_payout}
+            now = datetime.now(timezone.utc).isoformat()
             conn.execute(
-                """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
-                (STATUS_DENIED, claim_id),
+                text("UPDATE claims SET status = :status, updated_at = :now WHERE id = :claim_id"),
+                {"status": STATUS_DENIED, "now": now, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_STATUS_CHANGE, old_status, STATUS_DENIED, safe_reason, actor_id, json.dumps(before_state), json.dumps(after_state)),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_STATUS_CHANGE, "old_status": old_status, "new_status": STATUS_DENIED, "details": safe_reason, "actor_id": actor_id, "before_state": json.dumps(before_state), "after_state": json.dumps(after_state)},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_REJECTION, old_status, STATUS_DENIED, safe_reason, actor_id, None, None),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_REJECTION, "old_status": old_status, "new_status": STATUS_DENIED, "details": safe_reason, "actor_id": actor_id, "before_state": None, "after_state": None},
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_DENIED, summary=safe_reason)
@@ -1350,7 +1453,7 @@ class ClaimRepository:
                 claim_id,
                 row["status"],
                 STATUS_DENIED,
-                claim=dict(row),
+                claim=row_to_dict(row),
                 actor_id=actor_id,
             )
             old_status = row["status"]
@@ -1358,38 +1461,39 @@ class ClaimRepository:
             old_payout = row["payout_amount"]
             before_state = {"status": old_status, "claim_type": old_claim_type, "payout_amount": old_payout}
             after_state = {"status": STATUS_DENIED, "claim_type": old_claim_type, "payout_amount": old_payout}
+            now = datetime.now(timezone.utc).isoformat()
             conn.execute(
-                """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
-                (STATUS_DENIED, claim_id),
+                text("UPDATE claims SET status = :status, updated_at = :now WHERE id = :claim_id"),
+                {"status": STATUS_DENIED, "now": now, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_STATUS_CHANGE, old_status, STATUS_DENIED, safe_reason, actor_id, json.dumps(before_state), json.dumps(after_state)),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_STATUS_CHANGE, "old_status": old_status, "new_status": STATUS_DENIED, "details": safe_reason, "actor_id": actor_id, "before_state": json.dumps(before_state), "after_state": json.dumps(after_state)},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_REJECTION, old_status, STATUS_DENIED, safe_reason, actor_id, None, None),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_REJECTION, "old_status": old_status, "new_status": STATUS_DENIED, "details": safe_reason, "actor_id": actor_id, "before_state": None, "after_state": None},
             )
             if coverage_verification_details:
                 merged = {"outcome": "denied", **coverage_verification_details}
                 conn.execute(
-                    """
+                    text("""
                     INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        claim_id,
-                        AUDIT_EVENT_COVERAGE_VERIFICATION,
-                        truncate_audit_json(coverage_verification_details),
-                        actor_id,
-                        truncate_audit_json(merged),
-                    ),
+                    VALUES (:claim_id, :action, :details, :actor_id, :after_state)
+                    """),
+                    {
+                        "claim_id": claim_id,
+                        "action": AUDIT_EVENT_COVERAGE_VERIFICATION,
+                        "details": truncate_audit_json(coverage_verification_details),
+                        "actor_id": actor_id,
+                        "after_state": truncate_audit_json(merged),
+                    },
                 )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_DENIED, summary=safe_reason)
@@ -1407,17 +1511,17 @@ class ClaimRepository:
         merged = {"outcome": outcome, **details}
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    AUDIT_EVENT_COVERAGE_VERIFICATION,
-                    truncate_audit_json(details),
-                    actor_id,
-                    truncate_audit_json(merged),
-                ),
+                VALUES (:claim_id, :action, :details, :actor_id, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_COVERAGE_VERIFICATION,
+                    "details": truncate_audit_json(details),
+                    "actor_id": actor_id,
+                    "after_state": truncate_audit_json(merged),
+                },
             )
 
     def request_info_claim(
@@ -1434,7 +1538,7 @@ class ClaimRepository:
                 claim_id,
                 row["status"],
                 STATUS_PENDING_INFO,
-                claim=dict(row),
+                claim=row_to_dict(row),
                 actor_id=actor_id,
             )
             old_status = row["status"]
@@ -1442,23 +1546,24 @@ class ClaimRepository:
             old_payout = row["payout_amount"]
             before_state = {"status": old_status, "claim_type": old_claim_type, "payout_amount": old_payout}
             after_state = {"status": STATUS_PENDING_INFO, "claim_type": old_claim_type, "payout_amount": old_payout}
+            now = datetime.now(timezone.utc).isoformat()
             conn.execute(
-                """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
-                (STATUS_PENDING_INFO, claim_id),
+                text("UPDATE claims SET status = :status, updated_at = :now WHERE id = :claim_id"),
+                {"status": STATUS_PENDING_INFO, "now": now, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_STATUS_CHANGE, old_status, STATUS_PENDING_INFO, note or "Requested more information", actor_id, json.dumps(before_state), json.dumps(after_state)),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_STATUS_CHANGE, "old_status": old_status, "new_status": STATUS_PENDING_INFO, "details": note or "Requested more information", "actor_id": actor_id, "before_state": json.dumps(before_state), "after_state": json.dumps(after_state)},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_REQUEST_INFO, old_status, STATUS_PENDING_INFO, note or "", actor_id, None, None),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_REQUEST_INFO, "old_status": old_status, "new_status": STATUS_PENDING_INFO, "details": note or "", "actor_id": actor_id, "before_state": None, "after_state": None},
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_PENDING_INFO, summary=note or "Requested more information")
@@ -1477,7 +1582,7 @@ class ClaimRepository:
                 claim_id,
                 row["status"],
                 STATUS_UNDER_INVESTIGATION,
-                claim=dict(row),
+                claim=row_to_dict(row),
                 actor_id=actor_id,
             )
             old_status = row["status"]
@@ -1485,23 +1590,24 @@ class ClaimRepository:
             old_payout = row["payout_amount"]
             before_state = {"status": old_status, "claim_type": old_claim_type, "payout_amount": old_payout}
             after_state = {"status": STATUS_UNDER_INVESTIGATION, "claim_type": old_claim_type, "payout_amount": old_payout}
+            now = datetime.now(timezone.utc).isoformat()
             conn.execute(
-                """UPDATE claims SET status = ?, updated_at = datetime('now') WHERE id = ?""",
-                (STATUS_UNDER_INVESTIGATION, claim_id),
+                text("UPDATE claims SET status = :status, updated_at = :now WHERE id = :claim_id"),
+                {"status": STATUS_UNDER_INVESTIGATION, "now": now, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_STATUS_CHANGE, old_status, STATUS_UNDER_INVESTIGATION, "Escalated to SIU", actor_id, json.dumps(before_state), json.dumps(after_state)),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_STATUS_CHANGE, "old_status": old_status, "new_status": STATUS_UNDER_INVESTIGATION, "details": "Escalated to SIU", "actor_id": actor_id, "before_state": json.dumps(before_state), "after_state": json.dumps(after_state)},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_ESCALATE_TO_SIU, old_status, STATUS_UNDER_INVESTIGATION, "Referred to Special Investigations Unit", actor_id, None, None),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_ESCALATE_TO_SIU, "old_status": old_status, "new_status": STATUS_UNDER_INVESTIGATION, "details": "Referred to Special Investigations Unit", "actor_id": actor_id, "before_state": None, "after_state": None},
             )
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_UNDER_INVESTIGATION, summary="Escalated to SIU")
@@ -1517,33 +1623,38 @@ class ClaimRepository:
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         """List claims with status needs_review. Returns (claims, total_count)."""
-        conditions = ["status = ?"]
-        params: list[Any] = [STATUS_NEEDS_REVIEW]
+        conditions = ["status = :status"]
+        params: dict[str, Any] = {"status": STATUS_NEEDS_REVIEW, "limit": limit, "offset": offset}
         if assignee is not None:
-            conditions.append("assignee = ?")
-            params.append(assignee)
+            conditions.append("assignee = :assignee")
+            params["assignee"] = assignee
         if priority is not None:
-            conditions.append("priority = ?")
-            params.append(priority)
+            conditions.append("priority = :priority")
+            params["priority"] = priority
         if older_than_hours is not None:
             if older_than_hours < 0:
                 raise ValueError("older_than_hours must be non-negative")
-            conditions.append("review_started_at IS NOT NULL AND datetime(review_started_at) <= datetime('now', ?)")
-            params.append(f"-{older_than_hours} hours")
+            # Use SQLite-compatible format (YYYY-MM-DD HH:MM:SS) for lexicographic comparison
+            cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
+            cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+            conditions.append("review_started_at IS NOT NULL AND review_started_at <= :cutoff")
+            params["cutoff"] = cutoff
         where = " AND ".join(conditions)
         with get_connection(self._db_path) as conn:
             count_row = conn.execute(
-                f"SELECT COUNT(*) as cnt FROM claims WHERE {where}",
-                params,
+                text(f"SELECT COUNT(*) as cnt FROM claims WHERE {where}"),
+                {k: v for k, v in params.items() if k not in ("limit", "offset")},
             ).fetchone()
-            total = count_row["cnt"]
+            total = count_row[0] if count_row else 0
             rows = conn.execute(
-                f"SELECT * FROM claims WHERE {where} ORDER BY "
-                "CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, "
-                "COALESCE(due_at, '9999-12-31') ASC, created_at DESC LIMIT ? OFFSET ?",
-                params + [limit, offset],
+                text(f"""
+                SELECT * FROM claims WHERE {where} ORDER BY
+                CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+                COALESCE(due_at, '9999-12-31') ASC, created_at DESC LIMIT :limit OFFSET :offset
+                """),
+                params,
             ).fetchall()
-        return [dict(r) for r in rows], total
+        return [row_to_dict(r) for r in rows], total
 
     def search_claims(
         self,
@@ -1559,22 +1670,22 @@ class ClaimRepository:
             return []
         with get_connection(self._db_path) as conn:
             conditions = []
-            params = []
+            params: dict[str, Any] = {}
             if vin:
-                conditions.append("vin = ?")
-                params.append(vin)
+                conditions.append("vin = :vin")
+                params["vin"] = vin
             if incident_date:
-                conditions.append("incident_date = ?")
-                params.append(incident_date)
+                conditions.append("incident_date = :incident_date")
+                params["incident_date"] = incident_date
             if policy_number:
-                conditions.append("policy_number = ?")
-                params.append(policy_number)
+                conditions.append("policy_number = :policy_number")
+                params["policy_number"] = policy_number
             where_clause = " AND ".join(conditions)
             rows = conn.execute(
-                f"SELECT * FROM claims WHERE {where_clause}",
-                tuple(params),
+                text(f"SELECT * FROM claims WHERE {where_clause}"),
+                params,
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_claims_by_party_address(
         self,
@@ -1588,17 +1699,17 @@ class ClaimRepository:
             return []
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT DISTINCT c.*
                 FROM claim_parties cp
                 JOIN claims c ON c.id = cp.claim_id
-                WHERE lower(trim(cp.address)) = lower(trim(?))
+                WHERE lower(trim(cp.address)) = lower(trim(:addr))
                 ORDER BY c.created_at DESC
-                LIMIT ?
-                """,
-                (addr, limit),
+                LIMIT :limit
+                """),
+                {"addr": addr, "limit": limit},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_claims_by_provider_name(
         self,
@@ -1612,18 +1723,18 @@ class ClaimRepository:
             return []
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT DISTINCT c.*
                 FROM claim_parties cp
                 JOIN claims c ON c.id = cp.claim_id
                 WHERE cp.party_type = 'provider'
-                  AND lower(trim(cp.name)) = lower(trim(?))
+                  AND lower(trim(cp.name)) = lower(trim(:name))
                 ORDER BY c.created_at DESC
-                LIMIT ?
-                """,
-                (name, limit),
+                LIMIT :limit
+                """),
+                {"name": name, "limit": limit},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def build_relationship_snapshot(
         self,
@@ -1690,35 +1801,41 @@ class ClaimRepository:
                     if rid and rid != claim_id:
                         related_ids.add(rid)
             if addresses:
-                placeholders = ",".join("?" * len(addresses))
+                params: dict[str, Any] = {"limit": max_nodes * len(addresses)}
+                for i, addr in enumerate(addresses):
+                    params[f"addr{i}"] = addr
+                placeholders = ", ".join(f":addr{i}" for i in range(len(addresses)))
                 rows = conn.execute(
-                    f"""
+                    text(f"""
                     SELECT DISTINCT c.id
                     FROM claim_parties cp
                     JOIN claims c ON c.id = cp.claim_id
                     WHERE lower(trim(cp.address)) IN ({placeholders})
                     ORDER BY c.created_at DESC
-                    LIMIT ?
-                    """,
-                    (*addresses, max_nodes * len(addresses)),
+                    LIMIT :limit
+                    """),
+                    params,
                 ).fetchall()
                 for r in rows:
                     rid = str(r[0] if r else "").strip()
                     if rid and rid != claim_id:
                         related_ids.add(rid)
             if provider_names:
-                placeholders = ",".join("?" * len(provider_names))
+                params = {"limit": max_nodes * len(provider_names)}
+                for i, pn in enumerate(provider_names):
+                    params[f"pn{i}"] = pn
+                placeholders = ", ".join(f":pn{i}" for i in range(len(provider_names)))
                 rows = conn.execute(
-                    f"""
+                    text(f"""
                     SELECT DISTINCT c.id
                     FROM claim_parties cp
                     JOIN claims c ON c.id = cp.claim_id
                     WHERE cp.party_type = 'provider'
                       AND lower(trim(cp.name)) IN ({placeholders})
                     ORDER BY c.created_at DESC
-                    LIMIT ?
-                    """,
-                    (*provider_names, max_nodes * len(provider_names)),
+                    LIMIT :limit
+                    """),
+                    params,
                 ).fetchall()
                 for r in rows:
                     rid = str(r[0] if r else "").strip()
@@ -1734,20 +1851,21 @@ class ClaimRepository:
 
         if related_ids:
             sorted_related = sorted(related_ids)
-            placeholders = ",".join("?" * len(sorted_related))
+            params = {f"id{i}": rid for i, rid in enumerate(sorted_related)}
+            placeholders = ", ".join(f":id{i}" for i in range(len(sorted_related)))
             with get_connection(self._db_path) as conn:
                 claim_rows = conn.execute(
-                    f"SELECT * FROM claims WHERE id IN ({placeholders})",
-                    sorted_related,
+                    text(f"SELECT * FROM claims WHERE id IN ({placeholders})"),
+                    params,
                 ).fetchall()
                 party_rows = conn.execute(
-                    f"SELECT * FROM claim_parties WHERE claim_id IN ({placeholders})",
-                    sorted_related,
+                    text(f"SELECT * FROM claim_parties WHERE claim_id IN ({placeholders})"),
+                    params,
                 ).fetchall()
-            related_claims_by_id = {dict(r)["id"]: dict(r) for r in claim_rows}
+            related_claims_by_id = {row_to_dict(r)["id"]: row_to_dict(r) for r in claim_rows}
             parties_by_claim_id: dict[str, list[dict[str, Any]]] = {}
             for row in party_rows:
-                p = dict(row)
+                p = row_to_dict(row)
                 parties_by_claim_id.setdefault(p["claim_id"], []).append(p)
 
             for related_id in sorted_related:
@@ -1827,19 +1945,21 @@ class ClaimRepository:
         """
         if retention_period_years < 0:
             raise ValueError("retention_period_years must be non-negative")
-        cutoff = f"-{retention_period_years} years"
+        # Use SQLite-compatible format (YYYY-MM-DD HH:MM:SS) for lexicographic comparison
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=retention_period_years * 365)
+        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                """
+                text("""
                 SELECT * FROM claims
-                WHERE datetime(created_at) <= datetime('now', ?)
+                WHERE created_at <= :cutoff
                   AND archived_at IS NULL
-                  AND status = ?
+                  AND status = :status
                 ORDER BY created_at ASC
-                """,
-                (cutoff, STATUS_CLOSED),
+                """),
+                {"cutoff": cutoff, "status": STATUS_CLOSED},
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def archive_claim(
         self,
@@ -1850,41 +1970,42 @@ class ClaimRepository:
         """Archive a claim (soft delete for retention). Sets archived_at and status=archived."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT status, claim_type, payout_amount FROM claims WHERE id = ?",
-                (claim_id,),
+                text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            old_status = row["status"]
+            row_d = row_to_dict(row)
+            old_status = row_d["status"]
             if old_status == STATUS_ARCHIVED:
                 return
             validate_transition(
                 claim_id,
                 old_status,
                 STATUS_ARCHIVED,
-                claim=dict(row),
+                claim=row_d,
                 actor_id=actor_id,
             )
             conn.execute(
-                """
-                UPDATE claims SET status = ?, archived_at = datetime('now'), updated_at = datetime('now')
-                WHERE id = ?
-                """,
-                (STATUS_ARCHIVED, claim_id),
+                text("""
+                UPDATE claims SET status = :status, archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :claim_id
+                """),
+                {"status": STATUS_ARCHIVED, "claim_id": claim_id},
             )
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id,
-                    AUDIT_EVENT_RETENTION,
-                    old_status,
-                    STATUS_ARCHIVED,
-                    "Archived for retention (claim older than retention period)",
-                    actor_id,
-                ),
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_RETENTION,
+                    "old_status": old_status,
+                    "new_status": STATUS_ARCHIVED,
+                    "details": "Archived for retention (claim older than retention period)",
+                    "actor_id": actor_id,
+                },
             )
 
         emit_claim_event(
@@ -1892,8 +2013,8 @@ class ClaimRepository:
                 claim_id=claim_id,
                 status=STATUS_ARCHIVED,
                 summary="Archived for retention",
-                claim_type=row["claim_type"],
-                payout_amount=row["payout_amount"],
+                claim_type=row_d["claim_type"],
+                payout_amount=row_d["payout_amount"],
             )
         )
 
@@ -1960,22 +2081,36 @@ class ClaimRepository:
             )
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT id FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            cursor = conn.execute(
-                """
+            result = conn.execute(
+                text("""
                 INSERT INTO claim_tasks
                     (claim_id, title, task_type, description, status, priority, assigned_to, created_by, due_date, document_request_id, recurrence_rule, recurrence_interval, parent_task_id, auto_created_from)
-                VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    claim_id, title, task_type, description, priority, assigned_to, created_by, due_date,
-                    doc_req_id, recurrence_rule, recurrence_interval, parent_task_id, auto_created_from,
-                ),
+                VALUES (:claim_id, :title, :task_type, :description, 'pending', :priority, :assigned_to, :created_by, :due_date, :document_request_id, :recurrence_rule, :recurrence_interval, :parent_task_id, :auto_created_from)
+                RETURNING id
+                """),
+                {
+                    "claim_id": claim_id,
+                    "title": title,
+                    "task_type": task_type,
+                    "description": description,
+                    "priority": priority,
+                    "assigned_to": assigned_to,
+                    "created_by": created_by,
+                    "due_date": due_date,
+                    "document_request_id": doc_req_id,
+                    "recurrence_rule": recurrence_rule,
+                    "recurrence_interval": recurrence_interval,
+                    "parent_task_id": parent_task_id,
+                    "auto_created_from": auto_created_from,
+                },
             )
-            task_id = cursor.lastrowid
+            row = result.fetchone()
+            task_id = row[0] if row else 0
             details = json.dumps({
                 "task_id": task_id,
                 "title": title,
@@ -1984,11 +2119,16 @@ class ClaimRepository:
                 "assigned_to": assigned_to,
             })
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (claim_id, AUDIT_EVENT_TASK_CREATED, details, created_by),
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_TASK_CREATED,
+                    "details": details,
+                    "actor_id": created_by,
+                },
             )
         return int(task_id)
 
@@ -1996,9 +2136,10 @@ class ClaimRepository:
         """Fetch a single task by ID."""
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT * FROM claim_tasks WHERE id = ?", (task_id,)
+                text("SELECT * FROM claim_tasks WHERE id = :task_id"),
+                {"task_id": task_id},
             ).fetchone()
-        return dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_tasks_for_claim(
         self,
@@ -2009,28 +2150,28 @@ class ClaimRepository:
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         """List tasks for a claim with optional status filter. Returns (tasks, total)."""
-        conditions = ["claim_id = ?"]
-        params: list[Any] = [claim_id]
+        conditions = ["claim_id = :claim_id"]
+        params: dict[str, Any] = {"claim_id": claim_id, "limit": limit, "offset": offset}
         if status is not None:
-            conditions.append("status = ?")
-            params.append(status)
+            conditions.append("status = :status")
+            params["status"] = status
         where = " AND ".join(conditions)
         with get_connection(self._db_path) as conn:
             count_row = conn.execute(
-                f"SELECT COUNT(*) as cnt FROM claim_tasks WHERE {where}",
-                params,
+                text(f"SELECT COUNT(*) as cnt FROM claim_tasks WHERE {where}"),
+                {k: v for k, v in params.items() if k not in ("limit", "offset")},
             ).fetchone()
-            total = count_row["cnt"]
+            total = count_row[0] if count_row else 0
             rows = conn.execute(
-                f"""SELECT * FROM claim_tasks WHERE {where}
+                text(f"""SELECT * FROM claim_tasks WHERE {where}
                     ORDER BY
                         CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
                         CASE status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END,
                         created_at DESC
-                    LIMIT ? OFFSET ?""",
-                params + [limit, offset],
+                    LIMIT :limit OFFSET :offset"""),
+                params,
             ).fetchall()
-        return [dict(r) for r in rows], total
+        return [row_to_dict(r) for r in rows], total
 
     def list_overdue_tasks(
         self,
@@ -2046,56 +2187,57 @@ class ClaimRepository:
             min_escalation_level: If set, only include tasks with escalation_level >= this.
             limit: Max tasks to return.
         """
+        today = datetime.now(timezone.utc).date().isoformat()
         conditions = [
             "due_date IS NOT NULL",
-            "date(due_date) < date('now')",
+            "substr(due_date, 1, 10) < :today",
             "status NOT IN ('completed', 'cancelled')",
         ]
-        params: list[Any] = []
+        params: dict[str, Any] = {"today": today, "limit": limit}
         if max_escalation_level is not None:
-            conditions.append("COALESCE(escalation_level, 0) <= ?")
-            params.append(max_escalation_level)
+            conditions.append("COALESCE(escalation_level, 0) <= :max_escalation_level")
+            params["max_escalation_level"] = max_escalation_level
         if min_escalation_level is not None:
-            conditions.append("COALESCE(escalation_level, 0) >= ?")
-            params.append(min_escalation_level)
+            conditions.append("COALESCE(escalation_level, 0) >= :min_escalation_level")
+            params["min_escalation_level"] = min_escalation_level
         where = " AND ".join(conditions)
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
-                f"""
+                text(f"""
                 SELECT * FROM claim_tasks WHERE {where}
                 ORDER BY due_date ASC
-                LIMIT ?
-                """,
-                params + [limit],
+                LIMIT :limit
+                """),
+                params,
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def mark_task_overdue_notified(self, task_id: int) -> None:
         """Mark task as overdue notification sent (escalation_level=1)."""
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 UPDATE claim_tasks SET
                     escalation_level = 1,
-                    escalation_notified_at = datetime('now'),
-                    updated_at = datetime('now')
-                WHERE id = ?
-                """,
-                (task_id,),
+                    escalation_notified_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :task_id
+                """),
+                {"task_id": task_id},
             )
 
     def mark_task_supervisor_escalated(self, task_id: int) -> None:
         """Mark task as escalated to supervisor (escalation_level=2)."""
         with get_connection(self._db_path) as conn:
             conn.execute(
-                """
+                text("""
                 UPDATE claim_tasks SET
                     escalation_level = 2,
-                    escalation_escalated_at = datetime('now'),
-                    updated_at = datetime('now')
-                WHERE id = ?
-                """,
-                (task_id,),
+                    escalation_escalated_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :task_id
+                """),
+                {"task_id": task_id},
             )
 
     def update_task(
@@ -2123,13 +2265,15 @@ class ClaimRepository:
         actor_id = sanitize_actor_id(actor_id)
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                "SELECT * FROM claim_tasks WHERE id = ?", (task_id,)
+                text("SELECT * FROM claim_tasks WHERE id = :task_id"),
+                {"task_id": task_id},
             ).fetchone()
             if row is None:
                 raise ValueError(f"Task not found: {task_id}")
 
-            updates: list[str] = ["updated_at = datetime('now')"]
-            params: list[Any] = []
+            row_d = row_to_dict(row)
+            updates: list[str] = ["updated_at = CURRENT_TIMESTAMP"]
+            params: dict[str, Any] = {"task_id": task_id}
             changes: dict[str, Any] = {}
 
             for field, value in [
@@ -2142,30 +2286,35 @@ class ClaimRepository:
                 ("resolution_notes", resolution_notes),
             ]:
                 if value is not None:
-                    updates.append(f"{field} = ?")
-                    params.append(value)
+                    updates.append(f"{field} = :{field}")
+                    params[field] = value
                     changes[field] = value
 
             if not changes:
-                return dict(row)
+                return row_d
 
-            params.append(task_id)
             conn.execute(
-                f"UPDATE claim_tasks SET {', '.join(updates)} WHERE id = ?",
+                text(f"UPDATE claim_tasks SET {', '.join(updates)} WHERE id = :task_id"),
                 params,
             )
             details = json.dumps({"task_id": task_id, **changes})
             conn.execute(
-                """
+                text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (row["claim_id"], AUDIT_EVENT_TASK_UPDATED, details, actor_id),
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {
+                    "claim_id": row_d["claim_id"],
+                    "action": AUDIT_EVENT_TASK_UPDATED,
+                    "details": details,
+                    "actor_id": actor_id,
+                },
             )
             updated = conn.execute(
-                "SELECT * FROM claim_tasks WHERE id = ?", (task_id,)
+                text("SELECT * FROM claim_tasks WHERE id = :task_id"),
+                {"task_id": task_id},
             ).fetchone()
-        return dict(updated)
+        return row_to_dict(updated)
 
     def list_all_tasks(
         self,
@@ -2178,59 +2327,76 @@ class ClaimRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         """List tasks across all claims with optional filters. Returns (tasks, total)."""
         conditions: list[str] = []
-        params: list[Any] = []
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
         if status is not None:
-            conditions.append("ct.status = ?")
-            params.append(status)
+            conditions.append("ct.status = :status")
+            params["status"] = status
         if task_type is not None:
-            conditions.append("ct.task_type = ?")
-            params.append(task_type)
+            conditions.append("ct.task_type = :task_type")
+            params["task_type"] = task_type
         if assigned_to is not None:
-            conditions.append("ct.assigned_to = ?")
-            params.append(assigned_to)
+            conditions.append("ct.assigned_to = :assigned_to")
+            params["assigned_to"] = assigned_to
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         with get_connection(self._db_path) as conn:
             count_row = conn.execute(
-                f"SELECT COUNT(*) as cnt FROM claim_tasks ct {where}",
+                text(f"SELECT COUNT(*) as cnt FROM claim_tasks ct {where}"),
                 params,
             ).fetchone()
-            total = count_row["cnt"]
+            total = count_row[0]
             rows = conn.execute(
-                f"""SELECT ct.* FROM claim_tasks ct {where}
+                text(
+                    f"""SELECT ct.* FROM claim_tasks ct {where}
                     ORDER BY
                         CASE ct.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
                         CASE ct.status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END,
                         ct.created_at DESC
-                    LIMIT ? OFFSET ?""",
-                params + [limit, offset],
+                    LIMIT :limit OFFSET :offset"""
+                ),
+                params,
             ).fetchall()
-        return [dict(r) for r in rows], total
+        return [row_to_dict(r) for r in rows], total
 
     def get_task_stats(self) -> dict[str, Any]:
         """Get aggregate task statistics."""
         with get_connection(self._db_path) as conn:
-            total = conn.execute("SELECT COUNT(*) as cnt FROM claim_tasks").fetchone()["cnt"]
+            total = conn.execute(
+                text("SELECT COUNT(*) as cnt FROM claim_tasks")
+            ).fetchone()[0]
             by_status = {
-                r["status"]: r["cnt"]
+                (d := row_to_dict(r))["status"]: d["cnt"]
                 for r in conn.execute(
-                    "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt FROM claim_tasks GROUP BY status"
+                    text(
+                        "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt "
+                        "FROM claim_tasks GROUP BY status"
+                    )
                 ).fetchall()
             }
             by_type = {
-                r["task_type"]: r["cnt"]
+                (d := row_to_dict(r))["task_type"]: d["cnt"]
                 for r in conn.execute(
-                    "SELECT COALESCE(task_type, 'unknown') as task_type, COUNT(*) as cnt FROM claim_tasks GROUP BY task_type"
+                    text(
+                        "SELECT COALESCE(task_type, 'unknown') as task_type, COUNT(*) as cnt "
+                        "FROM claim_tasks GROUP BY task_type"
+                    )
                 ).fetchall()
             }
             by_priority = {
-                r["priority"]: r["cnt"]
+                (d := row_to_dict(r))["priority"]: d["cnt"]
                 for r in conn.execute(
-                    "SELECT COALESCE(priority, 'unknown') as priority, COUNT(*) as cnt FROM claim_tasks GROUP BY priority"
+                    text(
+                        "SELECT COALESCE(priority, 'unknown') as priority, COUNT(*) as cnt "
+                        "FROM claim_tasks GROUP BY priority"
+                    )
                 ).fetchall()
             }
             overdue = conn.execute(
-                "SELECT COUNT(*) as cnt FROM claim_tasks WHERE due_date IS NOT NULL AND date(due_date) < date('now') AND status NOT IN ('completed', 'cancelled')"
-            ).fetchone()["cnt"]
+                text(
+                    "SELECT COUNT(*) as cnt FROM claim_tasks "
+                    "WHERE due_date IS NOT NULL AND date(due_date) < CURRENT_DATE "
+                    "AND status NOT IN ('completed', 'cancelled')"
+                )
+            ).fetchone()[0]
         return {
             "total": total,
             "by_status": by_status,

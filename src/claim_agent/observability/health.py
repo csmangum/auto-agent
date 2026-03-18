@@ -2,6 +2,8 @@
 
 import os
 
+from sqlalchemy import text
+
 from claim_agent.config.llm import get_llm
 from claim_agent.db.database import get_connection
 
@@ -37,7 +39,7 @@ def _check_database() -> bool:
     """Verify database connectivity. Returns True if ok."""
     try:
         with get_connection() as conn:
-            conn.execute("SELECT 1").fetchone()
+            conn.execute(text("SELECT 1")).fetchone()
         return True
     except Exception:
         return False

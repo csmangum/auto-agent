@@ -70,19 +70,21 @@ def _get_previous_status(claim_id: str) -> str | None:
     is called (as in update_claim_status). If emit ran before the insert, this
     would return stale or incorrect data.
     """
+    from sqlalchemy import text
+
     from claim_agent.db.audit_events import AUDIT_EVENT_STATUS_CHANGE
-    from claim_agent.db.database import get_connection, get_db_path
+    from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 
     with get_connection(get_db_path()) as conn:
         row = conn.execute(
-            """
+            text("""
             SELECT old_status FROM claim_audit_log
-            WHERE claim_id = ? AND action = ?
+            WHERE claim_id = :claim_id AND action = :action
             ORDER BY id DESC LIMIT 1
-            """,
-            (claim_id, AUDIT_EVENT_STATUS_CHANGE),
+            """),
+            {"claim_id": claim_id, "action": AUDIT_EVENT_STATUS_CHANGE},
         ).fetchone()
-    return row["old_status"] if row else None
+    return row_to_dict(row)["old_status"] if row else None
 
 
 def ensure_diary_listener_registered() -> None:

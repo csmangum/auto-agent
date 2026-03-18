@@ -3,6 +3,8 @@
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
+from sqlalchemy import text
+
 from claim_agent.db.database import get_connection
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
@@ -215,8 +217,8 @@ class TestEscalation:
         )
         with get_connection() as conn:
             conn.execute(
-                "UPDATE claim_tasks SET escalation_level=1, escalation_notified_at=? WHERE id=?",
-                (old_time, task_id),
+                text("UPDATE claim_tasks SET escalation_level=1, escalation_notified_at=:t WHERE id=:id"),
+                {"t": old_time, "id": task_id},
             )
 
         with patch("claim_agent.diary.escalation.dispatch_webhook") as mock_webhook:

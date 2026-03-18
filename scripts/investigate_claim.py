@@ -8,8 +8,10 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from sqlalchemy import text
+
 from claim_agent.config.settings import get_escalation_config, get_router_config
-from claim_agent.db.database import get_db_path, get_connection
+from claim_agent.db.database import get_db_path, get_connection, row_to_dict
 
 
 def main() -> int:
@@ -19,23 +21,30 @@ def main() -> int:
 
     claim_id = sys.argv[1].strip()
     db_path = get_db_path()
+    # When using PostgreSQL, get_db_path() returns ""; pass None for default connection
+    conn_path = None if not db_path else db_path
 
-    with get_connection(db_path) as conn:
-        row = conn.execute("SELECT * FROM claims WHERE id = ?", (claim_id,)).fetchone()
+    with get_connection(conn_path) as conn:
+        row = conn.execute(
+            text("SELECT * FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
+        ).fetchone()
         if not row:
             print(f"Claim {claim_id} not found in database.")
-            print(f"DB path: {db_path}")
+            print(f"DB: {db_path or 'PostgreSQL (DATABASE_URL)'}")
             return 1
 
-        claim = dict(row)
+        claim = row_to_dict(row)
         history = conn.execute(
-            """SELECT id, action, old_status, new_status, details, actor_id, created_at
-               FROM claim_audit_log WHERE claim_id = ? ORDER BY id ASC""",
-            (claim_id,),
+            text(
+                "SELECT id, action, old_status, new_status, details, actor_id, created_at "
+                "FROM claim_audit_log WHERE claim_id = :claim_id ORDER BY id ASC"
+            ),
+            {"claim_id": claim_id},
         ).fetchall()
         workflows = conn.execute(
-            "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY id ASC",
-            (claim_id,),
+            text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
+            {"claim_id": claim_id},
         ).fetchall()
 
     print("=" * 60)
@@ -50,7 +59,7 @@ def main() -> int:
 
     print("--- AUDIT LOG ---")
     for h in history:
-        d = dict(h)
+        d = row_to_dict(h)
         details = (d.get("details") or "")[:200]
         if len(str(d.get("details") or "")) > 200:
             details += "..."
@@ -59,7 +68,7 @@ def main() -> int:
     print()
     print("--- WORKFLOW RUNS ---")
     for wf in workflows:
-        w = dict(wf)
+        w = row_to_dict(wf)
         print(f"  Type: {w.get('claim_type')} | Created: {w.get('created_at')}")
         if w.get("workflow_output"):
             try:

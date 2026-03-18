@@ -22,6 +22,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute(text("""
         CREATE TABLE IF NOT EXISTS claim_documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +113,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     conn = op.get_bind()
     tables = {row[0] for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
     if "claim_tasks" not in tables:

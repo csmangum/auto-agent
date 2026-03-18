@@ -66,6 +66,7 @@ class TestMcpServerTools:
 
     def test_search_claims_db_with_match(self, monkeypatch):
         """Test search_claims_db with a matching claim."""
+        from claim_agent.config import reload_settings
         from claim_agent.db.database import init_db
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
@@ -76,6 +77,7 @@ class TestMcpServerTools:
         try:
             init_db(path)
             monkeypatch.setenv("CLAIMS_DB_PATH", path)
+            reload_settings()  # MCP tools use settings.paths.claims_db_path
             repo = ClaimRepository(db_path=path)
             repo.create_claim(
                 ClaimInput(

@@ -32,7 +32,9 @@ from claim_agent.db.constants import (
     SUPPLEMENTABLE_STATUSES,
     VALID_REPAIR_STATUSES,
 )
-from claim_agent.db.database import get_connection, get_db_path
+from sqlalchemy import text
+
+from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
@@ -253,44 +255,28 @@ def _resolve_attachment_urls(claim_dict: dict) -> dict:
 def get_claims_stats():
     """Aggregate statistics: count by status, count by type, totals."""
     with get_connection() as conn:
-        # Total count
-        total = conn.execute("SELECT COUNT(*) as cnt FROM claims").fetchone()["cnt"]
-
-        # By status
-        rows = conn.execute(
-            "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt "
-            "FROM claims GROUP BY status ORDER BY cnt DESC"
+        total = conn.execute(text("SELECT COUNT(*) as cnt FROM claims")).fetchone()[0]
+        status_rows = conn.execute(
+            text("SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt FROM claims GROUP BY status ORDER BY cnt DESC")
         ).fetchall()
-        by_status = {r["status"]: r["cnt"] for r in rows}
-
-        # By type
-        rows = conn.execute(
-            "SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt "
-            "FROM claims GROUP BY claim_type ORDER BY cnt DESC"
+        by_status = {row_to_dict(r)["status"]: row_to_dict(r)["cnt"] for r in status_rows}
+        type_rows = conn.execute(
+            text("SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt FROM claims GROUP BY claim_type ORDER BY cnt DESC")
         ).fetchall()
-        by_type = {r["claim_type"]: r["cnt"] for r in rows}
-
-        # Date range
+        by_type = {row_to_dict(r)["claim_type"]: row_to_dict(r)["cnt"] for r in type_rows}
         date_row = conn.execute(
-            "SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM claims"
+            text("SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM claims")
         ).fetchone()
-
-        # Recent audit events count
-        audit_count = conn.execute(
-            "SELECT COUNT(*) as cnt FROM claim_audit_log"
-        ).fetchone()["cnt"]
-
-        # Workflow runs count
-        workflow_count = conn.execute(
-            "SELECT COUNT(*) as cnt FROM workflow_runs"
-        ).fetchone()["cnt"]
+        date_d = row_to_dict(date_row) if date_row else {}
+        audit_count = conn.execute(text("SELECT COUNT(*) as cnt FROM claim_audit_log")).fetchone()[0]
+        workflow_count = conn.execute(text("SELECT COUNT(*) as cnt FROM workflow_runs")).fetchone()[0]
 
     return {
         "total_claims": total,
         "by_status": by_status,
         "by_type": by_type,
-        "earliest_claim": date_row["earliest"],
-        "latest_claim": date_row["latest"],
+        "earliest_claim": date_d.get("earliest"),
+        "latest_claim": date_d.get("latest"),
         "total_audit_events": audit_count,
         "total_workflow_runs": workflow_count,
     }
@@ -306,36 +292,40 @@ def list_claims(
 ):
     """List claims with optional filtering. Archived claims are excluded by default."""
     conditions = []
-    params: list = []
+    params: dict[str, Any] = {}
 
     if status:
-        conditions.append("status = ?")
-        params.append(status)
+        conditions.append("status = :status")
+        params["status"] = status
     if not include_archived and (status is None or status != STATUS_ARCHIVED):
-        conditions.append("status != ?")
-        params.append(STATUS_ARCHIVED)
+        conditions.append("status != :archived")
+        params["archived"] = STATUS_ARCHIVED
     if claim_type:
-        conditions.append("claim_type = ?")
-        params.append(claim_type)
+        conditions.append("claim_type = :claim_type")
+        params["claim_type"] = claim_type
 
     where = ""
     if conditions:
         where = "WHERE " + " AND ".join(conditions)
 
+    params["limit"] = limit
+    params["offset"] = offset
+    count_params = {k: v for k, v in params.items() if k in ("status", "archived", "claim_type")}
+
     with get_connection() as conn:
-        # Get total for pagination
         count_row = conn.execute(
-            f"SELECT COUNT(*) as cnt FROM claims {where}", params
+            text(f"SELECT COUNT(*) as cnt FROM claims {where}"),
+            count_params,
         ).fetchone()
-        total = count_row["cnt"]
+        total = count_row[0] if count_row else 0
 
         rows = conn.execute(
-            f"SELECT * FROM claims {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            params + [limit, offset],
+            text(f"SELECT * FROM claims {where} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"),
+            params,
         ).fetchall()
 
     return {
-        "claims": [_resolve_attachment_urls(dict(r)) for r in rows],
+        "claims": [_resolve_attachment_urls(row_to_dict(r)) for r in rows],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -663,6 +653,59 @@ def run_siu_investigation(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+@router.get("/claims/{claim_id}/status", dependencies=[RequireAdjuster])
+def get_claim_status(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+    """Lightweight status polling endpoint for async claim processing.
+
+    Returns claim_id, status, claim_type, progress (completed workflow stages),
+    and workflow_run_id. Use for efficient polling when POST returned claim_id
+    immediately. For real-time updates, use GET /claims/{claim_id}/stream (SSE).
+    """
+    claim_dict = ctx.repo.get_claim(claim_id)
+    if claim_dict is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    status = claim_dict.get("status") or ""
+    claim_type = claim_dict.get("claim_type") or ""
+
+    completed_stages: list[str] = []
+    with get_connection() as conn:
+        cp_rows = conn.execute(
+            text("""
+            SELECT stage_key FROM task_checkpoints
+            WHERE claim_id = :claim_id AND workflow_run_id = (
+                SELECT workflow_run_id FROM task_checkpoints
+                WHERE claim_id = :claim_id ORDER BY id DESC LIMIT 1
+            )
+            """),
+            {"claim_id": claim_id},
+        ).fetchall()
+        for r in cp_rows:
+            d = row_to_dict(r)
+            sk = d.get("stage_key", "")
+            stage = sk.split(":")[0] if ":" in sk else sk
+            if stage in WORKFLOW_STAGES:
+                completed_stages.append(sk)
+        completed_stages.sort(
+            key=lambda s: (
+                WORKFLOW_STAGES.index(stg)
+                if (stg := (s.split(":")[0] if ":" in s else s)) in WORKFLOW_STAGES
+                else len(WORKFLOW_STAGES)
+            )
+        )
+
+    latest_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
+
+    return {
+        "claim_id": claim_id,
+        "status": status,
+        "claim_type": claim_type,
+        "progress": completed_stages,
+        "workflow_run_id": latest_run_id,
+        "created_at": claim_dict.get("created_at"),
+    }
+
+
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
 def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     """Get a single claim by ID. Includes claim notes and follow-up messages."""
@@ -686,7 +729,8 @@ def get_claim_attachment(claim_id: str, key: str):
     """Serve an attachment file for a claim. Local storage only; S3 uses presigned URLs."""
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT id FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
@@ -731,11 +775,11 @@ def _maybe_update_document_request_on_receipt(
     )
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id FROM claim_tasks WHERE document_request_id = ? AND status NOT IN ('completed', 'cancelled')",
-            (req_id,),
+            text("SELECT id FROM claim_tasks WHERE document_request_id = :req_id AND status NOT IN ('completed', 'cancelled')"),
+            {"req_id": req_id},
         ).fetchall()
         for row in rows:
-            task_id = row["id"]
+            task_id = row_to_dict(row)["id"]
             claim_repo.update_task(task_id, status="completed", resolution_notes="Document received")
 
 
@@ -1077,19 +1121,19 @@ def add_claim_note(
 def get_claim_workflows(claim_id: str):
     """Get workflow runs for a claim."""
     with get_connection() as conn:
-        # Verify claim exists
         claim = conn.execute(
-            "SELECT id FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT id FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
         if claim is None:
             raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
         rows = conn.execute(
-            "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY id ASC",
-            (claim_id,),
+            text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
+            {"claim_id": claim_id},
         ).fetchall()
 
-    return {"claim_id": claim_id, "workflows": [dict(r) for r in rows]}
+    return {"claim_id": claim_id, "workflows": [row_to_dict(r) for r in rows]}
 
 
 @router.get("/claims/{claim_id}/repair-status", dependencies=[RequireAdjuster])
@@ -1097,11 +1141,13 @@ def get_claim_repair_status(claim_id: str):
     """Get repair status and history for a partial loss claim."""
     with get_connection() as conn:
         claim = conn.execute(
-            "SELECT id, claim_type FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT id, claim_type FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
         if claim is None:
             raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-        if claim["claim_type"] != "partial_loss":
+        claim_d = row_to_dict(claim)
+        if claim_d["claim_type"] != "partial_loss":
             raise HTTPException(
                 status_code=400,
                 detail="Repair status only applies to partial_loss claims",
@@ -1175,6 +1221,7 @@ def update_claim_repair_status(
 @router.post("/claims/generate")
 async def generate_and_submit_claim(
     body: GenerateClaimRequest = Body(...),
+    async_mode: bool = Query(False, alias="async", description="If submit=true, return claim_id immediately and process in background"),
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
@@ -1184,7 +1231,8 @@ async def generate_and_submit_claim(
     from the prompt (e.g. "partial loss, Honda Accord, parking lot fender bender").
     If submit=true, the claim is created and the workflow runs. If submit=false,
     returns the generated claim JSON without creating or processing it (useful for
-    inspection).
+    inspection). When async=true and submit=true, returns claim_id immediately;
+    use GET /claims/{claim_id}/status or /stream to poll for completion.
     """
     try:
         claim_input = await asyncio.to_thread(
@@ -1198,10 +1246,27 @@ async def generate_and_submit_claim(
     if not body.submit:
         return {"claim": claim_data, "submitted": False}
 
+    if async_mode:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
+                )
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim_input, None, actor_id, ctx=ctx,
     )
+
+    if async_mode:
+        _run_workflow_background(
+            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        )
+        return {"claim": claim_data, "submitted": True, "claim_id": claim_id}
+
     result = await asyncio.to_thread(
         run_claim_workflow,
         claim_data_with_attachments,
@@ -1254,20 +1319,25 @@ async def create_claim(
     Use for programmatic access: portals, batch ingestion, third-party integrations.
     For file uploads, use POST /api/claims/process with multipart form.
     """
+    if async_mode:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
+                )
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim_input, None, actor_id, ctx=ctx,
     )
 
     if async_mode:
-        task = await _try_run_workflow_background(
+        _run_workflow_background(
             claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
         )
-        if task is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
-            )
         return {"claim_id": claim_id}
 
     result = await asyncio.to_thread(
@@ -1461,6 +1531,7 @@ async def allocate_bi(
 async def process_claim(
     claim: str = Form(..., description="Claim data as JSON string"),
     files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
+    async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
@@ -1470,11 +1541,30 @@ async def process_claim(
       incident_date, incident_description, damage_description, estimated_damage (optional),
       attachments (optional list of {url, type, description}).
     - files: Optional multipart files (photos, PDFs, estimates). Stored via configured backend.
+    - async: If true, returns claim_id immediately; workflow runs in background. Use
+      GET /claims/{claim_id}/status to poll or GET /claims/{claim_id}/stream for SSE updates.
     """
+    if async_mode:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
+                )
+
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id, ctx=ctx,
     )
+
+    if async_mode:
+        _run_workflow_background(
+            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
+        )
+        return {"claim_id": claim_id}
+
     result = await asyncio.to_thread(
         run_claim_workflow,
         claim_data_with_attachments,
@@ -1609,18 +1699,21 @@ async def process_claim_async(
 ):
     """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
     Use GET /claims/{claim_id}/stream to receive realtime updates."""
+    max_tasks = get_settings().max_concurrent_background_tasks
+    async with _background_tasks_lock:
+        if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+            raise HTTPException(
+                status_code=503,
+                detail="Too many concurrent background tasks. Retry later.",
+                headers={"Retry-After": "60"},
+            )
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
         claim, files, actor_id, ctx=ctx,
     )
-    task = await _try_run_workflow_background(
+    _run_workflow_background(
         claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
     )
-    if task is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Too many concurrent background tasks. Retry later.",
-        )
     return {"claim_id": claim_id}
 
 
@@ -1637,39 +1730,50 @@ async def _stream_claim_updates(claim_id: str):
         db_path = get_db_path()
         with get_connection(db_path) as conn:
             claim_row = conn.execute(
-                "SELECT * FROM claims WHERE id = ?", (claim_id,)
+                text("SELECT * FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
             ).fetchone()
             if claim_row is None:
                 return None, None, None, None
 
-            claim_dict = dict(claim_row)
+            claim_dict = row_to_dict(claim_row)
             _resolve_attachment_urls(claim_dict)
 
             history_rows = conn.execute(
-                """SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at
-                   FROM claim_audit_log WHERE claim_id = ? ORDER BY id ASC""",
-                (claim_id,),
+                text("SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at "
+                     "FROM claim_audit_log WHERE claim_id = :claim_id ORDER BY id ASC"),
+                {"claim_id": claim_id},
             ).fetchall()
 
             wf_rows = conn.execute(
-                "SELECT * FROM workflow_runs WHERE claim_id = ? ORDER BY id ASC",
-                (claim_id,),
+                text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
+                {"claim_id": claim_id},
             ).fetchall()
 
-            # Completed stages from task_checkpoints (latest run) for progress indicator
             cp_rows = conn.execute(
-                """SELECT stage_key FROM task_checkpoints
-                   WHERE claim_id = ? AND workflow_run_id = (
-                     SELECT workflow_run_id FROM task_checkpoints
-                     WHERE claim_id = ? ORDER BY id DESC LIMIT 1
-                   )""",
-                (claim_id, claim_id),
+                text("""
+                SELECT stage_key FROM task_checkpoints
+                WHERE claim_id = :claim_id AND workflow_run_id = (
+                    SELECT workflow_run_id FROM task_checkpoints
+                    WHERE claim_id = :claim_id ORDER BY id DESC LIMIT 1
+                )
+                """),
+                {"claim_id": claim_id},
             ).fetchall()
-            completed_stages = [
-                r["stage_key"] for r in cp_rows
-                if (r["stage_key"].split(":")[0] if ":" in r["stage_key"] else r["stage_key"]) in WORKFLOW_STAGES
-            ]
-            completed_stages.sort(key=lambda s: WORKFLOW_STAGES.index(s.split(":")[0] if ":" in s else s))
+            completed_stages = []
+            for r in cp_rows:
+                d = row_to_dict(r)
+                sk = d["stage_key"]
+                stage = sk.split(":")[0] if ":" in sk else sk
+                if stage in WORKFLOW_STAGES:
+                    completed_stages.append(sk)
+            completed_stages.sort(
+                key=lambda s: (
+                    WORKFLOW_STAGES.index(stg)
+                    if (stg := (s.split(":")[0] if ":" in s else s)) in WORKFLOW_STAGES
+                    else len(WORKFLOW_STAGES)
+                )
+            )
 
         return claim_dict, history_rows, wf_rows, completed_stages
 
@@ -1682,8 +1786,8 @@ async def _stream_claim_updates(claim_id: str):
 
         payload = {
             "claim": claim_dict,
-            "history": [dict(r) for r in history_rows],
-            "workflows": [dict(r) for r in wf_rows],
+            "history": [row_to_dict(r) for r in history_rows],
+            "workflows": [row_to_dict(r) for r in wf_rows],
             "progress": completed_stages or [],
         }
         yield f"data: {json.dumps(payload)}\n\n"

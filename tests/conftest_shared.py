@@ -22,6 +22,7 @@ def integration_db() -> Generator[str, None, None]:
 
     Provides a clean database per test with CLAIMS_DB_PATH set.
     """
+    from claim_agent.config import reload_settings
     from claim_agent.db.database import init_db
 
     fd, path = tempfile.mkstemp(suffix=".db")
@@ -31,6 +32,7 @@ def integration_db() -> Generator[str, None, None]:
     try:
         init_db(path)
         os.environ["CLAIMS_DB_PATH"] = path
+        reload_settings()  # Ensure settings pick up CLAIMS_DB_PATH
         yield path
     finally:
         if prev is None:

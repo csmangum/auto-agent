@@ -304,12 +304,19 @@ class WebhookConfig(BaseSettings):
     )
 
     urls_raw: str = Field(default="", validation_alias="WEBHOOK_URLS")
-    url: str = ""
+    url: str = Field(default="", validation_alias="WEBHOOK_URL")
     secret: str = ""
     max_retries: int = 5
     enabled: bool = True
     shop_url: str | None = None
     dead_letter_path: str | None = None
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_enabled(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
 
     @property
     def urls(self) -> list[str]:
@@ -330,6 +337,13 @@ class NotificationConfig(BaseSettings):
 
     email_enabled: bool = False
     sms_enabled: bool = False
+
+    @field_validator("email_enabled", "sms_enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
 
 
 class DiaryConfig(BaseSettings):
@@ -412,14 +426,32 @@ class PathsConfig(BaseSettings):
     claims_db_path: str = Field(
         default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
     )
+    database_url: str | None = Field(
+        default=None,
+        validation_alias="DATABASE_URL",
+        description="PostgreSQL URL. If set, use PostgreSQL; else use SQLite at claims_db_path.",
+    )
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
     fresh_claims_db_on_startup: bool = Field(
         default=False,
         validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
     )
+    run_migrations_on_startup: bool = Field(
+        default=True,
+        validation_alias="RUN_MIGRATIONS_ON_STARTUP",
+        description="Run alembic upgrade head on API startup when using PostgreSQL. Set to false to run migrations as a separate deploy step.",
+    )
 
-    @field_validator("fresh_claims_db_on_startup", mode="before")
+    @field_validator("fresh_claims_db_on_startup", "run_migrations_on_startup", mode="before")
     @classmethod
-    def _parse_fresh_db(cls, v: Any) -> bool:
+    def _parse_bool_env(cls, v: Any) -> bool:
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")

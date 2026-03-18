@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
+from sqlalchemy import text
+
 from claim_agent.db.database import get_connection
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
@@ -100,10 +102,10 @@ def test_create_incident_rollback_on_failure(incident_repo):
             incident_repo.create_incident(incident_input)
 
     with get_connection(incident_repo._db_path) as conn:
-        incidents = conn.execute("SELECT id FROM incidents").fetchall()
+        incidents = conn.execute(text("SELECT id FROM incidents")).fetchall()
         assert len(incidents) == 0
         claims_with_incident = conn.execute(
-            "SELECT id FROM claims WHERE incident_id IS NOT NULL"
+            text("SELECT id FROM claims WHERE incident_id IS NOT NULL")
         ).fetchall()
         assert len(claims_with_incident) == 0
 
@@ -125,21 +127,25 @@ def test_rollback_clears_incident_id_before_delete(incident_repo):
 
     with get_connection(incident_repo._db_path) as conn:
         conn.execute(
-            "INSERT INTO incidents (id, incident_date, incident_description) VALUES (?, ?, ?)",
-            ("INC-ROLLBACK", "2025-01-15", "Test"),
+            text(
+                "INSERT INTO incidents (id, incident_date, incident_description) "
+                "VALUES (:id, :incident_date, :incident_description)"
+            ),
+            {"id": "INC-ROLLBACK", "incident_date": "2025-01-15", "incident_description": "Test"},
         )
         conn.execute(
-            "UPDATE claims SET incident_id = ? WHERE id = ?",
-            ("INC-ROLLBACK", claim_id),
+            text("UPDATE claims SET incident_id = :incident_id WHERE id = :id"),
+            {"incident_id": "INC-ROLLBACK", "id": claim_id},
         )
 
     incident_repo._rollback_incident("INC-ROLLBACK", [claim_id])
 
     with get_connection(incident_repo._db_path) as conn:
-        incidents = conn.execute("SELECT id FROM incidents").fetchall()
+        incidents = conn.execute(text("SELECT id FROM incidents")).fetchall()
         assert len(incidents) == 0
         row = conn.execute(
-            "SELECT status, incident_id FROM claims WHERE id = ?", (claim_id,)
+            text("SELECT status, incident_id FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
         assert row[0] == "failed"
         assert row[1] is None

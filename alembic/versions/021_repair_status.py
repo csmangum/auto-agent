@@ -17,6 +17,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute("""
         CREATE TABLE IF NOT EXISTS repair_status (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +40,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     op.execute("DROP INDEX IF EXISTS idx_repair_status_shop_status")
     op.execute("DROP INDEX IF EXISTS idx_repair_status_claim_id")
     op.execute("DROP TABLE IF EXISTS repair_status")

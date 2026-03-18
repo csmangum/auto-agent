@@ -18,6 +18,7 @@ from claim_agent.main import (
     cmd_reprocess,
     main,
 )
+from claim_agent.config import reload_settings
 from claim_agent.db.database import init_db
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
@@ -140,6 +141,7 @@ class TestCmdStatus:
         try:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -199,6 +201,7 @@ class TestCmdHistory:
         try:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -403,6 +406,7 @@ class TestMain:
         try:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -441,6 +445,7 @@ class TestMain:
         try:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -479,6 +484,7 @@ class TestMain:
         try:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(
@@ -519,6 +525,7 @@ class TestMain:
         try:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
             repo = ClaimRepository(db_path=db_path)
             claim_id = repo.create_claim(
                 ClaimInput(

@@ -1,14 +1,15 @@
 """Tests for database and ClaimRepository."""
 
 import os
-import sqlite3
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from claim_agent.config import reload_settings
 from claim_agent.db.audit_events import AUDIT_EVENT_COVERAGE_VERIFICATION, AUDIT_EVENT_SIU_CASE_CREATED
 from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING
-from claim_agent.db.database import get_db_path, get_connection
+from claim_agent.db.database import get_db_path, get_connection, row_to_dict
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
@@ -16,14 +17,17 @@ from claim_agent.models.claim import ClaimInput
 
 def test_get_db_path_default():
     """Default path is data/claims.db when env unset."""
-    if "CLAIMS_DB_PATH" in os.environ:
-        del os.environ["CLAIMS_DB_PATH"]
+    for key in ("CLAIMS_DB_PATH", "DATABASE_URL"):
+        if key in os.environ:
+            del os.environ[key]
     reload_settings()
     assert get_db_path() == "data/claims.db"
 
 
 def test_get_db_path_env():
     """CLAIMS_DB_PATH env overrides default."""
+    if "DATABASE_URL" in os.environ:
+        del os.environ["DATABASE_URL"]
     os.environ["CLAIMS_DB_PATH"] = "/tmp/custom.db"
     try:
         reload_settings()
@@ -35,9 +39,7 @@ def test_get_db_path_env():
 def test_init_db_creates_tables(temp_db):
     """init_db creates claims, claim_audit_log, workflow_runs, claim_notes tables."""
     with get_connection(temp_db) as conn:
-        cur = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
+        cur = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))
         tables = [row[0] for row in cur.fetchall()]
     assert "claims" in tables
     assert "claim_audit_log" in tables
@@ -48,9 +50,7 @@ def test_init_db_creates_tables(temp_db):
 def test_init_db_creates_append_only_triggers(temp_db):
     """init_db creates triggers that prevent UPDATE and DELETE on claim_audit_log."""
     with get_connection(temp_db) as conn:
-        cur = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name"
-        )
+        cur = conn.execute(text("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name"))
         triggers = [row[0] for row in cur.fetchall()]
     assert "claim_audit_log_prevent_update" in triggers
     assert "claim_audit_log_prevent_delete" in triggers
@@ -70,11 +70,11 @@ def test_audit_log_prevents_update(temp_db):
         damage_description="Roof dents.",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+    with pytest.raises(IntegrityError, match="append-only"):
         with get_connection(temp_db) as conn:
             conn.execute(
-                "UPDATE claim_audit_log SET details = 'tampered' WHERE claim_id = ?",
-                (claim_id,),
+                text("UPDATE claim_audit_log SET details = 'tampered' WHERE claim_id = :claim_id"),
+                {"claim_id": claim_id},
             )
 
 
@@ -92,11 +92,11 @@ def test_audit_log_prevents_delete(temp_db):
         damage_description="Interior soaked.",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+    with pytest.raises(IntegrityError, match="append-only"):
         with get_connection(temp_db) as conn:
             conn.execute(
-                "DELETE FROM claim_audit_log WHERE claim_id = ?",
-                (claim_id,),
+                text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),
+                {"claim_id": claim_id},
             )
 
 
@@ -189,12 +189,13 @@ def test_repository_save_workflow_result(temp_db):
     )
     with get_connection(temp_db) as conn:
         row = conn.execute(
-            "SELECT claim_id, claim_type, router_output, workflow_output FROM workflow_runs WHERE claim_id = ?",
-            (claim_id,),
+            text("SELECT claim_id, claim_type, router_output, workflow_output FROM workflow_runs WHERE claim_id = :claim_id"),
+            {"claim_id": claim_id},
         ).fetchone()
     assert row is not None
-    assert row["claim_type"] == "new"
-    assert "Workflow completed" in row["workflow_output"]
+    r = row_to_dict(row)
+    assert r["claim_type"] == "new"
+    assert "Workflow completed" in r["workflow_output"]
 
 
 def test_deny_claim_at_claimant_requires_processing_status(temp_db):
@@ -259,8 +260,8 @@ def test_deny_claim_at_claimant_without_details_omits_coverage_audit(temp_db):
 
     with get_connection(temp_db) as conn:
         coverage_rows = conn.execute(
-            "SELECT id FROM claim_audit_log WHERE claim_id = ? AND action = ?",
-            (claim_id, AUDIT_EVENT_COVERAGE_VERIFICATION),
+            text("SELECT id FROM claim_audit_log WHERE claim_id = :claim_id AND action = :action"),
+            {"claim_id": claim_id, "action": AUDIT_EVENT_COVERAGE_VERIFICATION},
         ).fetchall()
     assert len(coverage_rows) == 0
 

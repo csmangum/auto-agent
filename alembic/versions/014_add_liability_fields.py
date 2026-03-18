@@ -19,6 +19,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     conn = op.get_bind()
     cursor = conn.execute(text("PRAGMA table_info(claims)"))
     columns = {row[1] for row in cursor.fetchall()}
@@ -29,5 +31,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        return
     # SQLite does not support DROP COLUMN; leave columns in place for safety.
     pass

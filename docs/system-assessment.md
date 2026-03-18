@@ -318,11 +318,15 @@ This assessment is organized into: **Strengths** (what's working well), **Critic
 
 **Issue:** `run_claim_workflow` is synchronous. Claims processing involves LLM calls, adapter calls, and potentially external API calls. The API endpoint blocks during the entire workflow.
 
-**Recommendation:**
-- Implement task queue (Celery, or simpler: background threads with status polling)
-- Return claim_id immediately from POST endpoint
-- Add status polling endpoint (already partially exists)
-- Implement WebSocket or SSE for real-time status updates
+**Implemented (background threads + status polling):**
+- Background task queue via `asyncio.to_thread` with configurable `MAX_CONCURRENT_BACKGROUND_TASKS`
+- Return claim_id immediately: POST `/api/claims`, `/api/claims/process`, `/api/claims/generate` support `?async=true`
+- Status polling: GET `/api/claims/{claim_id}/status` (lightweight) and GET `/api/claims/{claim_id}` (full claim)
+- SSE for real-time updates: GET `/api/claims/{claim_id}/stream`
+
+**Remaining (optional for scale):**
+- Celery/Redis task queue for multi-process deployments and persistence across restarts
+- WebSocket as alternative to SSE
 
 ### 4.3 LLM Cost Controls Need Strengthening
 

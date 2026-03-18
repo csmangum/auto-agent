@@ -13,6 +13,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import text
 
 from claim_agent.db.database import get_connection
 from claim_agent.db.repository import ClaimRepository
@@ -144,7 +145,7 @@ class TestCheckpointCRUD:
             tables = {
                 r[0]
                 for r in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
+                    text("SELECT name FROM sqlite_master WHERE type='table'")
                 ).fetchall()
             }
         assert "task_checkpoints" in tables
@@ -488,10 +489,10 @@ class TestWorkflowCheckpoints:
         repo = ClaimRepository(db_path=temp_db)
         with get_connection(temp_db) as conn:
             row = conn.execute(
-                "SELECT id FROM claims WHERE vin = 'CPVIN400'"
+                text("SELECT id FROM claims WHERE vin = 'CPVIN400'")
             ).fetchone()
         assert row is not None
-        claim_id = row["id"]
+        claim_id = row[0]
 
         run_id = repo.get_latest_checkpointed_run_id(claim_id)
         assert run_id is not None

@@ -83,6 +83,7 @@ class TestTracing:
 
     def test_tracing_config_from_env(self):
         """TracingConfig should read from environment variables."""
+        from claim_agent.config import reload_settings
         from claim_agent.observability.tracing import TracingConfig
 
         with mock.patch.dict(os.environ, {
@@ -90,6 +91,7 @@ class TestTracing:
             "LANGSMITH_API_KEY": "test-key",
             "LANGSMITH_PROJECT": "test-project",
         }):
+            reload_settings()
             config = TracingConfig.from_env()
             assert config.langsmith_enabled is True
             assert config.langsmith_api_key == "test-key"

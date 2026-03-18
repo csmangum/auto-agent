@@ -29,6 +29,7 @@ class TestDataLoader:
 
     def test_load_mock_db_custom_path(self):
         """Test load_mock_db uses custom path from env."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import load_mock_db
 
         # Create a temp file with custom data
@@ -39,6 +40,7 @@ class TestDataLoader:
         original = os.environ.get("MOCK_DB_PATH")
         try:
             os.environ["MOCK_DB_PATH"] = path
+            reload_settings()
             db = load_mock_db()
             assert "TEST-001" in db["policies"]
             assert db["policies"]["TEST-001"]["deductible"] == 1000
@@ -51,6 +53,7 @@ class TestDataLoader:
 
     def test_load_mock_db_invalid_json(self):
         """Test load_mock_db handles invalid JSON gracefully."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import load_mock_db
 
         # Create a temp file with invalid JSON
@@ -61,6 +64,7 @@ class TestDataLoader:
         original = os.environ.get("MOCK_DB_PATH")
         try:
             os.environ["MOCK_DB_PATH"] = path
+            reload_settings()
             db = load_mock_db()
             # Should return default structure on JSON error
             assert db == {"policies": {}, "claims": [], "vehicle_values": {}}
@@ -73,11 +77,13 @@ class TestDataLoader:
 
     def test_load_mock_db_missing_file(self):
         """Test load_mock_db handles missing file gracefully."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import load_mock_db
 
         original = os.environ.get("MOCK_DB_PATH")
         try:
             os.environ["MOCK_DB_PATH"] = "/nonexistent/path/mock_db.json"
+            reload_settings()
             db = load_mock_db()
             # Should return default structure when file missing
             assert db == {"policies": {}, "claims": [], "vehicle_values": {}}
@@ -105,6 +111,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_custom_path(self):
         """Test load_california_compliance uses custom path."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import load_california_compliance
 
         # Create temp file with compliance data
@@ -115,6 +122,7 @@ class TestDataLoader:
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = path
+            reload_settings()
             data = load_california_compliance()
             assert data is not None
             assert "test_section" in data
@@ -127,11 +135,13 @@ class TestDataLoader:
 
     def test_load_california_compliance_missing_file(self):
         """Test load_california_compliance returns None for missing file."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import load_california_compliance
 
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/path.json"
+            reload_settings()
             data = load_california_compliance()
             assert data is None
         finally:
@@ -142,6 +152,7 @@ class TestDataLoader:
 
     def test_load_california_compliance_invalid_json(self):
         """Test load_california_compliance returns None for invalid JSON."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import load_california_compliance
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -151,6 +162,7 @@ class TestDataLoader:
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = path
+            reload_settings()
             data = load_california_compliance()
             assert data is None
         finally:
@@ -166,6 +178,7 @@ class TestGetComplianceRetentionYears:
 
     def test_returns_value_when_valid(self):
         """Returns retention years when ECR-003 has valid value."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import get_compliance_retention_years
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -179,6 +192,7 @@ class TestGetComplianceRetentionYears:
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = path
+            reload_settings()
             assert get_compliance_retention_years() == 7
         finally:
             if original is not None:
@@ -189,11 +203,13 @@ class TestGetComplianceRetentionYears:
 
     def test_returns_none_when_compliance_missing(self):
         """Returns None when compliance file is missing."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import get_compliance_retention_years
 
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/path.json"
+            reload_settings()
             assert get_compliance_retention_years() is None
         finally:
             if original is not None:
@@ -203,6 +219,7 @@ class TestGetComplianceRetentionYears:
 
     def test_returns_none_when_ecr003_absent(self):
         """Returns None when ECR-003 provision is not in compliance."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import get_compliance_retention_years
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -214,6 +231,7 @@ class TestGetComplianceRetentionYears:
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = path
+            reload_settings()
             assert get_compliance_retention_years() is None
         finally:
             if original is not None:
@@ -224,6 +242,7 @@ class TestGetComplianceRetentionYears:
 
     def test_returns_none_when_retention_invalid(self):
         """Returns None when retention_period_years is 0 or negative."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import get_compliance_retention_years
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -237,6 +256,7 @@ class TestGetComplianceRetentionYears:
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = path
+            reload_settings()
             assert get_compliance_retention_years() is None
         finally:
             if original is not None:
@@ -247,6 +267,7 @@ class TestGetComplianceRetentionYears:
 
     def test_returns_none_when_retention_non_numeric(self):
         """Returns None when retention_period_years is not a valid integer."""
+        from claim_agent.config import reload_settings
         from claim_agent.data.loader import get_compliance_retention_years
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -260,6 +281,7 @@ class TestGetComplianceRetentionYears:
         original = os.environ.get("CA_COMPLIANCE_PATH")
         try:
             os.environ["CA_COMPLIANCE_PATH"] = path
+            reload_settings()
             assert get_compliance_retention_years() is None
         finally:
             if original is not None:

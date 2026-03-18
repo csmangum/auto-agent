@@ -40,6 +40,7 @@ from claim_agent.adapters.stub import (
     StubSIUAdapter,
     StubValuationAdapter,
 )
+from claim_agent.config import reload_settings
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +323,7 @@ class TestRegistry:
         monkeypatch.setenv("SIU_ADAPTER", "stub")
         monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "stub")
         monkeypatch.setenv("OCR_ADAPTER", "stub")
+        reload_settings()
         assert isinstance(get_policy_adapter(), StubPolicyAdapter)
         assert isinstance(get_valuation_adapter(), StubValuationAdapter)
         assert isinstance(get_repair_shop_adapter(), StubRepairShopAdapter)
@@ -346,6 +348,7 @@ class TestRegistry:
         """Unknown backend value raises ValueError with helpful message."""
         reset_adapters()
         monkeypatch.setenv("POLICY_ADAPTER", "rest")
+        reload_settings()
         with pytest.raises(ValueError, match="Unknown POLICY_ADAPTER backend.*rest"):
             get_policy_adapter()
 
@@ -380,5 +383,6 @@ class TestPolicyLogicStubRaises:
 
         reset_adapters()
         monkeypatch.setenv("POLICY_ADAPTER", "stub")
+        reload_settings()
         with pytest.raises(AdapterError, match="not supported"):
             query_policy_db_impl("POL-001")
