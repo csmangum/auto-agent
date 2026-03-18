@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Optional
 
 from claim_agent.adapters.registry import get_claim_search_adapter, get_siu_adapter
+from claim_agent.compliance.state_rules import get_siu_referral_threshold
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.fraud_detectors import (
@@ -312,6 +313,8 @@ def perform_fraud_assessment_impl(
             "should_block": False,
             "siu_referral": False,
             "assessment_details": {},
+            "mandatory_referral_applied": False,
+            "state_referral_threshold": None,
         })
 
     result: dict[str, Any] = {
@@ -326,6 +329,8 @@ def perform_fraud_assessment_impl(
         "siu_referral": False,
         "siu_case_id": None,
         "assessment_details": {},
+        "mandatory_referral_applied": False,
+        "state_referral_threshold": None,
     }
 
     if pattern_analysis is None:
@@ -424,6 +429,22 @@ def perform_fraud_assessment_impl(
             "Low fraud risk. Process claim per standard workflow. "
             "Document any minor discrepancies."
         )
+
+    # State-specific mandatory referral: enforce when fraud score meets state threshold
+    state = (claim_data.get("state") or claim_data.get("loss_state") or "").strip()
+    state_threshold = get_siu_referral_threshold(state) if state else None
+    if state_threshold is not None and total_score >= state_threshold:
+        result["siu_referral"] = True
+        result["mandatory_referral_applied"] = True
+        result["state_referral_threshold"] = state_threshold
+        result["assessment_details"]["mandatory_referral_reason"] = (
+            f"State {state} requires SIU referral when fraud score >= {state_threshold}"
+        )
+        if result["recommended_action"] and "SIU referral" not in result["recommended_action"]:
+            result["recommended_action"] = (
+                f"Mandatory SIU referral per state {state} (score {total_score} >= {state_threshold}). "
+                + result["recommended_action"]
+            )
 
     claim_id = result.get("claim_id")
     if result["siu_referral"] and claim_id and isinstance(claim_id, str) and claim_id.strip():

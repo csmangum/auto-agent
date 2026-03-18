@@ -1096,6 +1096,15 @@ def get_claim_history(
     }
 
 
+@router.get("/claims/{claim_id}/fraud-filings", dependencies=[RequireAdjuster])
+def get_claim_fraud_filings(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+    """Get fraud report filings for a claim (state bureau, NICB, NISS) for compliance audit."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    filings = ctx.repo.get_fraud_filings_for_claim(claim_id)
+    return {"claim_id": claim_id, "filings": filings}
+
+
 class AddNoteBody(BaseModel):
     note: str = Field(..., min_length=1, description="Note content")
     actor_id: str = Field(

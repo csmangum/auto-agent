@@ -25,6 +25,7 @@ from claim_agent.observability.health import check_health
 from claim_agent.observability.prometheus import generate_metrics
 from claim_agent.api.rate_limit import get_client_ip, get_rate_limit_backend
 from claim_agent.api.routes.claims import router as claims_router
+from claim_agent.api.routes.compliance import router as compliance_router
 from claim_agent.api.routes.claims import _background_tasks as claim_background_tasks
 from claim_agent.api.routes.metrics import router as metrics_router
 from claim_agent.api.routes.docs import router as docs_router
@@ -245,6 +246,7 @@ def metrics():
 
 # Register API routes
 app.include_router(claims_router, prefix="/api")
+app.include_router(compliance_router, prefix="/api")
 app.include_router(metrics_router, prefix="/api")
 app.include_router(docs_router, prefix="/api")
 app.include_router(system_router, prefix="/api")

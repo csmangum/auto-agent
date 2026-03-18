@@ -327,6 +327,10 @@ def file_fraud_report_state_bureau_impl(
             "indicators_count": len(ind_list),
             "message": f"Fraud report filed with {state or 'California'} fraud bureau (mock). Report ID: {report_id}",
         }
+        _persist_fraud_filing(
+            ctx, claim_id, "state_bureau", report_id,
+            siu_case_id=case_id, state=state or "California", indicators_count=len(ind_list),
+        )
         return json.dumps(result)
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("file_fraud_report_state_bureau failed: %s", e)
@@ -342,4 +346,134 @@ def file_fraud_report_state_bureau_impl(
             f"State bureau filing failed: {e!s}",
             case_id=case_id,
             claim_id=claim_id,
+        )
+
+
+def _persist_fraud_filing(
+    ctx: ClaimContext | None,
+    claim_id: str,
+    filing_type: str,
+    report_id: str,
+    *,
+    siu_case_id: str | None = None,
+    state: str | None = None,
+    indicators_count: int = 0,
+) -> None:
+    """Persist fraud filing to fraud_report_filings for compliance audit."""
+    try:
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ctx.repo if ctx else ClaimRepository()
+        repo.record_fraud_filing(
+            claim_id=claim_id,
+            filing_type=filing_type,
+            report_id=report_id,
+            siu_case_id=siu_case_id,
+            state=state,
+            filed_by="siu_crew",
+            indicators_count=indicators_count,
+        )
+    except Exception as persist_err:
+        logger.warning(
+            "Failed to persist fraud filing for audit: %s",
+            persist_err,
+            extra={"claim_id": claim_id, "report_id": report_id, "filing_type": filing_type},
+        )
+
+
+def file_nicb_report_impl(
+    claim_id: str,
+    case_id: str,
+    report_type: str = "theft",
+    indicators: str = "[]",
+    *,
+    ctx: ClaimContext | None = None,
+) -> str:
+    """File a report with NICB (National Insurance Crime Bureau).
+
+    Required for theft, salvage, and certain fraud referrals per state law.
+    Mock implementation returns confirmation and persists for audit.
+    """
+    err = _validate_siu_scope(claim_id=claim_id, case_id=case_id)
+    if err:
+        return err
+    try:
+        ind_list = json.loads(indicators) if indicators else []
+    except json.JSONDecodeError:
+        ind_list = []
+    claim_suffix = (claim_id or "")[-6:] or "MOCK"
+    try:
+        report_id = f"NICB-{report_type.upper()[:6]}-{claim_suffix}-MOCK"
+        result: dict[str, Any] = {
+            "success": True,
+            "report_id": report_id,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "report_type": report_type,
+            "indicators_count": len(ind_list),
+            "message": f"NICB {report_type} report filed (mock). Report ID: {report_id}",
+        }
+        _persist_fraud_filing(
+            ctx, claim_id, "nicb", report_id,
+            siu_case_id=case_id, indicators_count=len(ind_list),
+        )
+        return json.dumps(result)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("file_nicb_report failed: %s", e)
+        return _adapter_error_json(
+            f"NICB filing failed: {e!s}", case_id=case_id, claim_id=claim_id, retryable=True,
+        )
+    except Exception as e:
+        logger.warning("file_nicb_report failed: %s", e, exc_info=True)
+        return _adapter_error_json(
+            f"NICB filing failed: {e!s}", case_id=case_id, claim_id=claim_id,
+        )
+
+
+def file_niss_report_impl(
+    claim_id: str,
+    case_id: str,
+    report_type: str = "fraud",
+    indicators: str = "[]",
+    *,
+    ctx: ClaimContext | None = None,
+) -> str:
+    """File a report with NISS (National Insurance Special Investigation System).
+
+    Required for certain fraud referrals and cross-carrier reporting.
+    Mock implementation returns confirmation and persists for audit.
+    """
+    err = _validate_siu_scope(claim_id=claim_id, case_id=case_id)
+    if err:
+        return err
+    try:
+        ind_list = json.loads(indicators) if indicators else []
+    except json.JSONDecodeError:
+        ind_list = []
+    claim_suffix = (claim_id or "")[-6:] or "MOCK"
+    try:
+        report_id = f"NISS-{report_type.upper()[:6]}-{claim_suffix}-MOCK"
+        result: dict[str, Any] = {
+            "success": True,
+            "report_id": report_id,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "report_type": report_type,
+            "indicators_count": len(ind_list),
+            "message": f"NISS {report_type} report filed (mock). Report ID: {report_id}",
+        }
+        _persist_fraud_filing(
+            ctx, claim_id, "niss", report_id,
+            siu_case_id=case_id, indicators_count=len(ind_list),
+        )
+        return json.dumps(result)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("file_niss_report failed: %s", e)
+        return _adapter_error_json(
+            f"NISS filing failed: {e!s}", case_id=case_id, claim_id=claim_id, retryable=True,
+        )
+    except Exception as e:
+        logger.warning("file_niss_report failed: %s", e, exc_info=True)
+        return _adapter_error_json(
+            f"NISS filing failed: {e!s}", case_id=case_id, claim_id=claim_id,
         )

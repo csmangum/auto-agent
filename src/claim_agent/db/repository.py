@@ -1160,6 +1160,76 @@ class ClaimRepository:
                 {"claim_id": claim_id, "action": AUDIT_EVENT_SIU_CASE_CREATED, "details": f"SIU case created: {siu_case_id}", "actor_id": actor_id},
             )
 
+    def record_fraud_filing(
+        self,
+        claim_id: str,
+        filing_type: str,
+        report_id: str,
+        *,
+        siu_case_id: str | None = None,
+        state: str | None = None,
+        filed_by: str = "siu_crew",
+        indicators_count: int = 0,
+        template_version: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        """Record a fraud report filing for compliance audit.
+
+        Args:
+            claim_id: Claim ID.
+            filing_type: One of state_bureau, nicb, niss.
+            report_id: External reference ID from the filing.
+            siu_case_id: Optional SIU case ID.
+            state: State jurisdiction (e.g., California).
+            filed_by: Actor who filed (default siu_crew).
+            indicators_count: Number of fraud indicators.
+            template_version: Optional template version for audit.
+            metadata: Optional JSON metadata.
+
+        Returns:
+            The inserted row id.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        metadata_json = json.dumps(metadata) if metadata else None
+        with get_connection(self._db_path) as conn:
+            result = conn.execute(
+                text("""
+                INSERT INTO fraud_report_filings
+                (claim_id, siu_case_id, filing_type, state, report_id, filed_at, filed_by,
+                 indicators_count, template_version, metadata)
+                VALUES (:claim_id, :siu_case_id, :filing_type, :state, :report_id, :filed_at,
+                        :filed_by, :indicators_count, :template_version, :metadata)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "siu_case_id": siu_case_id,
+                    "filing_type": filing_type,
+                    "state": state,
+                    "report_id": report_id,
+                    "filed_at": now,
+                    "filed_by": filed_by,
+                    "indicators_count": indicators_count,
+                    "template_version": template_version,
+                    "metadata": metadata_json,
+                },
+            )
+            return result.lastrowid or 0
+
+    def get_fraud_filings_for_claim(self, claim_id: str) -> list[dict[str, Any]]:
+        """Return all fraud report filings for a claim, newest first."""
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                text("""
+                SELECT id, claim_id, siu_case_id, filing_type, state, report_id,
+                       filed_at, filed_by, indicators_count, template_version, metadata
+                FROM fraud_report_filings
+                WHERE claim_id = :claim_id
+                ORDER BY filed_at DESC
+                """),
+                {"claim_id": claim_id},
+            ).fetchall()
+        return [row_to_dict(row) for row in rows]
+
     def update_claim_review_metadata(
         self,
         claim_id: str,
