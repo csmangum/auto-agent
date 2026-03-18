@@ -41,12 +41,12 @@ def upgrade() -> None:
     else:
         # PostgreSQL: add columns one at a time (IF NOT EXISTS per column)
         for col, col_type in [
-            ("acknowledged_at", "TIMESTAMP"),
-            ("acknowledgment_due", "DATE"),
-            ("investigation_due", "DATE"),
-            ("payment_due", "DATE"),
+            ("acknowledged_at", "TEXT"),
+            ("acknowledgment_due", "TEXT"),
+            ("investigation_due", "TEXT"),
+            ("payment_due", "TEXT"),
             ("denial_reason", "TEXT"),
-            ("denial_letter_sent_at", "TIMESTAMP"),
+            ("denial_letter_sent_at", "TEXT"),
             ("denial_letter_body", "TEXT"),
         ]:
             op.execute(f"ALTER TABLE claims ADD COLUMN IF NOT EXISTS {col} {col_type}")

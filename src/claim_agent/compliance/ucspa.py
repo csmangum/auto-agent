@@ -71,7 +71,7 @@ def create_ucspa_compliance_tasks(
     created = 0
 
     for t in templates:
-        due_date = get_compliance_due_date(base, t.deadline_type, loss_state or "California")
+        due_date = get_compliance_due_date(base, t.deadline_type, loss_state)
         if due_date is None:
             continue
         due_str = due_date.isoformat()
@@ -150,10 +150,15 @@ def claims_with_deadlines_approaching(
                 for row in cursor:
                     d = row_to_dict(row)
                     if d.get("due_date"):
+                        due_date_val = d["due_date"]
+                        if hasattr(due_date_val, "isoformat"):
+                            due_date_str = due_date_val.isoformat()
+                        else:
+                            due_date_str = str(due_date_val)
                         results.append({
                             "claim_id": d["id"],
                             "deadline_type": deadline_type,
-                            "due_date": d["due_date"],
+                            "due_date": due_date_str,
                             "loss_state": d.get("loss_state"),
                         })
             except Exception as e:

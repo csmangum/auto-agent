@@ -1546,10 +1546,12 @@ class ClaimRepository:
         """Record UCSPA claim acknowledgment (receipt acknowledged within deadline)."""
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
-            conn.execute(
+            result = conn.execute(
                 text("UPDATE claims SET acknowledged_at = :now, updated_at = :now WHERE id = :claim_id"),
                 {"now": now, "claim_id": claim_id},
             )
+            if result.rowcount == 0:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             conn.execute(
                 text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
@@ -1570,13 +1572,15 @@ class ClaimRepository:
         safe_reason = sanitize_denial_reason(denial_reason) or "Coverage denied"
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
-            conn.execute(
+            result = conn.execute(
                 text("""
                 UPDATE claims SET denial_reason = :reason, denial_letter_sent_at = :now,
                     denial_letter_body = :body, updated_at = :now WHERE id = :claim_id
                 """),
                 {"reason": safe_reason, "now": now, "body": denial_letter_body[:65535], "claim_id": claim_id},
             )
+            if result.rowcount == 0:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             conn.execute(
                 text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
