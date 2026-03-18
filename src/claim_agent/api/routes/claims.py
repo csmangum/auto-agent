@@ -448,6 +448,20 @@ def assign_claim(
     return {"claim_id": claim_id, "assignee": body.assignee}
 
 
+@router.post("/claims/{claim_id}/acknowledge")
+def acknowledge_claim(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Record UCSPA claim acknowledgment (receipt acknowledged within state deadline)."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    ctx.repo.record_acknowledgment(claim_id, actor_id=actor_id)
+    return {"claim_id": claim_id, "acknowledged": True}
+
+
 @router.post("/claims/{claim_id}/review/approve")
 async def approve_review(
     claim_id: str,

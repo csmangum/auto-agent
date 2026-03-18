@@ -7,7 +7,7 @@ audit entries and does not perform UPDATE or DELETE operations on that table.
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, cast
 
 from sqlalchemy import text
@@ -18,12 +18,14 @@ from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
     ACTOR_SYSTEM,
     ACTOR_WORKFLOW,
+    AUDIT_EVENT_ACKNOWLEDGED,
     AUDIT_EVENT_APPROVAL,
     AUDIT_EVENT_ASSIGN,
     AUDIT_EVENT_ATTACHMENTS_UPDATED,
     AUDIT_EVENT_CLAIM_REVIEW,
     AUDIT_EVENT_COVERAGE_VERIFICATION,
     AUDIT_EVENT_CREATED,
+    AUDIT_EVENT_DENIAL_LETTER,
     AUDIT_EVENT_ESCALATE_TO_SIU,
     AUDIT_EVENT_FOLLOW_UP_RESPONSE,
     AUDIT_EVENT_FOLLOW_UP_SENT,
@@ -73,6 +75,33 @@ RELATION_SHARED_PROVIDER = "shared_provider"
 def _generate_claim_id(prefix: str = "CLM") -> str:
     """Generate a unique claim ID."""
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
+
+
+def _apply_ucspa_at_fnol(
+    repo: "ClaimRepository",
+    claim_id: str,
+    loss_state: str | None,
+    incident_date: date | None,
+) -> None:
+    """Set UCSPA deadlines on claim and create compliance tasks at FNOL."""
+    from claim_agent.compliance.ucspa import create_ucspa_compliance_tasks, get_ucspa_deadlines
+
+    base_date = date.today()  # receipt date = FNOL date
+    deadlines = get_ucspa_deadlines(base_date, loss_state)
+    with get_connection(repo._db_path) as conn:
+        updates: list[str] = []
+        params: dict[str, Any] = {"id": claim_id}
+        for col in ("acknowledgment_due", "investigation_due", "payment_due"):
+            val = deadlines.get(col)
+            if val:
+                updates.append(f"{col} = :{col}")
+                params[col] = val
+        if updates:
+            conn.execute(
+                text(f"UPDATE claims SET {', '.join(updates)} WHERE id = :id"),
+                params,
+            )
+    create_ucspa_compliance_tasks(repo, claim_id, loss_state, base_date)
 
 
 def _check_reserve_authority(
@@ -177,6 +206,16 @@ class ClaimRepository:
         if claim_input.parties:
             for p in claim_input.parties:
                 self.add_claim_party(claim_id, p)
+
+        # UCSPA: set state-specific deadlines and create compliance tasks at FNOL
+        try:
+            _apply_ucspa_at_fnol(self, claim_id, loss_state_val, claim_input.incident_date)
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "ucspa_at_fnol_failed claim_id=%s: %s (run alembic upgrade head if UCSPA columns missing)",
+                claim_id,
+                e,
+            )
 
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
@@ -1498,6 +1537,60 @@ class ClaimRepository:
         emit_claim_event(
             ClaimEvent(claim_id=claim_id, status=STATUS_DENIED, summary=safe_reason)
         )
+
+    def record_acknowledgment(
+        self,
+        claim_id: str,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Record UCSPA claim acknowledgment (receipt acknowledged within deadline)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                text("UPDATE claims SET acknowledged_at = :now, updated_at = :now WHERE id = :claim_id"),
+                {"now": now, "claim_id": claim_id},
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {"claim_id": claim_id, "action": AUDIT_EVENT_ACKNOWLEDGED, "details": "Claim receipt acknowledged", "actor_id": actor_id},
+            )
+
+    def record_denial_letter(
+        self,
+        claim_id: str,
+        denial_reason: str,
+        denial_letter_body: str,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Record UCSPA-compliant denial letter (written, specific, with appeal rights)."""
+        safe_reason = sanitize_denial_reason(denial_reason) or "Coverage denied"
+        now = datetime.now(timezone.utc).isoformat()
+        with get_connection(self._db_path) as conn:
+            conn.execute(
+                text("""
+                UPDATE claims SET denial_reason = :reason, denial_letter_sent_at = :now,
+                    denial_letter_body = :body, updated_at = :now WHERE id = :claim_id
+                """),
+                {"reason": safe_reason, "now": now, "body": denial_letter_body[:65535], "claim_id": claim_id},
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
+                VALUES (:claim_id, :action, :details, :actor_id, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_DENIAL_LETTER,
+                    "details": f"Denial letter sent: {safe_reason[:200]}",
+                    "actor_id": actor_id,
+                    "after_state": json.dumps({"denial_reason": safe_reason, "denial_letter_sent_at": now}),
+                },
+            )
 
     def insert_coverage_verification_audit(
         self,

@@ -451,6 +451,34 @@ def diary_escalate(
     typer.echo(json.dumps(result, indent=2))
 
 
+@app.command("ucspa-deadlines")
+def ucspa_deadlines(
+    days_ahead: Annotated[
+        int,
+        typer.Option("--days", "-d", help="Days ahead to check for approaching deadlines"),
+    ] = 3,
+    dispatch_webhooks: Annotated[
+        bool,
+        typer.Option("--webhooks", "-w", help="Dispatch ucspa.deadline_approaching webhooks"),
+    ] = True,
+) -> None:
+    """Check UCSPA deadlines and optionally dispatch webhook alerts for approaching deadlines."""
+    from claim_agent.compliance.ucspa import claims_with_deadlines_approaching
+    from claim_agent.notifications.webhook import dispatch_ucspa_deadline_approaching
+
+    ctx = _get_cli_ctx()
+    claims = claims_with_deadlines_approaching(ctx.repo, days_ahead=days_ahead)
+    if dispatch_webhooks:
+        for c in claims:
+            dispatch_ucspa_deadline_approaching(
+                c["claim_id"],
+                c["deadline_type"],
+                c["due_date"],
+                c.get("loss_state"),
+            )
+    typer.echo(json.dumps({"days_ahead": days_ahead, "count": len(claims), "claims": claims}, indent=2))
+
+
 @app.command()
 def metrics(
     claim_id: Annotated[Optional[str], typer.Argument(help="Optional claim ID for per-claim metrics")] = None,
