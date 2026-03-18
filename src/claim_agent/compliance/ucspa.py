@@ -3,7 +3,10 @@
 Implements NAIC Model Unfair Claims Settlement Practices Act requirements:
 - Acknowledgment deadlines (must acknowledge receipt within X days)
 - Investigation completion deadlines
-- Payment deadlines after settlement agreement
+- Payment deadlines (computed from FNOL/receipt date as an FNOL-based SLA;
+  the prompt-payment clock under some state statutes starts at settlement
+  agreement, so this is an early-warning estimate rather than the definitive
+  statutory deadline)
 - Denial explanation requirements (written, specific, with appeal rights)
 - Communication response deadlines
 
@@ -27,8 +30,14 @@ def get_ucspa_deadlines(
 ) -> dict[str, str | None]:
     """Return UCSPA deadline dates for a claim.
 
+    All deadlines are computed from ``base_date`` (the FNOL/claim-receipt
+    date).  ``payment_due`` is an FNOL-based SLA estimate; many state statutes
+    start the prompt-payment clock at settlement agreement, so callers should
+    treat ``payment_due`` as an early-warning target rather than the definitive
+    statutory deadline.
+
     Args:
-        base_date: Reference date (e.g., claim receipt/created_at).
+        base_date: Reference date (claim receipt / FNOL date).
         state: Loss state/jurisdiction.
 
     Returns:

@@ -53,6 +53,22 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # SQLite does not support DROP COLUMN easily; leave columns for data preservation.
-    # PostgreSQL: optional DROP COLUMN if needed.
-    pass
+    conn = op.get_bind()
+    dialect = conn.dialect.name
+
+    if dialect == "sqlite":
+        # SQLite does not support DROP COLUMN; leave columns in place for data preservation.
+        pass
+    else:
+        # PostgreSQL: drop the added columns in reverse order.
+        _UCSPA_COLUMNS = [
+            "denial_letter_body",
+            "denial_letter_sent_at",
+            "denial_reason",
+            "payment_due",
+            "investigation_due",
+            "acknowledgment_due",
+            "acknowledged_at",
+        ]
+        for col in _UCSPA_COLUMNS:
+            op.execute(text("ALTER TABLE claims DROP COLUMN IF EXISTS " + col))
