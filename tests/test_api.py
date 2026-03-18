@@ -1433,6 +1433,7 @@ class TestApiKeyAuth:
     def test_protected_endpoint_requires_key(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats")
         assert resp.status_code == 401
 
@@ -1451,6 +1452,7 @@ class TestApiKeyAuth:
     def test_invalid_key_returns_401(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats", headers={"X-API-Key": "wrong-key"})
         assert resp.status_code == 401
         assert "Invalid" in resp.json()["detail"]
@@ -1459,6 +1461,7 @@ class TestApiKeyAuth:
         """POST /api/claims returns 401 when auth is required and no key provided."""
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         payload = {
             "policy_number": "POL-001",
             "vin": "1HGBH41JXMN109186",
