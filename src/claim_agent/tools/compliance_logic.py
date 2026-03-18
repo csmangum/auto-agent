@@ -1,6 +1,9 @@
 """California and multi-state auto insurance compliance lookup logic.
 
 Compliance lookups are cached for repeated operations (policy checks, claim-type context).
+Cache key is (query, state). If compliance JSON files or CA_COMPLIANCE_PATH are changed
+at runtime (e.g. in tests), call _search_state_compliance_cached.cache_clear() before
+the test to avoid stale results.
 """
 
 import json

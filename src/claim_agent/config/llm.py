@@ -3,6 +3,13 @@
 This module configures the LLM with:
 - LangSmith tracing (if enabled)
 - LiteLLM callbacks for token/cost tracking
+- Model fallback chain (OPENAI_FALLBACK_MODELS) via thread-local override
+
+Note on fallback scope: The model override used by the fallback chain is stored
+in thread-local storage. Fallback retries work within a single request/thread.
+If claim processing is offloaded to worker processes or different threads, the
+override does not propagate. For multi-worker deployments, fallback applies only
+to the thread that runs _kickoff_with_retry.
 """
 
 import logging
@@ -22,7 +29,8 @@ _PLACEHOLDER_KEYS = frozenset(
 _langsmith_initialized = False
 _langsmith_lock = threading.Lock()
 
-# Thread-local storage for per-call model override (used by fallback chain)
+# Thread-local storage for per-call model override (used by fallback chain).
+# Scope: current thread only; does not propagate to worker processes or other threads.
 _thread_local = threading.local()
 
 
@@ -32,7 +40,11 @@ def _get_model_override() -> str | None:
 
 
 def _set_model_override(model: str | None) -> None:
-    """Set (or clear) the thread-local model override used by get_llm()."""
+    """Set (or clear) the thread-local model override used by get_llm().
+
+    Used by the fallback chain in _kickoff_with_retry. Scoped to the current
+    thread; does not propagate to worker processes or async tasks in other threads.
+    """
     _thread_local.model_override = model
 
 

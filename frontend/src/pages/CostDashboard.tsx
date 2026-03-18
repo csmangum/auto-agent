@@ -1,8 +1,8 @@
 import PageHeader from '../components/PageHeader';
 import StatCard from '../components/StatCard';
 import { useCostBreakdown } from '../api/queries';
-import type { CostBreakdown } from '../api/client';
 
+/** Crew colors for cost dashboard. New crews get default gray (#6B7280). */
 const CREW_COLORS: Record<string, string> = {
   router: '#3B82F6',
   escalation: '#F97316',
@@ -181,7 +181,7 @@ export default function CostDashboard() {
     );
   }
 
-  const cost = data as CostBreakdown | undefined;
+  const cost = data;
   const gs = cost?.global_stats;
   const byCrew = cost?.by_crew ?? {};
   const byClaimType = cost?.by_claim_type ?? {};

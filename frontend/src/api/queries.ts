@@ -27,8 +27,12 @@ import {
   getTaskStats,
   getCostBreakdown,
 } from './client';
-import type { PostClaimRepairStatusPayload } from './client';
-import type { GetClaimsParams, PatchClaimReserveBody } from './client';
+import type {
+  CostBreakdown,
+  GetClaimsParams,
+  PatchClaimReserveBody,
+  PostClaimRepairStatusPayload,
+} from './client';
 
 export const queryKeys = {
   claimsStats: ['claims', 'stats'] as const,
@@ -237,7 +241,7 @@ export function useTaskStats() {
 
 /** LLM cost breakdown: by crew, by claim type, daily spend. */
 export function useCostBreakdown() {
-  return useQuery({
+  return useQuery<CostBreakdown>({
     queryKey: queryKeys.costBreakdown,
     queryFn: getCostBreakdown,
   });
