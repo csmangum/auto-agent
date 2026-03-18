@@ -89,36 +89,3 @@ def _record_crew_usage_delta(
         crew=crew,
         claim_type=claim_type,
     )
-
-
-def _record_crew_llm_usage(
-    claim_id: str,
-    llm: LLMProtocol | None,
-    metrics: Any,
-    crew: str | None = None,
-    claim_type: str | None = None,
-) -> None:
-    """Record CrewAI LLM token usage and cost into metrics for this claim.
-
-    CrewAI uses native SDK (OpenAI etc.) for standard models, so LiteLLM callbacks
-    are not invoked. The LLM instance accumulates usage via get_token_usage_summary().
-    We record one aggregated call so evaluation and reporting get real token/cost data.
-    """
-    if llm is None:
-        return
-    usage = _get_llm_usage_snapshot(llm)
-    if usage is None:
-        return
-    prompt_tokens, completion_tokens, _successful_requests = usage
-    model = llm.model if isinstance(llm.model, str) else get_model_name()
-    metrics.record_llm_call(
-        claim_id=claim_id,
-        model=model,
-        input_tokens=prompt_tokens,
-        output_tokens=completion_tokens,
-        cost_usd=None,
-        latency_ms=0.0,
-        status="success",
-        crew=crew,
-        claim_type=claim_type,
-    )

@@ -9,7 +9,7 @@ const CREW_COLORS: Record<string, string> = {
   partial_loss: '#14B8A6',
   total_loss: '#6366F1',
   new: '#22C55E',
-  duplicate: '#F97316',
+  duplicate: '#F59E0B',
   fraud: '#EF4444',
   bodily_injury: '#8B5CF6',
   reopened: '#6B7280',
