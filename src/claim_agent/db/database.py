@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS claims (
     siu_case_id TEXT,
     archived_at TEXT,
     incident_id TEXT REFERENCES incidents(id),
+    litigation_hold INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -342,6 +343,31 @@ CREATE TABLE IF NOT EXISTS repair_status (
 );
 CREATE INDEX IF NOT EXISTS idx_repair_status_claim_id ON repair_status(claim_id);
 CREATE INDEX IF NOT EXISTS idx_repair_status_shop_status ON repair_status(shop_id, status);
+
+-- DSAR: Data Subject Access Request tables for privacy compliance
+CREATE TABLE IF NOT EXISTS dsar_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT NOT NULL UNIQUE,
+    claimant_identifier TEXT NOT NULL,
+    request_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT,
+    actor_id TEXT,
+    notes TEXT,
+    verification_data TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dsar_requests_request_id ON dsar_requests(request_id);
+CREATE INDEX IF NOT EXISTS idx_dsar_requests_status ON dsar_requests(status);
+CREATE INDEX IF NOT EXISTS idx_dsar_requests_claimant ON dsar_requests(claimant_identifier);
+
+CREATE TABLE IF NOT EXISTS dsar_exports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT NOT NULL,
+    export_path TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dsar_exports_request_id ON dsar_exports(request_id);
 """
 
 

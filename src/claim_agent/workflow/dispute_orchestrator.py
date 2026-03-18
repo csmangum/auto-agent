@@ -27,6 +27,7 @@ from claim_agent.db.constants import (
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.dispute import DisputeInput, DisputeType
 from claim_agent.observability import get_logger
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
@@ -92,21 +93,24 @@ def run_dispute_workflow(
         details=f"Dispute filed: {dispute_input.dispute_type.value}",
     )
 
-    claim_data_for_crew = {
-        "claim_id": claim.get("id"),
-        "policy_number": claim.get("policy_number"),
-        "vin": claim.get("vin"),
-        "vehicle_year": claim.get("vehicle_year"),
-        "vehicle_make": claim.get("vehicle_make"),
-        "vehicle_model": claim.get("vehicle_model"),
-        "incident_date": claim.get("incident_date"),
-        "incident_description": claim.get("incident_description"),
-        "damage_description": claim.get("damage_description"),
-        "estimated_damage": claim.get("estimated_damage"),
-        "payout_amount": claim.get("payout_amount"),
-        "claim_type": claim.get("claim_type"),
-        "status": claim.get("status"),
-    }
+    claim_data_for_crew = minimize_claim_data_for_crew(
+        {
+            "claim_id": claim.get("id"),
+            "policy_number": claim.get("policy_number"),
+            "vin": claim.get("vin"),
+            "vehicle_year": claim.get("vehicle_year"),
+            "vehicle_make": claim.get("vehicle_make"),
+            "vehicle_model": claim.get("vehicle_model"),
+            "incident_date": claim.get("incident_date"),
+            "incident_description": claim.get("incident_description"),
+            "damage_description": claim.get("damage_description"),
+            "estimated_damage": claim.get("estimated_damage"),
+            "payout_amount": claim.get("payout_amount"),
+            "claim_type": claim.get("claim_type"),
+            "status": claim.get("status"),
+        },
+        "dispute",
+    )
 
     original_workflow_output = _get_latest_workflow_output(repo, dispute_input.claim_id)
 

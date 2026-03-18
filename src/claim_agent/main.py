@@ -55,7 +55,8 @@ def _usage() -> str:
     return (
         "Usage: claim-agent [OPTIONS] COMMAND [ARGS]...\n\n"
         "Commands: serve, process, status, history, reprocess, metrics, review-queue, "
-        "assign, approve, reject, request-info, escalate-siu, retention-enforce.\n"
+        "assign, approve, reject, request-info, escalate-siu, retention-enforce, "
+        "dsar-access, dsar-deletion.\n"
         "Run claim-agent --help for full help."
     )
 
@@ -389,6 +390,80 @@ def escalate_siu(
     except (ClaimAgentError, ValueError) as e:
         typer.echo(f"Error: {e}", err=True)
         sys.exit(1)
+
+
+@app.command("dsar-access")
+def dsar_access(
+    claimant_email: Annotated[str, typer.Option("--claimant-email", "-e", help="Claimant email or identifier")],
+    claim_id: Annotated[Optional[str], typer.Option("--claim-id", "-c", help="Claim ID for verification")] = None,
+    policy_number: Annotated[Optional[str], typer.Option("--policy", "-p", help="Policy number for verification")] = None,
+    vin: Annotated[Optional[str], typer.Option("--vin", "-v", help="VIN for verification")] = None,
+    fulfill: Annotated[bool, typer.Option("--fulfill", "-f", help="Fulfill the request immediately and output export")] = False,
+) -> None:
+    """Submit a DSAR access request (right-to-know). For testing/admin."""
+    from claim_agent.services.dsar import fulfill_access_request, submit_access_request
+
+    verification_data: dict = {}
+    if claim_id:
+        verification_data["claim_id"] = claim_id
+    if policy_number:
+        verification_data["policy_number"] = policy_number
+    if vin:
+        verification_data["vin"] = vin
+    if not verification_data:
+        typer.echo("Error: Provide --claim-id or (--policy and --vin) for verification", err=True)
+        raise typer.Exit(1)
+    request_id = submit_access_request(
+        claimant_identifier=claimant_email,
+        verification_data=verification_data,
+        actor_id="cli",
+    )
+    typer.echo(json.dumps({"request_id": request_id, "status": "pending"}, indent=2))
+    if fulfill:
+        try:
+            export = fulfill_access_request(request_id, actor_id="cli")
+            typer.echo("\nExport:")
+            typer.echo(json.dumps(export, indent=2, default=str))
+        except ValueError as e:
+            typer.echo(f"Error fulfilling request: {e}", err=True)
+            raise typer.Exit(1)
+
+
+@app.command("dsar-deletion")
+def dsar_deletion(
+    claimant_email: Annotated[str, typer.Option("--claimant-email", "-e", help="Claimant email or identifier")],
+    claim_id: Annotated[Optional[str], typer.Option("--claim-id", "-c", help="Claim ID for verification")] = None,
+    policy_number: Annotated[Optional[str], typer.Option("--policy", "-p", help="Policy number for verification")] = None,
+    vin: Annotated[Optional[str], typer.Option("--vin", "-v", help="VIN for verification")] = None,
+    fulfill: Annotated[bool, typer.Option("--fulfill", "-f", help="Fulfill the request immediately")] = False,
+) -> None:
+    """Submit a DSAR deletion request (right-to-delete). Anonymizes PII, preserves audit trail."""
+    from claim_agent.services.dsar import fulfill_deletion_request, submit_deletion_request
+
+    verification_data: dict = {}
+    if claim_id:
+        verification_data["claim_id"] = claim_id
+    if policy_number:
+        verification_data["policy_number"] = policy_number
+    if vin:
+        verification_data["vin"] = vin
+    if not verification_data:
+        typer.echo("Error: Provide --claim-id or (--policy and --vin) for verification", err=True)
+        raise typer.Exit(1)
+    request_id = submit_deletion_request(
+        claimant_identifier=claimant_email,
+        verification_data=verification_data,
+        actor_id="cli",
+    )
+    typer.echo(json.dumps({"request_id": request_id, "status": "pending"}, indent=2))
+    if fulfill:
+        try:
+            result = fulfill_deletion_request(request_id, actor_id="cli")
+            typer.echo("\nResult:")
+            typer.echo(json.dumps(result, indent=2))
+        except ValueError as e:
+            typer.echo(f"Error fulfilling request: {e}", err=True)
+            raise typer.Exit(1)
 
 
 @app.command("retention-enforce")

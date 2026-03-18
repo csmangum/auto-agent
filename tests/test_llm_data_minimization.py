@@ -1,0 +1,73 @@
+"""Tests for LLM data minimization."""
+
+
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
+from claim_agent.utils.pii_masking import mask_policy_number, mask_vin
+
+
+class TestMinimizeClaimDataForCrew:
+    """Tests for minimize_claim_data_for_crew."""
+
+    def test_filters_to_allowlist(self):
+        """Only allowlisted fields are included."""
+        claim = {
+            "claim_id": "CLM-1",
+            "policy_number": "POL-12345",
+            "vin": "1HGCM82633A123456",
+            "vehicle_year": 2020,
+            "incident_description": "Parking lot fender bender",
+            "secret_field": "should be excluded",
+        }
+        result = minimize_claim_data_for_crew(claim, "partial_loss", mask_pii=False)
+        assert "claim_id" in result
+        assert "policy_number" in result
+        assert "vin" in result
+        assert "vehicle_year" in result
+        assert "incident_description" in result
+        assert "secret_field" not in result
+
+    def test_masks_pii_when_enabled(self):
+        """policy_number and vin are masked when mask_pii=True."""
+        claim = {
+            "claim_id": "CLM-1",
+            "policy_number": "POL-12345-001",
+            "vin": "1HGCM82633A123456",
+            "incident_description": "Test",
+        }
+        result = minimize_claim_data_for_crew(claim, "partial_loss", mask_pii=True)
+        assert result["policy_number"] == mask_policy_number("POL-12345-001")
+        assert result["vin"] == mask_vin("1HGCM82633A123456")
+
+    def test_minimizes_attachments(self):
+        """Attachment descriptions are stripped; url and type kept."""
+        claim = {
+            "claim_id": "CLM-1",
+            "attachments": [
+                {"url": "https://example.com/photo.jpg", "type": "photo", "description": "Front damage"},
+            ],
+        }
+        result = minimize_claim_data_for_crew(claim, "partial_loss", mask_pii=False)
+        assert result["attachments"] == [{"url": "https://example.com/photo.jpg", "type": "photo"}]
+
+    def test_strips_party_pii_for_bodily_injury(self):
+        """For bodily_injury, party name/email/phone/address are stripped."""
+        claim = {
+            "claim_id": "CLM-1",
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "John Doe",
+                    "email": "john@example.com",
+                    "phone": "555-1234",
+                    "role": "driver",
+                },
+            ],
+        }
+        result = minimize_claim_data_for_crew(claim, "bodily_injury", mask_pii=False)
+        assert result["parties"] == [{"party_type": "claimant", "role": "driver"}]
+
+    def test_unknown_crew_allows_all(self):
+        """Unknown crew name allows all fields through."""
+        claim = {"claim_id": "CLM-1", "custom_field": "value"}
+        result = minimize_claim_data_for_crew(claim, "unknown_crew", mask_pii=False)
+        assert result == claim

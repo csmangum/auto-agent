@@ -3,6 +3,7 @@
 import json
 
 from claim_agent.context import ClaimContext
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 from claim_agent.crews.claim_review_crew import create_claim_review_crew
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim_review import ClaimReviewReport
@@ -41,19 +42,23 @@ def run_claim_review(
     if workflow_runs:
         workflow_output = workflow_runs[0].get("workflow_output") or ""
 
-    claim_data = json.dumps({
-        "id": claim.get("id"),
-        "status": claim.get("status"),
-        "claim_type": claim.get("claim_type"),
-        "policy_number": claim.get("policy_number"),
-        "vin": claim.get("vin"),
-        "incident_date": claim.get("incident_date"),
-        "incident_description": claim.get("incident_description"),
-        "damage_description": claim.get("damage_description"),
-        "payout_amount": claim.get("payout_amount"),
-        "created_at": claim.get("created_at"),
-        "updated_at": claim.get("updated_at"),
-    }, default=str)
+    claim_data_dict = minimize_claim_data_for_crew(
+        {
+            "id": claim.get("id"),
+            "status": claim.get("status"),
+            "claim_type": claim.get("claim_type"),
+            "policy_number": claim.get("policy_number"),
+            "vin": claim.get("vin"),
+            "incident_date": claim.get("incident_date"),
+            "incident_description": claim.get("incident_description"),
+            "damage_description": claim.get("damage_description"),
+            "payout_amount": claim.get("payout_amount"),
+            "created_at": claim.get("created_at"),
+            "updated_at": claim.get("updated_at"),
+        },
+        "claim_review",
+    )
+    claim_data = json.dumps(claim_data_dict, default=str)
 
     # Ensure review tools use the same db as this context (for multi-DB/simulation)
     db_path = getattr(ctx.repo, "_db_path", None)

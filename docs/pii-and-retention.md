@@ -98,8 +98,41 @@ Run `claim-agent retention-enforce` periodically (e.g. daily via cron):
 0 2 * * * cd /path/to/project && claim-agent retention-enforce
 ```
 
+## LLM Data Minimization
+
+When `LLM_DATA_MINIMIZATION=true` (default), claim data sent to LLM prompts is minimized:
+
+- **Per-crew allowlists**: Only fields necessary for each crew's task are included
+- **PII masking**: policy_number and VIN are masked (e.g. POL***001, 1HG***3456)
+- **Attachment stripping**: Descriptions removed; url and type kept
+- **Party PII**: For bodily_injury, party name/email/phone/address stripped; role kept. Parties with `consent_status=revoked` are excluded from LLM prompts
+
+Set `LLM_DATA_MINIMIZATION=false` for debugging.
+
+## DSAR (Data Subject Access Request)
+
+### Access Requests (Right-to-Know)
+
+- **Submit**: `POST /api/dsar/access` with claimant_identifier and verification (claim_id or policy_number+vin)
+- **Status**: `GET /api/dsar/requests/{request_id}`
+- **Fulfill**: `POST /api/dsar/requests/{request_id}/fulfill` – returns export with claims, parties, audit entries, notes
+- **CLI**: `claim-agent dsar-access --claimant-email X --claim-id Y [--fulfill]`
+
+### Deletion Requests (Right-to-Delete)
+
+- **Submit**: `POST /api/dsar/deletion` with claimant_identifier and verification (claim_id or policy_number+vin)
+- **Fulfill**: `POST /api/dsar/deletion/fulfill/{request_id}` – anonymizes claims and parties (sets PII to [REDACTED]), preserves audit log
+- **CLI**: `claim-agent dsar-deletion --claimant-email X --claim-id Y [--fulfill]`
+- **Litigation hold**: Claims with `litigation_hold=1` are skipped during deletion
+
+### Consent Tracking
+
+- **Update consent**: `PATCH /api/claims/{claim_id}/parties/{party_id}/consent` with `{"consent_status": "granted"|"revoked"|"pending"}`
+- **Revoke by email**: `POST /api/dsar/consent-revoke` with `{"email": "..."}` – revokes consent for all parties with that email
+- When `consent_status=revoked`, party PII is excluded from LLM prompts (e.g. bodily_injury crew)
+
 ## Related
 
-- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS
+- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, LLM_DATA_MINIMIZATION
 - [Observability](observability.md) – Structured logging, claim context
 - [Database](database.md) – Schema, audit log

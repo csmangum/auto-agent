@@ -89,6 +89,7 @@ from claim_agent.workflow.helpers import (
 )
 from claim_agent.workflow.coverage_verification import verify_coverage_impl
 from claim_agent.workflow.routing import create_router_crew, _parse_router_output
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 
 if TYPE_CHECKING:
     from claim_agent.workflow.orchestrator import _WorkflowCtx
@@ -417,11 +418,12 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
 
     ctx.duplicate_result = dup_result
 
-    ctx.inputs = {
-        "claim_data": json.dumps(ctx.claim_data_with_id)
-        if isinstance(ctx.claim_data_with_id, dict)
-        else ctx.claim_data_with_id
-    }
+    claim_data_for_router = ctx.claim_data_with_id
+    if isinstance(claim_data_for_router, dict):
+        claim_data_for_router = minimize_claim_data_for_crew(claim_data_for_router, "router")
+        ctx.inputs = {"claim_data": json.dumps(claim_data_for_router)}
+    else:
+        ctx.inputs = {"claim_data": claim_data_for_router}
     claim_data_str = (
         ctx.inputs["claim_data"]
         if isinstance(ctx.inputs["claim_data"], str)
@@ -825,7 +827,10 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
 
         if use_agent:
             try:
-                claim_data_json = json.dumps(ctx.claim_data_with_id, default=str)
+                claim_data_min = minimize_claim_data_for_crew(
+                    dict(ctx.claim_data_with_id), "escalation_check"
+                )
+                claim_data_json = json.dumps(claim_data_min, default=str)
                 sim_str = (
                     str(ctx.similarity_score_for_escalation)
                     if ctx.similarity_score_for_escalation is not None
@@ -1021,9 +1026,15 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         _check_token_budget(c.claim_id, c.context.metrics, c.context.llm)
         logger.log_event("crew_started", crew=c.claim_type)
         crew_start = time.time()
-        crew_inputs = {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
-        }
+        # For bodily_injury, load parties from DB and filter by consent (exclude revoked)
+        if c.claim_type == ClaimType.BODILY_INJURY.value:
+            parties = c.context.repo.get_claim_parties(c.claim_id)
+            parties = [p for p in parties if p.get("consent_status") != "revoked"]
+            c.claim_data_with_id["parties"] = parties
+
+        claim_payload = {**c.claim_data_with_id, "claim_type": c.claim_type}
+        claim_payload = minimize_claim_data_for_crew(claim_payload, c.claim_type)
+        crew_inputs = {"claim_data": json.dumps(claim_payload)}
         reopened_output = ""
 
         if c.claim_type == ClaimType.REOPENED.value:
@@ -1054,8 +1065,13 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
                 or str(reopened_result)
             )
             c.claim_type = _parse_reopened_output(reopened_result)
+            if c.claim_type == ClaimType.BODILY_INJURY.value:
+                parties = c.context.repo.get_claim_parties(c.claim_id)
+                parties = [p for p in parties if p.get("consent_status") != "revoked"]
+                c.claim_data_with_id["parties"] = parties
+            claim_payload = {**c.claim_data_with_id, "claim_type": c.claim_type}
             crew_inputs["claim_data"] = json.dumps(
-                {**c.claim_data_with_id, "claim_type": c.claim_type}
+                minimize_claim_data_for_crew(claim_payload, c.claim_type)
             )
 
         if c.claim_type == ClaimType.NEW.value:
@@ -1151,7 +1167,11 @@ def _stage_task_creation(ctx: _WorkflowCtx) -> dict | None:
         "task_creation_output",
         create_crew=lambda c: create_task_planner_crew(c.context.llm),
         get_inputs=lambda c: {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "claim_data": json.dumps(
+                minimize_claim_data_for_crew(
+                    {**c.claim_data_with_id, "claim_type": c.claim_type}, "task_planner"
+                )
+            ),
             "workflow_output": c.workflow_output,
         },
         combine_label="Task planning output",
@@ -1173,7 +1193,11 @@ def _stage_rental(ctx: _WorkflowCtx) -> dict | None:
         "rental_output",
         create_crew=lambda c: create_rental_crew(c.context.llm),
         get_inputs=lambda c: {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "claim_data": json.dumps(
+                minimize_claim_data_for_crew(
+                    {**c.claim_data_with_id, "claim_type": c.claim_type}, "rental"
+                )
+            ),
             "workflow_output": c.workflow_output,
         },
         combine_label="Rental workflow output",
@@ -1195,8 +1219,11 @@ def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
         start = time.time()
         loss_state = c.claim_data.get("loss_state") or DEFAULT_STATE
         crew = create_liability_determination_crew(c.context.llm, state=loss_state, use_rag=True)
+        claim_payload = minimize_claim_data_for_crew(
+            {**c.claim_data_with_id, "claim_type": c.claim_type}, "liability_determination"
+        )
         inputs = {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "claim_data": json.dumps(claim_payload),
             "workflow_output": c.workflow_output,
         }
         try:
@@ -1294,7 +1321,11 @@ def _stage_settlement(ctx: _WorkflowCtx) -> dict | None:
         "settlement_output",
         create_crew=lambda c: create_settlement_crew(c.context.llm, claim_type=c.claim_type),
         get_inputs=lambda c: {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "claim_data": json.dumps(
+                minimize_claim_data_for_crew(
+                    {**c.claim_data_with_id, "claim_type": c.claim_type}, "settlement"
+                )
+            ),
             "workflow_output": c.workflow_output,
         },
     )
@@ -1314,7 +1345,11 @@ def _stage_subrogation(ctx: _WorkflowCtx) -> dict | None:
         "subrogation_output",
         create_crew=lambda c: create_subrogation_crew(c.context.llm),
         get_inputs=lambda c: {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "claim_data": json.dumps(
+                minimize_claim_data_for_crew(
+                    {**c.claim_data_with_id, "claim_type": c.claim_type}, "subrogation"
+                )
+            ),
             "workflow_output": c.workflow_output,
         },
         combine_label="Subrogation workflow output",
@@ -1335,7 +1370,11 @@ def _stage_salvage(ctx: _WorkflowCtx) -> dict | None:
         "salvage_output",
         create_crew=lambda c: create_salvage_crew(c.context.llm),
         get_inputs=lambda c: {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "claim_data": json.dumps(
+                minimize_claim_data_for_crew(
+                    {**c.claim_data_with_id, "claim_type": c.claim_type}, "salvage"
+                )
+            ),
             "workflow_output": c.workflow_output,
         },
         combine_label="Salvage workflow output",
@@ -1355,7 +1394,11 @@ def _stage_after_action(ctx: _WorkflowCtx) -> dict | None:
         "after_action_output",
         create_crew=lambda c: create_after_action_crew(c.context.llm),
         get_inputs=lambda c: {
-            "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
+            "claim_data": json.dumps(
+                minimize_claim_data_for_crew(
+                    {**c.claim_data_with_id, "claim_type": c.claim_type}, "after_action"
+                )
+            ),
             "workflow_output": c.workflow_output,
         },
         combine_label="After-action workflow output",

@@ -16,6 +16,7 @@ from claim_agent.context import ClaimContext
 from claim_agent.crews.follow_up_crew import create_follow_up_crew
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.observability import get_logger
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
@@ -51,15 +52,18 @@ def run_follow_up_workflow(
     if claim is None:
         raise ClaimNotFoundError(f"Claim not found: {claim_id}")
 
-    claim_data_for_crew = {
-        "id": claim.get("id"),
-        "policy_number": claim.get("policy_number"),
-        "vin": claim.get("vin"),
-        "status": claim.get("status"),
-        "claim_type": claim.get("claim_type"),
-        "incident_description": claim.get("incident_description"),
-        "damage_description": claim.get("damage_description"),
-    }
+    claim_data_for_crew = minimize_claim_data_for_crew(
+        {
+            "id": claim.get("id"),
+            "policy_number": claim.get("policy_number"),
+            "vin": claim.get("vin"),
+            "status": claim.get("status"),
+            "claim_type": claim.get("claim_type"),
+            "incident_description": claim.get("incident_description"),
+            "damage_description": claim.get("damage_description"),
+        },
+        "follow_up",
+    )
 
     notes = repo.get_notes(claim_id)
     claim_notes = "\n".join(
