@@ -652,8 +652,29 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "vision": "VISION_ADAPTER",
     "ocr": "OCR_ADAPTER",
 }
-VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub"})
+VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
+
+
+class PolicyRestConfig(BaseSettings):
+    """REST policy adapter configuration (POLICY_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="POLICY_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="PAS API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    path_template: str = Field(
+        default="/policies/{policy_number}",
+        description="Path template; {policy_number} placeholder",
+    )
+    response_key: str = Field(default="", description="JSON key for policy (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +709,7 @@ class Settings(BaseSettings):
     mock_crew: MockCrewConfig = Field(default_factory=MockCrewConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
+    policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40

@@ -347,9 +347,9 @@ class TestRegistry:
     def test_invalid_backend_raises(self, monkeypatch):
         """Unknown backend value raises ValueError with helpful message."""
         reset_adapters()
-        monkeypatch.setenv("POLICY_ADAPTER", "rest")
+        monkeypatch.setenv("POLICY_ADAPTER", "invalid")
         reload_settings()
-        with pytest.raises(ValueError, match="Unknown POLICY_ADAPTER backend.*rest"):
+        with pytest.raises(ValueError, match="Unknown POLICY_ADAPTER backend.*invalid"):
             get_policy_adapter()
 
 
@@ -386,3 +386,61 @@ class TestPolicyLogicStubRaises:
         reload_settings()
         with pytest.raises(AdapterError, match="not supported"):
             query_policy_db_impl("POL-001")
+
+
+class TestRestPolicyAdapter:
+    """REST policy adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        """POLICY_ADAPTER=rest without POLICY_REST_BASE_URL raises ValueError."""
+        reset_adapters()
+        monkeypatch.setenv("POLICY_ADAPTER", "rest")
+        monkeypatch.delenv("POLICY_REST_BASE_URL", raising=False)
+        reload_settings()
+        with pytest.raises(ValueError, match="POLICY_REST_BASE_URL"):
+            get_policy_adapter()
+
+    def test_rest_get_policy_returns_data(self, monkeypatch):
+        """RestPolicyAdapter returns policy dict on 200."""
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("POLICY_ADAPTER", "rest")
+        monkeypatch.setenv("POLICY_REST_BASE_URL", "https://pas.example.com/api/v1")
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"status": "active", "coverages": ["collision"]}
+
+        with patch(
+            "claim_agent.adapters.real.policy_rest.AdapterHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.get.return_value = mock_resp
+            mock_client_cls.return_value = mock_client
+            adapter = get_policy_adapter()
+            result = adapter.get_policy("POL-001")
+        assert result == {"status": "active", "coverages": ["collision"]}
+
+    def test_rest_get_policy_404_returns_none(self, monkeypatch):
+        """RestPolicyAdapter returns None on 404."""
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("POLICY_ADAPTER", "rest")
+        monkeypatch.setenv("POLICY_REST_BASE_URL", "https://pas.example.com/api/v1")
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+
+        with patch(
+            "claim_agent.adapters.real.policy_rest.AdapterHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.get.return_value = mock_resp
+            mock_client_cls.return_value = mock_client
+            adapter = get_policy_adapter()
+            result = adapter.get_policy("POL-UNKNOWN")
+        assert result is None

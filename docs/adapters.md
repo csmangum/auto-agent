@@ -120,17 +120,40 @@ Located in `src/claim_agent/adapters/mock/`. Each adapter reads from `mock_db.js
 
 Located in `src/claim_agent/adapters/stub.py`. Every method raises `NotImplementedError` with a message describing what the real integration should connect to. Use these as starting points when building production adapters.
 
+### Real Adapters
+
+Located in `src/claim_agent/adapters/real/`. Production-ready implementations:
+
+| Class | File | Description |
+|-------|------|-------------|
+| `RestPolicyAdapter` | `real/policy_rest.py` | REST PAS integration with auth, retry, circuit breaker |
+
 ## Configuration
 
 Adapter selection is controlled by environment variables. Each defaults to `mock`. Unknown values raise `ValueError` at first use.
 
 | Variable | Values | Default | Description |
 |----------|--------|---------|-------------|
-| `POLICY_ADAPTER` | `mock`, `stub` | `mock` | Policy database backend |
+| `POLICY_ADAPTER` | `mock`, `stub`, `rest` | `mock` | Policy database backend |
 | `VALUATION_ADAPTER` | `mock`, `stub` | `mock` | Vehicle valuation backend |
 | `REPAIR_SHOP_ADAPTER` | `mock`, `stub` | `mock` | Repair shop network backend |
 | `PARTS_ADAPTER` | `mock`, `stub` | `mock` | Parts catalog backend |
 | `SIU_ADAPTER` | `mock`, `stub` | `mock` | SIU case management backend |
+
+### REST Policy Adapter
+
+When `POLICY_ADAPTER=rest`, configure the PAS REST API:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POLICY_REST_BASE_URL` | PAS API base URL | (required) |
+| `POLICY_REST_AUTH_HEADER` | Auth header name | `Authorization` |
+| `POLICY_REST_AUTH_VALUE` | Bearer token or API key | (empty) |
+| `POLICY_REST_PATH_TEMPLATE` | Path with `{policy_number}` placeholder | `/policies/{policy_number}` |
+| `POLICY_REST_RESPONSE_KEY` | JSON key for policy (e.g. `data`) | (none) |
+| `POLICY_REST_TIMEOUT` | Request timeout seconds | `15` |
+
+See [Adapter SLA Requirements](adapter_sla.md) for latency and availability targets.
 
 Example `.env`:
 
@@ -212,15 +235,19 @@ No changes to `logic.py`, tools, or agents are needed.
 src/claim_agent/adapters/
 ├── __init__.py           # Re-exports registry functions
 ├── base.py               # Abstract base classes (5 adapters)
+├── http_client.py        # AdapterHttpClient: auth, retry, circuit breaker
 ├── registry.py           # Thread-safe factory functions
 ├── stub.py               # Stub adapters (NotImplementedError)
-└── mock/
-    ├── __init__.py        # Re-exports mock adapter classes
-    ├── policy.py          # MockPolicyAdapter
-    ├── valuation.py       # MockValuationAdapter
-    ├── repair_shop.py     # MockRepairShopAdapter
-    ├── parts.py           # MockPartsAdapter
-    └── siu.py             # MockSIUAdapter
+├── mock/
+│   ├── __init__.py        # Re-exports mock adapter classes
+│   ├── policy.py          # MockPolicyAdapter
+│   ├── valuation.py       # MockValuationAdapter
+│   ├── repair_shop.py     # MockRepairShopAdapter
+│   ├── parts.py           # MockPartsAdapter
+│   └── siu.py             # MockSIUAdapter
+└── real/
+    ├── __init__.py
+    └── policy_rest.py     # RestPolicyAdapter (PAS REST integration)
 ```
 
 ## How logic.py Uses Adapters
