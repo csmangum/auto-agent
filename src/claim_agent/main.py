@@ -713,9 +713,13 @@ def cmd_metrics(claim_id: str | None = None) -> None:
     metrics(claim_id)
 
 
-def cmd_retention_enforce(dry_run: bool = False, years: int | None = None) -> None:
+def cmd_retention_enforce(
+    dry_run: bool = False,
+    years: int | None = None,
+    include_litigation_hold: bool = False,
+) -> None:
     """Archive claims older than retention period. Used by tests."""
-    retention_enforce(dry_run, years)
+    retention_enforce(dry_run, years, include_litigation_hold)
 
 
 if __name__ == "__main__":

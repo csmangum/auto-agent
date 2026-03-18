@@ -80,6 +80,8 @@ Example:
 }
 ```
 
+**Important:** JSON keys must match canonical state names from `rag.constants.normalize_state` (e.g. `"California"`, not `"CA"`). Supported states are defined in `SUPPORTED_STATES`. Adding a new state (e.g. Nevada) to the JSON alone will not take effect—claims with unsupported `loss_state` values fall back to the default retention period. To support a new state, update both `state_retention_periods.json` and `rag.constants` (SUPPORTED_STATES, _STATE_ABBREV_TO_CANONICAL).
+
 ### Litigation Hold
 
 Claims with `litigation_hold=1` are excluded from retention enforcement by default (retention suspended for claims in litigation). They are also skipped during DSAR deletion when `LITIGATION_HOLD_BLOCKS_DELETION=true`.

@@ -1170,6 +1170,31 @@ class TestReserve:
         )
         assert resp.status_code == 404
 
+    def test_patch_litigation_hold_success(self, client):
+        """PATCH /claims/{id}/litigation-hold sets hold and returns 200."""
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/litigation-hold",
+            json={"litigation_hold": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["litigation_hold"] is True
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/litigation-hold",
+            json={"litigation_hold": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["litigation_hold"] is False
+
+    def test_patch_litigation_hold_not_found(self, client):
+        resp = client.patch(
+            "/api/claims/CLM-NONEXISTENT/litigation-hold",
+            json={"litigation_hold": True},
+        )
+        assert resp.status_code == 404
+
     def test_patch_reserve_negative_returns_422(self, client):
         resp = client.patch(
             "/api/claims/CLM-TEST001/reserve",

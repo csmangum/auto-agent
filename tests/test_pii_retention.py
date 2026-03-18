@@ -354,6 +354,84 @@ class TestRetentionRepository:
         finally:
             os.unlink(db_path)
 
+    def test_list_claims_for_retention_state_specific(self):
+        """State-specific retention: Texas 7yr vs 10yr; claim 8yr old is past 7yr but not 10yr."""
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_input = ClaimInput(
+                policy_number="POL-TX",
+                vin="1HGCM82633A999999",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date="2020-01-15",
+                incident_description="Test",
+                damage_description="Test",
+                loss_state="Texas",
+            )
+            claim_id = repo.create_claim(claim_input)
+            from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text("UPDATE claims SET created_at = datetime('now', '-8 years') WHERE id = :id"),
+                    {"id": claim_id},
+                )
+            retention_by_state = {"California": 5, "Texas": 7}
+            claims_7yr = repo.list_claims_for_retention(
+                7, retention_by_state=retention_by_state
+            )
+            assert len(claims_7yr) == 1
+            assert claims_7yr[0]["id"] == claim_id
+            retention_by_state_long = {"Texas": 10}
+            claims_10yr = repo.list_claims_for_retention(
+                10, retention_by_state=retention_by_state_long
+            )
+            assert len(claims_10yr) == 0
+        finally:
+            os.unlink(db_path)
+
+    def test_retention_report_output_shape_and_counts(self):
+        """retention_report returns expected keys and counts."""
+        from claim_agent.db.database import init_db
+        from claim_agent.db.repository import ClaimRepository
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            report = repo.retention_report(5)
+            assert "retention_period_years" in report
+            assert report["retention_period_years"] == 5
+            assert "retention_by_state" in report
+            assert "claims_by_status" in report
+            assert "active_count" in report
+            assert "closed_count" in report
+            assert "archived_count" in report
+            assert "litigation_hold_count" in report
+            assert "closed_with_litigation_hold" in report
+            assert "pending_archive_count" in report
+            assert "audit_log_rows" in report
+            assert report["active_count"] >= 0
+            assert report["closed_count"] >= 0
+            assert report["archived_count"] >= 0
+            assert report["litigation_hold_count"] >= 0
+        finally:
+            os.unlink(db_path)
+
     def test_archive_claim(self):
         """archive_claim should set status archived and archived_at."""
         from claim_agent.db.constants import STATUS_ARCHIVED, STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
@@ -456,5 +534,59 @@ class TestRetentionCLI:
                         with pytest.raises(SystemExit) as exc_info:
                             cmd_retention_enforce(dry_run=False)
                         assert exc_info.value.code == 1
+        finally:
+            os.unlink(db_path)
+
+    def test_retention_enforce_include_litigation_hold(self, capsys):
+        """retention-enforce with include_litigation_hold=True archives held claims."""
+        from claim_agent.config import reload_settings
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.main import cmd_retention_enforce
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_input = ClaimInput(
+                policy_number="POL-LH",
+                vin="1HGCM82633A999999",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date="2020-01-15",
+                incident_description="Test",
+                damage_description="Test",
+            )
+            claim_id = repo.create_claim(claim_input)
+            from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
+            repo.set_litigation_hold(claim_id, True)
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text("UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = :id"),
+                    {"id": claim_id},
+                )
+            with mock.patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+                reload_settings()
+                cmd_retention_enforce(dry_run=True, include_litigation_hold=False)
+            captured = capsys.readouterr()
+            data = json.loads(captured.out)
+            assert data["claims_to_archive"] == 0
+
+            with mock.patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+                reload_settings()
+                cmd_retention_enforce(dry_run=True, include_litigation_hold=True)
+            captured = capsys.readouterr()
+            data = json.loads(captured.out)
+            assert data["claims_to_archive"] == 1
+            assert claim_id in data["claim_ids"]
         finally:
             os.unlink(db_path)

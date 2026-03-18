@@ -122,6 +122,30 @@ def _check_reserve_authority(
         raise ReserveAuthorityError(amount, limit, actor_id, role)
 
 
+def _is_claim_past_retention(
+    row_d: dict[str, Any],
+    now: datetime,
+    retention_period_years: int,
+    retention_by_state: dict[str, int],
+) -> bool:
+    """Return True if claim's created_at is past its retention cutoff.
+
+    Uses loss_state to pick per-state retention when retention_by_state is non-empty;
+    falls back to retention_period_years when state is missing or not in map.
+    """
+    raw_state = (row_d.get("loss_state") or "").strip()
+    lookup_state: str | None = None
+    if raw_state:
+        try:
+            lookup_state = normalize_state(raw_state)
+        except ValueError:
+            pass
+    years = (retention_by_state.get(lookup_state) if lookup_state else None) or retention_period_years
+    cutoff_dt = now - timedelta(days=years * 365)
+    cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+    return (row_d.get("created_at") or "") <= cutoff
+
+
 class ClaimRepository:
     """Repository for claim persistence and audit logging."""
 
@@ -2170,8 +2194,28 @@ class ClaimRepository:
             raise ValueError("retention_period_years must be non-negative")
         state_map = retention_by_state or {}
         now = datetime.now(timezone.utc)
+        cutoff_dt = now - timedelta(days=retention_period_years * 365)
+        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
 
         with get_connection(self._db_path) as conn:
+            if not state_map:
+                rows = conn.execute(
+                    text("""
+                    SELECT * FROM claims
+                    WHERE archived_at IS NULL
+                      AND status = :status
+                      AND created_at <= :cutoff
+                      AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold)
+                    ORDER BY created_at ASC
+                    """),
+                    {
+                        "status": STATUS_CLOSED,
+                        "cutoff": cutoff,
+                        "include_hold": 1 if not exclude_litigation_hold else 0,
+                    },
+                ).fetchall()
+                return [row_to_dict(r) for r in rows]
+
             rows = conn.execute(
                 text("""
                 SELECT * FROM claims
@@ -2189,17 +2233,7 @@ class ClaimRepository:
         result = []
         for r in rows:
             row_d = row_to_dict(r)
-            raw_state = (row_d.get("loss_state") or "").strip()
-            lookup_state: str | None = None
-            if raw_state:
-                try:
-                    lookup_state = normalize_state(raw_state)
-                except ValueError:
-                    pass
-            years = (state_map.get(lookup_state) if lookup_state else None) or retention_period_years
-            cutoff_dt = now - timedelta(days=years * 365)
-            cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
-            if (row_d.get("created_at") or "") <= cutoff:
+            if _is_claim_past_retention(row_d, now, retention_period_years, state_map):
                 result.append(row_d)
         return result
 
@@ -2282,17 +2316,7 @@ class ClaimRepository:
             row_d = row_to_dict(r)
             if row_d.get("litigation_hold"):
                 continue
-            raw_state = (row_d.get("loss_state") or "").strip()
-            lookup_state = None
-            if raw_state:
-                try:
-                    lookup_state = normalize_state(raw_state)
-                except ValueError:
-                    pass
-            years = (state_map.get(lookup_state) if lookup_state else None) or retention_period_years
-            cutoff_dt = now - timedelta(days=years * 365)
-            cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
-            if (row_d.get("created_at") or "") <= cutoff:
+            if _is_claim_past_retention(row_d, now, retention_period_years, state_map):
                 pending_archive += 1
 
         closed_with_hold = sum(
