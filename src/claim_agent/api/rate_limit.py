@@ -4,6 +4,7 @@ Both backends use sliding-window semantics: at most _MAX_REQUESTS in any
 _WINDOW-second period. Redis uses a sorted set (ZSET) keyed by timestamp.
 """
 
+import logging
 import time
 import uuid
 from collections import OrderedDict
@@ -15,6 +16,22 @@ from claim_agent.config import get_settings
 _WINDOW = 60  # seconds
 _MAX_REQUESTS = 100  # per window per IP
 _MAX_BUCKETS = 10_000
+
+_logger = logging.getLogger(__name__)
+_LAST_REDIS_ERROR_LOG: float | None = None
+_REDIS_ERROR_LOG_INTERVAL = 60.0
+
+
+def _log_redis_rate_limit_error(exc: Exception) -> None:
+    """Log Redis-related rate limit errors with simple rate limiting to avoid log spam."""
+    global _LAST_REDIS_ERROR_LOG
+    now = time.monotonic()
+    if _LAST_REDIS_ERROR_LOG is None or (now - _LAST_REDIS_ERROR_LOG) >= _REDIS_ERROR_LOG_INTERVAL:
+        _LAST_REDIS_ERROR_LOG = now
+        _logger.warning(
+            "RedisRateLimitBackend error, failing open (skipping rate limit check): %s",
+            exc,
+        )
 
 
 class RateLimitBackend(Protocol):
@@ -91,7 +108,7 @@ class RedisRateLimitBackend:
         """Return True if the IP has exceeded the rate limit (sliding window)."""
         key = f"rate_limit:{ip}"
         try:
-            now = time.monotonic()
+            now = time.time()
             cutoff = now - _WINDOW
             pipe = self._client.pipeline()
             pipe.zremrangebyscore(key, "-inf", cutoff)
@@ -99,9 +116,10 @@ class RedisRateLimitBackend:
             pipe.expire(key, _WINDOW)
             pipe.zcard(key)
             results = pipe.execute()
-            count = results[3]
+            count = int(results[3])
             return count > _MAX_REQUESTS
-        except Exception:
+        except Exception as exc:
+            _log_redis_rate_limit_error(exc)
             return False  # Fail open on Redis errors
 
 
@@ -123,7 +141,8 @@ def get_rate_limit_backend() -> RateLimitBackend:
     if url:
         try:
             _backend = RedisRateLimitBackend(url)
-        except Exception:
+        except Exception as exc:
+            _log_redis_rate_limit_error(exc)
             _backend = _get_in_memory_backend()
     else:
         _backend = _get_in_memory_backend()

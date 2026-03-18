@@ -8,6 +8,7 @@ processes, then updates to completed. Duplicate requests see in_progress (409) o
 completed (cached). Only 200 responses are cached; 4xx/5xx are not.
 """
 
+import hashlib
 import json
 import logging
 import re
@@ -106,9 +107,19 @@ def _try_claim_key(key: str, db_path: str | None) -> tuple[_IdempotencyClaimResu
         ).fetchone()
         if row is None:
             return "owned", None, None  # Race: deleted between insert and select
-        db_status, resp_status, body_str, expires_at_str = row
+        db_status, resp_status, body_str, expires_at_value = row
         try:
-            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            if isinstance(expires_at_value, datetime):
+                expires_at = expires_at_value
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+            elif isinstance(expires_at_value, str):
+                normalized = expires_at_value.replace("Z", "+00:00")
+                expires_at = datetime.fromisoformat(normalized)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+            else:
+                raise TypeError(f"Unsupported expires_at type: {type(expires_at_value)!r}")
         except (ValueError, TypeError):
             conn.execute(
                 text("DELETE FROM idempotency_keys WHERE idempotency_key = :key"),
@@ -159,6 +170,24 @@ def _complete_claim(key: str, status: int, body: dict, db_path: str | None) -> N
         )
 
 
+def _build_scoped_idempotency_key(request: Request, key: str) -> str:
+    """Build a scoped idempotency key including identity and route.
+
+    Prevents different clients or endpoints from sharing cached responses
+    when they reuse the same raw Idempotency-Key header.
+    """
+    method = request.method.upper()
+    path = request.url.path
+    identity_parts: list[str] = []
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        identity_parts.append(f"auth_sha256:{hashlib.sha256(auth_header.encode()).hexdigest()}")
+    if request.client and request.client.host:
+        identity_parts.append(f"client:{request.client.host}")
+    identity = "|".join(identity_parts) if identity_parts else "anonymous"
+    return f"{identity}:{method}:{path}:{key}"
+
+
 def _release_claim(key: str, db_path: str | None) -> None:
     """Delete in-progress idempotency key so client can retry."""
     path = db_path if db_path is not None else get_db_path()
@@ -192,18 +221,19 @@ def get_idempotency_key_and_cached(
             )
         return None, None
 
-    result, status, body = _try_claim_key(key, db_path)
+    scoped_key = _build_scoped_idempotency_key(request, key)
+    result, status, body = _try_claim_key(scoped_key, db_path)
     if result == "owned":
-        return key, None
+        return scoped_key, None
     if result == "cached" and status is not None and body is not None:
-        return key, JSONResponse(status_code=status, content=body)
+        return scoped_key, JSONResponse(status_code=status, content=body)
     if result == "in_progress":
-        return key, JSONResponse(
+        return scoped_key, JSONResponse(
             status_code=409,
             content={"detail": "A request with this idempotency key is already in progress. Retry later."},
             headers={"Retry-After": "5"},
         )
-    return key, None
+    return scoped_key, None
 
 
 def store_response_if_idempotent(
@@ -212,7 +242,10 @@ def store_response_if_idempotent(
     """Store idempotency key with response when key was provided. Only caches 200."""
     if not key:
         return
-    _complete_claim(key, status, body, db_path)
+    if status == 200:
+        _complete_claim(key, status, body, db_path)
+    else:
+        _release_claim(key, db_path)
 
 
 def release_idempotency_on_error(key: str | None, db_path: str | None = None) -> None:
@@ -253,11 +286,21 @@ def check_idempotency(key: str, db_path: str | None = None) -> tuple[int, dict] 
         ).fetchone()
         if row is None:
             return None
-        db_status, resp_status, body_str, expires_at_str = row
+        db_status, resp_status, body_str, expires_at_value = row
         if db_status != "completed":
             return None
         try:
-            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            if isinstance(expires_at_value, datetime):
+                expires_at = expires_at_value
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+            elif isinstance(expires_at_value, str):
+                normalized = expires_at_value.replace("Z", "+00:00")
+                expires_at = datetime.fromisoformat(normalized)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+            else:
+                return None
         except (ValueError, TypeError):
             return None
         if expires_at < now:

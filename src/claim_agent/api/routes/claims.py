@@ -1256,18 +1256,19 @@ async def generate_and_submit_claim(
     if cached is not None:
         return cached
 
-    if async_mode:
-        max_tasks = get_settings().max_concurrent_background_tasks
-        async with _background_tasks_lock:
-            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
-                )
-
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
+        if async_mode:
+            max_tasks = get_settings().max_concurrent_background_tasks
+            async with _background_tasks_lock:
+                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                    release_idempotency_on_error(idem_key)
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Too many concurrent background tasks. Retry later.",
+                        headers={"Retry-After": "60"},
+                    )
+
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
             claim_input, None, actor_id, ctx=ctx,
         )
@@ -1340,18 +1341,19 @@ async def create_claim(
     if cached is not None:
         return cached
 
-    if async_mode:
-        max_tasks = get_settings().max_concurrent_background_tasks
-        async with _background_tasks_lock:
-            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
-                )
-
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
+        if async_mode:
+            max_tasks = get_settings().max_concurrent_background_tasks
+            async with _background_tasks_lock:
+                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                    release_idempotency_on_error(idem_key)
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Too many concurrent background tasks. Retry later.",
+                        headers={"Retry-After": "60"},
+                    )
+
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
             claim_input, None, actor_id, ctx=ctx,
         )
@@ -1586,18 +1588,19 @@ async def process_claim(
     if cached is not None:
         return cached
 
-    if async_mode:
-        max_tasks = get_settings().max_concurrent_background_tasks
-        async with _background_tasks_lock:
-            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
-                )
-
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
+        if async_mode:
+            max_tasks = get_settings().max_concurrent_background_tasks
+            async with _background_tasks_lock:
+                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                    release_idempotency_on_error(idem_key)
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Too many concurrent background tasks. Retry later.",
+                        headers={"Retry-After": "60"},
+                    )
+
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
             claim, files, actor_id, ctx=ctx,
         )
@@ -1751,16 +1754,17 @@ async def process_claim_async(
     if cached is not None:
         return cached
 
-    max_tasks = get_settings().max_concurrent_background_tasks
-    async with _background_tasks_lock:
-        if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-            raise HTTPException(
-                status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
-                headers={"Retry-After": "60"},
-            )
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
+        max_tasks = get_settings().max_concurrent_background_tasks
+        async with _background_tasks_lock:
+            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+                release_idempotency_on_error(idem_key)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Too many concurrent background tasks. Retry later.",
+                    headers={"Retry-After": "60"},
+                )
+        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
             claim, files, actor_id, ctx=ctx,
         )
