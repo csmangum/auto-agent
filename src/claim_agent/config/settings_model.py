@@ -431,10 +431,15 @@ class PathsConfig(BaseSettings):
         validation_alias="DATABASE_URL",
         description="PostgreSQL URL. If set, use PostgreSQL; else use SQLite at claims_db_path.",
     )
+    redis_url: str | None = Field(
+        default=None,
+        validation_alias="REDIS_URL",
+        description="Redis URL for rate limiting. If set, use Redis backend; else in-memory.",
+    )
 
-    @field_validator("database_url", mode="before")
+    @field_validator("database_url", "redis_url", mode="before")
     @classmethod
-    def _normalize_database_url(cls, v: Any) -> str | None:
+    def _normalize_url(cls, v: Any) -> str | None:
         if v is None:
             return None
         s = str(v).strip()
@@ -729,6 +734,11 @@ class Settings(BaseSettings):
     )
     max_concurrent_background_tasks: int = Field(
         default=10, validation_alias="CLAIM_AGENT_MAX_CONCURRENT_BACKGROUND_TASKS"
+    )
+    idempotency_ttl_seconds: int = Field(
+        default=86400,
+        validation_alias="IDEMPOTENCY_TTL_SECONDS",
+        description="TTL in seconds for idempotency keys (default 24h)",
     )
     crew_verbose: bool = Field(default=True, validation_alias="CREWAI_VERBOSE")
     retention_period_years: int = 5

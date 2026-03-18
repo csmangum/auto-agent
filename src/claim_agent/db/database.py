@@ -546,6 +546,20 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE claim_tasks ADD COLUMN {col} {typ}")
     except sqlite3.OperationalError:
         pass
+    # Idempotency keys for duplicate request prevention
+    try:
+        conn.execute("SELECT 1 FROM idempotency_keys LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            CREATE TABLE idempotency_keys (
+                idempotency_key TEXT PRIMARY KEY,
+                response_status INTEGER NOT NULL,
+                response_body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
+        """)
 
 
 def _run_schema(db_path: str) -> None:

@@ -1,14 +1,23 @@
-"""Simple in-memory rate limiting middleware for API routes."""
+"""Rate limiting for API routes. In-memory for dev; Redis for production."""
 
 import time
 from collections import OrderedDict
-from typing import cast
+from typing import Protocol, cast
+
+from claim_agent.config import get_settings
 
 # (ip -> [timestamps]); OrderedDict for LRU eviction
-_buckets: OrderedDict[str, list[float]] = OrderedDict()
 _WINDOW = 60  # seconds
 _MAX_REQUESTS = 100  # per window per IP
 _MAX_BUCKETS = 10_000
+
+
+class RateLimitBackend(Protocol):
+    """Protocol for rate limit backends."""
+
+    def is_rate_limited(self, ip: str) -> bool:
+        """Return True if the IP has exceeded the rate limit."""
+        ...
 
 
 def _cleanup(bucket: list[float], now: float) -> list[float]:
@@ -17,27 +26,109 @@ def _cleanup(bucket: list[float], now: float) -> list[float]:
     return [t for t in bucket if t > cutoff]
 
 
+class InMemoryRateLimitBackend:
+    """In-memory rate limiting. Not shared across workers/instances."""
+
+    def __init__(self) -> None:
+        self._buckets: OrderedDict[str, list[float]] = OrderedDict()
+
+    def is_rate_limited(self, ip: str) -> bool:
+        """Return True if the IP has exceeded the rate limit."""
+        now = time.monotonic()
+        if ip in self._buckets:
+            self._buckets.move_to_end(ip)
+        else:
+            if len(self._buckets) >= _MAX_BUCKETS:
+                self._buckets.popitem(last=False)
+            self._buckets[ip] = []
+        bucket = self._buckets[ip]
+        bucket = _cleanup(bucket, now)
+        if len(bucket) >= _MAX_REQUESTS:
+            return True
+        bucket.append(now)
+        self._buckets[ip] = bucket
+        return False
+
+    def clear(self) -> None:
+        """Clear all buckets. For testing only."""
+        self._buckets.clear()
+
+
+_in_memory_backend: InMemoryRateLimitBackend | None = None
+
+
+def _get_in_memory_backend() -> InMemoryRateLimitBackend:
+    """Return the singleton in-memory backend."""
+    global _in_memory_backend
+    if _in_memory_backend is None:
+        _in_memory_backend = InMemoryRateLimitBackend()
+    return _in_memory_backend
+
+
+class RedisRateLimitBackend:
+    """Redis-backed rate limiting for multi-instance deployments."""
+
+    def __init__(self, url: str) -> None:
+        try:
+            import redis
+        except ImportError:
+            raise ImportError(
+                "Redis backend requires redis package. Install with: pip install -e '.[redis]'"
+            ) from None
+        self._url = url
+        self._client = redis.from_url(url, decode_responses=True)
+
+    def is_rate_limited(self, ip: str) -> bool:
+        """Return True if the IP has exceeded the rate limit (fixed window)."""
+        key = f"rate_limit:{ip}"
+        try:
+            pipe = self._client.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, _WINDOW)
+            results = pipe.execute()
+            count = results[0]
+            return count > _MAX_REQUESTS
+        except Exception:
+            return False  # Fail open on Redis errors
+
+
+_backend: RateLimitBackend | None = None
+
+
+def get_rate_limit_backend() -> RateLimitBackend:
+    """Return the configured rate limit backend (Redis if REDIS_URL set, else in-memory)."""
+    global _backend
+    if _backend is not None:
+        return _backend
+    url = get_settings().paths.redis_url
+    if url:
+        try:
+            _backend = RedisRateLimitBackend(url)
+        except Exception:
+            _backend = _get_in_memory_backend()
+    else:
+        _backend = _get_in_memory_backend()
+    return _backend
+
+
 def is_rate_limited(ip: str) -> bool:
     """Return True if the IP has exceeded the rate limit."""
-    now = time.monotonic()
-    if ip in _buckets:
-        _buckets.move_to_end(ip)
-    else:
-        if len(_buckets) >= _MAX_BUCKETS:
-            _buckets.popitem(last=False)
-        _buckets[ip] = []
-    bucket = _buckets[ip]
-    bucket = _cleanup(bucket, now)
-    if len(bucket) >= _MAX_REQUESTS:
-        return True
-    bucket.append(now)
-    _buckets[ip] = bucket
-    return False
+    return get_rate_limit_backend().is_rate_limited(ip)
 
 
 def clear_rate_limit_buckets() -> None:
-    """Clear all rate limit buckets. For testing only."""
-    _buckets.clear()
+    """Clear all rate limit buckets. For testing only. In-memory backend only."""
+    backend = get_rate_limit_backend()
+    if isinstance(backend, InMemoryRateLimitBackend):
+        backend.clear()
+
+
+def _get_buckets_for_testing() -> OrderedDict[str, list[float]]:
+    """For testing only. Returns in-memory backend buckets. Fails if Redis backend active."""
+    backend = get_rate_limit_backend()
+    if isinstance(backend, InMemoryRateLimitBackend):
+        return backend._buckets
+    raise RuntimeError("Tests require in-memory backend (REDIS_URL must be unset)")
 
 
 def get_client_ip(request, *, trust_forwarded_for: bool = False) -> str:

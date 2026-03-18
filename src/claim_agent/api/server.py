@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from claim_agent.api.auth import is_auth_required, verify_token
 from claim_agent.observability.health import check_health
 from claim_agent.observability.prometheus import generate_metrics
-from claim_agent.api.rate_limit import get_client_ip, is_rate_limited
+from claim_agent.api.rate_limit import get_client_ip, get_rate_limit_backend
 from claim_agent.api.routes.claims import router as claims_router
 from claim_agent.api.routes.claims import _background_tasks as claim_background_tasks
 from claim_agent.api.routes.metrics import router as metrics_router
@@ -56,11 +56,11 @@ async def lifespan(_app: FastAPI):
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
 
-    _server_logger.warning(
-        "Rate limiting and approve locks use in-memory storage. "
-        "These are NOT shared across workers or processes. "
-        "Run with a single worker or use Redis-backed alternatives for production."
-    )
+    if not get_settings().paths.redis_url:
+        _server_logger.warning(
+            "Rate limiting uses in-memory storage (REDIS_URL not set). "
+            "Not shared across workers. For production, set REDIS_URL and pip install -e '.[redis]'."
+        )
 
     _otel_enabled = False
     try:
@@ -145,7 +145,7 @@ async def rate_limit_middleware(request: Request, call_next):
     if path.startswith("/api/") and path not in _PUBLIC_PATHS:
         settings = get_settings()
         ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
-        if is_rate_limited(ip):
+        if get_rate_limit_backend().is_rate_limited(ip):
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded. Try again later."},
