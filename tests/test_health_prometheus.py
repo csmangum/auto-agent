@@ -42,6 +42,34 @@ class TestHealth:
         result = check_health()
         assert result["checks"]["llm"] == "skipped"
 
+    def test_health_check_includes_adapter_policy_skipped_when_mock(self):
+        """Adapter checks are skipped when backend is mock."""
+        result = check_health()
+        assert "adapter_policy" in result["checks"]
+        assert result["checks"]["adapter_policy"] == "skipped"
+
+    def test_health_check_adapter_rest_includes_probe(self, monkeypatch):
+        """When POLICY_ADAPTER=rest, adapter_policy is probed."""
+        from unittest.mock import MagicMock, patch
+
+        from claim_agent.adapters import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("POLICY_ADAPTER", "rest")
+        monkeypatch.setenv("POLICY_REST_BASE_URL", "https://pas.example.com/api/v1")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+
+        with patch(
+            "claim_agent.adapters.real.policy_rest.AdapterHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.health_check.return_value = (True, "ok")
+            mock_client_cls.return_value = mock_client
+            result = check_health()
+        assert result["checks"]["adapter_policy"] == "ok"
+
 
 class TestPrometheus:
     def test_record_claim_outcome_escalated(self):
