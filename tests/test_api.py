@@ -1527,6 +1527,24 @@ class TestDSAREndpoints:
         )
         assert resp.status_code == 404
 
+    def test_dsar_fulfill_access_404_when_request_not_found(self, client, monkeypatch):
+        """Fulfill access for non-existent request_id returns 404 (not 400)."""
+        _set_admin_auth(monkeypatch)
+        resp = client.post(
+            "/api/dsar/requests/00000000-0000-0000-0000-000000000000/fulfill",
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404
+
+    def test_dsar_fulfill_deletion_404_when_request_not_found(self, client, monkeypatch):
+        """Fulfill deletion for non-existent request_id returns 404 (not 400)."""
+        _set_admin_auth(monkeypatch)
+        resp = client.post(
+            "/api/dsar/deletion/fulfill/00000000-0000-0000-0000-000000000000",
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404
+
     def test_dsar_list_requests_paginated(self, client, monkeypatch):
         """List DSAR requests returns paginated response."""
         _set_admin_auth(monkeypatch)

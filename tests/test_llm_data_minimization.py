@@ -67,7 +67,19 @@ class TestMinimizeClaimDataForCrew:
         assert result["parties"] == [{"party_type": "claimant", "role": "driver"}]
 
     def test_unknown_crew_allows_all(self):
-        """Unknown crew name allows all fields through."""
+        """Unknown crew name allows all fields through when mask_pii=False."""
         claim = {"claim_id": "CLM-1", "custom_field": "value"}
         result = minimize_claim_data_for_crew(claim, "unknown_crew", mask_pii=False)
         assert result == claim
+
+    def test_unknown_crew_masks_pii_when_enabled(self):
+        """Unknown crew still masks policy_number and vin when mask_pii=True (default-deny for PII)."""
+        claim = {
+            "claim_id": "CLM-1",
+            "policy_number": "POL-12345",
+            "vin": "1HGCM82633A123456",
+            "custom_field": "value",
+        }
+        result = minimize_claim_data_for_crew(claim, "unknown_crew", mask_pii=True)
+        assert result["policy_number"] == mask_policy_number("POL-12345")
+        assert result["vin"] == mask_vin("1HGCM82633A123456")
