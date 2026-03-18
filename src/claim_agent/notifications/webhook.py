@@ -26,6 +26,9 @@ def _shutdown_executor() -> None:
 
 atexit.register(_shutdown_executor)
 
+# UCSPA deadline-approaching event (not status-based)
+UCSPA_DEADLINE_APPROACHING = "ucspa.deadline_approaching"
+
 # Map claim status to webhook event name
 _STATUS_TO_EVENT: dict[str, str] = {
     "pending": "claim.submitted",
@@ -233,6 +236,23 @@ def dispatch_repair_authorized_from_workflow_output(
         )
     except Exception as e:
         _log.warning("Repair authorization webhook dispatch failed (best-effort): %s", e)
+
+
+def dispatch_ucspa_deadline_approaching(
+    claim_id: str,
+    deadline_type: str,
+    due_date: str,
+    loss_state: str | None = None,
+) -> None:
+    """Dispatch ucspa.deadline_approaching webhook for claims with deadlines in next N days."""
+    payload: dict[str, Any] = {
+        "claim_id": claim_id,
+        "deadline_type": deadline_type,
+        "due_date": due_date,
+    }
+    if loss_state:
+        payload["loss_state"] = loss_state
+    dispatch_webhook(UCSPA_DEADLINE_APPROACHING, payload)
 
 
 def dispatch_repair_authorized(

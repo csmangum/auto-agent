@@ -284,17 +284,18 @@ def test_repository_get_claim_history(temp_db):
     repo.update_claim_status(claim_id, STATUS_OPEN)
 
     history, total = repo.get_claim_history(claim_id)
-    assert len(history) == 3
-    assert total == 3
-    assert history[0]["action"] == "created"
-    assert history[1]["action"] == "status_change"
-    assert history[2]["action"] == "status_change"
-    # Audit trail enhancements: actor_id, before_state, after_state
-    assert history[0].get("actor_id") == "workflow"
-    assert history[0].get("after_state") is not None
-    assert history[1].get("before_state") is not None
-    assert history[1].get("after_state") is not None
-    assert history[2]["new_status"] == STATUS_OPEN
+    # created + 3 task_created (UCSPA) + 2 status_change
+    assert len(history) == 6
+    assert total == 6
+    created = [h for h in history if h["action"] == "created"]
+    status_changes = [h for h in history if h["action"] == "status_change"]
+    assert len(created) == 1
+    assert len(status_changes) == 2
+    assert created[0].get("actor_id") == "workflow"
+    assert created[0].get("after_state") is not None
+    assert status_changes[0].get("before_state") is not None
+    assert status_changes[0].get("after_state") is not None
+    assert status_changes[1]["new_status"] == STATUS_OPEN
 
 
 def test_repository_get_claim_history_pagination(temp_db):
@@ -317,7 +318,7 @@ def test_repository_get_claim_history_pagination(temp_db):
 
     page1, total = repo.get_claim_history(claim_id, limit=3, offset=0)
     assert len(page1) == 3
-    assert total == 11  # created + 10 status changes
+    assert total == 14  # created + 3 task_created (UCSPA) + 10 status changes
     page2, _ = repo.get_claim_history(claim_id, limit=3, offset=3)
     assert len(page2) == 3
     assert page1[0]["id"] != page2[0]["id"]

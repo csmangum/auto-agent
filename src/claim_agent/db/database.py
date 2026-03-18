@@ -437,6 +437,18 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN total_loss_metadata TEXT")
         if "incident_id" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN incident_id TEXT")
+        # UCSPA compliance (migration 026)
+        for col, col_type in [
+            ("acknowledged_at", "TEXT"),
+            ("acknowledgment_due", "TEXT"),
+            ("investigation_due", "TEXT"),
+            ("payment_due", "TEXT"),
+            ("denial_reason", "TEXT"),
+            ("denial_letter_sent_at", "TEXT"),
+            ("denial_letter_body", "TEXT"),
+        ]:
+            if col not in columns:
+                conn.execute(f"ALTER TABLE claims ADD COLUMN {col} {col_type}")
     except sqlite3.OperationalError:
         pass
     # Incidents and claim_links for multi-vehicle support

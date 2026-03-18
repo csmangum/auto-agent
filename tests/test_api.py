@@ -474,6 +474,23 @@ class TestReviewQueue:
         )
         assert resp.status_code == 404
 
+    def test_acknowledge_claim(self, client, seeded_temp_db):
+        """UCSPA: POST /claims/{id}/acknowledge records acknowledgment."""
+        resp = client.post("/api/claims/CLM-TEST001/acknowledge")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["acknowledged"] is True
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository(db_path=seeded_temp_db)
+        claim = repo.get_claim("CLM-TEST001")
+        assert claim.get("acknowledged_at") is not None
+
+    def test_acknowledge_claim_not_found(self, client):
+        resp = client.post("/api/claims/CLM-NOTEXIST/acknowledge")
+        assert resp.status_code == 404
+
     def test_reject_claim(self, client):
         resp = client.post(
             "/api/claims/CLM-TEST004/review/reject",

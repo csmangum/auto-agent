@@ -294,10 +294,11 @@ class TestAuditLog:
         ))
         
         history, _ = repo.get_claim_history(claim_id)
-        
-        assert len(history) == 1
-        assert history[0]["action"] == "created"
-        assert history[0]["new_status"] == STATUS_PENDING
+        created_entries = [h for h in history if h["action"] == "created"]
+
+        assert len(created_entries) == 1
+        assert created_entries[0]["action"] == "created"
+        assert created_entries[0]["new_status"] == STATUS_PENDING
     
     @pytest.mark.integration
     def test_status_changes_log_audit_entries(self, integration_db):
@@ -328,18 +329,20 @@ class TestAuditLog:
         )
         
         history, _ = repo.get_claim_history(claim_id)
-        
-        assert len(history) == 4  # created + 3 status changes
-        
+        created_entries = [h for h in history if h["action"] == "created"]
+        status_changes = [h for h in history if h["action"] == "status_change"]
+
+        assert len(created_entries) == 1
+        assert len(status_changes) == 3  # 3 status transitions
+
         # Check transitions
-        assert history[0]["action"] == "created"
-        assert history[1]["action"] == "status_change"
-        assert history[1]["old_status"] == STATUS_PENDING
-        assert history[1]["new_status"] == STATUS_PROCESSING
-        assert history[2]["old_status"] == STATUS_PROCESSING
-        assert history[2]["new_status"] == STATUS_OPEN
-        assert history[3]["old_status"] == STATUS_OPEN
-        assert history[3]["new_status"] == STATUS_CLOSED
+        assert created_entries[0]["action"] == "created"
+        assert status_changes[0]["old_status"] == STATUS_PENDING
+        assert status_changes[0]["new_status"] == STATUS_PROCESSING
+        assert status_changes[1]["old_status"] == STATUS_PROCESSING
+        assert status_changes[1]["new_status"] == STATUS_OPEN
+        assert status_changes[2]["old_status"] == STATUS_OPEN
+        assert status_changes[2]["new_status"] == STATUS_CLOSED
     
     @pytest.mark.integration
     def test_audit_entries_have_timestamps(self, integration_db):
