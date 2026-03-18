@@ -312,6 +312,9 @@ def mock_crew(monkeypatch):
     monkeypatch.setenv("VISION_ADAPTER", "mock")
     monkeypatch.setenv("MOCK_IMAGE_VISION_ANALYSIS_SOURCE", "claim_context")
     monkeypatch.setenv("MOCK_CREW_SEED", "42")
+    from claim_agent.config import reload_settings
+
+    reload_settings()  # vision_logic reads adapter via get_settings()
     yield
 
 

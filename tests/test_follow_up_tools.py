@@ -21,11 +21,14 @@ from claim_agent.tools.follow_up_tools import (
 @pytest.fixture
 def temp_db():
     """Temp DB with CLAIMS_DB_PATH set so tools use it."""
+    from claim_agent.config import reload_settings
+
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     init_db(path)
     prev = os.environ.get("CLAIMS_DB_PATH")
     os.environ["CLAIMS_DB_PATH"] = path
+    reload_settings()  # Ensure tools' ClaimRepository() picks up this path
     try:
         yield path
     finally:
