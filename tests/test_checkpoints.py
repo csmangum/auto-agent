@@ -492,7 +492,7 @@ class TestWorkflowCheckpoints:
                 text("SELECT id FROM claims WHERE vin = 'CPVIN400'")
             ).fetchone()
         assert row is not None
-        claim_id = row["id"]
+        claim_id = row[0]
 
         run_id = repo.get_latest_checkpointed_run_id(claim_id)
         assert run_id is not None

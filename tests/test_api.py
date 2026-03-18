@@ -612,6 +612,7 @@ class TestReviewQueue:
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
         monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
         resp = client.post("/api/claims/CLM-TEST004/review/approve", headers=_auth_headers("sk-sup"))
@@ -624,6 +625,7 @@ class TestReviewQueue:
         """Adjuster gets 403 for approve (supervisor+ only)."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.post(
             "/api/claims/CLM-TEST004/review/approve",
             headers={"X-API-Key": "sk-adj"},
@@ -634,6 +636,7 @@ class TestReviewQueue:
         """Approve on claim not in needs_review returns 409."""
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         # CLM-TEST001 has status "open"
         resp = client.post("/api/claims/CLM-TEST001/review/approve", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 409
@@ -645,6 +648,7 @@ class TestReviewQueue:
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: {})
         resp = client.post(
             "/api/claims/CLM-TEST004/review/approve",
@@ -1073,7 +1077,7 @@ class TestReserve:
                 {"id": "CLM-TEST001"},
             ).fetchone()
             assert row is not None
-            assert row["reserve_amount"] == 5000.0
+            assert row[0] == 5000.0
 
     def test_patch_reserve_adjusts_existing(self, client):
         """PATCH reserve when reserve exists adjusts it."""
@@ -1219,6 +1223,7 @@ class TestMetrics:
     def test_global_metrics_empty(self, client, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/metrics", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 200
         data = resp.json()
@@ -1227,6 +1232,7 @@ class TestMetrics:
     def test_claim_metrics_not_found(self, client, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/metrics/CLM-TEST001", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 404
 
@@ -1302,6 +1308,7 @@ def _set_admin_auth(monkeypatch):
     """Set up admin auth for tests that need admin-level endpoints."""
     monkeypatch.setenv("API_KEYS", "sk-admin:admin")
     monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+    reload_settings()
 
 
 class TestSystemConfig:
@@ -1364,6 +1371,7 @@ class TestPoliciesEndpoint:
         """Adjuster can access policies endpoint."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/system/policies", headers=_auth_headers("sk-adj"))
         assert resp.status_code == 200
 
@@ -1371,6 +1379,7 @@ class TestPoliciesEndpoint:
         """Policies response has correct structure and policy/vehicle shape."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/system/policies", headers=_auth_headers("sk-adj"))
         assert resp.status_code == 200
         data = resp.json()
@@ -1392,6 +1401,7 @@ class TestPoliciesEndpoint:
         """Policies returns 401 when auth required and no key provided."""
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         resp = client.get("/api/system/policies")
         assert resp.status_code == 401
 
@@ -1427,6 +1437,7 @@ class TestApiKeyAuth:
         """Health endpoint is always accessible without auth."""
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/health")
         assert resp.status_code == 200
 
@@ -1440,12 +1451,14 @@ class TestApiKeyAuth:
     def test_protected_endpoint_accepts_x_api_key(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats", headers={"X-API-Key": "secret123"})
         assert resp.status_code == 200
 
     def test_protected_endpoint_accepts_bearer(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMS_API_KEY", "secret123")
         monkeypatch.delenv("API_KEYS", raising=False)
+        reload_settings()
         resp = client.get("/api/claims/stats", headers={"Authorization": "Bearer secret123"})
         assert resp.status_code == 200
 
@@ -1486,6 +1499,7 @@ class TestRBAC:
     def _set_api_keys(self, monkeypatch, keys: str):
         monkeypatch.setenv("API_KEYS", keys)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
 
     def test_adjuster_can_access_claims(self, client, monkeypatch):
         """Adjuster can access claims endpoints."""
@@ -1575,6 +1589,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "admin"},
             self._JWT_SECRET,
@@ -1592,6 +1607,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "admin", "exp": int(time.time()) - 3600},
             self._JWT_SECRET,
@@ -1609,6 +1625,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "admin"},
             self._WRONG_SECRET,
@@ -1626,6 +1643,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"role": "admin"},
             self._JWT_SECRET,
@@ -1643,6 +1661,7 @@ class TestJWTAuth:
         monkeypatch.setenv("JWT_SECRET", self._JWT_SECRET)
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         token = jwt.encode(
             {"sub": "user-123", "role": "superadmin"},
             self._JWT_SECRET,
@@ -1982,6 +2001,7 @@ class TestProcessClaimEndpoint:
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         monkeypatch.setenv("API_KEYS", "sk-audit-test:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         import claim_agent.storage.factory as factory_mod
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
@@ -1998,7 +2018,7 @@ class TestProcessClaimEndpoint:
             ).fetchone()
         assert rows
         # actor_id for 'created' comes from process_claim's create_claim; should be key identity
-        assert rows["actor_id"].startswith("key-"), f"Expected key identity, got {rows['actor_id']}"
+        assert rows[1].startswith("key-"), f"Expected key identity, got {rows[1]}"
 
     def test_attachment_download_returns_file(self, client, monkeypatch, tmp_path):
         """GET /claims/{claim_id}/attachments/{key} serves the file for local storage."""
@@ -2034,6 +2054,8 @@ class TestDocumentAPI:
     @pytest.fixture(autouse=True)
     def _auth(self, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
         yield
 
     def test_list_documents_404_claim_not_found(self, client):
