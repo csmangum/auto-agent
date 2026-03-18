@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from claim_agent.api.deps import require_role
 from claim_agent.db.database import get_connection
-from claim_agent.rag.constants import normalize_state
+from claim_agent.rag.constants import _STATE_ABBREV_TO_CANONICAL, normalize_state
 
 RequireAdjuster = require_role("adjuster", "supervisor", "admin")
 
@@ -15,7 +15,7 @@ router = APIRouter(tags=["compliance"])
 
 _CLAIM_COLS = ("id", "policy_number", "vin", "status", "claim_type", "siu_case_id", "loss_state", "created_at")
 _FILING_COLS = ("claim_id", "filing_type", "report_id", "state", "filed_at")
-_CANONICAL_TO_ABBREV = {"California": "CA", "Texas": "TX", "Florida": "FL", "New York": "NY", "Georgia": "GA"}
+_CANONICAL_TO_ABBREV = {v: k for k, v in _STATE_ABBREV_TO_CANONICAL.items()}
 
 
 def _state_filter_values(state: str) -> tuple[str, ...]:
