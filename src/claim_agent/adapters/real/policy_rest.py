@@ -11,6 +11,7 @@ Calls a generic REST API to fetch policy data. Configure via environment:
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -53,7 +54,8 @@ class RestPolicyAdapter(PolicyAdapter):
         self._response_key = response_key.strip() if (response_key and str(response_key).strip()) else None
 
     def get_policy(self, policy_number: str) -> dict[str, Any] | None:
-        path = self._path_template.format(policy_number=policy_number)
+        encoded = quote(policy_number, safe="")
+        path = self._path_template.format(policy_number=encoded)
         try:
             resp = self._client.get(path)
         except CircuitOpenError:
@@ -66,10 +68,16 @@ class RestPolicyAdapter(PolicyAdapter):
         if not resp.is_success:
             resp.raise_for_status()
         data = resp.json()
-        if self._response_key and self._response_key in data:
-            data = data[self._response_key]
         if not isinstance(data, dict):
             return None
+        if self._response_key:
+            if self._response_key not in data:
+                logger.warning("Response key %r not found in policy API response", self._response_key)
+                return None
+            inner = data[self._response_key]
+            if not isinstance(inner, dict):
+                return None
+            return inner
         return data
 
     def health_check(self) -> tuple[bool, str]:

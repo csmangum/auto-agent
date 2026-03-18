@@ -19,6 +19,7 @@ from claim_agent.adapters.base import (
     ValuationAdapter,
 )
 from claim_agent.config.settings import VALID_ADAPTER_BACKENDS, get_adapter_backend
+from claim_agent.config.settings_model import REST_CAPABLE_ADAPTERS
 
 _lock = threading.Lock()
 _cache: dict[str, Any] = {}
@@ -32,6 +33,11 @@ def _resolve_backend(adapter_name: str) -> str:
         raise ValueError(
             f"Unknown {adapter_name.upper()}_ADAPTER backend: {backend!r}. "
             f"Expected one of: {sorted(VALID_ADAPTER_BACKENDS)}."
+        )
+    if backend == "rest" and adapter_name not in REST_CAPABLE_ADAPTERS:
+        raise ValueError(
+            f"{adapter_name.upper()}_ADAPTER=rest is not supported. "
+            f"REST backend is only available for: {sorted(REST_CAPABLE_ADAPTERS)}."
         )
     return backend
 

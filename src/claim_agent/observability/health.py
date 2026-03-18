@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from claim_agent.config.llm import get_llm
 from claim_agent.config.settings import get_adapter_backend
+from claim_agent.config.settings_model import VALID_ADAPTER_BACKENDS, REST_CAPABLE_ADAPTERS
 from claim_agent.db.database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,12 @@ def _check_adapters() -> dict[str, str]:
     ]
     for name, getter_name in adapters_to_check:
         backend = get_adapter_backend(name)
+        if backend not in VALID_ADAPTER_BACKENDS:
+            checks[f"adapter_{name}"] = f"degraded:invalid backend {backend!r}"
+            continue
+        if backend == "rest" and name not in REST_CAPABLE_ADAPTERS:
+            checks[f"adapter_{name}"] = f"degraded:rest backend not supported for {name} adapter"
+            continue
         if backend != "rest":
             checks[f"adapter_{name}"] = "skipped"
             continue
