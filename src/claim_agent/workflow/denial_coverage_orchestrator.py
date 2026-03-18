@@ -15,6 +15,7 @@ from claim_agent.config.llm import get_llm
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.crews.denial_coverage_crew import create_denial_coverage_crew
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import ClaimNotFoundError, MidWorkflowEscalation
 from claim_agent.models.denial import DenialInput
@@ -127,6 +128,7 @@ def run_denial_coverage_workflow(
         }
 
     workflow_output = _build_workflow_output(result)
+    denial_letter_body = _extract_denial_letter_from_output(result)
 
     outcome = _parse_outcome(workflow_output)
 
@@ -147,6 +149,13 @@ def run_denial_coverage_workflow(
     else:
         # uphold_denial: status remains denied, letter generated
         final_status = STATUS_DENIED
+        if denial_letter_body and sanitized_denial_reason:
+            repo.record_denial_letter(
+                denial_input.claim_id,
+                sanitized_denial_reason,
+                denial_letter_body,
+                actor_id=ACTOR_WORKFLOW,
+            )
 
     repo.save_workflow_result(
         denial_input.claim_id,
@@ -173,6 +182,18 @@ def run_denial_coverage_workflow(
         "workflow_output": workflow_output,
         "summary": workflow_output[:500] + "..." if len(workflow_output) > 500 else workflow_output,
     }
+
+
+def _extract_denial_letter_from_output(result: Any) -> str | None:
+    """Extract denial letter body from crew task output (Denial Letter Specialist)."""
+    tasks_output = getattr(result, "tasks_output", None)
+    if not tasks_output or not isinstance(tasks_output, list) or len(tasks_output) < 2:
+        return None
+    task1 = tasks_output[1]
+    output = getattr(task1, "output", None)
+    if output is not None:
+        return str(output).strip()
+    return None
 
 
 def _build_workflow_output(result: Any) -> str:
