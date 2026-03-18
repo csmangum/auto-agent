@@ -151,8 +151,9 @@ class AdapterHttpClient:
         self._check_circuit()
         url = f"{self._base_url}{path}" if path.startswith("/") else f"{self._base_url}/{path}"
         
+        # stop_after_attempt counts total attempts; _max_retries = number of retries
         retryer = Retrying(
-            stop=stop_after_attempt(self._max_retries),
+            stop=stop_after_attempt(self._max_retries + 1),
             wait=wait_exponential(multiplier=1.0, min=self._retry_min_wait, max=self._retry_max_wait),
             retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS)
             | retry_if_exception(_is_retryable_http_error),

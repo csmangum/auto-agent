@@ -1,6 +1,6 @@
 """Tests for the adapter layer: base ABCs, mock implementations, stubs, and registry."""
 
-
+import httpx
 import pytest
 
 from claim_agent.adapters.base import (
@@ -432,14 +432,16 @@ class TestRestPolicyAdapter:
         monkeypatch.setenv("POLICY_REST_BASE_URL", "https://pas.example.com/api/v1")
         reload_settings()
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 404
+        # AdapterHttpClient.get() raises HTTPStatusError on 404; adapter catches and returns None
+        request = httpx.Request("GET", "https://pas.example.com/api/v1/policies/POL-UNKNOWN")
+        response = httpx.Response(404, request=request)
+        http_error = httpx.HTTPStatusError("Not Found", request=request, response=response)
 
         with patch(
             "claim_agent.adapters.real.policy_rest.AdapterHttpClient"
         ) as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.get.return_value = mock_resp
+            mock_client.get.side_effect = http_error
             mock_client_cls.return_value = mock_client
             adapter = get_policy_adapter()
             result = adapter.get_policy("POL-UNKNOWN")

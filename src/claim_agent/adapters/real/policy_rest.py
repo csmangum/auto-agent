@@ -61,10 +61,10 @@ class RestPolicyAdapter(PolicyAdapter):
         except CircuitOpenError:
             logger.warning("Policy adapter circuit breaker open; returning None")
             return None
-        except httpx.HTTPStatusError:
+        except httpx.HTTPStatusError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                return None
             raise
-        if resp.status_code == 404:
-            return None
         if not resp.is_success:
             resp.raise_for_status()
         data = resp.json()
