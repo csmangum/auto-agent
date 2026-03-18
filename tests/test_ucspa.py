@@ -53,12 +53,10 @@ def test_create_ucspa_compliance_tasks_direct(temp_db):
         loss_state="Texas",
     )
     claim_id = repo.create_claim(claim_input)
-    count = create_ucspa_compliance_tasks(repo, claim_id, "Texas")
-    assert count >= 3
 
     tasks, _ = repo.get_tasks_for_claim(claim_id)
     ucspa_tasks = [t for t in tasks if t.get("auto_created_from", "").startswith("ucspa:")]
-    assert len(ucspa_tasks) >= 3
+    assert len(ucspa_tasks) == 3
 
 
 def test_create_ucspa_compliance_tasks_creates_tasks(temp_db):

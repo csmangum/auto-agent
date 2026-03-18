@@ -455,10 +455,11 @@ def acknowledge_claim(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Record UCSPA claim acknowledgment (receipt acknowledged within state deadline)."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    ctx.repo.record_acknowledgment(claim_id, actor_id=actor_id)
+    try:
+        ctx.repo.record_acknowledgment(claim_id, actor_id=actor_id)
+    except ClaimNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
     return {"claim_id": claim_id, "acknowledged": True}
 
 
