@@ -3,10 +3,11 @@
 import json
 from unittest.mock import MagicMock
 
-
 from claim_agent.api.idempotency import (
     IDEMPOTENCY_KEY_HEADER,
+    _MAX_KEY_LENGTH,
     check_idempotency,
+    cleanup_expired,
     get_idempotency_key_and_cached,
     store_idempotency,
     store_response_if_idempotent,
@@ -63,3 +64,58 @@ class TestIdempotencyStorage:
         assert cached.status_code == 200
         content = json.loads(cached.body.decode())
         assert content == {"claim_id": "CLM-X"}
+
+
+class TestIdempotencyKeyValidation:
+    """Test rejection of invalid idempotency keys."""
+
+    def test_invalid_key_returns_400(self):
+        req = _fake_request(idempotency_key="invalid key!")
+        key, cached = get_idempotency_key_and_cached(req)
+        assert key is None
+        assert cached is not None
+        assert cached.status_code == 400
+
+    def test_oversized_key_returns_400(self):
+        req = _fake_request(idempotency_key="x" * (_MAX_KEY_LENGTH + 1))
+        key, cached = get_idempotency_key_and_cached(req)
+        assert key is None
+        assert cached is not None
+        assert cached.status_code == 400
+
+    def test_valid_key_accepted(self):
+        req = _fake_request(idempotency_key="valid-key_123")
+        key, cached = get_idempotency_key_and_cached(req)
+        assert key == "valid-key_123"
+        assert cached is None
+
+
+class TestIdempotencyExpiredKey:
+    """Test expired key behavior."""
+
+    def test_expired_key_returns_none(self, tmp_path):
+        db = str(tmp_path / "idem.db")
+        store_idempotency("expired-key", 200, {"x": 1}, ttl_seconds=-3600, db_path=db)
+        assert check_idempotency("expired-key", db_path=db) is None
+
+    def test_cleanup_expired_removes_keys(self, tmp_path):
+        db = str(tmp_path / "idem.db")
+        store_idempotency("expired-key", 200, {"x": 1}, ttl_seconds=-3600, db_path=db)
+        deleted = cleanup_expired(db_path=db)
+        assert deleted >= 1
+        assert check_idempotency("expired-key", db_path=db) is None
+
+
+class TestIdempotencyConcurrent:
+    """Test claim-before-process prevents duplicate processing."""
+
+    def test_second_request_gets_in_progress(self, tmp_path):
+        """First _try_claim_key gets owned; second gets in_progress."""
+        from claim_agent.api.idempotency import _try_claim_key
+
+        db = str(tmp_path / "idem.db")
+        key = "concurrent-key"
+        result1, _, _ = _try_claim_key(key, db_path=db)
+        result2, _, _ = _try_claim_key(key, db_path=db)
+        assert result1 == "owned"
+        assert result2 == "in_progress"

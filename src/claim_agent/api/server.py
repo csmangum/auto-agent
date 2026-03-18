@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from claim_agent.api.auth import is_auth_required, verify_token
+from claim_agent.api.idempotency import cleanup_expired
 from claim_agent.observability.health import check_health
 from claim_agent.observability.prometheus import generate_metrics
 from claim_agent.api.rate_limit import get_client_ip, get_rate_limit_backend
@@ -62,6 +63,26 @@ async def lifespan(_app: FastAPI):
             "Not shared across workers. For production, set REDIS_URL and pip install -e '.[redis]'."
         )
 
+    _idempotency_cleanup_task: asyncio.Task | None = None
+    _idempotency_cleanup_stop = asyncio.Event()
+
+    async def _idempotency_cleanup_loop() -> None:
+        """Periodically purge expired idempotency keys (every hour)."""
+        interval = 3600
+        while not _idempotency_cleanup_stop.is_set():
+            try:
+                deleted = await asyncio.to_thread(cleanup_expired)
+                if deleted:
+                    _server_logger.debug("Idempotency cleanup: deleted %d expired keys", deleted)
+            except Exception as e:
+                _server_logger.warning("Idempotency cleanup failed: %s", e)
+            try:
+                await asyncio.wait_for(_idempotency_cleanup_stop.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                pass
+
+    _idempotency_cleanup_task = asyncio.create_task(_idempotency_cleanup_loop())
+
     _otel_enabled = False
     try:
         from claim_agent.observability.opentelemetry_setup import setup_opentelemetry, instrument_fastapi
@@ -72,6 +93,14 @@ async def lifespan(_app: FastAPI):
         pass
 
     yield
+
+    if _idempotency_cleanup_task is not None:
+        _idempotency_cleanup_stop.set()
+        _idempotency_cleanup_task.cancel()
+        try:
+            await _idempotency_cleanup_task
+        except asyncio.CancelledError:
+            pass
 
     if claim_background_tasks:
         await asyncio.gather(*claim_background_tasks)

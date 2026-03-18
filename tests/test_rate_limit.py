@@ -1,5 +1,6 @@
 """Tests for rate limiting middleware."""
 
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +12,23 @@ from claim_agent.api.rate_limit import (
     clear_rate_limit_buckets,
     get_client_ip,
     is_rate_limited,
+    reset_rate_limit_backend,
 )
+
+
+@pytest.fixture(autouse=True)
+def _force_in_memory_backend():
+    """Ensure in-memory backend for tests (REDIS_URL unset, backend reset)."""
+    from claim_agent.config import reload_settings
+
+    old_redis = os.environ.pop("REDIS_URL", None)
+    reload_settings()
+    reset_rate_limit_backend()
+    yield
+    if old_redis is not None:
+        os.environ["REDIS_URL"] = old_redis
+    reload_settings()
+    reset_rate_limit_backend()
 
 
 @pytest.fixture(autouse=True)

@@ -1,6 +1,11 @@
-"""Rate limiting for API routes. In-memory for dev; Redis for production."""
+"""Rate limiting for API routes. In-memory for dev; Redis for production.
+
+Both backends use sliding-window semantics: at most _MAX_REQUESTS in any
+_WINDOW-second period. Redis uses a sorted set (ZSET) keyed by timestamp.
+"""
 
 import time
+import uuid
 from collections import OrderedDict
 from typing import Protocol, cast
 
@@ -66,7 +71,11 @@ def _get_in_memory_backend() -> InMemoryRateLimitBackend:
 
 
 class RedisRateLimitBackend:
-    """Redis-backed rate limiting for multi-instance deployments."""
+    """Redis-backed rate limiting for multi-instance deployments.
+
+    Uses sliding-window semantics via ZSET: timestamps as scores, unique
+    members per request. Aligns with in-memory backend behavior.
+    """
 
     def __init__(self, url: str) -> None:
         try:
@@ -79,20 +88,30 @@ class RedisRateLimitBackend:
         self._client = redis.from_url(url, decode_responses=True)
 
     def is_rate_limited(self, ip: str) -> bool:
-        """Return True if the IP has exceeded the rate limit (fixed window)."""
+        """Return True if the IP has exceeded the rate limit (sliding window)."""
         key = f"rate_limit:{ip}"
         try:
+            now = time.monotonic()
+            cutoff = now - _WINDOW
             pipe = self._client.pipeline()
-            pipe.incr(key)
+            pipe.zremrangebyscore(key, "-inf", cutoff)
+            pipe.zadd(key, {f"{now}:{uuid.uuid4().hex}": now})
             pipe.expire(key, _WINDOW)
+            pipe.zcard(key)
             results = pipe.execute()
-            count = results[0]
+            count = results[3]
             return count > _MAX_REQUESTS
         except Exception:
             return False  # Fail open on Redis errors
 
 
 _backend: RateLimitBackend | None = None
+
+
+def reset_rate_limit_backend() -> None:
+    """Reset cached backend. For testing; next call to get_rate_limit_backend() will re-init."""
+    global _backend
+    _backend = None
 
 
 def get_rate_limit_backend() -> RateLimitBackend:

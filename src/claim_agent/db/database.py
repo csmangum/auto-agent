@@ -546,13 +546,21 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE claim_tasks ADD COLUMN {col} {typ}")
     except sqlite3.OperationalError:
         pass
-    # Idempotency keys for duplicate request prevention
+    # Idempotency keys for duplicate request prevention (claim-before-process pattern)
     try:
         conn.execute("SELECT 1 FROM idempotency_keys LIMIT 1")
+        # Add status column if missing (for DBs created before 025)
+        cursor = conn.execute("PRAGMA table_info(idempotency_keys)")
+        ik_columns = {row[1] for row in cursor.fetchall()}
+        if "status" not in ik_columns:
+            conn.execute(
+                "ALTER TABLE idempotency_keys ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'"
+            )
     except sqlite3.OperationalError:
         conn.executescript("""
             CREATE TABLE idempotency_keys (
                 idempotency_key TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'completed',
                 response_status INTEGER NOT NULL,
                 response_body TEXT NOT NULL,
                 created_at TEXT NOT NULL,
