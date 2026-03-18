@@ -355,7 +355,7 @@ class TestRetentionRepository:
             os.unlink(db_path)
 
     def test_list_claims_for_retention_state_specific(self):
-        """State-specific retention: Texas 7yr vs 10yr; claim 8yr old is past 7yr but not 10yr."""
+        """State-specific retention: Texas 6yr vs default 10yr; claim 8yr old is past 6yr but not 10yr."""
         from claim_agent.db.database import get_connection, init_db
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
@@ -389,12 +389,12 @@ class TestRetentionRepository:
                     text("UPDATE claims SET created_at = datetime('now', '-8 years') WHERE id = :id"),
                     {"id": claim_id},
                 )
-            retention_by_state = {"California": 5, "Texas": 7}
-            claims_7yr = repo.list_claims_for_retention(
-                7, retention_by_state=retention_by_state
+            retention_by_state = {"Texas": 6}
+            claims_with_state = repo.list_claims_for_retention(
+                10, retention_by_state=retention_by_state
             )
-            assert len(claims_7yr) == 1
-            assert claims_7yr[0]["id"] == claim_id
+            assert len(claims_with_state) == 1
+            assert claims_with_state[0]["id"] == claim_id
             retention_by_state_long = {"Texas": 10}
             claims_10yr = repo.list_claims_for_retention(
                 10, retention_by_state=retention_by_state_long
