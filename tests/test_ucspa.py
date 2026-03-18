@@ -2,8 +2,6 @@
 
 from datetime import date
 
-import pytest
-
 from claim_agent.compliance.ucspa import (
     get_ucspa_deadlines,
     create_ucspa_compliance_tasks,
@@ -38,6 +36,29 @@ def test_get_ucspa_deadlines_unknown_state_uses_defaults():
     assert deadlines["acknowledgment_due"] == "2026-03-16"
     assert deadlines["investigation_due"] == "2026-04-10"
     assert deadlines["payment_due"] == "2026-03-31"
+
+
+def test_create_ucspa_compliance_tasks_direct(temp_db):
+    """create_ucspa_compliance_tasks directly creates compliance tasks."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-TX-001",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2021,
+        vehicle_make="Toyota",
+        vehicle_model="Camry",
+        incident_date=date(2026, 3, 1),
+        incident_description="Highway collision",
+        damage_description="Front bumper damage",
+        loss_state="Texas",
+    )
+    claim_id = repo.create_claim(claim_input)
+    count = create_ucspa_compliance_tasks(repo, claim_id, "Texas")
+    assert count >= 3
+
+    tasks, _ = repo.get_tasks_for_claim(claim_id)
+    ucspa_tasks = [t for t in tasks if t.get("auto_created_from", "").startswith("ucspa:")]
+    assert len(ucspa_tasks) >= 3
 
 
 def test_create_ucspa_compliance_tasks_creates_tasks(temp_db):
