@@ -182,7 +182,7 @@ export default function CostDashboard() {
   }
 
   const cost = data as CostBreakdown | undefined;
-  const gs = cost?.global_stats ?? {};
+  const gs = cost?.global_stats;
   const byCrew = cost?.by_crew ?? {};
   const byClaimType = cost?.by_claim_type ?? {};
   const daily = cost?.daily ?? {};
@@ -211,14 +211,14 @@ export default function CostDashboard() {
         />
         <StatCard
           title="Claims Processed"
-          value={gs.total_claims ?? 0}
+          value={gs?.total_claims ?? 0}
           subtitle="In current session"
           icon="📋"
           color="orange"
         />
         <StatCard
           title="Avg Cost/Claim"
-          value={formatCost(gs.avg_cost_per_claim ?? 0)}
+          value={formatCost(gs?.avg_cost_per_claim ?? 0)}
           subtitle="Session average"
           icon="📈"
           color="purple"

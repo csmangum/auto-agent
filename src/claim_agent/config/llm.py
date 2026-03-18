@@ -22,6 +22,19 @@ _PLACEHOLDER_KEYS = frozenset(
 _langsmith_initialized = False
 _langsmith_lock = threading.Lock()
 
+# Thread-local storage for per-call model override (used by fallback chain)
+_thread_local = threading.local()
+
+
+def _get_model_override() -> str | None:
+    """Return the thread-local model override, if any."""
+    return getattr(_thread_local, "model_override", None)
+
+
+def _set_model_override(model: str | None) -> None:
+    """Set (or clear) the thread-local model override used by get_llm()."""
+    _thread_local.model_override = model
+
 
 def ensure_openrouter_api_key() -> None:
     """Ensure OPENROUTER_API_KEY is set in environment if needed.
@@ -99,7 +112,7 @@ def get_llm(model_name: str | None = None):
             "replace placeholder values like 'your_openrouter_key' with a real key"
         )
 
-    model = (model_name or llm_cfg.model_name or "gpt-4o-mini").strip()
+    model = (model_name or _get_model_override() or llm_cfg.model_name or "gpt-4o-mini").strip()
 
     # Log LLM configuration
     logger.debug(

@@ -497,7 +497,7 @@ def _run_crew_stage_body(
     crew = create_crew(ctx)
     inputs = get_inputs(ctx)
     try:
-        result = _kickoff_with_retry(crew, inputs)
+        result = _kickoff_with_retry(crew, inputs, create_crew_no_args=lambda: create_crew(ctx))
     except MidWorkflowEscalation as e:
         return _handle_mid_workflow_escalation(
             e,
@@ -513,7 +513,6 @@ def _run_crew_stage_body(
             payout_amount=ctx.extracted_payout,
             workflow_run_id=ctx.workflow_run_id,
         )
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     _record_crew_usage_delta(
         ctx.claim_id,
         ctx.context.llm,
@@ -521,6 +520,7 @@ def _run_crew_stage_body(
         crew_name,
         ctx.claim_type or None,
     )
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     output_str = str(getattr(result, "raw", None) or getattr(result, "output", None) or str(result))
     logger.log_event("crew_completed", crew=crew_name, latency_ms=(time.time() - start) * 1000)
     ctx._last_stage_output = output_str
@@ -656,10 +656,10 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
         latency_ms=router_latency,
     )
 
-    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     _record_crew_usage_delta(
-        ctx.claim_id, ctx.context.llm, ctx.context.metrics, "router", claim_type=None
+        ctx.claim_id, ctx.context.llm, ctx.context.metrics, "router", claim_type=ctx.claim_type
     )
+    _check_token_budget(ctx.claim_id, ctx.context.metrics, ctx.context.llm)
     ctx.context.metrics.update_claim_type(ctx.claim_id, ctx.claim_type)
 
     router_config = get_router_config()
