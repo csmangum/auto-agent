@@ -2,7 +2,7 @@
 
 from typing import Any, Callable
 
-from claim_agent.config.llm import get_llm, get_llm_fallback_chain
+from claim_agent.config.llm import _set_model_override, get_llm_fallback_chain
 from claim_agent.db.constants import (
     STATUS_CLOSED,
     STATUS_DUPLICATE,
@@ -108,19 +108,28 @@ def _extract_payout_from_workflow_result(result: Any, claim_type: str) -> float 
 def _kickoff_with_retry(
     crew: Any,
     inputs: dict[str, Any],
-    create_crew_with_llm: Callable[[Any], Any] | None = None,
+    create_crew_no_args: Callable[[], Any] | None = None,
 ) -> Any:
     """Run crew.kickoff with retry on transient failures.
 
-    When create_crew_with_llm is provided, on retry after exhausting attempts
-    for the current model, tries fallback models from OPENAI_FALLBACK_MODELS.
+    When create_crew_no_args is provided, on failure the retry loop tries each
+    fallback model from OPENAI_FALLBACK_MODELS by setting a thread-local model
+    override before recreating the crew via the factory.  Callers that don't
+    need model fallback can omit the factory entirely.
     """
     models = get_llm_fallback_chain()
     last_exc: BaseException | None = None
-    use_fallback = create_crew_with_llm is not None and len(models) > 1
+    use_fallback = create_crew_no_args is not None and len(models) > 1
 
     for i, model_name in enumerate(models):
-        current_crew = create_crew_with_llm(get_llm(model_name)) if (use_fallback and i > 0) else crew
+        if use_fallback and i > 0:
+            _set_model_override(model_name)
+            try:
+                current_crew = create_crew_no_args()
+            finally:
+                _set_model_override(None)
+        else:
+            current_crew = crew
 
         @with_llm_retry()
         def _call(c: Any = current_crew) -> Any:

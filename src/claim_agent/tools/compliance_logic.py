@@ -57,7 +57,7 @@ def search_california_compliance_impl(query: str) -> str:
 
 @lru_cache(maxsize=_COMPLIANCE_CACHE_SIZE)
 def _search_state_compliance_cached(query: str, state: str) -> str:
-    """Cached implementation - use search_state_compliance_impl for cache bypass."""
+    """Cached implementation - call `_search_state_compliance_impl` directly to bypass cache."""
     return _search_state_compliance_impl(query, state)
 
 

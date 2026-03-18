@@ -184,6 +184,8 @@ class ClaimMetrics:
                     "llm_calls": [],
                     "status": "processing",
                 }
+            # Reset delta baseline so re-runs start with a clean slate
+            self._last_llm_usage[claim_id] = (0, 0)
             logger.debug("Started tracking claim: %s", claim_id)
 
     def end_claim(self, claim_id: str, status: str = "completed") -> None:
@@ -192,6 +194,8 @@ class ClaimMetrics:
             if claim_id in self._claims:
                 self._claims[claim_id]["end_time"] = datetime.now(timezone.utc)
                 self._claims[claim_id]["status"] = status
+            # Clean up baseline to avoid unbounded growth
+            self._last_llm_usage.pop(claim_id, None)
             logger.debug("Finished tracking claim: %s with status: %s", claim_id, status)
 
     def update_claim_type(self, claim_id: str, claim_type: str) -> None:
