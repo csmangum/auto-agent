@@ -11,7 +11,6 @@ from typing import Any
 
 import httpx
 from tenacity import (
-    retry,
     retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
@@ -121,13 +120,6 @@ class AdapterHttpClient:
     def _is_retryable_response(self, response: httpx.Response) -> bool:
         return response.status_code in RETRYABLE_STATUS_CODES
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1.0, min=1.0, max=10.0),
-        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS)
-        | retry_if_exception(_is_retryable_http_error),
-        reraise=True,
-    )
     def _request(
         self,
         method: str,
@@ -136,25 +128,40 @@ class AdapterHttpClient:
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
     ) -> httpx.Response:
+        from tenacity import Retrying
+
         self._check_circuit()
         url = f"{self._base_url}{path}" if path.startswith("/") else f"{self._base_url}/{path}"
-        try:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.request(
-                    method,
-                    url,
-                    headers=self._build_headers(),
-                    params=params,
-                    json=json,
-                )
-            if self._is_retryable_response(resp):
-                self._record_failure()
-                resp.raise_for_status()
-            self._record_success()
-            return resp
-        except RETRYABLE_EXCEPTIONS:
-            self._record_failure()
-            raise
+        
+        retryer = Retrying(
+            stop=stop_after_attempt(self._max_retries),
+            wait=wait_exponential(multiplier=1.0, min=self._retry_min_wait, max=self._retry_max_wait),
+            retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS)
+            | retry_if_exception(_is_retryable_http_error),
+            reraise=True,
+        )
+        
+        for attempt in retryer:
+            with attempt:
+                try:
+                    with httpx.Client(timeout=self._timeout) as client:
+                        resp = client.request(
+                            method,
+                            url,
+                            headers=self._build_headers(),
+                            params=params,
+                            json=json,
+                        )
+                    if self._is_retryable_response(resp):
+                        self._record_failure()
+                        resp.raise_for_status()
+                    resp.raise_for_status()
+                    self._record_success()
+                    return resp
+                except RETRYABLE_EXCEPTIONS:
+                    self._record_failure()
+                    raise
+        raise RuntimeError("Retry loop exited without return or exception")
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
         """GET request with retry and circuit breaker."""
@@ -172,7 +179,10 @@ class AdapterHttpClient:
 
     def health_check(self, path: str = "/health") -> tuple[bool, str]:
         """Probe the base URL for liveness. Returns (ok, message)."""
-        self._check_circuit()
+        try:
+            self._check_circuit()
+        except CircuitOpenError as e:
+            return False, str(e)
         url = self._base_url.rstrip("/")
         if not url:
             return False, "base_url is empty"

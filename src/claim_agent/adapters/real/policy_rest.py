@@ -63,6 +63,8 @@ class RestPolicyAdapter(PolicyAdapter):
             raise
         if resp.status_code == 404:
             return None
+        if not resp.is_success:
+            resp.raise_for_status()
         data = resp.json()
         if self._response_key and self._response_key in data:
             data = data[self._response_key]
