@@ -213,19 +213,20 @@ class ClaimMetrics:
 
         Call after each crew kickoff. Uses stored last usage to compute delta.
         """
-        last = self._last_llm_usage.get(claim_id, (0, 0))
-        delta_prompt = max(0, current_prompt - last[0])
-        delta_completion = max(0, current_completion - last[1])
-        self._last_llm_usage[claim_id] = (current_prompt, current_completion)
-        if delta_prompt > 0 or delta_completion > 0:
-            self.record_llm_call(
-                claim_id=claim_id,
-                model=model,
-                input_tokens=delta_prompt,
-                output_tokens=delta_completion,
-                crew=crew,
-                claim_type=claim_type,
-            )
+        with self._lock:
+            last = self._last_llm_usage.get(claim_id, (0, 0))
+            delta_prompt = max(0, current_prompt - last[0])
+            delta_completion = max(0, current_completion - last[1])
+            self._last_llm_usage[claim_id] = (current_prompt, current_completion)
+            if delta_prompt > 0 or delta_completion > 0:
+                self.record_llm_call(
+                    claim_id=claim_id,
+                    model=model,
+                    input_tokens=delta_prompt,
+                    output_tokens=delta_completion,
+                    crew=crew,
+                    claim_type=claim_type,
+                )
 
     def record_llm_call(
         self,
@@ -460,13 +461,30 @@ class ClaimMetrics:
                         daily[day]["total_tokens"] += m.input_tokens + m.output_tokens
                     daily[day]["claims"] += 1
 
+        total_cost = sum(s.total_cost_usd for s in summaries)
+        total_tokens = sum(s.total_tokens for s in summaries)
+
         return {
-            "global_stats": self.get_global_stats(),
+            "global_stats": {
+                "total_claims": len(summaries),
+                "total_llm_calls": sum(s.total_llm_calls for s in summaries),
+                "total_tokens": total_tokens,
+                "total_cost_usd": total_cost,
+                "avg_cost_per_claim": total_cost / len(summaries) if summaries else 0.0,
+                "avg_tokens_per_claim": total_tokens / len(summaries) if summaries else 0.0,
+                "avg_latency_per_claim_ms": (
+                    sum(s.total_latency_ms for s in summaries) / len(summaries)
+                    if summaries
+                    else 0.0
+                ),
+                "by_crew": by_crew,
+                "by_claim_type": by_claim_type,
+            },
             "by_crew": by_crew,
             "by_claim_type": by_claim_type,
             "daily": daily,
-            "total_cost_usd": sum(s.total_cost_usd for s in summaries),
-            "total_tokens": sum(s.total_tokens for s in summaries),
+            "total_cost_usd": total_cost,
+            "total_tokens": total_tokens,
         }
 
     def export_json(self, claim_id: str | None = None) -> str:

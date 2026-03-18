@@ -17,10 +17,6 @@ from claim_agent.rag.retriever import PolicyRetriever, get_retriever
 # Maximum number of context entries to cache per RAGContextProvider
 CONTEXT_CACHE_MAXSIZE = 100
 
-# Prompt caching: policy/compliance lookups are repeated across claims.
-# Increase for high-volume processing. RAG context uses skill:state:claim_type.
-RAG_PROMPT_CACHE_MAXSIZE = 200
-
 
 class _LRUCache(OrderedDict):
     """Bounded LRU cache; evicts oldest when full."""
@@ -41,7 +37,7 @@ class _LRUCache(OrderedDict):
         if len(self) > self.maxsize:
             oldest = next(iter(self))
             del self[oldest]
-    
+
     def __eq__(self, other):
         """Override equality to compare both dict contents and maxsize."""
         if not isinstance(other, _LRUCache):
@@ -56,7 +52,7 @@ class _LRUCache(OrderedDict):
             if k1 != k2 or v1 != v2:
                 return False
         return True
-    
+
     def __hash__(self):
         """Make unhashable since we override __eq__."""
         raise TypeError("unhashable type: '_LRUCache'")
@@ -73,13 +69,11 @@ SKILL_CONTEXT_QUERIES = {
         "queries": ["claim intake validation requirements documentation"],
         "sections": [],
     },
-    
     # Policy verification
     "policy_checker": {
         "queries": ["policy coverage validation verification active coverage"],
         "sections": ["definitions", "liability_coverage"],
     },
-    
     # Damage and valuation
     "damage_assessor": {
         "queries": ["damage assessment total loss threshold repair cost valuation"],
@@ -93,7 +87,6 @@ SKILL_CONTEXT_QUERIES = {
         "queries": ["actual cash value ACV vehicle valuation market value comparable"],
         "sections": ["total_loss_regulations"],
     },
-    
     # Repair workflow
     "repair_estimator": {
         "queries": ["repair estimate labor rate parts OEM aftermarket"],
@@ -111,7 +104,6 @@ SKILL_CONTEXT_QUERIES = {
         "queries": ["repair authorization payment settlement"],
         "sections": ["fair_claims_settlement_practices"],
     },
-    
     # Settlement and payout
     "payout": {
         "queries": ["payout calculation deductible settlement payment"],
@@ -121,7 +113,6 @@ SKILL_CONTEXT_QUERIES = {
         "queries": ["settlement report claim closure payment deadline"],
         "sections": ["fair_claims_settlement_practices", "time_limits_and_deadlines"],
     },
-    
     # Duplicate handling
     "search": {
         "queries": ["claim search duplicate VIN matching"],
@@ -135,7 +126,6 @@ SKILL_CONTEXT_QUERIES = {
         "queries": ["duplicate resolution merge reject"],
         "sections": [],
     },
-    
     # Fraud detection
     "pattern_analysis": {
         "queries": ["fraud pattern staged accident suspicious indicators"],
@@ -149,13 +139,11 @@ SKILL_CONTEXT_QUERIES = {
         "queries": ["fraud assessment SIU referral investigation"],
         "sections": ["anti_fraud_provisions"],
     },
-    
     # Escalation
     "escalation": {
         "queries": ["escalation human review high value low confidence"],
         "sections": ["good_faith_requirements"],
     },
-
     # Subrogation
     "liability_investigator": {
         "queries": ["fault liability third party subrogation"],
@@ -180,27 +168,27 @@ def get_rag_context(
     retriever: Optional[PolicyRetriever] = None,
 ) -> str:
     """Get RAG context for an agent skill.
-    
+
     Args:
         skill_name: Name of the skill/agent
         state: State jurisdiction for the claim
         claim_type: Optional claim type for additional context
         top_k: Number of chunks to retrieve per query
         retriever: Optional PolicyRetriever instance
-        
+
     Returns:
         Formatted context string to include in agent prompt
     """
     if retriever is None:
         retriever = get_retriever()
-    
+
     skill_config = SKILL_CONTEXT_QUERIES.get(skill_name, {})
     queries = skill_config.get("queries", [])
     sections = skill_config.get("sections", [])
-    
+
     all_chunks: list[Chunk] = []
     seen_ids: set[str] = set()
-    
+
     # Search by queries
     for query in queries:
         results = retriever.search(
@@ -213,7 +201,7 @@ def get_rag_context(
             if chunk.chunk_id not in seen_ids:
                 seen_ids.add(chunk.chunk_id)
                 all_chunks.append(chunk)
-    
+
     # Search by sections
     for section in sections:
         section_chunks = retriever.vector_store.search_by_metadata(
@@ -224,7 +212,7 @@ def get_rag_context(
             if chunk.chunk_id not in seen_ids:
                 seen_ids.add(chunk.chunk_id)
                 all_chunks.append(chunk)
-    
+
     # Add claim-type specific context if provided
     if claim_type:
         claim_chunks = retriever.get_context_for_claim_type(
@@ -236,7 +224,7 @@ def get_rag_context(
             if chunk.chunk_id not in seen_ids:
                 seen_ids.add(chunk.chunk_id)
                 all_chunks.append(chunk)
-    
+
     # Format and return
     return retriever.format_context(all_chunks, include_metadata=True)
 
@@ -249,17 +237,17 @@ def enrich_skill_with_context(
     retriever: Optional[PolicyRetriever] = None,
 ) -> dict:
     """Enrich a skill dictionary with RAG context.
-    
+
     Adds relevant policy and compliance context to the skill's backstory
     or creates a new 'context' field.
-    
+
     Args:
         skill_dict: Dictionary with skill components (role, goal, backstory, etc.)
         skill_name: Name of the skill
         state: State jurisdiction
         claim_type: Optional claim type
         retriever: Optional PolicyRetriever instance
-        
+
     Returns:
         Enriched skill dictionary with added context
     """
@@ -269,38 +257,37 @@ def enrich_skill_with_context(
         claim_type=claim_type,
         retriever=retriever,
     )
-    
+
     if not context:
         return skill_dict
-    
+
     # Create enriched copy
     enriched = skill_dict.copy()
-    
+
     # Add context to backstory or create separate field
     if enriched.get("backstory"):
         enriched["backstory"] = (
-            f"{enriched['backstory']}\n\n"
-            f"## Applicable Regulations and Policy Language\n\n{context}"
+            f"{enriched['backstory']}\n\n## Applicable Regulations and Policy Language\n\n{context}"
         )
     else:
         enriched["context"] = context
-    
+
     return enriched
 
 
 class RAGContextProvider:
     """Provider for RAG context in agent workflows.
-    
+
     Caches context and provides easy access during claim processing.
     """
-    
+
     def __init__(
         self,
         data_dir: Optional[Path] = None,
         default_state: str = DEFAULT_STATE,
     ):
         """Initialize the context provider.
-        
+
         Args:
             data_dir: Directory containing policy/compliance data
             default_state: Default state jurisdiction
@@ -310,7 +297,7 @@ class RAGContextProvider:
         self._data_dir = data_dir
         self._context_cache: _LRUCache = _LRUCache(maxsize=CONTEXT_CACHE_MAXSIZE)
         self._cache_lock = threading.Lock()
-    
+
     @property
     def retriever(self) -> PolicyRetriever:
         """Lazy-load the retriever."""
@@ -320,7 +307,7 @@ class RAGContextProvider:
                 auto_load=True,
             )
         return self._retriever
-    
+
     def get_context(
         self,
         skill_name: str,
@@ -329,39 +316,39 @@ class RAGContextProvider:
         use_cache: bool = True,
     ) -> str:
         """Get context for a skill.
-        
+
         Args:
             skill_name: Name of the skill
             state: State jurisdiction (defaults to default_state)
             claim_type: Optional claim type
             use_cache: Whether to use cached context
-            
+
         Returns:
             Context string
         """
         state = state or self.default_state
         cache_key = f"{skill_name}:{state}:{claim_type or ''}"
-        
+
         # Check cache with lock
         if use_cache:
             with self._cache_lock:
                 if cache_key in self._context_cache:
                     return cast(str, self._context_cache[cache_key])
-        
+
         context = get_rag_context(
             skill_name=skill_name,
             state=state,
             claim_type=claim_type,
             retriever=self.retriever,
         )
-        
+
         # Update cache with lock
         if use_cache:
             with self._cache_lock:
                 self._context_cache[cache_key] = context
-        
+
         return cast(str, context)
-    
+
     def enrich_skill(
         self,
         skill_dict: dict,
@@ -370,13 +357,13 @@ class RAGContextProvider:
         claim_type: Optional[str] = None,
     ) -> dict:
         """Enrich a skill dictionary with context.
-        
+
         Args:
             skill_dict: Skill dictionary
             skill_name: Name of the skill
             state: State jurisdiction
             claim_type: Optional claim type
-            
+
         Returns:
             Enriched skill dictionary
         """
@@ -387,18 +374,18 @@ class RAGContextProvider:
             claim_type=claim_type,
             retriever=self.retriever,
         )
-    
+
     def get_claim_context(
         self,
         claim_type: str,
         state: Optional[str] = None,
     ) -> str:
         """Get general context for a claim type.
-        
+
         Args:
             claim_type: Type of claim
             state: State jurisdiction
-            
+
         Returns:
             Context string
         """
@@ -408,37 +395,37 @@ class RAGContextProvider:
             state=state,
         )
         return self.retriever.format_context(chunks)
-    
+
     def get_deadlines(self, state: Optional[str] = None) -> str:
         """Get compliance deadlines for a state.
-        
+
         Args:
             state: State jurisdiction
-            
+
         Returns:
             Formatted deadlines context
         """
         state = state or self.default_state
         chunks = self.retriever.get_compliance_deadlines(state=state)
         return self.retriever.format_context(chunks)
-    
+
     def get_disclosures(self, state: Optional[str] = None) -> str:
         """Get required disclosures for a state.
-        
+
         Args:
             state: State jurisdiction
-            
+
         Returns:
             Formatted disclosures context
         """
         state = state or self.default_state
         chunks = self.retriever.get_required_disclosures(state=state)
         return self.retriever.format_context(chunks)
-    
+
     def clear_cache(self) -> None:
         """Clear the context cache."""
         self._context_cache.clear()
-    
+
     def get_stats(self) -> dict:
         """Get retriever statistics."""
         return self.retriever.get_stats()

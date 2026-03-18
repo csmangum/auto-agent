@@ -131,11 +131,13 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
             ctx.claim_id,
             ctx.workflow_run_id,
             "coverage_verification",
-            json.dumps({
-                "passed": True,
-                "reason": "Coverage verification disabled",
-                "details": {"enabled": False},
-            }),
+            json.dumps(
+                {
+                    "passed": True,
+                    "reason": "Coverage verification disabled",
+                    "details": {"enabled": False},
+                }
+            ),
         )
         return None
 
@@ -150,18 +152,16 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
             actor_id=ctx.actor_id,
             coverage_verification_details=result.details,
         )
-        workflow_output = json.dumps({
-            "coverage_verification": "denied",
-            "reason": reason,
-            "details": result.details,
-        })
-        ctx.context.repo.save_workflow_result(
-            ctx.claim_id, ctx.claim_type, "", workflow_output
+        workflow_output = json.dumps(
+            {
+                "coverage_verification": "denied",
+                "reason": reason,
+                "details": result.details,
+            }
         )
+        ctx.context.repo.save_workflow_result(ctx.claim_id, ctx.claim_type, "", workflow_output)
         ctx.context.metrics.end_claim(ctx.claim_id, status=STATUS_DENIED)
-        record_claim_outcome(
-            ctx.claim_id, STATUS_DENIED, (time.time() - ctx.workflow_start_time)
-        )
+        record_claim_outcome(ctx.claim_id, STATUS_DENIED, (time.time() - ctx.workflow_start_time))
         ctx.context.metrics.log_claim_summary(ctx.claim_id)
         logger.log_event(
             "coverage_denied",
@@ -192,14 +192,14 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
             {"reason": reason, **result.details},
             actor_id=ctx.actor_id,
         )
-        workflow_output = json.dumps({
-            "coverage_verification": "under_investigation",
-            "reason": reason,
-            "details": result.details,
-        })
-        ctx.context.repo.save_workflow_result(
-            ctx.claim_id, ctx.claim_type, "", workflow_output
+        workflow_output = json.dumps(
+            {
+                "coverage_verification": "under_investigation",
+                "reason": reason,
+                "details": result.details,
+            }
         )
+        ctx.context.repo.save_workflow_result(ctx.claim_id, ctx.claim_type, "", workflow_output)
         ctx.context.metrics.end_claim(ctx.claim_id, status=STATUS_UNDER_INVESTIGATION)
         record_claim_outcome(
             ctx.claim_id,
@@ -226,11 +226,13 @@ def _stage_coverage_verification(ctx: _WorkflowCtx) -> dict | None:
         ctx.claim_id,
         ctx.workflow_run_id,
         "coverage_verification",
-        json.dumps({
-            "passed": True,
-            "reason": result.reason,
-            "details": result.details,
-        }),
+        json.dumps(
+            {
+                "passed": True,
+                "reason": result.reason,
+                "details": result.details,
+            }
+        ),
     )
     return None
 
@@ -246,9 +248,8 @@ def _stage_economic_analysis(ctx: _WorkflowCtx) -> dict | None:
 
     est_damage = ctx.claim_data.get("estimated_damage")
     vehicle_value = economic_check.get("vehicle_value")
-    is_high_value = (
-        (est_damage is not None and est_damage > HIGH_VALUE_DAMAGE_THRESHOLD)
-        or (vehicle_value is not None and vehicle_value > HIGH_VALUE_VEHICLE_THRESHOLD)
+    is_high_value = (est_damage is not None and est_damage > HIGH_VALUE_DAMAGE_THRESHOLD) or (
+        vehicle_value is not None and vehicle_value > HIGH_VALUE_VEHICLE_THRESHOLD
     )
 
     result = EconomicAnalysisResult(
@@ -282,18 +283,38 @@ def _stage_fraud_prescreening(ctx: _WorkflowCtx) -> dict | None:
     Stores the typed result in ``ctx.fraud_prescreening_result``.
     """
     econ = ctx.economic_result
-    ratio = (econ.damage_to_value_ratio or 0) if econ else (ctx.claim_data_with_id.get("damage_to_value_ratio") or 0)
-    is_catastrophic = econ.is_catastrophic_event if econ else ctx.claim_data_with_id.get("is_catastrophic_event", False)
-    damage_indicates_total = econ.damage_indicates_total_loss if econ else ctx.claim_data_with_id.get("damage_indicates_total_loss", False)
+    ratio = (
+        (econ.damage_to_value_ratio or 0)
+        if econ
+        else (ctx.claim_data_with_id.get("damage_to_value_ratio") or 0)
+    )
+    is_catastrophic = (
+        econ.is_catastrophic_event
+        if econ
+        else ctx.claim_data_with_id.get("is_catastrophic_event", False)
+    )
+    damage_indicates_total = (
+        econ.damage_indicates_total_loss
+        if econ
+        else ctx.claim_data_with_id.get("damage_indicates_total_loss", False)
+    )
 
     meaningful_indicators: list[str] = []
-    if ratio > PRE_ROUTING_FRAUD_DAMAGE_RATIO and not is_catastrophic and not damage_indicates_total:
+    if (
+        ratio > PRE_ROUTING_FRAUD_DAMAGE_RATIO
+        and not is_catastrophic
+        and not damage_indicates_total
+    ):
         fraud_result = detect_fraud_indicators_impl(ctx.claim_data, ctx=ctx.context)
         try:
             fraud_data = json.loads(fraud_result)
         except (json.JSONDecodeError, TypeError):
             fraud_data = {}
-        indicators = fraud_data if isinstance(fraud_data, list) else (fraud_data.get("indicators", []) if isinstance(fraud_data, dict) else [])
+        indicators = (
+            fraud_data
+            if isinstance(fraud_data, list)
+            else (fraud_data.get("indicators", []) if isinstance(fraud_data, dict) else [])
+        )
         if indicators:
             meaningful_indicators = _filter_weak_fraud_indicators(indicators)
             if meaningful_indicators:
@@ -315,7 +336,9 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
     ``ctx.inputs`` so downstream stages see the fully enriched payload.
     Stores the typed result in ``ctx.duplicate_result``.
     """
-    existing_claims = _check_for_duplicates(ctx.claim_data, current_claim_id=ctx.claim_id, ctx=ctx.context)
+    existing_claims = _check_for_duplicates(
+        ctx.claim_data, current_claim_id=ctx.claim_id, ctx=ctx.context
+    )
     if existing_claims:
         current_incident = ctx.claim_data.get("incident_description", "") or ""
         current_damage = ctx.claim_data.get("damage_description", "") or ""
@@ -332,7 +355,9 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
             damage_type_match = _damage_tags_overlap(current_damage_tags, existing_damage_tags)
 
             try:
-                similarity_score = compute_similarity_score_impl(current_combined, existing_combined)
+                similarity_score = compute_similarity_score_impl(
+                    current_combined, existing_combined
+                )
             except (TypeError, ZeroDivisionError) as e:
                 logger.warning(
                     "Similarity computation failed for claim %s: %s",
@@ -341,24 +366,32 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
                 )
                 similarity_score = 0.0
 
-            enriched_models.append(EnrichedDuplicate(
-                claim_id=c.get("id"),
-                incident_date=c.get("incident_date"),
-                incident_description=existing_incident[:200],
-                damage_description=existing_damage[:200],
-                damage_tags=sorted(existing_damage_tags),
-                damage_type_match=damage_type_match,
-                days_difference=c.get("days_difference"),
-                description_similarity_score=similarity_score,
-            ))
+            enriched_models.append(
+                EnrichedDuplicate(
+                    claim_id=c.get("id"),
+                    incident_date=c.get("incident_date"),
+                    incident_description=existing_incident[:200],
+                    damage_description=existing_damage[:200],
+                    damage_tags=sorted(existing_damage_tags),
+                    damage_type_match=damage_type_match,
+                    days_difference=c.get("days_difference"),
+                    description_similarity_score=similarity_score,
+                )
+            )
             if max_sim is None or similarity_score > max_sim:
                 max_sim = similarity_score
 
         ctx.similarity_score_for_escalation = max_sim
 
         econ = ctx.economic_result
-        is_high_value = (econ.high_value_claim if econ else ctx.claim_data_with_id.get("high_value_claim", False))
-        sim_threshold = DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE if is_high_value else DUPLICATE_SIMILARITY_THRESHOLD
+        is_high_value = (
+            econ.high_value_claim if econ else ctx.claim_data_with_id.get("high_value_claim", False)
+        )
+        sim_threshold = (
+            DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE
+            if is_high_value
+            else DUPLICATE_SIMILARITY_THRESHOLD
+        )
         definitive_duplicate = any(
             e.description_similarity_score >= sim_threshold
             and (e.days_difference or 999) <= DUPLICATE_DAYS_WINDOW
@@ -384,8 +417,16 @@ def _stage_duplicate_detection(ctx: _WorkflowCtx) -> dict | None:
 
     ctx.duplicate_result = dup_result
 
-    ctx.inputs = {"claim_data": json.dumps(ctx.claim_data_with_id) if isinstance(ctx.claim_data_with_id, dict) else ctx.claim_data_with_id}
-    claim_data_str = ctx.inputs["claim_data"] if isinstance(ctx.inputs["claim_data"], str) else json.dumps(ctx.inputs["claim_data"])
+    ctx.inputs = {
+        "claim_data": json.dumps(ctx.claim_data_with_id)
+        if isinstance(ctx.claim_data_with_id, dict)
+        else ctx.claim_data_with_id
+    }
+    claim_data_str = (
+        ctx.inputs["claim_data"]
+        if isinstance(ctx.inputs["claim_data"], str)
+        else json.dumps(ctx.inputs["claim_data"])
+    )
     logger.debug(
         "router_input_size claim_id=%s payload_chars=%s existing_claims_count=%s",
         ctx.claim_id,
@@ -426,9 +467,7 @@ def _run_stage(
             )
             ctx.checkpoints.pop(stage_key, None)
         else:
-            logger.info(
-                "Restored %s from checkpoint", stage_key, extra={"claim_id": ctx.claim_id}
-            )
+            logger.info("Restored %s from checkpoint", stage_key, extra={"claim_id": ctx.claim_id})
             return None
 
     early_return = run(ctx)
@@ -482,14 +521,8 @@ def _run_crew_stage_body(
         crew_name,
         ctx.claim_type or None,
     )
-    output_str = str(
-        getattr(result, "raw", None)
-        or getattr(result, "output", None)
-        or str(result)
-    )
-    logger.log_event(
-        "crew_completed", crew=crew_name, latency_ms=(time.time() - start) * 1000
-    )
+    output_str = str(getattr(result, "raw", None) or getattr(result, "output", None) or str(result))
+    logger.log_event("crew_completed", crew=crew_name, latency_ms=(time.time() - start) * 1000)
     ctx._last_stage_output = output_str
     if combine_label:
         ctx.workflow_output = _combine_workflow_outputs(
@@ -511,6 +544,7 @@ def _run_crew_stage(
     combine_label: str | None = None,
 ) -> dict | None:
     """Run a crew stage with checkpoint restore/run/save via _run_stage."""
+
     def restore(c: _WorkflowCtx, cp: dict) -> None:
         output = cp[output_key]
         if combine_label:
@@ -524,9 +558,7 @@ def _run_crew_stage(
         ctx,
         stage_key,
         restore=restore,
-        run=lambda c: _run_crew_stage_body(
-            c, crew_name, create_crew, get_inputs, combine_label
-        ),
+        run=lambda c: _run_crew_stage_body(c, crew_name, create_crew, get_inputs, combine_label),
         get_checkpoint_data=lambda c: {output_key: c._last_stage_output},
     )
 
@@ -562,9 +594,7 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
     # Do not trust ctx.claim_data['claim_type'] from user input; it could bypass classification.
     if ctx.is_resume_run:
         persisted_claim = ctx.context.repo.get_claim(ctx.claim_id)
-        persisted_claim_type = (
-            persisted_claim.get("claim_type") if persisted_claim else None
-        )
+        persisted_claim_type = persisted_claim.get("claim_type") if persisted_claim else None
     else:
         persisted_claim_type = None
     if persisted_claim_type and str(persisted_claim_type).strip():
@@ -585,19 +615,23 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
                 ctx.claim_id,
                 ctx.workflow_run_id,
                 "router",
-                json.dumps({
+                json.dumps(
+                    {
+                        "claim_type": ctx.claim_type,
+                        "router_confidence": ctx.router_confidence,
+                        "router_reasoning": ctx.router_reasoning,
+                        "raw_output": ctx.raw_output,
+                    }
+                ),
+            )
+            ctx.checkpoints["router"] = json.dumps(
+                {
                     "claim_type": ctx.claim_type,
                     "router_confidence": ctx.router_confidence,
                     "router_reasoning": ctx.router_reasoning,
                     "raw_output": ctx.raw_output,
-                }),
+                }
             )
-            ctx.checkpoints["router"] = json.dumps({
-                "claim_type": ctx.claim_type,
-                "router_confidence": ctx.router_confidence,
-                "router_reasoning": ctx.router_reasoning,
-                "raw_output": ctx.raw_output,
-            })
             return None
 
     logger.log_event("router_started", step="classification")
@@ -787,6 +821,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
     if ctx.claim_type != ClaimType.FRAUD.value:
         escalation_result: dict | None = None
         use_agent = get_escalation_config().get("use_agent", True)
+        escalation_crew_ran = False
 
         if use_agent:
             try:
@@ -796,9 +831,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                     if ctx.similarity_score_for_escalation is not None
                     else ""
                 )
-                conf_str = (
-                    str(ctx.router_confidence) if ctx.router_confidence is not None else ""
-                )
+                conf_str = str(ctx.router_confidence) if ctx.router_confidence is not None else ""
                 crew = create_escalation_crew(ctx.context.llm)
                 crew_result = _kickoff_with_retry(
                     crew,
@@ -810,6 +843,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                         "router_confidence": conf_str,
                     },
                 )
+                escalation_crew_ran = True
                 decision = _parse_escalation_crew_result(crew_result)
                 if decision is not None:
                     escalation_result = {
@@ -844,6 +878,16 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 ctx=ctx.context,
             )
             escalation_result = json.loads(escalation_json)
+
+        if escalation_crew_ran:
+            _record_crew_usage_delta(
+                ctx.claim_id,
+                ctx.context.llm,
+                ctx.context.metrics,
+                "escalation",
+                ctx.claim_type,
+            )
+
         if escalation_result.get("needs_review"):
             reasons = escalation_result.get("escalation_reasons", [])
             priority = escalation_result.get("priority", "low")
@@ -888,7 +932,9 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                     actor_id=ctx.actor_id,
                 )
                 hours = _sla_hours_for_priority(priority)
-                due_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+                due_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
                 ctx.context.repo.update_claim_review_metadata(
                     ctx.claim_id,
                     priority=priority,
@@ -902,13 +948,6 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                 reasons=reasons,
                 priority=priority,
                 duration_ms=workflow_duration,
-            )
-            _record_crew_usage_delta(
-                ctx.claim_id,
-                ctx.context.llm,
-                ctx.context.metrics,
-                "escalation",
-                ctx.claim_type,
             )
             ctx.context.metrics.end_claim(ctx.claim_id, status="escalated")
             record_claim_outcome(ctx.claim_id, "escalated", (time.time() - ctx.workflow_start_time))
@@ -1072,9 +1111,7 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             c.workflow_output = routed_output
 
         logger.log_event("crew_completed", crew=c.claim_type, latency_ms=crew_latency)
-        c.extracted_payout = _extract_payout_from_workflow_result(
-            workflow_result, c.claim_type
-        )
+        c.extracted_payout = _extract_payout_from_workflow_result(workflow_result, c.claim_type)
         if c.extracted_payout is not None:
             c.claim_data_with_id["payout_amount"] = c.extracted_payout
 
@@ -1157,9 +1194,7 @@ def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
         logger.log_event("crew_started", crew="liability_determination")
         start = time.time()
         loss_state = c.claim_data.get("loss_state") or DEFAULT_STATE
-        crew = create_liability_determination_crew(
-            c.context.llm, state=loss_state, use_rag=True
-        )
+        crew = create_liability_determination_crew(c.context.llm, state=loss_state, use_rag=True)
         inputs = {
             "claim_data": json.dumps({**c.claim_data_with_id, "claim_type": c.claim_type}),
             "workflow_output": c.workflow_output,
@@ -1190,9 +1225,7 @@ def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
             c.claim_type,
         )
         output_str = str(
-            getattr(result, "raw", None)
-            or getattr(result, "output", None)
-            or str(result)
+            getattr(result, "raw", None) or getattr(result, "output", None) or str(result)
         )
         logger.log_event(
             "crew_completed",
