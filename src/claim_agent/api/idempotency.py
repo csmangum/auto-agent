@@ -75,27 +75,17 @@ def _try_claim_key(key: str, db_path: str | None) -> tuple[_IdempotencyClaimResu
     }
     with get_connection(path) as conn:
         try:
-            if _is_postgres():
-                conn.execute(
-                    text("""
-                        INSERT INTO idempotency_keys
-                        (idempotency_key, status, response_status, response_body, created_at, expires_at)
-                        VALUES (:key, :status, :response_status, :body, :created_at, :expires_at)
-                    """),
-                    params,
-                )
-            else:
-                conn.execute(
-                    text("""
-                        INSERT INTO idempotency_keys
-                        (idempotency_key, status, response_status, response_body, created_at, expires_at)
-                        VALUES (:key, :status, :response_status, :body, :created_at, :expires_at)
-                    """),
-                    params,
-                )
+            conn.execute(
+                text("""
+                    INSERT INTO idempotency_keys
+                    (idempotency_key, status, response_status, response_body, created_at, expires_at)
+                    VALUES (:key, :status, :response_status, :body, :created_at, :expires_at)
+                """),
+                params,
+            )
             return "owned", None, None
         except IntegrityError:
-            pass  # Key exists, fetch and handle
+            conn.rollback()
 
         row = conn.execute(
             text("""
