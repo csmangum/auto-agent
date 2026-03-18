@@ -125,6 +125,7 @@ def _kickoff_with_retry(
         if use_fallback and i > 0:
             _set_model_override(model_name)
             try:
+                assert create_crew_no_args is not None
                 current_crew = create_crew_no_args()
             finally:
                 _set_model_override(None)
