@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from claim_agent.api.deps import require_role
@@ -43,8 +43,8 @@ def get_fraud_reporting_compliance(
         if state and state.strip():
             try:
                 state_values = _state_filter_values(state)
-            except ValueError:
-                return {"claims": [], "total": 0}
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
             if len(state_values) == 2:
                 where_clauses.append("loss_state IN (:state0, :state1)")
                 params["state0"] = state_values[0]

@@ -442,6 +442,60 @@ class TestClaimNotes:
         assert "Ignore" not in notes[0]["actor_id"]
 
 
+class TestClaimFraudFilings:
+    """Test GET /api/claims/{claim_id}/fraud-filings (RequireAdjuster)."""
+
+    def test_fraud_filings_404_when_claim_not_found(self, client):
+        """Returns 404 when claim_id does not exist."""
+        resp = client.get("/api/claims/CLM-NONEXISTENT/fraud-filings")
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"].lower()
+
+    def test_fraud_filings_returns_persisted_filings(self, client):
+        """Successful retrieval returns persisted filings for the claim."""
+        resp = client.get("/api/claims/CLM-TEST003/fraud-filings")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST003"
+        assert "filings" in data
+        filings = data["filings"]
+        assert len(filings) >= 2
+        types = {f["filing_type"] for f in filings}
+        assert "state_bureau" in types
+        assert "nicb" in types
+        assert any(f["report_id"] == "FRB-SEED-001" for f in filings)
+        assert any(f["report_id"] == "NICB-SEED-001" for f in filings)
+
+    def test_fraud_filings_empty_when_no_filings(self, client):
+        """Returns empty filings list when claim has no fraud filings."""
+        resp = client.get("/api/claims/CLM-TEST001/fraud-filings")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST001"
+        assert data["filings"] == []
+
+    def test_fraud_filings_role_enforcement_when_auth_required(self, client, monkeypatch):
+        """RequireAdjuster: 401 without key, 403 with wrong role, 200 with adjuster."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-claimant:claimant")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/claims/CLM-TEST003/fraud-filings")
+        assert resp.status_code == 401
+
+        resp = client.get(
+            "/api/claims/CLM-TEST003/fraud-filings",
+            headers={"X-API-Key": "sk-claimant"},
+        )
+        assert resp.status_code == 403
+
+        resp = client.get(
+            "/api/claims/CLM-TEST003/fraud-filings",
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 200
+
+
 class TestReviewQueue:
     """Test review queue and adjuster action endpoints."""
 
@@ -1448,6 +1502,73 @@ class TestPoliciesEndpoint:
         reload_settings()
         resp = client.get("/api/system/policies")
         assert resp.status_code == 401
+
+
+class TestComplianceFraudReporting:
+    """Test GET /api/compliance/fraud-reporting (RequireAdjuster)."""
+
+    def test_role_enforcement_when_auth_required(self, client, monkeypatch):
+        """Returns 401 without key, 403 with wrong role, 200 with adjuster."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-claimant:claimant")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 401
+
+        resp = client.get(
+            "/api/compliance/fraud-reporting",
+            headers={"X-API-Key": "sk-claimant"},
+        )
+        assert resp.status_code == 403
+
+        resp = client.get(
+            "/api/compliance/fraud-reporting",
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 200
+
+    def test_state_filter_canonical(self, client):
+        """State filter with canonical name (California) returns matching claims."""
+        resp = client.get("/api/compliance/fraud-reporting?state=California")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "claims" in data
+        assert "total" in data
+        assert data["total"] >= 1
+        claim_ids = [c["claim_id"] for c in data["claims"]]
+        assert "CLM-TEST003" in claim_ids
+
+    def test_state_filter_abbreviation(self, client):
+        """State filter with abbreviation (CA) returns matching claims."""
+        resp = client.get("/api/compliance/fraud-reporting?state=CA")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "claims" in data
+        claim_ids = [c["claim_id"] for c in data["claims"]]
+        assert "CLM-TEST003" in claim_ids
+
+    def test_invalid_state_returns_422(self, client):
+        """Invalid/unsupported state returns 422 with validation message."""
+        resp = client.get("/api/compliance/fraud-reporting?state=InvalidState")
+        assert resp.status_code == 422
+        detail = resp.json().get("detail", "")
+        assert "unsupported" in detail.lower() or "invalid" in detail.lower()
+
+    def test_filing_flags_reflect_fraud_report_filings(self, client):
+        """state_report_filed, nicb_filed, niss_filed reflect rows in fraud_report_filings."""
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        clm003 = next((c for c in data["claims"] if c["claim_id"] == "CLM-TEST003"), None)
+        assert clm003 is not None
+        assert clm003["state_report_filed"] is True
+        assert clm003["nicb_filed"] is True
+        assert clm003["niss_filed"] is False
+        assert "filings" in clm003
+        filing_types = {f["filing_type"] for f in clm003["filings"]}
+        assert "state_bureau" in filing_types
+        assert "nicb" in filing_types
 
 
 class TestHealthEndpoint:

@@ -1206,6 +1206,7 @@ class ClaimRepository:
                  indicators_count, template_version, metadata)
                 VALUES (:claim_id, :siu_case_id, :filing_type, :state, :report_id, :filed_at,
                         :filed_by, :indicators_count, :template_version, :metadata)
+                RETURNING id
                 """),
                 {
                     "claim_id": claim_id,
@@ -1220,7 +1221,8 @@ class ClaimRepository:
                     "metadata": metadata_json,
                 },
             )
-            return result.lastrowid or 0
+            row = result.fetchone()
+            return cast(int, row[0]) if row is not None else 0
 
     def get_fraud_filings_for_claim(self, claim_id: str) -> list[dict[str, Any]]:
         """Return all fraud report filings for a claim, newest first."""

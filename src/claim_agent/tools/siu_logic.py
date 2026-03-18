@@ -377,6 +377,7 @@ def _persist_fraud_filing(
             "Failed to persist fraud filing for audit: %s",
             persist_err,
             extra={"claim_id": claim_id, "report_id": report_id, "filing_type": filing_type},
+            exc_info=True,
         )
 
 

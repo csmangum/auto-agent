@@ -76,16 +76,16 @@ def _seed_test_data(db_path: str) -> None:
             text("""
             INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
             vehicle_model, incident_date, incident_description, damage_description,
-            estimated_damage, claim_type, status)
+            estimated_damage, claim_type, status, loss_state)
             VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
                     :incident_date, :incident_description, :damage_description,
-                    :estimated_damage, :claim_type, :status)
+                    :estimated_damage, :claim_type, :status, :loss_state)
             """),
             {"id": "CLM-TEST003", "policy_number": "POL-003", "vin": "3VWDX7AJ5DM999999",
              "vehicle_year": 2019, "vehicle_make": "Volkswagen", "vehicle_model": "Jetta",
              "incident_date": "2025-01-22", "incident_description": "Staged accident",
              "damage_description": "Front bumper destroyed", "estimated_damage": 35000.0,
-             "claim_type": "fraud", "status": "fraud_suspected"},
+             "claim_type": "fraud", "status": "fraud_suspected", "loss_state": "California"},
         )
         conn.execute(
             text("""
@@ -180,6 +180,50 @@ def _seed_test_data(db_path: str) -> None:
             """),
             {"claim_id": "CLM-TEST005", "claim_type": "partial_loss", "router_output": "partial_loss",
              "workflow_output": partial_loss_output},
+        )
+
+        # Fraud report filings for compliance tests (CLM-TEST003)
+        conn.execute(
+            text("""
+            INSERT INTO fraud_report_filings
+            (claim_id, siu_case_id, filing_type, state, report_id, filed_at, filed_by,
+             indicators_count, template_version, metadata)
+            VALUES (:claim_id, :siu_case_id, :filing_type, :state, :report_id, :filed_at,
+                    :filed_by, :indicators_count, :template_version, :metadata)
+            """),
+            {
+                "claim_id": "CLM-TEST003",
+                "siu_case_id": "SIU-SEED-001",
+                "filing_type": "state_bureau",
+                "state": "California",
+                "report_id": "FRB-SEED-001",
+                "filed_at": "2025-01-23T10:00:00Z",
+                "filed_by": "siu_crew",
+                "indicators_count": 2,
+                "template_version": None,
+                "metadata": None,
+            },
+        )
+        conn.execute(
+            text("""
+            INSERT INTO fraud_report_filings
+            (claim_id, siu_case_id, filing_type, state, report_id, filed_at, filed_by,
+             indicators_count, template_version, metadata)
+            VALUES (:claim_id, :siu_case_id, :filing_type, :state, :report_id, :filed_at,
+                    :filed_by, :indicators_count, :template_version, :metadata)
+            """),
+            {
+                "claim_id": "CLM-TEST003",
+                "siu_case_id": "SIU-SEED-001",
+                "filing_type": "nicb",
+                "state": "California",
+                "report_id": "NICB-SEED-001",
+                "filed_at": "2025-01-23T11:00:00Z",
+                "filed_by": "siu_crew",
+                "indicators_count": 2,
+                "template_version": None,
+                "metadata": None,
+            },
         )
 
 
