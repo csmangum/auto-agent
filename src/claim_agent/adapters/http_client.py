@@ -6,6 +6,7 @@ breaker behavior.
 """
 
 import logging
+import threading
 import time
 from typing import Any
 
@@ -78,6 +79,7 @@ class AdapterHttpClient:
         self._retry_max_wait = retry_max_wait
         self._circuit_failure_threshold = circuit_failure_threshold
         self._circuit_recovery_timeout = circuit_recovery_timeout
+        self._lock = threading.Lock()
         self._failure_count = 0
         self._last_failure_time: float | None = None
         self._circuit_open = False
@@ -89,33 +91,36 @@ class AdapterHttpClient:
         return headers
 
     def _record_failure(self) -> None:
-        self._failure_count += 1
-        self._last_failure_time = time.monotonic()
-        if self._failure_count >= self._circuit_failure_threshold:
-            self._circuit_open = True
-            logger.warning(
-                "Adapter circuit breaker opened after %d failures",
-                self._failure_count,
-            )
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.monotonic()
+            if self._failure_count >= self._circuit_failure_threshold:
+                self._circuit_open = True
+                logger.warning(
+                    "Adapter circuit breaker opened after %d failures",
+                    self._failure_count,
+                )
 
     def _record_success(self) -> None:
-        self._failure_count = 0
-        self._circuit_open = False
+        with self._lock:
+            self._failure_count = 0
+            self._circuit_open = False
 
     def _check_circuit(self) -> None:
-        if not self._circuit_open:
-            return
-        if self._last_failure_time is None:
-            return
-        elapsed = time.monotonic() - self._last_failure_time
-        if elapsed >= self._circuit_recovery_timeout:
-            logger.info("Adapter circuit breaker half-open (recovery timeout elapsed)")
-            self._circuit_open = False
-            self._failure_count = 0
-        else:
-            raise CircuitOpenError(
-                f"Circuit breaker open; retry after {self._circuit_recovery_timeout - elapsed:.0f}s"
-            )
+        with self._lock:
+            if not self._circuit_open:
+                return
+            if self._last_failure_time is None:
+                return
+            elapsed = time.monotonic() - self._last_failure_time
+            if elapsed >= self._circuit_recovery_timeout:
+                logger.info("Adapter circuit breaker half-open (recovery timeout elapsed)")
+                self._circuit_open = False
+                self._failure_count = 0
+            else:
+                raise CircuitOpenError(
+                    f"Circuit breaker open; retry after {self._circuit_recovery_timeout - elapsed:.0f}s"
+                )
 
     def _is_retryable_response(self, response: httpx.Response) -> bool:
         return response.status_code in RETRYABLE_STATUS_CODES

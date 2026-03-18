@@ -654,6 +654,8 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
+# Adapters that have a REST implementation; "rest" is invalid for all others
+REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy"})
 
 
 class PolicyRestConfig(BaseSettings):

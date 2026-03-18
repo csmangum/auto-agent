@@ -69,7 +69,7 @@ This document defines Service Level Agreement (SLA) expectations for real adapte
 All real adapters should:
 
 1. **Use `AdapterHttpClient`** (or equivalent) for auth, retry, and circuit breaker
-2. **Implement `health_check() -> tuple[bool, str]** for `/api/health` inclusion
+2. **Implement `health_check() -> tuple[bool, str]`** for `/api/health` inclusion
 3. **Return `None` or empty** on circuit open rather than raising (where semantically valid)
 4. **Log failures** at WARNING level for circuit open, ERROR for unexpected errors
 
