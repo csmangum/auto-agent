@@ -98,8 +98,47 @@ Run `claim-agent retention-enforce` periodically (e.g. daily via cron):
 0 2 * * * cd /path/to/project && claim-agent retention-enforce
 ```
 
+## LLM Data Minimization
+
+When `LLM_DATA_MINIMIZATION=true` (default), claim data sent to LLM prompts is minimized:
+
+- **Per-crew allowlists**: Only fields necessary for each crew's task are included
+- **PII masking**: policy_number and VIN are masked (e.g. POL***001, 1HG***3456)
+- **Attachment stripping**: Descriptions removed; url and type kept
+- **Party PII**: For bodily_injury, party name/email/phone/address stripped; role kept. Parties with `consent_status=revoked` are excluded from LLM prompts
+
+Set `LLM_DATA_MINIMIZATION=false` for debugging.
+
+## DSAR (Data Subject Access Request)
+
+### Access Requests (Right-to-Know)
+
+- **Submit**: `POST /api/dsar/access` with claimant_identifier and verification (claim_id or policy_number+vin)
+- **Status**: `GET /api/dsar/requests/{request_id}`
+- **List**: `GET /api/dsar/requests` – paginated (limit, offset); returns `requests`, `total`, `limit`, `offset`
+- **Fulfill**: `POST /api/dsar/requests/{request_id}/fulfill` – returns export with claims, parties, audit entries, notes
+- **CLI**: `claim-agent dsar-access --claimant-email X --claim-id Y [--fulfill]`
+
+### Deletion Requests (Right-to-Delete)
+
+- **Submit**: `POST /api/dsar/deletion` with claimant_identifier and verification (claim_id or policy_number+vin)
+- **Fulfill**: `POST /api/dsar/deletion/fulfill/{request_id}` – anonymizes claims, parties, and claim_notes (sets PII to [REDACTED]); preserves claim_audit_log for legal/regulatory requirements
+- **CLI**: `claim-agent dsar-deletion --claimant-email X --claim-id Y [--fulfill]`
+- **Litigation hold**: When `LITIGATION_HOLD_BLOCKS_DELETION=true` (default), claims with `litigation_hold=1` are skipped. Set to `false` to anonymize regardless.
+
+### Consent Tracking
+
+- **Update consent**: `PATCH /api/claims/{claim_id}/parties/{party_id}/consent` with `{"consent_status": "granted"|"revoked"|"pending"}`
+- **Revoke by email**: `POST /api/dsar/consent-revoke` with `{"email": "..."}` – revokes consent for all parties with that email
+- When `consent_status=revoked`, party PII is excluded from LLM prompts (e.g. bodily_injury crew)
+
+### DSAR Configuration
+
+- **DSAR_VERIFICATION_REQUIRED** (default: true): When true, require claim_id or policy_number+vin for verification. When false, allow claimant_identifier (email) lookup in claim_parties.
+- **LITIGATION_HOLD_BLOCKS_DELETION** (default: true): When true, skip claims with litigation_hold during deletion. When false, anonymize regardless.
+
 ## Related
 
-- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS
+- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
 - [Observability](observability.md) – Structured logging, claim context
 - [Database](database.md) – Schema, audit log

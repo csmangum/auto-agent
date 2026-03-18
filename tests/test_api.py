@@ -1462,6 +1462,126 @@ class TestAgentsCatalog:
         assert router_crew["agents"][0]["name"] == "Claim Router Supervisor"
 
 
+# -------------------------------------------------------------------
+# DSAR endpoints (admin only)
+# -------------------------------------------------------------------
+
+
+class TestDSAREndpoints:
+    """API integration tests for DSAR routes: auth, 404, validation."""
+
+    def test_dsar_access_requires_admin(self, client, monkeypatch):
+        """Non-admin gets 403 for DSAR access submit."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+        resp = client.post(
+            "/api/dsar/access",
+            json={"claimant_identifier": "a@x.com", "claim_id": "CLM-TEST001"},
+            headers=_auth_headers("sk-adj"),
+        )
+        assert resp.status_code == 403
+
+    def test_dsar_access_validation_missing_verification(self, client, monkeypatch):
+        """Access request without claim_id or policy+vin returns 400."""
+        _set_admin_auth(monkeypatch)
+        resp = client.post(
+            "/api/dsar/access",
+            json={"claimant_identifier": "a@x.com"},
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 400
+        assert "verification" in resp.json().get("detail", "").lower()
+
+    def test_dsar_access_submit_and_fulfill(self, client, monkeypatch):
+        """Submit access request and fulfill returns export."""
+        _set_admin_auth(monkeypatch)
+        create = client.post(
+            "/api/dsar/access",
+            json={"claimant_identifier": "a@x.com", "claim_id": "CLM-TEST001"},
+            headers=_ADMIN_HEADERS,
+        )
+        assert create.status_code == 200
+        data = create.json()
+        request_id = data["request_id"]
+        assert data["status"] == "pending"
+
+        fulfill = client.post(
+            f"/api/dsar/requests/{request_id}/fulfill",
+            headers=_ADMIN_HEADERS,
+        )
+        assert fulfill.status_code == 200
+        export = fulfill.json()
+        assert export["request_id"] == request_id
+        assert "claims" in export
+        assert "parties" in export
+        assert "audit_entries" in export
+        assert "notes" in export
+
+    def test_dsar_get_request_404(self, client, monkeypatch):
+        """Get non-existent DSAR request returns 404."""
+        _set_admin_auth(monkeypatch)
+        resp = client.get(
+            "/api/dsar/requests/00000000-0000-0000-0000-000000000000",
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404
+
+    def test_dsar_fulfill_access_404_when_request_not_found(self, client, monkeypatch):
+        """Fulfill access for non-existent request_id returns 404 (not 400)."""
+        _set_admin_auth(monkeypatch)
+        resp = client.post(
+            "/api/dsar/requests/00000000-0000-0000-0000-000000000000/fulfill",
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404
+
+    def test_dsar_fulfill_deletion_404_when_request_not_found(self, client, monkeypatch):
+        """Fulfill deletion for non-existent request_id returns 404 (not 400)."""
+        _set_admin_auth(monkeypatch)
+        resp = client.post(
+            "/api/dsar/deletion/fulfill/00000000-0000-0000-0000-000000000000",
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 404
+
+    def test_dsar_list_requests_paginated(self, client, monkeypatch):
+        """List DSAR requests returns paginated response."""
+        _set_admin_auth(monkeypatch)
+        resp = client.get("/api/dsar/requests", headers=_ADMIN_HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "requests" in data
+        assert "total" in data
+        assert "limit" in data
+        assert "offset" in data
+        assert isinstance(data["requests"], list)
+
+    def test_dsar_deletion_validation_missing_verification(self, client, monkeypatch):
+        """Deletion request without claim_id or policy+vin returns 400."""
+        _set_admin_auth(monkeypatch)
+        resp = client.post(
+            "/api/dsar/deletion",
+            json={"claimant_identifier": "a@x.com"},
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 400
+        assert "verification" in resp.json().get("detail", "").lower()
+
+    def test_dsar_consent_revoke(self, client, monkeypatch):
+        """Consent revoke returns parties_updated count."""
+        _set_admin_auth(monkeypatch)
+        resp = client.post(
+            "/api/dsar/consent-revoke",
+            json={"email": "nonexistent@example.com"},
+            headers=_ADMIN_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "email" in data
+        assert "parties_updated" in data
+
+
 class TestPoliciesEndpoint:
     """Test GET /api/system/policies (RequireAdjuster)."""
 

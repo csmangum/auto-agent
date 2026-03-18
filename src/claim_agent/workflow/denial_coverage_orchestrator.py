@@ -20,6 +20,7 @@ from claim_agent.db.constants import STATUS_DENIED, STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import ClaimNotFoundError, MidWorkflowEscalation
 from claim_agent.models.denial import DenialInput
 from claim_agent.observability import get_logger
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 from claim_agent.utils.sanitization import sanitize_denial_reason, sanitize_policyholder_evidence
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
@@ -69,20 +70,23 @@ def run_denial_coverage_workflow(
         extra={"claim_id": denial_input.claim_id},
     )
 
-    claim_data_for_crew = {
-        "claim_id": claim.get("id"),
-        "policy_number": claim.get("policy_number"),
-        "vin": claim.get("vin"),
-        "vehicle_year": claim.get("vehicle_year"),
-        "vehicle_make": claim.get("vehicle_make"),
-        "vehicle_model": claim.get("vehicle_model"),
-        "incident_date": claim.get("incident_date"),
-        "incident_description": claim.get("incident_description"),
-        "damage_description": claim.get("damage_description"),
-        "estimated_damage": claim.get("estimated_damage"),
-        "claim_type": claim.get("claim_type"),
-        "status": claim.get("status"),
-    }
+    claim_data_for_crew = minimize_claim_data_for_crew(
+        {
+            "claim_id": claim.get("id"),
+            "policy_number": claim.get("policy_number"),
+            "vin": claim.get("vin"),
+            "vehicle_year": claim.get("vehicle_year"),
+            "vehicle_make": claim.get("vehicle_make"),
+            "vehicle_model": claim.get("vehicle_model"),
+            "incident_date": claim.get("incident_date"),
+            "incident_description": claim.get("incident_description"),
+            "damage_description": claim.get("damage_description"),
+            "estimated_damage": claim.get("estimated_damage"),
+            "claim_type": claim.get("claim_type"),
+            "status": claim.get("status"),
+        },
+        "denial_coverage",
+    )
 
     sanitized_denial_reason = sanitize_denial_reason(denial_input.denial_reason)
     sanitized_evidence = sanitize_policyholder_evidence(denial_input.policyholder_evidence)

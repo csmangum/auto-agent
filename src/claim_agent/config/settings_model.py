@@ -600,6 +600,40 @@ class MockCrewConfig(BaseSettings):
             return None
 
 
+class PrivacyConfig(BaseSettings):
+    """Privacy and data protection configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="PRIVACY_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    llm_data_minimization: bool = Field(
+        default=True,
+        validation_alias="LLM_DATA_MINIMIZATION",
+        description="When true, minimize claim data sent to LLM prompts (allowlists, PII masking).",
+    )
+    dsar_verification_required: bool = Field(
+        default=True,
+        validation_alias="DSAR_VERIFICATION_REQUIRED",
+        description="When true, DSAR requests require claim_id or policy_number+vin verification.",
+    )
+    litigation_hold_blocks_deletion: bool = Field(
+        default=True,
+        validation_alias="LITIGATION_HOLD_BLOCKS_DELETION",
+        description="When true, claims with litigation_hold are skipped during DSAR deletion.",
+    )
+
+    @field_validator("llm_data_minimization", "dsar_verification_required", "litigation_hold_blocks_deletion", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
 class ChatConfig(BaseSettings):
     """Chat agent configuration."""
 
@@ -717,6 +751,7 @@ class Settings(BaseSettings):
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
+    privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40

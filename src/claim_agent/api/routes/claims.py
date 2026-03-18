@@ -744,6 +744,32 @@ def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
     return result
 
 
+class PartyConsentUpdate(BaseModel):
+    """Request body for PATCH /claims/{claim_id}/parties/{party_id}/consent."""
+
+    consent_status: Literal["pending", "granted", "revoked"] = Field(
+        ...,
+        description="Data processing consent status. Revoked excludes party PII from LLM prompts.",
+    )
+
+
+@router.patch("/claims/{claim_id}/parties/{party_id}/consent", dependencies=[RequireAdjuster])
+def update_party_consent(
+    claim_id: str,
+    party_id: int,
+    body: PartyConsentUpdate,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Update data processing consent for a claim party. Revoked excludes party PII from LLM."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    parties = ctx.repo.get_claim_parties(claim_id)
+    if not any(p.get("id") == party_id for p in parties):
+        raise HTTPException(status_code=404, detail="Party not found")
+    ctx.repo.update_claim_party(party_id, {"consent_status": body.consent_status})
+    return {"claim_id": claim_id, "party_id": party_id, "consent_status": body.consent_status}
+
+
 @router.get("/claims/{claim_id}/attachments/{key}", dependencies=[RequireAdjuster])
 def get_claim_attachment(claim_id: str, key: str):
     """Serve an attachment file for a claim. Local storage only; S3 uses presigned URLs."""

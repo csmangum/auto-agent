@@ -23,6 +23,7 @@ from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.supplemental import SupplementalInput
 from claim_agent.observability import get_logger
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 from claim_agent.utils.sanitization import sanitize_supplemental_damage_description
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
@@ -187,21 +188,24 @@ def run_supplemental_workflow(
     # Pause repair status if repair is in progress (supplement pause workflow)
     was_paused = _pause_repair_if_in_progress(supplemental_input.claim_id, original_workflow_output)
 
-    claim_data_for_crew = {
-        "claim_id": claim.get("id"),
-        "policy_number": claim.get("policy_number"),
-        "vin": claim.get("vin"),
-        "vehicle_year": claim.get("vehicle_year"),
-        "vehicle_make": claim.get("vehicle_make"),
-        "vehicle_model": claim.get("vehicle_model"),
-        "incident_date": claim.get("incident_date"),
-        "incident_description": claim.get("incident_description"),
-        "damage_description": claim.get("damage_description"),
-        "estimated_damage": claim.get("estimated_damage"),
-        "payout_amount": claim.get("payout_amount"),
-        "claim_type": claim.get("claim_type"),
-        "status": claim.get("status"),
-    }
+    claim_data_for_crew = minimize_claim_data_for_crew(
+        {
+            "claim_id": claim.get("id"),
+            "policy_number": claim.get("policy_number"),
+            "vin": claim.get("vin"),
+            "vehicle_year": claim.get("vehicle_year"),
+            "vehicle_make": claim.get("vehicle_make"),
+            "vehicle_model": claim.get("vehicle_model"),
+            "incident_date": claim.get("incident_date"),
+            "incident_description": claim.get("incident_description"),
+            "damage_description": claim.get("damage_description"),
+            "estimated_damage": claim.get("estimated_damage"),
+            "payout_amount": claim.get("payout_amount"),
+            "claim_type": claim.get("claim_type"),
+            "status": claim.get("status"),
+        },
+        "supplemental",
+    )
 
     supplemental_for_crew = supplemental_input.model_dump(mode="json")
     supplemental_for_crew["supplemental_damage_description"] = sanitize_supplemental_damage_description(

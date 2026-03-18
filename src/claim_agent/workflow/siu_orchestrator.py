@@ -26,6 +26,7 @@ from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.workflow_output import SIUInvestigationResult
 from claim_agent.observability import get_logger, siu_workflow_scope
 from claim_agent.tools.siu_logic import add_siu_investigation_note_impl
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 from claim_agent.workflow.helpers import _kickoff_with_retry
 
 logger = get_logger(__name__)
@@ -150,6 +151,7 @@ def run_siu_investigation(
         "claim_type": claim.get("claim_type"),
         "state": state,
     }
+    claim_data_for_crew = minimize_claim_data_for_crew(claim_data_for_crew, "siu")
 
     crew_inputs = {"claim_data": json.dumps(claim_data_for_crew)}
 
