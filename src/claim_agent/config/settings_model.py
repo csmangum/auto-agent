@@ -467,6 +467,11 @@ class PathsConfig(BaseSettings):
         default="data/california_auto_compliance.json",
         validation_alias="CA_COMPLIANCE_PATH",
     )
+    state_retention_path: str = Field(
+        default="data/state_retention_periods.json",
+        validation_alias="STATE_RETENTION_PATH",
+        description="Path to state-specific retention periods JSON",
+    )
     attachment_storage_path: str = Field(
         default="data/attachments", validation_alias="ATTACHMENT_STORAGE_PATH"
     )
@@ -841,6 +846,30 @@ class Settings(BaseSettings):
                     return None
                 return value if value >= 1 else None
         return None
+
+    def get_retention_by_state(self) -> dict[str, int]:
+        """Return state-specific retention periods (years). Empty dict = use default only."""
+        path = Path(self.paths.state_retention_path)
+        if not path.is_absolute():
+            project_root = _default_project_data_dir().parent
+            path = project_root / path
+        if not path.exists():
+            return {}
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+        raw = data.get("retention_by_state", data) if isinstance(data, dict) else {}
+        if not isinstance(raw, dict):
+            return {}
+        result: dict[str, int] = {}
+        for k, v in raw.items():
+            if isinstance(k, str) and isinstance(v, (int, float)):
+                y = int(v)
+                if y >= 1:
+                    result[k.strip()] = y
+        return result
 
     def get_attachment_storage_base_path(self) -> Path:
         """Return absolute path for attachment storage. Resolves relative paths against project root."""

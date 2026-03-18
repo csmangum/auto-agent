@@ -432,19 +432,15 @@ This assessment is organized into: **Strengths** (what's working well), **Critic
 
 ### 5.4 Retention Policy is Incomplete
 
-**Current state:** `archive_claim()` with configurable retention period. Good.
+**Current state:** `archive_claim()` with configurable retention period. Implemented:
 
-**Gap:**
-- Audit log entries are not subject to retention (triggers prevent deletion)
-- No separate retention periods for different data types
-- No litigation hold capability (suspend retention for claims in litigation)
-- No state-specific retention requirements
+- **Litigation hold**: `litigation_hold` flag on claims; retention and DSAR deletion skip claims with hold. API: `PATCH /claims/{id}/litigation-hold`, CLI: `claim-agent litigation-hold --claim-id X --on|--off`
+- **State-specific retention**: `data/state_retention_periods.json` with per-state years; `loss_state` used for lookup
+- **Retention audit report**: `claim-agent retention-report` with counts by tier, litigation hold, pending archive
 
-**Recommendation:**
-- Add litigation hold flag to claims
-- Implement tiered retention (active → cold storage → archive → purge)
-- Add state-specific retention period configuration
-- Create retention audit report
+**Remaining gap:**
+- Audit log entries are not subject to retention (triggers prevent deletion; append-only for compliance)
+- No tiered retention (active → cold storage → archive → purge); current model: closed → archived
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "description": "State-specific claims retention periods in years. Used when loss_state is set on a claim. Fallback: RETENTION_PERIOD_YEARS or California compliance (5).",
+  "retention_by_state": {
+    "California": 5,
+    "Texas": 7,
+    "Florida": 5,
+    "New York": 6,
+    "Georgia": 7
+  }
+}

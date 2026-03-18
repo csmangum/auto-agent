@@ -81,6 +81,7 @@ Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `C
 |----------|---------|-------------|
 | `CLAIM_AGENT_MASK_PII` | `true` | Mask policy_number and vin in logs. Set `false` for dev. |
 | `RETENTION_PERIOD_YEARS` | 5 (from compliance) | Override retention period. Run `claim-agent retention-enforce` to archive. |
+| `STATE_RETENTION_PATH` | `data/state_retention_periods.json` | Path to state-specific retention periods (per-state years). |
 
 See [PII and Retention](pii-and-retention.md) for full documentation.
 
@@ -148,6 +149,7 @@ The module `src/claim_agent/config/settings.py` provides backward-compatible fun
 | `get_crew_verbose()` | Whether CrewAI runs in verbose mode |
 | `get_mask_pii()` | Whether to mask PII in logs (from `CLAIM_AGENT_MASK_PII`) |
 | `get_retention_period_years()` | Retention period from compliance or `RETENTION_PERIOD_YEARS` |
+| `get_retention_by_state()` | State-specific retention periods (years) from `STATE_RETENTION_PATH` |
 | `get_api_keys_config()` | API keys mapping (key -> role) from `API_KEYS` or `CLAIMS_API_KEY` |
 | `get_jwt_secret()` | JWT secret for Bearer token verification, or None |
 | `MAX_TOKENS_PER_CLAIM`, `MAX_LLM_CALLS_PER_CLAIM` | Token and call budgets per claim |

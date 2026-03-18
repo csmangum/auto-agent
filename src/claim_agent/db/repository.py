@@ -34,6 +34,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_REQUEST_INFO,
     AUDIT_EVENT_RESERVE_ADJUSTED,
     AUDIT_EVENT_RESERVE_SET,
+    AUDIT_EVENT_LITIGATION_HOLD,
     AUDIT_EVENT_RETENTION,
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
@@ -51,6 +52,7 @@ from claim_agent.db.constants import (
     STATUS_UNDER_INVESTIGATION,
 )
 from claim_agent.config.settings import get_reserve_config
+from claim_agent.rag.constants import normalize_state
 from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
@@ -2147,30 +2149,172 @@ class ClaimRepository:
     def list_claims_for_retention(
         self,
         retention_period_years: int,
+        *,
+        retention_by_state: dict[str, int] | None = None,
+        exclude_litigation_hold: bool = True,
     ) -> list[dict[str, Any]]:
         """List closed claims older than retention period that are not yet archived.
 
         Uses created_at for cutoff. Only returns claims with status closed
         (archiving requires closed->archived transition). Excludes claims
         with status archived or a non-null archived_at.
+
+        When exclude_litigation_hold is True (default), claims with
+        litigation_hold=1 are excluded (retention suspended for litigation).
+
+        When retention_by_state is provided, uses loss_state to pick per-claim
+        retention; falls back to retention_period_years when state is missing
+        or not in the map.
         """
         if retention_period_years < 0:
             raise ValueError("retention_period_years must be non-negative")
-        # Use SQLite-compatible format (YYYY-MM-DD HH:MM:SS) for lexicographic comparison
-        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=retention_period_years * 365)
-        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+        state_map = retention_by_state or {}
+        now = datetime.now(timezone.utc)
+
         with get_connection(self._db_path) as conn:
             rows = conn.execute(
                 text("""
                 SELECT * FROM claims
-                WHERE created_at <= :cutoff
-                  AND archived_at IS NULL
+                WHERE archived_at IS NULL
                   AND status = :status
+                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold)
                 ORDER BY created_at ASC
                 """),
-                {"cutoff": cutoff, "status": STATUS_CLOSED},
+                {
+                    "status": STATUS_CLOSED,
+                    "include_hold": 1 if not exclude_litigation_hold else 0,
+                },
             ).fetchall()
-        return [row_to_dict(r) for r in rows]
+
+        result = []
+        for r in rows:
+            row_d = row_to_dict(r)
+            raw_state = (row_d.get("loss_state") or "").strip()
+            lookup_state: str | None = None
+            if raw_state:
+                try:
+                    lookup_state = normalize_state(raw_state)
+                except ValueError:
+                    pass
+            years = (state_map.get(lookup_state) if lookup_state else None) or retention_period_years
+            cutoff_dt = now - timedelta(days=years * 365)
+            cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+            if (row_d.get("created_at") or "") <= cutoff:
+                result.append(row_d)
+        return result
+
+    def set_litigation_hold(
+        self,
+        claim_id: str,
+        litigation_hold: bool,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Set or clear litigation hold on a claim. Logs to audit."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text("SELECT id, litigation_hold FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            row_d = row_to_dict(row)
+            current = 1 if row_d.get("litigation_hold") else 0
+            new_val = 1 if litigation_hold else 0
+            if current == new_val:
+                return
+            conn.execute(
+                text("""
+                UPDATE claims SET litigation_hold = :val, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :claim_id
+                """),
+                {"claim_id": claim_id, "val": new_val},
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_LITIGATION_HOLD,
+                    "details": "Litigation hold set" if litigation_hold else "Litigation hold cleared",
+                    "actor_id": actor_id,
+                },
+            )
+
+    def retention_report(
+        self,
+        retention_period_years: int,
+        *,
+        retention_by_state: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
+        """Produce retention audit report: counts by tier, litigation hold, pending archive."""
+        state_map = retention_by_state or {}
+        now = datetime.now(timezone.utc)
+
+        with get_connection(self._db_path) as conn:
+            status_rows = conn.execute(
+                text("""
+                SELECT status, COUNT(*) as cnt FROM claims GROUP BY status
+                """)
+            ).fetchall()
+            status_counts = {r[0]: r[1] for r in status_rows}
+
+            litigation_hold_count = conn.execute(
+                text("SELECT COUNT(*) FROM claims WHERE COALESCE(litigation_hold, 0) = 1")
+            ).scalar() or 0
+
+            audit_count = conn.execute(
+                text("SELECT COUNT(*) FROM claim_audit_log")
+            ).scalar() or 0
+
+            closed_rows = conn.execute(
+                text("""
+                SELECT id, created_at, loss_state, litigation_hold
+                FROM claims WHERE status = :status AND archived_at IS NULL
+                """),
+                {"status": STATUS_CLOSED},
+            ).fetchall()
+
+        pending_archive = 0
+        for r in closed_rows:
+            row_d = row_to_dict(r)
+            if row_d.get("litigation_hold"):
+                continue
+            raw_state = (row_d.get("loss_state") or "").strip()
+            lookup_state = None
+            if raw_state:
+                try:
+                    lookup_state = normalize_state(raw_state)
+                except ValueError:
+                    pass
+            years = (state_map.get(lookup_state) if lookup_state else None) or retention_period_years
+            cutoff_dt = now - timedelta(days=years * 365)
+            cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+            if (row_d.get("created_at") or "") <= cutoff:
+                pending_archive += 1
+
+        closed_with_hold = sum(
+            1 for r in closed_rows
+            if row_to_dict(r).get("litigation_hold")
+        )
+
+        return {
+            "retention_period_years": retention_period_years,
+            "retention_by_state": state_map,
+            "claims_by_status": status_counts,
+            "active_count": sum(
+                status_counts.get(s, 0)
+                for s in (STATUS_PENDING, STATUS_PROCESSING, STATUS_NEEDS_REVIEW, STATUS_PENDING_INFO)
+            ),
+            "closed_count": status_counts.get(STATUS_CLOSED, 0),
+            "archived_count": status_counts.get(STATUS_ARCHIVED, 0),
+            "litigation_hold_count": litigation_hold_count,
+            "closed_with_litigation_hold": closed_with_hold,
+            "pending_archive_count": pending_archive,
+            "audit_log_rows": audit_count,
+        }
 
     def archive_claim(
         self,

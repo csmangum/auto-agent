@@ -310,6 +310,50 @@ class TestRetentionRepository:
         finally:
             os.unlink(db_path)
 
+    def test_list_claims_for_retention_excludes_litigation_hold(self):
+        """list_claims_for_retention excludes claims with litigation_hold when exclude_litigation_hold=True."""
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_input = ClaimInput(
+                policy_number="POL-LH",
+                vin="1HGCM82633A999999",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date="2020-01-15",
+                incident_description="Test",
+                damage_description="Test",
+            )
+            claim_id = repo.create_claim(claim_input)
+            from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
+            repo.set_litigation_hold(claim_id, True)
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text("UPDATE claims SET created_at = datetime('now', '-10 years') WHERE id = :id"),
+                    {"id": claim_id},
+                )
+            claims = repo.list_claims_for_retention(5, exclude_litigation_hold=True)
+            assert len(claims) == 0
+            claims_incl = repo.list_claims_for_retention(
+                5, exclude_litigation_hold=False
+            )
+            assert len(claims_incl) == 1
+        finally:
+            os.unlink(db_path)
+
     def test_archive_claim(self):
         """archive_claim should set status archived and archived_at."""
         from claim_agent.db.constants import STATUS_ARCHIVED, STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING

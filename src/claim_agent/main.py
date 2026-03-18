@@ -19,7 +19,7 @@ import uvicorn
 from pydantic import ValidationError
 
 from claim_agent.config import get_settings
-from claim_agent.config.settings import get_retention_period_years
+from claim_agent.config.settings import get_retention_by_state, get_retention_period_years
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
 from claim_agent.workflow.handback_orchestrator import run_handback_workflow
@@ -483,12 +483,21 @@ def retention_enforce(
         Optional[int],
         typer.Option("--years", "-y", help="Override retention period in years"),
     ] = None,
+    include_litigation_hold: Annotated[
+        bool,
+        typer.Option("--include-litigation-hold", help="Archive claims with litigation hold (default: exclude)"),
+    ] = False,
 ) -> None:
-    """Archive claims older than retention period."""
+    """Archive claims older than retention period. Skips litigation hold claims by default."""
     retention_years = years if years is not None else get_retention_period_years()
+    retention_by_state = get_retention_by_state() if years is None else None
     ctx = _get_cli_ctx()
     repo = ctx.repo
-    claims = repo.list_claims_for_retention(retention_years)
+    claims = repo.list_claims_for_retention(
+        retention_years,
+        retention_by_state=retention_by_state,
+        exclude_litigation_hold=not include_litigation_hold,
+    )
 
     if dry_run:
         typer.echo(json.dumps({
@@ -520,6 +529,43 @@ def retention_enforce(
 
     if failed:
         sys.exit(1)
+
+
+@app.command("retention-report")
+def retention_report(
+    years: Annotated[
+        Optional[int],
+        typer.Option("--years", "-y", help="Override retention period in years"),
+    ] = None,
+) -> None:
+    """Produce retention audit report: counts by tier, litigation hold, pending archive."""
+    retention_years = years if years is not None else get_retention_period_years()
+    retention_by_state = get_retention_by_state() if years is None else None
+    ctx = _get_cli_ctx()
+    report = ctx.repo.retention_report(
+        retention_years,
+        retention_by_state=retention_by_state,
+    )
+    typer.echo(json.dumps(report, indent=2))
+
+
+@app.command("litigation-hold")
+def litigation_hold(
+    claim_id: Annotated[str, typer.Option("--claim-id", "-c", help="Claim ID")],
+    on: Annotated[bool, typer.Option("--on", help="Set litigation hold")] = False,
+    off: Annotated[bool, typer.Option("--off", help="Clear litigation hold")] = False,
+) -> None:
+    """Set or clear litigation hold on a claim. Hold suspends retention and DSAR deletion."""
+    if on == off:
+        typer.echo("Error: Specify exactly one of --on or --off", err=True)
+        raise typer.Exit(1)
+    ctx = _get_cli_ctx()
+    try:
+        ctx.repo.set_litigation_hold(claim_id, on, actor_id="cli")
+    except ClaimAgentError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps({"claim_id": claim_id, "litigation_hold": on}, indent=2))
 
 
 @app.command("diary-escalate")

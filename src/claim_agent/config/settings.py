@@ -112,6 +112,11 @@ def get_retention_period_years() -> int:
     return get_settings().retention_period_years
 
 
+def get_retention_by_state() -> dict[str, int]:
+    """State-specific retention periods (years). Empty = use default only."""
+    return get_settings().get_retention_by_state()
+
+
 def get_crew_verbose() -> bool:
     """Whether CrewAI runs in verbose mode."""
     return get_settings().crew_verbose

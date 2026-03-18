@@ -58,6 +58,36 @@ California compliance (CCR 2695.3, ECR-003) requires claims records to be retain
 | `california_auto_compliance.json` → `electronic_claims_requirements.provisions` (id: ECR-003) | 5 years |
 | Fallback | 5 years |
 
+### State-Specific Retention
+
+When `data/state_retention_periods.json` exists, claims use `loss_state` to pick per-state retention. Unlisted states or missing `loss_state` fall back to the default period.
+
+| File | Path (config) |
+|------|---------------|
+| `data/state_retention_periods.json` | `STATE_RETENTION_PATH` |
+
+Example:
+
+```json
+{
+  "retention_by_state": {
+    "California": 5,
+    "Texas": 7,
+    "Florida": 5,
+    "New York": 6,
+    "Georgia": 7
+  }
+}
+```
+
+### Litigation Hold
+
+Claims with `litigation_hold=1` are excluded from retention enforcement by default (retention suspended for claims in litigation). They are also skipped during DSAR deletion when `LITIGATION_HOLD_BLOCKS_DELETION=true`.
+
+- **Set/clear hold**: `PATCH /api/claims/{claim_id}/litigation-hold` with `{"litigation_hold": true|false}`
+- **CLI**: `claim-agent litigation-hold --claim-id X --on` or `--off`
+- **Override**: `claim-agent retention-enforce --include-litigation-hold` archives claims with hold (use with caution)
+
 ### Retention Enforcement
 
 Run the retention enforcement command to archive claims older than the retention period:
@@ -66,12 +96,26 @@ Run the retention enforcement command to archive claims older than the retention
 # Preview what would be archived (dry run)
 claim-agent retention-enforce --dry-run
 
-# Archive claims older than retention period
+# Archive claims older than retention period (skips litigation hold)
 claim-agent retention-enforce
 
 # Override retention period (e.g. 7 years)
 claim-agent retention-enforce --years 7
+
+# Include claims with litigation hold (default: exclude)
+claim-agent retention-enforce --include-litigation-hold
 ```
+
+### Retention Audit Report
+
+Produce a retention audit report with counts by tier, litigation hold, and pending archive:
+
+```bash
+claim-agent retention-report
+claim-agent retention-report --years 7
+```
+
+Output includes: `retention_period_years`, `retention_by_state`, `claims_by_status`, `active_count`, `closed_count`, `archived_count`, `litigation_hold_count`, `closed_with_litigation_hold`, `pending_archive_count`, `audit_log_rows`.
 
 ### Archive Behavior
 
@@ -139,6 +183,6 @@ Set `LLM_DATA_MINIMIZATION=false` for debugging.
 
 ## Related
 
-- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
+- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
 - [Observability](observability.md) – Structured logging, claim context
 - [Database](database.md) – Schema, audit log
