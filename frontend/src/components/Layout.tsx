@@ -18,6 +18,7 @@ const REFERENCE_NAV = [
   { to: '/docs', label: 'Documentation', icon: 'docs' as NavIconKey },
   { to: '/skills', label: 'Skills', icon: 'skills' as NavIconKey },
   { to: '/agents', label: 'Agents & Crews', icon: 'agents' as NavIconKey },
+  { to: '/cost', label: 'LLM Cost', icon: 'cost' as NavIconKey },
   { to: '/system', label: 'System Config', icon: 'system' as NavIconKey },
 ];
 

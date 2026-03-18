@@ -1,10 +1,17 @@
-"""California and multi-state auto insurance compliance lookup logic."""
+"""California and multi-state auto insurance compliance lookup logic.
+
+Compliance lookups are cached for repeated operations (policy checks, claim-type context).
+"""
 
 import json
+from functools import lru_cache
 from typing import Any
 
 from claim_agent.data.loader import load_state_compliance
 from claim_agent.rag.constants import SUPPORTED_STATES, normalize_state
+
+# Cache size for compliance searches (query, state) - reduces repeated lookups
+_COMPLIANCE_CACHE_SIZE = 128
 
 
 def _json_contains_query(obj: object, query: str) -> bool:
@@ -45,11 +52,20 @@ def _gather_matches(
 
 def search_california_compliance_impl(query: str) -> str:
     """Search California auto compliance data by keyword. Empty query returns section summary."""
-    return search_state_compliance_impl(query, "California")
+    return _search_state_compliance_cached(query, "California")
+
+
+@lru_cache(maxsize=_COMPLIANCE_CACHE_SIZE)
+def _search_state_compliance_cached(query: str, state: str) -> str:
+    """Cached implementation - use search_state_compliance_impl for cache bypass."""
+    return _search_state_compliance_impl(query, state)
 
 
 def search_state_compliance_impl(query: str, state: str) -> str:
     """Search state auto compliance data by keyword. Empty query returns section summary.
+
+    Results are cached for repeated (query, state) lookups (prompt caching strategy).
+    Use for policy lookups and compliance checks during claim processing.
 
     Args:
         query: Search term (e.g. 'total loss', 'deadline', 'disclosure').
@@ -58,6 +74,10 @@ def search_state_compliance_impl(query: str, state: str) -> str:
     Returns:
         JSON with match_count and matches (or section summary if query is empty).
     """
+    return _search_state_compliance_cached(query, state)
+
+
+def _search_state_compliance_impl(query: str, state: str) -> str:
     try:
         normalized = normalize_state(state.strip())
     except ValueError:
