@@ -3,7 +3,7 @@
 Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
-Supported values: ``mock``, ``stub``. Unknown values raise ValueError.
+Supported values: ``mock``, ``stub``, ``rest`` (policy only). Unknown values raise ValueError.
 """
 
 import threading

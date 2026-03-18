@@ -51,11 +51,11 @@ class RestPolicyAdapter(PolicyAdapter):
             timeout=timeout,
         )
         self._path_template = (path_template or _default_path_template()).strip()
-        self._response_key = response_key.strip() if (response_key and str(response_key).strip()) else None
+        self._response_key = (response_key or "").strip() or None
 
     def get_policy(self, policy_number: str) -> dict[str, Any] | None:
         encoded = quote(policy_number, safe="")
-        path = self._path_template.format(policy_number=encoded)
+        path = self._path_template.replace("{policy_number}", encoded)
         try:
             resp = self._client.get(path)
         except CircuitOpenError:

@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 from tenacity import (
+    Retrying,
     retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
@@ -80,9 +81,23 @@ class AdapterHttpClient:
         self._circuit_failure_threshold = circuit_failure_threshold
         self._circuit_recovery_timeout = circuit_recovery_timeout
         self._lock = threading.Lock()
+        self._client_lock = threading.Lock()
         self._failure_count = 0
         self._last_failure_time: float | None = None
         self._circuit_open = False
+        self._http_client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        """Return shared HTTP client, creating lazily for connection reuse."""
+        if self._http_client is not None:
+            return self._http_client
+        with self._client_lock:
+            if self._http_client is None:
+                self._http_client = httpx.Client(
+                    timeout=self._timeout,
+                    headers=self._build_headers(),
+                )
+            return self._http_client
 
     def _build_headers(self) -> dict[str, str]:
         headers: dict[str, str] = {"Accept": "application/json"}
@@ -133,8 +148,6 @@ class AdapterHttpClient:
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
     ) -> httpx.Response:
-        from tenacity import Retrying
-
         self._check_circuit()
         url = f"{self._base_url}{path}" if path.startswith("/") else f"{self._base_url}/{path}"
         
@@ -149,14 +162,14 @@ class AdapterHttpClient:
         for attempt in retryer:
             with attempt:
                 try:
-                    with httpx.Client(timeout=self._timeout) as client:
-                        resp = client.request(
-                            method,
-                            url,
-                            headers=self._build_headers(),
-                            params=params,
-                            json=json,
-                        )
+                    client = self._get_client()
+                    resp = client.request(
+                        method,
+                        url,
+                        headers=self._build_headers(),
+                        params=params,
+                        json=json,
+                    )
                     if self._is_retryable_response(resp):
                         self._record_failure()
                         resp.raise_for_status()
