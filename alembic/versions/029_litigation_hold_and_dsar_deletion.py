@@ -30,5 +30,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     conn = op.get_bind()
-    if conn.dialect.name == "postgresql":
+    if conn.dialect.name == "sqlite":
+        # SQLite does not support DROP COLUMN easily; leave litigation_hold in place.
+        pass
+    else:
         op.execute(text("ALTER TABLE claims DROP COLUMN IF EXISTS litigation_hold"))

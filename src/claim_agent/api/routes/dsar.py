@@ -74,10 +74,15 @@ async def dsar_get_request(
 async def dsar_list_requests(
     status: Optional[str] = Query(None, description="Filter by status"),
     request_type: Optional[str] = Query(None, description="Filter by request_type (access|deletion)"),
+    limit: int = Query(100, ge=1, le=1000, description="Max items to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
     _auth: AuthContext = require_role("admin"),
-) -> list[dict[str, Any]]:
-    """List DSAR requests, optionally filtered by status and/or request_type."""
-    return list_dsar_requests(status=status, request_type=request_type)
+) -> dict[str, Any]:
+    """List DSAR requests, optionally filtered by status and/or request_type. Paginated."""
+    items, total = list_dsar_requests(
+        status=status, request_type=request_type, limit=limit, offset=offset
+    )
+    return {"requests": items, "total": total, "limit": limit, "offset": offset}
 
 
 class ConsentRevokeInput(BaseModel):

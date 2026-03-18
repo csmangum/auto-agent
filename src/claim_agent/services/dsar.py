@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy import text
 
+from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 
 
@@ -144,17 +145,24 @@ def fulfill_access_request(
                 if cid not in claim_ids:
                     claim_ids.append(str(cid))
 
-        # Also match by claimant_identifier (email) in claim_parties
+        # Also match by claimant_identifier (email) in claim_parties when verification not required
         if not claim_ids and req.get("claimant_identifier"):
-            rows = conn.execute(
-                text(
-                    "SELECT DISTINCT claim_id FROM claim_parties WHERE email = :email"
-                ),
-                {"email": req["claimant_identifier"]},
-            ).fetchall()
-            for r in rows:
-                cid = r[0] if hasattr(r, "__getitem__") else r["claim_id"]
-                claim_ids.append(str(cid))
+            if not get_settings().privacy.dsar_verification_required:
+                rows = conn.execute(
+                    text(
+                        "SELECT DISTINCT claim_id FROM claim_parties WHERE email = :email"
+                    ),
+                    {"email": req["claimant_identifier"]},
+                ).fetchall()
+                for r in rows:
+                    cid = r[0] if hasattr(r, "__getitem__") else row_to_dict(r).get("claim_id")
+                    if cid not in claim_ids:
+                        claim_ids.append(str(cid))
+            else:
+                raise ValueError(
+                    "Verification required: provide claim_id or policy_number+vin. "
+                    "claimant_identifier-only lookup is disabled when DSAR_VERIFICATION_REQUIRED=true."
+                )
 
         export: dict[str, Any] = {
             "request_id": request_id,
@@ -220,6 +228,14 @@ def fulfill_access_request(
             {"request_id": request_id, "path": f"inline:{len(export_json)}"},
         )
 
+        _log_dsar_audit(
+            conn,
+            DSAR_AUDIT_ACCESS_FULFILL,
+            actor_id,
+            request_id=request_id,
+            details={"claim_count": len(claim_ids)},
+        )
+
     return export
 
 
@@ -237,6 +253,34 @@ def get_dsar_request(request_id: str, *, db_path: str | None = None) -> dict[str
 
 
 REDACTED = "[REDACTED]"
+
+DSAR_AUDIT_ACCESS_FULFILL = "access_fulfill"
+DSAR_AUDIT_DELETION_FULFILL = "deletion_fulfill"
+DSAR_AUDIT_CONSENT_REVOKE = "consent_revoke"
+
+
+def _log_dsar_audit(
+    conn: Any,
+    action: str,
+    actor_id: str,
+    *,
+    request_id: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Append an audit entry for DSAR operations."""
+    details_json = json.dumps(details) if details else None
+    conn.execute(
+        text("""
+            INSERT INTO dsar_audit_log (request_id, action, actor_id, details)
+            VALUES (:request_id, :action, :actor_id, :details)
+        """),
+        {
+            "request_id": request_id,
+            "action": action,
+            "actor_id": actor_id,
+            "details": details_json,
+        },
+    )
 
 
 def submit_deletion_request(
@@ -317,25 +361,34 @@ def fulfill_deletion_request(
                 if cid not in claim_ids:
                     claim_ids.append(str(cid))
         if not claim_ids and req.get("claimant_identifier"):
+            if get_settings().privacy.dsar_verification_required:
+                raise ValueError(
+                    "Verification required: provide claim_id or policy_number+vin. "
+                    "claimant_identifier-only lookup is disabled when DSAR_VERIFICATION_REQUIRED=true."
+                )
             rows = conn.execute(
                 text("SELECT DISTINCT claim_id FROM claim_parties WHERE email = :email"),
                 {"email": req["claimant_identifier"]},
             ).fetchall()
             for r in rows:
-                claim_ids.append(str(r[0] if hasattr(r, "__getitem__") else r["claim_id"]))
+                cid = r[0] if hasattr(r, "__getitem__") else row_to_dict(r).get("claim_id")
+                if cid not in claim_ids:
+                    claim_ids.append(str(cid))
 
+        blocks_deletion = get_settings().privacy.litigation_hold_blocks_deletion
         anonymized_claims = 0
         anonymized_parties = 0
         skipped_litigation = 0
 
         for claim_id in claim_ids:
-            hold_row = conn.execute(
-                text("SELECT litigation_hold FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if hold_row and (hold_row[0] if hasattr(hold_row, "__getitem__") else hold_row.get("litigation_hold")):
-                skipped_litigation += 1
-                continue
+            if blocks_deletion:
+                hold_row = conn.execute(
+                    text("SELECT litigation_hold FROM claims WHERE id = :claim_id"),
+                    {"claim_id": claim_id},
+                ).fetchone()
+                if hold_row and (hold_row[0] if hasattr(hold_row, "__getitem__") else hold_row.get("litigation_hold")):
+                    skipped_litigation += 1
+                    continue
 
             conn.execute(
                 text("""
@@ -362,6 +415,16 @@ def fulfill_deletion_request(
             )
             anonymized_parties += n_parties
 
+            # Redact claim_notes (may contain PII: names, addresses, medical info)
+            conn.execute(
+                text("""
+                    UPDATE claim_notes SET note = :redacted WHERE claim_id = :claim_id
+                """),
+                {"redacted": "[REDACTED - DSAR deletion]", "claim_id": claim_id},
+            )
+
+        # Note: claim_audit_log (details, before_state, after_state) is preserved for
+        # legal/regulatory requirements; audit trail is typically retained per compliance practice.
         conn.execute(
             text("""
                 UPDATE dsar_requests SET status = :status, completed_at = :completed_at
@@ -371,6 +434,18 @@ def fulfill_deletion_request(
                 "status": DSAR_STATUS_COMPLETED,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
                 "request_id": request_id,
+            },
+        )
+
+        _log_dsar_audit(
+            conn,
+            DSAR_AUDIT_DELETION_FULFILL,
+            actor_id,
+            request_id=request_id,
+            details={
+                "anonymized_claims": anonymized_claims,
+                "anonymized_parties": anonymized_parties,
+                "skipped_litigation_hold": skipped_litigation,
             },
         )
 
@@ -401,27 +476,50 @@ def revoke_consent_by_email(
             ),
             {"email": email, "now": datetime.now(timezone.utc).isoformat()},
         )
-        return result.rowcount if hasattr(result, "rowcount") else 0
+        count = result.rowcount if hasattr(result, "rowcount") else 0
+        _log_dsar_audit(
+            conn,
+            DSAR_AUDIT_CONSENT_REVOKE,
+            actor_id,
+            details={"email": email, "parties_updated": count},
+        )
+        return count
 
 
 def list_dsar_requests(
     *,
     status: str | None = None,
     request_type: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
     db_path: str | None = None,
-) -> list[dict[str, Any]]:
-    """List DSAR requests, optionally filtered by status and/or request_type."""
+) -> tuple[list[dict[str, Any]], int]:
+    """List DSAR requests, optionally filtered by status and/or request_type.
+
+    Returns:
+        Tuple of (items, total_count).
+    """
     path = db_path or get_db_path()
-    query = "SELECT * FROM dsar_requests WHERE 1=1"
+    where = "WHERE 1=1"
     params: dict[str, Any] = {}
     if status:
-        query += " AND status = :status"
+        where += " AND status = :status"
         params["status"] = status
     if request_type:
-        query += " AND request_type = :request_type"
+        where += " AND request_type = :request_type"
         params["request_type"] = request_type
-    query += " ORDER BY requested_at DESC"
 
     with get_connection(path) as conn:
-        rows = conn.execute(text(query), params).fetchall()
-        return [row_to_dict(r) for r in rows]
+        count_row = conn.execute(
+            text(f"SELECT COUNT(*) FROM dsar_requests {where}"),
+            params,
+        ).fetchone()
+        total = count_row[0] if count_row and hasattr(count_row, "__getitem__") else 0
+
+        params["limit"] = limit
+        params["offset"] = offset
+        rows = conn.execute(
+            text(f"SELECT * FROM dsar_requests {where} ORDER BY requested_at DESC LIMIT :limit OFFSET :offset"),
+            params,
+        ).fetchall()
+        return [row_to_dict(r) for r in rows], total
