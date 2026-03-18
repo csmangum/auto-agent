@@ -81,7 +81,6 @@ def _apply_ucspa_at_fnol(
     repo: "ClaimRepository",
     claim_id: str,
     loss_state: str | None,
-    incident_date: date | None,
 ) -> None:
     """Set UCSPA deadlines on claim and create compliance tasks at FNOL."""
     from claim_agent.compliance.ucspa import create_ucspa_compliance_tasks, get_ucspa_deadlines
@@ -209,7 +208,7 @@ class ClaimRepository:
 
         # UCSPA: set state-specific deadlines and create compliance tasks at FNOL
         try:
-            _apply_ucspa_at_fnol(self, claim_id, loss_state_val, claim_input.incident_date)
+            _apply_ucspa_at_fnol(self, claim_id, loss_state_val)
         except Exception as e:
             logging.getLogger(__name__).warning(
                 "ucspa_at_fnol_failed claim_id=%s: %s (run alembic upgrade head if UCSPA columns missing)",

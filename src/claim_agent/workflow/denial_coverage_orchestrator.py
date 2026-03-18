@@ -191,8 +191,8 @@ def _extract_denial_letter_from_output(result: Any) -> str | None:
         return None
     task1 = tasks_output[1]
     output = getattr(task1, "output", None)
-    if output and isinstance(output, str):
-        return output.strip()
+    if output is not None:
+        return str(output).strip()
     return None
 
 
