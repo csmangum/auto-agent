@@ -107,18 +107,6 @@ def fulfill_access_request(
             # Already fulfilled; could return cached export
             pass
 
-        # Mark in progress
-        conn.execute(
-            text(
-                "UPDATE dsar_requests SET status = :status, actor_id = :actor_id WHERE request_id = :request_id"
-            ),
-            {
-                "status": DSAR_STATUS_IN_PROGRESS,
-                "actor_id": actor_id,
-                "request_id": request_id,
-            },
-        )
-
         verification = {}
         if req.get("verification_data"):
             try:
@@ -159,10 +147,23 @@ def fulfill_access_request(
                     if cid not in claim_ids:
                         claim_ids.append(str(cid))
             else:
+                _reject_dsar_request(conn, request_id, actor_id)
                 raise ValueError(
                     "Verification required: provide claim_id or policy_number+vin. "
                     "claimant_identifier-only lookup is disabled when DSAR_VERIFICATION_REQUIRED=true."
                 )
+
+        # Mark in progress only after validation succeeds
+        conn.execute(
+            text(
+                "UPDATE dsar_requests SET status = :status, actor_id = :actor_id WHERE request_id = :request_id"
+            ),
+            {
+                "status": DSAR_STATUS_IN_PROGRESS,
+                "actor_id": actor_id,
+                "request_id": request_id,
+            },
+        )
 
         export: dict[str, Any] = {
             "request_id": request_id,
@@ -259,6 +260,22 @@ DSAR_AUDIT_DELETION_FULFILL = "deletion_fulfill"
 DSAR_AUDIT_CONSENT_REVOKE = "consent_revoke"
 
 
+def _reject_dsar_request(conn: Any, request_id: str, actor_id: str) -> None:
+    """Mark a DSAR request as rejected (e.g. validation failed before fulfillment)."""
+    conn.execute(
+        text(
+            "UPDATE dsar_requests SET status = :status, completed_at = :completed_at, actor_id = :actor_id "
+            "WHERE request_id = :request_id"
+        ),
+        {
+            "status": DSAR_STATUS_REJECTED,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "actor_id": actor_id,
+            "request_id": request_id,
+        },
+    )
+
+
 def _log_dsar_audit(
     conn: Any,
     action: str,
@@ -336,11 +353,6 @@ def fulfill_deletion_request(
         if req.get("request_type") != DSAR_REQUEST_DELETION:
             raise ValueError(f"Request {request_id} is not a deletion request")
 
-        conn.execute(
-            text("UPDATE dsar_requests SET status = :status, actor_id = :actor_id WHERE request_id = :request_id"),
-            {"status": DSAR_STATUS_IN_PROGRESS, "actor_id": actor_id, "request_id": request_id},
-        )
-
         verification = {}
         if req.get("verification_data"):
             try:
@@ -362,6 +374,7 @@ def fulfill_deletion_request(
                     claim_ids.append(str(cid))
         if not claim_ids and req.get("claimant_identifier"):
             if get_settings().privacy.dsar_verification_required:
+                _reject_dsar_request(conn, request_id, actor_id)
                 raise ValueError(
                     "Verification required: provide claim_id or policy_number+vin. "
                     "claimant_identifier-only lookup is disabled when DSAR_VERIFICATION_REQUIRED=true."
@@ -374,6 +387,12 @@ def fulfill_deletion_request(
                 cid = r[0] if hasattr(r, "__getitem__") else row_to_dict(r).get("claim_id")
                 if cid not in claim_ids:
                     claim_ids.append(str(cid))
+
+        # Mark in progress only after validation succeeds
+        conn.execute(
+            text("UPDATE dsar_requests SET status = :status, actor_id = :actor_id WHERE request_id = :request_id"),
+            {"status": DSAR_STATUS_IN_PROGRESS, "actor_id": actor_id, "request_id": request_id},
+        )
 
         blocks_deletion = get_settings().privacy.litigation_hold_blocks_deletion
         anonymized_claims = 0

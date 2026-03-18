@@ -152,10 +152,6 @@ _CREW_ALLOWLISTS: dict[str, frozenset[str]] = {
     }),
 }
 
-# Crews that should receive masked policy_number and VIN (never full PII to LLM)
-_MASK_PII_CREWS: frozenset[str] = frozenset(_CREW_ALLOWLISTS.keys())
-
-
 def _minimize_attachments(attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Strip descriptions from attachments; keep url and type only."""
     if not attachments or not isinstance(attachments, list):
@@ -224,9 +220,9 @@ def minimize_claim_data_for_crew(
             result[key] = _minimize_attachments(value)
         elif key == "parties" and crew_name == "bodily_injury":
             result[key] = _strip_party_pii(value) if isinstance(value, list) else value
-        elif key == "policy_number" and mask_pii and crew_name in _MASK_PII_CREWS:
+        elif key == "policy_number" and mask_pii:
             result[key] = mask_policy_number(value) if value else value
-        elif key == "vin" and mask_pii and crew_name in _MASK_PII_CREWS:
+        elif key == "vin" and mask_pii:
             result[key] = mask_vin(value) if value else value
         else:
             result[key] = value

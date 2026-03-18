@@ -365,7 +365,8 @@ CREATE TABLE IF NOT EXISTS dsar_exports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id TEXT NOT NULL,
     export_path TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (request_id) REFERENCES dsar_requests(request_id)
 );
 CREATE INDEX IF NOT EXISTS idx_dsar_exports_request_id ON dsar_exports(request_id);
 
@@ -474,6 +475,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN total_loss_metadata TEXT")
         if "incident_id" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN incident_id TEXT")
+        if "litigation_hold" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN litigation_hold INTEGER DEFAULT 0")
         # UCSPA compliance (migration 026)
         for col, col_type in [
             ("acknowledged_at", "TEXT"),

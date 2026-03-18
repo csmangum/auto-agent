@@ -58,7 +58,7 @@ def dsar_submit_access(
     request_id = submit_access_request(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
-        actor_id=getattr(_auth, "actor_id", None) or "api",
+        actor_id=_auth.identity or "api",
     )
     return {"request_id": request_id, "status": "pending"}
 
@@ -131,7 +131,7 @@ def dsar_submit_deletion(
     request_id = submit_deletion_request(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
-        actor_id=getattr(_auth, "actor_id", None) or "api",
+        actor_id=_auth.identity or "api",
     )
     return {"request_id": request_id, "status": "pending"}
 
@@ -142,10 +142,13 @@ def dsar_fulfill_deletion(
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:
     """Fulfill a deletion request: anonymize PII, preserve audit trail. Skips litigation hold."""
+    req = get_dsar_request(request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="DSAR request not found")
     try:
         result = fulfill_deletion_request(
             request_id,
-            actor_id=getattr(_auth, "actor_id", None) or "api",
+            actor_id=_auth.identity or "api",
         )
         return result
     except ValueError as e:
@@ -160,7 +163,7 @@ def dsar_consent_revoke(
     """Revoke data processing consent for all parties with the given email."""
     count = revoke_consent_by_email(
         body.email,
-        actor_id=getattr(_auth, "actor_id", None) or "api",
+        actor_id=_auth.identity or "api",
     )
     return {"email": body.email, "parties_updated": count}
 
@@ -171,10 +174,13 @@ def dsar_fulfill_access(
     _auth: AuthContext = require_role("admin"),
 ) -> dict[str, Any]:
     """Fulfill an access request: collect PII and return export."""
+    req = get_dsar_request(request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="DSAR request not found")
     try:
         export = fulfill_access_request(
             request_id,
-            actor_id=getattr(_auth, "actor_id", None) or "api",
+            actor_id=_auth.identity or "api",
         )
         return export
     except ValueError as e:
