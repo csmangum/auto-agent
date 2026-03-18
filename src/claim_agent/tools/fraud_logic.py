@@ -430,7 +430,8 @@ def perform_fraud_assessment_impl(
             "Document any minor discrepancies."
         )
 
-    # State-specific mandatory referral: enforce when fraud score meets state threshold
+    # State-specific mandatory referral: when fraud score meets state threshold,
+    # mandatory referral takes precedence (overrides any prior siu_referral from pattern analysis).
     state = (claim_data.get("state") or claim_data.get("loss_state") or "").strip()
     state_threshold = get_siu_referral_threshold(state) if state else None
     if state_threshold is not None and total_score >= state_threshold:

@@ -8,6 +8,7 @@ import sqlite3
 import time
 from typing import TYPE_CHECKING, Any
 
+from claim_agent.db.repository import ClaimRepository
 from claim_agent.utils.retry import RETRYABLE_EXCEPTIONS
 
 if TYPE_CHECKING:
@@ -361,8 +362,6 @@ def _persist_fraud_filing(
 ) -> None:
     """Persist fraud filing to fraud_report_filings for compliance audit."""
     try:
-        from claim_agent.db.repository import ClaimRepository
-
         repo = ctx.repo if ctx else ClaimRepository()
         repo.record_fraud_filing(
             claim_id=claim_id,

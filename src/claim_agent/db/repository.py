@@ -1188,7 +1188,14 @@ class ClaimRepository:
 
         Returns:
             The inserted row id.
+
+        Raises:
+            ValueError: If filing_type is not one of state_bureau, nicb, niss.
         """
+        if filing_type not in ("state_bureau", "nicb", "niss"):
+            raise ValueError(
+                f"filing_type must be one of state_bureau, nicb, niss; got {filing_type!r}"
+            )
         now = datetime.now(timezone.utc).isoformat()
         metadata_json = json.dumps(metadata) if metadata else None
         with get_connection(self._db_path) as conn:

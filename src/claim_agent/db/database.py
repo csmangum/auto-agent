@@ -580,6 +580,28 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
         """)
+    # Fraud report filings for compliance audit (migration 027)
+    try:
+        conn.execute("SELECT 1 FROM fraud_report_filings LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            CREATE TABLE fraud_report_filings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id TEXT NOT NULL,
+                siu_case_id TEXT,
+                filing_type TEXT NOT NULL,
+                state TEXT,
+                report_id TEXT NOT NULL,
+                filed_at TEXT NOT NULL,
+                filed_by TEXT NOT NULL DEFAULT 'siu_crew',
+                indicators_count INTEGER DEFAULT 0,
+                template_version TEXT,
+                metadata TEXT,
+                FOREIGN KEY (claim_id) REFERENCES claims(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fraud_filings_claim_id ON fraud_report_filings(claim_id);
+            CREATE INDEX IF NOT EXISTS idx_fraud_filings_filing_type ON fraud_report_filings(filing_type);
+        """)
 
 
 def _run_schema(db_path: str) -> None:
