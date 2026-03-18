@@ -3,6 +3,13 @@
 This module configures the LLM with:
 - LangSmith tracing (if enabled)
 - LiteLLM callbacks for token/cost tracking
+- Model fallback chain (OPENAI_FALLBACK_MODELS) via thread-local override
+
+Note on fallback scope: The model override used by the fallback chain is stored
+in thread-local storage. Fallback retries work within a single request/thread.
+If claim processing is offloaded to worker processes or different threads, the
+override does not propagate. For multi-worker deployments, fallback applies only
+to the thread that runs _kickoff_with_retry.
 """
 
 import logging
@@ -21,6 +28,24 @@ _PLACEHOLDER_KEYS = frozenset(
 # Track whether LangSmith has been set up (thread-safe check-and-set)
 _langsmith_initialized = False
 _langsmith_lock = threading.Lock()
+
+# Thread-local storage for per-call model override (used by fallback chain).
+# Scope: current thread only; does not propagate to worker processes or other threads.
+_thread_local = threading.local()
+
+
+def _get_model_override() -> str | None:
+    """Return the thread-local model override, if any."""
+    return getattr(_thread_local, "model_override", None)
+
+
+def _set_model_override(model: str | None) -> None:
+    """Set (or clear) the thread-local model override used by get_llm().
+
+    Used by the fallback chain in _kickoff_with_retry. Scoped to the current
+    thread; does not propagate to worker processes or async tasks in other threads.
+    """
+    _thread_local.model_override = model
 
 
 def ensure_openrouter_api_key() -> None:
@@ -65,8 +90,11 @@ def setup_observability() -> None:
         _langsmith_initialized = True
 
 
-def get_llm():
+def get_llm(model_name: str | None = None):
     """Return the configured LLM for agents. Requires OPENAI_API_KEY.
+
+    Args:
+        model_name: Override model (for fallback chain). Default uses primary.
 
     Returns:
         Configured LLM instance.
@@ -96,7 +124,7 @@ def get_llm():
             "replace placeholder values like 'your_openrouter_key' with a real key"
         )
 
-    model = llm_cfg.model_name.strip() or "gpt-4o-mini"
+    model = (model_name or _get_model_override() or llm_cfg.model_name or "gpt-4o-mini").strip()
 
     # Log LLM configuration
     logger.debug(
@@ -109,6 +137,11 @@ def get_llm():
         ensure_openrouter_api_key()
         return LLM(model=model, base_url=base, api_key=api_key)
     return LLM(model=model, api_key=api_key)
+
+
+def get_llm_fallback_chain() -> list[str]:
+    """Return model names for fallback strategy: primary → fallback1 → fallback2 → error."""
+    return get_settings().llm.get_fallback_chain()
 
 
 def get_model_name() -> str:

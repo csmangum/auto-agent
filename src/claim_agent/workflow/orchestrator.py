@@ -28,7 +28,7 @@ from claim_agent.observability import claim_context, get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
 from claim_agent.observability.tracing import LiteLLMTracingCallback
 from claim_agent.utils.sanitization import sanitize_claim_data
-from claim_agent.workflow.budget import _record_crew_llm_usage
+from claim_agent.workflow.budget import _record_crew_usage_delta
 from claim_agent.workflow.helpers import (
     _checkpoint_keys_to_invalidate,
     _final_status,
@@ -288,7 +288,13 @@ def run_claim_workflow(
                 duration_ms=workflow_duration,
             )
 
-            _record_crew_llm_usage(claim_id=claim_id, llm=ctx.llm, metrics=metrics)
+            _record_crew_usage_delta(
+                claim_id=claim_id,
+                llm=ctx.llm,
+                metrics=metrics,
+                crew="residual",
+                claim_type=wf_ctx.claim_type or None,
+            )
 
             metrics.end_claim(claim_id, status=final_status)
             record_claim_outcome(
@@ -322,7 +328,13 @@ def run_claim_workflow(
                 level=logging.ERROR,
             )
 
-            _record_crew_llm_usage(claim_id=claim_id, llm=ctx.llm, metrics=metrics)
+            _record_crew_usage_delta(
+                claim_id=claim_id,
+                llm=ctx.llm,
+                metrics=metrics,
+                crew="residual",
+                claim_type=getattr(wf_ctx, "claim_type", None) or None,
+            )
 
             metrics.end_claim(claim_id, status="error")
             record_claim_outcome(

@@ -1236,6 +1236,33 @@ class TestMetrics:
         resp = client.get("/api/metrics/CLM-TEST001", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 404
 
+    def test_cost_breakdown_adjuster_forbidden(self, client, monkeypatch):
+        """Adjuster gets 403 for /metrics/cost (supervisor+ only)."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+        resp = client.get("/api/metrics/cost", headers=_auth_headers("sk-adj"))
+        assert resp.status_code == 403
+
+    def test_cost_breakdown_supervisor_ok(self, client, monkeypatch):
+        """Supervisor can access /metrics/cost and response includes expected keys."""
+        monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+        resp = client.get("/api/metrics/cost", headers=_auth_headers("sk-sup"))
+        assert resp.status_code == 200
+        data = resp.json()
+        for key in ("global_stats", "by_crew", "by_claim_type", "daily"):
+            assert key in data, f"Expected key '{key}' missing from /metrics/cost response"
+
+    def test_cost_breakdown_admin_ok(self, client, monkeypatch):
+        """Admin can access /metrics/cost."""
+        monkeypatch.setenv("API_KEYS", "sk-admin:admin")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+        resp = client.get("/api/metrics/cost", headers=_auth_headers("sk-admin"))
+        assert resp.status_code == 200
+
 
 # -------------------------------------------------------------------
 # Documentation endpoints

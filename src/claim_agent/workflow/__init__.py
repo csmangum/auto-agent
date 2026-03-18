@@ -8,7 +8,6 @@ from claim_agent.exceptions import TokenBudgetExceeded
 from claim_agent.workflow.budget import (
     _check_token_budget,
     _get_llm_usage_snapshot,
-    _record_crew_llm_usage,
 )
 from claim_agent.workflow.claim_analysis import (
     _check_economic_total_loss,
@@ -93,7 +92,6 @@ __all__ = [
     "_normalize_claim_data",
     "_parse_claim_type",
     "_parse_router_output",
-    "_record_crew_llm_usage",
     "_requires_settlement",
     "_stage_escalation_check",
     "_stage_router",

@@ -65,6 +65,9 @@ db.sqlite3-journal
 # Claim agent SQLite DB
 data/claims.db
 
+# Attachment storage (runtime uploads; tests use tmp dirs via ATTACHMENT_STORAGE_PATH)
+data/attachments/
+
 # Downloaded corpus sources (large PDFs, zips, XML)
 data/corpus_sources/
 

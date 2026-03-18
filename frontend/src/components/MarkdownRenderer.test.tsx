@@ -158,10 +158,13 @@ describe('MarkdownRenderer', () => {
         configurable: true,
         writable: true,
       });
+      // jsdom lacks document.execCommand; suppress expected console.error
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       renderMd('```bash\nclaim-agent run\n```');
       const btn = screen.getByRole('button', { name: /copy to clipboard/i });
       // Should not throw
       expect(() => fireEvent.click(btn)).not.toThrow();
+      consoleSpy.mockRestore();
     });
   });
 });

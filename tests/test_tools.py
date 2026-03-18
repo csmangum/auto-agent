@@ -321,8 +321,12 @@ def test_search_california_compliance_ccr_reference():
 
 def test_search_california_compliance_missing_file_returns_error():
     from claim_agent.config import reload_settings
-    from claim_agent.tools.compliance_logic import search_california_compliance_impl
+    from claim_agent.tools.compliance_logic import (
+        _search_state_compliance_cached,
+        search_california_compliance_impl,
+    )
 
+    _search_state_compliance_cached.cache_clear()
     os.environ["CA_COMPLIANCE_PATH"] = "/nonexistent/california_auto_compliance.json"
     reload_settings()
     try:

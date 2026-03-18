@@ -10,6 +10,7 @@ import Skills from './pages/Skills';
 import SkillDetail from './pages/SkillDetail';
 import Agents from './pages/Agents';
 import SystemConfig from './pages/SystemConfig';
+import CostDashboard from './pages/CostDashboard';
 import Simulation from './pages/Simulation';
 import NotFound from './pages/NotFound';
 
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/skills" element={<Skills />} />
           <Route path="/skills/:name" element={<SkillDetail />} />
           <Route path="/agents" element={<Agents />} />
+          <Route path="/cost" element={<CostDashboard />} />
           <Route path="/system" element={<SystemConfig />} />
           <Route path="*" element={<NotFound />} />
         </Route>

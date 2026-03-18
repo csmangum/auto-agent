@@ -57,6 +57,8 @@ class LLMCallMetric:
     error: str | None = None
     agent: str | None = None
     task: str | None = None
+    crew: str | None = None
+    claim_type: str | None = None
 
 
 @dataclass
@@ -169,6 +171,8 @@ class ClaimMetrics:
         # Use RLock (reentrant lock) to allow nested lock acquisition
         self._lock = threading.RLock()
         self._claims: dict[str, dict[str, Any]] = {}
+        # Per-claim last LLM usage for delta-based per-crew recording
+        self._last_llm_usage: dict[str, tuple[int, int]] = {}
 
     def start_claim(self, claim_id: str) -> None:
         """Mark the start of claim processing."""
@@ -180,6 +184,8 @@ class ClaimMetrics:
                     "llm_calls": [],
                     "status": "processing",
                 }
+            # Reset delta baseline so re-runs start with a clean slate
+            self._last_llm_usage[claim_id] = (0, 0)
             logger.debug("Started tracking claim: %s", claim_id)
 
     def end_claim(self, claim_id: str, status: str = "completed") -> None:
@@ -188,7 +194,43 @@ class ClaimMetrics:
             if claim_id in self._claims:
                 self._claims[claim_id]["end_time"] = datetime.now(timezone.utc)
                 self._claims[claim_id]["status"] = status
+            # Clean up baseline to avoid unbounded growth
+            self._last_llm_usage.pop(claim_id, None)
             logger.debug("Finished tracking claim: %s with status: %s", claim_id, status)
+
+    def update_claim_type(self, claim_id: str, claim_type: str) -> None:
+        """Set claim type for cost attribution (called when router output is known)."""
+        with self._lock:
+            if claim_id in self._claims:
+                self._claims[claim_id]["claim_type"] = claim_type
+
+    def record_crew_usage_delta(
+        self,
+        claim_id: str,
+        current_prompt: int,
+        current_completion: int,
+        model: str,
+        crew: str,
+        claim_type: str | None = None,
+    ) -> None:
+        """Record token delta for a crew (for per-crew cost attribution).
+
+        Call after each crew kickoff. Uses stored last usage to compute delta.
+        """
+        with self._lock:
+            last = self._last_llm_usage.get(claim_id, (0, 0))
+            delta_prompt = max(0, current_prompt - last[0])
+            delta_completion = max(0, current_completion - last[1])
+            self._last_llm_usage[claim_id] = (current_prompt, current_completion)
+            if delta_prompt > 0 or delta_completion > 0:
+                self.record_llm_call(
+                    claim_id=claim_id,
+                    model=model,
+                    input_tokens=delta_prompt,
+                    output_tokens=delta_completion,
+                    crew=crew,
+                    claim_type=claim_type,
+                )
 
     def record_llm_call(
         self,
@@ -202,6 +244,8 @@ class ClaimMetrics:
         error: str | None = None,
         agent: str | None = None,
         task: str | None = None,
+        crew: str | None = None,
+        claim_type: str | None = None,
     ) -> None:
         """Record an LLM call metric.
 
@@ -216,6 +260,8 @@ class ClaimMetrics:
             error: Error message if status is "error"
             agent: Agent name (optional)
             task: Task name (optional)
+            crew: Crew name (e.g. router, partial_loss, total_loss)
+            claim_type: Claim type for cost attribution
         """
         # Calculate cost if not provided
         if cost_usd is None:
@@ -232,6 +278,8 @@ class ClaimMetrics:
             error=error,
             agent=agent,
             task=task,
+            crew=crew,
+            claim_type=claim_type,
         )
 
         # Ensure claim exists and append metric atomically under the metrics lock
@@ -240,6 +288,8 @@ class ClaimMetrics:
                 # Since we're using RLock, we can safely call start_claim from within the lock
                 self.start_claim(claim_id)
             self._claims[claim_id]["llm_calls"].append(metric)
+            if claim_type:
+                self._claims[claim_id]["claim_type"] = claim_type
 
         record_llm_tokens(input_tokens, output_tokens)
 
@@ -334,18 +384,111 @@ class ClaimMetrics:
                 "avg_cost_per_claim": 0.0,
                 "avg_tokens_per_claim": 0.0,
                 "avg_latency_per_claim_ms": 0.0,
+                "by_crew": {},
+                "by_claim_type": {},
             }
+
+        total_cost = sum(s.total_cost_usd for s in summaries)
+        total_tokens = sum(s.total_tokens for s in summaries)
+        by_crew = self.get_cost_by_crew()
+        by_claim_type = self.get_cost_by_claim_type()
 
         return {
             "total_claims": len(summaries),
             "total_llm_calls": sum(s.total_llm_calls for s in summaries),
-            "total_tokens": sum(s.total_tokens for s in summaries),
-            "total_cost_usd": sum(s.total_cost_usd for s in summaries),
-            "avg_cost_per_claim": sum(s.total_cost_usd for s in summaries) / len(summaries),
-            "avg_tokens_per_claim": sum(s.total_tokens for s in summaries) / len(summaries),
+            "total_tokens": total_tokens,
+            "total_cost_usd": total_cost,
+            "avg_cost_per_claim": total_cost / len(summaries),
+            "avg_tokens_per_claim": total_tokens / len(summaries),
             "avg_latency_per_claim_ms": (
                 sum(s.total_latency_ms for s in summaries) / len(summaries)
             ),
+            "by_crew": by_crew,
+            "by_claim_type": by_claim_type,
+        }
+
+    def get_cost_by_crew(self) -> dict[str, dict[str, Any]]:
+        """Aggregate cost and tokens by crew name."""
+        with self._lock:
+            result: dict[str, dict[str, float | int]] = {}
+            for claim_data in self._claims.values():
+                for m in claim_data.get("llm_calls", []):
+                    crew = getattr(m, "crew", None) or "unknown"
+                    if crew not in result:
+                        result[crew] = {
+                            "total_cost_usd": 0.0,
+                            "total_tokens": 0,
+                            "total_calls": 0,
+                        }
+                    result[crew]["total_cost_usd"] += m.cost_usd
+                    result[crew]["total_tokens"] += m.input_tokens + m.output_tokens
+                    result[crew]["total_calls"] += 1
+            return result
+
+    def get_cost_by_claim_type(self) -> dict[str, dict[str, Any]]:
+        """Aggregate cost and tokens by claim type."""
+        with self._lock:
+            result: dict[str, dict[str, float | int]] = {}
+            for claim_id, claim_data in self._claims.items():
+                claim_type = claim_data.get("claim_type") or "unknown"
+                if claim_type not in result:
+                    result[claim_type] = {
+                        "total_cost_usd": 0.0,
+                        "total_tokens": 0,
+                        "total_claims": 0,
+                        "total_calls": 0,
+                    }
+                for m in claim_data.get("llm_calls", []):
+                    result[claim_type]["total_cost_usd"] += m.cost_usd
+                    result[claim_type]["total_tokens"] += m.input_tokens + m.output_tokens
+                    result[claim_type]["total_calls"] += 1
+                result[claim_type]["total_claims"] += 1
+            return result
+
+    def get_cost_breakdown(self) -> dict[str, Any]:
+        """Full cost breakdown for dashboard: by crew, by claim type, daily totals."""
+        summaries = self.get_all_summaries()
+        by_crew = self.get_cost_by_crew()
+        by_claim_type = self.get_cost_by_claim_type()
+
+        # Daily aggregation (by claim start_time date)
+        daily: dict[str, dict[str, float | int]] = {}
+        with self._lock:
+            for claim_id, claim_data in self._claims.items():
+                start = claim_data.get("start_time")
+                if start:
+                    day = start.strftime("%Y-%m-%d")
+                    if day not in daily:
+                        daily[day] = {"total_cost_usd": 0.0, "total_tokens": 0, "claims": 0}
+                    for m in claim_data.get("llm_calls", []):
+                        daily[day]["total_cost_usd"] += m.cost_usd
+                        daily[day]["total_tokens"] += m.input_tokens + m.output_tokens
+                    daily[day]["claims"] += 1
+
+        total_cost = sum(s.total_cost_usd for s in summaries)
+        total_tokens = sum(s.total_tokens for s in summaries)
+
+        return {
+            "global_stats": {
+                "total_claims": len(summaries),
+                "total_llm_calls": sum(s.total_llm_calls for s in summaries),
+                "total_tokens": total_tokens,
+                "total_cost_usd": total_cost,
+                "avg_cost_per_claim": total_cost / len(summaries) if summaries else 0.0,
+                "avg_tokens_per_claim": total_tokens / len(summaries) if summaries else 0.0,
+                "avg_latency_per_claim_ms": (
+                    sum(s.total_latency_ms for s in summaries) / len(summaries)
+                    if summaries
+                    else 0.0
+                ),
+                "by_crew": by_crew,
+                "by_claim_type": by_claim_type,
+            },
+            "by_crew": by_crew,
+            "by_claim_type": by_claim_type,
+            "daily": daily,
+            "total_cost_usd": total_cost,
+            "total_tokens": total_tokens,
         }
 
     def export_json(self, claim_id: str | None = None) -> str:
