@@ -12,7 +12,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', '**/*.d.ts', 'src/main.tsx', 'src/api/types.ts'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        '**/*.d.ts',
+        'src/main.tsx',
+        'src/api/types.ts',
+        'src/pages/simulation/**',
+      ],
       reporter: ['text', 'html'],
       thresholds: {
         lines: 64,

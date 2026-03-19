@@ -26,12 +26,30 @@ import {
   getAllTasks,
   getTaskStats,
   getCostBreakdown,
+  getReviewQueue,
+  assignClaim,
+  getClaimPayments,
+  createPayment,
+  issuePayment,
+  clearPayment,
+  voidPayment,
+  getClaimDocuments,
+  uploadClaimDocument,
+  getDocumentRequests,
+  createDocumentRequest,
+  addClaimNote,
+  getOverdueTasks,
+  getComplianceTemplates,
+  updateClaimDocument,
 } from './client';
 import type {
   CostBreakdown,
   GetClaimsParams,
+  GetReviewQueueParams,
+  CreatePaymentPayload,
   PatchClaimReserveBody,
   PostClaimRepairStatusPayload,
+  UpdateDocumentBody,
 } from './client';
 
 export const queryKeys = {
@@ -55,6 +73,12 @@ export const queryKeys = {
   allTasks: (params?: Record<string, unknown>) => ['tasks', 'list', params ?? {}] as const,
   taskStats: ['tasks', 'stats'] as const,
   costBreakdown: ['metrics', 'cost'] as const,
+  reviewQueue: (params: GetReviewQueueParams) => ['claims', 'review-queue', params] as const,
+  claimPayments: (id: string) => ['claims', id, 'payments'] as const,
+  claimDocuments: (id: string) => ['claims', id, 'documents'] as const,
+  documentRequests: (id: string) => ['claims', id, 'document-requests'] as const,
+  overdueTasks: (limit: number) => ['tasks', 'overdue', limit] as const,
+  complianceTemplates: (state?: string) => ['diary', 'templates', state ?? ''] as const,
 };
 
 export function useClaimsStats() {
@@ -244,5 +268,196 @@ export function useCostBreakdown() {
   return useQuery<CostBreakdown>({
     queryKey: queryKeys.costBreakdown,
     queryFn: getCostBreakdown,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Review Queue
+// ---------------------------------------------------------------------------
+
+export function useReviewQueue(params: GetReviewQueueParams = {}) {
+  return useQuery({
+    queryKey: queryKeys.reviewQueue(params),
+    queryFn: () => getReviewQueue(params),
+  });
+}
+
+export function useAssignClaim() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ claimId, assignee }: { claimId: string; assignee: string }) =>
+      assignClaim(claimId, assignee),
+    onSuccess: (_, { claimId }) => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+      queryClient.invalidateQueries({ queryKey: ['claims', 'review-queue'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+export function useClaimPayments(claimId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.claimPayments(claimId ?? ''),
+    queryFn: () => getClaimPayments(claimId!),
+    enabled: !!claimId,
+  });
+}
+
+export function useCreatePayment(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreatePaymentPayload) => createPayment(claimId!, payload),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimPayments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
+  });
+}
+
+export function useIssuePayment(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paymentId, checkNumber }: { paymentId: number; checkNumber?: string }) =>
+      issuePayment(claimId!, paymentId, checkNumber ? { check_number: checkNumber } : undefined),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimPayments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
+  });
+}
+
+export function useClearPayment(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (paymentId: number) => clearPayment(claimId!, paymentId),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimPayments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
+  });
+}
+
+export function useVoidPayment(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paymentId, reason }: { paymentId: number; reason?: string }) =>
+      voidPayment(claimId!, paymentId, reason ? { reason } : undefined),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimPayments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Documents
+// ---------------------------------------------------------------------------
+
+export function useClaimDocuments(claimId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.claimDocuments(claimId ?? ''),
+    queryFn: () => getClaimDocuments(claimId!),
+    enabled: !!claimId,
+  });
+}
+
+export function useUploadDocument(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, documentType, receivedFrom }: {
+      file: File;
+      documentType?: string;
+      receivedFrom?: string;
+    }) => uploadClaimDocument(claimId!, file, {
+      document_type: documentType,
+      received_from: receivedFrom,
+    }),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimDocuments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
+  });
+}
+
+export function useUpdateDocument(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ docId, body }: { docId: number; body: UpdateDocumentBody }) =>
+      updateClaimDocument(claimId!, docId, body),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimDocuments(claimId) });
+      }
+    },
+  });
+}
+
+export function useDocumentRequests(claimId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.documentRequests(claimId ?? ''),
+    queryFn: () => getDocumentRequests(claimId!),
+    enabled: !!claimId,
+  });
+}
+
+export function useCreateDocumentRequest(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { document_type: string; requested_from?: string }) =>
+      createDocumentRequest(claimId!, body),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.documentRequests(claimId) });
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+export function useAddClaimNote(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ note, actorId }: { note: string; actorId: string }) =>
+      addClaimNote(claimId!, note, actorId),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Overdue Tasks & Compliance Templates
+// ---------------------------------------------------------------------------
+
+export function useOverdueTasks(limit = 100) {
+  return useQuery({
+    queryKey: queryKeys.overdueTasks(limit),
+    queryFn: () => getOverdueTasks(limit),
+  });
+}
+
+export function useComplianceTemplates(state?: string) {
+  return useQuery({
+    queryKey: queryKeys.complianceTemplates(state),
+    queryFn: () => getComplianceTemplates(state),
   });
 }

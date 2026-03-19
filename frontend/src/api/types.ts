@@ -332,3 +332,123 @@ export interface ChatStreamEvent {
   result?: unknown;
   message?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Payment types
+// ---------------------------------------------------------------------------
+
+export type PayeeType =
+  | "claimant"
+  | "repair_shop"
+  | "rental_company"
+  | "medical_provider"
+  | "lienholder"
+  | "attorney"
+  | "other";
+
+export type PaymentMethod = "check" | "ach" | "wire" | "card" | "other";
+
+export type PaymentStatusType = "authorized" | "issued" | "cleared" | "voided";
+
+export interface ClaimPayment {
+  id: number;
+  claim_id: string;
+  amount: number;
+  payee: string;
+  payee_type: PayeeType;
+  payment_method: PaymentMethod;
+  check_number?: string;
+  status: PaymentStatusType;
+  authorized_by: string;
+  issued_at?: string;
+  cleared_at?: string;
+  voided_at?: string;
+  void_reason?: string;
+  payee_secondary?: string;
+  payee_secondary_type?: PayeeType;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClaimPaymentList {
+  payments: ClaimPayment[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// ---------------------------------------------------------------------------
+// Document types
+// ---------------------------------------------------------------------------
+
+export interface ClaimDocument {
+  id: number;
+  claim_id: string;
+  storage_key: string;
+  document_type: string;
+  received_from?: string;
+  review_status: string;
+  privileged: boolean;
+  url?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ClaimDocumentList {
+  claim_id: string;
+  documents: ClaimDocument[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DocumentRequest {
+  id: number;
+  claim_id: string;
+  document_type: string;
+  requested_from?: string;
+  status: string;
+  received_at?: string;
+  created_at?: string;
+}
+
+export interface DocumentRequestList {
+  claim_id: string;
+  requests: DocumentRequest[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// ---------------------------------------------------------------------------
+// Review Queue types
+// ---------------------------------------------------------------------------
+
+export interface ReviewQueueResponse {
+  claims: Claim[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// ---------------------------------------------------------------------------
+// Overdue Tasks / Compliance Templates
+// ---------------------------------------------------------------------------
+
+export interface OverdueTasksResponse {
+  tasks: ClaimTask[];
+  total: number;
+}
+
+export interface ComplianceTemplate {
+  deadline_type: string;
+  title: string;
+  task_type: string;
+  description: string;
+  days: number;
+  state: string | null;
+}
+
+export interface ComplianceTemplatesResponse {
+  templates: ComplianceTemplate[];
+}
