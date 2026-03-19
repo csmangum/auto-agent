@@ -8,6 +8,7 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 - **Human-in-the-Loop** - Escalation for fraud indicators, high-value, or low-confidence claims (configurable thresholds)
 - **Seven Claim Types** - New, duplicate, total loss, fraud, partial loss, bodily injury, and reopened workflows
 - **Persistent State** - SQLite database with full audit trail
+- **Reserve Management** - Case reserves at FNOL, `reserve_history`, adjuster/supervisor authority limits, adequacy vs. estimate and payout (see [Database](docs/database.md), [Configuration](docs/configuration.md#reserve-management))
 - **Observability** - Structured logging, correlation IDs, LLM tracing (LangSmith/LiteLLM), cost and latency metrics
 - **Configuration** - Centralized settings for escalation, fraud, valuation, token budgets (see `.env.example`)
 - **Security & Resilience** - Input sanitization, parameterized DB queries, retry for transient LLM failures

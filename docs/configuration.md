@@ -87,6 +87,16 @@ Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `C
 
 See [PII and Retention](pii-and-retention.md) for full documentation.
 
+### Reserve management
+
+Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings. See [Database](database.md#reserve_history).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RESERVE_ADJUSTER_LIMIT` | `10000` | Maximum reserve amount an adjuster may set |
+| `RESERVE_SUPERVISOR_LIMIT` | `50000` | Maximum reserve for `supervisor` / `admin` roles |
+| `RESERVE_INITIAL_RESERVE_FROM_ESTIMATED_DAMAGE` | `true` | When true, FNOL creates an initial reserve from `estimated_damage` when present |
+
 Escalation, fraud detection, valuation, and partial-loss thresholds are also configurable via environment variables. See [Centralized Settings](#centralized-settings) and `.env.example` for the full list.
 
 ## LLM Configuration
