@@ -1044,6 +1044,28 @@ class ReserveBody(BaseModel):
     reason: str = Field(default="", max_length=500, description="Reason for change")
 
 
+class LitigationHoldBody(BaseModel):
+    """Request body for PATCH /claims/{claim_id}/litigation-hold."""
+
+    litigation_hold: bool = Field(..., description="True to set hold, False to clear")
+
+
+@router.patch("/claims/{claim_id}/litigation-hold", dependencies=[RequireAdjuster])
+def patch_claim_litigation_hold(
+    claim_id: str,
+    body: LitigationHoldBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Set or clear litigation hold. Claims with hold are excluded from retention and DSAR deletion."""
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        ctx.repo.set_litigation_hold(claim_id, body.litigation_hold, actor_id=actor_id)
+    except ClaimNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
+    return {"claim_id": claim_id, "litigation_hold": body.litigation_hold}
+
+
 @router.patch("/claims/{claim_id}/reserve", dependencies=[RequireAdjuster])
 def patch_claim_reserve(
     claim_id: str,

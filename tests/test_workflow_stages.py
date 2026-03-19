@@ -832,18 +832,16 @@ class TestStageFraudPrescreening:
 class TestStageDuplicateDetection:
     """Unit tests for _stage_duplicate_detection."""
 
+    @patch("claim_agent.workflow.stages.minimize_claim_data_for_crew")
     @patch("claim_agent.workflow.stages._check_for_duplicates")
-    @patch("claim_agent.utils.llm_data_minimization.get_settings")
-    def test_rebuilds_inputs_with_enriched_claim_data(self, mock_get_settings, mock_check, temp_db):
+    def test_rebuilds_inputs_with_enriched_claim_data(self, mock_check, mock_minimize, temp_db):
         """_stage_duplicate_detection rebuilds ctx.inputs with claim_data_with_id."""
         from claim_agent.context import ClaimContext
         from claim_agent.workflow.orchestrator import _WorkflowCtx
         from claim_agent.workflow.stages import _stage_duplicate_detection
 
         mock_check.return_value = []
-        mock_settings = MagicMock()
-        mock_settings.privacy.llm_data_minimization = False
-        mock_get_settings.return_value = mock_settings
+        mock_minimize.side_effect = lambda data, _: dict(data)
 
         ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_data = {"vin": "VIN123", "incident_description": "Hit", "damage_description": "Dent"}

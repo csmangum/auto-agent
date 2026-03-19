@@ -32,6 +32,7 @@ AUDIT_EVENT_PAYMENT_VOIDED = "payment_voided"
 AUDIT_EVENT_COVERAGE_VERIFICATION = "coverage_verification"
 AUDIT_EVENT_ACKNOWLEDGED = "ucspa_acknowledged"
 AUDIT_EVENT_DENIAL_LETTER = "denial_letter_sent"
+AUDIT_EVENT_LITIGATION_HOLD = "litigation_hold"
 
 # Actor identifiers for automated actions
 ACTOR_SYSTEM = "system"
@@ -67,4 +68,5 @@ AUDIT_EVENT_TYPES = (
     AUDIT_EVENT_COVERAGE_VERIFICATION,
     AUDIT_EVENT_ACKNOWLEDGED,
     AUDIT_EVENT_DENIAL_LETTER,
+    AUDIT_EVENT_LITIGATION_HOLD,
 )
