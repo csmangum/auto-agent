@@ -73,9 +73,9 @@ export default function WorkbenchDashboard() {
           color="red"
         />
         <StatCard
-          title="Completed Today"
+          title="Completed"
           value={loading ? '—' : (taskStats?.by_status?.['completed'] ?? 0)}
-          subtitle="Tasks completed"
+          subtitle="All-time completed tasks"
           icon="✅"
           color="green"
         />

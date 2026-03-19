@@ -77,7 +77,7 @@ export const queryKeys = {
   claimPayments: (id: string) => ['claims', id, 'payments'] as const,
   claimDocuments: (id: string) => ['claims', id, 'documents'] as const,
   documentRequests: (id: string) => ['claims', id, 'document-requests'] as const,
-  overdueTasks: ['tasks', 'overdue'] as const,
+  overdueTasks: (limit: number) => ['tasks', 'overdue', limit] as const,
   complianceTemplates: (state?: string) => ['diary', 'templates', state ?? ''] as const,
 };
 
@@ -445,7 +445,7 @@ export function useAddClaimNote(claimId: string | undefined) {
 
 export function useOverdueTasks(limit = 100) {
   return useQuery({
-    queryKey: queryKeys.overdueTasks,
+    queryKey: queryKeys.overdueTasks(limit),
     queryFn: () => getOverdueTasks(limit),
   });
 }
