@@ -349,15 +349,14 @@ function NotesTab({ notes, followUps, addNoteMutation }: NotesTabProps) {
 // ---------------------------------------------------------------------------
 
 const DOCUMENT_TYPES = [
-  'police_report', 'estimate', 'invoice', 'receipt', 'photo',
-  'medical_record', 'correspondence', 'legal', 'other',
+  'police_report', 'estimate', 'medical_record', 'photo', 'pdf', 'other',
 ];
 
-const REVIEW_STATUSES = ['pending', 'approved', 'rejected'];
+const REVIEW_STATUSES = ['pending', 'in_review', 'reviewed', 'rejected'];
 
 const DOC_TYPE_ICONS: Record<string, string> = {
-  police_report: '🚔', estimate: '📋', invoice: '🧾', receipt: '🧾',
-  photo: '🖼️', medical_record: '🏥', correspondence: '✉️', legal: '⚖️', other: '📎',
+  police_report: '🚔', estimate: '📋', photo: '🖼️',
+  medical_record: '🏥', pdf: '📄', other: '📎',
 };
 
 interface DocumentsTabProps {
@@ -616,8 +615,10 @@ function DocumentsTab({
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded ${
                   req.status === 'received' ? 'bg-emerald-500/20 text-emerald-400'
-                    : req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400'
-                      : 'bg-gray-500/20 text-gray-400'
+                    : req.status === 'requested' ? 'bg-blue-500/20 text-blue-400'
+                      : req.status === 'partial' ? 'bg-yellow-500/20 text-yellow-400'
+                        : req.status === 'overdue' ? 'bg-red-500/20 text-red-400'
+                          : 'bg-gray-500/20 text-gray-400'
                 }`}>
                   {req.status}
                 </span>
