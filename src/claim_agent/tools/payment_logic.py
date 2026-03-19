@@ -5,7 +5,7 @@ import json
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_db_path
 from claim_agent.db.payment_repository import PaymentRepository
-from claim_agent.exceptions import ClaimNotFoundError, PaymentAuthorityError
+from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 
 
@@ -20,7 +20,12 @@ def record_claim_payment_impl(
     payee_secondary_type: str | None = None,
     external_ref: str | None = None,
 ) -> str:
-    """Persist an authorized disbursement row. Uses workflow actor; respects authority unless skipped."""
+    """Persist an authorized disbursement row.
+
+    Uses ``ACTOR_WORKFLOW`` with authority checks skipped so settlement automation can record
+    planned disbursements without per-agent limits (see configuration docs). API-created payments
+    still enforce limits by actor/role.
+    """
     try:
         pt = PayeeType(payee_type)
         pm = PaymentMethod(payment_method)
@@ -69,8 +74,6 @@ def record_claim_payment_impl(
             skip_authority_check=True,
         )
     except ClaimNotFoundError as e:
-        return json.dumps({"success": False, "error": str(e)})
-    except PaymentAuthorityError as e:
         return json.dumps({"success": False, "error": str(e)})
 
     row = repo.get_payment(payment_id)

@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 
 import litellm
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from claim_agent.config.llm import get_llm
 from claim_agent.config.llm_protocol import LLMProtocol
@@ -137,12 +138,22 @@ def _maybe_record_workflow_settlement_payment(
         external_ref=ext_ref,
     )
     pay_repo = PaymentRepository(db_path=claim_repo.db_path)
-    pay_repo.create_payment(
-        pdata,
-        actor_id=ACTOR_WORKFLOW,
-        role="adjuster",
-        skip_authority_check=True,
-    )
+    try:
+        pay_repo.create_payment(
+            pdata,
+            actor_id=ACTOR_WORKFLOW,
+            role="adjuster",
+            skip_authority_check=True,
+        )
+    except (IntegrityError, OperationalError) as e:
+        logger.warning(
+            "Workflow settlement payment ledger insert failed (best-effort); continuing",
+            extra={
+                "claim_id": claim_id,
+                "workflow_run_id": workflow_run_id,
+                "error": str(e),
+            },
+        )
 
 
 def run_claim_workflow(

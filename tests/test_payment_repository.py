@@ -277,6 +277,19 @@ def test_create_payment_external_ref_recovers_after_unique_violation(seeded_db, 
 
     orig_gc = pr_mod.get_connection
 
+    class _ConnProxy:
+        __slots__ = ("_real", "_execute_fn")
+
+        def __init__(self, real_conn, execute_fn):
+            object.__setattr__(self, "_real", real_conn)
+            object.__setattr__(self, "_execute_fn", execute_fn)
+
+        def execute(self, statement, parameters=None, **kwargs):
+            return self._execute_fn(statement, parameters, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
     @contextmanager
     def flaky_gc(path=None):
         with orig_gc(path) as conn:
@@ -301,8 +314,7 @@ def test_create_payment_external_ref_recovers_after_unique_violation(seeded_db, 
                     return _Empty()
                 return orig_ex(statement, parameters, **kwargs)
 
-            conn.execute = wrapped_execute  # type: ignore[method-assign]
-            yield conn
+            yield _ConnProxy(conn, wrapped_execute)
 
     monkeypatch.setattr(pr_mod, "get_connection", flaky_gc)
     dup = ClaimPaymentCreate(

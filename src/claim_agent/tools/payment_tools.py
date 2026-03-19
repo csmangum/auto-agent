@@ -19,6 +19,8 @@ def record_claim_payment(
 ) -> str:
     """Create an authorized claim_payments row (disbursement ledger).
 
+    Recorded under the workflow actor with payment authority limits bypassed for automation.
+
     Use after the distribution plan is clear: one call per payee/amount (e.g. shop labor deposit,
     rental reimbursement, medical provider, settlement to claimant, two-party check with payee_secondary).
 
