@@ -326,6 +326,7 @@ export function useIssuePayment(claimId: string | undefined) {
     onSuccess: () => {
       if (claimId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.claimPayments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       }
     },
   });
@@ -338,6 +339,7 @@ export function useClearPayment(claimId: string | undefined) {
     onSuccess: () => {
       if (claimId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.claimPayments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       }
     },
   });
@@ -351,6 +353,7 @@ export function useVoidPayment(claimId: string | undefined) {
     onSuccess: () => {
       if (claimId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.claimPayments(claimId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       }
     },
   });

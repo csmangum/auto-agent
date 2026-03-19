@@ -546,7 +546,7 @@ function DocumentsTab({
               );
             })}
             {/* Legacy attachments not yet in documents table */}
-            {documents.length === 0 && attachments.map((att, i) => {
+            {attachments.map((att, i) => {
               const icon = DOC_TYPE_ICONS[att.type] ?? '📎';
               const filename = att.url.split('/').pop() ?? `Document ${i + 1}`;
               const safeHref = att.url.startsWith('http') || att.url.startsWith('/') ? att.url : '#';

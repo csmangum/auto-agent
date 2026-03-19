@@ -70,7 +70,8 @@ interface CalendarViewProps {
 function CalendarView({ tasks, year, month, onPrevMonth, onNextMonth }: CalendarViewProps) {
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfWeek(year, month);
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   // Group tasks by due_date
   const tasksByDate = useMemo(() => {
@@ -162,13 +163,21 @@ export default function DiaryCalendar() {
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
 
-  const params = {
-    limit: pageSize,
-    offset,
-    ...(statusFilter && { status: statusFilter }),
-    ...(typeFilter && { task_type: typeFilter }),
-    ...(assignedFilter && { assigned_to: assignedFilter }),
-  };
+  const params = view === 'calendar' 
+    ? {
+        limit: 1000,
+        offset: 0,
+        ...(statusFilter && { status: statusFilter }),
+        ...(typeFilter && { task_type: typeFilter }),
+        ...(assignedFilter && { assigned_to: assignedFilter }),
+      }
+    : {
+        limit: pageSize,
+        offset,
+        ...(statusFilter && { status: statusFilter }),
+        ...(typeFilter && { task_type: typeFilter }),
+        ...(assignedFilter && { assigned_to: assignedFilter }),
+      };
 
   const { data: tasksData, isLoading: tasksLoading } = useAllTasks(params);
   const { data: taskStats, isLoading: statsLoading } = useTaskStats();
@@ -179,7 +188,8 @@ export default function DiaryCalendar() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const templates = templatesData?.templates ?? [];
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   const handlePrevMonth = () => {
     if (calMonth === 0) {
