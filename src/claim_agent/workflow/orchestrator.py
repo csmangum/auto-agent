@@ -321,12 +321,18 @@ def run_claim_workflow(
                     payout_amount=wf_ctx.extracted_payout,
                     actor_id=_actor,
                 )
-                _maybe_record_workflow_settlement_payment(
-                    claim_id=claim_id,
-                    wf_ctx=wf_ctx,
-                    workflow_run_id=workflow_run_id,
-                    claim_repo=repo,
-                )
+                try:
+                    _maybe_record_workflow_settlement_payment(
+                        claim_id=claim_id,
+                        wf_ctx=wf_ctx,
+                        workflow_run_id=workflow_run_id,
+                        claim_repo=repo,
+                    )
+                except Exception as payment_err:
+                    logger.warning(
+                        "Failed to auto-record settlement payment, but workflow completed successfully",
+                        extra={"claim_id": claim_id, "error": str(payment_err)},
+                    )
 
             workflow_duration = (time.time() - workflow_start_time) * 1000
             logger.log_event(
