@@ -2723,3 +2723,34 @@ class TestProcessClaimAsyncEndpoint:
         assert data["claim_id"] == "CLM-TEST002"
         assert data["progress"] == []
         assert data["workflow_run_id"] is None
+
+
+class TestInvalidClaimTransitionErrorHandler:
+    """Issue #243: InvalidClaimTransitionError maps to 409 with structured fields."""
+
+    def test_returns_409_with_claim_transition_fields(self):
+        from claim_agent.api.server import create_app
+        from claim_agent.exceptions import InvalidClaimTransitionError
+
+        app = create_app()
+
+        @app.get("/__test_invalid_claim_transition")
+        def _raise_invalid_transition():
+            raise InvalidClaimTransitionError(
+                "CLM-T",
+                "open",
+                "closed",
+                "Cannot close claim without payout recorded",
+            )
+
+        tc = TestClient(app)
+        resp = tc.get("/__test_invalid_claim_transition")
+        assert resp.status_code == 409
+        data = resp.json()
+        assert data["claim_id"] == "CLM-T"
+        assert data["from_status"] == "open"
+        assert data["to_status"] == "closed"
+        assert data["reason"] == "Cannot close claim without payout recorded"
+        assert "CLM-T" in data["detail"]
+        assert "open" in data["detail"]
+        assert "closed" in data["detail"]
