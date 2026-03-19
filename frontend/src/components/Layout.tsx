@@ -22,6 +22,12 @@ const REFERENCE_NAV = [
   { to: '/system', label: 'System Config', icon: 'system' as NavIconKey },
 ];
 
+const WORKBENCH_NAV = [
+  { to: '/workbench', label: 'My Workbench', icon: 'workbench' as NavIconKey },
+  { to: '/workbench/queue', label: 'Assignment Queue', icon: 'queue' as NavIconKey },
+  { to: '/workbench/diary', label: 'Diary / Calendar', icon: 'diary' as NavIconKey },
+];
+
 const SIMULATION_NAV = [
   { to: '/simulate', label: 'Role Simulation', icon: 'simulate' as NavIconKey },
 ];
@@ -102,6 +108,7 @@ export default function Layout() {
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-6 overflow-y-auto">
           <NavSection label="Main" items={MAIN_NAV} onLinkClick={closeSidebar} />
+          <NavSection label="Workbench" items={WORKBENCH_NAV} onLinkClick={closeSidebar} />
           <NavSection label="Simulation" items={SIMULATION_NAV} onLinkClick={closeSidebar} />
           <NavSection label="Reference" items={REFERENCE_NAV} onLinkClick={closeSidebar} />
         </nav>

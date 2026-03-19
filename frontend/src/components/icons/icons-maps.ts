@@ -5,11 +5,13 @@ import {
   ClaimsIcon,
   CurrencyIcon,
   DashboardIcon,
+  DiaryIcon,
   DocsIcon,
   EscalationIcon,
   FraudIcon,
   PartialLossIcon,
   PlusIcon,
+  QueueIcon,
   RouterIcon,
   SearchIcon,
   SettlementIcon,
@@ -18,6 +20,7 @@ import {
   SubrogationIcon,
   SystemIcon,
   TotalLossIcon,
+  WorkbenchIcon,
   WorkflowIcon,
 } from './index';
 
@@ -31,6 +34,9 @@ export const NAV_ICONS = {
   system: SystemIcon,
   cost: CurrencyIcon,
   simulate: SimulationIcon,
+  workbench: WorkbenchIcon,
+  queue: QueueIcon,
+  diary: DiaryIcon,
 } as const;
 
 export const SKILL_GROUP_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {

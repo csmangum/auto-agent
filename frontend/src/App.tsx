@@ -12,6 +12,9 @@ import Agents from './pages/Agents';
 import SystemConfig from './pages/SystemConfig';
 import CostDashboard from './pages/CostDashboard';
 import Simulation from './pages/Simulation';
+import WorkbenchDashboard from './pages/WorkbenchDashboard';
+import AssignmentQueue from './pages/AssignmentQueue';
+import DiaryCalendar from './pages/DiaryCalendar';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -23,6 +26,9 @@ export default function App() {
           <Route path="/claims" element={<ClaimsList />} />
           <Route path="/claims/new" element={<NewClaimForm />} />
           <Route path="/claims/:claimId" element={<ClaimDetail />} />
+          <Route path="/workbench" element={<WorkbenchDashboard />} />
+          <Route path="/workbench/queue" element={<AssignmentQueue />} />
+          <Route path="/workbench/diary" element={<DiaryCalendar />} />
           <Route path="/simulate" element={<Simulation />} />
           <Route path="/docs" element={<Documentation />} />
           <Route path="/docs/:slug" element={<Documentation />} />

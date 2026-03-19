@@ -26,6 +26,15 @@ import type {
   ClaimTasksResponse,
   AllTasksResponse,
   TaskStatsResponse,
+  ClaimPayment,
+  ClaimPaymentList,
+  ClaimDocumentList,
+  ClaimDocument,
+  DocumentRequestList,
+  DocumentRequest,
+  ReviewQueueResponse,
+  OverdueTasksResponse,
+  ComplianceTemplatesResponse,
 } from './types';
 
 const BASE = '/api';
@@ -620,3 +629,193 @@ export const updateTask = (
   payload: UpdateTaskPayload
 ): Promise<ClaimTask> =>
   patchJSON<ClaimTask>(`/tasks/${taskId}`, payload);
+
+// ---------------------------------------------------------------------------
+// Review Queue
+// ---------------------------------------------------------------------------
+
+export interface GetReviewQueueParams {
+  assignee?: string;
+  priority?: string;
+  older_than_hours?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export const getReviewQueue = (params: GetReviewQueueParams = {}): Promise<ReviewQueueResponse> => {
+  const qs = new URLSearchParams();
+  if (params.assignee) qs.set('assignee', params.assignee);
+  if (params.priority) qs.set('priority', params.priority);
+  if (params.older_than_hours != null) qs.set('older_than_hours', String(params.older_than_hours));
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const q = qs.toString();
+  return fetchJSON<ReviewQueueResponse>(`/claims/review-queue${q ? '?' + q : ''}`);
+};
+
+export const assignClaim = (
+  claimId: string,
+  assignee: string
+): Promise<{ claim_id: string; assignee: string }> =>
+  patchJSON<{ claim_id: string; assignee: string }>(`/claims/${claimId}/assign`, { assignee });
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+export interface CreatePaymentPayload {
+  claim_id: string;
+  amount: number;
+  payee: string;
+  payee_type: string;
+  payment_method: string;
+  check_number?: string;
+  payee_secondary?: string;
+  payee_secondary_type?: string;
+}
+
+export const getClaimPayments = (
+  claimId: string,
+  params: { status?: string; limit?: number; offset?: number } = {}
+): Promise<ClaimPaymentList> => {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const q = qs.toString();
+  return fetchJSON<ClaimPaymentList>(`/claims/${claimId}/payments${q ? '?' + q : ''}`);
+};
+
+export const createPayment = (
+  claimId: string,
+  payload: CreatePaymentPayload
+): Promise<ClaimPayment> =>
+  postJSON<ClaimPayment>(`/claims/${claimId}/payments`, payload);
+
+export const issuePayment = (
+  claimId: string,
+  paymentId: number,
+  body?: { check_number?: string }
+): Promise<ClaimPayment> =>
+  postJSON<ClaimPayment>(`/claims/${claimId}/payments/${paymentId}/issue`, body ?? {});
+
+export const clearPayment = (
+  claimId: string,
+  paymentId: number
+): Promise<ClaimPayment> =>
+  postJSON<ClaimPayment>(`/claims/${claimId}/payments/${paymentId}/clear`, {});
+
+export const voidPayment = (
+  claimId: string,
+  paymentId: number,
+  body?: { reason?: string }
+): Promise<ClaimPayment> =>
+  postJSON<ClaimPayment>(`/claims/${claimId}/payments/${paymentId}/void`, body ?? {});
+
+// ---------------------------------------------------------------------------
+// Documents (structured documents, not raw attachments)
+// ---------------------------------------------------------------------------
+
+export const getClaimDocuments = (
+  claimId: string,
+  params: { document_type?: string; review_status?: string; limit?: number; offset?: number } = {}
+): Promise<ClaimDocumentList> => {
+  const qs = new URLSearchParams();
+  if (params.document_type) qs.set('document_type', params.document_type);
+  if (params.review_status) qs.set('review_status', params.review_status);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const q = qs.toString();
+  return fetchJSON<ClaimDocumentList>(`/claims/${claimId}/documents${q ? '?' + q : ''}`);
+};
+
+export async function uploadClaimDocument(
+  claimId: string,
+  file: File,
+  params: { document_type?: string; received_from?: string } = {}
+): Promise<{ claim_id: string; document_id: number; document: ClaimDocument }> {
+  const qs = new URLSearchParams();
+  if (params.document_type) qs.set('document_type', params.document_type);
+  if (params.received_from) qs.set('received_from', params.received_from);
+  const q = qs.toString();
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${BASE}/claims/${claimId}/documents${q ? '?' + q : ''}`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const msg = parseApiError(res.status, text);
+    throw new Error(msg);
+  }
+  return res.json() as Promise<{ claim_id: string; document_id: number; document: ClaimDocument }>;
+}
+
+export interface UpdateDocumentBody {
+  review_status?: string;
+  document_type?: string;
+  privileged?: boolean;
+  retention_date?: string;
+}
+
+export const updateClaimDocument = (
+  claimId: string,
+  docId: number,
+  body: UpdateDocumentBody
+): Promise<{ claim_id: string; document_id: number; document: ClaimDocument }> =>
+  patchJSON<{ claim_id: string; document_id: number; document: ClaimDocument }>(
+    `/claims/${claimId}/documents/${docId}`, body
+  );
+
+export const getDocumentRequests = (
+  claimId: string,
+  params: { status?: string; limit?: number; offset?: number } = {}
+): Promise<DocumentRequestList> => {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  const q = qs.toString();
+  return fetchJSON<DocumentRequestList>(`/claims/${claimId}/document-requests${q ? '?' + q : ''}`);
+};
+
+export const createDocumentRequest = (
+  claimId: string,
+  body: { document_type: string; requested_from?: string }
+): Promise<{ claim_id: string; request_id: number; request: DocumentRequest }> =>
+  postJSON<{ claim_id: string; request_id: number; request: DocumentRequest }>(
+    `/claims/${claimId}/document-requests`, body
+  );
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+export const addClaimNote = (
+  claimId: string,
+  note: string,
+  actorId: string
+): Promise<{ claim_id: string; actor_id: string }> =>
+  postJSON<{ claim_id: string; actor_id: string }>(`/claims/${claimId}/notes`, {
+    note,
+    actor_id: actorId,
+  });
+
+// ---------------------------------------------------------------------------
+// Overdue Tasks & Compliance Templates
+// ---------------------------------------------------------------------------
+
+export const getOverdueTasks = (limit = 100): Promise<OverdueTasksResponse> =>
+  fetchJSON<OverdueTasksResponse>(`/tasks/overdue?limit=${limit}`);
+
+export const getComplianceTemplates = (
+  state?: string
+): Promise<ComplianceTemplatesResponse> => {
+  const qs = state ? `?state=${encodeURIComponent(state)}` : '';
+  return fetchJSON<ComplianceTemplatesResponse>(`/diary/compliance-templates${qs}`);
+};
