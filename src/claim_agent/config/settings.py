@@ -168,6 +168,16 @@ def get_chat_config() -> dict:
     }
 
 
+def get_portal_config() -> dict:
+    """Claimant portal configuration."""
+    s = get_settings().portal
+    return {
+        "enabled": s.enabled,
+        "verification_mode": s.verification_mode,
+        "token_expiry_days": s.token_expiry_days,
+    }
+
+
 def get_mock_image_config() -> dict:
     """Mock image generator configuration."""
     s = get_settings().mock_image

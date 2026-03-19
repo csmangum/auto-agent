@@ -380,6 +380,22 @@ CREATE TABLE IF NOT EXISTS dsar_audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_dsar_audit_log_request_id ON dsar_audit_log(request_id);
 CREATE INDEX IF NOT EXISTS idx_dsar_audit_log_action ON dsar_audit_log(action);
+
+-- Claim access tokens: claimant portal magic-link style access
+CREATE TABLE IF NOT EXISTS claim_access_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    party_id INTEGER,
+    email TEXT,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    FOREIGN KEY (party_id) REFERENCES claim_parties(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_claim_id ON claim_access_tokens(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_token_hash ON claim_access_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_expires_at ON claim_access_tokens(expires_at);
 """
 
 

@@ -14,6 +14,8 @@ interface MessagesTabProps {
   senderLabel: string;
   emptyTitle?: string;
   emptyDescription?: string;
+  /** When provided, used instead of postClaimFollowUpResponse (e.g. for portal) */
+  onRespond?: (messageId: number, responseContent: string) => Promise<void>;
 }
 
 export default function MessagesTab({
@@ -23,6 +25,7 @@ export default function MessagesTab({
   senderLabel,
   emptyTitle = 'No messages',
   emptyDescription = 'No messages yet.',
+  onRespond: customRespond,
 }: MessagesTabProps) {
   const [responseText, setResponseText] = useState('');
   const [respondingTo, setRespondingTo] = useState<number | null>(null);
@@ -37,16 +40,19 @@ export default function MessagesTab({
     setSubmitting(true);
     setSubmitResult(null);
     try {
-      await postClaimFollowUpResponse(claimId, {
-        message_id: messageId,
-        response_content: responseText.trim(),
-      });
+      if (customRespond) {
+        await customRespond(messageId, responseText.trim());
+      } else {
+        await postClaimFollowUpResponse(claimId, {
+          message_id: messageId,
+          response_content: responseText.trim(),
+        });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.claimHistory(claimId) });
+      }
       setSubmitResult('Response submitted');
       setResponseText('');
       setRespondingTo(null);
-      
-      await queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.claimHistory(claimId) });
     } catch (err) {
       setSubmitResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {

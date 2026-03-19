@@ -36,6 +36,7 @@ from claim_agent.api.routes.tasks import router as tasks_router
 from claim_agent.api.routes.payments import router as payments_router
 from claim_agent.api.routes.webhooks import router as webhooks_router
 from claim_agent.api.routes.dsar import router as dsar_router
+from claim_agent.api.routes.portal import router as portal_router
 from claim_agent.config import get_settings
 from claim_agent.db.database import ensure_fresh_db_on_startup, _is_postgres
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
@@ -164,6 +165,11 @@ def _get_token(request: Request) -> str | None:
 _PUBLIC_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
 
 
+def _is_portal_path(path: str) -> bool:
+    """True if path is under /api/portal (uses claimant verification, not bearer auth)."""
+    return path.startswith("/api/portal")
+
+
 def _normalize_path(path: str) -> str:
     """Strip trailing slash for consistent path matching (e.g. /api/health/ -> /api/health)."""
     return path.rstrip("/") or "/"
@@ -188,7 +194,7 @@ async def rate_limit_middleware(request: Request, call_next):
 async def auth_middleware(request: Request, call_next):
     """Verify auth when configured. Set request.state.auth on success."""
     path = _normalize_path(request.url.path)
-    if not path.startswith("/api/") or path in _PUBLIC_PATHS:
+    if not path.startswith("/api/") or path in _PUBLIC_PATHS or _is_portal_path(path):
         return await call_next(request)
 
     if not is_auth_required():
@@ -257,6 +263,7 @@ app.include_router(tasks_router, prefix="/api")
 app.include_router(payments_router, prefix="/api")
 app.include_router(webhooks_router, prefix="/api")
 app.include_router(dsar_router, prefix="/api")
+app.include_router(portal_router, prefix="/api")
 
 
 # Serve frontend static files in production (when built)

@@ -57,6 +57,7 @@ from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.services.bi_allocation import allocate_bi_limits
+from claim_agent.services.portal_verification import create_claim_access_token
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.rag.constants import normalize_state
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
@@ -768,6 +769,45 @@ def update_party_consent(
         raise HTTPException(status_code=404, detail="Party not found")
     ctx.repo.update_claim_party(party_id, {"consent_status": body.consent_status})
     return {"claim_id": claim_id, "party_id": party_id, "consent_status": body.consent_status}
+
+
+class CreatePortalTokenBody(BaseModel):
+    """Optional party or email for the portal token."""
+
+    party_id: Optional[int] = Field(None, description="Claim party ID (claimant/policyholder)")
+    email: Optional[str] = Field(None, description="Email to associate with token")
+
+
+@router.post("/claims/{claim_id}/portal-token", dependencies=[RequireAdjuster])
+def create_portal_token(
+    claim_id: str,
+    body: CreatePortalTokenBody = Body(...),
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Create a claim access token for the claimant portal. Returns the raw token (send to claimant once)."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    if not get_settings().portal.enabled:
+        raise HTTPException(status_code=503, detail="Claimant portal is disabled")
+    email = body.email
+    party_id = body.party_id
+    if not email and party_id:
+        parties = ctx.repo.get_claim_parties(claim_id)
+        for p in parties:
+            if p.get("id") == party_id:
+                email = p.get("email")
+                break
+    if not email and not party_id:
+        parties = ctx.repo.get_claim_parties(claim_id)
+        for p in parties:
+            if p.get("party_type") in ("claimant", "policyholder") and p.get("email"):
+                email = p.get("email")
+                party_id = p.get("id")
+                break
+    token = create_claim_access_token(
+        claim_id, party_id=party_id, email=email
+    )
+    return {"claim_id": claim_id, "token": token}
 
 
 @router.get("/claims/{claim_id}/attachments/{key}", dependencies=[RequireAdjuster])
