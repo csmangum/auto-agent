@@ -82,6 +82,10 @@ claim-agent status CLM-11EEF959
 | `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention period |
 | `claim-agent retention-report [--years N]` | Retention audit report (counts by tier, litigation hold, pending archive) |
 | `claim-agent litigation-hold --claim-id X --on|--off` | Set or clear litigation hold on a claim |
+| `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
+| `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
+| `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
+| `claim-agent ucspa-deadlines [--days N] [--webhooks]` | Check UCSPA deadlines, optionally dispatch webhook alerts |
 
 ## Sample Claims
 
@@ -115,6 +119,7 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [Webhooks](docs/webhooks.md) | Outbound webhooks |
 | [Adapters](docs/adapters.md) | Pluggable integrations |
 | [Database](docs/database.md) | Schema and operations |
+| [State Machine](docs/state-machine.md) | Claim status transitions and guards |
 | [Configuration](docs/configuration.md) | Environment and centralized settings |
 | [Observability](docs/observability.md) | Logging, tracing, metrics |
 | [PII and Retention](docs/pii-and-retention.md) | PII masking and data retention |
@@ -130,15 +135,19 @@ src/claim_agent/
 ├── main.py           # CLI entry point
 ├── context.py        # Workflow context helpers
 ├── events.py         # Event definitions
+├── exceptions.py     # ClaimAgentError and domain exceptions
 ├── api/              # REST API (FastAPI routes, auth, deps)
 ├── config/           # LLM (llm.py) and centralized settings (settings.py)
 ├── agents/           # Agent definitions
 ├── crews/            # Crew definitions
 ├── skills/           # Agent prompts (markdown)
 ├── tools/            # CrewAI tools
-├── workflow/         # Orchestrators (claim_review, siu, supplemental, handback)
-├── services/         # Business logic services
+├── chat/             # Chat agent for claimant portal
+├── compliance/       # UCSPA and regulatory compliance
 ├── data/             # Data loaders
+├── diary/            # Diary/calendar system (auto-create, escalation)
+├── workflow/         # Orchestrators (claim_review, siu, supplemental, handback)
+├── services/         # Business logic services (adjuster, DSAR)
 ├── adapters/         # Policy, valuation, repair shop, parts, SIU adapters
 ├── mock_crew/        # Mock claimant, image gen, vision (testing)
 ├── rag/              # RAG pipeline (policy/compliance search)

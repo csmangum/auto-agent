@@ -134,11 +134,15 @@ pytest tests/integration/ -v -m "integration and not slow and not llm"
 
 | Command | Description |
 |---------|-------------|
-| `claim-agent process <file>` | Process claim from JSON |
+| `claim-agent process <file> [--attachment <file> ...]` | Process claim from JSON (optionally attach files) |
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get audit log |
-| `claim-agent reprocess <id>` | Re-run workflow |
+| `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from router, escalation_check, workflow, or settlement) |
 | `claim-agent metrics [id]` | Show metrics (optional claim ID) |
+| `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention |
+| `claim-agent retention-report [--years N]` | Retention audit report |
+
+See [docs/index.md](index.md) for the full CLI reference.
 
 ## Creating a Custom Claim
 

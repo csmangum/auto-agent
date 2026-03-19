@@ -34,9 +34,11 @@ flowchart LR
 - **[Adapters](adapters.md)** - Pluggable external-system integrations (policy, valuation, repair shops, parts, SIU)
 - **[RAG](rag.md)** - Retrieval-Augmented Generation for policy and compliance
 - **[Database](database.md)** - Schema and repository operations
+- **[State Machine](state-machine.md)** - Claim status transitions and guards
 - **[Configuration](configuration.md)** - Environment and LLM setup
 - **[Observability](observability.md)** - Logging, tracing, and metrics
 - **[PII and Retention](pii-and-retention.md)** - PII masking in logs and data retention enforcement
+- **[User Types](user-types.md)** - User types and follow-up agent for HITL flows
 - **[MCP Server](mcp-server.md)** - Optional external tool access
 
 ### Human-in-the-Loop and Operations
@@ -65,7 +67,13 @@ flowchart LR
 | `claim-agent reject <id> [--reason "..."]` | Reject claim |
 | `claim-agent request-info <id> [--note "..."]` | Request more info |
 | `claim-agent escalate-siu <id>` | Escalate to SIU |
-| `claim-agent retention-enforce [--dry-run] [--years N]` | Archive claims older than retention |
+| `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention |
+| `claim-agent retention-report [--years N]` | Retention audit report (counts by tier, litigation hold, pending archive) |
+| `claim-agent litigation-hold --claim-id X --on\|--off` | Set or clear litigation hold on a claim |
+| `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
+| `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
+| `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
+| `claim-agent ucspa-deadlines [--days N] [--webhooks]` | Check UCSPA deadlines, optionally dispatch webhook alerts |
 
 ### Claim Types at a Glance
 
