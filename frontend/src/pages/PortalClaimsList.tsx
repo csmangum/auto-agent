@@ -8,10 +8,20 @@ import { usePortal } from '../context/usePortal';
 
 export default function PortalClaimsList() {
   const navigate = useNavigate();
-  const { logout } = usePortal();
+  const { logout, session } = usePortal();
+
+  // Include a session identifier in the query key to prevent cross-session
+  // cache leakage when a different claimant logs in within the same tab.
+  const sessionKey =
+    session?.token ??
+    (session?.policyNumber && session?.vin
+      ? `${session.policyNumber}:${session.vin}`
+      : null) ??
+    session?.email ??
+    '';
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['portal', 'claims'],
+    queryKey: ['portal', 'claims', sessionKey],
     queryFn: () => portalApi.getClaims({ limit: 50 }),
   });
 

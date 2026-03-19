@@ -616,7 +616,7 @@ class PortalConfig(BaseSettings):
     )
 
     enabled: bool = Field(
-        default=True,
+        default=False,
         validation_alias="CLAIMANT_PORTAL_ENABLED",
         description="Enable claimant portal routes.",
     )

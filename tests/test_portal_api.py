@@ -14,6 +14,14 @@ def _use_seeded_db(seeded_temp_db):
 
 
 @pytest.fixture(autouse=True)
+def _enable_portal(monkeypatch):
+    """Enable the claimant portal for all portal API tests."""
+    monkeypatch.setenv("CLAIMANT_PORTAL_ENABLED", "true")
+    reload_settings()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _clear_rate_limit():
     """Clear rate limit buckets before each test to avoid 429 in CI."""
     from claim_agent.api.rate_limit import clear_rate_limit_buckets

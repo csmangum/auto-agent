@@ -69,7 +69,7 @@ def verify_claimant_access(
             if not token or not token.strip():
                 return None
             token_hash = _hash_token(token.strip())
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             row = conn.execute(
                 text("""
                     SELECT claim_id, party_id, email FROM claim_access_tokens
@@ -85,7 +85,12 @@ def verify_claimant_access(
             if row is None:
                 return None
             rec = row_to_dict(row)
-            identity = rec.get("email") or f"party-{rec.get('party_id')}" or "token"
+            party_id = rec.get("party_id")
+            identity = (
+                rec.get("email")
+                or (f"party-{party_id}" if party_id is not None else None)
+                or "token"
+            )
             return ClaimantContext(claim_id=claim_id, identity=str(identity))
 
         if mode == "policy_vin":
@@ -133,7 +138,7 @@ def create_claim_access_token(
     token_hash = _hash_token(raw_token)
     settings = get_settings()
     expiry_days = settings.portal.token_expiry_days
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=expiry_days)).isoformat()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
 
     path = db_path or get_db_path()
     with get_connection(path) as conn:
@@ -181,7 +186,7 @@ def get_claim_ids_for_claimant(
     with get_connection(path) as conn:
         if mode == "token" and token and token.strip():
             token_hash = _hash_token(token.strip())
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             rows = conn.execute(
                 text("""
                     SELECT claim_id FROM claim_access_tokens
