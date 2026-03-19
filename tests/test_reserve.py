@@ -291,17 +291,18 @@ def test_check_reserve_adequacy_uses_max_of_estimate_and_payout(temp_db):
         incident_date="2024-12-01",
         incident_description="Sideswipe",
         damage_description="Quarter panel",
-        estimated_damage=3000.0,
+        estimated_damage=7000.0,
     )
     claim_id = repo.create_claim(claim_input)
-    # FNOL reserve 3000 from estimated_damage
-    repo.update_claim_status(claim_id, STATUS_OPEN, payout_amount=6000.0, skip_validation=True)
+    # FNOL reserve 7000 from estimated_damage, then adjust to 5000
+    repo.adjust_reserve(claim_id, 5000.0, reason="Adjusted down", actor_id="workflow")
+    repo.update_claim_status(claim_id, STATUS_OPEN, payout_amount=4000.0, skip_validation=True)
 
     result = repo.check_reserve_adequacy(claim_id)
     assert result["adequate"] is False
-    assert result["reserve"] == 3000.0
-    assert result["estimated_damage"] == 3000.0
-    assert result["payout_amount"] == 6000.0
+    assert result["reserve"] == 5000.0
+    assert result["estimated_damage"] == 7000.0
+    assert result["payout_amount"] == 4000.0
 
 
 def test_check_reserve_adequacy_nonexistent_raises(temp_db):
