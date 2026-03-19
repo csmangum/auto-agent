@@ -11,6 +11,7 @@ from claim_agent.tools import (
     generate_report,
     get_claim_notes,
     get_compliance_deadlines,
+    record_claim_payment,
     search_policy_compliance,
 )
 from claim_agent.skills import (
@@ -68,7 +69,14 @@ def create_payment_distribution_agent(
     else:
         skill = load_skill(PAYMENT_DISTRIBUTION)
 
-    tools = [add_claim_note, calculate_payout, generate_report, get_claim_notes, escalate_claim]
+    tools = [
+        add_claim_note,
+        calculate_payout,
+        generate_report,
+        get_claim_notes,
+        escalate_claim,
+        record_claim_payment,
+    ]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
 
@@ -98,7 +106,14 @@ def create_settlement_closure_agent(
     else:
         skill = load_skill(SETTLEMENT_CLOSURE)
 
-    tools = [add_claim_note, generate_report, generate_claim_id, get_claim_notes, escalate_claim]
+    tools = [
+        add_claim_note,
+        generate_report,
+        generate_claim_id,
+        get_claim_notes,
+        escalate_claim,
+        record_claim_payment,
+    ]
     if use_rag:
         tools.extend([get_compliance_deadlines, search_policy_compliance])
 

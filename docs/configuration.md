@@ -97,6 +97,19 @@ Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_am
 | `RESERVE_SUPERVISOR_LIMIT` | `50000` | Maximum reserve for `supervisor` / `admin` roles |
 | `RESERVE_INITIAL_RESERVE_FROM_ESTIMATED_DAMAGE` | `true` | When true, FNOL creates an initial reserve from `estimated_damage` when present |
 
+### Disbursements / payment authority
+
+Individual payments are stored in `claim_payments` (see [Database](database.md#claim_payments)). Adjusters create and transition rows via `POST /api/claims/{claim_id}/payments` and related issue/clear/void endpoints, subject to per-role ceilings. Settlement agents may call the `record_claim_payment` tool (workflow actor, authority bypass for automation). When `PAYMENT_AUTO_RECORD_FROM_SETTLEMENT` is true, a successful main workflow with a positive `extracted_payout` also inserts one authorized row keyed by `workflow_settlement:{workflow_run_id}` (idempotent per run).
+
+**Avoid double-counting:** Do not enable `PAYMENT_AUTO_RECORD_FROM_SETTLEMENT` while settlement agents are also calling `record_claim_payment` for the same total settlement amount (you would get one aggregate auto row plus one or more tool rows). Choose one approach: either rely on the tool for itemized payees, or turn on auto-record for a single summary row per workflow run and keep agents from recording that same payout again.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PAYMENT_ADJUSTER_LIMIT` | `5000` | Max disbursement amount an adjuster may authorize in one row |
+| `PAYMENT_SUPERVISOR_LIMIT` | `25000` | Ceiling for `supervisor` role |
+| `PAYMENT_EXECUTIVE_LIMIT` | `100000` | Ceiling for `executive` / `admin` |
+| `PAYMENT_AUTO_RECORD_FROM_SETTLEMENT` | `false` | When true, auto-create one `claim_payments` row from settlement payout at workflow end (see note above on tool overlap) |
+
 Escalation, fraud detection, valuation, and partial-loss thresholds are also configurable via environment variables. See [Centralized Settings](#centralized-settings) and `.env.example` for the full list.
 
 ## LLM Configuration

@@ -261,6 +261,14 @@ class PaymentConfig(BaseSettings):
     adjuster_limit: float = 5000.0
     supervisor_limit: float = 25000.0
     executive_limit: float = 100000.0
+    auto_record_from_settlement: bool = False
+
+    @field_validator("auto_record_from_settlement", mode="before")
+    @classmethod
+    def _parse_payment_auto_record(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
 
     @field_validator(
         "adjuster_limit", "supervisor_limit", "executive_limit", mode="before"

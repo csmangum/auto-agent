@@ -47,6 +47,11 @@ class ClaimPaymentCreate(BaseModel):
     check_number: str | None = Field(default=None, max_length=100)
     payee_secondary: str | None = Field(default=None, max_length=500)
     payee_secondary_type: PayeeType | None = Field(default=None)
+    external_ref: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Optional idempotency key per claim (e.g. workflow_settlement:run_id)",
+    )
 
 
 class IssuePaymentBody(BaseModel):
@@ -79,6 +84,7 @@ class ClaimPayment(BaseModel):
     void_reason: str | None = None
     payee_secondary: str | None = None
     payee_secondary_type: PayeeType | None = None
+    external_ref: str | None = None
     created_at: str
     updated_at: str
 

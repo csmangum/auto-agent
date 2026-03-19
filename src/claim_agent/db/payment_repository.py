@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from claim_agent.config.settings import get_payment_config
 from claim_agent.db.audit_events import (
@@ -16,7 +17,12 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_PAYMENT_VOIDED,
 )
 from claim_agent.db.database import get_connection, row_to_dict
-from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, PaymentAuthorityError, PaymentNotFoundError
+from claim_agent.exceptions import (
+    ClaimNotFoundError,
+    DomainValidationError,
+    PaymentAuthorityError,
+    PaymentNotFoundError,
+)
 from claim_agent.models.payment import (
     ClaimPaymentCreate,
     PaymentStatus,
@@ -27,6 +33,25 @@ _STATUS_AUTHORIZED = PaymentStatus.AUTHORIZED.value
 _STATUS_ISSUED = PaymentStatus.ISSUED.value
 _STATUS_CLEARED = PaymentStatus.CLEARED.value
 _STATUS_VOIDED = PaymentStatus.VOIDED.value
+
+_EXTERNAL_REF_MAX = 200
+
+
+def settlement_payee_from_claim_data(claim_data: dict) -> str:
+    """Primary payee label for automated settlement disbursement rows."""
+    parties = claim_data.get("parties") or []
+    if isinstance(parties, list):
+        for pref in ("claimant", "policyholder"):
+            for p in parties:
+                if not isinstance(p, dict):
+                    continue
+                if (p.get("party_type") or "").lower() != pref:
+                    continue
+                name = (p.get("name") or "").strip()
+                if name:
+                    return name[:500]
+    return "Claimant"
+
 
 _VALID_TRANSITIONS: dict[str, set[str]] = {
     _STATUS_AUTHORIZED: {_STATUS_ISSUED, _STATUS_VOIDED},
@@ -85,6 +110,7 @@ class PaymentRepository:
             data.amount, actor_id, role=role, skip_authority_check=skip_authority_check
         )
         safe_actor = sanitize_actor_id(actor_id)
+        ext_ref = (data.external_ref or "").strip()[:_EXTERNAL_REF_MAX] or None
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text("SELECT id FROM claims WHERE id = :claim_id"),
@@ -92,43 +118,77 @@ class PaymentRepository:
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {data.claim_id}")
-            result = conn.execute(
-                text("""
-                INSERT INTO claim_payments
-                    (claim_id, amount, payee, payee_type, payment_method, check_number,
-                     status, authorized_by, payee_secondary, payee_secondary_type)
-                VALUES (:claim_id, :amount, :payee, :payee_type, :payment_method, :check_number,
-                        :status, :authorized_by, :payee_secondary, :payee_secondary_type)
-                RETURNING id
-                """),
-                {
-                    "claim_id": data.claim_id,
-                    "amount": data.amount,
-                    "payee": data.payee,
-                    "payee_type": data.payee_type.value,
-                    "payment_method": data.payment_method.value,
-                    "check_number": data.check_number,
-                    "status": _STATUS_AUTHORIZED,
-                    "authorized_by": safe_actor,
-                    "payee_secondary": data.payee_secondary,
-                    "payee_secondary_type": data.payee_secondary_type.value if data.payee_secondary_type else None,
-                },
-            )
-            rid = result.fetchone()
-            payment_id = int(rid[0]) if rid else 0
-            details = json.dumps({
-                "payment_id": payment_id,
+            if ext_ref is not None:
+                existing = conn.execute(
+                    text(
+                        "SELECT id FROM claim_payments WHERE claim_id = :claim_id "
+                        "AND external_ref = :external_ref"
+                    ),
+                    {"claim_id": data.claim_id, "external_ref": ext_ref},
+                ).fetchone()
+                if existing is not None:
+                    return int(existing[0])
+            insert_params = {
+                "claim_id": data.claim_id,
                 "amount": data.amount,
                 "payee": data.payee,
                 "payee_type": data.payee_type.value,
                 "payment_method": data.payment_method.value,
-            })
+                "check_number": data.check_number,
+                "status": _STATUS_AUTHORIZED,
+                "authorized_by": safe_actor,
+                "payee_secondary": data.payee_secondary,
+                "payee_secondary_type": data.payee_secondary_type.value
+                if data.payee_secondary_type
+                else None,
+                "external_ref": ext_ref,
+            }
+            insert_sql = text("""
+                INSERT INTO claim_payments
+                    (claim_id, amount, payee, payee_type, payment_method, check_number,
+                     status, authorized_by, payee_secondary, payee_secondary_type, external_ref)
+                VALUES (:claim_id, :amount, :payee, :payee_type, :payment_method, :check_number,
+                        :status, :authorized_by, :payee_secondary, :payee_secondary_type, :external_ref)
+                RETURNING id
+                """)
+            try:
+                result = conn.execute(insert_sql, insert_params)
+            except IntegrityError:
+                conn.rollback()
+                if ext_ref is None:
+                    raise
+                existing = conn.execute(
+                    text(
+                        "SELECT id FROM claim_payments WHERE claim_id = :claim_id "
+                        "AND external_ref = :external_ref"
+                    ),
+                    {"claim_id": data.claim_id, "external_ref": ext_ref},
+                ).fetchone()
+                if existing is not None:
+                    return int(existing[0])
+                raise
+            rid = result.fetchone()
+            payment_id = int(rid[0]) if rid else 0
+            details = json.dumps(
+                {
+                    "payment_id": payment_id,
+                    "amount": data.amount,
+                    "payee": data.payee,
+                    "payee_type": data.payee_type.value,
+                    "payment_method": data.payment_method.value,
+                }
+            )
             conn.execute(
                 text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
                 VALUES (:claim_id, :action, :details, :actor_id)
                 """),
-                {"claim_id": data.claim_id, "action": AUDIT_EVENT_PAYMENT_AUTHORIZED, "details": details, "actor_id": safe_actor},
+                {
+                    "claim_id": data.claim_id,
+                    "action": AUDIT_EVENT_PAYMENT_AUTHORIZED,
+                    "details": details,
+                    "actor_id": safe_actor,
+                },
             )
         return payment_id
 
@@ -222,7 +282,12 @@ class PaymentRepository:
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
                 VALUES (:claim_id, :action, :details, :actor_id)
                 """),
-                {"claim_id": claim_id, "action": AUDIT_EVENT_PAYMENT_ISSUED, "details": details, "actor_id": safe_actor},
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_PAYMENT_ISSUED,
+                    "details": details,
+                    "actor_id": safe_actor,
+                },
             )
             updated = conn.execute(
                 text("SELECT * FROM claim_payments WHERE id = :id"),
@@ -264,7 +329,12 @@ class PaymentRepository:
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
                 VALUES (:claim_id, :action, :details, :actor_id)
                 """),
-                {"claim_id": claim_id, "action": AUDIT_EVENT_PAYMENT_CLEARED, "details": details, "actor_id": safe_actor},
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_PAYMENT_CLEARED,
+                    "details": details,
+                    "actor_id": safe_actor,
+                },
             )
             updated = conn.execute(
                 text("SELECT * FROM claim_payments WHERE id = :id"),
@@ -308,7 +378,12 @@ class PaymentRepository:
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
                 VALUES (:claim_id, :action, :details, :actor_id)
                 """),
-                {"claim_id": claim_id, "action": AUDIT_EVENT_PAYMENT_VOIDED, "details": details, "actor_id": safe_actor},
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_PAYMENT_VOIDED,
+                    "details": details,
+                    "actor_id": safe_actor,
+                },
             )
             updated = conn.execute(
                 text("SELECT * FROM claim_payments WHERE id = :id"),

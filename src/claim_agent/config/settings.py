@@ -57,6 +57,7 @@ def get_payment_config() -> dict:
         "adjuster_limit": s.adjuster_limit,
         "supervisor_limit": s.supervisor_limit,
         "executive_limit": s.executive_limit,
+        "auto_record_from_settlement": s.auto_record_from_settlement,
     }
 
 

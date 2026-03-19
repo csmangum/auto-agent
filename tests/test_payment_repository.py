@@ -1,12 +1,14 @@
 """Tests for payment repository and payment workflow."""
 
+import json
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
 from claim_agent.db.database import init_db
-from claim_agent.db.payment_repository import PaymentRepository
+from claim_agent.db.payment_repository import PaymentRepository, settlement_payee_from_claim_data
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, PaymentAuthorityError
 from claim_agent.models.payment import (
     ClaimPaymentCreate,
@@ -30,6 +32,7 @@ def temp_db():
 @pytest.fixture
 def seeded_db(temp_db):
     import sqlite3
+
     conn = sqlite3.connect(temp_db)
     conn.execute(
         "INSERT INTO claims (id, policy_number, vin, status) VALUES (?, ?, ?, ?)",
@@ -190,3 +193,140 @@ def test_workflow_bypasses_authority(seeded_db):
     )
     pid = repo.create_payment(data, actor_id="workflow", skip_authority_check=True)
     assert pid > 0
+
+
+def test_create_payment_external_ref_idempotent(seeded_db):
+    repo = PaymentRepository(db_path=seeded_db)
+    data = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=100.0,
+        payee="A",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="idem-1",
+    )
+    pid1 = repo.create_payment(data, actor_id="adj-1", skip_authority_check=True)
+    data2 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=999.0,
+        payee="B",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="idem-1",
+    )
+    pid2 = repo.create_payment(data2, actor_id="adj-1", skip_authority_check=True)
+    assert pid1 == pid2
+    row = repo.get_payment(pid1)
+    assert row is not None
+    assert row["amount"] == 100.0
+    assert row["external_ref"] == "idem-1"
+
+
+def test_record_claim_payment_impl(monkeypatch, seeded_db):
+    from claim_agent.tools.payment_logic import record_claim_payment_impl
+
+    monkeypatch.setattr("claim_agent.tools.payment_logic.get_db_path", lambda: seeded_db)
+    raw = record_claim_payment_impl(
+        "CLM-TEST01",
+        200.0,
+        "Quick Fix Shop",
+        "repair_shop",
+        "ach",
+        external_ref="tool-1",
+    )
+    data = json.loads(raw)
+    assert data["success"] is True
+    assert data["payment_id"] > 0
+
+
+def test_settlement_payee_from_claim_data():
+    assert settlement_payee_from_claim_data({}) == "Claimant"
+    assert (
+        settlement_payee_from_claim_data(
+            {"parties": [{"party_type": "claimant", "name": "  Sam  "}]}
+        )
+        == "Sam"
+    )
+    assert (
+        settlement_payee_from_claim_data(
+            {
+                "parties": [
+                    {"party_type": "witness", "name": "W"},
+                    {"party_type": "policyholder", "name": "PH"},
+                ]
+            }
+        )
+        == "PH"
+    )
+
+
+def test_create_payment_external_ref_recovers_after_unique_violation(seeded_db, monkeypatch):
+    """Stale idempotency read then INSERT unique error: return existing row id."""
+    import claim_agent.db.payment_repository as pr_mod
+
+    repo = PaymentRepository(db_path=seeded_db)
+    base = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=77.0,
+        payee="Primary",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="stale-read-race",
+    )
+    pid1 = repo.create_payment(base, actor_id="a1", skip_authority_check=True)
+
+    orig_gc = pr_mod.get_connection
+
+    class _ConnProxy:
+        __slots__ = ("_real", "_execute_fn")
+
+        def __init__(self, real_conn, execute_fn):
+            object.__setattr__(self, "_real", real_conn)
+            object.__setattr__(self, "_execute_fn", execute_fn)
+
+        def execute(self, statement, parameters=None, **kwargs):
+            return self._execute_fn(statement, parameters, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    @contextmanager
+    def flaky_gc(path=None):
+        with orig_gc(path) as conn:
+            orig_ex = conn.execute
+            miss_once = {"due": True}
+
+            def wrapped_execute(statement, parameters=None, **kwargs):
+                sql = str(statement)
+                if (
+                    miss_once["due"]
+                    and "SELECT" in sql.upper()
+                    and "claim_payments" in sql
+                    and parameters
+                    and parameters.get("external_ref") == "stale-read-race"
+                ):
+                    miss_once["due"] = False
+
+                    class _Empty:
+                        def fetchone(self):
+                            return None
+
+                    return _Empty()
+                return orig_ex(statement, parameters, **kwargs)
+
+            yield _ConnProxy(conn, wrapped_execute)
+
+    monkeypatch.setattr(pr_mod, "get_connection", flaky_gc)
+    dup = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=999.0,
+        payee="Other",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="stale-read-race",
+    )
+    pid2 = repo.create_payment(dup, actor_id="a2", skip_authority_check=True)
+    assert pid1 == pid2
+    row = repo.get_payment(pid1)
+    assert row is not None
+    assert row["amount"] == 77.0

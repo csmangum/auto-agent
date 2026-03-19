@@ -97,6 +97,8 @@ __all__ = [
     "calculate_loss_of_earnings",
     "audit_medical_bills",
     "build_treatment_timeline",
+    # Payments ledger
+    "record_claim_payment",
     # After-action tools
     "close_claim",
     # Follow-up tools
@@ -420,6 +422,11 @@ def __getattr__(name: str):
         from claim_agent.tools.bodily_injury_tools import build_treatment_timeline
         setattr(mod, "build_treatment_timeline", build_treatment_timeline)
         return build_treatment_timeline
+    # Payments ledger
+    if name == "record_claim_payment":
+        from claim_agent.tools.payment_tools import record_claim_payment
+        setattr(mod, "record_claim_payment", record_claim_payment)
+        return record_claim_payment
     # After-action tools
     if name == "close_claim":
         from claim_agent.tools.status_tools import close_claim

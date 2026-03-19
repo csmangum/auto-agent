@@ -275,12 +275,14 @@ CREATE TABLE IF NOT EXISTS claim_payments (
     void_reason TEXT,
     payee_secondary TEXT,
     payee_secondary_type TEXT,
+    external_ref TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_claim_payments_claim_id ON claim_payments(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
@@ -658,6 +660,19 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_fraud_filings_claim_id ON fraud_report_filings(claim_id);
             CREATE INDEX IF NOT EXISTS idx_fraud_filings_filing_type ON fraud_report_filings(filing_type);
         """)
+    # claim_payments.external_ref + idempotency index (existing SQLite DBs pre-column)
+    try:
+        cursor = conn.execute("PRAGMA table_info(claim_payments)")
+        cp_columns = {row[1] for row in cursor.fetchall()}
+        if cp_columns and "external_ref" not in cp_columns:
+            conn.execute("ALTER TABLE claim_payments ADD COLUMN external_ref TEXT")
+        if cp_columns:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref "
+                "ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL"
+            )
+    except sqlite3.OperationalError:
+        pass
 
 
 def _run_schema(db_path: str) -> None:

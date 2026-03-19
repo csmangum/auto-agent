@@ -8,11 +8,16 @@ import uuid
 from dataclasses import dataclass, field
 
 import litellm
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from claim_agent.config.llm import get_llm
 from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
+from claim_agent.config import get_settings
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.db.payment_repository import PaymentRepository, settlement_payee_from_claim_data
+from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 from claim_agent.models.stage_outputs import (
     CoverageVerificationResult,
     DuplicateDetectionResult,
@@ -107,6 +112,48 @@ class _WorkflowCtx:
     duplicate_result: DuplicateDetectionResult | None = None
     router_result: RouterStageResult | None = None
     escalation_result: EscalationCheckResult | None = None
+
+
+def _maybe_record_workflow_settlement_payment(
+    *,
+    claim_id: str,
+    wf_ctx: _WorkflowCtx,
+    workflow_run_id: str,
+    claim_repo: ClaimRepository,
+) -> None:
+    """When enabled, create one authorized claim_payments row for extracted settlement payout."""
+    if not get_settings().payment.auto_record_from_settlement:
+        return
+    payout = wf_ctx.extracted_payout
+    if payout is None or payout <= 0:
+        return
+    payee = settlement_payee_from_claim_data(wf_ctx.claim_data_with_id)
+    ext_ref = f"workflow_settlement:{workflow_run_id}"
+    pdata = ClaimPaymentCreate(
+        claim_id=claim_id,
+        amount=float(payout),
+        payee=payee,
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref=ext_ref,
+    )
+    pay_repo = PaymentRepository(db_path=claim_repo.db_path)
+    try:
+        pay_repo.create_payment(
+            pdata,
+            actor_id=ACTOR_WORKFLOW,
+            role="adjuster",
+            skip_authority_check=True,
+        )
+    except (IntegrityError, OperationalError) as e:
+        logger.warning(
+            "Workflow settlement payment ledger insert failed (best-effort); continuing",
+            extra={
+                "claim_id": claim_id,
+                "workflow_run_id": workflow_run_id,
+                "error": str(e),
+            },
+        )
 
 
 def run_claim_workflow(
@@ -265,21 +312,38 @@ def run_claim_workflow(
             current_claim = repo.get_claim(claim_id)
             current_status = current_claim.get("status") if current_claim else None
             from claim_agent.db.constants import STATUS_CLOSED
+
             already_closed = current_status == STATUS_CLOSED
             if already_closed:
                 final_status = STATUS_CLOSED
             else:
                 final_status = _final_status(wf_ctx.claim_type)
-            repo.save_workflow_result(claim_id, wf_ctx.claim_type, wf_ctx.raw_output, wf_ctx.workflow_output)
+            repo.save_workflow_result(
+                claim_id, wf_ctx.claim_type, wf_ctx.raw_output, wf_ctx.workflow_output
+            )
             if not already_closed:
                 repo.update_claim_status(
                     claim_id,
                     final_status,
-                    details=wf_ctx.workflow_output[:500] if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
+                    details=wf_ctx.workflow_output[:500]
+                    if len(wf_ctx.workflow_output) > 500
+                    else wf_ctx.workflow_output,
                     claim_type=wf_ctx.claim_type,
                     payout_amount=wf_ctx.extracted_payout,
                     actor_id=_actor,
                 )
+                try:
+                    _maybe_record_workflow_settlement_payment(
+                        claim_id=claim_id,
+                        wf_ctx=wf_ctx,
+                        workflow_run_id=workflow_run_id,
+                        claim_repo=repo,
+                    )
+                except Exception as payment_err:
+                    logger.warning(
+                        "Failed to auto-record settlement payment, but workflow completed successfully",
+                        extra={"claim_id": claim_id, "error": str(payment_err)},
+                    )
 
             workflow_duration = (time.time() - workflow_start_time) * 1000
             logger.log_event(
@@ -297,9 +361,7 @@ def run_claim_workflow(
             )
 
             metrics.end_claim(claim_id, status=final_status)
-            record_claim_outcome(
-                claim_id, final_status, (time.time() - workflow_start_time)
-            )
+            record_claim_outcome(claim_id, final_status, (time.time() - workflow_start_time))
             metrics.log_claim_summary(claim_id)
 
             return {
@@ -309,14 +371,19 @@ def run_claim_workflow(
                 "router_output": wf_ctx.raw_output,
                 "workflow_output": wf_ctx.workflow_output,
                 "workflow_run_id": workflow_run_id,
-                "summary": wf_ctx.workflow_output[:500] + "..." if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
+                "summary": wf_ctx.workflow_output[:500] + "..."
+                if len(wf_ctx.workflow_output) > 500
+                else wf_ctx.workflow_output,
             }
         except Exception as e:
             details = str(e)
             if len(details) > 500:
                 details = details[:500] + "..."
             repo.update_claim_status(
-                claim_id, STATUS_FAILED, details=details, actor_id=_actor,
+                claim_id,
+                STATUS_FAILED,
+                details=details,
+                actor_id=_actor,
                 skip_validation=True,
             )
 
@@ -337,9 +404,7 @@ def run_claim_workflow(
             )
 
             metrics.end_claim(claim_id, status="error")
-            record_claim_outcome(
-                claim_id, "error", (time.time() - workflow_start_time)
-            )
+            record_claim_outcome(claim_id, "error", (time.time() - workflow_start_time))
             metrics.log_claim_summary(claim_id)
 
             raise
