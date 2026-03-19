@@ -128,4 +128,20 @@ describe('PolicySelect', () => {
     fireEvent.mouseDown(screen.getByTestId('outside'));
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
+
+  it('keyboard ArrowUp selects previous policy', () => {
+    const onChange = vi.fn();
+    render(
+      <PolicySelect
+        policies={mockPolicies}
+        value="POL-001"
+        onChange={onChange}
+      />
+    );
+    const button = screen.getByRole('button', { name: 'POL-001' });
+    fireEvent.keyDown(button, { key: 'ArrowDown' });
+    fireEvent.keyDown(button, { key: 'ArrowDown' });
+    fireEvent.keyDown(button, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith('POL-002');
+  });
 });

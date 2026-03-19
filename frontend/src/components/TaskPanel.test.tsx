@@ -175,4 +175,55 @@ describe('TaskPanel', () => {
       expect(mockUpdateTask).toHaveBeenCalledWith(1, { status: 'in_progress' });
     });
   });
+
+  it('Complete button calls updateTask with completed status', async () => {
+    render(
+      <Wrapper>
+        <TaskPanel claimId="CLM-001" tasks={mockTasks} />
+      </Wrapper>
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /expand request police report/i })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Complete' }));
+
+    await waitFor(() => {
+      expect(mockUpdateTask).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ status: 'completed' })
+      );
+    });
+  });
+
+  it('Block button calls updateTask with blocked status', async () => {
+    render(
+      <Wrapper>
+        <TaskPanel claimId="CLM-001" tasks={mockTasks} />
+      </Wrapper>
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /expand request police report/i })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Block' }));
+
+    await waitFor(() => {
+      expect(mockUpdateTask).toHaveBeenCalledWith(1, { status: 'blocked' });
+    });
+  });
+
+  it('Cancel button calls updateTask with cancelled status', async () => {
+    render(
+      <Wrapper>
+        <TaskPanel claimId="CLM-001" tasks={mockTasks} />
+      </Wrapper>
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /expand request police report/i })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(mockUpdateTask).toHaveBeenCalledWith(1, { status: 'cancelled' });
+    });
+  });
 });

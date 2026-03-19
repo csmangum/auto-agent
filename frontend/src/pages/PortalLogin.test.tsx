@@ -156,4 +156,38 @@ describe('PortalLogin', () => {
     expect(screen.getByPlaceholderText(/paste token/i)).toBeInTheDocument();
     expect(screen.getByDisplayValue('abc123')).toBeInTheDocument();
   });
+
+  it('successful token login calls getClaims', async () => {
+    render(
+      <Wrapper>
+        <PortalLogin />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByText('Access Token'));
+    fireEvent.change(screen.getByPlaceholderText(/paste token/i), {
+      target: { value: 'my-token-123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+
+    await waitFor(() => {
+      expect(mockGetClaims).toHaveBeenCalledWith({ limit: 1 });
+    });
+  });
+
+  it('shows Verifying when loading', async () => {
+    mockGetClaims.mockImplementation(() => new Promise((r) => setTimeout(r, 1000)));
+    render(
+      <Wrapper>
+        <PortalLogin />
+      </Wrapper>
+    );
+    fireEvent.change(screen.getByPlaceholderText('e.g. POL-12345'), {
+      target: { value: 'POL-123' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('17-character vehicle ID'), {
+      target: { value: '1HGBH41JXMN109186' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    expect(screen.getByRole('button', { name: 'Verifying...' })).toBeInTheDocument();
+  });
 });

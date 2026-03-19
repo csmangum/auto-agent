@@ -178,4 +178,82 @@ describe('PortalClaimDetail', () => {
     fireEvent.click(screen.getByText('Documents'));
     await screen.findByText(/estimate/);
   });
+
+  it('shows messages tab', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      follow_up_messages: [
+        {
+          id: 1,
+          claim_id: 'CLM-001',
+          user_type: 'claimant',
+          message_content: 'When will I get my check?',
+          status: 'responded',
+          created_at: '2025-01-16T10:00:00Z',
+        },
+      ],
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Messages'));
+    await screen.findByText(/When will I get my check/i);
+  });
+
+  it('shows payments tab with payments', async () => {
+    mockGetPayments.mockResolvedValue({
+      payments: [
+        {
+          id: 1,
+          amount: 4500,
+          payee: 'John Doe',
+          payee_type: 'claimant',
+          status: 'issued',
+          issued_at: '2025-01-20T10:00:00Z',
+        },
+      ],
+      total: 1,
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Payments'));
+    await screen.findByText('$4,500');
+  });
+
+  it('shows repair tab empty for non-partial-loss', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      claim_type: 'total_loss',
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Repair Status'));
+    await screen.findByText('Repair status not available');
+  });
+
+  it('shows dispute tab when cannot dispute', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      status: 'denied',
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Dispute'));
+    await screen.findByText('Disputes not available');
+  });
 });
