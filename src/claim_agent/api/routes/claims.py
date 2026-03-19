@@ -1151,7 +1151,10 @@ def get_claim_reserve_adequacy(
     claim_id: str,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
-    """Check reserve adequacy vs estimated_damage and payout_amount."""
+    """Check reserve adequacy vs estimated_damage and payout_amount.
+
+    Response includes ``warnings`` (human text) and ``warning_codes`` (stable ``RESERVE_*`` strings).
+    """
     try:
         result = ctx.repo.check_reserve_adequacy(claim_id)
     except ClaimNotFoundError:

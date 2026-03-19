@@ -89,7 +89,7 @@ See [PII and Retention](pii-and-retention.md) for full documentation.
 
 ### Reserve management
 
-Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings. See [Database](database.md#reserve_history).
+Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings. `GET /api/claims/{claim_id}/reserve/adequacy` compares the current reserve to the greater of positive `estimated_damage` and positive `payout_amount` (zeros are ignored) and returns `warnings` plus stable `warning_codes` (`RESERVE_NOT_SET`, `RESERVE_BELOW_ESTIMATE`, `RESERVE_BELOW_PAYOUT`, `RESERVE_BELOW_BENCHMARK`). See [Database](database.md#reserve_history).
 
 | Variable | Default | Description |
 |----------|---------|-------------|

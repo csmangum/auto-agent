@@ -42,6 +42,10 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_TASK_UPDATED,
 )
 from claim_agent.db.constants import (
+    RESERVE_ADEQUACY_CODE_BELOW_BENCHMARK,
+    RESERVE_ADEQUACY_CODE_BELOW_ESTIMATE,
+    RESERVE_ADEQUACY_CODE_BELOW_PAYOUT,
+    RESERVE_ADEQUACY_CODE_NOT_SET,
     STATUS_ARCHIVED,
     STATUS_CLOSED,
     STATUS_DENIED,
@@ -120,6 +124,71 @@ def _check_reserve_authority(
     limit = cfg["supervisor_limit"] if role in ("supervisor", "admin") else cfg["adjuster_limit"]
     if amount > limit:
         raise ReserveAuthorityError(amount, limit, actor_id, role)
+
+
+def _reserve_adequacy_details(
+    reserve_val: float | None,
+    est_val: float | None,
+    payout_val: float | None,
+) -> tuple[bool, list[str], list[str]]:
+    """Compute adequacy, human warnings, and stable warning_codes."""
+    warnings: list[str] = []
+    codes: list[str] = []
+
+    benchmark: float | None = None
+    if payout_val is not None and payout_val > 0:
+        benchmark = payout_val
+    if est_val is not None and est_val > 0:
+        benchmark = max(benchmark or 0, est_val)
+
+    if reserve_val is None:
+        if benchmark is not None and benchmark > 0:
+            warnings.append(
+                "No reserve set; reserve should be set for actuarial tracking",
+            )
+            codes.append(RESERVE_ADEQUACY_CODE_NOT_SET)
+        adequate = benchmark is None or benchmark <= 0
+        return adequate, warnings, codes
+
+    if benchmark is None or reserve_val >= benchmark:
+        return True, warnings, codes
+
+    below_estimate = (
+        est_val is not None
+        and est_val == benchmark
+        and (
+            payout_val is None
+            or payout_val <= 0
+            or payout_val < benchmark
+        )
+    )
+    below_payout_only = (
+        payout_val is not None
+        and payout_val == benchmark
+        and (est_val is None or est_val <= 0 or est_val < benchmark)
+    )
+    if below_estimate:
+        warnings.append(
+            f"Reserve ${reserve_val:,.2f} is below estimated damage ${benchmark:,.2f}",
+        )
+        codes.append(RESERVE_ADEQUACY_CODE_BELOW_ESTIMATE)
+    elif below_payout_only:
+        warnings.append(
+            f"Reserve ${reserve_val:,.2f} is below payout ${benchmark:,.2f}",
+        )
+        codes.append(RESERVE_ADEQUACY_CODE_BELOW_PAYOUT)
+    else:
+        parts = []
+        if est_val is not None:
+            parts.append(f"estimated damage ${est_val:,.2f}")
+        if payout_val is not None:
+            parts.append(f"payout ${payout_val:,.2f}")
+        suffix = f" ({', '.join(parts)})" if parts else ""
+        warnings.append(
+            f"Reserve ${reserve_val:,.2f} is below benchmark ${benchmark:,.2f}{suffix}",
+        )
+        codes.append(RESERVE_ADEQUACY_CODE_BELOW_BENCHMARK)
+    return False, warnings, codes
 
 
 def _is_claim_past_retention(
@@ -807,10 +876,14 @@ class ClaimRepository:
     def check_reserve_adequacy(self, claim_id: str) -> dict[str, Any]:
         """Check reserve adequacy vs estimated_damage and payout_amount.
 
+        Positive ``estimated_damage`` and ``payout_amount`` values contribute to the
+        benchmark (their maximum). Non-positive values are ignored.
+
         Returns:
-            adequate: True if reserve >= max(estimated_damage, payout or 0)
+            adequate: True if reserve >= benchmark (see above)
             reserve, estimated_damage, payout_amount: values from claim
-            warnings: list of adequacy warnings
+            warnings: human-readable adequacy messages
+            warning_codes: stable codes (``RESERVE_*`` from ``db.constants``)
         """
         claim = self.get_claim(claim_id)
         if claim is None:
@@ -821,48 +894,16 @@ class ClaimRepository:
         reserve_val = float(reserve) if reserve is not None else None
         est_val = float(estimated) if estimated is not None else None
         payout_val = float(payout) if payout is not None else None
-        warnings: list[str] = []
-        # Benchmark: reserve should be >= estimated_damage, and if payout is set, >= payout
-        benchmark = None
-        if payout_val is not None and payout_val > 0:
-            benchmark = payout_val
-        if est_val is not None and est_val > 0:
-            benchmark = max(benchmark or 0, est_val)
-        if reserve_val is None:
-            if benchmark is not None and benchmark > 0:
-                warnings.append("No reserve set; reserve should be set for actuarial tracking")
-            adequate = benchmark is None or benchmark <= 0
-        else:
-            if benchmark is not None and reserve_val < benchmark:
-                if est_val is not None and est_val == benchmark and (
-                    payout_val is None or payout_val <= 0 or payout_val < benchmark
-                ):
-                    warnings.append(
-                        f"Reserve ${reserve_val:,.2f} is below estimated damage ${benchmark:,.2f}"
-                    )
-                elif payout_val is not None and payout_val == benchmark and (
-                    est_val is None or est_val <= 0 or est_val < benchmark
-                ):
-                    warnings.append(
-                        f"Reserve ${reserve_val:,.2f} is below payout ${benchmark:,.2f}"
-                    )
-                else:
-                    parts = []
-                    if est_val is not None:
-                        parts.append(f"estimated damage ${est_val:,.2f}")
-                    if payout_val is not None:
-                        parts.append(f"payout ${payout_val:,.2f}")
-                    suffix = f" ({', '.join(parts)})" if parts else ""
-                    warnings.append(
-                        f"Reserve ${reserve_val:,.2f} is below benchmark ${benchmark:,.2f}{suffix}"
-                    )
-            adequate = benchmark is None or reserve_val >= benchmark
+        adequate, warnings, warning_codes = _reserve_adequacy_details(
+            reserve_val, est_val, payout_val
+        )
         return {
             "adequate": adequate,
             "reserve": reserve_val,
             "estimated_damage": est_val,
             "payout_amount": payout_val,
             "warnings": warnings,
+            "warning_codes": warning_codes,
         }
 
     def get_claim_history(
