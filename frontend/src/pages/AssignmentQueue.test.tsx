@@ -41,6 +41,8 @@ describe('AssignmentQueue', () => {
     vi.mocked(useAssignClaim).mockReturnValue({
       mutate: vi.fn(),
       isPending: false,
+      isError: false,
+      error: null,
     } as unknown as ReturnType<typeof useAssignClaim>);
   });
 
@@ -83,7 +85,7 @@ describe('AssignmentQueue', () => {
     render(<AssignmentQueue />, { wrapper: createWrapper() });
     const assignButtons = screen.getAllByText('Assign');
     fireEvent.click(assignButtons[0]);
-    expect(screen.getByPlaceholderText('Assignee ID')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Assignee ID (min 2 chars)')).toBeInTheDocument();
   });
 
   it('renders empty state when queue is empty', () => {

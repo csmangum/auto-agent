@@ -103,7 +103,7 @@ export default function CoverageSummary({ policyNumber, vin, claimType }: Covera
             }`}>
               <p className="text-xs text-gray-500">Bodily Injury (per accident)</p>
               <p className="text-lg font-bold text-gray-100 mt-1">
-                ${policy.liability_limits.bi_per_accident.toLocaleString()}
+                ${(policy.liability_limits?.bi_per_accident ?? 0).toLocaleString()}
               </p>
               {relevantCoverages.includes('liability_bi') && (
                 <p className="text-xs text-blue-400 mt-1">✓ Relevant to this claim</p>
@@ -116,7 +116,7 @@ export default function CoverageSummary({ policyNumber, vin, claimType }: Covera
             }`}>
               <p className="text-xs text-gray-500">Property Damage (per accident)</p>
               <p className="text-lg font-bold text-gray-100 mt-1">
-                ${policy.liability_limits.pd_per_accident.toLocaleString()}
+                ${(policy.liability_limits?.pd_per_accident ?? 0).toLocaleString()}
               </p>
             </div>
           )}
@@ -126,7 +126,7 @@ export default function CoverageSummary({ policyNumber, vin, claimType }: Covera
             }`}>
               <p className="text-xs text-gray-500">Collision Deductible</p>
               <p className="text-lg font-bold text-gray-100 mt-1">
-                ${policy.collision_deductible.toLocaleString()}
+                ${(policy.collision_deductible ?? 0).toLocaleString()}
               </p>
               {relevantCoverages.includes('collision') && (
                 <p className="text-xs text-blue-400 mt-1">✓ Relevant to this claim</p>
@@ -139,7 +139,7 @@ export default function CoverageSummary({ policyNumber, vin, claimType }: Covera
             }`}>
               <p className="text-xs text-gray-500">Comprehensive Deductible</p>
               <p className="text-lg font-bold text-gray-100 mt-1">
-                ${policy.comprehensive_deductible.toLocaleString()}
+                ${(policy.comprehensive_deductible ?? 0).toLocaleString()}
               </p>
               {relevantCoverages.includes('comprehensive') && (
                 <p className="text-xs text-blue-400 mt-1">✓ Relevant to this claim</p>
@@ -159,11 +159,11 @@ export default function CoverageSummary({ policyNumber, vin, claimType }: Covera
           <p className="text-sm text-gray-500">No vehicle details available.</p>
         ) : (
           <div className="space-y-3">
-            {policy.vehicles.map((v) => {
-              const isMatch = v.vin === vin;
+            {policy.vehicles.map((v, i) => {
+              const isMatch = v?.vin === vin;
               return (
                 <div
-                  key={v.vin}
+                  key={v?.vin ?? `vehicle-${i}`}
                   className={`rounded-lg p-3 ring-1 ${
                     isMatch
                       ? 'ring-blue-500/50 bg-blue-500/10'
@@ -173,9 +173,9 @@ export default function CoverageSummary({ policyNumber, vin, claimType }: Covera
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-gray-200">
-                        {v.vehicle_year} {v.vehicle_make} {v.vehicle_model}
+                        {v?.vehicle_year ?? '—'} {v?.vehicle_make ?? ''} {v?.vehicle_model ?? ''}
                       </p>
-                      <p className="text-xs font-mono text-gray-500 mt-0.5">VIN: {v.vin}</p>
+                      <p className="text-xs font-mono text-gray-500 mt-0.5">VIN: {v?.vin ?? '—'}</p>
                     </div>
                     {isMatch && (
                       <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded ring-1 ring-blue-500/30">

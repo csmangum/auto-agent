@@ -163,10 +163,18 @@ export default function DiaryCalendar() {
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
 
-  const params = view === 'calendar' 
+  // Calendar view: fetch tasks for displayed month only (date range limits result set)
+  const calFirstDay = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-01`;
+  const calLastDay = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(
+    new Date(calYear, calMonth + 1, 0).getDate()
+  ).padStart(2, '0')}`;
+
+  const params = view === 'calendar'
     ? {
-        limit: 1000,
+        limit: 500,
         offset: 0,
+        due_date_from: calFirstDay,
+        due_date_to: calLastDay,
         ...(statusFilter && { status: statusFilter }),
         ...(typeFilter && { task_type: typeFilter }),
         ...(assignedFilter && { assigned_to: assignedFilter }),

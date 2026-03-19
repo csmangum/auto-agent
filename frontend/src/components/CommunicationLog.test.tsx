@@ -131,8 +131,11 @@ describe('CommunicationLog', () => {
         auditEvents={mockAuditEvents}
       />
     );
-    // The most recent entry should be the follow-up from Jan 17
-    const entries = screen.getAllByText(/Note|Follow-up|System/);
-    expect(entries.length).toBeGreaterThan(0);
+    // Most recent is Jan 17 follow-up "Estimate ready for review"; it should appear before Jan 15/16 entries
+    const mostRecentContent = screen.getByText('Estimate ready for review');
+    const olderContent = screen.getByText('Initial contact with claimant');
+    expect(
+      mostRecentContent.compareDocumentPosition(olderContent) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 });

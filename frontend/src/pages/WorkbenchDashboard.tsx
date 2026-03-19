@@ -3,15 +3,7 @@ import PageHeader from '../components/PageHeader';
 import StatCard from '../components/StatCard';
 import { useReviewQueue, useOverdueTasks, useTaskStats } from '../api/queries';
 import { formatDateTime } from '../utils/date';
-
-const PRIORITY_ORDER = ['critical', 'high', 'medium', 'low'] as const;
-
-const PRIORITY_COLORS: Record<string, { bg: string; text: string; icon: string }> = {
-  critical: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '🔴' },
-  high: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '🟠' },
-  medium: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '🟡' },
-  low: { bg: 'bg-gray-500/20', text: 'text-gray-400', icon: '⚪' },
-};
+import { CLAIM_PRIORITY_ORDER, CLAIM_PRIORITY_STYLES } from '../constants/priority';
 
 const QUICK_ACTIONS = [
   { to: '/workbench/queue', label: 'Assignment Queue', icon: '📥', description: 'Review and assign claims' },
@@ -123,10 +115,10 @@ export default function WorkbenchDashboard() {
             </div>
           ) : (
             <div className="space-y-2">
-              {PRIORITY_ORDER.map((p) => {
+              {CLAIM_PRIORITY_ORDER.map((p) => {
                 const count = priorityCounts[p] ?? 0;
                 const pct = queueTotal > 0 ? (count / queueTotal) * 100 : 0;
-                const colors = PRIORITY_COLORS[p];
+                const colors = CLAIM_PRIORITY_STYLES[p];
                 return (
                   <div key={p} className="flex items-center gap-3">
                     <span className="text-sm w-5">{colors.icon}</span>
@@ -228,7 +220,7 @@ export default function WorkbenchDashboard() {
               <tbody className="divide-y divide-gray-800/50">
                 {queueClaims.slice(0, 10).map((claim) => {
                   const p = claim.priority ?? 'medium';
-                  const colors = PRIORITY_COLORS[p] ?? PRIORITY_COLORS.medium;
+                  const colors = CLAIM_PRIORITY_STYLES[p] ?? CLAIM_PRIORITY_STYLES.medium;
                   return (
                     <tr key={claim.id} className="hover:bg-gray-800/30 transition-colors">
                       <td className="px-3 py-2">

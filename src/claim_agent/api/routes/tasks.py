@@ -167,7 +167,9 @@ def list_all_tasks(
     status: Optional[str] = Query(None, description="Filter by task status"),
     task_type: Optional[str] = Query(None, description="Filter by task type"),
     assigned_to: Optional[str] = Query(None, description="Filter by assignee"),
-    limit: int = Query(100, ge=1, le=1000),
+    due_date_from: Optional[str] = Query(None, description="Filter tasks with due_date >= YYYY-MM-DD"),
+    due_date_to: Optional[str] = Query(None, description="Filter tasks with due_date <= YYYY-MM-DD"),
+    limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
@@ -177,9 +179,30 @@ def list_all_tasks(
         raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
     if task_type is not None and task_type not in VALID_TASK_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid task_type: {task_type}")
+    if due_date_from is not None and due_date_from.strip():
+        try:
+            datetime.fromisoformat(due_date_from.strip()).date()
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="due_date_from must be YYYY-MM-DD")
+    if due_date_to is not None and due_date_to.strip():
+        try:
+            datetime.fromisoformat(due_date_to.strip()).date()
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="due_date_to must be YYYY-MM-DD")
+    _due_from = due_date_from.strip() if due_date_from else None
+    _due_to = due_date_to.strip() if due_date_to else None
+    if _due_from == "":
+        _due_from = None
+    if _due_to == "":
+        _due_to = None
     tasks, total = ctx.repo.list_all_tasks(
-        status=status, task_type=task_type, assigned_to=assigned_to,
-        limit=limit, offset=offset,
+        status=status,
+        task_type=task_type,
+        assigned_to=assigned_to,
+        due_date_from=_due_from,
+        due_date_to=_due_to,
+        limit=limit,
+        offset=offset,
     )
     return {"tasks": tasks, "total": total, "limit": limit, "offset": offset}
 

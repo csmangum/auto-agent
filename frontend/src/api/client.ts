@@ -605,6 +605,8 @@ export const getAllTasks = (params: {
   status?: string;
   task_type?: string;
   assigned_to?: string;
+  due_date_from?: string;
+  due_date_to?: string;
   limit?: number;
   offset?: number;
 } = {}): Promise<AllTasksResponse> => {
@@ -612,6 +614,8 @@ export const getAllTasks = (params: {
   if (params.status) qs.set('status', params.status);
   if (params.task_type) qs.set('task_type', params.task_type);
   if (params.assigned_to) qs.set('assigned_to', params.assigned_to);
+  if (params.due_date_from) qs.set('due_date_from', params.due_date_from);
+  if (params.due_date_to) qs.set('due_date_to', params.due_date_to);
   if (params.limit != null) qs.set('limit', String(params.limit));
   if (params.offset != null) qs.set('offset', String(params.offset));
   const q = qs.toString();
@@ -729,11 +733,26 @@ export const getClaimDocuments = (
   return fetchJSON<ClaimDocumentList>(`/claims/${claimId}/documents${q ? '?' + q : ''}`);
 };
 
+const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB, must match backend
+const ALLOWED_DOCUMENT_EXTENSIONS = new Set([
+  'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'doc', 'docx', 'xls', 'xlsx',
+]);
+
 export async function uploadClaimDocument(
   claimId: string,
   file: File,
   params: { document_type?: string; received_from?: string } = {}
 ): Promise<{ claim_id: string; document_id: number; document: ClaimDocument }> {
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    throw new Error(`File exceeds maximum upload size of ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)} MB`);
+  }
+  const ext = (file.name.split('.').pop() ?? '').toLowerCase();
+  if (!ext || !ALLOWED_DOCUMENT_EXTENSIONS.has(ext)) {
+    throw new Error(
+      `File type not allowed. Allowed: ${[...ALLOWED_DOCUMENT_EXTENSIONS].sort().join(', ')}`
+    );
+  }
+
   const qs = new URLSearchParams();
   if (params.document_type) qs.set('document_type', params.document_type);
   if (params.received_from) qs.set('received_from', params.received_from);

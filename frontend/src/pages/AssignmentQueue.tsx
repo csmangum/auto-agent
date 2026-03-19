@@ -6,17 +6,9 @@ import TypeBadge from '../components/TypeBadge';
 import EmptyState from '../components/EmptyState';
 import { useReviewQueue, useAssignClaim } from '../api/queries';
 import { formatDateTime } from '../utils/date';
+import { CLAIM_PRIORITY_ORDER, CLAIM_PRIORITY_RANK, CLAIM_PRIORITY_STYLES } from '../constants/priority';
 
-const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;
-const PRIORITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 const PAGE_SIZES = [25, 50, 100];
-
-const PRIORITY_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
-  critical: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '🔴' },
-  high: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '🟠' },
-  medium: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '🟡' },
-  low: { bg: 'bg-gray-500/20', text: 'text-gray-400', icon: '⚪' },
-};
 
 const selectClasses =
   'border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors';
@@ -60,8 +52,8 @@ export default function AssignmentQueue() {
   const sortedClaims = useMemo(() => {
     const claims = data?.claims ?? [];
     return [...claims].sort((a, b) => {
-      const pa = PRIORITY_RANK[a.priority ?? 'medium'] ?? 2;
-      const pb = PRIORITY_RANK[b.priority ?? 'medium'] ?? 2;
+      const pa = CLAIM_PRIORITY_RANK[a.priority ?? 'medium'] ?? 2;
+      const pb = CLAIM_PRIORITY_RANK[b.priority ?? 'medium'] ?? 2;
       return pa - pb;
     });
   }, [data?.claims]);
@@ -89,10 +81,13 @@ export default function AssignmentQueue() {
     setPage(1);
   }, []);
 
+  const MIN_ASSIGNEE_LENGTH = 2;
+
   const handleAssign = (claimId: string) => {
-    if (!assigneeInput.trim()) return;
+    const trimmed = assigneeInput.trim();
+    if (!trimmed || trimmed.length < MIN_ASSIGNEE_LENGTH) return;
     assignMutation.mutate(
-      { claimId, assignee: assigneeInput.trim() },
+      { claimId, assignee: trimmed },
       {
         onSuccess: () => {
           setAssigningId(null);
@@ -126,7 +121,7 @@ export default function AssignmentQueue() {
           className={selectClasses}
         >
           <option value="">All Priorities</option>
-          {PRIORITIES.map((p) => (
+          {CLAIM_PRIORITY_ORDER.map((p) => (
             <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
           ))}
         </select>
@@ -213,7 +208,7 @@ export default function AssignmentQueue() {
               <tbody className="divide-y divide-gray-800/50">
                 {sortedClaims.map((claim) => {
                   const p = claim.priority ?? 'medium';
-                  const ps = PRIORITY_STYLES[p] ?? PRIORITY_STYLES.medium;
+                  const ps = CLAIM_PRIORITY_STYLES[p] ?? CLAIM_PRIORITY_STYLES.medium;
                   const isAssigning = assigningId === claim.id;
 
                   return (
@@ -241,32 +236,41 @@ export default function AssignmentQueue() {
                       </td>
                       <td className="px-4 py-3">
                         {isAssigning ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={assigneeInput}
-                              onChange={(e) => setAssigneeInput(e.target.value)}
-                              placeholder="Assignee ID"
-                              className="w-28 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleAssign(claim.id);
-                                if (e.key === 'Escape') { setAssigningId(null); setAssigneeInput(''); }
-                              }}
-                            />
-                            <button
-                              onClick={() => handleAssign(claim.id)}
-                              disabled={assignMutation.isPending || !assigneeInput.trim()}
-                              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 transition-colors"
-                            >
-                              {assignMutation.isPending ? '…' : '✓'}
-                            </button>
-                            <button
-                              onClick={() => { setAssigningId(null); setAssigneeInput(''); }}
-                              className="px-1 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                            >
-                              ✕
-                            </button>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={assigneeInput}
+                                onChange={(e) => setAssigneeInput(e.target.value)}
+                                placeholder="Assignee ID (min 2 chars)"
+                                aria-label="Assignee ID"
+                                className="w-28 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleAssign(claim.id);
+                                  if (e.key === 'Escape') { setAssigningId(null); setAssigneeInput(''); }
+                                }}
+                              />
+                              <button
+                                onClick={() => handleAssign(claim.id)}
+                                disabled={assignMutation.isPending || assigneeInput.trim().length < MIN_ASSIGNEE_LENGTH}
+                                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 transition-colors"
+                              >
+                                {assignMutation.isPending ? '…' : '✓'}
+                              </button>
+                              <button
+                                onClick={() => { setAssigningId(null); setAssigneeInput(''); }}
+                                aria-label="Cancel assignment"
+                                className="px-1 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {assignMutation.isError && (
+                              <p className="text-xs text-red-400">
+                                {assignMutation.error instanceof Error ? assignMutation.error.message : 'Assignment failed'}
+                              </p>
+                            )}
                           </div>
                         ) : (
                           <button

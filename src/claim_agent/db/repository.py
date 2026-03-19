@@ -2734,6 +2734,8 @@ class ClaimRepository:
         status: str | None = None,
         task_type: str | None = None,
         assigned_to: str | None = None,
+        due_date_from: str | None = None,
+        due_date_to: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -2749,6 +2751,12 @@ class ClaimRepository:
         if assigned_to is not None:
             conditions.append("ct.assigned_to = :assigned_to")
             params["assigned_to"] = assigned_to
+        if due_date_from is not None:
+            conditions.append("ct.due_date >= :due_date_from")
+            params["due_date_from"] = due_date_from
+        if due_date_to is not None:
+            conditions.append("ct.due_date <= :due_date_to")
+            params["due_date_to"] = due_date_to
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         with get_connection(self._db_path) as conn:
             count_row = conn.execute(

@@ -287,8 +287,10 @@ export function useAssignClaim() {
   return useMutation({
     mutationFn: ({ claimId, assignee }: { claimId: string; assignee: string }) =>
       assignClaim(claimId, assignee),
-    onSuccess: () => {
+    onSuccess: (_, { claimId }) => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
+      queryClient.invalidateQueries({ queryKey: ['claims', 'review-queue'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
     },
   });
 }
