@@ -137,7 +137,7 @@ pytest tests/integration/ -v -m "integration and not slow and not llm"
 | `claim-agent process <file> [--attachment <file> ...]` | Process claim from JSON (optionally attach files) |
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get audit log |
-| `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from router, escalation_check, workflow, or settlement) |
+| `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from a stage: `coverage_verification`, `economic_analysis`, `fraud_prescreening`, `duplicate_detection`, `router`, `escalation_check`, `workflow`, `task_creation`, `rental`, `liability_determination`, `settlement`, `subrogation`, `salvage`, `after_action`) |
 | `claim-agent metrics [id]` | Show metrics (optional claim ID) |
 | `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention |
 | `claim-agent retention-report [--years N]` | Retention audit report |
