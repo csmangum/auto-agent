@@ -7,7 +7,7 @@ The claim lifecycle is enforced by a formal state machine in `src/claim_agent/db
 | From | Valid To |
 |------|----------|
 | pending | processing, open, needs_review, fraud_suspected |
-| processing | open, duplicate, settled, fraud_suspected, needs_review, failed, under_investigation |
+| processing | open, duplicate, denied, settled, fraud_suspected, needs_review, failed, under_investigation |
 | open | settled, disputed, needs_review, closed, processing, denied |
 | needs_review | processing, denied, pending_info, under_investigation, closed |
 | denied | needs_review, closed |
