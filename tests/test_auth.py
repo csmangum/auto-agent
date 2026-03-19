@@ -37,6 +37,7 @@ class TestVerifyToken:
         assert ctx2.role == "supervisor"
 
     def test_claims_api_key_fallback(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.setenv("CLAIMS_API_KEY", "legacy-key")
         reload_settings()
         ctx = verify_token("legacy-key")
