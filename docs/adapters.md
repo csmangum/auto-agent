@@ -139,6 +139,9 @@ Adapter selection is controlled by environment variables. Each defaults to `mock
 | `REPAIR_SHOP_ADAPTER` | `mock`, `stub` | `mock` | Repair shop network backend |
 | `PARTS_ADAPTER` | `mock`, `stub` | `mock` | Parts catalog backend |
 | `SIU_ADAPTER` | `mock`, `stub` | `mock` | SIU case management backend |
+| `CLAIM_SEARCH_ADAPTER` | `mock`, `stub` | `mock` | Claim search backend (fraud cross-reference) |
+| `VISION_ADAPTER` | `real`, `mock` | `real` | Vision analysis (litellm or claim-context derived) |
+| `OCR_ADAPTER` | `mock`, `stub` | `mock` | OCR for document extraction |
 
 ### REST Policy Adapter
 

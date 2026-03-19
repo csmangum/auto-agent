@@ -35,10 +35,19 @@ Unit tests use a venv; no API key needed for unit/integration/E2E tests (LLM is 
 ```
 src/claim_agent/
 ├── main.py           # CLI entry point (claim-agent)
+├── context.py        # ClaimContext for CLI/API
+├── events.py         # Event handling
+├── exceptions.py     # ClaimAgentError and domain exceptions
 ├── api/              # FastAPI routes, auth, deps
 ├── config/           # LLM (llm.py), settings (settings.py)
 ├── agents/           # Agent definitions
+├── chat/             # Chat agent for claimant portal
+├── compliance/       # UCSPA and regulatory compliance
 ├── crews/            # Crew definitions (router, workflows)
+├── data/             # Data loaders
+├── diary/            # Diary/calendar system (auto-create, escalation)
+├── workflow/         # Orchestration, routing, escalation
+├── services/         # Business logic services (adjuster, DSAR)
 ├── skills/           # Agent prompts (markdown)
 ├── tools/            # CrewAI tools
 ├── adapters/         # Policy, valuation, repair, parts, SIU

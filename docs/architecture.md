@@ -220,9 +220,11 @@ src/claim_agent/
 ├── main.py              # CLI entry point
 ├── context.py           # ClaimContext for CLI/API
 ├── events.py            # Event handling
+├── exceptions.py        # ClaimAgentError and domain exceptions
 ├── api/                 # REST API (FastAPI routes, auth, deps)
 ├── config/              # LLM and configuration
 │   ├── llm.py           # LLM configuration
+│   ├── llm_protocol.py  # LLM protocol abstraction
 │   ├── settings.py      # Centralized settings (escalation, fraud, valuation, token budgets)
 │   ├── settings_model.py # Pydantic settings models
 │   ├── agents.yaml      # CrewAI agent role/goal/backstory definitions
@@ -233,10 +235,13 @@ src/claim_agent/
 │   ├── stub.py          # Stub adapters (NotImplementedError placeholders)
 │   └── mock/            # Mock adapters backed by mock_db.json
 ├── agents/              # Agent factory functions
+├── chat/                # Chat agent for claimant portal / conversational UI
+├── compliance/          # UCSPA and regulatory compliance (deadlines, etc.)
 ├── crews/               # Crew definitions
-├── workflow/            # Orchestration, routing, escalation (run_claim_workflow)
-├── services/            # Business logic services (e.g. adjuster actions)
 ├── data/                # Data loaders
+├── diary/               # Diary/calendar system (auto-create, escalation)
+├── workflow/            # Orchestration, routing, escalation (run_claim_workflow)
+├── services/            # Business logic services (adjuster actions, DSAR, etc.)
 ├── skills/              # Agent prompt definitions (markdown)
 │   ├── __init__.py      # Skill loading utilities
 │   └── *.md             # Individual agent skills

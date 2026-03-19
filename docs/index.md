@@ -34,9 +34,11 @@ flowchart LR
 - **[Adapters](adapters.md)** - Pluggable external-system integrations (policy, valuation, repair shops, parts, SIU)
 - **[RAG](rag.md)** - Retrieval-Augmented Generation for policy and compliance
 - **[Database](database.md)** - Schema and repository operations
+- **[State Machine](state-machine.md)** - Claim status transitions and guards
 - **[Configuration](configuration.md)** - Environment and LLM setup
 - **[Observability](observability.md)** - Logging, tracing, and metrics
 - **[PII and Retention](pii-and-retention.md)** - PII masking in logs and data retention enforcement
+- **[User Types](user-types.md)** - User types and follow-up agent for HITL flows
 - **[MCP Server](mcp-server.md)** - Optional external tool access
 
 ### Human-in-the-Loop and Operations
@@ -57,7 +59,7 @@ flowchart LR
 | `claim-agent process <claim.json> [--attachment <file> ...]` | Process a new claim (optionally attach photos, PDFs, estimates) |
 | `claim-agent status <claim_id>` | Get claim status |
 | `claim-agent history <claim_id>` | Get claim audit log |
-| `claim-agent reprocess <claim_id> [--from-stage <stage>]` | Re-run workflow (optionally resume from router, escalation_check, workflow, or settlement) |
+| `claim-agent reprocess <claim_id> [--from-stage <stage>]` | Re-run workflow (optionally resume from a stage: `coverage_verification`, `economic_analysis`, `fraud_prescreening`, `duplicate_detection`, `router`, `escalation_check`, `workflow`, `task_creation`, `rental`, `liability_determination`, `settlement`, `subrogation`, `salvage`, `after_action`) |
 | `claim-agent metrics [claim_id]` | Show metrics (optional claim ID) |
 | `claim-agent review-queue [--assignee X] [--priority P]` | List claims needing review |
 | `claim-agent assign <id> <assignee>` | Assign claim to adjuster |
@@ -65,7 +67,13 @@ flowchart LR
 | `claim-agent reject <id> [--reason "..."]` | Reject claim |
 | `claim-agent request-info <id> [--note "..."]` | Request more info |
 | `claim-agent escalate-siu <id>` | Escalate to SIU |
-| `claim-agent retention-enforce [--dry-run] [--years N]` | Archive claims older than retention |
+| `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention |
+| `claim-agent retention-report [--years N]` | Retention audit report (counts by tier, litigation hold, pending archive) |
+| `claim-agent litigation-hold --claim-id X --on\|--off` | Set or clear litigation hold on a claim |
+| `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
+| `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
+| `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
+| `claim-agent ucspa-deadlines [--days N] [--no-webhooks]` | Check UCSPA deadlines; webhook alerts dispatched by default (`--no-webhooks` to suppress) |
 
 ### Claim Types at a Glance
 
