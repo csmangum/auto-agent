@@ -6,7 +6,7 @@ import { setPortalSession, clearPortalSession } from '../api/portalClient';
 import PortalGuard from './PortalGuard';
 
 function createWrapper(initialPath = '/portal/claims') {
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  return function Wrapper({ children: _children }: { children: React.ReactNode }) {
     return (
       <PortalProvider>
         <MemoryRouter initialEntries={[initialPath]}>
