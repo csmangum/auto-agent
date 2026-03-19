@@ -2,6 +2,7 @@
 
 import pytest
 
+from claim_agent.db.constants import STATUS_OPEN
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
@@ -91,8 +92,13 @@ def test_adjust_reserve_nonexistent_raises(temp_db):
 
 def test_authority_limit_blocks_adjuster(temp_db, monkeypatch):
     """When actor is adjuster and amount exceeds limit, ReserveAuthorityError is raised."""
+
     def low_limit():
-        return {"adjuster_limit": 5000.0, "supervisor_limit": 50000.0, "initial_reserve_from_estimated_damage": True}
+        return {
+            "adjuster_limit": 5000.0,
+            "supervisor_limit": 50000.0,
+            "initial_reserve_from_estimated_damage": True,
+        }
 
     monkeypatch.setattr("claim_agent.db.repository.get_reserve_config", low_limit)
 
@@ -132,8 +138,13 @@ def test_workflow_bypasses_authority(temp_db):
 
 def test_supervisor_can_set_reserve_above_adjuster_limit(temp_db, monkeypatch):
     """When actor is supervisor, amount up to supervisor_limit is allowed."""
+
     def limits():
-        return {"adjuster_limit": 5000.0, "supervisor_limit": 50000.0, "initial_reserve_from_estimated_damage": True}
+        return {
+            "adjuster_limit": 5000.0,
+            "supervisor_limit": 50000.0,
+            "initial_reserve_from_estimated_damage": True,
+        }
 
     monkeypatch.setattr("claim_agent.db.repository.get_reserve_config", limits)
 
@@ -243,6 +254,54 @@ def test_check_reserve_adequacy_inadequate(temp_db):
     result = repo.check_reserve_adequacy(claim_id)
     assert result["adequate"] is False
     assert any("below" in w for w in result["warnings"])
+
+
+def test_check_reserve_adequacy_inadequate_when_payout_exceeds_reserve(temp_db):
+    """Adequacy uses max(estimated_damage, payout); warn when reserve is below payout."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-PAYOUT-1",
+        vin="1HGBH41JXMN109196",
+        vehicle_year=2021,
+        vehicle_make="Volvo",
+        vehicle_model="XC40",
+        incident_date="2024-11-01",
+        incident_description="Parking lot",
+        damage_description="Bumper",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.set_reserve(claim_id, 5000.0, actor_id="workflow")
+    repo.update_claim_status(claim_id, STATUS_OPEN, payout_amount=8000.0, skip_validation=True)
+
+    result = repo.check_reserve_adequacy(claim_id)
+    assert result["adequate"] is False
+    assert result["payout_amount"] == 8000.0
+    assert any("payout" in w.lower() for w in result["warnings"])
+
+
+def test_check_reserve_adequacy_uses_max_of_estimate_and_payout(temp_db):
+    """When both estimate and payout exist, benchmark is the greater of the two."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-PAYOUT-2",
+        vin="1HGBH41JXMN109197",
+        vehicle_year=2022,
+        vehicle_make="Honda",
+        vehicle_model="CR-V",
+        incident_date="2024-12-01",
+        incident_description="Sideswipe",
+        damage_description="Quarter panel",
+        estimated_damage=3000.0,
+    )
+    claim_id = repo.create_claim(claim_input)
+    # FNOL reserve 3000 from estimated_damage
+    repo.update_claim_status(claim_id, STATUS_OPEN, payout_amount=6000.0, skip_validation=True)
+
+    result = repo.check_reserve_adequacy(claim_id)
+    assert result["adequate"] is False
+    assert result["reserve"] == 3000.0
+    assert result["estimated_damage"] == 3000.0
+    assert result["payout_amount"] == 6000.0
 
 
 def test_check_reserve_adequacy_nonexistent_raises(temp_db):
