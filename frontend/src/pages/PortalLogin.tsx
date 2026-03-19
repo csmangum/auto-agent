@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { usePortal } from '../context/PortalContext';
+import { usePortal } from '../context/usePortal';
 import {
   portalApi,
   clearPortalSession,
@@ -11,7 +11,7 @@ export default function PortalLogin() {
   const [searchParams] = useSearchParams();
   const { login } = usePortal();
   const [mode, setMode] = useState<'token' | 'policy'>('policy');
-  const [claimId, setClaimId] = useState(searchParams.get('claim_id') ?? '');
+  const [, setClaimId] = useState(searchParams.get('claim_id') ?? '');
   const [token, setToken] = useState(searchParams.get('token') ?? '');
   const [policyNumber, setPolicyNumber] = useState('');
   const [vin, setVin] = useState('');

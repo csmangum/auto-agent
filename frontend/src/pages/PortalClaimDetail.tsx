@@ -6,7 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import MessagesTab from '../components/MessagesTab';
 import { formatDateTime } from '../utils/date';
-import { usePortal } from '../context/PortalContext';
+import { usePortal } from '../context/usePortal';
 import { portalApi } from '../api/portalClient';
 import type { FollowUpMessage } from '../api/types';
 

@@ -4,7 +4,7 @@ import { portalApi } from '../api/portalClient';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import { formatDateTime } from '../utils/date';
-import { usePortal } from '../context/PortalContext';
+import { usePortal } from '../context/usePortal';
 
 export default function PortalClaimsList() {
   const navigate = useNavigate();

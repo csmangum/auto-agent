@@ -1,25 +1,11 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   getPortalSession,
   setPortalSession,
   clearPortalSession,
   type PortalSession,
 } from '../api/portalClient';
-
-interface PortalContextValue {
-  session: PortalSession | null;
-  isAuthenticated: boolean;
-  login: (s: PortalSession) => void;
-  logout: () => void;
-}
-
-const PortalContext = createContext<PortalContextValue | null>(null);
+import { PortalContext } from './portalContext';
 
 export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<PortalSession | null>(() =>
@@ -40,7 +26,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
   }, []);
 
-  const value: PortalContextValue = {
+  const value = {
     session,
     isAuthenticated: !!(
       session &&
@@ -55,10 +41,4 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   return (
     <PortalContext.Provider value={value}>{children}</PortalContext.Provider>
   );
-}
-
-export function usePortal() {
-  const ctx = useContext(PortalContext);
-  if (!ctx) throw new Error('usePortal must be used within PortalProvider');
-  return ctx;
 }

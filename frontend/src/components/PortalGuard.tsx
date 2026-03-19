@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom';
-import { usePortal } from '../context/PortalContext';
+import { usePortal } from '../context/usePortal';
 
 /** Redirects to /portal/login if not authenticated. */
 export default function PortalGuard({
