@@ -142,8 +142,31 @@ def _is_claim_past_retention(
             pass
     years = (retention_by_state.get(lookup_state) if lookup_state else None) or retention_period_years
     cutoff_dt = now - timedelta(days=years * 365)
-    cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
-    return (row_d.get("created_at") or "") <= cutoff
+    created_raw = row_d.get("created_at")
+    if not created_raw:
+        return True
+    created_dt: datetime
+    if isinstance(created_raw, datetime):
+        created_dt = created_raw
+    elif isinstance(created_raw, str):
+        try:
+            created_dt = datetime.fromisoformat(created_raw)
+        except ValueError:
+            try:
+                created_dt = datetime.strptime(created_raw, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return True
+    else:
+        return True
+
+    def _to_utc_aware(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    cutoff_norm = _to_utc_aware(cutoff_dt)
+    created_norm = _to_utc_aware(created_dt)
+    return created_norm <= cutoff_norm
 
 
 class ClaimRepository:
@@ -2197,6 +2220,14 @@ class ClaimRepository:
         cutoff_dt = now - timedelta(days=retention_period_years * 365)
         cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
 
+        if state_map:
+            min_state_years = min(state_map.values())
+            min_retention_years = min(retention_period_years, min_state_years)
+            coarse_cutoff_dt = now - timedelta(days=min_retention_years * 365)
+            coarse_cutoff = coarse_cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            coarse_cutoff = cutoff
+
         with get_connection(self._db_path) as conn:
             if not state_map:
                 rows = conn.execute(
@@ -2205,7 +2236,7 @@ class ClaimRepository:
                     WHERE archived_at IS NULL
                       AND status = :status
                       AND created_at <= :cutoff
-                      AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold)
+                      AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
                     ORDER BY created_at ASC
                     """),
                     {
@@ -2221,11 +2252,13 @@ class ClaimRepository:
                 SELECT * FROM claims
                 WHERE archived_at IS NULL
                   AND status = :status
-                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold)
+                  AND created_at <= :cutoff
+                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
                 ORDER BY created_at ASC
                 """),
                 {
                     "status": STATUS_CLOSED,
+                    "cutoff": coarse_cutoff,
                     "include_hold": 1 if not exclude_litigation_hold else 0,
                 },
             ).fetchall()

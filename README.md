@@ -81,7 +81,7 @@ claim-agent status CLM-11EEF959
 | `claim-agent escalate-siu <id>` | Escalate to SIU |
 | `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention period |
 | `claim-agent retention-report [--years N]` | Retention audit report (counts by tier, litigation hold, pending archive) |
-| `claim-agent litigation-hold --claim-id X --on\|--off` | Set or clear litigation hold on a claim |
+| `claim-agent litigation-hold --claim-id X --on|--off` | Set or clear litigation hold on a claim |
 
 ## Sample Claims
 
