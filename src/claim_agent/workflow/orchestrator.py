@@ -136,7 +136,7 @@ def _maybe_record_workflow_settlement_payment(
         payment_method=PaymentMethod.CHECK,
         external_ref=ext_ref,
     )
-    pay_repo = PaymentRepository(db_path=claim_repo._db_path)
+    pay_repo = PaymentRepository(db_path=claim_repo.db_path)
     pay_repo.create_payment(
         pdata,
         actor_id=ACTOR_WORKFLOW,
@@ -301,17 +301,22 @@ def run_claim_workflow(
             current_claim = repo.get_claim(claim_id)
             current_status = current_claim.get("status") if current_claim else None
             from claim_agent.db.constants import STATUS_CLOSED
+
             already_closed = current_status == STATUS_CLOSED
             if already_closed:
                 final_status = STATUS_CLOSED
             else:
                 final_status = _final_status(wf_ctx.claim_type)
-            repo.save_workflow_result(claim_id, wf_ctx.claim_type, wf_ctx.raw_output, wf_ctx.workflow_output)
+            repo.save_workflow_result(
+                claim_id, wf_ctx.claim_type, wf_ctx.raw_output, wf_ctx.workflow_output
+            )
             if not already_closed:
                 repo.update_claim_status(
                     claim_id,
                     final_status,
-                    details=wf_ctx.workflow_output[:500] if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
+                    details=wf_ctx.workflow_output[:500]
+                    if len(wf_ctx.workflow_output) > 500
+                    else wf_ctx.workflow_output,
                     claim_type=wf_ctx.claim_type,
                     payout_amount=wf_ctx.extracted_payout,
                     actor_id=_actor,
@@ -339,9 +344,7 @@ def run_claim_workflow(
             )
 
             metrics.end_claim(claim_id, status=final_status)
-            record_claim_outcome(
-                claim_id, final_status, (time.time() - workflow_start_time)
-            )
+            record_claim_outcome(claim_id, final_status, (time.time() - workflow_start_time))
             metrics.log_claim_summary(claim_id)
 
             return {
@@ -351,14 +354,19 @@ def run_claim_workflow(
                 "router_output": wf_ctx.raw_output,
                 "workflow_output": wf_ctx.workflow_output,
                 "workflow_run_id": workflow_run_id,
-                "summary": wf_ctx.workflow_output[:500] + "..." if len(wf_ctx.workflow_output) > 500 else wf_ctx.workflow_output,
+                "summary": wf_ctx.workflow_output[:500] + "..."
+                if len(wf_ctx.workflow_output) > 500
+                else wf_ctx.workflow_output,
             }
         except Exception as e:
             details = str(e)
             if len(details) > 500:
                 details = details[:500] + "..."
             repo.update_claim_status(
-                claim_id, STATUS_FAILED, details=details, actor_id=_actor,
+                claim_id,
+                STATUS_FAILED,
+                details=details,
+                actor_id=_actor,
                 skip_validation=True,
             )
 
@@ -379,9 +387,7 @@ def run_claim_workflow(
             )
 
             metrics.end_claim(claim_id, status="error")
-            record_claim_outcome(
-                claim_id, "error", (time.time() - workflow_start_time)
-            )
+            record_claim_outcome(claim_id, "error", (time.time() - workflow_start_time))
             metrics.log_claim_summary(claim_id)
 
             raise

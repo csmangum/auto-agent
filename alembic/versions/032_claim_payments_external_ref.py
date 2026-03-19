@@ -45,7 +45,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
     op.execute(text("DROP INDEX IF EXISTS idx_claim_payments_claim_external_ref"))
-    if bind.dialect.name == "postgresql":
-        op.execute(text("ALTER TABLE claim_payments DROP COLUMN IF EXISTS external_ref"))
+    # PostgreSQL and SQLite 3.35+ support DROP COLUMN IF EXISTS (see 029_litigation_hold pattern).
+    op.execute(text("ALTER TABLE claim_payments DROP COLUMN IF EXISTS external_ref"))

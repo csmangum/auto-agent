@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,7 @@ def temp_db():
 @pytest.fixture
 def seeded_db(temp_db):
     import sqlite3
+
     conn = sqlite3.connect(temp_db)
     conn.execute(
         "INSERT INTO claims (id, policy_number, vin, status) VALUES (?, ?, ?, ?)",
@@ -239,14 +241,80 @@ def test_record_claim_payment_impl(monkeypatch, seeded_db):
 
 def test_settlement_payee_from_claim_data():
     assert settlement_payee_from_claim_data({}) == "Claimant"
-    assert settlement_payee_from_claim_data(
-        {"parties": [{"party_type": "claimant", "name": "  Sam  "}]}
-    ) == "Sam"
-    assert settlement_payee_from_claim_data(
-        {
-            "parties": [
-                {"party_type": "witness", "name": "W"},
-                {"party_type": "policyholder", "name": "PH"},
-            ]
-        }
-    ) == "PH"
+    assert (
+        settlement_payee_from_claim_data(
+            {"parties": [{"party_type": "claimant", "name": "  Sam  "}]}
+        )
+        == "Sam"
+    )
+    assert (
+        settlement_payee_from_claim_data(
+            {
+                "parties": [
+                    {"party_type": "witness", "name": "W"},
+                    {"party_type": "policyholder", "name": "PH"},
+                ]
+            }
+        )
+        == "PH"
+    )
+
+
+def test_create_payment_external_ref_recovers_after_unique_violation(seeded_db, monkeypatch):
+    """Stale idempotency read then INSERT unique error: return existing row id."""
+    import claim_agent.db.payment_repository as pr_mod
+
+    repo = PaymentRepository(db_path=seeded_db)
+    base = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=77.0,
+        payee="Primary",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="stale-read-race",
+    )
+    pid1 = repo.create_payment(base, actor_id="a1", skip_authority_check=True)
+
+    orig_gc = pr_mod.get_connection
+
+    @contextmanager
+    def flaky_gc(path=None):
+        with orig_gc(path) as conn:
+            orig_ex = conn.execute
+            miss_once = {"due": True}
+
+            def wrapped_execute(statement, parameters=None, **kwargs):
+                sql = str(statement)
+                if (
+                    miss_once["due"]
+                    and "SELECT" in sql.upper()
+                    and "claim_payments" in sql
+                    and parameters
+                    and parameters.get("external_ref") == "stale-read-race"
+                ):
+                    miss_once["due"] = False
+
+                    class _Empty:
+                        def fetchone(self):
+                            return None
+
+                    return _Empty()
+                return orig_ex(statement, parameters, **kwargs)
+
+            conn.execute = wrapped_execute  # type: ignore[method-assign]
+            yield conn
+
+    monkeypatch.setattr(pr_mod, "get_connection", flaky_gc)
+    dup = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=999.0,
+        payee="Other",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="stale-read-race",
+    )
+    pid2 = repo.create_payment(dup, actor_id="a2", skip_authority_check=True)
+    assert pid1 == pid2
+    row = repo.get_payment(pid1)
+    assert row is not None
+    assert row["amount"] == 77.0

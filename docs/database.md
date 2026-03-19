@@ -421,7 +421,7 @@ Disbursement ledger for a claim: multiple payments (repair advances, rental, BI 
 
 **API:** `POST/GET /api/claims/{claim_id}/payments`, `POST .../payments/{id}/issue`, `/clear`, `/void` ([`src/claim_agent/api/routes/payments.py`](../src/claim_agent/api/routes/payments.py)). Claimant portal exposes a read-only payment list.
 
-**Idempotency:** Optional `external_ref` (e.g. `workflow_settlement:{workflow_run_id}`) is unique per claim when set; duplicate creates return the existing payment id.
+**Idempotency:** Optional `external_ref` (e.g. `workflow_settlement:{workflow_run_id}`) is unique per claim when set; duplicate creates return the existing payment id. Concurrent creates with the same ref rely on that uniqueness; `PaymentRepository` treats a unique violation as “return existing id.” Operational note: optional auto-settlement rows (`PAYMENT_AUTO_RECORD_FROM_SETTLEMENT`) overlap with agent `record_claim_payment` calls if both record the same payout—see [Configuration](configuration.md#disbursements--payment-authority).
 
 ```sql
 CREATE TABLE IF NOT EXISTS claim_payments (
