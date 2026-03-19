@@ -197,7 +197,6 @@ const NOTE_TEMPLATES = [
 ];
 
 interface NotesTabProps {
-  claimId: string;
   notes: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
   followUps: Array<{
     id: number;
@@ -212,7 +211,7 @@ interface NotesTabProps {
   addNoteMutation: ReturnType<typeof useAddClaimNote>;
 }
 
-function NotesTab({ claimId, notes, followUps, addNoteMutation }: NotesTabProps) {
+function NotesTab({ notes, followUps, addNoteMutation }: NotesTabProps) {
   const [noteText, setNoteText] = useState('');
   const [actorId, setActorId] = useState('adjuster');
 
@@ -320,7 +319,7 @@ function NotesTab({ claimId, notes, followUps, addNoteMutation }: NotesTabProps)
             {followUps.map((msg) => (
               <div key={msg.id} className="rounded-lg bg-gray-900/50 p-4 ring-1 ring-gray-700/50">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-medium text-amber-400 capitalize">{msg.user_type.replaceAll('_', ' ')}</span>
+                  <span className="text-xs font-medium text-amber-400 capitalize">{msg.user_type.replace(/_/g, ' ')}</span>
                   <span className={`text-xs px-2 py-0.5 rounded ${
                     msg.status === 'responded' ? 'bg-emerald-500/20 text-emerald-400'
                       : msg.status === 'sent' ? 'bg-blue-500/20 text-blue-400'
@@ -362,7 +361,6 @@ const DOC_TYPE_ICONS: Record<string, string> = {
 };
 
 interface DocumentsTabProps {
-  claimId: string;
   documents: Array<{
     id: number; claim_id: string; storage_key: string; document_type: string;
     received_from?: string; review_status: string; privileged: boolean;
@@ -379,7 +377,7 @@ interface DocumentsTabProps {
 }
 
 function DocumentsTab({
-  claimId, documents, attachments, docRequests,
+  documents, attachments, docRequests,
   uploadMutation, updateDocMutation, createDocRequestMutation,
 }: DocumentsTabProps) {
   const [uploadType, setUploadType] = useState('other');
@@ -924,7 +922,6 @@ export default function ClaimDetail() {
         )}
         {activeTab === 'documents' && (
           <DocumentsTab
-            claimId={claim.id}
             documents={documents}
             attachments={attachments}
             docRequests={docRequests}
@@ -936,7 +933,6 @@ export default function ClaimDetail() {
 
         {activeTab === 'notes' && (
           <NotesTab
-            claimId={claim.id}
             notes={notes}
             followUps={followUps}
             addNoteMutation={addNoteMutation}

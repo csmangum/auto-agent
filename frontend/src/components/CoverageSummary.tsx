@@ -59,7 +59,6 @@ export default function CoverageSummary({ policyNumber, vin, claimType }: Covera
     );
   }
 
-  const matchedVehicle = policy.vehicles?.find((v) => v.vin === vin);
   const relevantCoverages = claimType ? (COVERAGE_RELEVANCE[claimType] ?? []) : [];
 
   return (
