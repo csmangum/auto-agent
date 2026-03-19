@@ -266,6 +266,45 @@ export function SparkleIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Workbench / tool board */
+export function WorkbenchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M3 21h18" />
+      <path d="M5 21V7l7-4 7 4v14" />
+      <path d="M9 21v-6h6v6" />
+      <path d="M10 10h4" />
+    </IconWrapper>
+  );
+}
+
+/** Queue / inbox tray */
+export function QueueIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+      <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
+    </IconWrapper>
+  );
+}
+
+/** Diary / calendar */
+export function DiaryIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <path d="M16 2v4" />
+      <path d="M8 2v4" />
+      <path d="M3 10h18" />
+      <path d="M8 14h.01" />
+      <path d="M12 14h.01" />
+      <path d="M16 14h.01" />
+      <path d="M8 18h.01" />
+      <path d="M12 18h.01" />
+    </IconWrapper>
+  );
+}
+
 /** Simulation / role play (theater masks) */
 export function SimulationIcon(props: SVGProps<SVGSVGElement>) {
   return (
