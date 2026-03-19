@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import type { UseMutationResult } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
@@ -8,6 +8,9 @@ import AuditTimeline from '../components/AuditTimeline';
 import EmptyState from '../components/EmptyState';
 import StructuredOutputDisplay from '../components/StructuredOutputDisplay';
 import TaskPanel from '../components/TaskPanel';
+import PaymentPanel from '../components/PaymentPanel';
+import CommunicationLog from '../components/CommunicationLog';
+import CoverageSummary from '../components/CoverageSummary';
 import {
   useClaim,
   useClaimHistory,
@@ -15,6 +18,12 @@ import {
   useClaimReserveAdequacy,
   useClaimWorkflows,
   usePatchClaimReserve,
+  useAddClaimNote,
+  useClaimDocuments,
+  useUploadDocument,
+  useUpdateDocument,
+  useDocumentRequests,
+  useCreateDocumentRequest,
 } from '../api/queries';
 import { formatDateTime } from '../utils/date';
 import type { ReserveAdequacyResponse, ReserveHistoryEntry } from '../api/types';
@@ -172,6 +181,457 @@ function ReserveTab({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Note Templates
+// ---------------------------------------------------------------------------
+
+const NOTE_TEMPLATES = [
+  { label: 'Initial Contact', text: 'Initial contact attempted with claimant. Left voicemail / spoke with insured regarding claim details and next steps.' },
+  { label: 'Inspection Scheduled', text: 'Vehicle inspection scheduled for [DATE] at [LOCATION]. Claimant has been notified.' },
+  { label: 'Coverage Verified', text: 'Coverage verified for this loss. Policy is active with applicable coverage for the reported damages.' },
+  { label: 'Claim Acknowledged', text: 'Claim receipt acknowledged per UCSPA requirements. Acknowledgment letter sent to claimant.' },
+  { label: 'Awaiting Documents', text: 'Awaiting the following documents from claimant: [DOCUMENT LIST]. Follow-up scheduled for [DATE].' },
+  { label: 'Estimate Received', text: 'Repair estimate received from [SHOP NAME]. Total estimate: $[AMOUNT]. Reviewing for authorization.' },
+  { label: 'Payment Issued', text: 'Payment issued to [PAYEE] in the amount of $[AMOUNT] via [METHOD]. Check/reference #[NUMBER].' },
+  { label: 'Supervisor Review', text: 'Claim reviewed with supervisor. Decision: [DECISION]. Notes: [NOTES].' },
+];
+
+interface NotesTabProps {
+  claimId: string;
+  notes: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
+  followUps: Array<{
+    id: number;
+    claim_id: string;
+    user_type: string;
+    message_content: string;
+    status: string;
+    response_content?: string;
+    created_at?: string;
+    responded_at?: string;
+  }>;
+  addNoteMutation: ReturnType<typeof useAddClaimNote>;
+}
+
+function NotesTab({ claimId, notes, followUps, addNoteMutation }: NotesTabProps) {
+  const [noteText, setNoteText] = useState('');
+  const [actorId, setActorId] = useState('adjuster');
+
+  const handleAddNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!noteText.trim()) return;
+    addNoteMutation.mutate(
+      { note: noteText.trim(), actorId: actorId.trim() || 'adjuster' },
+      { onSuccess: () => setNoteText('') }
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Add note form */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Add Note</h3>
+
+        {/* Templates */}
+        <div className="mb-3">
+          <label className="block text-xs text-gray-500 mb-1">Quick Templates</label>
+          <div className="flex flex-wrap gap-1.5">
+            {NOTE_TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                type="button"
+                onClick={() => setNoteText(t.text)}
+                className="px-2 py-1 text-xs bg-gray-900/50 text-gray-400 rounded ring-1 ring-gray-700/50 hover:bg-gray-800 hover:text-gray-200 transition-colors"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <form onSubmit={handleAddNote} className="space-y-3">
+          <div>
+            <label htmlFor="note-text" className="block text-xs text-gray-500 mb-1">Note *</label>
+            <textarea
+              id="note-text"
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              rows={4}
+              required
+              maxLength={5000}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+              placeholder="Enter your note..."
+            />
+          </div>
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label htmlFor="note-actor" className="block text-xs text-gray-500 mb-1">Author</label>
+              <input
+                id="note-actor"
+                type="text"
+                value={actorId}
+                onChange={(e) => setActorId(e.target.value)}
+                maxLength={200}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={addNoteMutation.isPending || !noteText.trim()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors"
+            >
+              {addNoteMutation.isPending ? 'Adding…' : 'Add Note'}
+            </button>
+          </div>
+          {addNoteMutation.isError && (
+            <p className="text-sm text-red-400">
+              {addNoteMutation.error instanceof Error ? addNoteMutation.error.message : 'Failed to add note'}
+            </p>
+          )}
+        </form>
+      </div>
+
+      {/* Existing notes */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Claim Notes ({notes.length})</h3>
+        {notes.length === 0 ? (
+          <EmptyState icon="📝" title="No notes" description="No claim notes recorded yet." />
+        ) : (
+          <div className="space-y-3">
+            {notes.map((n, i) => (
+              <div key={n.id ?? i} className="rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-medium text-blue-400">{n.actor_id}</span>
+                  {n.created_at && <span className="text-xs text-gray-500">{formatDateTime(n.created_at)}</span>}
+                </div>
+                <p className="text-sm text-gray-300 whitespace-pre-wrap">{n.note}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Follow-up messages */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Follow-up Messages ({followUps.length})</h3>
+        {followUps.length === 0 ? (
+          <EmptyState icon="✉️" title="No follow-ups" description="No follow-up messages sent for this claim." />
+        ) : (
+          <div className="space-y-4">
+            {followUps.map((msg) => (
+              <div key={msg.id} className="rounded-lg bg-gray-900/50 p-4 ring-1 ring-gray-700/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-medium text-amber-400 capitalize">{msg.user_type.replaceAll('_', ' ')}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${
+                    msg.status === 'responded' ? 'bg-emerald-500/20 text-emerald-400'
+                      : msg.status === 'sent' ? 'bg-blue-500/20 text-blue-400'
+                        : 'bg-gray-500/20 text-gray-400'
+                  }`}>{msg.status}</span>
+                  {msg.created_at && <span className="text-xs text-gray-500">{formatDateTime(msg.created_at)}</span>}
+                </div>
+                <p className="text-sm text-gray-300 mb-2">{msg.message_content}</p>
+                {msg.response_content && (
+                  <div className="mt-2 pt-2 border-t border-gray-700/50">
+                    <p className="text-xs text-gray-500 mb-1">Response</p>
+                    <p className="text-sm text-gray-300 whitespace-pre-wrap">{msg.response_content}</p>
+                    {msg.responded_at && <p className="text-xs text-gray-500 mt-1">{formatDateTime(msg.responded_at)}</p>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Enhanced Documents Tab
+// ---------------------------------------------------------------------------
+
+const DOCUMENT_TYPES = [
+  'police_report', 'estimate', 'invoice', 'receipt', 'photo',
+  'medical_record', 'correspondence', 'legal', 'other',
+];
+
+const REVIEW_STATUSES = ['pending', 'approved', 'rejected'];
+
+const DOC_TYPE_ICONS: Record<string, string> = {
+  police_report: '🚔', estimate: '📋', invoice: '🧾', receipt: '🧾',
+  photo: '🖼️', medical_record: '🏥', correspondence: '✉️', legal: '⚖️', other: '📎',
+};
+
+interface DocumentsTabProps {
+  claimId: string;
+  documents: Array<{
+    id: number; claim_id: string; storage_key: string; document_type: string;
+    received_from?: string; review_status: string; privileged: boolean;
+    url?: string; created_at?: string; updated_at?: string;
+  }>;
+  attachments: Array<{ url: string; type: string; description?: string }>;
+  docRequests: Array<{
+    id: number; claim_id: string; document_type: string;
+    requested_from?: string; status: string; received_at?: string; created_at?: string;
+  }>;
+  uploadMutation: ReturnType<typeof useUploadDocument>;
+  updateDocMutation: ReturnType<typeof useUpdateDocument>;
+  createDocRequestMutation: ReturnType<typeof useCreateDocumentRequest>;
+}
+
+function DocumentsTab({
+  claimId, documents, attachments, docRequests,
+  uploadMutation, updateDocMutation, createDocRequestMutation,
+}: DocumentsTabProps) {
+  const [uploadType, setUploadType] = useState('other');
+  const [uploadFrom, setUploadFrom] = useState('claimant');
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [reqDocType, setReqDocType] = useState('police_report');
+  const [reqFrom, setReqFrom] = useState('');
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    for (const file of Array.from(files)) {
+      uploadMutation.mutate({
+        file,
+        documentType: uploadType,
+        receivedFrom: uploadFrom,
+      });
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  const handleCreateRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    createDocRequestMutation.mutate({
+      document_type: reqDocType,
+      requested_from: reqFrom || undefined,
+    });
+  };
+
+  // Determine if URL is an image
+  const isImageUrl = (url?: string) => {
+    if (!url) return false;
+    const ext = url.split('.').pop()?.toLowerCase() ?? '';
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Upload */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Upload Document</h3>
+        <div className="grid grid-cols-2 gap-4 mb-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Document Type</label>
+            <select
+              value={uploadType}
+              onChange={(e) => setUploadType(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {DOCUMENT_TYPES.map((t) => (
+                <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Received From</label>
+            <input
+              type="text"
+              value={uploadFrom}
+              onChange={(e) => setUploadFrom(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="claimant, repair_shop, etc."
+            />
+          </div>
+        </div>
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+            dragOver
+              ? 'border-blue-500 bg-blue-500/10'
+              : 'border-gray-700 hover:border-gray-600 hover:bg-gray-800/30'
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
+          <span className="text-3xl mb-2 block">📄</span>
+          <p className="text-sm text-gray-400">
+            {dragOver ? 'Drop files here' : 'Click or drag files to upload'}
+          </p>
+          <p className="text-xs text-gray-600 mt-1">
+            PDF, images, Word, Excel — max 50 MB
+          </p>
+        </div>
+        {uploadMutation.isPending && (
+          <p className="text-xs text-blue-400 mt-2">Uploading…</p>
+        )}
+        {uploadMutation.isError && (
+          <p className="text-xs text-red-400 mt-2">
+            {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Upload failed'}
+          </p>
+        )}
+      </div>
+
+      {/* Documents list */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">
+          Documents ({documents.length})
+        </h3>
+        {documents.length === 0 && attachments.length === 0 ? (
+          <EmptyState icon="📎" title="No documents" description="No documents uploaded yet." />
+        ) : (
+          <div className="space-y-3">
+            {documents.map((doc) => {
+              const icon = DOC_TYPE_ICONS[doc.document_type] ?? '📎';
+              const safeUrl = doc.url && (doc.url.startsWith('http') || doc.url.startsWith('/')) ? doc.url : '#';
+              return (
+                <div key={doc.id} className="rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span className="text-lg shrink-0 mt-0.5">{icon}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-200 truncate">
+                          {doc.storage_key.split('/').pop() ?? `Document ${doc.id}`}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-xs text-gray-500 capitalize">{doc.document_type.replace(/_/g, ' ')}</span>
+                          {doc.received_from && <span className="text-xs text-gray-600">from {doc.received_from}</span>}
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            doc.review_status === 'approved' ? 'bg-emerald-500/20 text-emerald-400'
+                              : doc.review_status === 'rejected' ? 'bg-red-500/20 text-red-400'
+                                : 'bg-yellow-500/20 text-yellow-400'
+                          }`}>
+                            {doc.review_status}
+                          </span>
+                          {doc.privileged && <span className="text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">Privileged</span>}
+                          <span className="text-xs text-gray-600">{formatDateTime(doc.created_at)}</span>
+                        </div>
+                        {/* Preview for images */}
+                        {isImageUrl(doc.url) && doc.url && (
+                          <div className="mt-2">
+                            <img src={safeUrl} alt="" className="max-w-xs max-h-32 rounded border border-gray-700/50 object-cover" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        value={doc.review_status}
+                        onChange={(e) => updateDocMutation.mutate({ docId: doc.id, body: { review_status: e.target.value } })}
+                        className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        {REVIEW_STATUSES.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:text-blue-300">
+                        View →
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {/* Legacy attachments not yet in documents table */}
+            {documents.length === 0 && attachments.map((att, i) => {
+              const icon = DOC_TYPE_ICONS[att.type] ?? '📎';
+              const filename = att.url.split('/').pop() ?? `Document ${i + 1}`;
+              const safeHref = att.url.startsWith('http') || att.url.startsWith('/') ? att.url : '#';
+              return (
+                <div key={`att-${i}`} className="flex items-center justify-between gap-4 rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-lg shrink-0">{icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-200 truncate">{att.description ?? filename}</p>
+                      <p className="text-xs text-gray-500 capitalize">{att.type || 'Document'}</p>
+                    </div>
+                  </div>
+                  <a href={safeHref} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:text-blue-300">View →</a>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Document Requests */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Document Requests ({docRequests.length})</h3>
+        <form onSubmit={handleCreateRequest} className="flex items-end gap-3 mb-4">
+          <div className="flex-1">
+            <label className="block text-xs text-gray-500 mb-1">Document Type</label>
+            <select
+              value={reqDocType}
+              onChange={(e) => setReqDocType(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {DOCUMENT_TYPES.map((t) => (
+                <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs text-gray-500 mb-1">Request From</label>
+            <input
+              type="text"
+              value={reqFrom}
+              onChange={(e) => setReqFrom(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="e.g. claimant, police dept"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={createDocRequestMutation.isPending}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors"
+          >
+            Request
+          </button>
+        </form>
+        {docRequests.length === 0 ? (
+          <p className="text-sm text-gray-500">No document requests.</p>
+        ) : (
+          <div className="space-y-2">
+            {docRequests.map((req) => (
+              <div key={req.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50">
+                <div>
+                  <p className="text-sm text-gray-200 capitalize">{req.document_type.replace(/_/g, ' ')}</p>
+                  <p className="text-xs text-gray-500">
+                    {req.requested_from && `From: ${req.requested_from} · `}
+                    {formatDateTime(req.created_at)}
+                  </p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded ${
+                  req.status === 'received' ? 'bg-emerald-500/20 text-emerald-400'
+                    : req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400'
+                      : 'bg-gray-500/20 text-gray-400'
+                }`}>
+                  {req.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
   const [activeTab, setActiveTab] = useState('overview');
@@ -196,6 +656,12 @@ export default function ClaimDetail() {
     error: reserveAdequacyError,
   } = useClaimReserveAdequacy(claimId);
   const patchReserveMutation = usePatchClaimReserve(claimId);
+  const addNoteMutation = useAddClaimNote(claimId);
+  const { data: docsData } = useClaimDocuments(claimId);
+  const uploadDocMutation = useUploadDocument(claimId);
+  const updateDocMutation = useUpdateDocument(claimId);
+  const { data: docRequestsData } = useDocumentRequests(claimId);
+  const createDocRequestMutation = useCreateDocumentRequest(claimId);
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
@@ -204,6 +670,8 @@ export default function ClaimDetail() {
   const tasks = claim?.tasks ?? [];
   const attachments = claim?.attachments ?? [];
   const subrogationCases = claim?.subrogation_cases ?? [];
+  const documents = docsData?.documents ?? [];
+  const docRequests = docRequestsData?.requests ?? [];
   const notesFollowUpsCount = notes.length + followUps.length;
   const reserveHistory = reserveHistoryData?.history ?? [];
   const loading = claimLoading || historyLoading || workflowsLoading;
@@ -239,10 +707,13 @@ export default function ClaimDetail() {
   const tabs = [
     { key: 'overview', label: 'Overview', icon: '📋' },
     { key: 'tasks', label: `Tasks (${claim?.tasks_total ?? tasks.length})`, icon: '☑️' },
-    { key: 'documents', label: `Documents (${attachments.length})`, icon: '📎' },
+    { key: 'documents', label: `Documents (${documents.length || attachments.length})`, icon: '📎' },
     { key: 'reserve', label: `Reserve (${reserveHistory.length})`, icon: '💰' },
-    { key: 'notes', label: `Notes & Follow-ups (${notesFollowUpsCount})`, icon: '💬' },
-    { key: 'audit', label: `Audit Log (${history.length})`, icon: '📜' },
+    { key: 'payments', label: 'Payments', icon: '💳' },
+    { key: 'notes', label: `Notes (${notesFollowUpsCount})`, icon: '📝' },
+    { key: 'comms', label: 'Comms Log', icon: '💬' },
+    { key: 'coverage', label: 'Coverage', icon: '🛡️' },
+    { key: 'audit', label: `Audit (${history.length})`, icon: '📜' },
     { key: 'workflows', label: `Workflows (${workflows.length})`, icon: '🔄' },
   ];
 
@@ -452,172 +923,44 @@ export default function ClaimDetail() {
           />
         )}
         {activeTab === 'documents' && (
-          <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
-            <h3 className="text-sm font-semibold text-gray-300 mb-4">Documents & Attachments</h3>
-            <p className="text-xs text-gray-500 mb-4">
-              Photos, invoices, receipts, estimates, and other supporting documents for this claim.
-            </p>
-            {attachments.length === 0 ? (
-              <EmptyState
-                icon="📎"
-                title="No documents"
-                description="No attachments, invoices, or receipts have been uploaded for this claim."
-              />
-            ) : (
-              <div className="space-y-3">
-                {attachments.map((att, i) => {
-                  const typeLabel =
-                    att.type === 'photo'
-                      ? 'Photo'
-                      : att.type === 'pdf'
-                        ? 'PDF'
-                        : att.type === 'estimate'
-                          ? 'Estimate'
-                          : att.type === 'invoice'
-                            ? 'Invoice'
-                            : att.type === 'receipt'
-                              ? 'Receipt'
-                              : att.type === 'other'
-                                ? 'Document'
-                                : att.type || 'Document';
-                  const icon =
-                    att.type === 'photo'
-                      ? '🖼️'
-                      : att.type === 'pdf'
-                        ? '📄'
-                        : att.type === 'estimate'
-                          ? '📋'
-                          : att.type === 'invoice'
-                            ? '🧾'
-                            : att.type === 'receipt'
-                              ? '🧾'
-                              : '📎';
-                  const filename = att.url.split('/').pop() ?? `Document ${i + 1}`;
-                  const stableKey = `${att.url}-${att.description ?? ''}-${i}`;
-                  const safeHref =
-                    att.url.startsWith('http://') || att.url.startsWith('https://') || att.url.startsWith('/')
-                      ? att.url
-                      : '#';
-                  return (
-                    <div
-                      key={stableKey}
-                      className="flex items-center justify-between gap-4 rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50 hover:ring-gray-600/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-lg shrink-0">{icon}</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-200 truncate">
-                            {att.description ?? filename}
-                          </p>
-                          <p className="text-xs text-gray-500">{typeLabel}</p>
-                        </div>
-                      </div>
-                      <a
-                        href={safeHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
-                      >
-                        View →
-                      </a>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <DocumentsTab
+            claimId={claim.id}
+            documents={documents}
+            attachments={attachments}
+            docRequests={docRequests}
+            uploadMutation={uploadDocMutation}
+            updateDocMutation={updateDocMutation}
+            createDocRequestMutation={createDocRequestMutation}
+          />
         )}
 
         {activeTab === 'notes' && (
-          <div className="space-y-6">
-            {/* Claim notes */}
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
-              <h3 className="text-sm font-semibold text-gray-300 mb-4">Claim Notes</h3>
-              {notes.length === 0 ? (
-                <EmptyState
-                  icon="📝"
-                  title="No notes"
-                  description="No claim notes recorded yet."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {notes.map((n, i) => (
-                    <div
-                      key={n.id ?? i}
-                      className="rounded-lg bg-gray-900/50 p-3 ring-1 ring-gray-700/50"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-blue-400">{n.actor_id}</span>
-                        {n.created_at && (
-                          <span className="text-xs text-gray-500">
-                            {formatDateTime(n.created_at)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{n.note}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <NotesTab
+            claimId={claim.id}
+            notes={notes}
+            followUps={followUps}
+            addNoteMutation={addNoteMutation}
+          />
+        )}
 
-            {/* Follow-up messages */}
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
-              <h3 className="text-sm font-semibold text-gray-300 mb-4">Follow-up Messages</h3>
-              {followUps.length === 0 ? (
-                <EmptyState
-                  icon="✉️"
-                  title="No follow-ups"
-                  description="No follow-up messages sent for this claim."
-                />
-              ) : (
-                <div className="space-y-4">
-                  {followUps.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className="rounded-lg bg-gray-900/50 p-4 ring-1 ring-gray-700/50"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-medium text-amber-400 capitalize">
-                          {msg.user_type.replaceAll('_', ' ')}
-                        </span>
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded ${
-                            msg.status === 'responded'
-                              ? 'bg-emerald-500/20 text-emerald-400'
-                              : msg.status === 'sent'
-                                ? 'bg-blue-500/20 text-blue-400'
-                                : 'bg-gray-500/20 text-gray-400'
-                          }`}
-                        >
-                          {msg.status}
-                        </span>
-                        {msg.created_at && (
-                          <span className="text-xs text-gray-500">
-                            {formatDateTime(msg.created_at)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-300 mb-2">{msg.message_content}</p>
-                      {msg.response_content && (
-                        <div className="mt-2 pt-2 border-t border-gray-700/50">
-                          <p className="text-xs text-gray-500 mb-1">Response</p>
-                          <p className="text-sm text-gray-300 whitespace-pre-wrap">
-                            {msg.response_content}
-                          </p>
-                          {msg.responded_at && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              {formatDateTime(msg.responded_at)}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+        {activeTab === 'payments' && (
+          <PaymentPanel claimId={claim.id} />
+        )}
+
+        {activeTab === 'comms' && (
+          <CommunicationLog
+            notes={notes}
+            followUps={followUps}
+            auditEvents={history}
+          />
+        )}
+
+        {activeTab === 'coverage' && (
+          <CoverageSummary
+            policyNumber={claim.policy_number}
+            vin={claim.vin}
+            claimType={claim.claim_type}
+          />
         )}
 
         {activeTab === 'audit' && (
