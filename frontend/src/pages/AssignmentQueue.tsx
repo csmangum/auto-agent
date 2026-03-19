@@ -53,18 +53,18 @@ export default function AssignmentQueue() {
   const { data, isLoading, error } = useReviewQueue(params);
   const assignMutation = useAssignClaim();
 
-  const claims = data?.claims ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // Sort by priority (critical first)
   const sortedClaims = useMemo(() => {
+    const claims = data?.claims ?? [];
     return [...claims].sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority ?? 'medium'] ?? 2;
       const pb = PRIORITY_RANK[b.priority ?? 'medium'] ?? 2;
       return pa - pb;
     });
-  }, [claims]);
+  }, [data?.claims]);
 
   const pageNumbers = useMemo(() => {
     const pages: (number | '...')[] = [];

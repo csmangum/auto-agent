@@ -11,6 +11,18 @@ vi.mock('../api/queries', () => ({
   useClaimReserveAdequacy: vi.fn(),
   useClaimWorkflows: vi.fn(),
   usePatchClaimReserve: vi.fn(),
+  useAddClaimNote: vi.fn(),
+  useClaimDocuments: vi.fn(),
+  useUploadDocument: vi.fn(),
+  useUpdateDocument: vi.fn(),
+  useDocumentRequests: vi.fn(),
+  useCreateDocumentRequest: vi.fn(),
+  useClaimPayments: vi.fn(),
+  useCreatePayment: vi.fn(),
+  useIssuePayment: vi.fn(),
+  useClearPayment: vi.fn(),
+  useVoidPayment: vi.fn(),
+  usePolicies: vi.fn(),
 }));
 
 const {
@@ -20,6 +32,18 @@ const {
   useClaimReserveAdequacy,
   useClaimWorkflows,
   usePatchClaimReserve,
+  useAddClaimNote,
+  useClaimDocuments,
+  useUploadDocument,
+  useUpdateDocument,
+  useDocumentRequests,
+  useCreateDocumentRequest,
+  useClaimPayments,
+  useCreatePayment,
+  useIssuePayment,
+  useClearPayment,
+  useVoidPayment,
+  usePolicies,
 } = await import('../api/queries');
 
 const mockClaim = {
@@ -88,6 +112,67 @@ describe('ClaimDetail', () => {
       isError: false,
       error: null,
     } as never);
+    vi.mocked(useAddClaimNote).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    } as never);
+    vi.mocked(useClaimDocuments).mockReturnValue({
+      data: { claim_id: 'CLM-001', documents: [], total: 0, limit: 100, offset: 0 },
+      isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(useUploadDocument).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    } as never);
+    vi.mocked(useUpdateDocument).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    } as never);
+    vi.mocked(useDocumentRequests).mockReturnValue({
+      data: { claim_id: 'CLM-001', requests: [], total: 0, limit: 100, offset: 0 },
+      isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(useCreateDocumentRequest).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    } as never);
+    vi.mocked(useClaimPayments).mockReturnValue({
+      data: { payments: [], total: 0, limit: 100, offset: 0 },
+      isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(useCreatePayment).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+    } as never);
+    vi.mocked(useIssuePayment).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as never);
+    vi.mocked(useClearPayment).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as never);
+    vi.mocked(useVoidPayment).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as never);
+    vi.mocked(usePolicies).mockReturnValue({
+      data: { policies: [] },
+      isLoading: false,
+      error: null,
+    } as never);
   });
 
   it('renders claim overview', () => {
@@ -151,7 +236,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /audit log/i }));
+    fireEvent.click(screen.getByRole('button', { name: /audit/i }));
     expect(screen.getByText('Audit History')).toBeInTheDocument();
   });
 
@@ -165,40 +250,59 @@ describe('ClaimDetail', () => {
     expect(screen.getByText('No workflow runs')).toBeInTheDocument();
   });
 
-  it('switches to documents tab and shows empty state when no attachments', () => {
+  it('switches to documents tab and shows upload area', () => {
     render(
       <Wrapper>
         <ClaimDetail />
       </Wrapper>
     );
     fireEvent.click(screen.getByRole('button', { name: /documents/i }));
-    expect(screen.getByText('Documents & Attachments')).toBeInTheDocument();
+    expect(screen.getByText('Upload Document')).toBeInTheDocument();
     expect(screen.getByText('No documents')).toBeInTheDocument();
   });
 
-  it('shows attachments in documents tab when present', () => {
-    vi.mocked(useClaim).mockReturnValue({
-      data: {
-        ...mockClaim,
-        attachments: [
-          { url: '/api/claims/CLM-001/attachments/invoice.pdf', type: 'pdf', description: 'Medical invoice' },
-          { url: '/api/claims/CLM-001/attachments/photo.jpg', type: 'photo', description: 'Damage photo' },
-        ],
-      },
-      isLoading: false,
-      error: null,
-    } as never);
-
+  it('switches to notes tab and shows add note form', () => {
     render(
       <Wrapper>
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
-    expect(screen.getByText('Medical invoice')).toBeInTheDocument();
-    expect(screen.getByText('Damage photo')).toBeInTheDocument();
-    const viewLinks = screen.getAllByText('View →');
-    expect(viewLinks).toHaveLength(2);
+    // Tab button text: "📝 Notes (0)"
+    const notesTab = screen.getAllByRole('button').find(b => b.textContent?.includes('Notes ('));
+    expect(notesTab).toBeTruthy();
+    fireEvent.click(notesTab!);
+    expect(screen.getByText('Quick Templates')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter your note...')).toBeInTheDocument();
+  });
+
+  it('switches to payments tab and shows empty state', () => {
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /payments/i }));
+    expect(screen.getByText('No payments')).toBeInTheDocument();
+  });
+
+  it('switches to comms log tab', () => {
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /comms log/i }));
+    expect(screen.getByText('Communication Log')).toBeInTheDocument();
+  });
+
+  it('switches to coverage tab', () => {
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /coverage/i }));
+    expect(screen.getByText('Policy not found')).toBeInTheDocument();
   });
 
   it('switches to reserve tab and shows adjust reserve form', () => {
