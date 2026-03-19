@@ -71,7 +71,7 @@ claim-agent status CLM-11EEF959
 | `claim-agent process <file> [--attachment <file> ...]` | Process a claim from JSON (optionally attach photos, PDFs, estimates) |
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get claim audit log |
-| `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from router, escalation_check, workflow, or settlement) |
+| `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from a stage: `coverage_verification`, `economic_analysis`, `fraud_prescreening`, `duplicate_detection`, `router`, `escalation_check`, `workflow`, `task_creation`, `rental`, `liability_determination`, `settlement`, `subrogation`, `salvage`, `after_action`) |
 | `claim-agent metrics [id]` | Show metrics (optional claim ID) |
 | `claim-agent review-queue [--assignee X] [--priority P]` | List claims needing review |
 | `claim-agent assign <id> <assignee>` | Assign claim to adjuster |
@@ -85,7 +85,7 @@ claim-agent status CLM-11EEF959
 | `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
 | `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
 | `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
-| `claim-agent ucspa-deadlines [--days N] [--webhooks]` | Check UCSPA deadlines, optionally dispatch webhook alerts |
+| `claim-agent ucspa-deadlines [--days N] [--no-webhooks]` | Check UCSPA deadlines; webhook alerts dispatched by default (`--no-webhooks` to suppress) |
 
 ## Sample Claims
 

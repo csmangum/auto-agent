@@ -204,7 +204,7 @@ def reprocess(
     claim_id: Annotated[str, typer.Argument(help="Claim ID")],
     from_stage: Annotated[
         Optional[str],
-        typer.Option("--from-stage", help="Resume from stage (router, escalation_check, workflow, settlement)"),
+        typer.Option("--from-stage", help=f"Resume from stage ({', '.join(WORKFLOW_STAGES)})"),
     ] = None,
 ) -> None:
     """Re-run workflow for an existing claim, optionally resuming from a stage."""
