@@ -275,12 +275,14 @@ CREATE TABLE IF NOT EXISTS claim_payments (
     void_reason TEXT,
     payee_secondary TEXT,
     payee_secondary_type TEXT,
+    external_ref TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_claim_payments_claim_id ON claim_payments(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);

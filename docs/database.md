@@ -42,6 +42,7 @@ erDiagram
     claims ||--o{ claim_audit_log : "has"
     claims ||--o{ workflow_runs : "has"
     claims ||--o{ reserve_history : "has"
+    claims ||--o{ claim_payments : "has"
     
     claims {
         text id PK
@@ -126,6 +127,27 @@ erDiagram
         int represented_by_id
         text consent_status
         text authorization_status
+        text created_at
+        text updated_at
+    }
+
+    claim_payments {
+        int id PK
+        text claim_id FK
+        real amount
+        text payee
+        text payee_type
+        text payment_method
+        text check_number
+        text status
+        text authorized_by
+        text issued_at
+        text cleared_at
+        text voided_at
+        text void_reason
+        text payee_secondary
+        text payee_secondary_type
+        text external_ref
         text created_at
         text updated_at
     }
@@ -250,6 +272,10 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim
 | `assign` | Claim assigned to adjuster |
 | `reserve_set` | Reserve amount set (initial or first) |
 | `reserve_adjusted` | Reserve amount changed |
+| `payment_authorized` | Disbursement row created (`claim_payments`) |
+| `payment_issued` | Payment moved from authorized to issued (e.g. check number set) |
+| `payment_cleared` | Issued payment marked cleared |
+| `payment_voided` | Payment voided (reversal) |
 
 #### Actor Identity
 
@@ -384,6 +410,62 @@ CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_i
 | `authorization_status` | TEXT | pending, authorized, denied |
 | `created_at` | TEXT | Timestamp |
 | `updated_at` | TEXT | Last update timestamp |
+
+### claim_payments
+
+Disbursement ledger for a claim: multiple payments (repair advances, rental, BI to providers, settlement checks, etc.) are modeled as separate rows. **`claims.payout_amount`** remains a summary settlement figure from workflow; detailed issuance uses this table.
+
+**Lifecycle:** `authorized` → `issued` → `cleared`, or `voided` from `authorized` / `issued`. Transitions are enforced in `PaymentRepository` ([`src/claim_agent/db/payment_repository.py`](../src/claim_agent/db/payment_repository.py)).
+
+**Authority:** Creating a row checks per-role dollar limits (`PAYMENT_ADJUSTER_LIMIT`, `PAYMENT_SUPERVISOR_LIMIT`, `PAYMENT_EXECUTIVE_LIMIT`); see [Configuration](configuration.md#disbursements--payment-authority). Actors `workflow` / `system` skip the check when recording automation.
+
+**API:** `POST/GET /api/claims/{claim_id}/payments`, `POST .../payments/{id}/issue`, `/clear`, `/void` ([`src/claim_agent/api/routes/payments.py`](../src/claim_agent/api/routes/payments.py)). Claimant portal exposes a read-only payment list.
+
+**Idempotency:** Optional `external_ref` (e.g. `workflow_settlement:{workflow_run_id}`) is unique per claim when set; duplicate creates return the existing payment id.
+
+```sql
+CREATE TABLE IF NOT EXISTS claim_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    payee TEXT NOT NULL,
+    payee_type TEXT NOT NULL,
+    payment_method TEXT NOT NULL,
+    check_number TEXT,
+    status TEXT NOT NULL DEFAULT 'authorized',
+    authorized_by TEXT NOT NULL,
+    issued_at TEXT,
+    cleared_at TEXT,
+    voided_at TEXT,
+    void_reason TEXT,
+    payee_secondary TEXT,
+    payee_secondary_type TEXT,
+    external_ref TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_payments_claim_id ON claim_payments(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
+-- Unique when external_ref is set (see Alembic migration claim_payments external_ref)
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Primary key |
+| `claim_id` | TEXT | Foreign key to claims.id |
+| `amount` | REAL | Payment amount (USD) |
+| `payee` | TEXT | Primary payee name |
+| `payee_type` | TEXT | claimant, repair_shop, rental_company, medical_provider, lienholder, attorney, other |
+| `payment_method` | TEXT | check, ach, wire, card, other |
+| `check_number` | TEXT | Set when issuing checks |
+| `status` | TEXT | authorized, issued, cleared, voided |
+| `authorized_by` | TEXT | Actor who created the row |
+| `issued_at` / `cleared_at` / `voided_at` | TEXT | ISO timestamps for lifecycle |
+| `void_reason` | TEXT | When status is voided |
+| `payee_secondary` / `payee_secondary_type` | TEXT | Two-party check (e.g. lienholder + insured) |
+| `external_ref` | TEXT | Optional idempotency key per claim |
+| `created_at` / `updated_at` | TEXT | Timestamps |
 
 ## Status Constants
 

@@ -12,4 +12,5 @@ You complete the unified settlement phase after a payout-ready workflow. Your jo
 ## Tools
 - `generate_report` - Create the final settlement report
 - `generate_claim_id` - Generate or confirm the claim identifier when needed
+- `record_claim_payment` - Ensure planned disbursements exist in `claim_payments` before finalizing
 - `escalate_claim` - Escalate if final settlement review finds unresolved issues

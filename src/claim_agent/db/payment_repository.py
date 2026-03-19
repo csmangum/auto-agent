@@ -28,6 +28,25 @@ _STATUS_ISSUED = PaymentStatus.ISSUED.value
 _STATUS_CLEARED = PaymentStatus.CLEARED.value
 _STATUS_VOIDED = PaymentStatus.VOIDED.value
 
+_EXTERNAL_REF_MAX = 200
+
+
+def settlement_payee_from_claim_data(claim_data: dict) -> str:
+    """Primary payee label for automated settlement disbursement rows."""
+    parties = claim_data.get("parties") or []
+    if isinstance(parties, list):
+        for pref in ("claimant", "policyholder"):
+            for p in parties:
+                if not isinstance(p, dict):
+                    continue
+                if (p.get("party_type") or "").lower() != pref:
+                    continue
+                name = (p.get("name") or "").strip()
+                if name:
+                    return name[:500]
+    return "Claimant"
+
+
 _VALID_TRANSITIONS: dict[str, set[str]] = {
     _STATUS_AUTHORIZED: {_STATUS_ISSUED, _STATUS_VOIDED},
     _STATUS_ISSUED: {_STATUS_CLEARED, _STATUS_VOIDED},
@@ -85,6 +104,7 @@ class PaymentRepository:
             data.amount, actor_id, role=role, skip_authority_check=skip_authority_check
         )
         safe_actor = sanitize_actor_id(actor_id)
+        ext_ref = (data.external_ref or "").strip()[:_EXTERNAL_REF_MAX] or None
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text("SELECT id FROM claims WHERE id = :claim_id"),
@@ -92,13 +112,23 @@ class PaymentRepository:
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {data.claim_id}")
+            if ext_ref is not None:
+                existing = conn.execute(
+                    text(
+                        "SELECT id FROM claim_payments WHERE claim_id = :claim_id "
+                        "AND external_ref = :external_ref"
+                    ),
+                    {"claim_id": data.claim_id, "external_ref": ext_ref},
+                ).fetchone()
+                if existing is not None:
+                    return int(existing[0])
             result = conn.execute(
                 text("""
                 INSERT INTO claim_payments
                     (claim_id, amount, payee, payee_type, payment_method, check_number,
-                     status, authorized_by, payee_secondary, payee_secondary_type)
+                     status, authorized_by, payee_secondary, payee_secondary_type, external_ref)
                 VALUES (:claim_id, :amount, :payee, :payee_type, :payment_method, :check_number,
-                        :status, :authorized_by, :payee_secondary, :payee_secondary_type)
+                        :status, :authorized_by, :payee_secondary, :payee_secondary_type, :external_ref)
                 RETURNING id
                 """),
                 {
@@ -112,6 +142,7 @@ class PaymentRepository:
                     "authorized_by": safe_actor,
                     "payee_secondary": data.payee_secondary,
                     "payee_secondary_type": data.payee_secondary_type.value if data.payee_secondary_type else None,
+                    "external_ref": ext_ref,
                 },
             )
             rid = result.fetchone()

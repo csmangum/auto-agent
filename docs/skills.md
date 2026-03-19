@@ -136,7 +136,7 @@ src/claim_agent/skills/
 | Skill | Agent | Purpose |
 |-------|-------|---------|
 | `settlement_documentation.md` | Settlement Documentation Specialist | Create claim-type-specific settlement documentation |
-| `payment_distribution.md` | Payment Distribution Specialist | Document insured, lienholder, and shop payment splits |
+| `payment_distribution.md` | Payment Distribution Specialist | Document payment splits; `record_claim_payment` persists rows to `claim_payments` |
 | `settlement_closure.md` | Settlement Closure Specialist | Finalize settlement and capture next steps |
 
 ### Escalation

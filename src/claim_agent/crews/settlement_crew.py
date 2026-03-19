@@ -58,6 +58,10 @@ Use calculate_payout only as a verification tool when the claim_type is total_lo
 For partial_loss, derive payment recipients from the repair estimate and authorization context,
 including insured, lienholder, and repair shop when applicable.
 
+Use record_claim_payment to persist each planned disbursement to the claim_payments ledger
+(one row per payee/amount; use payee_secondary for two-party checks). Use a distinct external_ref
+per intended payment if you need idempotency (e.g. settlement_shop_1).
+
 Use generate_report if needed to capture the payment breakdown section.""",
                 expected_output="Payment distribution table with recipients, amounts, and ordering rationale.",
                 agent_index=1,
@@ -73,6 +77,9 @@ WORKFLOW OUTPUT:
 Finalize settlement using the documentation and payment distribution context.
 Use generate_report with claim_id, claim_type, status='settled', summary covering the completed workflow
 and settlement steps, and payout_amount from claim_data when present; otherwise from workflow output.
+
+If record_claim_payment was not used in the prior task but the distribution plan lists multiple payees,
+record any missing ledger rows now before closing.
 
 Document final status as settled, include next_steps for subrogation, salvage, or regulatory follow-up,
 and confirm the claim is ready for closure.""",

@@ -1,12 +1,13 @@
 """Tests for payment repository and payment workflow."""
 
+import json
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from claim_agent.db.database import init_db
-from claim_agent.db.payment_repository import PaymentRepository
+from claim_agent.db.payment_repository import PaymentRepository, settlement_payee_from_claim_data
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, PaymentAuthorityError
 from claim_agent.models.payment import (
     ClaimPaymentCreate,
@@ -190,3 +191,62 @@ def test_workflow_bypasses_authority(seeded_db):
     )
     pid = repo.create_payment(data, actor_id="workflow", skip_authority_check=True)
     assert pid > 0
+
+
+def test_create_payment_external_ref_idempotent(seeded_db):
+    repo = PaymentRepository(db_path=seeded_db)
+    data = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=100.0,
+        payee="A",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="idem-1",
+    )
+    pid1 = repo.create_payment(data, actor_id="adj-1", skip_authority_check=True)
+    data2 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=999.0,
+        payee="B",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="idem-1",
+    )
+    pid2 = repo.create_payment(data2, actor_id="adj-1", skip_authority_check=True)
+    assert pid1 == pid2
+    row = repo.get_payment(pid1)
+    assert row is not None
+    assert row["amount"] == 100.0
+    assert row["external_ref"] == "idem-1"
+
+
+def test_record_claim_payment_impl(monkeypatch, seeded_db):
+    from claim_agent.tools.payment_logic import record_claim_payment_impl
+
+    monkeypatch.setattr("claim_agent.tools.payment_logic.get_db_path", lambda: seeded_db)
+    raw = record_claim_payment_impl(
+        "CLM-TEST01",
+        200.0,
+        "Quick Fix Shop",
+        "repair_shop",
+        "ach",
+        external_ref="tool-1",
+    )
+    data = json.loads(raw)
+    assert data["success"] is True
+    assert data["payment_id"] > 0
+
+
+def test_settlement_payee_from_claim_data():
+    assert settlement_payee_from_claim_data({}) == "Claimant"
+    assert settlement_payee_from_claim_data(
+        {"parties": [{"party_type": "claimant", "name": "  Sam  "}]}
+    ) == "Sam"
+    assert settlement_payee_from_claim_data(
+        {
+            "parties": [
+                {"party_type": "witness", "name": "W"},
+                {"party_type": "policyholder", "name": "PH"},
+            ]
+        }
+    ) == "PH"
