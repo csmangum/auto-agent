@@ -9,6 +9,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from claim_agent.config import reload_settings
+from claim_agent.db.constants import (
+    RESERVE_ADEQUACY_CODE_BELOW_PAYOUT,
+    STATUS_OPEN,
+)
 from claim_agent.db.database import get_connection
 
 
@@ -1247,7 +1251,7 @@ class TestReserve:
         assert resp.status_code == 404
 
     def test_get_reserve_adequacy(self, client):
-        """GET /claims/{id}/reserve/adequacy returns adequacy check."""
+        """GET /claims/{id}/reserve/adequacy returns full shape including warning_codes."""
         from claim_agent.db.repository import ClaimRepository
 
         repo = ClaimRepository()
@@ -1255,9 +1259,35 @@ class TestReserve:
         resp = client.get("/api/claims/CLM-TEST001/reserve/adequacy")
         assert resp.status_code == 200
         data = resp.json()
-        assert "adequate" in data
-        assert "reserve" in data
-        assert "warnings" in data
+        assert set(data.keys()) >= {
+            "adequate",
+            "reserve",
+            "estimated_damage",
+            "payout_amount",
+            "warnings",
+            "warning_codes",
+        }
+        assert isinstance(data["warnings"], list)
+        assert isinstance(data["warning_codes"], list)
+
+    def test_get_reserve_adequacy_inadequate_vs_payout(self, client):
+        """Adequacy endpoint returns warning_codes when payout exceeds reserve."""
+        from claim_agent.db.repository import ClaimRepository
+
+        # CLM-TEST005 has estimated_damage 1800; payout 9000 is the benchmark (not CLM-TEST003: 35k estimate).
+        repo = ClaimRepository()
+        repo.adjust_reserve("CLM-TEST005", 2000.0, actor_id="workflow")
+        repo.update_claim_status(
+            "CLM-TEST005",
+            STATUS_OPEN,
+            payout_amount=9000.0,
+            skip_validation=True,
+        )
+        resp = client.get("/api/claims/CLM-TEST005/reserve/adequacy")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["adequate"] is False
+        assert data["warning_codes"] == [RESERVE_ADEQUACY_CODE_BELOW_PAYOUT]
 
     def test_get_reserve_adequacy_not_found(self, client):
         resp = client.get("/api/claims/CLM-NONEXIST/reserve/adequacy")

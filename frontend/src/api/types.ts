@@ -159,6 +159,7 @@ export interface ReserveAdequacyResponse {
   estimated_damage: number | null;
   payout_amount: number | null;
   warnings: string[];
+  warning_codes: string[];
 }
 
 export interface WorkflowRun {
