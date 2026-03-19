@@ -15,6 +15,7 @@ from typing import Any, AsyncGenerator
 import litellm
 
 from claim_agent.chat.tools import TOOL_DEFINITIONS, execute_tool
+from claim_agent.exceptions import InvalidClaimTransitionError
 from claim_agent.config.llm import (
     ensure_openrouter_api_key,
     get_model_name,
@@ -184,6 +185,8 @@ async def run_chat_agent(
 
         yield _sse_event({"type": "done"})
 
+    except InvalidClaimTransitionError:
+        raise
     except Exception:
         logger.exception("Chat agent error")
         yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})

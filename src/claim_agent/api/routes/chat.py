@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from claim_agent.api.auth import AuthContext
+from claim_agent.exceptions import InvalidClaimTransitionError
 from claim_agent.api.deps import require_role
 from claim_agent.chat.agent import run_chat_agent
 from claim_agent.db.database import get_db_path
@@ -85,6 +86,8 @@ async def chat(
         try:
             async for chunk in run_chat_agent(messages, db_path=db_path):
                 yield chunk
+        except InvalidClaimTransitionError:
+            raise
         except Exception as exc:
             logger.exception("Chat stream error: %s", exc)
             yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})
