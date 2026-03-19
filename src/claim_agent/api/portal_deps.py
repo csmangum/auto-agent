@@ -56,10 +56,14 @@ async def require_portal_session(request: Request) -> PortalSession:
     )
 
     if not claim_ids:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired access. Provide claim access token or policy number + VIN.",
-        )
+        mode = settings.portal.verification_mode
+        if mode == "token":
+            detail = "Invalid or expired access. Provide a valid claim access token."
+        elif mode == "email":
+            detail = "Invalid or expired access. Provide your email address."
+        else:
+            detail = "Invalid or expired access. Provide your policy number and VIN."
+        raise HTTPException(status_code=401, detail=detail)
 
     return PortalSession(
         claim_ids=claim_ids,
@@ -79,8 +83,7 @@ async def require_claimant_access(
         raise HTTPException(status_code=404, detail="Claim not found")
     identity = (
         session.email
-        or session.token
-        or (session.policy_number and session.vin and f"policy:{session.policy_number[:4]}***")
+        or (session.policy_number and f"policy:{session.policy_number[:4]}***")
         or "portal-claimant"
     )
     return ClaimantContext(claim_id=claim_id, identity=str(identity))

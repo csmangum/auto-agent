@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePortal } from '../context/usePortal';
 import {
   portalApi,
+  setPortalSession,
   clearPortalSession,
+  type PortalSession,
 } from '../api/portalClient';
 
 export default function PortalLogin() {
@@ -33,30 +35,37 @@ export default function PortalLogin() {
     setError(null);
     setLoading(true);
     try {
+      let creds: PortalSession;
       if (mode === 'token') {
         if (!token.trim()) {
           setError('Access token is required');
           return;
         }
-        login({ token: token.trim() });
+        creds = { token: token.trim() };
       } else {
         if (!policyNumber.trim() || !vin.trim()) {
           setError('Policy number and VIN are required');
           return;
         }
-        login({
+        creds = {
           policyNumber: policyNumber.trim(),
           vin: vin.trim(),
-        });
+        };
       }
+      // Temporarily store credentials so portalApi can send the right headers.
+      // React state (via login()) is only updated after successful verification.
+      setPortalSession(creds);
       const { claims } = await portalApi.getClaims({ limit: 1 });
       if (claims.length === 0) {
         clearPortalSession();
         setError('No claims found. Please check your information.');
         return;
       }
+      // Verification succeeded; persist session in React state.
+      login(creds);
       navigate('/portal/claims', { replace: true });
     } catch (err) {
+      clearPortalSession();
       setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
       setLoading(false);

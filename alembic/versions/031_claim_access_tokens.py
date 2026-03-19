@@ -41,8 +41,8 @@ def upgrade() -> None:
                 token_hash TEXT NOT NULL,
                 party_id INTEGER REFERENCES claim_parties(id),
                 email TEXT,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_claim_id ON claim_access_tokens(claim_id)")

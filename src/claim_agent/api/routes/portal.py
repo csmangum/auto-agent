@@ -24,7 +24,6 @@ from claim_agent.api.routes.claims import (
     _VALID_DOCUMENT_TYPES,
     _get_doc_repo,
     _maybe_update_document_request_on_receipt,
-    _resolve_attachment_urls,
 )
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import DISPUTABLE_STATUSES
@@ -42,6 +41,66 @@ from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/portal", tags=["portal"])
+
+# Fields from the claims table that are safe to expose to claimants.
+# Internal/admin fields (reserve_amount, review_notes, siu_case_id,
+# litigation_hold, assignee, priority, due_at, review_started_at, etc.)
+# are intentionally excluded.
+_PORTAL_CLAIM_FIELDS = [
+    "id",
+    "policy_number",
+    "vin",
+    "vehicle_year",
+    "vehicle_make",
+    "vehicle_model",
+    "incident_date",
+    "incident_description",
+    "damage_description",
+    "estimated_damage",
+    "claim_type",
+    "status",
+    "payout_amount",
+    "loss_state",
+    "liability_percentage",
+    "incident_id",
+    "created_at",
+    "updated_at",
+]
+
+
+def _resolve_portal_attachment_urls(claim: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite attachment paths to portal-accessible download URLs.
+
+    Unlike the adjuster resolver, this generates URLs under
+    /api/portal/claims/{id}/attachments/... which portal users can access.
+    """
+    import json
+
+    claim_id = claim.get("id", "")
+    raw = claim.get("attachments")
+    if not raw:
+        return claim
+
+    try:
+        attachments = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError):
+        return claim
+
+    if not isinstance(attachments, list):
+        return claim
+
+    updated = []
+    for att in attachments:
+        if isinstance(att, dict):
+            key = att.get("storage_key") or att.get("key") or ""
+            if key:
+                att = {
+                    **att,
+                    "url": f"/api/portal/claims/{claim_id}/attachments/{key}",
+                }
+        updated.append(att)
+
+    return {**claim, "attachments": updated}
 
 
 class RecordFollowUpResponseBody(BaseModel):
@@ -88,6 +147,7 @@ def list_portal_claims(
 
     placeholders = ",".join([f":cid{i}" for i in range(len(session.claim_ids))])
     id_params: dict[str, str] = {f"cid{i}": cid for i, cid in enumerate(session.claim_ids)}
+    safe_fields = ", ".join(_PORTAL_CLAIM_FIELDS)
     list_params: dict[str, Any] = {**id_params, "limit": limit, "offset": offset}
 
     with get_connection() as conn:
@@ -99,7 +159,7 @@ def list_portal_claims(
 
         rows = conn.execute(
             text(f"""
-                SELECT * FROM claims WHERE id IN ({placeholders})
+                SELECT {safe_fields} FROM claims WHERE id IN ({placeholders})
                 ORDER BY created_at DESC LIMIT :limit OFFSET :offset
             """),
             list_params,
@@ -108,7 +168,7 @@ def list_portal_claims(
     claims = []
     for r in rows:
         d = row_to_dict(r)
-        claims.append(_resolve_attachment_urls(d))
+        claims.append(_resolve_portal_attachment_urls(d))
 
     return {"claims": claims, "total": total, "limit": limit, "offset": offset}
 
@@ -124,7 +184,7 @@ def get_portal_claim(
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
-    result = _resolve_attachment_urls(row)
+    result = _resolve_portal_attachment_urls(row)
     result["notes"] = []  # Claimant does not see internal notes
     result["follow_up_messages"] = repo.get_follow_up_messages(claim_id)
     result["parties"] = repo.get_claim_parties(claim_id)

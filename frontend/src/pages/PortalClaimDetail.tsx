@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import { getPortalSession } from '../api/portalClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import StatusBadge from '../components/StatusBadge';
@@ -138,8 +138,7 @@ export default function PortalClaimDetail() {
   };
 
   if (!claimId) {
-    navigate('/portal/claims');
-    return null;
+    return <Navigate to="/portal/claims" replace />;
   }
 
   if (isLoading) {
@@ -464,7 +463,8 @@ function DocumentsTab({
               {(doc.url || doc.storage_key) && (
                 <DocumentDownloadLink
                   claimId={claimId}
-                  keyParam={doc.storage_key || doc.url || ''}
+                  docUrl={doc.url ?? undefined}
+                  storageKey={doc.storage_key ?? undefined}
                 />
               )}
             </div>
@@ -806,33 +806,48 @@ function Field({
 
 function DocumentDownloadLink({
   claimId,
-  keyParam,
+  docUrl = '',
+  storageKey = '',
 }: {
   claimId: string;
-  keyParam: string;
+  docUrl?: string;
+  storageKey?: string;
 }) {
   const [loading, setLoading] = useState(false);
+  const isExternalUrl =
+    docUrl.startsWith('http://') || docUrl.startsWith('https://');
   const handleClick = async () => {
     setLoading(true);
     try {
-      const session = getPortalSession();
-      const headers: Record<string, string> = {};
-      if (session?.token) headers['X-Claim-Access-Token'] = session.token;
-      if (session?.policyNumber) headers['X-Policy-Number'] = session.policyNumber;
-      if (session?.vin) headers['X-Vin'] = session.vin;
-      if (session?.email) headers['X-Email'] = session.email;
-      const res = await fetch(
-        `/api/portal/claims/${claimId}/attachments/${encodeURIComponent(keyParam)}`,
-        { headers }
-      );
-      if (!res.ok) throw new Error('Download failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = keyParam.split('/').pop() || 'document';
-      a.click();
-      URL.revokeObjectURL(url);
+      if (isExternalUrl) {
+        // For presigned/external URLs (e.g. S3), open directly.
+        const a = document.createElement('a');
+        a.href = docUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.click();
+      } else {
+        // Fall back to portal attachment endpoint for local storage keys.
+        const key = storageKey || docUrl;
+        const session = getPortalSession();
+        const headers: Record<string, string> = {};
+        if (session?.token) headers['X-Claim-Access-Token'] = session.token;
+        if (session?.policyNumber) headers['X-Policy-Number'] = session.policyNumber;
+        if (session?.vin) headers['X-Vin'] = session.vin;
+        if (session?.email) headers['X-Email'] = session.email;
+        const res = await fetch(
+          `/api/portal/claims/${claimId}/attachments/${encodeURIComponent(key)}`,
+          { headers }
+        );
+        if (!res.ok) throw new Error('Download failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = key.split('/').pop() || 'document';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch {
       /* ignore */
     } finally {
