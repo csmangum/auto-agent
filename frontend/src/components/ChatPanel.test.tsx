@@ -1,19 +1,17 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import ChatPanel from './ChatPanel';
 
-// Mock the streamChat function
+const mockStreamChat = vi.fn();
+
 vi.mock('../api/client', () => ({
-  streamChat: vi.fn((_messages, onEvent) => {
-    // Simulate a text response
-    setTimeout(() => {
-      onEvent({ type: 'text', content: 'Hello! I can help with claims.' });
-      onEvent({ type: 'done' });
-    }, 10);
-    return () => {}; // abort function
-  }),
+  streamChat: (...args: unknown[]) => mockStreamChat(...args),
 }));
+
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 function renderPanel() {
   return render(
@@ -26,6 +24,13 @@ function renderPanel() {
 describe('ChatPanel', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    mockStreamChat.mockImplementation((_messages: unknown, onEvent: (e: { type: string; content?: string }) => void) => {
+      setTimeout(() => {
+        onEvent({ type: 'text', content: 'Hello! I can help with claims.' });
+        onEvent({ type: 'done' });
+      }, 10);
+      return () => {};
+    });
   });
 
   afterEach(() => {
@@ -94,4 +99,30 @@ describe('ChatPanel', () => {
     fireEvent.click(screen.getByLabelText('Open chat assistant'));
     expect(screen.getByText(/Shift\+Enter for new line/)).toBeInTheDocument();
   });
+
+  it('sends message and calls streamChat', () => {
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Open chat assistant'));
+    const textarea = screen.getByPlaceholderText('Ask about claims, policies...');
+    fireEvent.change(textarea, { target: { value: 'How many claims?' } });
+    fireEvent.click(screen.getByLabelText('Send message'));
+
+    expect(screen.getByText('How many claims?')).toBeInTheDocument();
+    expect(mockStreamChat).toHaveBeenCalled();
+  });
+
+  it('clear conversation removes messages', async () => {
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Open chat assistant'));
+    fireEvent.change(screen.getByPlaceholderText('Ask about claims, policies...'), {
+      target: { value: 'Test' },
+    });
+    fireEvent.click(screen.getByLabelText('Send message'));
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(screen.getByText('Test')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Clear conversation'));
+    expect(screen.queryByText('Test')).not.toBeInTheDocument();
+  });
+
 });

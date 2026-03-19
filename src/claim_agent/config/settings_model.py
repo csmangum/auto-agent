@@ -605,6 +605,50 @@ class MockCrewConfig(BaseSettings):
             return None
 
 
+class PortalConfig(BaseSettings):
+    """Claimant self-service portal configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="CLAIMANT_PORTAL_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(
+        default=False,
+        validation_alias="CLAIMANT_PORTAL_ENABLED",
+        description="Enable claimant portal routes.",
+    )
+    verification_mode: str = Field(
+        default="token",
+        validation_alias="CLAIMANT_VERIFICATION_MODE",
+        description="Verification mode: token, policy_vin, or email.",
+    )
+    token_expiry_days: int = Field(
+        default=90,
+        ge=1,
+        le=365,
+        validation_alias="CLAIM_ACCESS_TOKEN_EXPIRY_DAYS",
+        description="Token validity in days.",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_enabled(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("verification_mode", mode="before")
+    @classmethod
+    def _normalize_mode(cls, v: Any) -> str:
+        s = str(v or "token").strip().lower()
+        if s in ("token", "policy_vin", "email"):
+            return s
+        return "token"
+
+
 class PrivacyConfig(BaseSettings):
     """Privacy and data protection configuration."""
 
@@ -756,6 +800,7 @@ class Settings(BaseSettings):
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
+    portal: PortalConfig = Field(default_factory=PortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
