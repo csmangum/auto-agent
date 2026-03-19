@@ -32,6 +32,7 @@ from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.payment_repository import PaymentRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.dispute import DisputeType
 from claim_agent.models.document import DocumentType
 from claim_agent.services.portal_verification import ClaimantContext
 from claim_agent.storage import get_storage_adapter
@@ -47,7 +48,9 @@ class RecordFollowUpResponseBody(BaseModel):
     """Request body for POST /portal/claims/{claim_id}/follow-up/record-response."""
 
     message_id: int = Field(..., description="Follow-up message ID")
-    response_content: str = Field(..., min_length=1, description="User's response text")
+    response_content: str = Field(
+        ..., min_length=1, max_length=5000, description="User's response text"
+    )
 
 
 class DisputeBody(BaseModel):
@@ -354,8 +357,6 @@ async def file_portal_dispute(
                 f"Disputes are allowed only for claims with status: {', '.join(DISPUTABLE_STATUSES)}."
             ),
         )
-
-    from claim_agent.models.dispute import DisputeType
 
     try:
         DisputeType(body.dispute_type)

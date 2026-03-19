@@ -94,7 +94,7 @@ export default function PortalClaimDetail() {
       CUSTOMER_VISIBLE_ACTIONS.has(e.action) || e.action.includes('status')
   );
   const pendingFollowUps = followUps.filter((m) => m.status !== 'responded');
-  const   documents = (docsData?.documents ?? []) as Array<{
+  const documents = (docsData?.documents ?? []) as Array<{
     id: number;
     document_type?: string;
     received_date?: string;

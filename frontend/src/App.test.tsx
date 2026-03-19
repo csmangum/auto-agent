@@ -124,4 +124,16 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Cross-Carrier Claims' })).toBeInTheDocument();
     expect(screen.getByText('Claims involving your policyholders or subrogation demands')).toBeInTheDocument();
   });
+
+  it('renders Claimant Portal login at /portal/login', () => {
+    renderApp('/portal/login');
+    expect(screen.getByRole('heading', { name: 'Claimant Portal' })).toBeInTheDocument();
+    expect(screen.getByText(/Sign in to view your claims/)).toBeInTheDocument();
+  });
+
+  it('redirects unauthenticated users from /portal/claims to /portal/login', () => {
+    renderApp('/portal/claims');
+    expect(screen.getByRole('heading', { name: 'Claimant Portal' })).toBeInTheDocument();
+    expect(screen.getByText(/Sign in to view your claims/)).toBeInTheDocument();
+  });
 });

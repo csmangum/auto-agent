@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
-import PortalProvider from './context/PortalContext';
+import { PortalProvider } from './context/PortalContext';
 import PortalGuard from './components/PortalGuard';
 import Dashboard from './pages/Dashboard';
 import ClaimsList from './pages/ClaimsList';

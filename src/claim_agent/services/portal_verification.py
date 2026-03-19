@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
@@ -128,8 +129,6 @@ def create_claim_access_token(
 
     Caller must store/send the returned token; it is not stored in plaintext.
     """
-    import secrets
-
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw_token)
     settings = get_settings()
@@ -168,18 +167,19 @@ def get_claim_ids_for_claimant(
 ) -> list[str]:
     """Get list of claim IDs the claimant can access (for listing claims).
 
-    Tries verification methods in order: token (if provided), policy_vin (if both
-    provided), email (if provided and allowed). Returns union of all matching claims.
+    Uses CLAIMANT_VERIFICATION_MODE to determine which verification method(s) to accept.
+    Only the configured mode is honored; other credentials are ignored.
     """
     settings = get_settings()
     if not settings.portal.enabled:
         return []
 
+    mode = settings.portal.verification_mode
     path = db_path or get_db_path()
     seen: set[str] = set()
 
     with get_connection(path) as conn:
-        if token and token.strip():
+        if mode == "token" and token and token.strip():
             token_hash = _hash_token(token.strip())
             now = datetime.now(timezone.utc).isoformat()
             rows = conn.execute(
@@ -193,7 +193,7 @@ def get_claim_ids_for_claimant(
                 cid = str(r[0]) if hasattr(r, "__getitem__") else str(r["claim_id"])
                 seen.add(cid)
 
-        if policy_number and vin:
+        if mode == "policy_vin" and policy_number and vin:
             pn = str(policy_number).strip()
             v = str(vin).strip()
             rows = conn.execute(
@@ -207,7 +207,12 @@ def get_claim_ids_for_claimant(
                 cid = str(r[0]) if hasattr(r, "__getitem__") else str(r["id"])
                 seen.add(cid)
 
-        if email and email.strip() and not settings.privacy.dsar_verification_required:
+        if (
+            mode == "email"
+            and email
+            and email.strip()
+            and not settings.privacy.dsar_verification_required
+        ):
             rows = conn.execute(
                 text("""
                     SELECT DISTINCT claim_id FROM claim_parties
