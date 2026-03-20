@@ -550,12 +550,16 @@ def update_claim_status(
     *,
     actor_id: str = "workflow",
     skip_validation: bool = False,
+    skip_adequacy_check: bool = False,
+    role: str = "adjuster",
 ) -> None:
     """Update status, optionally claim_type and payout_amount; log state change."""
 ```
 
 - Updates claim status
-- **State machine enforced**: Valid transitions only; invalid transitions raise `InvalidClaimTransitionError`
+- **State machine enforced** when `skip_validation=False`: valid transitions only; invalid transitions raise `InvalidClaimTransitionError`. This includes the reserve adequacy gate for moves to `closed` / `settled` when configured ([State machine — reserve gate](state-machine.md#reserve-adequacy-gate-closed--settled)).
+- **`skip_validation=True`**: skips all state-machine checks (including the reserve gate). See [State machine — Bypass](state-machine.md#bypass).
+- **`skip_adequacy_check`** / **`role`**: when the gate is `block`, supervisor / admin / executive may pass `skip_adequacy_check=True` to allow an inadequate reserve; see [State machine](state-machine.md).
 - See [State Machine](state-machine.md) for full transition matrix and guards
 - Optionally updates claim_type and payout_amount
 - Creates audit log entry with action `status_change`, actor_id, before_state, after_state

@@ -623,6 +623,12 @@ class ClaimRepository:
         For transitions to ``closed`` or ``settled``, reserve adequacy may block or warn
         (``RESERVE_CLOSE_SETTLE_ADEQUACY_GATE``). Supervisor, admin, or executive may set
         ``skip_adequacy_check=True`` when the gate mode is ``block``.
+
+        When ``skip_validation=True``, the state machine is not run: **all** transition
+        rules are skipped, including the reserve adequacy gate, the close guard, and
+        claim-type guards. No ``reserve_adequacy_gate`` audit row is written for an
+        inadequate reserve in ``block`` mode (there is no waiver without an elevated
+        ``skip_adequacy_check``). Use only for migrations, recovery, or tests.
         """
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
