@@ -90,6 +90,7 @@ See [PII and Retention](pii-and-retention.md) for full documentation.
 ### Reserve management
 
 Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings. `GET /api/claims/{claim_id}/reserve/adequacy` compares the current reserve to the greater of positive `estimated_damage` and positive `payout_amount` (zeros are ignored) and returns `warnings` plus stable `warning_codes` (`RESERVE_NOT_SET`, `RESERVE_BELOW_ESTIMATE`, `RESERVE_BELOW_PAYOUT`, `RESERVE_BELOW_BENCHMARK`). Supervisor+ roles may use aggregate reporting under `/api/reports/reserves/*` ([Actuarial reserve reporting](actuarial-reserve-reporting.md)). See [Database](database.md#reserve_history).
+Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings. `GET /api/claims/{claim_id}/reserve/adequacy` compares the current reserve to the greater of positive `estimated_damage` and positive `payout_amount` (zeros are ignored) and returns `warnings` plus stable `warning_codes` (`RESERVE_NOT_SET`, `RESERVE_BELOW_ESTIMATE`, `RESERVE_BELOW_PAYOUT`, `RESERVE_BELOW_BENCHMARK`). Transitions to `closed` or `settled` can enforce the same benchmark via `RESERVE_CLOSE_SETTLE_ADEQUACY_GATE` ([State machine](state-machine.md#reserve-adequacy-gate-closed--settled)). See [Database](database.md#reserve_history).
 Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings; executives use `RESERVE_EXECUTIVE_LIMIT` when set to a positive value (0 = no cap). Admin-only `skip_authority_check` on that endpoint is recorded in `reserve_history` and `claim_audit_log` with `[authority check bypassed]`. `GET /api/claims/{claim_id}/reserve/adequacy` compares the current reserve to the greater of positive `estimated_damage` and positive `payout_amount` (zeros are ignored) and returns `warnings` plus stable `warning_codes` (`RESERVE_NOT_SET`, `RESERVE_BELOW_ESTIMATE`, `RESERVE_BELOW_PAYOUT`, `RESERVE_BELOW_BENCHMARK`). See [Database](database.md#reserve_history).
 
 | Variable | Default | Description |
@@ -98,6 +99,7 @@ Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_am
 | `RESERVE_SUPERVISOR_LIMIT` | `50000` | Maximum reserve for `supervisor` / `admin` roles |
 | `RESERVE_EXECUTIVE_LIMIT` | `0` | Maximum reserve for `executive`; `0` or negative means no cap |
 | `RESERVE_INITIAL_RESERVE_FROM_ESTIMATED_DAMAGE` | `true` | When true, FNOL creates an initial reserve from `estimated_damage` when present |
+| `RESERVE_CLOSE_SETTLE_ADEQUACY_GATE` | `warn` | `off` \| `block` \| `warn` — adequacy gate on move to `closed` / `settled` |
 
 ### Disbursements / payment authority
 
