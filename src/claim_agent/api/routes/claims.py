@@ -35,6 +35,7 @@ from claim_agent.db.constants import (
     SIU_INVESTIGATION_STATUSES,
     STATUS_ARCHIVED,
     STATUS_FAILED,
+    STATUS_PURGED,
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
     STATUS_PROCESSING,
@@ -319,10 +320,11 @@ def list_claims(
     status: Optional[str] = Query(None, description="Filter by status"),
     claim_type: Optional[str] = Query(None, description="Filter by claim type"),
     include_archived: bool = Query(False, description="Include archived claims (retention)"),
+    include_purged: bool = Query(False, description="Include purged claims (retention)"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    """List claims with optional filtering. Archived claims are excluded by default."""
+    """List claims with optional filtering. Archived and purged claims are excluded by default."""
     conditions = []
     params: dict[str, Any] = {}
 
@@ -332,6 +334,9 @@ def list_claims(
     if not include_archived and (status is None or status != STATUS_ARCHIVED):
         conditions.append("status != :archived")
         params["archived"] = STATUS_ARCHIVED
+    if not include_purged and (status is None or status != STATUS_PURGED):
+        conditions.append("status != :purged")
+        params["purged"] = STATUS_PURGED
     if claim_type:
         conditions.append("claim_type = :claim_type")
         params["claim_type"] = claim_type
@@ -342,7 +347,9 @@ def list_claims(
 
     params["limit"] = limit
     params["offset"] = offset
-    count_params = {k: v for k, v in params.items() if k in ("status", "archived", "claim_type")}
+    count_params = {
+        k: v for k, v in params.items() if k in ("status", "archived", "claim_type", "purged")
+    }
 
     with get_connection() as conn:
         count_row = conn.execute(

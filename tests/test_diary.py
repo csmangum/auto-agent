@@ -70,6 +70,10 @@ class TestStatusTransitionTemplates:
         templates = get_status_transition_templates("closed", "archived")
         assert len(templates) == 0
 
+    def test_get_templates_archived_to_purged_no_match(self):
+        templates = get_status_transition_templates("archived", "purged")
+        assert len(templates) == 0
+
 
 class TestAutoCreateDiaryListener:
     """Tests for auto-create diary entries at claim status transitions."""

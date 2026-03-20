@@ -19,7 +19,11 @@ import uvicorn
 from pydantic import ValidationError
 
 from claim_agent.config import get_settings
-from claim_agent.config.settings import get_retention_by_state, get_retention_period_years
+from claim_agent.config.settings import (
+    get_retention_by_state,
+    get_retention_period_years,
+    get_retention_purge_after_archive_years,
+)
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
 from claim_agent.workflow.handback_orchestrator import run_handback_workflow
@@ -56,7 +60,7 @@ def _usage() -> str:
         "Usage: claim-agent [OPTIONS] COMMAND [ARGS]...\n\n"
         "Commands: serve, process, status, history, reprocess, metrics, review-queue, "
         "assign, approve, reject, request-info, escalate-siu, retention-enforce, "
-        "dsar-access, dsar-deletion.\n"
+        "retention-purge, dsar-access, dsar-deletion.\n"
         "Run claim-agent --help for full help."
     )
 
@@ -531,20 +535,88 @@ def retention_enforce(
         sys.exit(1)
 
 
+@app.command("retention-purge")
+def retention_purge(
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Show what would be purged")] = False,
+    years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--years",
+            "-y",
+            help="Override years after archive before purge (default from settings)",
+        ),
+    ] = None,
+    include_litigation_hold: Annotated[
+        bool,
+        typer.Option("--include-litigation-hold", help="Purge claims with litigation hold"),
+    ] = False,
+) -> None:
+    """Purge archived claims past purge horizon (anonymize PII, status purged)."""
+    purge_years = years if years is not None else get_retention_purge_after_archive_years()
+    ctx = _get_cli_ctx()
+    repo = ctx.repo
+    claims = repo.list_claims_for_purge(
+        purge_years,
+        exclude_litigation_hold=not include_litigation_hold,
+    )
+
+    if dry_run:
+        typer.echo(json.dumps({
+            "dry_run": True,
+            "purge_after_archive_years": purge_years,
+            "claims_to_purge": len(claims),
+            "claim_ids": [c["id"] for c in claims],
+        }, indent=2))
+        return
+
+    purged: list[str] = []
+    failed: list[str] = []
+    for claim in claims:
+        claim_id = claim["id"]
+        try:
+            repo.purge_claim(claim_id)
+            purged.append(claim_id)
+        except (ClaimAgentError, ValueError) as e:
+            typer.echo(f"Warning: Could not purge {claim_id}: {e}", err=True)
+            failed.append(claim_id)
+
+    typer.echo(json.dumps({
+        "purge_after_archive_years": purge_years,
+        "purged_count": len(purged),
+        "purged_claim_ids": purged,
+        "failed_count": len(failed),
+        "failed_claim_ids": failed,
+    }, indent=2))
+
+    if failed:
+        sys.exit(1)
+
+
 @app.command("retention-report")
 def retention_report(
     years: Annotated[
         Optional[int],
         typer.Option("--years", "-y", help="Override retention period in years"),
     ] = None,
+    purge_years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--purge-years",
+            help="Override years after archive before purge (for pending_purge count)",
+        ),
+    ] = None,
 ) -> None:
     """Produce retention audit report: counts by tier, litigation hold, pending archive."""
     retention_years = years if years is not None else get_retention_period_years()
     retention_by_state = get_retention_by_state() if years is None else None
+    purge_after = (
+        purge_years if purge_years is not None else get_retention_purge_after_archive_years()
+    )
     ctx = _get_cli_ctx()
     report = ctx.repo.retention_report(
         retention_years,
         retention_by_state=retention_by_state,
+        purge_after_archive_years=purge_after,
     )
     typer.echo(json.dumps(report, indent=2))
 
@@ -720,6 +792,15 @@ def cmd_retention_enforce(
 ) -> None:
     """Archive claims older than retention period. Used by tests."""
     retention_enforce(dry_run, years, include_litigation_hold)
+
+
+def cmd_retention_purge(
+    dry_run: bool = False,
+    years: int | None = None,
+    include_litigation_hold: bool = False,
+) -> None:
+    """Purge archived claims past purge horizon. Used by tests."""
+    retention_purge(dry_run, years, include_litigation_hold)
 
 
 if __name__ == "__main__":

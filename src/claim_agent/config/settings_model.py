@@ -835,6 +835,11 @@ class Settings(BaseSettings):
     )
     crew_verbose: bool = Field(default=True, validation_alias="CREWAI_VERBOSE")
     retention_period_years: int = 5
+    retention_purge_after_archive_years: int = Field(
+        default=2,
+        validation_alias="RETENTION_PURGE_AFTER_ARCHIVE_YEARS",
+        description="Years after archived_at before retention purge (anonymize + purged status)",
+    )
     policy_adapter: str = Field(default="mock", validation_alias="POLICY_ADAPTER")
     valuation_adapter: str = Field(default="mock", validation_alias="VALUATION_ADAPTER")
     repair_shop_adapter: str = Field(default="mock", validation_alias="REPAIR_SHOP_ADAPTER")
@@ -868,6 +873,20 @@ class Settings(BaseSettings):
             except ValueError:
                 pass
         return 5  # fallback, model_validator will override from compliance if needed
+
+    @field_validator("retention_purge_after_archive_years", mode="before")
+    @classmethod
+    def _coerce_purge_retention(cls, v: Any) -> int:
+        if isinstance(v, int) and v >= 1:
+            return v
+        if isinstance(v, str):
+            try:
+                n = int(v)
+                if n >= 1:
+                    return n
+            except ValueError:
+                pass
+        return 2
 
     @model_validator(mode="after")
     def _resolve_retention(self) -> "Settings":

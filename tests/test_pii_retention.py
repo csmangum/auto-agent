@@ -424,6 +424,10 @@ class TestRetentionRepository:
             assert "litigation_hold_count" in report
             assert "closed_with_litigation_hold" in report
             assert "pending_archive_count" in report
+            assert "purge_after_archive_years" in report
+            assert "claims_by_retention_tier" in report
+            assert "pending_purge_count" in report
+            assert "purged_count" in report
             assert "audit_log_rows" in report
             assert report["active_count"] >= 0
             assert report["closed_count"] >= 0
@@ -465,6 +469,7 @@ class TestRetentionRepository:
             claim = repo.get_claim(claim_id)
             assert claim["status"] == STATUS_ARCHIVED
             assert claim["archived_at"] is not None
+            assert claim["retention_tier"] == "archived"
 
             history, _ = repo.get_claim_history(claim_id)
             retention_actions = [h for h in history if h["action"] == "retention_archived"]
@@ -588,5 +593,166 @@ class TestRetentionCLI:
             data = json.loads(captured.out)
             assert data["claims_to_archive"] == 1
             assert claim_id in data["claim_ids"]
+        finally:
+            os.unlink(db_path)
+
+
+class TestPurgeRetention:
+    """Tiered retention: cold tier on close, purge after archive horizon."""
+
+    def test_closed_sets_retention_tier_cold(self):
+        from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+        from claim_agent.db.database import init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_id = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-C",
+                    vin="1HGCM82633A123457",
+                    vehicle_year=2020,
+                    vehicle_make="Honda",
+                    vehicle_model="Civic",
+                    incident_date="2024-01-15",
+                    incident_description="Test",
+                    damage_description="Test",
+                )
+            )
+            assert repo.get_claim(claim_id)["retention_tier"] == "active"
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
+            assert repo.get_claim(claim_id)["retention_tier"] == "cold"
+        finally:
+            os.unlink(db_path)
+
+    def test_purge_claim_anonymizes_and_sets_purged(self):
+        from claim_agent.db.audit_events import AUDIT_EVENT_RETENTION_PURGED
+        from claim_agent.db.constants import (
+            STATUS_CLOSED,
+            STATUS_OPEN,
+            STATUS_PROCESSING,
+            STATUS_PURGED,
+        )
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from sqlalchemy import text
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_id = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-P",
+                    vin="1HGCM82633A123458",
+                    vehicle_year=2020,
+                    vehicle_make="Honda",
+                    vehicle_model="Civic",
+                    incident_date="2020-01-15",
+                    incident_description="Test",
+                    damage_description="Test",
+                )
+            )
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
+            repo.archive_claim(claim_id)
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text(
+                        "UPDATE claims SET archived_at = datetime('now', '-5 years') "
+                        "WHERE id = :id"
+                    ),
+                    {"id": claim_id},
+                )
+            to_purge = repo.list_claims_for_purge(1, exclude_litigation_hold=True)
+            assert any(c["id"] == claim_id for c in to_purge)
+            repo.purge_claim(claim_id)
+            claim = repo.get_claim(claim_id)
+            assert claim["status"] == STATUS_PURGED
+            assert claim["retention_tier"] == "purged"
+            assert claim["purged_at"] is not None
+            assert claim["policy_number"] == "[REDACTED]"
+            assert claim["vin"] == "[REDACTED]"
+            history, _ = repo.get_claim_history(claim_id)
+            purged_rows = [h for h in history if h["action"] == AUDIT_EVENT_RETENTION_PURGED]
+            assert len(purged_rows) == 1
+        finally:
+            os.unlink(db_path)
+
+    def test_list_claims_for_purge_skips_litigation_hold(self):
+        from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from sqlalchemy import text
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_id = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-H",
+                    vin="1HGCM82633A123459",
+                    vehicle_year=2020,
+                    vehicle_make="Honda",
+                    vehicle_model="Civic",
+                    incident_date="2020-01-15",
+                    incident_description="Test",
+                    damage_description="Test",
+                )
+            )
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
+            repo.archive_claim(claim_id)
+            repo.set_litigation_hold(claim_id, True)
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text(
+                        "UPDATE claims SET archived_at = datetime('now', '-5 years') "
+                        "WHERE id = :id"
+                    ),
+                    {"id": claim_id},
+                )
+            assert repo.list_claims_for_purge(1, exclude_litigation_hold=True) == []
+            listed = repo.list_claims_for_purge(1, exclude_litigation_hold=False)
+            assert any(c["id"] == claim_id for c in listed)
+        finally:
+            os.unlink(db_path)
+
+
+class TestRetentionPurgeCLI:
+    def test_retention_purge_dry_run(self, capsys):
+        from claim_agent.db.database import init_db
+        from claim_agent.main import cmd_retention_purge
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            with mock.patch.dict(os.environ, {"CLAIMS_DB_PATH": db_path}):
+                cmd_retention_purge(dry_run=True)
+            captured = capsys.readouterr()
+            data = json.loads(captured.out)
+            assert data["dry_run"] is True
+            assert "purge_after_archive_years" in data
+            assert "claims_to_purge" in data
         finally:
             os.unlink(db_path)

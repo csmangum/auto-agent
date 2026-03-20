@@ -3,6 +3,7 @@
 import pytest
 
 from claim_agent.db.constants import (
+    STATUS_ARCHIVED,
     STATUS_CLOSED,
     STATUS_DENIED,
     STATUS_DUPLICATE,
@@ -12,6 +13,7 @@ from claim_agent.db.constants import (
     STATUS_PENDING,
     STATUS_PENDING_INFO,
     STATUS_PROCESSING,
+    STATUS_PURGED,
     STATUS_SETTLED,
 )
 from claim_agent.db.state_machine import can_transition, validate_transition
@@ -38,6 +40,12 @@ class TestCanTransition:
         assert can_transition(STATUS_CLOSED, STATUS_OPEN) is False
         assert can_transition(STATUS_DENIED, STATUS_SETTLED) is False
         assert can_transition(STATUS_PENDING, STATUS_CLOSED) is False
+
+    def test_archived_to_purged_allowed(self):
+        assert can_transition(STATUS_ARCHIVED, STATUS_PURGED) is True
+
+    def test_purged_is_terminal(self):
+        assert can_transition(STATUS_PURGED, STATUS_CLOSED) is False
 
     def test_close_guard_without_payout_from_open_fails(self):
         assert can_transition(STATUS_OPEN, STATUS_CLOSED, claim={}) is False

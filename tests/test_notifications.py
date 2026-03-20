@@ -194,6 +194,24 @@ class TestDispatchClaimEvent:
                 assert payload["claim_type"] == "partial_loss"
                 assert payload["payout_amount"] == 1500.0
 
+    def test_purged_maps_to_claim_purged(self):
+        with patch("claim_agent.notifications.webhook.dispatch_webhook") as mock:
+            with patch.dict(
+                os.environ,
+                {"WEBHOOK_URL": "https://x.com/hook", "WEBHOOK_ENABLED": "true"},
+            ):
+                dispatch_claim_event(
+                    "CLM-123",
+                    "purged",
+                    summary="Purged for retention",
+                    claim_type="partial_loss",
+                    payout_amount=1500.0,
+                )
+                event, payload = mock.call_args[0]
+                assert event == "claim.purged"
+                assert payload["status"] == "purged"
+                assert payload["summary"] == "Purged for retention"
+
 
 class TestSafeDispatchClaimEvent:
     """Tests for safe_dispatch_claim_event best-effort behavior."""
@@ -453,5 +471,53 @@ class TestRepositoryWebhookIntegration:
                 assert event.claim_id == claim_id
                 assert event.status == "archived"
                 assert event.summary == "Archived for retention"
+        finally:
+            os.unlink(db_path)
+
+    def test_purge_claim_emits_purged(self):
+        from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.events import ClaimEvent
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_input = ClaimInput(
+                policy_number="POL-PURGE",
+                vin="3HGBH41JXMN109199",
+                vehicle_year=2019,
+                vehicle_make="Honda",
+                vehicle_model="Accord",
+                incident_date="2019-06-01",
+                incident_description="Test",
+                damage_description="Test",
+            )
+            claim_id = repo.create_claim(claim_input)
+            repo.update_claim_status(claim_id, STATUS_PROCESSING, skip_validation=True)
+            repo.update_claim_status(claim_id, STATUS_OPEN, skip_validation=True)
+            repo.update_claim_status(
+                claim_id, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+            )
+            repo.archive_claim(claim_id)
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text(
+                        "UPDATE claims SET archived_at = datetime('now', '-5 years') "
+                        "WHERE id = :id"
+                    ),
+                    {"id": claim_id},
+                )
+            with patch("claim_agent.db.repository.emit_claim_event") as mock:
+                repo.purge_claim(claim_id)
+                mock.assert_called_once()
+                event = mock.call_args[0][0]
+                assert isinstance(event, ClaimEvent)
+                assert event.claim_id == claim_id
+                assert event.status == "purged"
+                assert event.summary == "Purged for retention"
         finally:
             os.unlink(db_path)

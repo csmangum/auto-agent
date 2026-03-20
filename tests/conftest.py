@@ -133,6 +133,8 @@ def _seed_test_data(db_path: str) -> None:
              "damage_description": "Minor dent", "estimated_damage": 800.0,
              "claim_type": "partial_loss", "status": "archived"},
         )
+        conn.execute(text("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'"))
+        conn.execute(text("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'"))
 
         # Audit log entries
         conn.execute(

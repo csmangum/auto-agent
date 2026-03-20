@@ -100,6 +100,13 @@ class TestClaimsList:
         claim_ids = [c["id"] for c in data["claims"]]
         assert "CLM-ARCHIVED" in claim_ids
 
+    def test_list_claims_include_purged_query_ok(self, client):
+        """include_purged=true is accepted (no purged rows in seed)."""
+        resp = client.get("/api/claims?include_purged=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 5
+
     def test_pagination(self, client):
         resp = client.get("/api/claims?limit=1&offset=0")
         data = resp.json()

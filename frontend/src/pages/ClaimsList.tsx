@@ -8,6 +8,7 @@ const STATUSES = [
   'pending', 'processing', 'open', 'closed', 'duplicate',
   'fraud_suspected', 'fraud_confirmed', 'needs_review',
   'partial_loss', 'under_investigation', 'denied', 'settled', 'disputed', 'failed', 'archived',
+  'purged',
 ];
 
 const TYPES = [
@@ -25,6 +26,7 @@ export default function ClaimsList() {
   const statusFilter = searchParams.get('status') ?? '';
   const typeFilter = searchParams.get('type') ?? '';
   const includeArchived = searchParams.get('include_archived') === 'true';
+  const includePurged = searchParams.get('include_purged') === 'true';
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -50,6 +52,17 @@ export default function ClaimsList() {
     setPage(1);
   }, [searchParams, setSearchParams]);
 
+  const setIncludePurged = useCallback((checked: boolean) => {
+    const params = new URLSearchParams(searchParams);
+    if (checked) {
+      params.set('include_purged', 'true');
+    } else {
+      params.delete('include_purged');
+    }
+    setSearchParams(params, { replace: true });
+    setPage(1);
+  }, [searchParams, setSearchParams]);
+
   const offset = (page - 1) * pageSize;
   const params = {
     limit: pageSize,
@@ -57,6 +70,7 @@ export default function ClaimsList() {
     ...(statusFilter && { status: statusFilter }),
     ...(typeFilter && { claim_type: typeFilter }),
     ...(includeArchived && { include_archived: true }),
+    ...(includePurged && { include_purged: true }),
   };
   const { data, isLoading, error } = useClaims(params);
   const claims = data?.claims ?? [];
@@ -140,6 +154,16 @@ export default function ClaimsList() {
             className="rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500/40"
           />
           <span className="text-sm text-gray-300">Include archived</span>
+        </label>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includePurged}
+            onChange={(e) => setIncludePurged(e.target.checked)}
+            className="rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500/40"
+          />
+          <span className="text-sm text-gray-300">Include purged</span>
         </label>
 
         {(statusFilter || typeFilter) && (
