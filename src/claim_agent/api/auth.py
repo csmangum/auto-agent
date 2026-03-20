@@ -9,7 +9,7 @@ from claim_agent.config.settings import get_api_keys_config, get_jwt_secret
 logger = logging.getLogger(__name__)
 
 # Roles used by RBAC; JWT role claim must be one of these
-KNOWN_ROLES = frozenset({"adjuster", "supervisor", "admin"})
+KNOWN_ROLES = frozenset({"adjuster", "supervisor", "admin", "executive"})
 
 
 @dataclass

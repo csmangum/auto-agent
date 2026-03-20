@@ -120,7 +120,7 @@ def test_authority_limit_blocks_adjuster(temp_db, monkeypatch):
         damage_description="Severe",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises(ReserveAuthorityError, match="exceeds authority limit"):
+    with pytest.raises(ReserveAuthorityError, match="Supervisor approval required"):
         repo.set_reserve(claim_id, 15000.0, actor_id="adjuster-123")
 
 
@@ -197,6 +197,62 @@ def test_admin_can_set_reserve_above_adjuster_limit(temp_db, monkeypatch):
     claim_id = repo.create_claim(claim_input)
     repo.set_reserve(claim_id, 15000.0, actor_id="admin-1", role="admin")
     assert repo.get_claim(claim_id)["reserve_amount"] == 15000.0
+
+
+def test_supervisor_blocked_above_supervisor_limit(temp_db, monkeypatch):
+    """Supervisor above supervisor_limit gets ReserveAuthorityError with executive hint."""
+
+    def limits():
+        return {
+            "adjuster_limit": 5000.0,
+            "supervisor_limit": 20000.0,
+            "initial_reserve_from_estimated_damage": True,
+        }
+
+    monkeypatch.setattr("claim_agent.db.repository.get_reserve_config", limits)
+
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-SUP-CAP",
+        vin="1HGBH41JXMN109202",
+        vehicle_year=2020,
+        vehicle_make="Kia",
+        vehicle_model="Soul",
+        incident_date="2024-08-01",
+        incident_description="Hail",
+        damage_description="Roof",
+    )
+    claim_id = repo.create_claim(claim_input)
+    with pytest.raises(ReserveAuthorityError, match="executive approval required"):
+        repo.set_reserve(claim_id, 25000.0, actor_id="sup-1", role="supervisor")
+
+
+def test_executive_bypasses_reserve_limits(temp_db, monkeypatch):
+    """Executive role is not capped by adjuster/supervisor reserve limits."""
+
+    def limits():
+        return {
+            "adjuster_limit": 5000.0,
+            "supervisor_limit": 20000.0,
+            "initial_reserve_from_estimated_damage": True,
+        }
+
+    monkeypatch.setattr("claim_agent.db.repository.get_reserve_config", limits)
+
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-EXE",
+        vin="1HGBH41JXMN109203",
+        vehicle_year=2022,
+        vehicle_make="BMW",
+        vehicle_model="X3",
+        incident_date="2024-09-01",
+        incident_description="Multi-vehicle",
+        damage_description="Total loss",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.set_reserve(claim_id, 500000.0, actor_id="exec-1", role="executive")
+    assert repo.get_claim(claim_id)["reserve_amount"] == 500000.0
 
 
 def test_fnol_sets_initial_reserve_from_estimated_damage(temp_db):

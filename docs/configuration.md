@@ -37,11 +37,11 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 
 | Variable | Description |
 |---------|-------------|
-| `API_KEYS` | Comma-separated `key:role` pairs, e.g. `sk-adj-xxx:adjuster,sk-sup-yyy:supervisor,sk-admin-zzz:admin` |
+| `API_KEYS` | Comma-separated `key:role` pairs, e.g. `sk-adj-xxx:adjuster,sk-sup-yyy:supervisor,sk-exe-zzz:executive,sk-admin-zzz:admin` |
 | `CLAIMS_API_KEY` | Single API key (backward compat). When set and `API_KEYS` unset, treated as admin role |
 | `JWT_SECRET` | Secret for verifying JWT Bearer tokens. JWT payload should include `sub` (user id) and `role` |
 
-**Roles**: `adjuster` (submit/view claims, docs), `supervisor` (all adjuster + reprocess, metrics), `admin` (all + config, system).
+**Roles**: `adjuster` (submit/view claims, docs), `supervisor` (all adjuster + reprocess, metrics), `executive` (supervisor-level API access; reserve changes are not capped by adjuster/supervisor limits), `admin` (all + config, system; may set `skip_authority_check` on reserve updates).
 
 Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
 
