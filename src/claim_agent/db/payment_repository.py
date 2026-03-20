@@ -115,13 +115,12 @@ class PaymentRepository:
         safe_payee = sanitize_payee(data.payee)
         if not safe_payee:
             raise DomainValidationError(
-                "Primary payee name is required and must contain valid characters after sanitization"
+                "Primary payee name is required and must not be empty after sanitization"
             )
-        safe_payee_secondary = (
-            sanitize_payee(data.payee_secondary) or None
-            if data.payee_secondary
-            else None
-        )
+        if data.payee_secondary:
+            safe_payee_secondary = sanitize_payee(data.payee_secondary) or None
+        else:
+            safe_payee_secondary = None
         ext_ref = (data.external_ref or "").strip()[:_EXTERNAL_REF_MAX] or None
         with get_connection(self._db_path) as conn:
             row = conn.execute(

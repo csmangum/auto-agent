@@ -47,7 +47,7 @@ def record_claim_payment_impl(
     if not payee_clean:
         return json.dumps({"success": False, "error": "payee is required"})
 
-    payee_secondary_clean = (sanitize_payee(payee_secondary) or None) if payee_secondary else None
+    payee_secondary_clean = payee_secondary or None
     
     sec_type = None
     if payee_secondary_type:
