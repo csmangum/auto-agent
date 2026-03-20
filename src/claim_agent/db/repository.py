@@ -519,12 +519,16 @@ class ClaimRepository:
 
             if not skip_validation:
                 claim_dict = row_d
+                validation_claim_type = (
+                    claim_type if claim_type is not None else row_d.get("claim_type")
+                )
                 validate_transition(
                     claim_id,
                     old_status,
                     new_status,
                     claim=claim_dict,
                     payout_amount=payout_amount,
+                    claim_type=validation_claim_type,
                     actor_id=actor_id,
                 )
 

@@ -4,6 +4,8 @@ The claim lifecycle is enforced by a formal state machine in `src/claim_agent/db
 
 ## Valid Transitions
 
+The base graph below applies to all claims. **Claim-type variants** add extra edges or optional guards (see next section).
+
 | From | Valid To |
 |------|----------|
 | pending | processing, open, needs_review, fraud_suspected |
@@ -23,6 +25,20 @@ The claim lifecycle is enforced by a formal state machine in `src/claim_agent/db
 | closed | archived |
 | archived | (terminal) |
 | partial_loss | closed, settled, needs_review |
+
+## Claim-type variants
+
+`can_transition()` and `validate_transition()` accept optional `claim_type` (or read `claim["claim_type"]` from the claim row). Rules:
+
+| Claim type | Transition additions | Optional dict guards on `claim` |
+|------------|------------------------|----------------------------------|
+| `bodily_injury` | `open` → `pending_info` (document ongoing treatment / info holds) | — |
+| `partial_loss` | (none) | If key `repair_ready_for_settlement` is present and `False`, `open` → `settled` is rejected |
+| `total_loss` | (none) | If key `total_loss_settlement_authorized` is present and `False`, `open` → `settled` is rejected |
+
+Unknown or missing `claim_type` uses **only** the base transition table; optional guard keys are ignored when absent so existing flows stay valid.
+
+To add more variants, extend `_CLAIM_TYPE_TRANSITION_ADDITIONS` or `_type_specific_guard` in `src/claim_agent/db/state_machine.py`.
 
 ## Transition Guards
 
@@ -59,4 +75,13 @@ if can_transition("open", "closed", claim={"payout_amount": 1000.0}):
 
 # Validate (raises InvalidClaimTransitionError if invalid)
 validate_transition(claim_id, "open", "closed", claim=claim, payout_amount=1000.0)
+
+# Bodily injury: allow open -> pending_info when claim_type is set
+validate_transition(
+    claim_id,
+    "open",
+    "pending_info",
+    claim=claim,
+    claim_type="bodily_injury",
+)
 ```
