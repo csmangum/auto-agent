@@ -56,6 +56,8 @@ def create_payment(
         raise HTTPException(status_code=404, detail=str(e))
     except PaymentAuthorityError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except DomainValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     payment = repo.get_payment(payment_id)
     if payment is None:
         raise HTTPException(
