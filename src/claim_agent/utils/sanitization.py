@@ -139,12 +139,15 @@ def sanitize_payee(payee: str | None) -> str:
     """Sanitize payee name for prompt injection before storage and audit logging.
     
     Payee data may be passed to LLMs via payment tools, included in audit logs that 
-    are used in prompts, or rendered in UI contexts. This sanitization prevents:
+    are used in prompts, or rendered in UI contexts. This sanitization helps prevent:
     - Prompt injection attacks via payee names
     - Control character injection
-    - XSS if rendered without proper escaping
-    
+
     Truncates to 500 chars and removes instruction-like patterns.
+
+    Note: This function does *not* perform HTML or UI escaping/encoding. The returned
+    string must still be contextually escaped/encoded when rendered (e.g., in HTML)
+    to prevent XSS and other injection vulnerabilities.
     """
     if payee is None or not isinstance(payee, str):
         return ""
