@@ -216,14 +216,15 @@ def _evaluate_reserve_adequacy_gate(
     if adequate:
         return None
 
+    if mode == "warn":
+        return None
+
     r = (role or "adjuster").strip().lower()
     if skip_adequacy_check and r not in _ADEQUACY_SKIP_ROLES:
         return (
             "skip_adequacy_check is only allowed for supervisor, admin, or executive roles"
         )
     if skip_adequacy_check and r in _ADEQUACY_SKIP_ROLES:
-        return None
-    if mode == "warn":
         return None
     return (
         "Reserve not adequate for close/settlement: "
