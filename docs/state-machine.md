@@ -42,7 +42,9 @@ This ensures closure is documented (settlement or denial).
 
 ## REST API
 
-`InvalidClaimTransitionError` is handled globally in the FastAPI app (`create_app`): responses use **409 Conflict** with JSON fields `detail`, `claim_id`, `from_status`, `to_status`, and `reason`. Route handlers avoid catching it inside broad `except Exception` blocks that would map errors to 400 or 503; Pydantic validation failures use `ValidationError` only so domain transition errors are not misclassified.
+For non-streaming JSON REST endpoints, `InvalidClaimTransitionError` is handled globally in the FastAPI app (`create_app`): responses use **409 Conflict** with JSON fields `detail`, `claim_id`, `from_status`, `to_status`, and `reason`. Route handlers avoid catching it inside broad `except Exception` blocks that would map errors to 400 or 503; Pydantic validation failures use `ValidationError` only so domain transition errors are not misclassified.
+
+For streaming/SSE endpoints (e.g., `/api/chat`), a JSON 409 response cannot be issued mid-stream. Transition errors in those paths are surfaced as SSE error events instead.
 
 ## Violation Logging
 
