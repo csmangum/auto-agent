@@ -222,6 +222,8 @@ class ReserveConfig(BaseSettings):
 
     adjuster_limit: float = 10000.0
     supervisor_limit: float = 50000.0
+    #: Max reserve for executive role; 0 or negative means no cap (unlimited).
+    executive_limit: float = 0.0
     initial_reserve_from_estimated_damage: bool = True
     #: off | block | warn — gate on transitions to closed/settled (see state_machine)
     close_settle_adequacy_gate: str = "warn"
@@ -241,6 +243,14 @@ class ReserveConfig(BaseSettings):
             return float(v)
         except (ValueError, TypeError):
             return 50000.0
+
+    @field_validator("executive_limit", mode="before")
+    @classmethod
+    def _coerce_executive_limit(cls, v: Any) -> float:
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 0.0
 
     @field_validator("initial_reserve_from_estimated_damage", mode="before")
     @classmethod

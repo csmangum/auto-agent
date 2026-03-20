@@ -30,7 +30,7 @@ def get_claim_context() -> ClaimContext:
 
 router = APIRouter(tags=["tasks"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 VALID_TASK_STATUSES = {s.value for s in TaskStatus}
 VALID_TASK_TYPES = {t.value for t in TaskType}

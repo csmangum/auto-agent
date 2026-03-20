@@ -138,13 +138,108 @@ def _check_reserve_authority(
     role: str = "adjuster",
     skip_authority_check: bool = False,
 ) -> None:
-    """Raise ReserveAuthorityError if amount exceeds actor's limit. Workflow/system bypass."""
+    """Enforce reserve amount vs configured role limits.
+
+    No check (returns immediately) when ``skip_authority_check`` is true or when
+    ``actor_id`` is the workflow or system actor.
+
+    Otherwise: adjusters use ``adjuster_limit``; supervisors and admins use
+    ``supervisor_limit``; executives use ``executive_limit`` if it is positive,
+    or are unconstrained when that limit is not configured (<= 0).
+
+    Raises ``ReserveAuthorityError`` when ``amount`` exceeds the applicable limit.
+    """
     if skip_authority_check or actor_id in (ACTOR_WORKFLOW, ACTOR_SYSTEM):
         return
+    r = (role or "adjuster").lower()
     cfg = get_reserve_config()
-    limit = cfg["supervisor_limit"] if role in ("supervisor", "admin") else cfg["adjuster_limit"]
+    exec_cap = float(cfg.get("executive_limit", 0.0))
+    if r == "executive":
+        if exec_cap <= 0:
+            return
+        if amount > exec_cap:
+            raise ReserveAuthorityError(amount, exec_cap, actor_id, role)
+        return
+    if r in ("supervisor", "admin"):
+        limit = cfg["supervisor_limit"]
+    else:
+        limit = cfg["adjuster_limit"]
     if amount > limit:
         raise ReserveAuthorityError(amount, limit, actor_id, role)
+
+
+def _reserve_audit_reason(
+    safe_reason: str,
+    default_label: str,
+    *,
+    skip_authority_check: bool,
+) -> str:
+    """Human-readable reason for reserve_history and claim_audit_log."""
+    core = safe_reason.strip() or default_label
+    if skip_authority_check:
+        return sanitize_note(core + " [authority check bypassed]")
+    return core
+
+
+def _reserve_adequacy_details(
+    reserve_val: float | None,
+    est_val: float | None,
+    payout_val: float | None,
+) -> tuple[bool, list[str], list[str]]:
+    """Compute adequacy, human warnings, and stable warning_codes."""
+    warnings: list[str] = []
+    codes: list[str] = []
+
+    benchmark: float | None = None
+    if payout_val is not None and payout_val > 0:
+        benchmark = payout_val
+    if est_val is not None and est_val > 0:
+        benchmark = max(benchmark or 0, est_val)
+
+    if reserve_val is None:
+        if benchmark is not None and benchmark > 0:
+            warnings.append(
+                "No reserve set; reserve should be set for actuarial tracking",
+            )
+            codes.append(RESERVE_ADEQUACY_CODE_NOT_SET)
+        adequate = benchmark is None or benchmark <= 0
+        return adequate, warnings, codes
+
+    if benchmark is None or reserve_val >= benchmark:
+        return True, warnings, codes
+
+    below_estimate = (
+        est_val is not None
+        and est_val == benchmark
+        and (payout_val is None or payout_val <= 0 or payout_val < benchmark)
+    )
+    below_payout_only = (
+        payout_val is not None
+        and payout_val == benchmark
+        and (est_val is None or est_val <= 0 or est_val < benchmark)
+    )
+    if below_estimate:
+        warnings.append(
+            f"Reserve ${reserve_val:,.2f} is below estimated damage ${benchmark:,.2f}",
+        )
+        codes.append(RESERVE_ADEQUACY_CODE_BELOW_ESTIMATE)
+    elif below_payout_only:
+        warnings.append(
+            f"Reserve ${reserve_val:,.2f} is below payout ${benchmark:,.2f}",
+        )
+        codes.append(RESERVE_ADEQUACY_CODE_BELOW_PAYOUT)
+    else:
+        parts = []
+        if est_val is not None:
+            parts.append(f"estimated damage ${est_val:,.2f}")
+        if payout_val is not None:
+            parts.append(f"payout ${payout_val:,.2f}")
+        suffix = f" ({', '.join(parts)})" if parts else ""
+        warnings.append(
+            f"Reserve ${reserve_val:,.2f} is below benchmark ${benchmark:,.2f}{suffix}",
+        )
+        codes.append(RESERVE_ADEQUACY_CODE_BELOW_BENCHMARK)
+    return False, warnings, codes
 
 
 def _is_claim_past_retention(
@@ -974,6 +1069,9 @@ class ClaimRepository:
         )
         safe_actor = sanitize_actor_id(actor_id)
         safe_reason = sanitize_note(reason) if reason else ""
+        audit_reason = _reserve_audit_reason(
+            safe_reason, "Reserve set", skip_authority_check=skip_authority_check
+        )
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text("SELECT reserve_amount, status FROM claims WHERE id = :claim_id"),
@@ -999,7 +1097,7 @@ class ClaimRepository:
                     "claim_id": claim_id,
                     "old_amount": old_amount,
                     "new_amount": amount,
-                    "reason": safe_reason or "Reserve set",
+                    "reason": audit_reason,
                     "actor_id": safe_actor,
                 },
             )
@@ -1013,7 +1111,7 @@ class ClaimRepository:
                 {
                     "claim_id": claim_id,
                     "action": AUDIT_EVENT_RESERVE_SET,
-                    "details": safe_reason or "Reserve set",
+                    "details": audit_reason,
                     "actor_id": safe_actor,
                     "before_state": before_state,
                     "after_state": after_state,
@@ -1057,6 +1155,9 @@ class ClaimRepository:
                 AUDIT_EVENT_RESERVE_SET if old_amount is None else AUDIT_EVENT_RESERVE_ADJUSTED
             )
             default_reason = "Reserve set" if old_amount is None else "Reserve adjusted"
+            audit_reason = _reserve_audit_reason(
+                safe_reason, default_reason, skip_authority_check=skip_authority_check
+            )
             conn.execute(
                 text(
                     "UPDATE claims SET reserve_amount = :new_amount, updated_at = CURRENT_TIMESTAMP WHERE id = :claim_id"
@@ -1072,7 +1173,7 @@ class ClaimRepository:
                     "claim_id": claim_id,
                     "old_amount": old_amount,
                     "new_amount": new_amount,
-                    "reason": safe_reason or default_reason,
+                    "reason": audit_reason,
                     "actor_id": safe_actor,
                 },
             )
@@ -1086,7 +1187,7 @@ class ClaimRepository:
                 {
                     "claim_id": claim_id,
                     "action": audit_event,
-                    "details": safe_reason or default_reason,
+                    "details": audit_reason,
                     "actor_id": safe_actor,
                     "before_state": before_state,
                     "after_state": after_state,

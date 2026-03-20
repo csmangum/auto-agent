@@ -9,7 +9,7 @@ from claim_agent.api.deps import require_role
 from claim_agent.db.database import get_connection
 from claim_agent.rag.constants import _STATE_ABBREV_TO_CANONICAL, normalize_state
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 router = APIRouter(tags=["compliance"])
 

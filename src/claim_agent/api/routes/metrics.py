@@ -7,7 +7,7 @@ from claim_agent.observability import get_metrics
 
 router = APIRouter(tags=["metrics"])
 
-RequireSupervisor = require_role("supervisor", "admin")
+RequireSupervisor = require_role("supervisor", "admin", "executive")
 
 
 @router.get("/metrics", dependencies=[RequireSupervisor])
