@@ -25,7 +25,7 @@ from claim_agent.models.payment import (
 )
 
 router = APIRouter(tags=["payments"])
-RequireAdjuster = require_role("adjuster", "supervisor", "admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 def _get_payment_repo() -> PaymentRepository:

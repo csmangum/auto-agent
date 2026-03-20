@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 def _sse_event(data: dict) -> str:

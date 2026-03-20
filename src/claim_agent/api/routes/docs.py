@@ -9,7 +9,7 @@ from claim_agent.api.deps import require_role
 
 router = APIRouter(tags=["documentation"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 # Resolve paths relative to project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent

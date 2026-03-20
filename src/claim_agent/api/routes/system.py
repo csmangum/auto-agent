@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["system"])
 
 RequireAdmin = require_role("admin")
-RequireAdjuster = require_role("adjuster", "supervisor", "admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 

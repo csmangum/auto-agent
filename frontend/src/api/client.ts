@@ -174,6 +174,8 @@ export const getClaimReserveAdequacy = (
 export interface PatchClaimReserveBody {
   reserve_amount: number;
   reason?: string;
+  /** Admin only: bypass reserve authority limits */
+  skip_authority_check?: boolean;
 }
 
 export interface PatchClaimReserveResponse {
