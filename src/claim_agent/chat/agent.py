@@ -185,8 +185,23 @@ async def run_chat_agent(
 
         yield _sse_event({"type": "done"})
 
-    except InvalidClaimTransitionError:
-        raise
+    except InvalidClaimTransitionError as exc:
+        logger.warning(
+            "Invalid claim transition in chat agent: %s -> %s (claim_id=%s, reason=%s)",
+            exc.from_status,
+            exc.to_status,
+            exc.claim_id,
+            exc.reason,
+        )
+        yield _sse_event({
+            "type": "error",
+            "message": f"Invalid claim transition: {exc.from_status} -> {exc.to_status}. {exc.reason}",
+            "claim_id": exc.claim_id,
+            "from_status": exc.from_status,
+            "to_status": exc.to_status,
+            "reason": exc.reason,
+        })
+        yield _sse_event({"type": "done"})
     except Exception:
         logger.exception("Chat agent error")
         yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})

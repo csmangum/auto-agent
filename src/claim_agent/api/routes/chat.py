@@ -86,8 +86,23 @@ async def chat(
         try:
             async for chunk in run_chat_agent(messages, db_path=db_path):
                 yield chunk
-        except InvalidClaimTransitionError:
-            raise
+        except InvalidClaimTransitionError as exc:
+            logger.warning(
+                "Invalid claim transition in chat stream: %s -> %s (claim_id=%s, reason=%s)",
+                exc.from_status,
+                exc.to_status,
+                exc.claim_id,
+                exc.reason,
+            )
+            yield _sse_event({
+                "type": "error",
+                "message": f"Invalid claim transition: {exc.from_status} -> {exc.to_status}. {exc.reason}",
+                "claim_id": exc.claim_id,
+                "from_status": exc.from_status,
+                "to_status": exc.to_status,
+                "reason": exc.reason,
+            })
+            yield _sse_event({"type": "done"})
         except Exception as exc:
             logger.exception("Chat stream error: %s", exc)
             yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})
