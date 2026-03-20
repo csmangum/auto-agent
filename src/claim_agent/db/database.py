@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS claims (
     archived_at TEXT,
     incident_id TEXT REFERENCES incidents(id),
     litigation_hold INTEGER DEFAULT 0,
+    repair_ready_for_settlement INTEGER,
+    total_loss_settlement_authorized INTEGER,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -495,6 +497,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN incident_id TEXT")
         if "litigation_hold" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN litigation_hold INTEGER DEFAULT 0")
+        if "repair_ready_for_settlement" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN repair_ready_for_settlement INTEGER")
+        if "total_loss_settlement_authorized" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN total_loss_settlement_authorized INTEGER")
         # UCSPA compliance (migration 026)
         for col, col_type in [
             ("acknowledged_at", "TEXT"),
@@ -552,9 +558,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         pass
     # Document management: claim_documents, document_requests, claim_tasks.document_request_id
     try:
-        conn.execute(
-            "SELECT 1 FROM claim_documents LIMIT 1"
-        )
+        conn.execute("SELECT 1 FROM claim_documents LIMIT 1")
     except sqlite3.OperationalError:
         conn.executescript("""
             CREATE TABLE claim_documents (

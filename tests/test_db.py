@@ -7,11 +7,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from claim_agent.config import reload_settings
-from claim_agent.db.audit_events import AUDIT_EVENT_COVERAGE_VERIFICATION, AUDIT_EVENT_SIU_CASE_CREATED
-from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING
+from claim_agent.db.audit_events import (
+    AUDIT_EVENT_COVERAGE_VERIFICATION,
+    AUDIT_EVENT_SIU_CASE_CREATED,
+)
+from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING, STATUS_SETTLED
 from claim_agent.db.database import get_db_path, get_connection, row_to_dict
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, InvalidClaimTransitionError
 from claim_agent.models.claim import ClaimInput
 
 
@@ -50,7 +53,9 @@ def test_init_db_creates_tables(temp_db):
 def test_init_db_creates_append_only_triggers(temp_db):
     """init_db creates triggers that prevent UPDATE and DELETE on claim_audit_log."""
     with get_connection(temp_db) as conn:
-        cur = conn.execute(text("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name"))
+        cur = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
+        )
         triggers = [row[0] for row in cur.fetchall()]
     assert "claim_audit_log_prevent_update" in triggers
     assert "claim_audit_log_prevent_delete" in triggers
@@ -167,6 +172,84 @@ def test_repository_update_claim_status(temp_db):
     assert "status_change" in actions
 
 
+def test_update_claim_status_enforces_partial_loss_settlement_flag_from_db(temp_db):
+    """Persisted repair_ready_for_settlement=0 blocks open->settled via repository validation."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_id = repo.create_claim(
+        ClaimInput(
+            policy_number="POL-FLAG",
+            vin="VINFLAG1",
+            vehicle_year=2020,
+            vehicle_make="Honda",
+            vehicle_model="Civic",
+            incident_date="2025-01-10",
+            incident_description="Scratch.",
+            damage_description="Door scratch.",
+        )
+    )
+    repo.update_claim_status(claim_id, STATUS_PROCESSING, details="proc")
+    repo.update_claim_status(claim_id, STATUS_OPEN, details="open", claim_type="partial_loss")
+    repo.update_claim_status(
+        claim_id,
+        STATUS_OPEN,
+        details="not ready",
+        claim_type="partial_loss",
+        repair_ready_for_settlement=False,
+    )
+    with pytest.raises(InvalidClaimTransitionError):
+        repo.update_claim_status(claim_id, STATUS_SETTLED, details="try settle")
+    repo.update_claim_status(
+        claim_id,
+        STATUS_OPEN,
+        details="ready",
+        claim_type="partial_loss",
+        repair_ready_for_settlement=True,
+    )
+    repo.update_claim_status(claim_id, STATUS_SETTLED, details="settled")
+    claim = repo.get_claim(claim_id)
+    assert claim is not None
+    assert claim["status"] == STATUS_SETTLED
+
+
+def test_update_claim_status_enforces_total_loss_settlement_flag_from_db(temp_db):
+    """Persisted total_loss_settlement_authorized=0 blocks open->settled via repository validation."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_id = repo.create_claim(
+        ClaimInput(
+            policy_number="POL-TLF",
+            vin="VINTLF1",
+            vehicle_year=2021,
+            vehicle_make="Subaru",
+            vehicle_model="Outback",
+            incident_date="2025-02-01",
+            incident_description="Total loss.",
+            damage_description="Severe.",
+        )
+    )
+    repo.update_claim_status(claim_id, STATUS_PROCESSING, details="proc")
+    repo.update_claim_status(claim_id, STATUS_OPEN, details="open", claim_type="total_loss")
+    repo.update_claim_status(
+        claim_id,
+        STATUS_OPEN,
+        details="not authorized",
+        claim_type="total_loss",
+        total_loss_settlement_authorized=False,
+    )
+    with pytest.raises(InvalidClaimTransitionError):
+        repo.update_claim_status(claim_id, STATUS_SETTLED, details="try settle")
+    repo.update_claim_status(
+        claim_id,
+        STATUS_OPEN,
+        details="authorized",
+        claim_type="total_loss",
+        total_loss_settlement_authorized=True,
+    )
+    repo.update_claim_status(claim_id, STATUS_SETTLED, details="settled")
+    claim = repo.get_claim(claim_id)
+    assert claim is not None
+    assert claim["status"] == STATUS_SETTLED
+
+
 def test_repository_save_workflow_result(temp_db):
     """ClaimRepository.save_workflow_result inserts into workflow_runs."""
     repo = ClaimRepository(db_path=temp_db)
@@ -189,7 +272,9 @@ def test_repository_save_workflow_result(temp_db):
     )
     with get_connection(temp_db) as conn:
         row = conn.execute(
-            text("SELECT claim_id, claim_type, router_output, workflow_output FROM workflow_runs WHERE claim_id = :claim_id"),
+            text(
+                "SELECT claim_id, claim_type, router_output, workflow_output FROM workflow_runs WHERE claim_id = :claim_id"
+            ),
             {"claim_id": claim_id},
         ).fetchone()
     assert row is not None
@@ -236,7 +321,9 @@ def test_deny_claim_at_claimant_succeeds_when_processing(temp_db):
     )
     claim_id = repo.create_claim(claim_input)
     repo.update_claim_status(claim_id, STATUS_PROCESSING)
-    repo.deny_claim_at_claimant(claim_id, "Coverage denied", coverage_verification_details={"reason": "test"})
+    repo.deny_claim_at_claimant(
+        claim_id, "Coverage denied", coverage_verification_details={"reason": "test"}
+    )
     claim = repo.get_claim(claim_id)
     assert claim["status"] == "denied"
 
