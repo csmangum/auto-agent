@@ -38,6 +38,8 @@ The base graph below applies to all claims. **Claim-type variants** add extra ed
 | `partial_loss` | (none) | If key `repair_ready_for_settlement` is present and `False`, `open` → `settled` is rejected |
 | `total_loss` | (none) | If key `total_loss_settlement_authorized` is present and `False`, `open` → `settled` is rejected |
 
+For `partial_loss` / `total_loss`, those guard keys are persisted on the claim row as nullable integers (`repair_ready_for_settlement`, `total_loss_settlement_authorized`): **NULL** means unset (guard does not apply); **0** blocks `open` → `settled`. `ClaimRepository.update_claim_status` loads them into the dict passed to `validate_transition` and can set them with optional boolean kwargs (`repair_ready_for_settlement=`, `total_loss_settlement_authorized=`).
+
 Unknown or missing `claim_type` uses **only** the base transition table; optional guard keys are ignored when absent so existing flows stay valid.
 
 To add more variants, extend `_CLAIM_TYPE_TRANSITION_ADDITIONS` or `_type_specific_guard` in `src/claim_agent/db/state_machine.py`.

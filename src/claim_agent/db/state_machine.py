@@ -36,45 +36,55 @@ logger = logging.getLogger(__name__)
 # Valid transitions: from_status -> set of to_status
 # Derived from orchestrators, tools, and repository methods
 _TRANSITIONS: dict[str, frozenset[str]] = {
-    STATUS_PENDING: frozenset({
-        STATUS_PROCESSING,
-        STATUS_OPEN,
-        STATUS_NEEDS_REVIEW,
-        STATUS_FRAUD_SUSPECTED,
-    }),
-    STATUS_PROCESSING: frozenset({
-        STATUS_OPEN,
-        STATUS_DUPLICATE,
-        STATUS_DENIED,
-        STATUS_SETTLED,
-        STATUS_FRAUD_SUSPECTED,
-        STATUS_NEEDS_REVIEW,
-        STATUS_FAILED,
-        STATUS_UNDER_INVESTIGATION,
-    }),
-    STATUS_OPEN: frozenset({
-        STATUS_SETTLED,
-        STATUS_DISPUTED,
-        STATUS_NEEDS_REVIEW,
-        STATUS_CLOSED,
-        STATUS_PROCESSING,
-        STATUS_DENIED,
-    }),
-    STATUS_NEEDS_REVIEW: frozenset({
-        STATUS_PROCESSING,
-        STATUS_DENIED,
-        STATUS_PENDING_INFO,
-        STATUS_UNDER_INVESTIGATION,
-        STATUS_CLOSED,
-    }),
+    STATUS_PENDING: frozenset(
+        {
+            STATUS_PROCESSING,
+            STATUS_OPEN,
+            STATUS_NEEDS_REVIEW,
+            STATUS_FRAUD_SUSPECTED,
+        }
+    ),
+    STATUS_PROCESSING: frozenset(
+        {
+            STATUS_OPEN,
+            STATUS_DUPLICATE,
+            STATUS_DENIED,
+            STATUS_SETTLED,
+            STATUS_FRAUD_SUSPECTED,
+            STATUS_NEEDS_REVIEW,
+            STATUS_FAILED,
+            STATUS_UNDER_INVESTIGATION,
+        }
+    ),
+    STATUS_OPEN: frozenset(
+        {
+            STATUS_SETTLED,
+            STATUS_DISPUTED,
+            STATUS_NEEDS_REVIEW,
+            STATUS_CLOSED,
+            STATUS_PROCESSING,
+            STATUS_DENIED,
+        }
+    ),
+    STATUS_NEEDS_REVIEW: frozenset(
+        {
+            STATUS_PROCESSING,
+            STATUS_DENIED,
+            STATUS_PENDING_INFO,
+            STATUS_UNDER_INVESTIGATION,
+            STATUS_CLOSED,
+        }
+    ),
     STATUS_DENIED: frozenset({STATUS_NEEDS_REVIEW, STATUS_CLOSED}),
     STATUS_DISPUTED: frozenset({STATUS_DISPUTE_RESOLVED, STATUS_NEEDS_REVIEW}),
     STATUS_SETTLED: frozenset({STATUS_DISPUTED, STATUS_CLOSED}),
-    STATUS_UNDER_INVESTIGATION: frozenset({
-        STATUS_FRAUD_SUSPECTED,
-        STATUS_FRAUD_CONFIRMED,
-        STATUS_NEEDS_REVIEW,
-    }),
+    STATUS_UNDER_INVESTIGATION: frozenset(
+        {
+            STATUS_FRAUD_SUSPECTED,
+            STATUS_FRAUD_CONFIRMED,
+            STATUS_NEEDS_REVIEW,
+        }
+    ),
     STATUS_FRAUD_SUSPECTED: frozenset({STATUS_FRAUD_CONFIRMED, STATUS_NEEDS_REVIEW}),
     STATUS_FRAUD_CONFIRMED: frozenset({STATUS_CLOSED}),
     STATUS_DUPLICATE: frozenset({STATUS_CLOSED}),
@@ -131,6 +141,11 @@ def _allowed_targets(
     return frozenset(base | extra)
 
 
+def _falsy_workflow_flag(val: Any) -> bool:
+    """True when a persisted 0/False should block settlement (DB may use INTEGER 0)."""
+    return val is False or val == 0
+
+
 def _type_specific_guard(
     from_status: str,
     to_status: str,
@@ -141,17 +156,15 @@ def _type_specific_guard(
     if not claim_type:
         return None
     if claim_type == "partial_loss" and from_status == STATUS_OPEN and to_status == STATUS_SETTLED:
-        if "repair_ready_for_settlement" in claim and claim.get("repair_ready_for_settlement") is False:
-            return (
-                "partial_loss: cannot move open -> settled while repair_ready_for_settlement is false"
-            )
+        if "repair_ready_for_settlement" in claim and _falsy_workflow_flag(
+            claim.get("repair_ready_for_settlement")
+        ):
+            return "partial_loss: cannot move open -> settled while repair_ready_for_settlement is false"
     if claim_type == "total_loss" and from_status == STATUS_OPEN and to_status == STATUS_SETTLED:
-        if "total_loss_settlement_authorized" in claim and claim.get(
-            "total_loss_settlement_authorized"
-        ) is False:
-            return (
-                "total_loss: cannot move open -> settled while total_loss_settlement_authorized is false"
-            )
+        if "total_loss_settlement_authorized" in claim and _falsy_workflow_flag(
+            claim.get("total_loss_settlement_authorized")
+        ):
+            return "total_loss: cannot move open -> settled while total_loss_settlement_authorized is false"
     return None
 
 
@@ -255,7 +268,9 @@ def validate_transition(
     ct = _resolve_claim_type(claim, claim_type)
     allowed = _allowed_targets(from_status, claim_type=ct)
     if to_status not in allowed:
-        reason = f"Invalid transition: {from_status!r} -> {to_status!r} (allowed: {sorted(allowed)})"
+        reason = (
+            f"Invalid transition: {from_status!r} -> {to_status!r} (allowed: {sorted(allowed)})"
+        )
         _log_violation(claim_id, from_status, to_status, actor_id, reason)
         raise InvalidClaimTransitionError(claim_id, from_status, to_status, reason)
     claim_dict = claim or {}

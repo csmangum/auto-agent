@@ -84,6 +84,20 @@ def _generate_claim_id(prefix: str = "CLM") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
+def _claim_row_for_status_validation(row_d: dict[str, Any]) -> dict[str, Any]:
+    """Subset of claim row for validate_transition; normalizes 0/1 DB flags to bool."""
+    out = dict(row_d)
+    for key in ("repair_ready_for_settlement", "total_loss_settlement_authorized"):
+        if key not in out:
+            continue
+        val = out.get(key)
+        if val is None:
+            del out[key]
+        else:
+            out[key] = bool(val)
+    return out
+
+
 def _apply_ucspa_at_fnol(
     repo: "ClaimRepository",
     claim_id: str,
@@ -500,14 +514,20 @@ class ClaimRepository:
         claim_type: str | None = None,
         payout_amount: float | None = None,
         *,
+        repair_ready_for_settlement: bool | None = None,
+        total_loss_settlement_authorized: bool | None = None,
         actor_id: str = ACTOR_WORKFLOW,
         skip_validation: bool = False,
     ) -> None:
-        """Update status, optionally claim_type and payout_amount; log state change to audit."""
+        """Update status, optionally claim_type, payout_amount, and settlement flags; audit."""
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
+                text(
+                    "SELECT status, claim_type, payout_amount, "
+                    "repair_ready_for_settlement, total_loss_settlement_authorized "
+                    "FROM claims WHERE id = :claim_id"
+                ),
                 {"claim_id": claim_id},
             ).fetchone()
             if row is None:
@@ -516,9 +536,17 @@ class ClaimRepository:
             old_status = row_d["status"]
             old_claim_type = row_d["claim_type"]
             old_payout = row_d["payout_amount"]
+            old_rr = row_d.get("repair_ready_for_settlement")
+            old_tla = row_d.get("total_loss_settlement_authorized")
 
             if not skip_validation:
-                claim_dict = row_d
+                claim_dict = _claim_row_for_status_validation(row_d)
+                if repair_ready_for_settlement is not None:
+                    claim_dict["repair_ready_for_settlement"] = repair_ready_for_settlement
+                if total_loss_settlement_authorized is not None:
+                    claim_dict["total_loss_settlement_authorized"] = (
+                        total_loss_settlement_authorized
+                    )
                 validation_claim_type = (
                     claim_type if claim_type is not None else row_d.get("claim_type")
                 )
@@ -532,15 +560,30 @@ class ClaimRepository:
                     actor_id=actor_id,
                 )
 
+            new_rr = (
+                (1 if repair_ready_for_settlement else 0)
+                if repair_ready_for_settlement is not None
+                else old_rr
+            )
+            new_tla = (
+                (1 if total_loss_settlement_authorized else 0)
+                if total_loss_settlement_authorized is not None
+                else old_tla
+            )
+
             before_state = {
                 "status": old_status,
                 "claim_type": old_claim_type,
                 "payout_amount": old_payout,
+                "repair_ready_for_settlement": old_rr,
+                "total_loss_settlement_authorized": old_tla,
             }
             after_state = {
                 "status": new_status,
                 "claim_type": claim_type if claim_type is not None else old_claim_type,
                 "payout_amount": payout_amount if payout_amount is not None else old_payout,
+                "repair_ready_for_settlement": new_rr,
+                "total_loss_settlement_authorized": new_tla,
             }
 
             # Explicit parameterized queries (no dynamic SQL)
@@ -584,6 +627,31 @@ class ClaimRepository:
                         """UPDATE claims SET status = :status, updated_at = :now WHERE id = :claim_id"""
                     ),
                     {"status": new_status, "now": now, "claim_id": claim_id},
+                )
+
+            if repair_ready_for_settlement is not None:
+                conn.execute(
+                    text(
+                        "UPDATE claims SET repair_ready_for_settlement = :v, "
+                        "updated_at = :now WHERE id = :claim_id"
+                    ),
+                    {
+                        "v": 1 if repair_ready_for_settlement else 0,
+                        "now": now,
+                        "claim_id": claim_id,
+                    },
+                )
+            if total_loss_settlement_authorized is not None:
+                conn.execute(
+                    text(
+                        "UPDATE claims SET total_loss_settlement_authorized = :v, "
+                        "updated_at = :now WHERE id = :claim_id"
+                    ),
+                    {
+                        "v": 1 if total_loss_settlement_authorized else 0,
+                        "now": now,
+                        "claim_id": claim_id,
+                    },
                 )
 
             conn.execute(
