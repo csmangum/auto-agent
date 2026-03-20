@@ -13,6 +13,7 @@ def get_coverage_config() -> dict:
     return {
         "enabled": s.enabled,
         "deny_when_deductible_exceeds_damage": s.deny_when_deductible_exceeds_damage,
+        "require_incident_location": s.require_incident_location,
     }
 
 

@@ -58,6 +58,7 @@ class CoverageConfig(BaseSettings):
 
     enabled: bool = True
     deny_when_deductible_exceeds_damage: bool = False
+    require_incident_location: bool = False
 
 
 def _parse_similarity_range_str(s: str) -> tuple[float, float]:

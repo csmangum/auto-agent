@@ -250,9 +250,9 @@ class TestTerritoryVerification:
         assert result.details.get("policy_territory") == "US"
 
     def test_passes_with_incident_in_state_list_territory(self):
-        """POL-002 has territory=['California', 'Nevada', 'Arizona']; Nevada passes."""
+        """POL-100 has territory=['California', 'Nevada', 'Arizona']; Nevada passes."""
         claim_data = {
-            "policy_number": "POL-002",
+            "policy_number": "POL-100",
             "damage_description": "Collision damage",
             "estimated_damage": 500,
             "incident_location": "Nevada",
@@ -263,9 +263,9 @@ class TestTerritoryVerification:
         assert result.details.get("territory_verified") is True
 
     def test_denies_incident_outside_state_list_territory(self):
-        """POL-002 has territory=['California', 'Nevada', 'Arizona']; Texas denied."""
+        """POL-100 has territory=['California', 'Nevada', 'Arizona']; Texas denied."""
         claim_data = {
-            "policy_number": "POL-002",
+            "policy_number": "POL-100",
             "damage_description": "Collision damage",
             "estimated_damage": 500,
             "incident_location": "Texas",
@@ -389,7 +389,7 @@ class TestTerritoryVerification:
     def test_case_insensitive_territory_matching(self):
         """Territory matching is case-insensitive (california == California)."""
         claim_data = {
-            "policy_number": "POL-002",
+            "policy_number": "POL-100",
             "damage_description": "Collision damage",
             "estimated_damage": 500,
             "incident_location": "california",
@@ -397,6 +397,45 @@ class TestTerritoryVerification:
         ctx = _ctx_with_mock_db(":memory:")
         result = verify_coverage_impl(claim_data, ctx=ctx)
         assert result.passed
+
+    def test_state_code_matches_state_name_territory(self):
+        """incident_location='NV' (code) matches territory='Nevada' (name) in list."""
+        claim_data = {
+            "policy_number": "POL-100",
+            "damage_description": "Collision damage",
+            "estimated_damage": 500,
+            "incident_location": "NV",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_state_name_matches_state_code_in_excluded_territory(self):
+        """incident_location='Alaska' (name) matches excluded='AK' (code)."""
+        # POL-003 excludes Alaska and Hawaii by full name; verify AK code is also excluded
+        claim_data = {
+            "policy_number": "POL-003",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "AK",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.denied
+        assert "excluded" in result.reason.lower()
+
+    def test_state_code_in_excluded_territory_blocks_state_name_incident(self):
+        """POL-101 excludes 'AK'/'HI' as codes; incident_location='Alaska' (name) is denied."""
+        claim_data = {
+            "policy_number": "POL-101",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "Alaska",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.denied
+        assert "excluded" in result.reason.lower()
 
 
 class TestCoverageStageIntegration:
