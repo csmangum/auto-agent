@@ -141,6 +141,16 @@ class TestReserveAuthorityError:
         assert "5,000" in str(err)
         assert "adjuster" in str(err)
         assert "adj-001" in str(err)
+        assert "Supervisor approval required" in str(err)
+
+    def test_supervisor_message_mentions_executive(self):
+        err = ReserveAuthorityError(
+            amount=60000.0,
+            limit=50000.0,
+            actor_id="sup-1",
+            role="supervisor",
+        )
+        assert "executive approval required" in str(err).lower()
 
     def test_default_role(self):
         err = ReserveAuthorityError(

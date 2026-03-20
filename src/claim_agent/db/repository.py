@@ -142,8 +142,14 @@ def _check_reserve_authority(
     """Raise ReserveAuthorityError if amount exceeds actor's limit. Workflow/system bypass."""
     if skip_authority_check or actor_id in (ACTOR_WORKFLOW, ACTOR_SYSTEM):
         return
+    r = (role or "adjuster").lower()
+    if r == "executive":
+        return
     cfg = get_reserve_config()
-    limit = cfg["supervisor_limit"] if role in ("supervisor", "admin") else cfg["adjuster_limit"]
+    if r in ("supervisor", "admin"):
+        limit = cfg["supervisor_limit"]
+    else:
+        limit = cfg["adjuster_limit"]
     if amount > limit:
         raise ReserveAuthorityError(amount, limit, actor_id, role)
 
