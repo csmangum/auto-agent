@@ -28,6 +28,7 @@ MAX_PARTY_EMAIL = 320
 MAX_PARTY_PHONE = 32
 MAX_PARTY_ADDRESS = 500
 MAX_PARTY_ROLE = 128
+MAX_PAYEE = 500
 
 # Maximum payout amount (dollars) for reviewer-confirmed payout validation
 MAX_PAYOUT = 50_000_000
@@ -131,6 +132,30 @@ def sanitize_resolution_notes(notes: str | None) -> str:
     if notes is None or not isinstance(notes, str):
         return ""
     t = _sanitize_text(notes, MAX_RESOLUTION_NOTES)
+    return _remove_injection_patterns(t)
+
+
+def sanitize_payee(payee: str | None) -> str:
+    """Sanitize payee name for prompt injection before storage and audit logging.
+    
+    Payee data may be passed to LLMs via payment tools, included in audit logs that 
+    are used in prompts, or rendered in UI contexts. This sanitization helps prevent:
+    - Prompt injection attacks via payee names
+    - Control character injection
+
+    Truncates to 500 chars, removes instruction-like patterns, and normalizes
+    whitespace (tabs and newlines are replaced with spaces and collapsed) since
+    payee names are single-line identifiers.
+
+    Note: This function does *not* perform HTML or UI escaping/encoding. The returned
+    string must still be contextually escaped/encoded when rendered (e.g., in HTML)
+    to prevent XSS and other injection vulnerabilities.
+    """
+    if payee is None or not isinstance(payee, str):
+        return ""
+    t = _sanitize_text(payee, MAX_PAYEE)
+    t = re.sub(r"[\t\n\r]+", " ", t)
+    t = re.sub(r" {2,}", " ", t).strip()
     return _remove_injection_patterns(t)
 
 
