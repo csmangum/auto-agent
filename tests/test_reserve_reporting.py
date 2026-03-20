@@ -111,3 +111,33 @@ def test_adequacy_summary_counts(temp_db):
     assert s["claim_count"] >= 2
     assert s["adequate_count"] + s["inadequate_count"] == s["claim_count"]
     assert s["inadequate_count"] >= 1
+
+
+def test_adequacy_summary_with_filters(temp_db):
+    """Regression test: ensure reserve_adequacy_summary works with claim_type/status filters."""
+    from claim_agent.db.database import get_connection
+    from sqlalchemy import text
+
+    repo = ClaimRepository(db_path=temp_db)
+    cid1 = repo.create_claim(_sample_claim("A"))
+    cid2 = repo.create_claim(_sample_claim("B"))
+
+    with get_connection(temp_db) as conn:
+        conn.execute(
+            text("UPDATE claims SET claim_type = :ct WHERE id = :cid"),
+            {"ct": "partial_loss", "cid": cid1},
+        )
+        conn.execute(
+            text("UPDATE claims SET claim_type = :ct WHERE id = :cid"),
+            {"ct": "total_loss", "cid": cid2},
+        )
+
+    s_all = reserve_adequacy_summary(db_path=temp_db)
+    assert s_all["claim_count"] >= 2
+
+    s_partial = reserve_adequacy_summary(db_path=temp_db, claim_type="partial_loss")
+    assert s_partial["claim_count"] >= 1
+    assert s_partial["claim_count"] < s_all["claim_count"]
+
+    s_pending = reserve_adequacy_summary(db_path=temp_db, status="pending")
+    assert s_pending["claim_count"] >= 2

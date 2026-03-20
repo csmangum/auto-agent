@@ -65,6 +65,31 @@ def _benchmark_sql(table_alias: str = "") -> str:
     """
 
 
+def _development_sql() -> tuple[str, str]:
+    """Returns (dev_lag_expr, accident_year_expr) for development triangle/rows.
+    
+    dev_lag_expr: months between incident_date and valuation_at
+    accident_year_expr: year extracted from incident_date
+    """
+    if _is_postgres():
+        dev_lag = (
+            "(EXTRACT(YEAR FROM h.created_at::timestamp)::INT - "
+            "EXTRACT(YEAR FROM c.incident_date::timestamp)::INT) * 12 + "
+            "(EXTRACT(MONTH FROM h.created_at::timestamp)::INT - "
+            "EXTRACT(MONTH FROM c.incident_date::timestamp)::INT)"
+        )
+        accident_y = "EXTRACT(YEAR FROM c.incident_date::timestamp)::INT"
+    else:
+        dev_lag = (
+            "(CAST(strftime('%Y', h.created_at) AS INTEGER) - "
+            "CAST(strftime('%Y', c.incident_date) AS INTEGER)) * 12 + "
+            "(CAST(strftime('%m', h.created_at) AS INTEGER) - "
+            "CAST(strftime('%m', c.incident_date) AS INTEGER))"
+        )
+        accident_y = "CAST(strftime('%Y', c.incident_date) AS INTEGER)"
+    return dev_lag, accident_y
+
+
 def _apply_claim_filters(
     filters: list[str],
     params: dict[str, Any],
@@ -73,7 +98,7 @@ def _apply_claim_filters(
     claim_type: str | None,
     status: str | None,
 ) -> None:
-    t = f"{table_alias}."
+    t = f"{table_alias}." if table_alias else ""
     if claim_type:
         filters.append(f"{t}claim_type = :claim_type")
         params["claim_type"] = claim_type.strip()
@@ -169,22 +194,7 @@ def reserve_development_rows(
         INNER JOIN claims c ON c.id = h.claim_id
         WHERE {where_sql}
     """
-    if _is_postgres():
-        dev_lag = (
-            "(EXTRACT(YEAR FROM h.created_at::timestamp)::INT - "
-            "EXTRACT(YEAR FROM c.incident_date::timestamp)::INT) * 12 + "
-            "(EXTRACT(MONTH FROM h.created_at::timestamp)::INT - "
-            "EXTRACT(MONTH FROM c.incident_date::timestamp)::INT)"
-        )
-        accident_y = "EXTRACT(YEAR FROM c.incident_date::timestamp)::INT"
-    else:
-        dev_lag = (
-            "(CAST(strftime('%Y', h.created_at) AS INTEGER) - "
-            "CAST(strftime('%Y', c.incident_date) AS INTEGER)) * 12 + "
-            "(CAST(strftime('%m', h.created_at) AS INTEGER) - "
-            "CAST(strftime('%m', c.incident_date) AS INTEGER))"
-        )
-        accident_y = "CAST(strftime('%Y', c.incident_date) AS INTEGER)"
+    dev_lag, accident_y = _development_sql()
 
     data_q = f"""
         SELECT
@@ -241,22 +251,7 @@ def reserve_development_triangle(
     _apply_claim_filters(filters, params, table_alias="c", claim_type=claim_type, status=status)
     where_sql = " AND ".join(filters)
 
-    if _is_postgres():
-        dev_lag = (
-            "(EXTRACT(YEAR FROM h.created_at::timestamp)::INT - "
-            "EXTRACT(YEAR FROM c.incident_date::timestamp)::INT) * 12 + "
-            "(EXTRACT(MONTH FROM h.created_at::timestamp)::INT - "
-            "EXTRACT(MONTH FROM c.incident_date::timestamp)::INT)"
-        )
-        accident_y = "EXTRACT(YEAR FROM c.incident_date::timestamp)::INT"
-    else:
-        dev_lag = (
-            "(CAST(strftime('%Y', h.created_at) AS INTEGER) - "
-            "CAST(strftime('%Y', c.incident_date) AS INTEGER)) * 12 + "
-            "(CAST(strftime('%m', h.created_at) AS INTEGER) - "
-            "CAST(strftime('%m', c.incident_date) AS INTEGER))"
-        )
-        accident_y = "CAST(strftime('%Y', c.incident_date) AS INTEGER)"
+    dev_lag, accident_y = _development_sql()
 
     q = f"""
         SELECT
