@@ -148,8 +148,9 @@ def create_app() -> FastAPI:
     )
 
     async def _invalid_claim_transition_handler(
-        _request: Request, exc: InvalidClaimTransitionError
+        _request: Request, exc: Exception
     ) -> JSONResponse:
+        assert isinstance(exc, InvalidClaimTransitionError)
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={

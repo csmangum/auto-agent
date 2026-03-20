@@ -9,10 +9,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from claim_agent.api.auth import AuthContext
-from claim_agent.exceptions import InvalidClaimTransitionError
 from claim_agent.api.deps import require_role
-from claim_agent.chat.agent import run_chat_agent
+from claim_agent.chat.agent import format_invalid_transition_sse_line, run_chat_agent
 from claim_agent.db.database import get_db_path
+from claim_agent.exceptions import InvalidClaimTransitionError
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,9 @@ async def chat(
     - ``{"type": "tool_call", "name": "...", "args": {...}}`` — tool invocation
     - ``{"type": "tool_result", "name": "...", "result": {...}}`` — tool result
     - ``{"type": "done"}`` — turn complete
-    - ``{"type": "error", "message": "..."}`` — error
+    - ``{"type": "error", "message": "..."}`` — error (invalid status transitions include
+      ``error_type``, ``status_code`` 409, ``detail``, ``claim_id``, ``from_status``,
+      ``to_status``, ``reason`` — same information as the non-streaming 409 JSON body)
     """
     # Filter out assistant messages with empty content (client may send for continuity)
     messages = [
@@ -94,14 +96,7 @@ async def chat(
                 exc.claim_id,
                 exc.reason,
             )
-            yield _sse_event({
-                "type": "error",
-                "message": f"Invalid claim transition: {exc.from_status} -> {exc.to_status}. {exc.reason}",
-                "claim_id": exc.claim_id,
-                "from_status": exc.from_status,
-                "to_status": exc.to_status,
-                "reason": exc.reason,
-            })
+            yield format_invalid_transition_sse_line(exc)
             yield _sse_event({"type": "done"})
         except Exception as exc:
             logger.exception("Chat stream error: %s", exc)

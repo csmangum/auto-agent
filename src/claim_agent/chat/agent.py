@@ -72,6 +72,23 @@ def _sse_event(data: dict[str, Any]) -> str:
     return f"data: {json.dumps(data, default=str)}\n\n"
 
 
+def format_invalid_transition_sse_line(exc: InvalidClaimTransitionError) -> str:
+    """SSE payload aligned with REST 409 JSON (plus error_type / status_code for streams)."""
+    return _sse_event(
+        {
+            "type": "error",
+            "error_type": "InvalidClaimTransition",
+            "status_code": 409,
+            "detail": str(exc),
+            "message": str(exc),
+            "claim_id": exc.claim_id,
+            "from_status": exc.from_status,
+            "to_status": exc.to_status,
+            "reason": exc.reason,
+        }
+    )
+
+
 async def run_chat_agent(
     messages: list[dict[str, Any]],
     *,
@@ -85,6 +102,8 @@ async def run_chat_agent(
     - ``{"type": "tool_result", "name": "...", "result": {...}}`` – tool result
     - ``{"type": "done"}`` – turn complete
     - ``{"type": "error", "message": "..."}`` – error
+    - ``InvalidClaimTransitionError``: error event with ``error_type``, ``status_code`` (409),
+      ``detail``, ``claim_id``, ``from_status``, ``to_status``, ``reason``, then ``done``
     """
     setup_observability()
     model = get_model_name()
@@ -193,14 +212,7 @@ async def run_chat_agent(
             exc.claim_id,
             exc.reason,
         )
-        yield _sse_event({
-            "type": "error",
-            "message": f"Invalid claim transition: {exc.from_status} -> {exc.to_status}. {exc.reason}",
-            "claim_id": exc.claim_id,
-            "from_status": exc.from_status,
-            "to_status": exc.to_status,
-            "reason": exc.reason,
-        })
+        yield format_invalid_transition_sse_line(exc)
         yield _sse_event({"type": "done"})
     except Exception:
         logger.exception("Chat agent error")
