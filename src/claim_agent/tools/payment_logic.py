@@ -7,6 +7,7 @@ from claim_agent.db.database import get_db_path
 from claim_agent.db.payment_repository import PaymentRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
+from claim_agent.utils.sanitization import sanitize_payee
 
 
 def record_claim_payment_impl(
@@ -42,10 +43,12 @@ def record_claim_payment_impl(
     if amount <= 0:
         return json.dumps({"success": False, "error": "amount must be positive"})
 
-    payee_clean = (payee or "").strip()[:500]
+    payee_clean = sanitize_payee(payee)
     if not payee_clean:
         return json.dumps({"success": False, "error": "payee is required"})
 
+    payee_secondary_clean = (sanitize_payee(payee_secondary) or None) if payee_secondary else None
+    
     sec_type = None
     if payee_secondary_type:
         try:
@@ -60,7 +63,7 @@ def record_claim_payment_impl(
         payee_type=pt,
         payment_method=pm,
         check_number=(check_number.strip()[:100] if check_number else None),
-        payee_secondary=(payee_secondary.strip()[:500] if payee_secondary else None),
+        payee_secondary=payee_secondary_clean,
         payee_secondary_type=sec_type,
         external_ref=(external_ref.strip()[:200] if external_ref else None),
     )

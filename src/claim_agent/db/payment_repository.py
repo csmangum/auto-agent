@@ -27,7 +27,7 @@ from claim_agent.models.payment import (
     ClaimPaymentCreate,
     PaymentStatus,
 )
-from claim_agent.utils.sanitization import sanitize_actor_id
+from claim_agent.utils.sanitization import sanitize_actor_id, sanitize_payee
 
 _STATUS_AUTHORIZED = PaymentStatus.AUTHORIZED.value
 _STATUS_ISSUED = PaymentStatus.ISSUED.value
@@ -49,7 +49,9 @@ def settlement_payee_from_claim_data(claim_data: dict) -> str:
                     continue
                 name = (p.get("name") or "").strip()
                 if name:
-                    return name[:500]
+                    sanitized = sanitize_payee(name)
+                    if sanitized:
+                        return sanitized
     return "Claimant"
 
 
@@ -110,6 +112,16 @@ class PaymentRepository:
             data.amount, actor_id, role=role, skip_authority_check=skip_authority_check
         )
         safe_actor = sanitize_actor_id(actor_id)
+        safe_payee = sanitize_payee(data.payee)
+        if not safe_payee:
+            raise DomainValidationError(
+                "Primary payee name is required and must contain valid characters after sanitization"
+            )
+        safe_payee_secondary = (
+            sanitize_payee(data.payee_secondary) or None
+            if data.payee_secondary
+            else None
+        )
         ext_ref = (data.external_ref or "").strip()[:_EXTERNAL_REF_MAX] or None
         with get_connection(self._db_path) as conn:
             row = conn.execute(
@@ -131,13 +143,13 @@ class PaymentRepository:
             insert_params = {
                 "claim_id": data.claim_id,
                 "amount": data.amount,
-                "payee": data.payee,
+                "payee": safe_payee,
                 "payee_type": data.payee_type.value,
                 "payment_method": data.payment_method.value,
                 "check_number": data.check_number,
                 "status": _STATUS_AUTHORIZED,
                 "authorized_by": safe_actor,
-                "payee_secondary": data.payee_secondary,
+                "payee_secondary": safe_payee_secondary,
                 "payee_secondary_type": data.payee_secondary_type.value
                 if data.payee_secondary_type
                 else None,
@@ -173,7 +185,7 @@ class PaymentRepository:
                 {
                     "payment_id": payment_id,
                     "amount": data.amount,
-                    "payee": data.payee,
+                    "payee": safe_payee,
                     "payee_type": data.payee_type.value,
                     "payment_method": data.payment_method.value,
                 }

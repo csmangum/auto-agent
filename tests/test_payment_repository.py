@@ -258,6 +258,25 @@ def test_settlement_payee_from_claim_data():
         )
         == "PH"
     )
+    # Edge case: name with only control characters sanitizes to empty, should fallback
+    assert (
+        settlement_payee_from_claim_data(
+            {"parties": [{"party_type": "claimant", "name": "\x01\x02\x03"}]}
+        )
+        == "Claimant"
+    )
+    # Edge case: first party has control-only name, second has valid name
+    assert (
+        settlement_payee_from_claim_data(
+            {
+                "parties": [
+                    {"party_type": "claimant", "name": "\x01"},
+                    {"party_type": "claimant", "name": "Valid Name"},
+                ]
+            }
+        )
+        == "Valid Name"
+    )
 
 
 def test_create_payment_external_ref_recovers_after_unique_violation(seeded_db, monkeypatch):
