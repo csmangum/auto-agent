@@ -22,6 +22,19 @@ STATUS_SETTLED = "settled"
 STATUS_NEEDS_REVIEW = "needs_review"
 STATUS_PENDING_INFO = "pending_info"
 STATUS_ARCHIVED = "archived"
+STATUS_PURGED = "purged"
+
+RETENTION_TIER_ACTIVE = "active"
+RETENTION_TIER_COLD = "cold"
+RETENTION_TIER_ARCHIVED = "archived"
+RETENTION_TIER_PURGED = "purged"
+
+RETENTION_TIERS = (
+    RETENTION_TIER_ACTIVE,
+    RETENTION_TIER_COLD,
+    RETENTION_TIER_ARCHIVED,
+    RETENTION_TIER_PURGED,
+)
 
 # Statuses that allow filing a policyholder dispute (must have completed workflow)
 DISPUTABLE_STATUSES = (STATUS_SETTLED, STATUS_OPEN)
@@ -67,6 +80,7 @@ CLAIM_STATUSES = (
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING_INFO,
     STATUS_ARCHIVED,
+    STATUS_PURGED,
 )
 
 # Stable codes returned by ClaimRepository.check_reserve_adequacy (API: warning_codes)

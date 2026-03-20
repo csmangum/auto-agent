@@ -152,7 +152,7 @@ def claims_with_deadlines_approaching(
                     WHERE {col} IS NOT NULL
                       AND {col} >= :today
                       AND {col} <= :cutoff
-                      AND status NOT IN ('closed', 'denied', 'duplicate', 'archived')
+                      AND status NOT IN ('closed', 'denied', 'duplicate', 'archived', 'purged')
                     """),
                     {"today": today.isoformat(), "cutoff": cutoff},
                 )

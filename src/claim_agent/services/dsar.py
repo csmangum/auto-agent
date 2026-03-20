@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.db.pii_redaction import anonymize_claim_pii
 
 
 DSAR_REQUEST_ACCESS = "access"
@@ -253,8 +254,6 @@ def get_dsar_request(request_id: str, *, db_path: str | None = None) -> dict[str
         return row_to_dict(row)
 
 
-REDACTED = "[REDACTED]"
-
 DSAR_AUDIT_ACCESS_FULFILL = "access_fulfill"
 DSAR_AUDIT_DELETION_FULFILL = "deletion_fulfill"
 DSAR_AUDIT_CONSENT_REVOKE = "consent_revoke"
@@ -409,38 +408,15 @@ def fulfill_deletion_request(
                     skipped_litigation += 1
                     continue
 
-            conn.execute(
-                text("""
-                    UPDATE claims SET policy_number = :redacted, vin = :redacted,
-                    attachments = '[]', updated_at = :now WHERE id = :claim_id
-                """),
-                {"redacted": REDACTED, "claim_id": claim_id, "now": datetime.now(timezone.utc).isoformat()},
+            now_iso = datetime.now(timezone.utc).isoformat()
+            _, n_parties = anonymize_claim_pii(
+                conn,
+                claim_id,
+                now_iso=now_iso,
+                notes_redaction_text="[REDACTED - DSAR deletion]",
             )
             anonymized_claims += 1
-
-            party_count = conn.execute(
-                text("SELECT COUNT(*) FROM claim_parties WHERE claim_id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            n_parties = party_count[0] if party_count and hasattr(party_count, "__getitem__") else 0
-
-            conn.execute(
-                text("""
-                    UPDATE claim_parties SET name = :redacted, email = :redacted,
-                    phone = :redacted, address = :redacted, updated_at = :now
-                    WHERE claim_id = :claim_id
-                """),
-                {"redacted": REDACTED, "claim_id": claim_id, "now": datetime.now(timezone.utc).isoformat()},
-            )
             anonymized_parties += n_parties
-
-            # Redact claim_notes (may contain PII: names, addresses, medical info)
-            conn.execute(
-                text("""
-                    UPDATE claim_notes SET note = :redacted WHERE claim_id = :claim_id
-                """),
-                {"redacted": "[REDACTED - DSAR deletion]", "claim_id": claim_id},
-            )
 
         # Note: claim_audit_log (details, before_state, after_state) is preserved for
         # legal/regulatory requirements; audit trail is typically retained per compliance practice.

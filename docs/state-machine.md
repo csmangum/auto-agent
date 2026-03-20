@@ -23,7 +23,8 @@ The base graph below applies to all claims. **Claim-type variants** add extra ed
 | dispute_resolved | closed |
 | pending_info | needs_review, processing, closed |
 | closed | archived |
-| archived | (terminal) |
+| archived | purged |
+| purged | (terminal) |
 | partial_loss | closed, settled, needs_review |
 
 ## Claim-type variants

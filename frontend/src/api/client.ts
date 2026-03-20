@@ -134,6 +134,7 @@ export interface GetClaimsParams {
   status?: string;
   claim_type?: string;
   include_archived?: boolean;
+  include_purged?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -143,6 +144,7 @@ export const getClaims = (params: GetClaimsParams = {}): Promise<ClaimsListRespo
   if (params.status) qs.set('status', params.status);
   if (params.claim_type) qs.set('claim_type', params.claim_type);
   if (params.include_archived === true) qs.set('include_archived', 'true');
+  if (params.include_purged === true) qs.set('include_purged', 'true');
   if (params.limit != null) qs.set('limit', String(params.limit));
   if (params.offset != null) qs.set('offset', String(params.offset));
   const q = qs.toString();

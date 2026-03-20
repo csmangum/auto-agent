@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS claims (
     litigation_hold INTEGER DEFAULT 0,
     repair_ready_for_settlement INTEGER,
     total_loss_settlement_authorized INTEGER,
+    retention_tier TEXT NOT NULL DEFAULT 'active',
+    purged_at TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -501,6 +503,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE claims ADD COLUMN repair_ready_for_settlement INTEGER")
         if "total_loss_settlement_authorized" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN total_loss_settlement_authorized INTEGER")
+        if "retention_tier" not in columns:
+            conn.execute(
+                "ALTER TABLE claims ADD COLUMN retention_tier TEXT NOT NULL DEFAULT 'active'"
+            )
+        if "purged_at" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN purged_at TEXT")
+        conn.execute("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'")
+        conn.execute("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'")
         # UCSPA compliance (migration 026)
         for col, col_type in [
             ("acknowledged_at", "TEXT"),

@@ -113,6 +113,11 @@ def get_retention_period_years() -> int:
     return get_settings().retention_period_years
 
 
+def get_retention_purge_after_archive_years() -> int:
+    """Years after archived_at before purge (anonymize + purged status). Default 2."""
+    return get_settings().retention_purge_after_archive_years
+
+
 def get_retention_by_state() -> dict[str, int]:
     """State-specific retention periods (years). Empty = use default only."""
     return get_settings().get_retention_by_state()

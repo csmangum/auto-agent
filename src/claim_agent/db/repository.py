@@ -4,6 +4,7 @@ This repository treats claim_audit_log as append-only: it only inserts new
 audit entries and does not perform UPDATE or DELETE operations on that table.
 """
 
+import calendar
 import json
 import logging
 import uuid
@@ -36,6 +37,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_RESERVE_SET,
     AUDIT_EVENT_LITIGATION_HOLD,
     AUDIT_EVENT_RETENTION,
+    AUDIT_EVENT_RETENTION_PURGED,
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
     AUDIT_EVENT_TASK_CREATED,
@@ -46,6 +48,10 @@ from claim_agent.db.constants import (
     RESERVE_ADEQUACY_CODE_BELOW_ESTIMATE,
     RESERVE_ADEQUACY_CODE_BELOW_PAYOUT,
     RESERVE_ADEQUACY_CODE_NOT_SET,
+    RETENTION_TIER_ACTIVE,
+    RETENTION_TIER_ARCHIVED,
+    RETENTION_TIER_COLD,
+    RETENTION_TIER_PURGED,
     STATUS_ARCHIVED,
     STATUS_CLOSED,
     STATUS_DENIED,
@@ -53,11 +59,13 @@ from claim_agent.db.constants import (
     STATUS_PENDING,
     STATUS_PENDING_INFO,
     STATUS_PROCESSING,
+    STATUS_PURGED,
     STATUS_UNDER_INVESTIGATION,
 )
 from claim_agent.config.settings import get_reserve_config
 from claim_agent.rag.constants import normalize_state
 from claim_agent.db.database import get_connection, row_to_dict
+from claim_agent.db.pii_redaction import anonymize_claim_pii
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
 from claim_agent.utils.sanitization import (
@@ -250,6 +258,50 @@ def _is_claim_past_retention(
     return created_norm <= cutoff_norm
 
 
+def _add_calendar_years(dt: datetime, years: int) -> datetime:
+    """Return ``dt`` plus ``years`` calendar years (clamp day for short months, e.g. Feb 29)."""
+    new_year = dt.year + years
+    month = dt.month
+    last_day = calendar.monthrange(new_year, month)[1]
+    new_day = min(dt.day, last_day)
+    return dt.replace(year=new_year, month=month, day=new_day)
+
+
+def _is_archived_past_purge_period(
+    row_d: dict[str, Any],
+    now: datetime,
+    purge_after_archive_years: int,
+) -> bool:
+    """True if ``now`` is on or after the calendar anniversary of archived_at + N years."""
+    if purge_after_archive_years < 0:
+        raise ValueError("purge_after_archive_years must be non-negative")
+    archived_raw = row_d.get("archived_at")
+    if not archived_raw:
+        return False
+
+    def _to_utc_aware(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    archived_dt: datetime
+    if isinstance(archived_raw, datetime):
+        archived_dt = archived_raw
+    elif isinstance(archived_raw, str):
+        try:
+            archived_dt = datetime.fromisoformat(archived_raw)
+        except ValueError:
+            try:
+                archived_dt = datetime.strptime(archived_raw, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return False
+    else:
+        return False
+
+    cutoff = _add_calendar_years(_to_utc_aware(archived_dt), purge_after_archive_years)
+    return _to_utc_aware(now) >= cutoff
+
+
 class ClaimRepository:
     """Repository for claim persistence and audit logging."""
 
@@ -284,10 +336,10 @@ class ClaimRepository:
                 INSERT INTO claims (
                     id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                     incident_date, incident_description, damage_description, estimated_damage,
-                    claim_type, loss_state, status, attachments, incident_id
+                    claim_type, loss_state, status, attachments, incident_id, retention_tier
                 ) VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
                          :incident_date, :incident_description, :damage_description, :estimated_damage,
-                         :claim_type, :loss_state, :status, :attachments, :incident_id)
+                         :claim_type, :loss_state, :status, :attachments, :incident_id, :retention_tier)
                 """),
                 {
                     "id": claim_id,
@@ -305,6 +357,7 @@ class ClaimRepository:
                     "status": STATUS_PENDING,
                     "attachments": attachments_json,
                     "incident_id": incident_id_val,
+                    "retention_tier": RETENTION_TIER_ACTIVE,
                 },
             )
             after_state = json.dumps(
@@ -649,6 +702,19 @@ class ClaimRepository:
                     ),
                     {
                         "v": 1 if total_loss_settlement_authorized else 0,
+                        "now": now,
+                        "claim_id": claim_id,
+                    },
+                )
+
+            if new_status == STATUS_CLOSED:
+                conn.execute(
+                    text(
+                        "UPDATE claims SET retention_tier = :rt, updated_at = :now "
+                        "WHERE id = :claim_id"
+                    ),
+                    {
+                        "rt": RETENTION_TIER_COLD,
                         "now": now,
                         "claim_id": claim_id,
                     },
@@ -2654,8 +2720,9 @@ class ClaimRepository:
         retention_period_years: int,
         *,
         retention_by_state: dict[str, int] | None = None,
+        purge_after_archive_years: int = 2,
     ) -> dict[str, Any]:
-        """Produce retention audit report: counts by tier, litigation hold, pending archive."""
+        """Produce retention audit report: counts by tier, litigation hold, pending archive/purge."""
         state_map = retention_by_state or {}
         now = datetime.now(timezone.utc)
 
@@ -2666,6 +2733,13 @@ class ClaimRepository:
                 """)
             ).fetchall()
             status_counts = {r[0]: r[1] for r in status_rows}
+
+            tier_rows = conn.execute(
+                text("""
+                SELECT retention_tier, COUNT(*) as cnt FROM claims GROUP BY retention_tier
+                """)
+            ).fetchall()
+            claims_by_retention_tier = {r[0]: r[1] for r in tier_rows}
 
             litigation_hold_count = (
                 conn.execute(
@@ -2684,6 +2758,14 @@ class ClaimRepository:
                 {"status": STATUS_CLOSED},
             ).fetchall()
 
+            archived_rows = conn.execute(
+                text("""
+                SELECT id, archived_at, litigation_hold FROM claims
+                WHERE status = :st AND archived_at IS NOT NULL
+                """),
+                {"st": STATUS_ARCHIVED},
+            ).fetchall()
+
         pending_archive = 0
         for r in closed_rows:
             row_d = row_to_dict(r)
@@ -2694,10 +2776,20 @@ class ClaimRepository:
 
         closed_with_hold = sum(1 for r in closed_rows if row_to_dict(r).get("litigation_hold"))
 
+        pending_purge = 0
+        for r in archived_rows:
+            row_d = row_to_dict(r)
+            if row_d.get("litigation_hold"):
+                continue
+            if _is_archived_past_purge_period(row_d, now, purge_after_archive_years):
+                pending_purge += 1
+
         return {
             "retention_period_years": retention_period_years,
+            "purge_after_archive_years": purge_after_archive_years,
             "retention_by_state": state_map,
             "claims_by_status": status_counts,
+            "claims_by_retention_tier": claims_by_retention_tier,
             "active_count": sum(
                 status_counts.get(s, 0)
                 for s in (
@@ -2709,9 +2801,11 @@ class ClaimRepository:
             ),
             "closed_count": status_counts.get(STATUS_CLOSED, 0),
             "archived_count": status_counts.get(STATUS_ARCHIVED, 0),
+            "purged_count": status_counts.get(STATUS_PURGED, 0),
             "litigation_hold_count": litigation_hold_count,
             "closed_with_litigation_hold": closed_with_hold,
             "pending_archive_count": pending_archive,
+            "pending_purge_count": pending_purge,
             "audit_log_rows": audit_count,
         }
 
@@ -2733,6 +2827,8 @@ class ClaimRepository:
             old_status = row_d["status"]
             if old_status == STATUS_ARCHIVED:
                 return
+            if old_status == STATUS_PURGED:
+                return
             validate_transition(
                 claim_id,
                 old_status,
@@ -2742,10 +2838,15 @@ class ClaimRepository:
             )
             conn.execute(
                 text("""
-                UPDATE claims SET status = :status, archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                UPDATE claims SET status = :status, archived_at = CURRENT_TIMESTAMP,
+                retention_tier = :rtier, updated_at = CURRENT_TIMESTAMP
                 WHERE id = :claim_id
                 """),
-                {"status": STATUS_ARCHIVED, "claim_id": claim_id},
+                {
+                    "status": STATUS_ARCHIVED,
+                    "rtier": RETENTION_TIER_ARCHIVED,
+                    "claim_id": claim_id,
+                },
             )
             conn.execute(
                 text("""
@@ -2767,6 +2868,106 @@ class ClaimRepository:
                 claim_id=claim_id,
                 status=STATUS_ARCHIVED,
                 summary="Archived for retention",
+                claim_type=row_d["claim_type"],
+                payout_amount=row_d["payout_amount"],
+            )
+        )
+
+    def list_claims_for_purge(
+        self,
+        purge_after_archive_years: int,
+        *,
+        exclude_litigation_hold: bool = True,
+    ) -> list[dict[str, Any]]:
+        """List archived claims past purge horizon (archived_at + N calendar years)."""
+        if purge_after_archive_years < 0:
+            raise ValueError("purge_after_archive_years must be non-negative")
+        now = datetime.now(timezone.utc)
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                text("""
+                SELECT * FROM claims
+                WHERE status = :st
+                  AND archived_at IS NOT NULL
+                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
+                ORDER BY archived_at ASC
+                """),
+                {
+                    "st": STATUS_ARCHIVED,
+                    "include_hold": 1 if not exclude_litigation_hold else 0,
+                },
+            ).fetchall()
+        result = []
+        for r in rows:
+            row_d = row_to_dict(r)
+            if _is_archived_past_purge_period(row_d, now, purge_after_archive_years):
+                result.append(row_d)
+        return result
+
+    def purge_claim(
+        self,
+        claim_id: str,
+        *,
+        actor_id: str = ACTOR_RETENTION,
+    ) -> None:
+        """Purge for retention: anonymize PII, status purged, retention_tier purged."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            row_d = row_to_dict(row)
+            old_status = row_d["status"]
+            if old_status == STATUS_PURGED:
+                return
+            validate_transition(
+                claim_id,
+                old_status,
+                STATUS_PURGED,
+                claim=row_d,
+                actor_id=actor_id,
+            )
+            anonymize_claim_pii(
+                conn,
+                claim_id,
+                now_iso=now_iso,
+                notes_redaction_text="[REDACTED - retention purge]",
+            )
+            conn.execute(
+                text("""
+                UPDATE claims SET status = :status, retention_tier = :rtier,
+                purged_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :claim_id
+                """),
+                {
+                    "status": STATUS_PURGED,
+                    "rtier": RETENTION_TIER_PURGED,
+                    "claim_id": claim_id,
+                },
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id)
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_RETENTION_PURGED,
+                    "old_status": old_status,
+                    "new_status": STATUS_PURGED,
+                    "details": "Purged for retention (PII anonymized; audit trail retained)",
+                    "actor_id": actor_id,
+                },
+            )
+
+        emit_claim_event(
+            ClaimEvent(
+                claim_id=claim_id,
+                status=STATUS_PURGED,
+                summary="Purged for retention",
                 claim_type=row_d["claim_type"],
                 payout_amount=row_d["payout_amount"],
             )
