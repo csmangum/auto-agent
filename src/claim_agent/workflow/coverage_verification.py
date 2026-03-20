@@ -82,17 +82,21 @@ def _normalize_location(location: str) -> str:
     return loc
 
 
-def _resolve_state_code(location: str) -> str | None:
-    """Resolve a state code to its full name if applicable.
-    
-    Args:
-        location: Location string (e.g., "AK", "Alaska", "TX")
-    
-    Returns:
-        Full state name if location is a valid state code, None otherwise
+def _canonical_us_state(location: str) -> str | None:
+    """Return the canonical (title-case full name) for a US state, or None.
+
+    Handles both state codes (CA, TX) and full names (California, Texas),
+    enabling bidirectional code/name equivalence for territory comparisons.
     """
-    loc_upper = location.strip().upper()
-    return _STATE_CODE_TO_NAME.get(loc_upper)
+    loc = location.strip()
+    # Try as 2-letter state code
+    name = _STATE_CODE_TO_NAME.get(loc.upper())
+    if name:
+        return name
+    # Try as full state name (case-insensitive)
+    if loc.title() in _US_STATE_NAMES:
+        return loc.title()
+    return None
 
 
 def _is_location_in_territory(
@@ -120,19 +124,15 @@ def _is_location_in_territory(
     
     # Check excluded territories first
     if excluded_territories:
-        # Resolve incident location if it's a state code
-        incident_state_name = _resolve_state_code(incident_location)
-        
+        incident_canon = _canonical_us_state(incident_location)
         for excluded in excluded_territories:
             excluded_norm = _normalize_location(excluded)
-            # Direct match (normalized)
+            # Direct normalized match
             if incident_loc == excluded_norm:
                 return False, f"Incident location '{incident_location}' is in excluded territory"
-            # Check if incident state code resolves to excluded state name
-            if incident_state_name and _normalize_location(incident_state_name) == excluded_norm:
-                return False, f"Incident location '{incident_location}' is in excluded territory"
-            # Check if incident state name matches excluded state
-            if incident_location.title() in _US_STATE_NAMES and excluded.title() == incident_location.title():
+            # Bidirectional state code/name equivalence (e.g., AK <-> Alaska)
+            excluded_canon = _canonical_us_state(excluded)
+            if incident_canon and excluded_canon and incident_canon == excluded_canon:
                 return False, f"Incident location '{incident_location}' is in excluded territory"
     
     # Handle string territory
@@ -143,14 +143,14 @@ def _is_location_in_territory(
         if territory_norm == "US":
             if incident_loc in _US_STATE_CODES or incident_location.title() in _US_STATE_NAMES:
                 return True, "Incident in US territory"
-            if incident_loc in ("US", "USA"):
+            if incident_loc == "US":
                 return True, "Incident in US territory"
             return False, f"Incident location '{incident_location}' is outside US territory"
         
         if territory_norm == "USA_CANADA":
             if incident_loc in _US_STATE_CODES or incident_location.title() in _US_STATE_NAMES:
                 return True, "Incident in US territory (USA_Canada policy)"
-            if incident_loc in ("US", "USA", "CANADA", "CA"):
+            if incident_loc in ("US", "CANADA"):
                 return True, "Incident in USA/Canada territory"
             return False, f"Incident location '{incident_location}' is outside USA/Canada territory"
         
@@ -162,19 +162,15 @@ def _is_location_in_territory(
     
     # Handle list of territories
     if isinstance(policy_territory, list):
-        # Resolve incident location if it's a state code
-        incident_state_name = _resolve_state_code(incident_location)
-        
+        incident_canon = _canonical_us_state(incident_location)
         for territory in policy_territory:
             territory_norm = _normalize_location(territory)
-            # Direct match (normalized)
+            # Direct normalized match
             if incident_loc == territory_norm:
                 return True, f"Incident in policy territory ({territory})"
-            # Check if incident state code resolves to territory state name
-            if incident_state_name and _normalize_location(incident_state_name) == territory_norm:
-                return True, f"Incident in policy territory ({territory})"
-            # Check state name match
-            if incident_location.title() in _US_STATE_NAMES and territory.title() == incident_location.title():
+            # Bidirectional state code/name equivalence (e.g., NV <-> Nevada, TX <-> Texas)
+            territory_canon = _canonical_us_state(territory)
+            if incident_canon and territory_canon and incident_canon == territory_canon:
                 return True, f"Incident in policy territory ({territory})"
         
         territories_str = ", ".join(policy_territory)
