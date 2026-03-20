@@ -9,7 +9,7 @@ from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.idempotency import (
@@ -19,7 +19,11 @@ from claim_agent.api.idempotency import (
 )
 from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
-from claim_agent.exceptions import ClaimNotFoundError, ReserveAuthorityError
+from claim_agent.exceptions import (
+    ClaimNotFoundError,
+    InvalidClaimTransitionError,
+    ReserveAuthorityError,
+)
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.workflow.handback_orchestrator import run_handback_workflow
@@ -174,6 +178,28 @@ def _run_workflow_background(
                 actor_id=actor_id,
                 ctx=bg_ctx,
             )
+        except InvalidClaimTransitionError as exc:
+            logger.warning(
+                "Invalid claim transition in background workflow for claim_id %s",
+                claim_id,
+                exc_info=True,
+            )
+            try:
+                bg_ctx.repo.update_claim_status(
+                    claim_id,
+                    STATUS_NEEDS_REVIEW,
+                    details=(
+                        f"Invalid claim transition in background workflow: "
+                        f"{exc.from_status!r} -> {exc.to_status!r} — {exc.reason}"
+                    ),
+                    actor_id=ACTOR_WORKFLOW,
+                    skip_validation=True,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to mark claim %s as needs_review after invalid transition",
+                    claim_id,
+                )
         except Exception:
             logger.exception(
                 "Unhandled exception in background workflow for claim_id %s", claim_id
@@ -500,7 +526,7 @@ async def approve_review(
         claim_data = claim_data_from_row(claim)
         try:
             ClaimInput.model_validate(claim_data)
-        except Exception as e:
+        except ValidationError as e:
             raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         try:
@@ -1430,6 +1456,8 @@ async def generate_incident_details(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except InvalidClaimTransitionError:
+        raise
     except Exception as e:
         logger.exception("generate-incident-details failed: %s", e)
         raise HTTPException(
@@ -1563,7 +1591,7 @@ async def create_incident(
         sanitized_incident = _sanitize_incident_data(incident_dict)
         try:
             sanitized_input = IncidentInput.model_validate(sanitized_incident)
-        except Exception as e:
+        except ValidationError as e:
             raise HTTPException(status_code=400, detail=f"Invalid incident data: {e}") from e
 
         incident_repo = IncidentRepository(db_path=get_db_path())
@@ -1767,7 +1795,7 @@ async def _process_claim_with_attachments(
     sanitized = sanitize_claim_data(claim_data)
     try:
         claim_input = ClaimInput.model_validate(sanitized)
-    except Exception as e:
+    except ValidationError as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
 
     repo = ctx.repo
@@ -2259,7 +2287,7 @@ async def reprocess_claim(
     claim_data = claim_data_from_row(claim)
     try:
         ClaimInput.model_validate(claim_data)
-    except Exception as e:
+    except ValidationError as e:
         raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
 
     resume_run_id: str | None = None

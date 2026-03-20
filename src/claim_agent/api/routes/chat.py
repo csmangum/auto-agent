@@ -10,8 +10,9 @@ from pydantic import BaseModel, Field, model_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
-from claim_agent.chat.agent import run_chat_agent
+from claim_agent.chat.agent import format_invalid_transition_sse_line, run_chat_agent
 from claim_agent.db.database import get_db_path
+from claim_agent.exceptions import InvalidClaimTransitionError
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,9 @@ async def chat(
     - ``{"type": "tool_call", "name": "...", "args": {...}}`` — tool invocation
     - ``{"type": "tool_result", "name": "...", "result": {...}}`` — tool result
     - ``{"type": "done"}`` — turn complete
-    - ``{"type": "error", "message": "..."}`` — error
+    - ``{"type": "error", "message": "..."}`` — error (invalid status transitions include
+      ``error_type``, ``status_code`` 409, ``detail``, ``claim_id``, ``from_status``,
+      ``to_status``, ``reason`` — same information as the non-streaming 409 JSON body)
     """
     # Filter out assistant messages with empty content (client may send for continuity)
     messages = [
@@ -85,6 +88,16 @@ async def chat(
         try:
             async for chunk in run_chat_agent(messages, db_path=db_path):
                 yield chunk
+        except InvalidClaimTransitionError as exc:
+            logger.warning(
+                "Invalid claim transition in chat stream: %s -> %s (claim_id=%s, reason=%s)",
+                exc.from_status,
+                exc.to_status,
+                exc.claim_id,
+                exc.reason,
+            )
+            yield format_invalid_transition_sse_line(exc)
+            yield _sse_event({"type": "done"})
         except Exception as exc:
             logger.exception("Chat stream error: %s", exc)
             yield _sse_event({"type": "error", "message": "An internal error occurred. Please try again."})

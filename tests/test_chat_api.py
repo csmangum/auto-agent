@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from claim_agent.exceptions import InvalidClaimTransitionError
+
 
 @pytest.fixture(autouse=True)
 def _use_seeded_db(seeded_temp_db):
@@ -203,6 +205,50 @@ class TestChatEndpoint:
         assert len(error_events) == 1
         assert "internal error" in error_events[0]["message"].lower()
         assert any(e["type"] == "done" for e in events)
+
+    def test_invalid_claim_transition_returns_structured_sse(self, client):
+        """InvalidClaimTransitionError yields structured error event then done (not HTTP 409)."""
+        tool_call = _make_tool_call("get_claims_stats", {})
+        tool_response = _make_llm_response(content=None, tool_calls=[tool_call])
+        tool_response.choices[0].message.content = None
+        tool_msg_dump = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "get_claims_stats", "arguments": "{}"},
+                }
+            ],
+        }
+        tool_response.choices[0].message.model_dump.return_value = tool_msg_dump
+        transition_exc = InvalidClaimTransitionError(
+            "CLM-TEST001", "open", "closed", "not allowed in test"
+        )
+        with patch(
+            "claim_agent.chat.agent.litellm.completion",
+            return_value=tool_response,
+        ):
+            with patch(
+                "claim_agent.chat.agent.execute_tool",
+                side_effect=transition_exc,
+            ):
+                resp = client.post(
+                    "/api/chat",
+                    json={"messages": [{"role": "user", "content": "trigger tool"}]},
+                )
+        assert resp.status_code == 200
+        events = _parse_sse_events(resp.text)
+        err = next(e for e in events if e["type"] == "error")
+        assert err.get("error_type") == "InvalidClaimTransition"
+        assert err.get("status_code") == 409
+        assert err.get("claim_id") == "CLM-TEST001"
+        assert err.get("from_status") == "open"
+        assert err.get("to_status") == "closed"
+        assert err.get("reason") == "not allowed in test"
+        assert "detail" in err and transition_exc.reason in err["detail"]
+        assert events[-1].get("type") == "done"
 
     def test_multiple_messages_conversation(self, client):
         """Chat with multi-turn conversation history."""
