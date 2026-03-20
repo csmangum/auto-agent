@@ -49,7 +49,9 @@ def settlement_payee_from_claim_data(claim_data: dict) -> str:
                     continue
                 name = (p.get("name") or "").strip()
                 if name:
-                    return sanitize_payee(name)
+                    sanitized = sanitize_payee(name)
+                    if sanitized:
+                        return sanitized
     return "Claimant"
 
 
