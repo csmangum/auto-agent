@@ -606,7 +606,7 @@ def retention_report(
         ),
     ] = None,
 ) -> None:
-    """Produce retention audit report: counts by tier, litigation hold, pending archive."""
+    """Produce retention audit report: tier/status counts, litigation hold, pending archive/purge."""
     retention_years = years if years is not None else get_retention_period_years()
     retention_by_state = get_retention_by_state() if years is None else None
     purge_after = (

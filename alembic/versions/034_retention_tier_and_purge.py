@@ -17,7 +17,6 @@ depends_on = None
 def upgrade() -> None:
     conn = op.get_bind()
     dialect = conn.dialect.name
-    retention_tier_added = False
 
     if dialect == "sqlite":
         cursor = conn.execute(text("PRAGMA table_info(claims)"))
@@ -26,7 +25,6 @@ def upgrade() -> None:
             op.execute(
                 text("ALTER TABLE claims ADD COLUMN retention_tier TEXT NOT NULL DEFAULT 'active'")
             )
-            retention_tier_added = True
         if "purged_at" not in columns:
             op.execute(text("ALTER TABLE claims ADD COLUMN purged_at TEXT"))
     else:
@@ -38,14 +36,15 @@ def upgrade() -> None:
         )
         op.execute(text("ALTER TABLE claims ADD COLUMN IF NOT EXISTS purged_at TEXT"))
 
-    if dialect != "sqlite" or retention_tier_added:
-        op.execute(text("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'"))
-        op.execute(text("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'"))
+    # Always backfill from status so tiers stay correct even if columns pre-existed (e.g. init_db).
+    op.execute(text("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'"))
+    op.execute(text("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'"))
 
 
 def downgrade() -> None:
     conn = op.get_bind()
     if conn.dialect.name == "sqlite":
+        # SQLite cannot DROP COLUMN in older versions; leave columns in place.
         pass
     else:
         op.execute(text("ALTER TABLE claims DROP COLUMN IF EXISTS purged_at"))

@@ -17,7 +17,9 @@ def anonymize_claim_pii(
     now_iso: str,
     notes_redaction_text: str,
 ) -> tuple[int, int]:
-    """Redact claim policy/vin/attachments, parties, and notes. Preserves audit log.
+    """Redact claim identifiers, narrative fields, attachments, parties, and notes.
+
+    Preserves audit log. Narrative columns may contain embedded PII (names, locations).
 
     Returns:
         Tuple of (1 if claim row updated, number of party rows for the claim).
@@ -25,6 +27,7 @@ def anonymize_claim_pii(
     conn.execute(
         text("""
             UPDATE claims SET policy_number = :redacted, vin = :redacted,
+            incident_description = :redacted, damage_description = :redacted,
             attachments = '[]', updated_at = :now WHERE id = :claim_id
         """),
         {"redacted": PII_REDACTED_PLACEHOLDER, "claim_id": claim_id, "now": now_iso},

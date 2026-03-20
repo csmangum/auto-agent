@@ -126,13 +126,14 @@ Produce a retention audit report with counts by tier, litigation hold, and pendi
 ```bash
 claim-agent retention-report
 claim-agent retention-report --years 7
+claim-agent retention-report --purge-years 3
 ```
 
 Output includes: `retention_period_years`, `purge_after_archive_years`, `retention_by_state`, `claims_by_status`, `claims_by_retention_tier`, `active_count`, `closed_count`, `archived_count`, `purged_count`, `litigation_hold_count`, `closed_with_litigation_hold`, `pending_archive_count`, `pending_purge_count`, `audit_log_rows`.
 
 ### Tiered retention (cold → archived → purged)
 
-Claims carry a `retention_tier` (`active`, `cold`, `archived`, `purged`). On closure, tier moves to **cold** (closed claims within the legal retention window). `retention-enforce` still archives by age using `created_at` and per-state rules. After archive, **`RETENTION_PURGE_AFTER_ARCHIVE_YEARS`** (default 2) defines how long the row stays in `status=archived` before **`claim-agent retention-purge`** may run. Purge **anonymizes** claim/parties/notes (same pattern as DSAR deletion), sets `status=purged`, `retention_tier=purged`, and `purged_at`; **claim_audit_log** rows are not deleted.
+Claims carry a `retention_tier` (`active`, `cold`, `archived`, `purged`). On closure, tier moves to **cold** (closed claims within the legal retention window). `retention-enforce` still archives by age using `created_at` and per-state rules. After archive, **`RETENTION_PURGE_AFTER_ARCHIVE_YEARS`** (default 2) defines how long the row stays in `status=archived` before **`claim-agent retention-purge`** may run. The purge horizon uses **calendar years** from `archived_at` (same month/day anniversary, with day clamped for short months). Purge **anonymizes** the claim row (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), **claim_parties**, and **claim_notes** (same pattern as DSAR deletion), sets `status=purged`, `retention_tier=purged`, and `purged_at`; **claim_audit_log** rows are not deleted (historical JSON in audit entries may still contain pre-redaction values).
 
 ### Archive Behavior
 
@@ -183,7 +184,7 @@ Set `LLM_DATA_MINIMIZATION=false` for debugging.
 ### Deletion Requests (Right-to-Delete)
 
 - **Submit**: `POST /api/dsar/deletion` with claimant_identifier and verification (claim_id or policy_number+vin)
-- **Fulfill**: `POST /api/dsar/deletion/fulfill/{request_id}` – anonymizes claims, parties, and claim_notes (sets PII to [REDACTED]); preserves claim_audit_log for legal/regulatory requirements
+- **Fulfill**: `POST /api/dsar/deletion/fulfill/{request_id}` – anonymizes claims (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), parties, and claim_notes (PII placeholders); preserves claim_audit_log for legal/regulatory requirements
 - **CLI**: `claim-agent dsar-deletion --claimant-email X --claim-id Y [--fulfill]`
 - **Litigation hold**: When `LITIGATION_HOLD_BLOCKS_DELETION=true` (default), claims with `litigation_hold=1` are skipped. Set to `false` to anonymize regardless.
 

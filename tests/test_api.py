@@ -33,6 +33,7 @@ def _use_seeded_db(seeded_temp_db):
 def _clear_rate_limit():
     """Clear rate limit buckets before each API test to avoid 429 in CI."""
     from claim_agent.api.rate_limit import clear_rate_limit_buckets
+
     clear_rate_limit_buckets()
     yield
 
@@ -41,6 +42,7 @@ def _clear_rate_limit():
 def client():
     """Create a test client for the FastAPI app."""
     from claim_agent.api.server import app
+
     return TestClient(app)
 
 
@@ -48,18 +50,20 @@ def client():
 # Claims endpoints
 # -------------------------------------------------------------------
 
+
 class TestClaimsStats:
     def test_returns_stats(self, client):
         resp = client.get("/api/claims/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_claims"] == 6
+        assert data["total_claims"] == 7
         assert "by_status" in data
         assert "by_type" in data
         assert data["by_status"]["open"] == 1
         assert data["by_status"]["closed"] == 1
         assert data["by_status"]["fraud_suspected"] == 1
         assert data["by_status"]["archived"] == 1
+        assert data["by_status"]["purged"] == 1
 
 
 class TestClaimsList:
@@ -101,11 +105,21 @@ class TestClaimsList:
         assert "CLM-ARCHIVED" in claim_ids
 
     def test_list_claims_include_purged_query_ok(self, client):
-        """include_purged=true is accepted (no purged rows in seed)."""
+        """include_purged=true includes purged rows in the default list."""
         resp = client.get("/api/claims?include_purged=true")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total"] == 5
+        assert data["total"] == 6
+        ids = [c["id"] for c in data["claims"]]
+        assert "CLM-PURGED" in ids
+
+    def test_list_claims_status_purged_without_include_purged(self, client):
+        """Filtering to status=purged works without include_purged (exclusion only applies when unfiltered)."""
+        resp = client.get("/api/claims?status=purged")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["claims"][0]["id"] == "CLM-PURGED"
 
     def test_pagination(self, client):
         resp = client.get("/api/claims?limit=1&offset=0")
@@ -569,8 +583,15 @@ class TestReviewQueue:
     def test_request_info(self, client):
         with get_connection() as conn:
             conn.execute(
-                text("UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"),
-                {"status": "needs_review", "priority": "high", "due_at": "2025-01-26T12:00:00Z", "id": "CLM-TEST003"},
+                text(
+                    "UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"
+                ),
+                {
+                    "status": "needs_review",
+                    "priority": "high",
+                    "due_at": "2025-01-26T12:00:00Z",
+                    "id": "CLM-TEST003",
+                },
             )
         resp = client.post(
             "/api/claims/CLM-TEST003/review/request-info",
@@ -584,8 +605,15 @@ class TestReviewQueue:
     def test_escalate_to_siu(self, client):
         with get_connection() as conn:
             conn.execute(
-                text("UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"),
-                {"status": "needs_review", "priority": "high", "due_at": "2025-01-26T12:00:00Z", "id": "CLM-TEST002"},
+                text(
+                    "UPDATE claims SET status = :status, priority = :priority, due_at = :due_at WHERE id = :id"
+                ),
+                {
+                    "status": "needs_review",
+                    "priority": "high",
+                    "due_at": "2025-01-26T12:00:00Z",
+                    "id": "CLM-TEST002",
+                },
             )
         resp = client.post("/api/claims/CLM-TEST002/review/escalate-to-siu")
         assert resp.status_code == 200
@@ -602,7 +630,9 @@ class TestReviewQueue:
             "workflow_output": "Investigation complete.",
             "summary": "Investigation complete.",
         }
-        monkeypatch.setattr(claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(
+            claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result
+        )
         with get_connection() as conn:
             conn.execute(
                 text("UPDATE claims SET status = :status WHERE id = :id"),
@@ -631,13 +661,21 @@ class TestReviewQueue:
         resp = client.post("/api/claims/CLM-TEST002/siu-investigate")
         assert resp.status_code == 400
         detail = resp.json()["detail"].lower()
-        assert "requires status" in detail or "under_investigation" in detail or "fraud_suspected" in detail
+        assert (
+            "requires status" in detail
+            or "under_investigation" in detail
+            or "fraud_suspected" in detail
+        )
 
     def test_follow_up_run(self, client, monkeypatch):
         """Follow-up run endpoint invokes workflow and returns result."""
         import claim_agent.api.routes.claims as claims_mod
 
-        mock_result = {"claim_id": "CLM-TEST001", "workflow_output": "Message sent.", "summary": "Message sent."}
+        mock_result = {
+            "claim_id": "CLM-TEST001",
+            "workflow_output": "Message sent.",
+            "summary": "Message sent.",
+        }
         monkeypatch.setattr(claims_mod, "run_follow_up_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/claims/CLM-TEST001/follow-up/run",
@@ -697,7 +735,9 @@ class TestReviewQueue:
         reload_settings()
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
         monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
-        resp = client.post("/api/claims/CLM-TEST004/review/approve", headers=_auth_headers("sk-sup"))
+        resp = client.post(
+            "/api/claims/CLM-TEST004/review/approve", headers=_auth_headers("sk-sup")
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST004"
@@ -720,7 +760,9 @@ class TestReviewQueue:
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
         # CLM-TEST001 has status "open"
-        resp = client.post("/api/claims/CLM-TEST001/review/approve", headers=_auth_headers("sk-sup"))
+        resp = client.post(
+            "/api/claims/CLM-TEST001/review/approve", headers=_auth_headers("sk-sup")
+        )
         assert resp.status_code == 409
         assert "not in needs_review" in resp.json()["detail"]
 
@@ -872,9 +914,7 @@ class TestSupplemental:
             "workflow_output": "Supplemental processed.",
             "summary": "Supplemental processed.",
         }
-        monkeypatch.setattr(
-            claims_mod, "run_supplemental_workflow", lambda *a, **kw: mock_result
-        )
+        monkeypatch.setattr(claims_mod, "run_supplemental_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/claims/CLM-TEST005/supplemental",
             json={
@@ -1140,6 +1180,7 @@ class TestDenialCoverage:
 # Reserve endpoints
 # -------------------------------------------------------------------
 
+
 class TestReserve:
     def test_patch_reserve_sets_amount(self, client):
         """PATCH /claims/{id}/reserve sets reserve and returns 200."""
@@ -1352,6 +1393,7 @@ class TestReserve:
 # Metrics endpoints
 # -------------------------------------------------------------------
 
+
 class TestMetrics:
     def test_global_metrics_empty(self, client, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
@@ -1401,6 +1443,7 @@ class TestMetrics:
 # Documentation endpoints
 # -------------------------------------------------------------------
 
+
 class TestDocs:
     def test_list_docs(self, client):
         resp = client.get("/api/docs")
@@ -1429,6 +1472,7 @@ class TestDocs:
 # -------------------------------------------------------------------
 # Skills endpoints
 # -------------------------------------------------------------------
+
 
 class TestSkills:
     def test_list_skills(self, client):
@@ -1498,7 +1542,7 @@ class TestSystemHealth:
         data = resp.json()
         assert data["status"] == "healthy"
         assert data["database"] == "connected"
-        assert data["total_claims"] == 6
+        assert data["total_claims"] == 7
 
 
 class TestAgentsCatalog:
@@ -1773,6 +1817,7 @@ class TestOpenAPIEndpoints:
 # API Key Auth (when CLAIMS_API_KEY or API_KEYS is set)
 # -------------------------------------------------------------------
 
+
 def _auth_headers(key: str, use_bearer: bool = False):
     if use_bearer:
         return {"Authorization": f"Bearer {key}"}
@@ -1840,6 +1885,7 @@ class TestApiKeyAuth:
 # RBAC (API_KEYS with roles)
 # -------------------------------------------------------------------
 
+
 class TestRBAC:
     """Test role-based access control with API_KEYS."""
 
@@ -1890,7 +1936,10 @@ class TestRBAC:
         """Adjuster gets 403 for reprocess (supervisor+ only)."""
         self._set_api_keys(monkeypatch, "sk-adj:adjuster")
         import claim_agent.api.routes.claims as claims_mod
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"})
+
+        monkeypatch.setattr(
+            claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
+        )
         resp = client.post(
             "/api/claims/CLM-TEST001/reprocess",
             headers=_auth_headers("sk-adj"),
@@ -1901,7 +1950,10 @@ class TestRBAC:
         """Supervisor can call reprocess endpoint."""
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")
         import claim_agent.api.routes.claims as claims_mod
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"})
+
+        monkeypatch.setattr(
+            claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
+        )
         resp = client.post(
             "/api/claims/CLM-TEST001/reprocess",
             headers=_auth_headers("sk-sup"),
@@ -1912,6 +1964,7 @@ class TestRBAC:
         """Reprocess of non-existent claim returns 404."""
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")
         import claim_agent.api.routes.claims as claims_mod
+
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "x"})
         resp = client.post(
             "/api/claims/CLM-NOTEXIST/reprocess",
@@ -1923,6 +1976,7 @@ class TestRBAC:
 # -------------------------------------------------------------------
 # JWT authentication (when JWT_SECRET is set)
 # -------------------------------------------------------------------
+
 
 class TestJWTAuth:
     """Test JWT Bearer token authentication."""
@@ -2025,6 +2079,7 @@ class TestJWTAuth:
 # Path traversal and injection resistance
 # -------------------------------------------------------------------
 
+
 class TestPathTraversal:
     def test_docs_rejects_path_traversal(self, client):
         """Docs slug is whitelisted; path traversal attempts return 404."""
@@ -2090,6 +2145,7 @@ class TestPostClaimsJson:
             "summary": "Claim processed successfully.",
         }
         import claim_agent.api.routes.claims as claims_mod
+
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
 
@@ -2097,6 +2153,7 @@ class TestPostClaimsJson:
         """Valid ClaimInput JSON returns claim_id and processing result."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
         resp = client.post("/api/claims", json=VALID_CLAIM_PAYLOAD)
@@ -2118,6 +2175,7 @@ class TestPostClaimsJson:
         """POST /api/claims?async=true returns claim_id immediately, processes in background."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
         resp = client.post("/api/claims", json=VALID_CLAIM_PAYLOAD, params={"async": "true"})
@@ -2132,6 +2190,7 @@ class TestPostClaimsJson:
         """POST /api/claims?async=true returns 503 when max concurrent background tasks reached."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
         import claim_agent.api.routes.claims as claims_mod
         from claim_agent.config import get_settings
@@ -2223,6 +2282,7 @@ class TestProcessClaimEndpoint:
             "summary": "Claim processed successfully.",
         }
         import claim_agent.api.routes.claims as claims_mod
+
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
 
@@ -2235,9 +2295,11 @@ class TestProcessClaimEndpoint:
             "summary": "Claim processed successfully.",
         }
         import claim_agent.api.routes.claims as claims_mod
+
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         # Ensure the storage singleton is reset to local (tmp) for each test
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
     def test_valid_claim_no_files(self, client, monkeypatch, tmp_path):
@@ -2350,6 +2412,7 @@ class TestProcessClaimEndpoint:
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
         resp = client.post(
@@ -2361,7 +2424,9 @@ class TestProcessClaimEndpoint:
         # Find the claim created by create_claim (first audit entry, before workflow runs)
         with get_connection() as conn:
             rows = conn.execute(
-                text("SELECT claim_id, actor_id FROM claim_audit_log WHERE action = 'created' ORDER BY id DESC LIMIT 1")
+                text(
+                    "SELECT claim_id, actor_id FROM claim_audit_log WHERE action = 'created' ORDER BY id DESC LIMIT 1"
+                )
             ).fetchone()
         assert rows
         # actor_id for 'created' comes from process_claim's create_claim; should be key identity
@@ -2371,6 +2436,7 @@ class TestProcessClaimEndpoint:
         """GET /claims/{claim_id}/attachments/{key} serves the file for local storage."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
         storage = factory_mod.get_storage_adapter()
@@ -2420,6 +2486,7 @@ class TestDocumentAPI:
     def test_upload_document_success(self, client, monkeypatch, tmp_path):
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
         resp = client.post(
@@ -2458,6 +2525,7 @@ class TestDocumentAPI:
     def test_update_document_invalid_review_status_returns_400(self, client, monkeypatch, tmp_path):
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
         upload = client.post(
@@ -2501,7 +2569,9 @@ class TestDocumentAPI:
         assert "status" in resp.json()["detail"].lower()
 
     def test_list_document_requests(self, client):
-        resp = client.get("/api/claims/CLM-TEST001/document-requests", headers={"X-API-Key": "sk-adj"})
+        resp = client.get(
+            "/api/claims/CLM-TEST001/document-requests", headers={"X-API-Key": "sk-adj"}
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST001"
@@ -2526,6 +2596,7 @@ class TestProcessClaimAsyncEndpoint:
             "summary": "Claim processed.",
         }
         import claim_agent.api.routes.claims as claims_mod
+
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
 
@@ -2542,7 +2613,9 @@ class TestProcessClaimAsyncEndpoint:
         assert "claim_id" in data
         assert data["claim_id"].startswith("CLM-")
 
-    def test_process_claim_async_returns_503_without_creating_claim(self, client, monkeypatch, tmp_path):
+    def test_process_claim_async_returns_503_without_creating_claim(
+        self, client, monkeypatch, tmp_path
+    ):
         """POST /claims/process/async returns 503 when at capacity and does NOT create a claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.api.routes.claims as claims_mod
@@ -2583,15 +2656,19 @@ class TestProcessClaimAsyncEndpoint:
         """Stream endpoint returns SSE-formatted events for existing claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
         import claim_agent.api.routes.claims as claims_mod
 
         # Mock workflow to return the actual claim_id (from existing_claim_id) and
         # update the DB to a terminal status so the SSE stream terminates promptly.
-        def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **_kw):
+        def mock_wf(
+            claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **_kw
+        ):
             if existing_claim_id:
                 from claim_agent.db.database import get_db_path
                 from claim_agent.db.repository import ClaimRepository
+
                 ClaimRepository(db_path=get_db_path()).update_claim_status(
                     existing_claim_id, "open"
                 )
@@ -2622,13 +2699,17 @@ class TestProcessClaimAsyncEndpoint:
         """Async process + stream: POST async, then GET stream until done."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod
+
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
         import claim_agent.api.routes.claims as claims_mod
 
-        def mock_wf(claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **_kw):
+        def mock_wf(
+            claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **_kw
+        ):
             if existing_claim_id:
                 from claim_agent.db.database import get_db_path
                 from claim_agent.db.repository import ClaimRepository
+
                 ClaimRepository(db_path=get_db_path()).update_claim_status(
                     existing_claim_id, "open"
                 )
@@ -2678,8 +2759,14 @@ class TestProcessClaimAsyncEndpoint:
                 VALUES (:claim_id, :run_id, :sk1, :out1), (:claim_id2, :run_id2, :sk2, :out2)
                 """),
                 {
-                    "claim_id": claim_id, "run_id": run_id, "sk1": "router", "out1": "{}",
-                    "claim_id2": claim_id, "run_id2": run_id, "sk2": "escalation_check", "out2": "{}",
+                    "claim_id": claim_id,
+                    "run_id": run_id,
+                    "sk1": "router",
+                    "out1": "{}",
+                    "claim_id2": claim_id,
+                    "run_id2": run_id,
+                    "sk2": "escalation_check",
+                    "out2": "{}",
                 },
             )
 

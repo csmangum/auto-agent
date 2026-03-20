@@ -25,16 +25,20 @@ def dsar_db(tmp_path):
     from sqlalchemy import text
 
     with get_connection(db_path) as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                 incident_date, incident_description, damage_description, status, claim_type)
             VALUES ('CLM-TEST1', 'POL-123', '1HGCM82633A123456', 2020, 'Honda', 'Accord',
                 '2024-01-15', 'Parking lot', 'Fender damage', 'closed', 'partial_loss')
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             INSERT INTO claim_parties (claim_id, party_type, name, email, consent_status)
             VALUES ('CLM-TEST1', 'claimant', 'Jane Doe', 'jane@example.com', 'granted')
-        """))
+        """)
+        )
     return db_path
 
 
@@ -73,7 +77,6 @@ class TestDSARAccess:
         monkeypatch.setenv("DSAR_VERIFICATION_REQUIRED", "true")
         reload_settings()
 
-
         # Create a request with empty verification_data (simulates direct service call)
         request_id = submit_access_request(
             claimant_identifier="jane@example.com",
@@ -100,11 +103,18 @@ class TestDSARDeletion:
         from sqlalchemy import text
 
         with get_connection(dsar_db) as conn:
-            row = conn.execute(text("SELECT policy_number, vin FROM claims WHERE id = 'CLM-TEST1'")).fetchone()
+            row = conn.execute(
+                text(
+                    "SELECT policy_number, vin, incident_description, damage_description "
+                    "FROM claims WHERE id = 'CLM-TEST1'"
+                )
+            ).fetchone()
             assert row
             d = row_to_dict(row)
             assert d["policy_number"] == "[REDACTED]"
             assert d["vin"] == "[REDACTED]"
+            assert d["incident_description"] == "[REDACTED]"
+            assert d["damage_description"] == "[REDACTED]"
 
     def test_deletion_redacts_claim_notes(self, dsar_db):
         """Deletion redacts claim_notes which may contain PII."""
@@ -113,8 +123,13 @@ class TestDSARDeletion:
 
         with get_connection(dsar_db) as conn:
             conn.execute(
-                text("INSERT INTO claim_notes (claim_id, note, actor_id) VALUES (:cid, :note, 'test')"),
-                {"cid": "CLM-TEST1", "note": "Claimant Jane Doe called re: settlement. Address: 123 Main St."},
+                text(
+                    "INSERT INTO claim_notes (claim_id, note, actor_id) VALUES (:cid, :note, 'test')"
+                ),
+                {
+                    "cid": "CLM-TEST1",
+                    "note": "Claimant Jane Doe called re: settlement. Address: 123 Main St.",
+                },
             )
 
         request_id = submit_deletion_request(

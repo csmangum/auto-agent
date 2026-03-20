@@ -26,12 +26,15 @@ class LogCaptureHandler(logging.Handler):
     def messages(self) -> list[str]:
         return [r.getMessage() for r in self.records]
 
+
 # Load .env before any tests run (API keys, etc.). override=False so existing
 # env vars (e.g. CLAIMS_DB_PATH from fixtures) are not overwritten.
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 # Point to project data for mock_db
-os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
+os.environ.setdefault(
+    "MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json")
+)
 
 from sqlalchemy import text
 
@@ -51,11 +54,21 @@ def _seed_test_data(db_path: str) -> None:
                     :incident_date, :incident_description, :damage_description,
                     :estimated_damage, :claim_type, :status, :payout_amount)
             """),
-            {"id": "CLM-TEST001", "policy_number": "POL-001", "vin": "1HGBH41JXMN109186",
-             "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord",
-             "incident_date": "2025-01-15", "incident_description": "Rear-ended at stoplight",
-             "damage_description": "Rear bumper damage", "estimated_damage": 2500.0,
-             "claim_type": "new", "status": "open", "payout_amount": 2500.0},
+            {
+                "id": "CLM-TEST001",
+                "policy_number": "POL-001",
+                "vin": "1HGBH41JXMN109186",
+                "vehicle_year": 2021,
+                "vehicle_make": "Honda",
+                "vehicle_model": "Accord",
+                "incident_date": "2025-01-15",
+                "incident_description": "Rear-ended at stoplight",
+                "damage_description": "Rear bumper damage",
+                "estimated_damage": 2500.0,
+                "claim_type": "new",
+                "status": "open",
+                "payout_amount": 2500.0,
+            },
         )
         conn.execute(
             text("""
@@ -66,11 +79,20 @@ def _seed_test_data(db_path: str) -> None:
                     :incident_date, :incident_description, :damage_description,
                     :estimated_damage, :claim_type, :status)
             """),
-            {"id": "CLM-TEST002", "policy_number": "POL-002", "vin": "5YJSA1E26HF123456",
-             "vehicle_year": 2020, "vehicle_make": "Tesla", "vehicle_model": "Model 3",
-             "incident_date": "2025-01-20", "incident_description": "Flash flood",
-             "damage_description": "Vehicle submerged", "estimated_damage": 45000.0,
-             "claim_type": "total_loss", "status": "closed"},
+            {
+                "id": "CLM-TEST002",
+                "policy_number": "POL-002",
+                "vin": "5YJSA1E26HF123456",
+                "vehicle_year": 2020,
+                "vehicle_make": "Tesla",
+                "vehicle_model": "Model 3",
+                "incident_date": "2025-01-20",
+                "incident_description": "Flash flood",
+                "damage_description": "Vehicle submerged",
+                "estimated_damage": 45000.0,
+                "claim_type": "total_loss",
+                "status": "closed",
+            },
         )
         conn.execute(
             text("""
@@ -81,11 +103,21 @@ def _seed_test_data(db_path: str) -> None:
                     :incident_date, :incident_description, :damage_description,
                     :estimated_damage, :claim_type, :status, :loss_state)
             """),
-            {"id": "CLM-TEST003", "policy_number": "POL-003", "vin": "3VWDX7AJ5DM999999",
-             "vehicle_year": 2019, "vehicle_make": "Volkswagen", "vehicle_model": "Jetta",
-             "incident_date": "2025-01-22", "incident_description": "Staged accident",
-             "damage_description": "Front bumper destroyed", "estimated_damage": 35000.0,
-             "claim_type": "fraud", "status": "fraud_suspected", "loss_state": "California"},
+            {
+                "id": "CLM-TEST003",
+                "policy_number": "POL-003",
+                "vin": "3VWDX7AJ5DM999999",
+                "vehicle_year": 2019,
+                "vehicle_make": "Volkswagen",
+                "vehicle_model": "Jetta",
+                "incident_date": "2025-01-22",
+                "incident_description": "Staged accident",
+                "damage_description": "Front bumper destroyed",
+                "estimated_damage": 35000.0,
+                "claim_type": "fraud",
+                "status": "fraud_suspected",
+                "loss_state": "California",
+            },
         )
         conn.execute(
             text("""
@@ -96,12 +128,22 @@ def _seed_test_data(db_path: str) -> None:
                     :incident_date, :incident_description, :damage_description,
                     :estimated_damage, :claim_type, :status, :priority, :due_at)
             """),
-            {"id": "CLM-TEST004", "policy_number": "POL-004", "vin": "2HGFG3B54CH123456",
-             "vehicle_year": 2022, "vehicle_make": "Toyota", "vehicle_model": "Camry",
-             "incident_date": "2025-01-25", "incident_description": "Low confidence routing",
-             "damage_description": "Minor scratch", "estimated_damage": 500.0,
-             "claim_type": "new", "status": "needs_review", "priority": "high",
-             "due_at": "2025-01-26T12:00:00Z"},
+            {
+                "id": "CLM-TEST004",
+                "policy_number": "POL-004",
+                "vin": "2HGFG3B54CH123456",
+                "vehicle_year": 2022,
+                "vehicle_make": "Toyota",
+                "vehicle_model": "Camry",
+                "incident_date": "2025-01-25",
+                "incident_description": "Low confidence routing",
+                "damage_description": "Minor scratch",
+                "estimated_damage": 500.0,
+                "claim_type": "new",
+                "status": "needs_review",
+                "priority": "high",
+                "due_at": "2025-01-26T12:00:00Z",
+            },
         )
         conn.execute(
             text("""
@@ -112,11 +154,20 @@ def _seed_test_data(db_path: str) -> None:
                     :incident_date, :incident_description, :damage_description,
                     :estimated_damage, :claim_type, :status)
             """),
-            {"id": "CLM-TEST005", "policy_number": "POL-005", "vin": "2T1BURHE5JC073987",
-             "vehicle_year": 2022, "vehicle_make": "Toyota", "vehicle_model": "Corolla",
-             "incident_date": "2025-01-25", "incident_description": "Backed into pole",
-             "damage_description": "Rear bumper cracked, taillight broken", "estimated_damage": 1800.0,
-             "claim_type": "partial_loss", "status": "processing"},
+            {
+                "id": "CLM-TEST005",
+                "policy_number": "POL-005",
+                "vin": "2T1BURHE5JC073987",
+                "vehicle_year": 2022,
+                "vehicle_make": "Toyota",
+                "vehicle_model": "Corolla",
+                "incident_date": "2025-01-25",
+                "incident_description": "Backed into pole",
+                "damage_description": "Rear bumper cracked, taillight broken",
+                "estimated_damage": 1800.0,
+                "claim_type": "partial_loss",
+                "status": "processing",
+            },
         )
         conn.execute(
             text("""
@@ -127,14 +178,52 @@ def _seed_test_data(db_path: str) -> None:
                     :incident_date, :incident_description, :damage_description,
                     :estimated_damage, :claim_type, :status)
             """),
-            {"id": "CLM-ARCHIVED", "policy_number": "POL-006", "vin": "1HGBH41JXMN109999",
-             "vehicle_year": 2018, "vehicle_make": "Honda", "vehicle_model": "Civic",
-             "incident_date": "2024-06-10", "incident_description": "Old claim",
-             "damage_description": "Minor dent", "estimated_damage": 800.0,
-             "claim_type": "partial_loss", "status": "archived"},
+            {
+                "id": "CLM-ARCHIVED",
+                "policy_number": "POL-006",
+                "vin": "1HGBH41JXMN109999",
+                "vehicle_year": 2018,
+                "vehicle_make": "Honda",
+                "vehicle_model": "Civic",
+                "incident_date": "2024-06-10",
+                "incident_description": "Old claim",
+                "damage_description": "Minor dent",
+                "estimated_damage": 800.0,
+                "claim_type": "partial_loss",
+                "status": "archived",
+            },
+        )
+        conn.execute(
+            text("""
+            INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+            vehicle_model, incident_date, incident_description, damage_description,
+            estimated_damage, claim_type, status, archived_at, purged_at)
+            VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :archived_at, :purged_at)
+            """),
+            {
+                "id": "CLM-PURGED",
+                "policy_number": "POL-007",
+                "vin": "1HGBH41JXMN109888",
+                "vehicle_year": 2015,
+                "vehicle_make": "Ford",
+                "vehicle_model": "Focus",
+                "incident_date": "2019-06-10",
+                "incident_description": "Purged seed claim",
+                "damage_description": "n/a",
+                "estimated_damage": 100.0,
+                "claim_type": "partial_loss",
+                "status": "purged",
+                "archived_at": "2022-01-01T00:00:00",
+                "purged_at": "2024-01-01T00:00:00",
+            },
         )
         conn.execute(text("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'"))
-        conn.execute(text("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'"))
+        conn.execute(
+            text("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'")
+        )
+        conn.execute(text("UPDATE claims SET retention_tier = 'purged' WHERE status = 'purged'"))
 
         # Audit log entries
         conn.execute(
@@ -142,19 +231,30 @@ def _seed_test_data(db_path: str) -> None:
             INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
             VALUES (:claim_id, :action, :new_status, :details, :actor_id, :after_state)
             """),
-            {"claim_id": "CLM-TEST001", "action": "created", "new_status": "pending",
-             "details": "Claim record created", "actor_id": "workflow",
-             "after_state": '{"status": "pending", "claim_type": null, "payout_amount": null}'},
+            {
+                "claim_id": "CLM-TEST001",
+                "action": "created",
+                "new_status": "pending",
+                "details": "Claim record created",
+                "actor_id": "workflow",
+                "after_state": '{"status": "pending", "claim_type": null, "payout_amount": null}',
+            },
         )
         conn.execute(
             text("""
             INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
             VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
             """),
-            {"claim_id": "CLM-TEST001", "action": "status_change", "old_status": "pending",
-             "new_status": "open", "details": "Processed successfully", "actor_id": "workflow",
-             "before_state": '{"status": "pending", "claim_type": null, "payout_amount": null}',
-             "after_state": '{"status": "open", "claim_type": "new", "payout_amount": null}'},
+            {
+                "claim_id": "CLM-TEST001",
+                "action": "status_change",
+                "old_status": "pending",
+                "new_status": "open",
+                "details": "Processed successfully",
+                "actor_id": "workflow",
+                "before_state": '{"status": "pending", "claim_type": null, "payout_amount": null}',
+                "after_state": '{"status": "open", "claim_type": "new", "payout_amount": null}',
+            },
         )
 
         # Workflow run
@@ -163,25 +263,35 @@ def _seed_test_data(db_path: str) -> None:
             INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
             VALUES (:claim_id, :claim_type, :router_output, :workflow_output)
             """),
-            {"claim_id": "CLM-TEST001", "claim_type": "new", "router_output": "new\nFirst-time claim",
-             "workflow_output": "Claim assigned and opened"},
+            {
+                "claim_id": "CLM-TEST001",
+                "claim_type": "new",
+                "router_output": "new\nFirst-time claim",
+                "workflow_output": "Claim assigned and opened",
+            },
         )
-        partial_loss_output = json.dumps({
-            "total_estimate": 2100.0,
-            "parts_cost": 550.0,
-            "labor_cost": 337.50,
-            "insurance_pays": 1600.0,
-            "authorization_id": "RA-ABC12345",
-            "shop_id": "SHOP-001",
-            "shop_name": "Quality Auto Repair",
-        })
+        partial_loss_output = json.dumps(
+            {
+                "total_estimate": 2100.0,
+                "parts_cost": 550.0,
+                "labor_cost": 337.50,
+                "insurance_pays": 1600.0,
+                "authorization_id": "RA-ABC12345",
+                "shop_id": "SHOP-001",
+                "shop_name": "Quality Auto Repair",
+            }
+        )
         conn.execute(
             text("""
             INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
             VALUES (:claim_id, :claim_type, :router_output, :workflow_output)
             """),
-            {"claim_id": "CLM-TEST005", "claim_type": "partial_loss", "router_output": "partial_loss",
-             "workflow_output": partial_loss_output},
+            {
+                "claim_id": "CLM-TEST005",
+                "claim_type": "partial_loss",
+                "router_output": "partial_loss",
+                "workflow_output": partial_loss_output,
+            },
         )
 
         # Fraud report filings for compliance tests (CLM-TEST003)
@@ -240,9 +350,8 @@ def _reset_settings(request):
     _deps._auth_warning_logged = False
     # Unit tests use SQLite; unset DATABASE_URL so we don't connect to PostgreSQL.
     # Preserve DATABASE_URL for PostgreSQL integration tests (test_postgres module).
-    is_postgres_test = (
-        request.module is not None
-        and "test_postgres" in getattr(request.module, "__name__", "")
+    is_postgres_test = request.module is not None and "test_postgres" in getattr(
+        request.module, "__name__", ""
     )
     _prev_db_url = os.environ.pop("DATABASE_URL", None) if not is_postgres_test else None
     reset_engine_cache()
@@ -290,6 +399,7 @@ def seeded_temp_db(temp_db):
 def reset_adapters():
     """Clear adapter singletons so each test gets a fresh instance."""
     from claim_agent.adapters.registry import reset_adapters as _reset
+
     _reset()
     yield
     _reset()
@@ -300,10 +410,10 @@ def reset_diary_listener():
     """Reset diary listener registration state between tests."""
     import claim_agent.diary.auto_create as diary_module
     from claim_agent.events import unregister_claim_event_listener
-    
+
     # Store original state
     original_state = diary_module._diary_listener_registered
-    
+
     # Reset to initial state
     if diary_module._diary_listener_registered:
         try:
@@ -311,9 +421,9 @@ def reset_diary_listener():
         except Exception:
             pass
     diary_module._diary_listener_registered = False
-    
+
     yield
-    
+
     # Clean up after test
     if diary_module._diary_listener_registered:
         try:
@@ -328,12 +438,14 @@ def reset_global_metrics():
     """Reset the global ClaimMetrics singleton before and after each test."""
     try:
         from claim_agent.observability.metrics import reset_metrics
+
         reset_metrics()
     except ImportError:
         pass
     yield
     try:
         from claim_agent.observability.metrics import reset_metrics
+
         reset_metrics()
     except ImportError:
         pass

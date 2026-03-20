@@ -4,6 +4,7 @@ This repository treats claim_audit_log as append-only: it only inserts new
 audit entries and does not perform UPDATE or DELETE operations on that table.
 """
 
+import calendar
 import json
 import logging
 import uuid
@@ -257,12 +258,21 @@ def _is_claim_past_retention(
     return created_norm <= cutoff_norm
 
 
+def _add_calendar_years(dt: datetime, years: int) -> datetime:
+    """Return ``dt`` plus ``years`` calendar years (clamp day for short months, e.g. Feb 29)."""
+    new_year = dt.year + years
+    month = dt.month
+    last_day = calendar.monthrange(new_year, month)[1]
+    new_day = min(dt.day, last_day)
+    return dt.replace(year=new_year, month=month, day=new_day)
+
+
 def _is_archived_past_purge_period(
     row_d: dict[str, Any],
     now: datetime,
     purge_after_archive_years: int,
 ) -> bool:
-    """True if archived_at is at least purge_after_archive_years before now."""
+    """True if ``now`` is on or after the calendar anniversary of archived_at + N years."""
     if purge_after_archive_years < 0:
         raise ValueError("purge_after_archive_years must be non-negative")
     archived_raw = row_d.get("archived_at")
@@ -288,7 +298,7 @@ def _is_archived_past_purge_period(
     else:
         return False
 
-    cutoff = _to_utc_aware(archived_dt) + timedelta(days=purge_after_archive_years * 365)
+    cutoff = _add_calendar_years(_to_utc_aware(archived_dt), purge_after_archive_years)
     return _to_utc_aware(now) >= cutoff
 
 
@@ -2869,7 +2879,7 @@ class ClaimRepository:
         *,
         exclude_litigation_hold: bool = True,
     ) -> list[dict[str, Any]]:
-        """List archived claims past purge horizon (archived_at + years)."""
+        """List archived claims past purge horizon (archived_at + N calendar years)."""
         if purge_after_archive_years < 0:
             raise ValueError("purge_after_archive_years must be non-negative")
         now = datetime.now(timezone.utc)
@@ -2890,8 +2900,6 @@ class ClaimRepository:
         result = []
         for r in rows:
             row_d = row_to_dict(r)
-            if exclude_litigation_hold and row_d.get("litigation_hold"):
-                continue
             if _is_archived_past_purge_period(row_d, now, purge_after_archive_years):
                 result.append(row_d)
         return result
@@ -2906,9 +2914,7 @@ class ClaimRepository:
         now_iso = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             row = conn.execute(
-                text(
-                    "SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"
-                ),
+                text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
                 {"claim_id": claim_id},
             ).fetchone()
             if row is None:
