@@ -178,13 +178,28 @@ def _run_workflow_background(
                 actor_id=actor_id,
                 ctx=bg_ctx,
             )
-        except InvalidClaimTransitionError:
+        except InvalidClaimTransitionError as exc:
             logger.warning(
                 "Invalid claim transition in background workflow for claim_id %s",
                 claim_id,
                 exc_info=True,
             )
-            raise
+            try:
+                bg_ctx.repo.update_claim_status(
+                    claim_id,
+                    STATUS_NEEDS_REVIEW,
+                    details=(
+                        f"Invalid claim transition in background workflow: "
+                        f"{exc.from_status!r} -> {exc.to_status!r} — {exc.reason}"
+                    ),
+                    actor_id=ACTOR_WORKFLOW,
+                    skip_validation=True,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to mark claim %s as needs_review after invalid transition",
+                    claim_id,
+                )
         except Exception:
             logger.exception(
                 "Unhandled exception in background workflow for claim_id %s", claim_id
