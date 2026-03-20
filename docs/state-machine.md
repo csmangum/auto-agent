@@ -60,6 +60,12 @@ This ensures closure is documented (settlement or denial).
 - `actor_id="system"` or `force=True` skips validation when calling `validate_transition()` or `can_transition()` directly (for migrations, seeding, or tests)
 - At the repository layer, use `skip_validation=True` on `update_claim_status()` to bypass the state machine
 
+## REST API
+
+For non-streaming JSON REST endpoints, `InvalidClaimTransitionError` is handled globally in the FastAPI app (`create_app`): responses use **409 Conflict** with JSON fields `detail`, `claim_id`, `from_status`, `to_status`, and `reason`. Route handlers avoid catching it inside broad `except Exception` blocks that would map errors to 400 or 503; Pydantic validation failures use `ValidationError` only so domain transition errors are not misclassified.
+
+For streaming/SSE endpoints (e.g., `/api/chat`), a JSON 409 response cannot be issued mid-stream. Transition errors in those paths are surfaced as SSE error events instead.
+
 ## Violation Logging
 
 Invalid transition attempts are logged with `logger.warning` and `event=transition_violation`, including:

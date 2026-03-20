@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette import status
 
 from claim_agent.api.auth import is_auth_required, verify_token
 from claim_agent.api.idempotency import cleanup_expired
@@ -41,6 +42,7 @@ from claim_agent.config import get_settings
 from claim_agent.db.database import ensure_fresh_db_on_startup, _is_postgres
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
+from claim_agent.exceptions import InvalidClaimTransitionError
 
 import logging
 
@@ -144,6 +146,22 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    async def _invalid_claim_transition_handler(
+        _request: Request, exc: InvalidClaimTransitionError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": str(exc),
+                "claim_id": exc.claim_id,
+                "from_status": exc.from_status,
+                "to_status": exc.to_status,
+                "reason": exc.reason,
+            },
+        )
+
+    _app.add_exception_handler(InvalidClaimTransitionError, _invalid_claim_transition_handler)
 
     return _app
 
