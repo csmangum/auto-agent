@@ -56,6 +56,17 @@ Transition to `closed` requires one of:
 
 This ensures closure is documented (settlement or denial).
 
+### Reserve adequacy gate (`closed` / `settled`)
+
+When transitioning **to** `closed` or `settled`, reserve adequacy may be enforced (same benchmark as `check_reserve_adequacy`: max of positive `estimated_damage` and positive `payout_amount`).
+
+- **Configuration:** `RESERVE_CLOSE_SETTLE_ADEQUACY_GATE` (`off` \| `block` \| `warn`, default `warn`). See [Configuration](configuration.md#reserve-management).
+- **`block`:** inadequate reserve rejects the transition unless `ClaimRepository.update_claim_status(..., skip_adequacy_check=True, role="supervisor"|"admin"|"executive")`.
+- **`warn`:** transition is allowed; an extra audit row `reserve_adequacy_gate` records the inadequacy.
+- **`off`:** no adequacy check.
+
+`can_transition()` / `validate_transition()` accept `skip_adequacy_check` and `role` for parity with the repository. The claim dict passed in should include `reserve_amount` and `estimated_damage` (as loaded by `update_claim_status`).
+
 ## Bypass
 
 - `actor_id="system"` or `force=True` skips validation when calling `validate_transition()` or `can_transition()` directly (for migrations, seeding, or tests)
