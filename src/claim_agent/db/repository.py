@@ -139,19 +139,47 @@ def _check_reserve_authority(
     role: str = "adjuster",
     skip_authority_check: bool = False,
 ) -> None:
-    """Raise ReserveAuthorityError if amount exceeds actor's limit. Workflow/system bypass."""
+    """Enforce reserve amount vs configured role limits.
+
+    No check (returns immediately) when ``skip_authority_check`` is true or when
+    ``actor_id`` is the workflow or system actor.
+
+    Otherwise: adjusters use ``adjuster_limit``; supervisors and admins use
+    ``supervisor_limit``; executives use ``executive_limit`` if it is positive,
+    or are unconstrained when that limit is not configured (<= 0).
+
+    Raises ``ReserveAuthorityError`` when ``amount`` exceeds the applicable limit.
+    """
     if skip_authority_check or actor_id in (ACTOR_WORKFLOW, ACTOR_SYSTEM):
         return
     r = (role or "adjuster").lower()
-    if r == "executive":
-        return
     cfg = get_reserve_config()
+    exec_cap = float(cfg.get("executive_limit", 0.0))
+    if r == "executive":
+        if exec_cap <= 0:
+            return
+        if amount > exec_cap:
+            raise ReserveAuthorityError(amount, exec_cap, actor_id, role)
+        return
     if r in ("supervisor", "admin"):
         limit = cfg["supervisor_limit"]
     else:
         limit = cfg["adjuster_limit"]
     if amount > limit:
         raise ReserveAuthorityError(amount, limit, actor_id, role)
+
+
+def _reserve_audit_reason(
+    safe_reason: str,
+    default_label: str,
+    *,
+    skip_authority_check: bool,
+) -> str:
+    """Human-readable reason for reserve_history and claim_audit_log."""
+    core = safe_reason.strip() or default_label
+    if skip_authority_check:
+        return sanitize_note(core + " [authority check bypassed]")
+    return core
 
 
 def _reserve_adequacy_details(
@@ -950,6 +978,9 @@ class ClaimRepository:
         )
         safe_actor = sanitize_actor_id(actor_id)
         safe_reason = sanitize_note(reason) if reason else ""
+        audit_reason = _reserve_audit_reason(
+            safe_reason, "Reserve set", skip_authority_check=skip_authority_check
+        )
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text("SELECT reserve_amount, status FROM claims WHERE id = :claim_id"),
@@ -975,7 +1006,7 @@ class ClaimRepository:
                     "claim_id": claim_id,
                     "old_amount": old_amount,
                     "new_amount": amount,
-                    "reason": safe_reason or "Reserve set",
+                    "reason": audit_reason,
                     "actor_id": safe_actor,
                 },
             )
@@ -989,7 +1020,7 @@ class ClaimRepository:
                 {
                     "claim_id": claim_id,
                     "action": AUDIT_EVENT_RESERVE_SET,
-                    "details": safe_reason or "Reserve set",
+                    "details": audit_reason,
                     "actor_id": safe_actor,
                     "before_state": before_state,
                     "after_state": after_state,
@@ -1033,6 +1064,9 @@ class ClaimRepository:
                 AUDIT_EVENT_RESERVE_SET if old_amount is None else AUDIT_EVENT_RESERVE_ADJUSTED
             )
             default_reason = "Reserve set" if old_amount is None else "Reserve adjusted"
+            audit_reason = _reserve_audit_reason(
+                safe_reason, default_reason, skip_authority_check=skip_authority_check
+            )
             conn.execute(
                 text(
                     "UPDATE claims SET reserve_amount = :new_amount, updated_at = CURRENT_TIMESTAMP WHERE id = :claim_id"
@@ -1048,7 +1082,7 @@ class ClaimRepository:
                     "claim_id": claim_id,
                     "old_amount": old_amount,
                     "new_amount": new_amount,
-                    "reason": safe_reason or default_reason,
+                    "reason": audit_reason,
                     "actor_id": safe_actor,
                 },
             )
@@ -1062,7 +1096,7 @@ class ClaimRepository:
                 {
                     "claim_id": claim_id,
                     "action": audit_event,
-                    "details": safe_reason or default_reason,
+                    "details": audit_reason,
                     "actor_id": safe_actor,
                     "before_state": before_state,
                     "after_state": after_state,

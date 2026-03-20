@@ -76,10 +76,18 @@ class ReserveAuthorityError(ClaimAgentError):
         r = (role or "adjuster").lower()
         if r == "adjuster":
             hint = "Supervisor approval required for amounts above this limit."
-        elif r == "admin":
-            hint = "Retry with skip_authority_check=true to bypass this limit."
         elif r == "supervisor":
             hint = "Reserve amount exceeds supervisor limit; executive approval required."
+        elif r == "admin":
+            hint = (
+                "Reserve amount exceeds supervisor limit; use skip_authority_check on the "
+                "reserve update if policy allows, or obtain executive approval."
+            )
+        elif r == "executive":
+            hint = (
+                "Amount exceeds RESERVE_EXECUTIVE_LIMIT; an admin may use "
+                "skip_authority_check if policy allows."
+            )
         else:
             hint = "Higher authority approval required."
         super().__init__(

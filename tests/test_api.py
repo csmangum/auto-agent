@@ -1316,6 +1316,7 @@ class TestReserve:
             return {
                 "adjuster_limit": 5000.0,
                 "supervisor_limit": 20000.0,
+                "executive_limit": 0.0,
                 "initial_reserve_from_estimated_damage": True,
             }
 
@@ -1331,6 +1332,34 @@ class TestReserve:
         )
         assert resp.status_code == 200
         assert resp.json()["reserve_amount"] == 100000.0
+
+    def test_patch_reserve_executive_over_executive_limit_returns_403(
+        self, client, monkeypatch
+    ):
+        monkeypatch.setenv("API_KEYS", "sk-ex:executive")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        def capped_executive():
+            return {
+                "adjuster_limit": 5000.0,
+                "supervisor_limit": 20000.0,
+                "executive_limit": 100000.0,
+                "initial_reserve_from_estimated_damage": True,
+            }
+
+        monkeypatch.setattr(
+            "claim_agent.db.repository.get_reserve_config",
+            capped_executive,
+        )
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": 200000.0, "reason": "Cat loss"},
+            headers=_auth_headers("sk-ex"),
+        )
+        assert resp.status_code == 403
+        assert "reserve_executive_limit" in resp.json()["detail"].lower()
 
     def test_patch_reserve_skip_authority_check_adjuster_forbidden(self, client, monkeypatch):
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
@@ -1358,6 +1387,7 @@ class TestReserve:
             return {
                 "adjuster_limit": 5000.0,
                 "supervisor_limit": 20000.0,
+                "executive_limit": 0.0,
                 "initial_reserve_from_estimated_damage": True,
             }
 
@@ -1377,6 +1407,13 @@ class TestReserve:
         )
         assert resp.status_code == 200
         assert resp.json()["reserve_amount"] == 75000.0
+        hist = client.get(
+            "/api/claims/CLM-TEST001/reserve-history",
+            headers=_auth_headers("sk-admin"),
+        )
+        assert hist.status_code == 200
+        reasons = [h.get("reason") or "" for h in hist.json().get("history", [])]
+        assert any("[authority check bypassed]" in r for r in reasons)
 
     def test_get_reserve_history(self, client):
         """GET /claims/{id}/reserve-history returns history."""

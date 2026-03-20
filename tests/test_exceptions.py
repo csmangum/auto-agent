@@ -159,8 +159,16 @@ class TestReserveAuthorityError:
             actor_id="adm-1",
             role="admin",
         )
-        assert "skip_authority_check" in str(err)
-        assert "executive approval" not in str(err).lower()
+        assert "skip_authority_check" in str(err).lower()
+
+    def test_executive_message_mentions_executive_limit(self):
+        err = ReserveAuthorityError(
+            amount=200000.0,
+            limit=100000.0,
+            actor_id="ex-1",
+            role="executive",
+        )
+        assert "reserve_executive_limit" in str(err).lower()
 
     def test_default_role(self):
         err = ReserveAuthorityError(
