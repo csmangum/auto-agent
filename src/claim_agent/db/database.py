@@ -193,6 +193,7 @@ BEGIN
     SELECT RAISE(ABORT, 'reserve_history is append-only: deletes are not allowed');
 END;
 CREATE INDEX IF NOT EXISTS idx_reserve_history_claim_id ON reserve_history(claim_id);
+CREATE INDEX IF NOT EXISTS idx_reserve_history_created_at ON reserve_history(created_at);
 
 -- Document requests: request -> receipt tracking (created before claim_tasks for FK)
 CREATE TABLE IF NOT EXISTS document_requests (
@@ -685,6 +686,12 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref "
                 "ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL"
             )
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reserve_history_created_at ON reserve_history(created_at)"
+        )
     except sqlite3.OperationalError:
         pass
 

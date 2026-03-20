@@ -315,6 +315,8 @@ CREATE INDEX IF NOT EXISTS idx_reserve_history_claim_id ON reserve_history(claim
 | `actor_id` | TEXT | Who made the change |
 | `created_at` | TEXT | Timestamp |
 
+Actuarial aggregates and IBNR-style exports: see [Actuarial reserve reporting](actuarial-reserve-reporting.md).
+
 ### workflow_runs
 
 Preserves output from each workflow execution.

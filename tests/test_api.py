@@ -2130,6 +2130,51 @@ class TestRBAC:
         assert resp.status_code == 404
 
 
+class TestReserveReports:
+    """Actuarial reserve reporting (supervisor+)."""
+
+    def _keys(self, monkeypatch, keys: str):
+        monkeypatch.setenv("API_KEYS", keys)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+    def test_supervisor_reserve_reports_ok(self, client, monkeypatch):
+        self._keys(monkeypatch, "sk-sup:supervisor")
+        h = _auth_headers("sk-sup")
+        r1 = client.get(
+            "/api/reports/reserves/by-period",
+            params={"date_from": "2000-01-01", "date_to": "2099-01-01"},
+            headers=h,
+        )
+        assert r1.status_code == 200
+        body = r1.json()
+        assert "periods" in body and "granularity" in body
+
+        r2 = client.get(
+            "/api/reports/reserves/development",
+            params={"limit": 10, "offset": 0},
+            headers=h,
+        )
+        assert r2.status_code == 200
+        assert "rows" in r2.json() and "total" in r2.json()
+
+        r3 = client.get("/api/reports/reserves/triangle", headers=h)
+        assert r3.status_code == 200
+        assert "cells" in r3.json()
+
+        r4 = client.get("/api/reports/reserves/adequacy-summary", headers=h)
+        assert r4.status_code == 200
+        assert "claim_count" in r4.json()
+
+    def test_adjuster_forbidden_reserve_reports(self, client, monkeypatch):
+        self._keys(monkeypatch, "sk-adj:adjuster")
+        resp = client.get(
+            "/api/reports/reserves/by-period",
+            headers=_auth_headers("sk-adj"),
+        )
+        assert resp.status_code == 403
+
+
 # -------------------------------------------------------------------
 # JWT authentication (when JWT_SECRET is set)
 # -------------------------------------------------------------------
