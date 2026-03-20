@@ -119,8 +119,8 @@ def _build_date_filters(d0: str, d1: str) -> list[str]:
     """
     if _is_postgres():
         return ["h.created_at >= :d0", "h.created_at < :d1"]
-    # Normalize both sides via SQLite's datetime() to handle ISO strings with T/Z consistently.
-    return ["datetime(h.created_at) >= datetime(:d0)", "datetime(h.created_at) < datetime(:d1)"]
+    # Normalize parameter side via SQLite's datetime() while keeping h.created_at indexable.
+    return ["h.created_at >= datetime(:d0)", "h.created_at < datetime(:d1)"]
 
 
 def aggregate_reserves_by_period(
@@ -267,7 +267,7 @@ def reserve_development_triangle(
         INNER JOIN claims c ON c.id = h.claim_id
         WHERE {where_sql}
         GROUP BY 1, 2
-        HAVING {accident_y} IS NOT NULL AND {dev_lag} IS NOT NULL
+        HAVING {accident_y} IS NOT NULL AND {dev_lag} IS NOT NULL AND {dev_lag} >= 0
         ORDER BY 1 ASC, 2 ASC
     """
     with get_connection(db_path) as conn:

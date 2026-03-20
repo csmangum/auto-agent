@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query
 
 from claim_agent.api.deps import require_role
@@ -22,13 +24,13 @@ RequireSupervisor = require_role("supervisor", "admin", "executive")
 
 @router.get("/reports/reserves/by-period", dependencies=[RequireSupervisor])
 def get_reserve_report_by_period(
-    date_from: str | None = Query(
+    date_from: date | None = Query(
         None,
-        description="Inclusive start (ISO date/datetime). Default: ~12 months ago.",
+        description="Inclusive start (ISO date). Default: ~12 months ago.",
     ),
-    date_to: str | None = Query(
+    date_to: date | None = Query(
         None,
-        description="Exclusive end (ISO date/datetime). Default: tomorrow.",
+        description="Exclusive end (ISO date). Default: tomorrow.",
     ),
     granularity: Granularity = Query(
         "month",
@@ -44,8 +46,8 @@ def get_reserve_report_by_period(
     """Aggregate reserve movements by month or quarter (joined to current claim dimensions)."""
     return aggregate_reserves_by_period(
         db_path=ctx.repo.db_path,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=date_from.isoformat() if date_from else None,
+        date_to=date_to.isoformat() if date_to else None,
         granularity=granularity,
         claim_type=claim_type,
         status=status,
@@ -54,8 +56,8 @@ def get_reserve_report_by_period(
 
 @router.get("/reports/reserves/development", dependencies=[RequireSupervisor])
 def get_reserve_development_export(
-    date_from: str | None = Query(None, description="Inclusive start. Default: ~12 months ago."),
-    date_to: str | None = Query(None, description="Exclusive end. Default: tomorrow."),
+    date_from: date | None = Query(None, description="Inclusive start (ISO date). Default: ~12 months ago."),
+    date_to: date | None = Query(None, description="Exclusive end (ISO date). Default: tomorrow."),
     claim_type: str | None = Query(None),
     status: str | None = Query(None, description="Comma-separated statuses."),
     limit: int = Query(500, ge=1, le=5000, description="Page size (max 5000)."),
@@ -65,8 +67,8 @@ def get_reserve_development_export(
     """Paginated reserve history joined to claim fields (valuation vs accident lag)."""
     rows, total = reserve_development_rows(
         db_path=ctx.repo.db_path,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=date_from.isoformat() if date_from else None,
+        date_to=date_to.isoformat() if date_to else None,
         claim_type=claim_type,
         status=status,
         limit=limit,
@@ -83,8 +85,8 @@ def get_reserve_development_export(
 
 @router.get("/reports/reserves/triangle", dependencies=[RequireSupervisor])
 def get_reserve_development_triangle(
-    date_from: str | None = Query(None),
-    date_to: str | None = Query(None),
+    date_from: date | None = Query(None, description="Inclusive start (ISO date). Default: ~12 months ago."),
+    date_to: date | None = Query(None, description="Exclusive end (ISO date). Default: tomorrow."),
     claim_type: str | None = Query(None),
     status: str | None = Query(None),
     ctx: ClaimContext = Depends(get_claim_context),
@@ -92,8 +94,8 @@ def get_reserve_development_triangle(
     """Bucketed net movements by accident year × development month (IBNR-style export)."""
     return reserve_development_triangle(
         db_path=ctx.repo.db_path,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=date_from.isoformat() if date_from else None,
+        date_to=date_to.isoformat() if date_to else None,
         claim_type=claim_type,
         status=status,
     )
