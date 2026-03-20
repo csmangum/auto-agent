@@ -30,6 +30,8 @@ The base graph below applies to all claims. **Claim-type variants** add extra ed
 
 `can_transition()` and `validate_transition()` accept optional `claim_type` (or read `claim["claim_type"]` from the claim row). Rules:
 
+> **Note:** `claim_type` and `status` are **separate fields** on a claim. Some strings (e.g., `partial_loss`, `total_loss`) are valid values for *both* fields — `status` describes where the claim is in its lifecycle, while `claim_type` describes the nature of the claim. The table below uses these strings as **claim_type** values (not statuses).
+
 | Claim type | Transition additions | Optional dict guards on `claim` |
 |------------|------------------------|----------------------------------|
 | `bodily_injury` | `open` → `pending_info` (document ongoing treatment / info holds) | — |

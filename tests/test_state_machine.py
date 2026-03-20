@@ -99,6 +99,32 @@ class TestCanTransition:
         claim = {"claim_type": "total_loss", "total_loss_settlement_authorized": False}
         assert can_transition(STATUS_OPEN, STATUS_SETTLED, claim=claim) is False
 
+    def test_explicit_claim_type_overrides_claim_dict_type(self):
+        """Explicit claim_type= arg takes precedence over claim["claim_type"]."""
+        non_bi_claim = {"claim_type": "partial_loss"}
+        assert (
+            can_transition(
+                STATUS_OPEN,
+                STATUS_PENDING_INFO,
+                claim=non_bi_claim,
+                claim_type="bodily_injury",
+            )
+            is True
+        )
+
+    def test_explicit_non_bi_overrides_bi_in_claim_dict(self):
+        """Explicit non-BI claim_type should block open -> pending_info even if claim is BI."""
+        bi_claim = {"claim_type": "bodily_injury"}
+        assert (
+            can_transition(
+                STATUS_OPEN,
+                STATUS_PENDING_INFO,
+                claim=bi_claim,
+                claim_type="partial_loss",
+            )
+            is False
+        )
+
 
 class TestValidateTransition:
     """Tests for validate_transition (raises on invalid)."""
@@ -141,3 +167,32 @@ class TestValidateTransition:
         with pytest.raises(InvalidClaimTransitionError) as exc:
             validate_transition("CLM-pl", STATUS_OPEN, STATUS_SETTLED, claim=claim)
         assert "partial_loss" in exc.value.reason.lower()
+
+    def test_total_loss_settlement_guard_raises(self):
+        claim = {"claim_type": "total_loss", "total_loss_settlement_authorized": False}
+        with pytest.raises(InvalidClaimTransitionError) as exc:
+            validate_transition("CLM-tl", STATUS_OPEN, STATUS_SETTLED, claim=claim)
+        assert "total_loss" in exc.value.reason.lower()
+
+    def test_explicit_bi_overrides_non_bi_claim_type(self):
+        """Explicit claim_type='bodily_injury' should allow open -> pending_info even if claim says otherwise."""
+        non_bi_claim = {"claim_type": "property_damage"}
+        validate_transition(
+            "CLM-bi-override",
+            STATUS_OPEN,
+            STATUS_PENDING_INFO,
+            claim=non_bi_claim,
+            claim_type="bodily_injury",
+        )
+
+    def test_explicit_non_bi_overrides_bi_claim_type_and_fails(self):
+        """Explicit non-BI claim_type should block open -> pending_info even if claim is BI."""
+        bi_claim = {"claim_type": "bodily_injury"}
+        with pytest.raises(InvalidClaimTransitionError):
+            validate_transition(
+                "CLM-nonbi-override",
+                STATUS_OPEN,
+                STATUS_PENDING_INFO,
+                claim=bi_claim,
+                claim_type="property_damage",
+            )

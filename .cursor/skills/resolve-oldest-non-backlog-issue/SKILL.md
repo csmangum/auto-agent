@@ -54,7 +54,7 @@ Read the full body, acceptance criteria, linked issues/PRs, and comments. Skim r
 
 ## 4. Implement and verify
 
-- Follow [AGENTS.md](AGENTS.md): focused diff, project test commands, Ruff/mypy if the repo uses them.
+- Follow [AGENTS.md](/AGENTS.md): focused diff, project test commands, Ruff/mypy if the repo uses them.
 - Prefer closing the issue in GitHub via PR: body or title references `Fixes #N` / `Closes #N` when appropriate.
 - Run the relevant tests for the touched area; do not merge without a green run for the scope you changed.
 
