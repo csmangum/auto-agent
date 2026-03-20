@@ -206,15 +206,15 @@ class TestVerifyCoverageImpl:
         assert not result.under_investigation
 
     def test_passes_when_claimant_is_authorized_driver(self):
-        """Claimant matching authorized driver passes verification."""
+        """Claimant matching authorized driver (but not named insured) passes verification."""
         claim_data = {
-            "policy_number": "POL-001",
+            "policy_number": "POL-003",
             "damage_description": "Collision damage",
             "estimated_damage": 2000,
             "parties": [
                 {
                     "party_type": "claimant",
-                    "name": "Jane Doe",
+                    "name": "Sarah Johnson",
                     "role": "driver",
                 }
             ],

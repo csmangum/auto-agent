@@ -32,10 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_name(name: str | None) -> str:
-    """Normalize a name for comparison (lowercase, strip whitespace)."""
+    """Normalize a name for comparison (lowercase, normalize whitespace)."""
     if not name or not isinstance(name, str):
         return ""
-    return name.strip().lower()
+    # Split/join collapses internal runs of whitespace and trims ends.
+    return " ".join(name.split()).lower()
 
 
 def _get_name_from_dict(item: dict) -> str | None:
