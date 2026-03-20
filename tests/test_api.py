@@ -1280,6 +1280,141 @@ class TestReserve:
         assert resp.status_code == 403
         assert "authority" in resp.json()["detail"].lower()
 
+    def test_patch_reserve_supervisor_over_supervisor_limit_returns_403(
+        self, client, monkeypatch
+    ):
+        monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        def low_supervisor_cap():
+            return {
+                "adjuster_limit": 5000.0,
+                "supervisor_limit": 20000.0,
+                "initial_reserve_from_estimated_damage": True,
+            }
+
+        monkeypatch.setattr(
+            "claim_agent.db.repository.get_reserve_config",
+            low_supervisor_cap,
+        )
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": 25000.0, "reason": "Large loss"},
+            headers=_auth_headers("sk-sup"),
+        )
+        assert resp.status_code == 403
+        assert "executive approval required" in resp.json()["detail"].lower()
+
+    def test_patch_reserve_executive_above_supervisor_limit(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-ex:executive")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        def low_supervisor_cap():
+            return {
+                "adjuster_limit": 5000.0,
+                "supervisor_limit": 20000.0,
+                "executive_limit": 0.0,
+                "initial_reserve_from_estimated_damage": True,
+            }
+
+        monkeypatch.setattr(
+            "claim_agent.db.repository.get_reserve_config",
+            low_supervisor_cap,
+        )
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": 100000.0, "reason": "Cat loss"},
+            headers=_auth_headers("sk-ex"),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["reserve_amount"] == 100000.0
+
+    def test_patch_reserve_executive_over_executive_limit_returns_403(
+        self, client, monkeypatch
+    ):
+        monkeypatch.setenv("API_KEYS", "sk-ex:executive")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        def capped_executive():
+            return {
+                "adjuster_limit": 5000.0,
+                "supervisor_limit": 20000.0,
+                "executive_limit": 100000.0,
+                "initial_reserve_from_estimated_damage": True,
+            }
+
+        monkeypatch.setattr(
+            "claim_agent.db.repository.get_reserve_config",
+            capped_executive,
+        )
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={"reserve_amount": 200000.0, "reason": "Cat loss"},
+            headers=_auth_headers("sk-ex"),
+        )
+        assert resp.status_code == 403
+        assert "reserve_executive_limit" in resp.json()["detail"].lower()
+
+    def test_patch_reserve_skip_authority_check_adjuster_forbidden(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={
+                "reserve_amount": 999999.0,
+                "reason": "Bypass",
+                "skip_authority_check": True,
+            },
+            headers=_auth_headers("sk-adj"),
+        )
+        assert resp.status_code == 403
+        assert "admin" in resp.json()["detail"].lower()
+
+    def test_patch_reserve_admin_skip_authority_check(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-admin:admin")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        def low_limit():
+            return {
+                "adjuster_limit": 5000.0,
+                "supervisor_limit": 20000.0,
+                "executive_limit": 0.0,
+                "initial_reserve_from_estimated_damage": True,
+            }
+
+        monkeypatch.setattr(
+            "claim_agent.db.repository.get_reserve_config",
+            low_limit,
+        )
+
+        resp = client.patch(
+            "/api/claims/CLM-TEST001/reserve",
+            json={
+                "reserve_amount": 75000.0,
+                "reason": "Board exception",
+                "skip_authority_check": True,
+            },
+            headers=_auth_headers("sk-admin"),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["reserve_amount"] == 75000.0
+        hist = client.get(
+            "/api/claims/CLM-TEST001/reserve-history",
+            headers=_auth_headers("sk-admin"),
+        )
+        assert hist.status_code == 200
+        reasons = [h.get("reason") or "" for h in hist.json().get("history", [])]
+        assert any("[authority check bypassed]" in r for r in reasons)
+
     def test_get_reserve_history(self, client):
         """GET /claims/{id}/reserve-history returns history."""
         from claim_agent.db.repository import ClaimRepository
@@ -1917,6 +2052,28 @@ class TestRBAC:
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")
         resp = client.get("/api/metrics", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 200
+
+    def test_executive_can_access_metrics_and_reprocess(self, client, monkeypatch):
+        """Executive has supervisor-level route access (metrics, reprocess)."""
+        self._set_api_keys(monkeypatch, "sk-ex:executive")
+        resp = client.get("/api/metrics", headers=_auth_headers("sk-ex"))
+        assert resp.status_code == 200
+        import claim_agent.api.routes.claims as claims_mod
+
+        monkeypatch.setattr(
+            claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
+        )
+        repro = client.post(
+            "/api/claims/CLM-TEST001/reprocess",
+            headers=_auth_headers("sk-ex"),
+        )
+        assert repro.status_code == 200
+
+    def test_executive_forbidden_system_config(self, client, monkeypatch):
+        """Executive gets 403 for system/config (admin only)."""
+        self._set_api_keys(monkeypatch, "sk-ex:executive")
+        resp = client.get("/api/system/config", headers=_auth_headers("sk-ex"))
+        assert resp.status_code == 403
 
     def test_supervisor_forbidden_system_config(self, client, monkeypatch):
         """Supervisor gets 403 for system/config (admin only)."""

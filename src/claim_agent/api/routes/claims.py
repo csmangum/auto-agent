@@ -120,8 +120,8 @@ def get_claim_context() -> ClaimContext:
 
 router = APIRouter(tags=["claims"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin")
-RequireSupervisor = require_role("supervisor", "admin")
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
+RequireSupervisor = require_role("supervisor", "admin", "executive")
 
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -1115,6 +1115,10 @@ class ReserveBody(BaseModel):
 
     reserve_amount: float = Field(..., ge=0, description="New reserve amount in dollars")
     reason: str = Field(default="", max_length=500, description="Reason for change")
+    skip_authority_check: bool = Field(
+        default=False,
+        description="If true, bypass reserve authority limits (admin role only).",
+    )
 
 
 class LitigationHoldBody(BaseModel):
@@ -1148,6 +1152,12 @@ def patch_claim_reserve(
 ):
     """Set or adjust reserve amount for a claim. Uses adjust_reserve (handles initial set)."""
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    skip = body.skip_authority_check
+    if skip and auth.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="skip_authority_check is only allowed for the admin role.",
+        )
     try:
         ctx.repo.adjust_reserve(
             claim_id,
@@ -1155,6 +1165,7 @@ def patch_claim_reserve(
             reason=body.reason,
             actor_id=actor_id,
             role=auth.role,
+            skip_authority_check=skip and auth.role == "admin",
         )
     except ClaimNotFoundError:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
