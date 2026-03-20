@@ -50,6 +50,22 @@ _US_STATE_NAMES = {
     "West Virginia", "Wisconsin", "Wyoming"
 }
 
+_STATE_CODE_TO_NAME = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+    "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
+    "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
+    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York",
+    "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma",
+    "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah",
+    "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
+    "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia"
+}
+
 
 def _normalize_location(location: str) -> str:
     """Normalize location string for territory comparison.
@@ -64,6 +80,19 @@ def _normalize_location(location: str) -> str:
     if loc in ("USA", "UNITED STATES", "UNITED STATES OF AMERICA"):
         return "US"
     return loc
+
+
+def _resolve_state_code(location: str) -> str | None:
+    """Resolve a state code to its full name if applicable.
+    
+    Args:
+        location: Location string (e.g., "AK", "Alaska", "TX")
+    
+    Returns:
+        Full state name if location is a valid state code, None otherwise
+    """
+    loc_upper = location.strip().upper()
+    return _STATE_CODE_TO_NAME.get(loc_upper)
 
 
 def _is_location_in_territory(
@@ -91,9 +120,16 @@ def _is_location_in_territory(
     
     # Check excluded territories first
     if excluded_territories:
+        # Resolve incident location if it's a state code
+        incident_state_name = _resolve_state_code(incident_location)
+        
         for excluded in excluded_territories:
             excluded_norm = _normalize_location(excluded)
+            # Direct match (normalized)
             if incident_loc == excluded_norm:
+                return False, f"Incident location '{incident_location}' is in excluded territory"
+            # Check if incident state code resolves to excluded state name
+            if incident_state_name and _normalize_location(incident_state_name) == excluded_norm:
                 return False, f"Incident location '{incident_location}' is in excluded territory"
             # Check if incident state name matches excluded state
             if incident_location.title() in _US_STATE_NAMES and excluded.title() == incident_location.title():
@@ -122,17 +158,20 @@ def _is_location_in_territory(
         if incident_loc == territory_norm:
             return True, f"Incident in policy territory ({policy_territory})"
         
-        # Check if it's a state within a country territory
-        if incident_location.title() in _US_STATE_NAMES and territory_norm == "US":
-            return True, "Incident in US territory"
-        
         return False, f"Incident location '{incident_location}' is outside policy territory ({policy_territory})"
     
     # Handle list of territories
     if isinstance(policy_territory, list):
+        # Resolve incident location if it's a state code
+        incident_state_name = _resolve_state_code(incident_location)
+        
         for territory in policy_territory:
             territory_norm = _normalize_location(territory)
+            # Direct match (normalized)
             if incident_loc == territory_norm:
+                return True, f"Incident in policy territory ({territory})"
+            # Check if incident state code resolves to territory state name
+            if incident_state_name and _normalize_location(incident_state_name) == territory_norm:
                 return True, f"Incident in policy territory ({territory})"
             # Check state name match
             if incident_location.title() in _US_STATE_NAMES and territory.title() == incident_location.title():
