@@ -1,0 +1,13 @@
+{
+  "policy_number": "POL-001",
+  "vin": "5YJSA1E26HF999999",
+  "vehicle_year": 2022,
+  "vehicle_make": "Tesla",
+  "vehicle_model": "Model 3",
+  "incident_date": "2025-01-20",
+  "incident_description": "Collision while driving in Mexico.",
+  "damage_description": "Front bumper damage from collision.",
+  "estimated_damage": 3500,
+  "incident_location": "Mexico",
+  "loss_state": "Mexico"
+}

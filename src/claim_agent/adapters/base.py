@@ -36,6 +36,11 @@ class PolicyAdapter(ABC):
         - New format: ``coverages`` (list, e.g. ["liability","collision","comprehensive"]),
           ``collision_deductible``, ``comprehensive_deductible``, ``liability_limits``
         - Legacy: ``coverage`` (str), ``deductible`` (number)
+        
+        Territory coverage (optional):
+        - ``territory`` (str or list): Geographic coverage area (e.g., "US", "USA_Canada", 
+          ["California", "Nevada", "Oregon"], or state code like "TX")
+        - ``excluded_territories`` (list): Territories explicitly excluded from coverage
         """
         ...
 

@@ -7,5 +7,7 @@
   "incident_date": "2025-01-10",
   "incident_description": "Vehicle totaled in flood. Water damage throughout.",
   "damage_description": "Total loss. Flood damage. Vehicle submerged. Engine and interior destroyed.",
-  "estimated_damage": 15000
+  "estimated_damage": 15000,
+  "incident_location": "Texas",
+  "loss_state": "Texas"
 }

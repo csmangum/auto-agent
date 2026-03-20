@@ -13,12 +13,16 @@
       "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
       "gap_insurance": true,
       "parts_preference": "aftermarket",
-      "oem_required_for": ["safety"]
+      "oem_required_for": ["safety"],
+      "territory": "US"
     },
     "POL-002": {
       "status": "active",
-      "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+      "coverages": ["liability", "collision", "comprehensive"],
+      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "territory": ["California", "Nevada", "Arizona"]
     },
     "POL-003": {
       "status": "active",
@@ -26,7 +30,9 @@
       "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "territory": "US",
+      "excluded_territories": ["Alaska", "Hawaii"]
     },
     "POL-004": {
       "status": "active",
@@ -34,7 +40,8 @@
       "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "bodily_injury": { "per_person": 250000, "per_accident": 500000 }
+      "bodily_injury": { "per_person": 250000, "per_accident": 500000 },
+      "territory": "USA_Canada"
     },
     "POL-005": {
       "status": "active",

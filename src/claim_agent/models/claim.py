@@ -91,6 +91,10 @@ class ClaimInput(BaseModel):
         default=None,
         description="Optional incident ID when claim is part of a multi-vehicle incident.",
     )
+    incident_location: Optional[str] = Field(
+        default=None,
+        description="Location where the incident occurred (e.g., 'California', 'TX', 'Canada'). Used for policy territory verification.",
+    )
 
 
 class LiabilityDeterminationOutput(BaseModel):
