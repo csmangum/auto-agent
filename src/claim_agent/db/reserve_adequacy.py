@@ -17,7 +17,7 @@ def compute_reserve_adequacy_details(
 ) -> tuple[bool, list[str], list[str]]:
     """Compute adequacy, human warnings, and stable warning_codes.
 
-    Matches ``check_reserve_adequacy`` / historical ``_reserve_adequacy_details`` logic.
+    Single source of truth for adequacy used by ``check_reserve_adequacy`` and state-machine gates.
     """
     warnings: list[str] = []
     codes: list[str] = []

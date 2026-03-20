@@ -70,7 +70,7 @@ When transitioning **to** `closed` or `settled`, reserve adequacy may be enforce
 ## Bypass
 
 - `actor_id="system"` or `force=True` skips validation when calling `validate_transition()` or `can_transition()` directly (for migrations, seeding, or tests)
-- At the repository layer, use `skip_validation=True` on `update_claim_status()` to bypass the state machine
+- At the repository layer, use `skip_validation=True` on `update_claim_status()` to bypass the **entire** state machine: transition graph, close guard, claim-type guards (e.g. `open` → `settled` for partial loss), **and** the reserve adequacy gate for `closed` / `settled`. In `block` mode, an inadequate close/settle applied this way is not rejected and does not produce a `reserve_adequacy_gate` audit row (that event is only for allowed transitions that still record inadequacy or waiver). Prefer normal validation plus `skip_adequacy_check=True` with an elevated `role` when supervisors intentionally override the gate.
 
 ## REST API
 

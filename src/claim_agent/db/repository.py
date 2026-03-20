@@ -181,67 +181,6 @@ def _reserve_audit_reason(
     return core
 
 
-def _reserve_adequacy_details(
-    reserve_val: float | None,
-    est_val: float | None,
-    payout_val: float | None,
-) -> tuple[bool, list[str], list[str]]:
-    """Compute adequacy, human warnings, and stable warning_codes."""
-    warnings: list[str] = []
-    codes: list[str] = []
-
-    benchmark: float | None = None
-    if payout_val is not None and payout_val > 0:
-        benchmark = payout_val
-    if est_val is not None and est_val > 0:
-        benchmark = max(benchmark or 0, est_val)
-
-    if reserve_val is None:
-        if benchmark is not None and benchmark > 0:
-            warnings.append(
-                "No reserve set; reserve should be set for actuarial tracking",
-            )
-            codes.append(RESERVE_ADEQUACY_CODE_NOT_SET)
-        adequate = benchmark is None or benchmark <= 0
-        return adequate, warnings, codes
-
-    if benchmark is None or reserve_val >= benchmark:
-        return True, warnings, codes
-
-    below_estimate = (
-        est_val is not None
-        and est_val == benchmark
-        and (payout_val is None or payout_val <= 0 or payout_val < benchmark)
-    )
-    below_payout_only = (
-        payout_val is not None
-        and payout_val == benchmark
-        and (est_val is None or est_val <= 0 or est_val < benchmark)
-    )
-    if below_estimate:
-        warnings.append(
-            f"Reserve ${reserve_val:,.2f} is below estimated damage ${benchmark:,.2f}",
-        )
-        codes.append(RESERVE_ADEQUACY_CODE_BELOW_ESTIMATE)
-    elif below_payout_only:
-        warnings.append(
-            f"Reserve ${reserve_val:,.2f} is below payout ${benchmark:,.2f}",
-        )
-        codes.append(RESERVE_ADEQUACY_CODE_BELOW_PAYOUT)
-    else:
-        parts = []
-        if est_val is not None:
-            parts.append(f"estimated damage ${est_val:,.2f}")
-        if payout_val is not None:
-            parts.append(f"payout ${payout_val:,.2f}")
-        suffix = f" ({', '.join(parts)})" if parts else ""
-        warnings.append(
-            f"Reserve ${reserve_val:,.2f} is below benchmark ${benchmark:,.2f}{suffix}",
-        )
-        codes.append(RESERVE_ADEQUACY_CODE_BELOW_BENCHMARK)
-    return False, warnings, codes
-
-
 def _is_claim_past_retention(
     row_d: dict[str, Any],
     now: datetime,
@@ -633,15 +572,16 @@ class ClaimRepository:
         elevated = r in ("supervisor", "admin", "executive")
         if mode == "block" and not (skip_adequacy_check and elevated):
             return
-        if skip_adequacy_check and elevated:
+        warn_details = (
+            f"Reserve inadequate at status={new_status} (warn mode allows transition); "
+            f"warning_codes={','.join(codes)}; "
+            + "; ".join(warnings[:5])
+        )
+        if mode == "warn":
+            details = warn_details
+        elif mode == "block" and skip_adequacy_check and elevated:
             details = (
                 f"Reserve adequacy waived (role={role}); "
-                f"warning_codes={','.join(codes)}; "
-                + "; ".join(warnings[:5])
-            )
-        elif mode == "warn":
-            details = (
-                f"Reserve inadequate at status={new_status} (warn mode allows transition); "
                 f"warning_codes={','.join(codes)}; "
                 + "; ".join(warnings[:5])
             )
@@ -683,6 +623,12 @@ class ClaimRepository:
         For transitions to ``closed`` or ``settled``, reserve adequacy may block or warn
         (``RESERVE_CLOSE_SETTLE_ADEQUACY_GATE``). Supervisor, admin, or executive may set
         ``skip_adequacy_check=True`` when the gate mode is ``block``.
+
+        When ``skip_validation=True``, the state machine is not run: **all** transition
+        rules are skipped, including the reserve adequacy gate, the close guard, and
+        claim-type guards. No ``reserve_adequacy_gate`` audit row is written for an
+        inadequate reserve in ``block`` mode (there is no waiver without an elevated
+        ``skip_adequacy_check``). Use only for migrations, recovery, or tests.
         """
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
