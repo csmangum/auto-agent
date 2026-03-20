@@ -288,6 +288,56 @@ class TestVerifyCoverageImpl:
         result = verify_coverage_impl(claim_data, ctx=ctx)
         assert result.passed
 
+    def test_parties_none_treated_as_empty(self):
+        """parties=None should be treated as empty (no TypeError), falling back to claimant_name."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": None,
+            "claimant_name": "John Doe",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_non_string_party_type_is_safe(self):
+        """party_type that is not a string (e.g. None) should not raise."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {"party_type": None, "name": "John Doe"},
+                {"party_type": 42, "name": "Other"},
+            ],
+            "claimant_name": "John Doe",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_under_investigation_details_contain_no_pii(self):
+        """Under-investigation result should not include email/phone/license in details."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {"party_type": "claimant", "name": "Unknown Driver"},
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.under_investigation
+        details = result.details or {}
+        # named_insured and drivers in details should be plain name strings, not dicts with PII.
+        for person_list in (details.get("named_insured", []), details.get("drivers", [])):
+            for person in person_list:
+                assert isinstance(person, str), (
+                    f"Expected name string in details, got {type(person).__name__}: {person!r}"
+                )
+
 
 class TestCoverageVerificationResult:
     """Tests for CoverageVerificationResult model invariants."""

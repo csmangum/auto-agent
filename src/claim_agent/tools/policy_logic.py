@@ -167,9 +167,19 @@ def query_policy_db_impl(
             if rental and isinstance(rental, dict):
                 result["rental_reimbursement"] = rental
             if p.get("named_insured") is not None:
-                result["named_insured"] = p["named_insured"]
+                # Mask PII: retain only name for LLM/tool consumers; email/phone stripped.
+                result["named_insured"] = [
+                    {"name": entry["name"]}
+                    for entry in p["named_insured"]
+                    if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+                ]
             if p.get("drivers") is not None:
-                result["drivers"] = p["drivers"]
+                # Mask PII: retain only name and relationship; license_number stripped.
+                result["drivers"] = [
+                    {"name": entry.get("name"), "relationship": entry.get("relationship")}
+                    for entry in p["drivers"]
+                    if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+                ]
             return json.dumps(result)
         return json.dumps({
             "valid": False,
