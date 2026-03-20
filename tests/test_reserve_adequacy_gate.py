@@ -104,6 +104,32 @@ def test_warn_mode_allows_close_and_audits_inadequacy(temp_db, monkeypatch):
     assert "warn mode" in (gates[0].get("details") or "").lower()
 
 
+def test_warn_mode_supervisor_skip_logs_warn_not_waiver(temp_db, monkeypatch):
+    """skip_adequacy_check only bypasses block mode; warn mode should not say 'waived'."""
+    monkeypatch.setenv("RESERVE_CLOSE_SETTLE_ADEQUACY_GATE", "warn")
+    reload_settings()
+    repo = ClaimRepository(db_path=temp_db)
+    cid = repo.create_claim(_claim_input())
+    repo.update_claim_status(cid, STATUS_PROCESSING)
+    repo.update_claim_status(cid, STATUS_OPEN)
+    repo.adjust_reserve(cid, 1000.0, actor_id="workflow")
+    repo.update_claim_status(
+        cid,
+        STATUS_CLOSED,
+        payout_amount=5000.0,
+        details="Closed warn + skip flag",
+        skip_adequacy_check=True,
+        role="supervisor",
+        actor_id="sup-1",
+    )
+    history, _ = repo.get_claim_history(cid)
+    gates = [h for h in history if h.get("action") == AUDIT_EVENT_RESERVE_ADEQUACY_GATE]
+    assert len(gates) == 1
+    d = (gates[0].get("details") or "").lower()
+    assert "warn mode" in d
+    assert "waived" not in d
+
+
 def test_off_mode_no_gate_audit_on_inadequate(temp_db, monkeypatch):
     monkeypatch.setenv("RESERVE_CLOSE_SETTLE_ADEQUACY_GATE", "off")
     reload_settings()

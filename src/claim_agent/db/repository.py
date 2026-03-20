@@ -572,15 +572,16 @@ class ClaimRepository:
         elevated = r in ("supervisor", "admin", "executive")
         if mode == "block" and not (skip_adequacy_check and elevated):
             return
-        if skip_adequacy_check and elevated:
+        warn_details = (
+            f"Reserve inadequate at status={new_status} (warn mode allows transition); "
+            f"warning_codes={','.join(codes)}; "
+            + "; ".join(warnings[:5])
+        )
+        if mode == "warn":
+            details = warn_details
+        elif mode == "block" and skip_adequacy_check and elevated:
             details = (
                 f"Reserve adequacy waived (role={role}); "
-                f"warning_codes={','.join(codes)}; "
-                + "; ".join(warnings[:5])
-            )
-        elif mode == "warn":
-            details = (
-                f"Reserve inadequate at status={new_status} (warn mode allows transition); "
                 f"warning_codes={','.join(codes)}; "
                 + "; ".join(warnings[:5])
             )
