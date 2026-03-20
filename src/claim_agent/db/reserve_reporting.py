@@ -16,7 +16,7 @@ Granularity = Literal["month", "quarter"]
 
 
 def _default_date_range() -> tuple[str, str]:
-    """Last 12 months, end exclusive (``date_to`` is tomorrow UTC date)."""
+    """Last 12 months, end exclusive (``date_to`` is tomorrow's local date)."""
     end = date.today() + timedelta(days=1)
     start = end - timedelta(days=366)
     return start.isoformat(), end.isoformat()
@@ -33,7 +33,7 @@ def _period_sql(granularity: Granularity) -> str:
     if granularity == "quarter":
         return (
             "strftime('%Y', h.created_at) || '-Q' || "
-            "CAST((CAST(strftime('%m', h.created_at) AS INTEGER) + 2) / 3 AS TEXT)"
+            "CAST(CAST((CAST(strftime('%m', h.created_at) AS INTEGER) + 2) / 3 AS INTEGER) AS TEXT)"
         )
     return "strftime('%Y-%m', h.created_at)"
 
@@ -111,6 +111,18 @@ def _apply_claim_filters(
             filters.append(f"{t}status IN ({placeholders})")
 
 
+def _build_date_filters(d0: str, d1: str) -> list[str]:
+    """Return WHERE fragment list that compares ``h.created_at`` to the given range.
+
+    Uses ``datetime()`` on the SQLite branch so that ISO strings with a ``T``/``Z``
+    separator compare correctly against the TEXT timestamps stored by SQLite.
+    """
+    if _is_postgres():
+        return ["h.created_at >= :d0", "h.created_at < :d1"]
+    # Normalize both sides via SQLite's datetime() to handle ISO strings with T/Z consistently.
+    return ["datetime(h.created_at) >= datetime(:d0)", "datetime(h.created_at) < datetime(:d1)"]
+
+
 def aggregate_reserves_by_period(
     *,
     db_path: str | None = None,
@@ -129,10 +141,7 @@ def aggregate_reserves_by_period(
     d0 = date_from or start
     d1 = date_to or end
     period_expr = _period_sql(granularity)
-    filters: list[str] = [
-        "h.created_at >= :d0",
-        "h.created_at < :d1",
-    ]
+    filters: list[str] = _build_date_filters(d0, d1)
     params: dict[str, Any] = {"d0": d0, "d1": d1}
     _apply_claim_filters(filters, params, table_alias="c", claim_type=claim_type, status=status)
     where_sql = " AND ".join(filters)
@@ -176,10 +185,7 @@ def reserve_development_rows(
     start, end = _default_date_range()
     d0 = date_from or start
     d1 = date_to or end
-    filters: list[str] = [
-        "h.created_at >= :d0",
-        "h.created_at < :d1",
-    ]
+    filters: list[str] = _build_date_filters(d0, d1)
     params: dict[str, Any] = {"d0": d0, "d1": d1}
     _apply_claim_filters(filters, params, table_alias="c", claim_type=claim_type, status=status)
     where_sql = " AND ".join(filters)
@@ -241,9 +247,7 @@ def reserve_development_triangle(
     start, end = _default_date_range()
     d0 = date_from or start
     d1 = date_to or end
-    filters: list[str] = [
-        "h.created_at >= :d0",
-        "h.created_at < :d1",
+    filters: list[str] = _build_date_filters(d0, d1) + [
         "c.incident_date IS NOT NULL",
         "c.incident_date != ''",
     ]
