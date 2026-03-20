@@ -55,7 +55,7 @@ Verify the claimant is authorized to make a claim:
 - Match claimant name to named insured list
 - Match claimant name to authorized drivers list
 - If no match found, escalate for manual verification
-- Note: Case-insensitive matching with whitespace normalization
+- Note: Case-insensitive matching with whitespace normalization (leading/trailing trimmed and internal whitespace collapsed)
 
 ### 7. Exclusions Review
 Check for applicable exclusions:
