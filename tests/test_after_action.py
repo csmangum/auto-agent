@@ -97,7 +97,13 @@ class TestCloseClaimTool:
         close_claim.run(claim_id="CLM-TEST001", reason="Final closure")
         repo = ClaimRepository()
         entries, _ = repo.get_claim_history("CLM-TEST001")
-        close_entries = [e for e in entries if e.get("new_status") == "closed"]
+        # Status transition is logged as status_change; warn-mode reserve gate may add
+        # reserve_adequacy_gate rows that also carry new_status=closed.
+        close_entries = [
+            e
+            for e in entries
+            if e.get("new_status") == "closed" and e.get("action") == "status_change"
+        ]
         assert len(close_entries) >= 1
         assert "Final closure" in close_entries[-1].get("details", "")
 
@@ -112,7 +118,11 @@ class TestCloseClaimTool:
         assert "already closed" in data["message"]
         repo = ClaimRepository()
         entries, _ = repo.get_claim_history("CLM-TEST001")
-        close_entries = [e for e in entries if e.get("new_status") == "closed"]
+        close_entries = [
+            e
+            for e in entries
+            if e.get("new_status") == "closed" and e.get("action") == "status_change"
+        ]
         assert len(close_entries) == 1
 
 

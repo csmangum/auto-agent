@@ -30,9 +30,13 @@ from claim_agent.db.constants import (
     STATUS_SETTLED,
     STATUS_UNDER_INVESTIGATION,
 )
+from claim_agent.config.settings import get_reserve_config
+from claim_agent.db.reserve_adequacy import compute_reserve_adequacy_details
 from claim_agent.exceptions import InvalidClaimTransitionError
 
 logger = logging.getLogger(__name__)
+
+_ADEQUACY_SKIP_ROLES = frozenset({"supervisor", "admin", "executive"})
 
 # Valid transitions: from_status -> set of to_status
 # Derived from orchestrators, tools, and repository methods
@@ -170,6 +174,65 @@ def _type_specific_guard(
     return None
 
 
+def _amounts_for_reserve_adequacy(
+    claim: dict[str, Any],
+    payout_amount: float | None,
+) -> tuple[float | None, float | None, float | None]:
+    """Resolve reserve / estimate / payout for adequacy (payout param overrides claim row)."""
+    reserve = claim.get("reserve_amount")
+    est = claim.get("estimated_damage")
+    pay = payout_amount if payout_amount is not None else claim.get("payout_amount")
+
+    def _f(v: Any) -> float | None:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    return _f(reserve), _f(est), _f(pay)
+
+
+def _evaluate_reserve_adequacy_gate(
+    claim: dict[str, Any],
+    to_status: str,
+    payout_amount: float | None,
+    *,
+    skip_adequacy_check: bool,
+    role: str,
+) -> str | None:
+    """If transition to closed/settled must be blocked, return reason; else None."""
+    if to_status not in (STATUS_CLOSED, STATUS_SETTLED):
+        return None
+    mode = (get_reserve_config().get("close_settle_adequacy_gate") or "warn").strip().lower()
+    if mode not in ("off", "block", "warn"):
+        mode = "warn"
+    if mode == "off":
+        return None
+
+    rv, ev, pv = _amounts_for_reserve_adequacy(claim, payout_amount)
+    adequate, warnings, codes = compute_reserve_adequacy_details(rv, ev, pv)
+    if adequate:
+        return None
+
+    if mode == "warn":
+        return None
+
+    r = (role or "adjuster").strip().lower()
+    if skip_adequacy_check and r not in _ADEQUACY_SKIP_ROLES:
+        return (
+            "skip_adequacy_check is only allowed for supervisor, admin, or executive roles"
+        )
+    if skip_adequacy_check and r in _ADEQUACY_SKIP_ROLES:
+        return None
+    return (
+        "Reserve not adequate for close/settlement: "
+        + "; ".join(warnings)
+        + f" (codes: {','.join(codes)})"
+    )
+
+
 def _check_close_guard(
     claim: dict[str, Any],
     from_status: str,
@@ -199,6 +262,8 @@ def can_transition(
     claim_type: str | None = None,
     actor_id: str = "workflow",
     force: bool = False,
+    skip_adequacy_check: bool = False,
+    role: str = "adjuster",
 ) -> bool:
     """Check if transition is valid (does not raise).
 
@@ -213,6 +278,9 @@ def can_transition(
         claim_type: Optional claim type for per-type rules; overrides claim["claim_type"].
         actor_id: Actor performing the transition.
         force: If True, skip validation (migrations/seeding).
+        skip_adequacy_check: When True and role is supervisor/admin/executive, bypass
+            reserve adequacy for ``closed`` / ``settled`` if gate mode is ``block``.
+        role: Actor role for adequacy override checks.
 
     Returns:
         True if transition is allowed, False otherwise.
@@ -237,6 +305,15 @@ def can_transition(
         err = _check_close_guard(claim_dict, from_status, payout_amount)
         if err:
             return False
+    err_adeq = _evaluate_reserve_adequacy_gate(
+        claim_dict,
+        to_status,
+        payout_amount,
+        skip_adequacy_check=skip_adequacy_check,
+        role=role,
+    )
+    if err_adeq:
+        return False
     return True
 
 
@@ -250,10 +327,14 @@ def validate_transition(
     claim_type: str | None = None,
     actor_id: str = "workflow",
     force: bool = False,
+    skip_adequacy_check: bool = False,
+    role: str = "adjuster",
 ) -> None:
     """Validate transition; raise InvalidClaimTransitionError if invalid.
 
     Logs transition violations for compliance alerting before raising.
+    Reserve adequacy for ``closed`` / ``settled`` uses ``skip_adequacy_check`` and ``role``
+    (see ``can_transition``).
     """
     if force or actor_id == "system":
         return
@@ -285,6 +366,16 @@ def validate_transition(
         if err:
             _log_violation(claim_id, from_status, to_status, actor_id, err)
             raise InvalidClaimTransitionError(claim_id, from_status, to_status, err)
+    err_adeq = _evaluate_reserve_adequacy_gate(
+        claim_dict,
+        to_status,
+        payout_amount,
+        skip_adequacy_check=skip_adequacy_check,
+        role=role,
+    )
+    if err_adeq:
+        _log_violation(claim_id, from_status, to_status, actor_id, err_adeq)
+        raise InvalidClaimTransitionError(claim_id, from_status, to_status, err_adeq)
 
 
 def _log_violation(

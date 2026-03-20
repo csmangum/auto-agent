@@ -56,10 +56,21 @@ Transition to `closed` requires one of:
 
 This ensures closure is documented (settlement or denial).
 
+### Reserve adequacy gate (`closed` / `settled`)
+
+When transitioning **to** `closed` or `settled`, reserve adequacy may be enforced (same benchmark as `check_reserve_adequacy`: max of positive `estimated_damage` and positive `payout_amount`).
+
+- **Configuration:** `RESERVE_CLOSE_SETTLE_ADEQUACY_GATE` (`off` \| `block` \| `warn`, default `warn`). See [Configuration](configuration.md#reserve-management).
+- **`block`:** inadequate reserve rejects the transition unless `ClaimRepository.update_claim_status(..., skip_adequacy_check=True, role="supervisor"|"admin"|"executive")`.
+- **`warn`:** transition is allowed; an extra audit row `reserve_adequacy_gate` records the inadequacy.
+- **`off`:** no adequacy check.
+
+`can_transition()` / `validate_transition()` accept `skip_adequacy_check` and `role` for parity with the repository. The claim dict passed in should include `reserve_amount` and `estimated_damage` (as loaded by `update_claim_status`).
+
 ## Bypass
 
 - `actor_id="system"` or `force=True` skips validation when calling `validate_transition()` or `can_transition()` directly (for migrations, seeding, or tests)
-- At the repository layer, use `skip_validation=True` on `update_claim_status()` to bypass the state machine
+- At the repository layer, use `skip_validation=True` on `update_claim_status()` to bypass the **entire** state machine: transition graph, close guard, claim-type guards (e.g. `open` → `settled` for partial loss), **and** the reserve adequacy gate for `closed` / `settled`. In `block` mode, an inadequate close/settle applied this way is not rejected and does not produce a `reserve_adequacy_gate` audit row (that event is only for allowed transitions that still record inadequacy or waiver). Prefer normal validation plus `skip_adequacy_check=True` with an elevated `role` when supervisors intentionally override the gate.
 
 ## REST API
 
