@@ -38,6 +38,27 @@ def _normalize_name(name: str | None) -> str:
     return name.strip().lower()
 
 
+def _extract_person_names(value: object) -> list[str]:
+    """Extract display names from a policy party structure, omitting PII fields.
+
+    Accepts a dict (single person) or list of dicts (multiple persons) and
+    returns only the name strings, leaving out email, phone, license_number, etc.
+    """
+    names: list[str] = []
+    items: list[object] = []
+    if isinstance(value, dict):
+        items = [value]
+    elif isinstance(value, list):
+        items = value
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        candidate = item.get("name") or item.get("full_name") or item.get("display_name")
+        if isinstance(candidate, str) and candidate:
+            names.append(candidate)
+    return names
+
+
 def _verify_named_insured_or_driver(
     claim_data: dict,
     policy_result: dict,
@@ -58,13 +79,16 @@ def _verify_named_insured_or_driver(
     
     # Extract claimant name from claim data
     claimant_name = None
-    parties = claim_data.get("parties", [])
-    
+    parties = claim_data.get("parties")
+    if not isinstance(parties, list):
+        parties = []
+
     # Look for claimant in parties array (preferred method)
     for party in parties:
         if not isinstance(party, dict):
             continue
-        party_type = party.get("party_type", "").lower()
+        raw_party_type = party.get("party_type", "")
+        party_type = raw_party_type.lower() if isinstance(raw_party_type, str) else ""
         if party_type == "claimant":
             claimant_name = party.get("name")
             break
@@ -218,8 +242,9 @@ def verify_coverage_impl(
             details={
                 "verification_failed": True,
                 "verification_reason": verification_reason,
-                "named_insured": policy_result.get(_POLICY_NAMED_INSURED),
-                "drivers": policy_result.get(_POLICY_DRIVERS),
+                # Include only names (no PII: email/phone/license_number) for adjuster review.
+                "named_insured": _extract_person_names(policy_result.get(_POLICY_NAMED_INSURED)),
+                "drivers": _extract_person_names(policy_result.get(_POLICY_DRIVERS)),
             },
         )
 
