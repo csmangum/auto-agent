@@ -225,6 +225,8 @@ class ReserveConfig(BaseSettings):
     #: Max reserve for executive role; 0 or negative means no cap (unlimited).
     executive_limit: float = 0.0
     initial_reserve_from_estimated_damage: bool = True
+    #: off | block | warn — gate on transitions to closed/settled (see state_machine)
+    close_settle_adequacy_gate: str = "warn"
 
     @field_validator("adjuster_limit", mode="before")
     @classmethod
@@ -256,6 +258,14 @@ class ReserveConfig(BaseSettings):
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("close_settle_adequacy_gate", mode="before")
+    @classmethod
+    def _norm_close_settle_gate(cls, v: Any) -> str:
+        s = str(v).strip().lower() if v is not None else "warn"
+        if s in ("off", "block", "warn"):
+            return s
+        return "warn"
 
 
 class PaymentConfig(BaseSettings):

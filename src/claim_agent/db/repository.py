@@ -34,6 +34,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_REJECTION,
     AUDIT_EVENT_REQUEST_INFO,
     AUDIT_EVENT_RESERVE_ADJUSTED,
+    AUDIT_EVENT_RESERVE_ADEQUACY_GATE,
     AUDIT_EVENT_RESERVE_SET,
     AUDIT_EVENT_LITIGATION_HOLD,
     AUDIT_EVENT_RETENTION,
@@ -44,10 +45,6 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_TASK_UPDATED,
 )
 from claim_agent.db.constants import (
-    RESERVE_ADEQUACY_CODE_BELOW_BENCHMARK,
-    RESERVE_ADEQUACY_CODE_BELOW_ESTIMATE,
-    RESERVE_ADEQUACY_CODE_BELOW_PAYOUT,
-    RESERVE_ADEQUACY_CODE_NOT_SET,
     RETENTION_TIER_ACTIVE,
     RETENTION_TIER_ARCHIVED,
     RETENTION_TIER_COLD,
@@ -60,8 +57,10 @@ from claim_agent.db.constants import (
     STATUS_PENDING_INFO,
     STATUS_PROCESSING,
     STATUS_PURGED,
+    STATUS_SETTLED,
     STATUS_UNDER_INVESTIGATION,
 )
+from claim_agent.db.reserve_adequacy import compute_reserve_adequacy_details
 from claim_agent.config.settings import get_reserve_config
 from claim_agent.rag.constants import normalize_state
 from claim_agent.db.database import get_connection, row_to_dict
@@ -593,6 +592,77 @@ class ClaimRepository:
             return None
         return row_to_dict(row)
 
+    def _append_reserve_adequacy_gate_audit(
+        self,
+        conn: Any,
+        claim_id: str,
+        new_status: str,
+        claim_row: dict[str, Any],
+        payout_amount: float | None,
+        *,
+        skip_adequacy_check: bool,
+        role: str,
+        actor_id: str,
+    ) -> None:
+        """Log reserve adequacy gate when closing/settling with inadequate reserve (warn or waiver)."""
+        if new_status not in (STATUS_CLOSED, STATUS_SETTLED):
+            return
+        mode = (get_reserve_config().get("close_settle_adequacy_gate") or "warn").strip().lower()
+        if mode not in ("off", "block", "warn"):
+            mode = "warn"
+        if mode == "off":
+            return
+
+        reserve = claim_row.get("reserve_amount")
+        est = claim_row.get("estimated_damage")
+        pay = payout_amount if payout_amount is not None else claim_row.get("payout_amount")
+
+        def _f(v: Any) -> float | None:
+            if v is None:
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        adequate, warnings, codes = compute_reserve_adequacy_details(_f(reserve), _f(est), _f(pay))
+        if adequate:
+            return
+
+        r = (role or "adjuster").strip().lower()
+        elevated = r in ("supervisor", "admin", "executive")
+        if mode == "block" and not (skip_adequacy_check and elevated):
+            return
+        if skip_adequacy_check and elevated:
+            details = (
+                f"Reserve adequacy waived (role={role}); "
+                f"warning_codes={','.join(codes)}; "
+                + "; ".join(warnings[:5])
+            )
+        elif mode == "warn":
+            details = (
+                f"Reserve inadequate at status={new_status} (warn mode allows transition); "
+                f"warning_codes={','.join(codes)}; "
+                + "; ".join(warnings[:5])
+            )
+        else:
+            return
+
+        conn.execute(
+            text("""
+            INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id)
+            VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id)
+            """),
+            {
+                "claim_id": claim_id,
+                "action": AUDIT_EVENT_RESERVE_ADEQUACY_GATE,
+                "old_status": claim_row.get("status"),
+                "new_status": new_status,
+                "details": sanitize_note(details)[:2000],
+                "actor_id": sanitize_actor_id(actor_id),
+            },
+        )
+
     def update_claim_status(
         self,
         claim_id: str,
@@ -605,14 +675,22 @@ class ClaimRepository:
         total_loss_settlement_authorized: bool | None = None,
         actor_id: str = ACTOR_WORKFLOW,
         skip_validation: bool = False,
+        skip_adequacy_check: bool = False,
+        role: str = "adjuster",
     ) -> None:
-        """Update status, optionally claim_type, payout_amount, and settlement flags; audit."""
+        """Update status, optionally claim_type, payout_amount, and settlement flags; audit.
+
+        For transitions to ``closed`` or ``settled``, reserve adequacy may block or warn
+        (``RESERVE_CLOSE_SETTLE_ADEQUACY_GATE``). Supervisor, admin, or executive may set
+        ``skip_adequacy_check=True`` when the gate mode is ``block``.
+        """
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text(
                     "SELECT status, claim_type, payout_amount, "
-                    "repair_ready_for_settlement, total_loss_settlement_authorized "
+                    "repair_ready_for_settlement, total_loss_settlement_authorized, "
+                    "reserve_amount, estimated_damage "
                     "FROM claims WHERE id = :claim_id"
                 ),
                 {"claim_id": claim_id},
@@ -645,6 +723,8 @@ class ClaimRepository:
                     payout_amount=payout_amount,
                     claim_type=validation_claim_type,
                     actor_id=actor_id,
+                    skip_adequacy_check=skip_adequacy_check,
+                    role=role,
                 )
 
             new_rr = (
@@ -769,6 +849,17 @@ class ClaimRepository:
                     "before_state": json.dumps(before_state),
                     "after_state": json.dumps(after_state),
                 },
+            )
+
+            self._append_reserve_adequacy_gate_audit(
+                conn,
+                claim_id,
+                new_status,
+                row_d,
+                payout_amount,
+                skip_adequacy_check=skip_adequacy_check,
+                role=role,
+                actor_id=actor_id,
             )
 
         final_claim_type = claim_type if claim_type is not None else old_claim_type
@@ -1151,7 +1242,7 @@ class ClaimRepository:
         reserve_val = float(reserve) if reserve is not None else None
         est_val = float(estimated) if estimated is not None else None
         payout_val = float(payout) if payout is not None else None
-        adequate, warnings, warning_codes = _reserve_adequacy_details(
+        adequate, warnings, warning_codes = compute_reserve_adequacy_details(
             reserve_val, est_val, payout_val
         )
         return {

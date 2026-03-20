@@ -48,6 +48,7 @@ def get_reserve_config() -> dict:
         "supervisor_limit": s.supervisor_limit,
         "executive_limit": s.executive_limit,
         "initial_reserve_from_estimated_damage": s.initial_reserve_from_estimated_damage,
+        "close_settle_adequacy_gate": s.close_settle_adequacy_gate,
     }
 
 
