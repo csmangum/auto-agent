@@ -332,6 +332,13 @@ def test_sanitize_payee_removes_control_characters():
     assert "ABCRepairShop" == out
 
 
+def test_sanitize_payee_normalizes_whitespace():
+    """Tabs and newlines are replaced with spaces and collapsed for single-line payee identifiers."""
+    assert sanitize_payee("ABC\tRepair\nShop") == "ABC Repair Shop"
+    assert sanitize_payee("John\r\nDoe") == "John Doe"
+    assert sanitize_payee("Name\t\twith  spaces") == "Name with spaces"
+
+
 def test_sanitize_payee_truncates_long():
     """Very long payee names are truncated to MAX_PAYEE (500)."""
     payee = "A" * 600

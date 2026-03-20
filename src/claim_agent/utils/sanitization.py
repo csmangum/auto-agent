@@ -143,7 +143,9 @@ def sanitize_payee(payee: str | None) -> str:
     - Prompt injection attacks via payee names
     - Control character injection
 
-    Truncates to 500 chars and removes instruction-like patterns.
+    Truncates to 500 chars, removes instruction-like patterns, and normalizes
+    whitespace (tabs and newlines are replaced with spaces and collapsed) since
+    payee names are single-line identifiers.
 
     Note: This function does *not* perform HTML or UI escaping/encoding. The returned
     string must still be contextually escaped/encoded when rendered (e.g., in HTML)
@@ -152,6 +154,8 @@ def sanitize_payee(payee: str | None) -> str:
     if payee is None or not isinstance(payee, str):
         return ""
     t = _sanitize_text(payee, MAX_PAYEE)
+    t = re.sub(r"[\t\n\r]+", " ", t)
+    t = re.sub(r" {2,}", " ", t).strip()
     return _remove_injection_patterns(t)
 
 
