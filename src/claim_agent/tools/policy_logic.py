@@ -166,6 +166,10 @@ def query_policy_db_impl(
             rental = p.get("rental_reimbursement") or p.get("transportation_expenses")
             if rental and isinstance(rental, dict):
                 result["rental_reimbursement"] = rental
+            if p.get("named_insured") is not None:
+                result["named_insured"] = p["named_insured"]
+            if p.get("drivers") is not None:
+                result["drivers"] = p["drivers"]
             return json.dumps(result)
         return json.dumps({
             "valid": False,

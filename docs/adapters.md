@@ -56,8 +56,18 @@ All interfaces are defined as abstract base classes in `src/claim_agent/adapters
 ```python
 class PolicyAdapter(ABC):
     def get_policy(self, policy_number: str) -> dict[str, Any] | None:
-        """Return {coverage, deductible, status} or None if not found."""
+        """Return policy data or None if not found.
+        
+        Expected keys:
+        - status: Policy status (active, inactive, cancelled, etc.)
+        - coverages: List of coverage types (e.g., ["liability", "collision", "comprehensive"])
+        - collision_deductible, comprehensive_deductible: Deductible amounts
+        - named_insured: List of dicts with name, email, phone (optional)
+        - drivers: List of dicts with name, license_number, relationship (optional)
+        """
 ```
+
+**Named Insured / Driver Verification**: When `named_insured` and/or `drivers` are present in the policy response, coverage verification will check if the claimant matches. If the claimant is not listed, the claim is routed to `under_investigation` for manual review. This prevents unauthorized individuals from filing claims on a policy.
 
 ### ValuationAdapter
 

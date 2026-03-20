@@ -13,12 +13,26 @@
       "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
       "gap_insurance": true,
       "parts_preference": "aftermarket",
-      "oem_required_for": ["safety"]
+      "oem_required_for": ["safety"],
+      "named_insured": [
+        {"name": "John Doe", "email": "john.doe@example.com", "phone": "555-987-6543"},
+        {"name": "Jane Doe", "email": "jane.doe@example.com", "phone": "555-123-4567"}
+      ],
+      "drivers": [
+        {"name": "John Doe", "license_number": "D1234567", "relationship": "primary"},
+        {"name": "Jane Doe", "license_number": "D7654321", "relationship": "spouse"}
+      ]
     },
     "POL-002": {
       "status": "active",
       "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 },
+      "named_insured": [
+        {"name": "Michael Smith", "email": "m.smith@example.com", "phone": "555-111-2222"}
+      ],
+      "drivers": [
+        {"name": "Michael Smith", "license_number": "D2345678", "relationship": "primary"}
+      ]
     },
     "POL-003": {
       "status": "active",
@@ -26,7 +40,14 @@
       "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 }
+      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "named_insured": [
+        {"name": "Robert Johnson", "email": "rjohnson@example.com", "phone": "555-333-4444"}
+      ],
+      "drivers": [
+        {"name": "Robert Johnson", "license_number": "D3456789", "relationship": "primary"},
+        {"name": "Sarah Johnson", "license_number": "D9876543", "relationship": "spouse"}
+      ]
     },
     "POL-004": {
       "status": "active",
@@ -34,7 +55,13 @@
       "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "bodily_injury": { "per_person": 250000, "per_accident": 500000 }
+      "bodily_injury": { "per_person": 250000, "per_accident": 500000 },
+      "named_insured": [
+        {"name": "Emily Davis", "email": "emily.davis@example.com", "phone": "555-444-5555"}
+      ],
+      "drivers": [
+        {"name": "Emily Davis", "license_number": "D4567890", "relationship": "primary"}
+      ]
     },
     "POL-005": {
       "status": "active",
@@ -44,7 +71,9 @@
       "comprehensive_deductible": 250,
       "rental_reimbursement": { "daily_limit": 40, "aggregate_limit": 1200, "max_days": 30 },
       "parts_preference": "aftermarket",
-      "oem_required_for": ["safety"]
+      "oem_required_for": ["safety"],
+      "named_insured": [{"name": "David Wilson", "email": "dwilson@example.com", "phone": "555-555-6666"}],
+      "drivers": [{"name": "David Wilson", "license_number": "D5678901", "relationship": "primary"}]
     },
     "POL-006": {
       "status": "active",
@@ -52,33 +81,43 @@
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "gap_insurance": true
+      "gap_insurance": true,
+      "named_insured": [{"name": "Lisa Brown", "email": "lbrown@example.com", "phone": "555-666-7777"}],
+      "drivers": [{"name": "Lisa Brown", "license_number": "D6789012", "relationship": "primary"}]
     },
     "POL-007": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 1500,
-      "comprehensive_deductible": 1500
+      "comprehensive_deductible": 1500,
+      "named_insured": [{"name": "James Martinez", "email": "jmartinez@example.com", "phone": "555-777-8888"}],
+      "drivers": [{"name": "James Martinez", "license_number": "D7890123", "relationship": "primary"}]
     },
     "POL-008": {
       "status": "active",
       "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 30000, "bi_per_accident": 60000, "pd_per_accident": 25000 }
+      "liability_limits": { "bi_per_person": 30000, "bi_per_accident": 60000, "pd_per_accident": 25000 },
+      "named_insured": [{"name": "Patricia Garcia", "email": "pgarcia@example.com", "phone": "555-888-9999"}],
+      "drivers": [{"name": "Patricia Garcia", "license_number": "D8901234", "relationship": "primary"}]
     },
     "POL-009": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 1000,
-      "comprehensive_deductible": 1000
+      "comprehensive_deductible": 1000,
+      "named_insured": [{"name": "Thomas Anderson", "email": "tanderson@example.com", "phone": "555-999-0000"}],
+      "drivers": [{"name": "Thomas Anderson", "license_number": "D9012345", "relationship": "primary"}]
     },
     "POL-010": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 50000, "bi_per_accident": 100000, "pd_per_accident": 25000 },
       "collision_deductible": 250,
-      "comprehensive_deductible": 250
+      "comprehensive_deductible": 250,
+      "named_insured": [{"name": "Jennifer Taylor", "email": "jtaylor@example.com", "phone": "555-000-1111"}],
+      "drivers": [{"name": "Jennifer Taylor", "license_number": "D0123456", "relationship": "primary"}]
     },
     "POL-011": {
       "status": "active",
@@ -88,33 +127,43 @@
       "comprehensive_deductible": 500,
       "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
       "parts_preference": "oem",
-      "oem_required_for": ["safety"]
+      "oem_required_for": ["safety"],
+      "named_insured": [{"name": "William Thomas", "email": "wthomas@example.com", "phone": "555-111-2222"}],
+      "drivers": [{"name": "William Thomas", "license_number": "D1122334", "relationship": "primary"}]
     },
     "POL-012": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 2000,
-      "comprehensive_deductible": 2000
+      "comprehensive_deductible": 2000,
+      "named_insured": [{"name": "Barbara Jackson", "email": "bjackson@example.com", "phone": "555-222-3333"}],
+      "drivers": [{"name": "Barbara Jackson", "license_number": "D2233445", "relationship": "primary"}]
     },
     "POL-013": {
       "status": "active",
       "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 },
+      "named_insured": [{"name": "Christopher White", "email": "cwhite@example.com", "phone": "555-333-4444"}],
+      "drivers": [{"name": "Christopher White", "license_number": "D3344556", "relationship": "primary"}]
     },
     "POL-014": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive", "uninsured_motorist"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 250,
-      "comprehensive_deductible": 250
+      "comprehensive_deductible": 250,
+      "named_insured": [{"name": "Susan Harris", "email": "sharris@example.com", "phone": "555-444-5555"}],
+      "drivers": [{"name": "Susan Harris", "license_number": "D4455667", "relationship": "primary"}]
     },
     "POL-015": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 1000,
-      "comprehensive_deductible": 1000
+      "comprehensive_deductible": 1000,
+      "named_insured": [{"name": "Daniel Martin", "email": "dmartin@example.com", "phone": "555-555-6666"}],
+      "drivers": [{"name": "Daniel Martin", "license_number": "D5566778", "relationship": "primary"}]
     },
     "POL-016": {
       "status": "active",
@@ -122,32 +171,42 @@
       "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
       "collision_deductible": 250,
       "comprehensive_deductible": 250,
-      "rental_reimbursement": { "daily_limit": 50, "aggregate_limit": 1500, "max_days": 30 }
+      "rental_reimbursement": { "daily_limit": 50, "aggregate_limit": 1500, "max_days": 30 },
+      "named_insured": [{"name": "Nancy Thompson", "email": "nthompson@example.com", "phone": "555-666-7777"}],
+      "drivers": [{"name": "Nancy Thompson", "license_number": "D6677889", "relationship": "primary"}]
     },
     "POL-017": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 1500,
-      "comprehensive_deductible": 1500
+      "comprehensive_deductible": 1500,
+      "named_insured": [{"name": "Matthew Moore", "email": "mmoore@example.com", "phone": "555-777-8888"}],
+      "drivers": [{"name": "Matthew Moore", "license_number": "D7788990", "relationship": "primary"}]
     },
     "POL-018": {
       "status": "active",
       "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 25000, "bi_per_accident": 50000, "pd_per_accident": 25000 }
+      "liability_limits": { "bi_per_person": 25000, "bi_per_accident": 50000, "pd_per_accident": 25000 },
+      "named_insured": [{"name": "Elizabeth Lee", "email": "elee@example.com", "phone": "555-888-9999"}],
+      "drivers": [{"name": "Elizabeth Lee", "license_number": "D8899001", "relationship": "primary"}]
     },
     "POL-019": {
       "status": "active",
       "coverages": ["liability", "collision"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
-      "collision_deductible": 1500
+      "collision_deductible": 1500,
+      "named_insured": [{"name": "Kevin Walker", "email": "kwalker@example.com", "phone": "555-999-0000"}],
+      "drivers": [{"name": "Kevin Walker", "license_number": "D9900112", "relationship": "primary"}]
     },
     "POL-020": {
       "status": "active",
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 2000,
-      "comprehensive_deductible": 2000
+      "comprehensive_deductible": 2000,
+      "named_insured": [{"name": "Laura Hall", "email": "lhall@example.com", "phone": "555-000-1111"}],
+      "drivers": [{"name": "Laura Hall", "license_number": "D0011223", "relationship": "primary"}]
     },
     "POL-021": {
       "status": "inactive",
@@ -218,7 +277,9 @@
       "coverages": ["liability", "collision", "comprehensive"],
       "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
       "collision_deductible": 250,
-      "comprehensive_deductible": 1000
+      "comprehensive_deductible": 1000,
+      "named_insured": [{"name": "Test User", "email": "testuser@example.com", "phone": "555-TEST-001"}],
+      "drivers": [{"name": "Test User", "license_number": "DTEST001", "relationship": "primary"}]
     }
   },
   "policy_vehicles": {

@@ -185,6 +185,109 @@ class TestVerifyCoverageImpl:
         r3 = verify_coverage_impl({**base, "estimated_damage": "2000"}, ctx=ctx)
         assert r3.passed
 
+    def test_passes_when_claimant_is_named_insured(self):
+        """Claimant matching named insured passes verification."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "John Doe",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert not result.denied
+        assert not result.under_investigation
+
+    def test_passes_when_claimant_is_authorized_driver(self):
+        """Claimant matching authorized driver passes verification."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "Jane Doe",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert not result.denied
+        assert not result.under_investigation
+
+    def test_under_investigation_when_claimant_not_on_policy(self):
+        """Claimant not matching named insured or drivers -> under_investigation."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "Unknown Driver",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.under_investigation
+        assert not result.passed
+        assert not result.denied
+        assert "not listed" in result.reason.lower() or "driver" in result.reason.lower()
+
+    def test_passes_when_claimant_name_missing(self):
+        """Missing claimant name passes (legacy claims without claimant data)."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert not result.under_investigation
+
+    def test_name_matching_case_insensitive(self):
+        """Name matching is case-insensitive and whitespace-tolerant."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "  JOHN DOE  ",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_claimant_name_fallback_to_direct_field(self):
+        """Falls back to claimant_name field if parties not provided."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "claimant_name": "John Doe",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
 
 class TestCoverageVerificationResult:
     """Tests for CoverageVerificationResult model invariants."""

@@ -34,7 +34,9 @@ class PolicyAdapter(ABC):
 
         Expected keys when found: ``status``, and either:
         - New format: ``coverages`` (list, e.g. ["liability","collision","comprehensive"]),
-          ``collision_deductible``, ``comprehensive_deductible``, ``liability_limits``
+          ``collision_deductible``, ``comprehensive_deductible``, ``liability_limits``,
+          ``named_insured`` (list of dicts with name, email, phone),
+          ``drivers`` (list of dicts with name, license_number, relationship)
         - Legacy: ``coverage`` (str), ``deductible`` (number)
         """
         ...

@@ -25,8 +25,82 @@ _POLICY_MESSAGE = "message"
 _POLICY_PHYSICAL_DAMAGE_COVERED = "physical_damage_covered"
 _POLICY_PHYSICAL_DAMAGE_COVERAGES = "physical_damage_coverages"
 _POLICY_DEDUCTIBLE = "deductible"
+_POLICY_NAMED_INSURED = "named_insured"
+_POLICY_DRIVERS = "drivers"
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_name(name: str | None) -> str:
+    """Normalize a name for comparison (lowercase, strip whitespace)."""
+    if not name or not isinstance(name, str):
+        return ""
+    return name.strip().lower()
+
+
+def _verify_named_insured_or_driver(
+    claim_data: dict,
+    policy_result: dict,
+) -> tuple[bool, str | None]:
+    """Verify claimant is named insured or authorized driver.
+    
+    Returns:
+        (is_verified, reason_if_not_verified)
+        - If verification data is incomplete, returns (True, None) to allow claim to proceed
+        - Only returns (False, reason) when we have both policy and claimant data but they don't match
+    """
+    named_insured_list = policy_result.get(_POLICY_NAMED_INSURED)
+    drivers_list = policy_result.get(_POLICY_DRIVERS)
+    
+    # If policy doesn't expose these fields, allow claim to proceed (legacy policies)
+    if named_insured_list is None and drivers_list is None:
+        return True, None
+    
+    # Extract claimant name from claim data
+    claimant_name = None
+    parties = claim_data.get("parties", [])
+    
+    # Look for claimant in parties array (preferred method)
+    for party in parties:
+        if not isinstance(party, dict):
+            continue
+        party_type = party.get("party_type", "").lower()
+        if party_type == "claimant":
+            claimant_name = party.get("name")
+            break
+    
+    # Fallback: check claimant_name field directly
+    if not claimant_name:
+        claimant_name = claim_data.get("claimant_name")
+    
+    # If no claimant identified, allow claim to proceed (will be captured by agents)
+    if not claimant_name:
+        return True, None
+    
+    claimant_normalized = _normalize_name(claimant_name)
+    if not claimant_normalized:
+        return True, None
+    
+    # Check if claimant matches any named insured
+    if isinstance(named_insured_list, list):
+        for insured in named_insured_list:
+            if not isinstance(insured, dict):
+                continue
+            insured_name = _normalize_name(insured.get("name"))
+            if insured_name and insured_name == claimant_normalized:
+                return True, None
+    
+    # Check if claimant matches any authorized driver
+    if isinstance(drivers_list, list):
+        for driver in drivers_list:
+            if not isinstance(driver, dict):
+                continue
+            driver_name = _normalize_name(driver.get("name"))
+            if driver_name and driver_name == claimant_normalized:
+                return True, None
+    
+    # Claimant does not match named insured or drivers
+    return False, f"Claimant '{claimant_name}' is not listed as named insured or authorized driver"
 
 
 def verify_coverage_impl(
@@ -127,6 +201,25 @@ def verify_coverage_impl(
             details={
                 "physical_damage_covered": False,
                 "policy_coverages": coverages,
+            },
+        )
+
+    # Named insured / driver verification
+    is_verified, verification_reason = _verify_named_insured_or_driver(claim_data, policy_result)
+    if not is_verified:
+        logger.info(
+            "Named insured/driver verification failed: %s",
+            verification_reason,
+            extra={"claim_data_keys": list(claim_data.keys())},
+        )
+        return CoverageVerificationResult(
+            under_investigation=True,
+            reason=verification_reason or "Claimant verification requires manual review",
+            details={
+                "verification_failed": True,
+                "verification_reason": verification_reason,
+                "named_insured": policy_result.get(_POLICY_NAMED_INSURED),
+                "drivers": policy_result.get(_POLICY_DRIVERS),
             },
         )
 
