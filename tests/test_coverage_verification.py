@@ -185,6 +185,159 @@ class TestVerifyCoverageImpl:
         r3 = verify_coverage_impl({**base, "estimated_damage": "2000"}, ctx=ctx)
         assert r3.passed
 
+    def test_passes_when_claimant_is_named_insured(self):
+        """Claimant matching named insured passes verification."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "John Doe",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert not result.denied
+        assert not result.under_investigation
+
+    def test_passes_when_claimant_is_authorized_driver(self):
+        """Claimant matching authorized driver passes verification."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "Jane Doe",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert not result.denied
+        assert not result.under_investigation
+
+    def test_under_investigation_when_claimant_not_on_policy(self):
+        """Claimant not matching named insured or drivers -> under_investigation."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "Unknown Driver",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.under_investigation
+        assert not result.passed
+        assert not result.denied
+        assert "not listed" in result.reason.lower() or "driver" in result.reason.lower()
+
+    def test_passes_when_claimant_name_missing(self):
+        """Missing claimant name passes (legacy claims without claimant data)."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert not result.under_investigation
+
+    def test_name_matching_case_insensitive(self):
+        """Name matching is case-insensitive and whitespace-tolerant."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {
+                    "party_type": "claimant",
+                    "name": "  JOHN DOE  ",
+                    "role": "driver",
+                }
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_claimant_name_fallback_to_direct_field(self):
+        """Falls back to claimant_name field if parties not provided."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "claimant_name": "John Doe",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_parties_none_treated_as_empty(self):
+        """parties=None should be treated as empty (no TypeError), falling back to claimant_name."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": None,
+            "claimant_name": "John Doe",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_non_string_party_type_is_safe(self):
+        """party_type that is not a string (e.g. None) should not raise."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {"party_type": None, "name": "John Doe"},
+                {"party_type": 42, "name": "Other"},
+            ],
+            "claimant_name": "John Doe",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_under_investigation_details_contain_no_pii(self):
+        """Under-investigation result should not include email/phone/license in details."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {"party_type": "claimant", "name": "Unknown Driver"},
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.under_investigation
+        details = result.details or {}
+        # named_insured and drivers in details should be plain name strings, not dicts with PII.
+        for person_list in (details.get("named_insured", []), details.get("drivers", [])):
+            for person in person_list:
+                assert isinstance(person, str), (
+                    f"Expected name string in details, got {type(person).__name__}: {person!r}"
+                )
+
 
 class TestCoverageVerificationResult:
     """Tests for CoverageVerificationResult model invariants."""
