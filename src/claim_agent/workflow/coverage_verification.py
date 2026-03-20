@@ -38,6 +38,17 @@ def _normalize_name(name: str | None) -> str:
     return name.strip().lower()
 
 
+def _get_name_from_dict(item: dict) -> str | None:
+    """Extract name from a dict, checking multiple possible keys.
+    
+    Supports 'name', 'full_name', and 'display_name' keys to handle varying adapter schemas.
+    """
+    candidate = item.get("name") or item.get("full_name") or item.get("display_name")
+    if isinstance(candidate, str) and candidate:
+        return candidate
+    return None
+
+
 def _extract_person_names(value: object) -> list[str]:
     """Extract display names from a policy party structure, omitting PII fields.
 
@@ -53,9 +64,9 @@ def _extract_person_names(value: object) -> list[str]:
     for item in items:
         if not isinstance(item, dict):
             continue
-        candidate = item.get("name") or item.get("full_name") or item.get("display_name")
-        if isinstance(candidate, str) and candidate:
-            names.append(candidate)
+        name = _get_name_from_dict(item)
+        if name:
+            names.append(name)
     return names
 
 
@@ -110,7 +121,7 @@ def _verify_named_insured_or_driver(
         for insured in named_insured_list:
             if not isinstance(insured, dict):
                 continue
-            insured_name = _normalize_name(insured.get("name"))
+            insured_name = _normalize_name(_get_name_from_dict(insured))
             if insured_name and insured_name == claimant_normalized:
                 return True, None
     
@@ -119,7 +130,7 @@ def _verify_named_insured_or_driver(
         for driver in drivers_list:
             if not isinstance(driver, dict):
                 continue
-            driver_name = _normalize_name(driver.get("name"))
+            driver_name = _normalize_name(_get_name_from_dict(driver))
             if driver_name and driver_name == claimant_normalized:
                 return True, None
     

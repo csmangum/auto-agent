@@ -338,6 +338,53 @@ class TestVerifyCoverageImpl:
                     f"Expected name string in details, got {type(person).__name__}: {person!r}"
                 )
 
+    def test_name_key_variations_full_name_and_display_name(self):
+        """Custom PolicyAdapter returning full_name or display_name should verify correctly."""
+        import json
+
+        # Test 1: Claimant matches named_insured via full_name
+        claim_data1 = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {"party_type": "claimant", "name": "John Doe"},
+            ],
+        }
+        policy_response1 = {
+            "valid": True,
+            "status": "active",
+            "physical_damage_covered": True,
+            "physical_damage_coverages": ["collision", "comprehensive"],
+            "deductible": 500,
+            "named_insured": [{"full_name": "John Doe", "email": "john@example.com"}],
+            "drivers": [{"display_name": "Jane Doe", "phone": "555-1234"}],
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
+        ) as mock:
+            mock.return_value = json.dumps(policy_response1)
+            result1 = verify_coverage_impl(claim_data1, ctx=None)
+        assert result1.passed
+        assert not result1.under_investigation
+
+        # Test 2: Claimant matches driver via display_name
+        claim_data2 = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {"party_type": "claimant", "name": "Jane Doe"},
+            ],
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
+        ) as mock:
+            mock.return_value = json.dumps(policy_response1)
+            result2 = verify_coverage_impl(claim_data2, ctx=None)
+        assert result2.passed
+        assert not result2.under_investigation
+
 
 class TestCoverageVerificationResult:
     """Tests for CoverageVerificationResult model invariants."""
