@@ -10,6 +10,7 @@ import pytest
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import STATUS_DENIED
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.policy_lookup import policy_lookup_from_dict
 from claim_agent.models.stage_outputs import CoverageVerificationResult
 from claim_agent.workflow.coverage_verification import verify_coverage_impl
 
@@ -352,8 +353,6 @@ class TestVerifyCoverageImpl:
 
     def test_name_key_variations_full_name_and_display_name(self):
         """Custom PolicyAdapter returning full_name or display_name should verify correctly."""
-        import json
-
         # Test 1: Claimant matches named_insured via full_name
         claim_data1 = {
             "policy_number": "POL-001",
@@ -365,6 +364,7 @@ class TestVerifyCoverageImpl:
         }
         policy_response1 = {
             "valid": True,
+            "coverage": "collision+comprehensive",
             "status": "active",
             "physical_damage_covered": True,
             "physical_damage_coverages": ["collision", "comprehensive"],
@@ -373,7 +373,7 @@ class TestVerifyCoverageImpl:
             "drivers": [{"display_name": "Jane Doe", "phone": "555-1234"}],
         }
         with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
-            mock.return_value = json.dumps(policy_response1)
+            mock.return_value = policy_lookup_from_dict(policy_response1)
             result1 = verify_coverage_impl(claim_data1, ctx=None)
         assert result1.passed
         assert not result1.under_investigation
@@ -388,7 +388,7 @@ class TestVerifyCoverageImpl:
             ],
         }
         with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
-            mock.return_value = json.dumps(policy_response1)
+            mock.return_value = policy_lookup_from_dict(policy_response1)
             result2 = verify_coverage_impl(claim_data2, ctx=None)
         assert result2.passed
         assert not result2.under_investigation
@@ -775,8 +775,6 @@ class TestTerritoryVerification:
 
     def test_under_investigation_when_territory_list_has_non_strings(self):
         """Non-string entries in territory list -> config_error, not workflow crash."""
-        import json as json_module
-
         claim_data = {
             "policy_number": "POL-001",
             "damage_description": "Collision damage",
@@ -785,6 +783,7 @@ class TestTerritoryVerification:
         }
         fake_policy = {
             "valid": True,
+            "coverage": "collision+comprehensive",
             "status": "active",
             "physical_damage_covered": True,
             "physical_damage_coverages": ["collision", "comprehensive"],
@@ -792,7 +791,7 @@ class TestTerritoryVerification:
             "territory": ["CA", 99],
         }
         with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
-            mock.return_value = json_module.dumps(fake_policy)
+            mock.return_value = policy_lookup_from_dict(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
         assert result.details.get("territory_verification") == "config_error"
@@ -899,10 +898,9 @@ class TestPolicyTermVerification:
         assert on_exp.passed
 
     def test_under_investigation_when_only_one_term_field(self):
-        import json as json_module
-
         fake_policy = {
             "valid": True,
+            "coverage": "collision+comprehensive",
             "status": "active",
             "physical_damage_covered": True,
             "physical_damage_coverages": ["collision", "comprehensive"],
@@ -916,16 +914,15 @@ class TestPolicyTermVerification:
             "incident_date": "2025-01-01",
         }
         with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
-            mock.return_value = json_module.dumps(fake_policy)
+            mock.return_value = policy_lookup_from_dict(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
         assert result.details.get("error") == "policy_term_config"
 
     def test_under_investigation_when_incident_unparseable(self):
-        import json as json_module
-
         fake_policy = {
             "valid": True,
+            "coverage": "collision+comprehensive",
             "status": "active",
             "physical_damage_covered": True,
             "physical_damage_coverages": ["collision", "comprehensive"],
@@ -940,16 +937,15 @@ class TestPolicyTermVerification:
             "incident_date": "not-a-date",
         }
         with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
-            mock.return_value = json_module.dumps(fake_policy)
+            mock.return_value = policy_lookup_from_dict(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
         assert result.details.get("term_verification") == "incident_unparseable"
 
     def test_under_investigation_when_term_dates_malformed(self):
-        import json as json_module
-
         fake_policy = {
             "valid": True,
+            "coverage": "collision+comprehensive",
             "status": "active",
             "physical_damage_covered": True,
             "physical_damage_coverages": ["collision", "comprehensive"],
@@ -964,7 +960,7 @@ class TestPolicyTermVerification:
             "incident_date": "2025-01-01",
         }
         with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
-            mock.return_value = json_module.dumps(fake_policy)
+            mock.return_value = policy_lookup_from_dict(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
         assert result.details.get("error") == "policy_term_parse"

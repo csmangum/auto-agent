@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from claim_agent.adapters.registry import get_policy_adapter
 from claim_agent.exceptions import AdapterError, DomainValidationError
+from claim_agent.models.policy_lookup import PolicyLookupResult, policy_lookup_from_dict
 from claim_agent.utils.policy_party_name import get_policy_party_display_name
 
 if TYPE_CHECKING:
@@ -170,13 +172,22 @@ def _has_physical_damage_coverage(p: dict[str, Any], coverage_type: str | None =
     return any(coverage in coverages for coverage in ("collision", "comprehensive"))
 
 
+def _validated_policy_lookup(data: dict[str, Any]) -> PolicyLookupResult:
+    """Parse policy lookup dict; map Pydantic failures to AdapterError for tool boundaries."""
+    try:
+        return policy_lookup_from_dict(data)
+    except ValidationError as exc:
+        logger.exception("Policy lookup response failed validation")
+        raise AdapterError("Policy lookup returned invalid data") from exc
+
+
 def query_policy_db_impl(
     policy_number: str,
     *,
     damage_description: str = "",
     coverage_type: str | None = None,
     ctx: ClaimContext | None = None,
-) -> str:
+) -> PolicyLookupResult:
     if not policy_number or not isinstance(policy_number, str):
         raise DomainValidationError("Invalid policy number")
     policy_number = policy_number.strip()
@@ -250,12 +261,12 @@ def query_policy_db_impl(
                         )
                 result["drivers"] = masked_drivers
             result.update(_policy_term_fields_for_result(p))
-            return json.dumps(result)
-        return json.dumps(
+            return _validated_policy_lookup(result)
+        return _validated_policy_lookup(
             {
                 "valid": False,
                 "status": status,
                 "message": "Policy not found or inactive",
             }
         )
-    return json.dumps({"valid": False, "message": "Policy not found or inactive"})
+    return _validated_policy_lookup({"valid": False, "message": "Policy not found or inactive"})

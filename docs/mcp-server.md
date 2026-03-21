@@ -84,14 +84,18 @@ def health_check() -> str:
 
 ```python
 @mcp.tool()
-def query_policy_db(policy_number: str) -> str:
+def query_policy_db(policy_number: str, damage_description: str = "") -> str:
     """Query the policy database to validate policy and retrieve coverage details."""
+    return query_policy_db_impl(
+        policy_number, damage_description=damage_description, ctx=_get_ctx()
+    ).model_dump_json()
 ```
 
 **Parameters:**
 - `policy_number` (string): Insurance policy number
+- `damage_description` (string, optional): Damage/loss description for coverage matching (e.g. collision vs comprehensive context)
 
-**Returns:** JSON with valid, coverage, deductible, message
+**Returns:** JSON string from a typed `PolicyLookupResult` (`PolicyLookupSuccess` when `valid` is true, else `PolicyLookupFailure`). Success payloads include `coverage`, `deductible` (number), `physical_damage_covered`, `physical_damage_coverages`, and optional term/territory fields. Failures include `valid: false`, `message`, and optional `status` / `error`.
 
 ---
 
@@ -249,9 +253,11 @@ from claim_agent.tools.valuation_logic import (
 mcp = FastMCP("claim-tools", json_response=True)
 
 @mcp.tool()
-def query_policy_db(policy_number: str) -> str:
+def query_policy_db(policy_number: str, damage_description: str = "") -> str:
     """Query the policy database to validate policy and retrieve coverage details."""
-    return query_policy_db_impl(policy_number)
+    return query_policy_db_impl(
+        policy_number, damage_description=damage_description, ctx=_get_ctx()
+    ).model_dump_json()
 
 # ... other tool definitions
 
@@ -262,6 +268,8 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 ```
+
+`_get_ctx()` is defined in the real module for shared `ClaimContext`. `query_policy_db_impl` returns a typed `PolicyLookupResult` (Pydantic); the MCP tool wraps it with `model_dump_json()` for clients.
 
 ## Using with CrewAI
 

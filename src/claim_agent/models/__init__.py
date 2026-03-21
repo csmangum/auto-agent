@@ -47,6 +47,12 @@ from claim_agent.models.incident import (
     VehicleClaimInput,
 )
 from claim_agent.models.party import ClaimParty, ClaimPartyInput, PartyType
+from claim_agent.models.policy_lookup import (
+    PolicyLookupFailure,
+    PolicyLookupResult,
+    PolicyLookupSuccess,
+    policy_lookup_from_dict,
+)
 from claim_agent.models.user import UserContext, UserType
 
 __all__ = [
@@ -91,4 +97,8 @@ __all__ = [
     "ClaimParty",
     "ClaimPartyInput",
     "PartyType",
+    "PolicyLookupFailure",
+    "PolicyLookupResult",
+    "PolicyLookupSuccess",
+    "policy_lookup_from_dict",
 ]

@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING
 from claim_agent.adapters.registry import get_valuation_adapter
 from claim_agent.config.settings import (
     DEFAULT_BASE_VALUE,
-    DEFAULT_DEDUCTIBLE,
     DEPRECIATION_PER_YEAR,
     MIN_PAYOUT_VEHICLE_VALUE,
     MIN_VEHICLE_VALUE,
 )
 from claim_agent.compliance.state_rules import get_state_rules
 from claim_agent.exceptions import AdapterError, DomainValidationError
+from claim_agent.models.policy_lookup import PolicyLookupFailure, PolicyLookupSuccess
 from claim_agent.tools.policy_logic import query_policy_db_impl
 
 if TYPE_CHECKING:
@@ -215,7 +215,7 @@ def calculate_payout_impl(
         salvage_deduction = round(float(salvage_value), 2)
 
     try:
-        policy_result = query_policy_db_impl(
+        policy = query_policy_db_impl(
             policy_number,
             damage_description=damage_description,
             coverage_type=coverage_type,
@@ -229,55 +229,40 @@ def calculate_payout_impl(
             "deductible": 0,
             "calculation": "Error: Unable to retrieve policy information",
         })
-    try:
-        policy_data = json.loads(policy_result)
-        if not policy_data.get("valid", False):
-            return json.dumps({
-                "error": "Invalid or inactive policy",
-                "payout_amount": 0.0,
-                "vehicle_value": acv_base,
-                "deductible": 0,
-                "calculation": "Error: Policy not found or inactive"
-            })
-        if not policy_data.get("physical_damage_covered", True):
-            return json.dumps({
-                "error": "Policy does not include applicable physical damage coverage",
-                "payout_amount": 0.0,
-                "vehicle_value": acv_base,
-                "deductible": 0,
-                "calculation": "Error: Collision/comprehensive coverage is required",
-            })
-        collision_deductible = policy_data.get("collision_deductible")
-        comprehensive_deductible = policy_data.get("comprehensive_deductible")
-        if (
-            not coverage_type
-            and not damage_description
-            and collision_deductible is not None
-            and comprehensive_deductible is not None
-            and collision_deductible != comprehensive_deductible
-        ):
-            return json.dumps({
-                "error": "Coverage context required for policy with different collision/comprehensive deductibles",
-                "payout_amount": 0.0,
-                "vehicle_value": acv_base,
-                "deductible": 0,
-                "calculation": "Error: Provide coverage_type ('collision' or 'comprehensive')",
-            })
-        deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE)
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.error(
-            "Policy lookup failed: %s",
-            e,
-            exc_info=True,
-            extra={"extra_data": {"policy_number": policy_number, "error": str(e)}},
-        )
+    if isinstance(policy, PolicyLookupFailure):
         return json.dumps({
-            "error": "Policy lookup failed. Please try again.",
+            "error": "Invalid or inactive policy",
             "payout_amount": 0.0,
             "vehicle_value": acv_base,
             "deductible": 0,
-            "calculation": "Error: Unable to retrieve policy information"
+            "calculation": "Error: Policy not found or inactive",
         })
+    policy_data: PolicyLookupSuccess = policy
+    if not policy_data.physical_damage_covered:
+        return json.dumps({
+            "error": "Policy does not include applicable physical damage coverage",
+            "payout_amount": 0.0,
+            "vehicle_value": acv_base,
+            "deductible": 0,
+            "calculation": "Error: Collision/comprehensive coverage is required",
+        })
+    collision_deductible = policy_data.collision_deductible
+    comprehensive_deductible = policy_data.comprehensive_deductible
+    if (
+        not coverage_type
+        and not damage_description
+        and collision_deductible is not None
+        and comprehensive_deductible is not None
+        and collision_deductible != comprehensive_deductible
+    ):
+        return json.dumps({
+            "error": "Coverage context required for policy with different collision/comprehensive deductibles",
+            "payout_amount": 0.0,
+            "vehicle_value": acv_base,
+            "deductible": 0,
+            "calculation": "Error: Provide coverage_type ('collision' or 'comprehensive')",
+        })
+    deductible = policy_data.deductible
 
     payout_amount = max(0.0, acv_total - deductible - salvage_deduction)
 
@@ -289,7 +274,7 @@ def calculate_payout_impl(
         and loan_balance > 0
         and payout_amount < loan_balance
     ):
-        gap_insurance = policy_data.get("gap_insurance", False)
+        gap_insurance = bool(policy_data.gap_insurance)
         if gap_insurance:
             gap_insurance_applied = True
 

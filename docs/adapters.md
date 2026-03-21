@@ -271,6 +271,8 @@ src/claim_agent/adapters/
 
 Tool implementation functions in `logic.py` call adapter methods instead of accessing `load_mock_db()` directly:
 
+`query_policy_db_impl` returns a typed `PolicyLookupResult` (`PolicyLookupSuccess` | `PolicyLookupFailure` from `claim_agent.models.policy_lookup`). CrewAI’s `query_policy_db` tool and the MCP server call `model_dump_json()` at the boundary so agents still receive JSON.
+
 | Function | Adapter Call |
 |----------|-------------|
 | `query_policy_db_impl` | `get_policy_adapter().get_policy()` |
