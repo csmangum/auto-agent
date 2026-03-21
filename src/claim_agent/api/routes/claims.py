@@ -51,7 +51,7 @@ from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.document_repository import DocumentRepository, build_document_version_groups
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
-from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.models.claim import Attachment, ClaimInput, ClaimRecord
 from claim_agent.models.party import PartyRelationshipType
 from claim_agent.models.incident import (
     BIAllocationInput,
@@ -1852,7 +1852,7 @@ async def get_incident(
     claims = incident_repo.get_claims_by_incident(incident_id)
     return IncidentDetailResponse(
         incident=IncidentRecord.model_validate(incident),
-        claims=claims,
+        claims=[ClaimRecord.model_validate(c) for c in claims],
     )
 
 

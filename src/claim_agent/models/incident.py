@@ -9,7 +9,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from claim_agent.models.claim import Attachment
+from claim_agent.models.claim import Attachment, ClaimRecord
 from claim_agent.models.party import ClaimPartyInput
 
 
@@ -112,7 +112,7 @@ class IncidentDetailResponse(BaseModel):
     """Response for GET /incidents/{incident_id}: incident metadata and linked claims."""
 
     incident: IncidentRecord = Field(..., description="Incident record")
-    claims: list[dict[str, Any]] = Field(
+    claims: list[ClaimRecord] = Field(
         ...,
         description="Full claim rows for all claims linked to this incident",
     )
