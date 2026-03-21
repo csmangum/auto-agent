@@ -10,6 +10,8 @@ For configuration options, see [Configuration](configuration.md).
 |---------------------|---------|-------------|
 | `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database file (ignored when `DATABASE_URL` is set) |
 | `DATABASE_URL` | (unset) | PostgreSQL connection URL. When set, the app uses PostgreSQL instead of SQLite. Example: `postgresql://user:pass@host:5432/claims` |
+| `DB_POOL_SIZE` | `5` | SQLAlchemy `pool_size` when using PostgreSQL (`ge=1`) |
+| `DB_MAX_OVERFLOW` | `10` | SQLAlchemy `max_overflow` when using PostgreSQL (`ge=0`) |
 
 ## PostgreSQL Setup
 
@@ -17,7 +19,7 @@ When using PostgreSQL:
 
 1. **Run migrations before starting the app**: `alembic upgrade head`. The schema is applied via Alembic only; `init_db()` does not run for PostgreSQL.
 
-2. **Connection pooling**: The app uses SQLAlchemy connection pooling (pool_size=5, max_overflow=10) for PostgreSQL.
+2. **Connection pooling**: The app uses SQLAlchemy connection pooling for PostgreSQL. Defaults are `pool_size=5` and `max_overflow=10`; override with `DB_POOL_SIZE` and `DB_MAX_OVERFLOW`.
 
 3. **Scripts**: `investigate_claim.py` and other scripts work with both backends. When `DATABASE_URL` is set, `get_db_path()` returns an empty string; scripts use the default connection.
 

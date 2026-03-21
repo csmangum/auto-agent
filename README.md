@@ -7,7 +7,7 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 - **Workflow Routing** - Router agent classifies claims and delegates to specialized crews
 - **Human-in-the-Loop** - Escalation for fraud indicators, high-value, or low-confidence claims (configurable thresholds)
 - **Seven Claim Types** - New, duplicate, total loss, fraud, partial loss, bodily injury, and reopened workflows
-- **Persistent State** - SQLite database with full audit trail
+- **Persistent State** - SQLite by default for local dev; set `DATABASE_URL` for PostgreSQL in production (SQLAlchemy pooling, Alembic migrations). See [Database](docs/database.md).
 - **Reserve Management** - Case reserves at FNOL, `reserve_history`, adjuster/supervisor authority limits, adequacy vs. estimate and payout (see [Database](docs/database.md), [Configuration](docs/configuration.md#reserve-management))
 - **Payment ledger** - `claim_payments` disbursements, API issue/clear/void, authority limits, optional auto-row from settlement payout (see [Database](docs/database.md#claim_payments), [Configuration](docs/configuration.md#disbursements--payment-authority))
 - **Observability** - Structured logging, correlation IDs, LLM tracing (LangSmith/LiteLLM), cost and latency metrics

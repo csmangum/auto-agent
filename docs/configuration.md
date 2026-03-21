@@ -24,7 +24,10 @@ cp .env.example .env
 |----------|---------|-------------|
 | `OPENAI_API_BASE` | (none) | Custom API base URL (for OpenRouter) |
 | `OPENAI_MODEL_NAME` | `gpt-4o-mini` | Model to use for agents |
-| `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database |
+| `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database (ignored when `DATABASE_URL` is set) |
+| `DATABASE_URL` | (unset) | PostgreSQL URL for production; see [Database](database.md) |
+| `DB_POOL_SIZE` | `5` | PostgreSQL pool size (see [Database](database.md)) |
+| `DB_MAX_OVERFLOW` | `10` | PostgreSQL pool overflow (see [Database](database.md)) |
 | `MOCK_DB_PATH` | `data/mock_db.json` | Path to mock policy/vehicle data |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
