@@ -33,4 +33,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(text("ALTER TABLE claim_payments DROP COLUMN IF EXISTS claim_party_id"))
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(text("ALTER TABLE claim_payments DROP COLUMN IF EXISTS claim_party_id"))
+    else:
+        # SQLite does not support DROP COLUMN IF EXISTS; leave column in place for safety.
+        pass

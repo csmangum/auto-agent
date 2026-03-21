@@ -37,43 +37,45 @@ _STATUS_VOIDED = PaymentStatus.VOIDED.value
 _EXTERNAL_REF_MAX = 200
 
 
-def settlement_payee_from_claim_data(claim_data: dict) -> str:
-    """Primary payee label for automated settlement disbursement rows."""
-    parties = claim_data.get("parties") or []
-    if isinstance(parties, list):
-        for pref in ("claimant", "policyholder"):
-            for p in parties:
-                if not isinstance(p, dict):
-                    continue
-                if (p.get("party_type") or "").lower() != pref:
-                    continue
-                name = (p.get("name") or "").strip()
-                if name:
-                    sanitized = sanitize_payee(name)
-                    if sanitized:
-                        return sanitized
-    return "Claimant"
+def settlement_payee_and_party_id_from_claim_data(claim_data: dict) -> tuple[str, int | None]:
+    """Primary payee label and DB party id for automated settlement disbursement.
 
-
-def settlement_claim_party_id_from_claim_data(claim_data: dict) -> int | None:
-    """DB party id for automated settlement disbursement, if present on embedded parties."""
+    Returns (payee, claim_party_id) from the same matched party to maintain referential integrity.
+    Prefers claimant, then policyholder. Returns ("Claimant", None) if no valid party is found.
+    """
     parties = claim_data.get("parties") or []
     if not isinstance(parties, list):
-        return None
+        return ("Claimant", None)
     for pref in ("claimant", "policyholder"):
         for p in parties:
             if not isinstance(p, dict):
                 continue
             if (p.get("party_type") or "").lower() != pref:
                 continue
+            name = (p.get("name") or "").strip()
             raw_id = p.get("id")
-            if raw_id is None:
-                continue
-            try:
-                return int(raw_id)
-            except (TypeError, ValueError):
-                continue
-    return None
+            sanitized = sanitize_payee(name) if name else None
+            if sanitized:
+                party_id: int | None = None
+                if raw_id is not None:
+                    try:
+                        party_id = int(raw_id)
+                    except (TypeError, ValueError):
+                        pass
+                return (sanitized, party_id)
+    return ("Claimant", None)
+
+
+def settlement_payee_from_claim_data(claim_data: dict) -> str:
+    """Primary payee label for automated settlement disbursement rows."""
+    payee, _ = settlement_payee_and_party_id_from_claim_data(claim_data)
+    return payee
+
+
+def settlement_claim_party_id_from_claim_data(claim_data: dict) -> int | None:
+    """DB party id for automated settlement disbursement, if present on embedded parties."""
+    _, party_id = settlement_payee_and_party_id_from_claim_data(claim_data)
+    return party_id
 
 
 _VALID_TRANSITIONS: dict[str, set[str]] = {

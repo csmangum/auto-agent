@@ -17,8 +17,7 @@ from claim_agent.config import get_settings
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.payment_repository import (
     PaymentRepository,
-    settlement_claim_party_id_from_claim_data,
-    settlement_payee_from_claim_data,
+    settlement_payee_and_party_id_from_claim_data,
 )
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
@@ -30,7 +29,7 @@ from claim_agent.models.stage_outputs import (
     FraudPrescreeningResult,
     RouterStageResult,
 )
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
 from claim_agent.models.claim import ClaimInput
 from claim_agent.observability import claim_context, get_logger
@@ -131,8 +130,7 @@ def _maybe_record_workflow_settlement_payment(
     payout = wf_ctx.extracted_payout
     if payout is None or payout <= 0:
         return
-    payee = settlement_payee_from_claim_data(wf_ctx.claim_data_with_id)
-    party_id = settlement_claim_party_id_from_claim_data(wf_ctx.claim_data_with_id)
+    payee, party_id = settlement_payee_and_party_id_from_claim_data(wf_ctx.claim_data_with_id)
     ext_ref = f"workflow_settlement:{workflow_run_id}"
     pdata = ClaimPaymentCreate(
         claim_id=claim_id,
@@ -151,7 +149,7 @@ def _maybe_record_workflow_settlement_payment(
             role="adjuster",
             skip_authority_check=True,
         )
-    except (IntegrityError, OperationalError) as e:
+    except (IntegrityError, OperationalError, DomainValidationError) as e:
         logger.warning(
             "Workflow settlement payment ledger insert failed (best-effort); continuing",
             extra={
