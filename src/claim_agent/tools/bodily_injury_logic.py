@@ -14,15 +14,12 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from claim_agent.adapters.registry import get_policy_adapter
+from claim_agent.adapters.registry import get_cms_reporting_adapter, get_policy_adapter
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
-
-# CMS reporting threshold (MMSEA Section 111)
-CMS_REPORTING_THRESHOLD = 750.0
 
 # Structured settlement typically offered above this amount
 STRUCTURED_SETTLEMENT_THRESHOLD = 100_000.0
@@ -166,14 +163,16 @@ def calculate_bi_settlement_impl(
     medical_charges: float,
     injury_severity: str,
     pain_suffering_multiplier: float = 1.5,
+    loss_of_earnings: float = 0.0,
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
     """Calculate proposed BI settlement within policy limits.
 
-    Combines medical specials with pain/suffering (multiplier method) and
-    caps at policy BI limits. Real implementation would apply jurisdiction-
-    specific rules and policy terms.
+    Combines medical specials, optional documented loss of earnings (not
+    multiplied for pain/suffering), and pain/suffering (multiplier applies to
+    medical charges only). Returns ``economic_specials`` (medicals + LOE) and
+    caps the total demand at policy BI per-person limits.
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -188,6 +187,16 @@ def calculate_bi_settlement_impl(
         return json.dumps(
             {
                 "error": "Invalid medical_charges",
+                "proposed_settlement": None,
+                "policy_bi_limit_per_person": None,
+                "policy_bi_limit_per_accident": None,
+            }
+        )
+    loe = float(loss_of_earnings) if isinstance(loss_of_earnings, (int, float)) else 0.0
+    if loe < 0:
+        return json.dumps(
+            {
+                "error": "Invalid loss_of_earnings",
                 "proposed_settlement": None,
                 "policy_bi_limit_per_person": None,
                 "policy_bi_limit_per_accident": None,
@@ -215,15 +224,18 @@ def calculate_bi_settlement_impl(
             injury_severity,
             sorted(VALID_SEVERITIES),
         )
-    # Pain and suffering (multiplier on medicals)
-    pain_suffering = medical_charges * pain_suffering_multiplier
-    total_demand = medical_charges + pain_suffering
+    # Pain and suffering (multiplier on medical specials only); LOE is economic, not multiplied
+    pain_suffering = float(medical_charges) * pain_suffering_multiplier
+    economic_specials = float(medical_charges) + loe
+    total_demand = economic_specials + pain_suffering
     # Cap at policy limit
     proposed = min(total_demand, bi_per_person)
     return json.dumps(
         {
             "claim_id": claim_id,
             "medical_charges": float(medical_charges),
+            "loss_of_earnings": round(loe, 2),
+            "economic_specials": round(economic_specials, 2),
             "injury_severity": injury_severity,
             "pain_suffering": round(pain_suffering, 2),
             "total_demand": round(total_demand, 2),
@@ -302,7 +314,7 @@ def check_cms_reporting_required_impl(
 ) -> str:
     """Check whether CMS/Medicare reporting is required (MMSEA Section 111).
 
-    Settlements >$750 involving Medicare beneficiaries require reporting.
+    Delegates to :class:`~claim_agent.adapters.base.CMSReportingAdapter`.
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -311,26 +323,16 @@ def check_cms_reporting_required_impl(
                 "reporting_required": False,
             }
         )
-    reporting_required = (
-        claimant_medicare_eligible and settlement_amount >= CMS_REPORTING_THRESHOLD
+    adapter = get_cms_reporting_adapter()
+    if ctx is not None and getattr(ctx, "adapters", None) is not None:
+        adapter = ctx.adapters.cms
+    payload = adapter.evaluate_settlement_reporting(
+        claim_id=claim_id,
+        settlement_amount=float(settlement_amount),
+        claimant_medicare_eligible=bool(claimant_medicare_eligible),
     )
-    # Mock: conditional payment recovery placeholder
-    conditional_payment = (
-        min(settlement_amount * 0.1, 5_000) if reporting_required else None
-    )
-    msa_required = reporting_required and settlement_amount >= 25_000
-    return json.dumps(
-        {
-            "claim_id": claim_id,
-            "settlement_amount": settlement_amount,
-            "claimant_medicare_eligible": claimant_medicare_eligible,
-            "reporting_threshold": CMS_REPORTING_THRESHOLD,
-            "reporting_required": reporting_required,
-            "conditional_payment_amount": conditional_payment,
-            "msa_required": msa_required,
-            "notes": "MMSEA Section 111; report to CMS COBC if required.",
-        }
-    )
+    out = {"claim_id": claim_id, **payload}
+    return json.dumps(out)
 
 
 def check_minor_settlement_approval_impl(
@@ -338,6 +340,7 @@ def check_minor_settlement_approval_impl(
     claimant_age: int | None = None,
     claimant_incapacitated: bool = False,
     loss_state: str = "",
+    court_approval_obtained: bool = False,
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
@@ -351,6 +354,7 @@ def check_minor_settlement_approval_impl(
         )
     is_minor = claimant_age is not None and claimant_age < 18
     approval_required = is_minor or claimant_incapacitated
+    obtained = bool(court_approval_obtained)
     return json.dumps(
         {
             "claim_id": claim_id,
@@ -358,7 +362,7 @@ def check_minor_settlement_approval_impl(
             "claimant_age": claimant_age,
             "claimant_incapacitated": claimant_incapacitated,
             "court_approval_required": approval_required,
-            "court_approval_obtained": False,
+            "court_approval_obtained": obtained,
             "state": (loss_state or "").strip() or None,
             "notes": "Most states require court approval for minor settlements; "
             "guardian/conservator may need to petition.",

@@ -726,8 +726,8 @@ Handles injury-related claims: intake injury details → review medical records 
 | Agent | Tools Used |
 |-------|------------|
 | BI Intake Specialist | `add_claim_note`, `get_claim_notes`, `escalate_claim` |
-| Medical Records Reviewer | `query_medical_records`, `assess_injury_severity`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
-| Settlement Negotiator | `calculate_bi_settlement`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+| Medical Records Reviewer | `query_medical_records`, `assess_injury_severity`, `audit_medical_bills`, `build_treatment_timeline`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
+| Settlement Negotiator | `calculate_bi_settlement`, `check_pip_medpay_exhaustion`, `check_cms_reporting_required`, `check_minor_settlement_approval`, `get_structured_settlement_option`, `calculate_loss_of_earnings`, `add_claim_note`, `get_claim_notes`, `escalate_claim` |
 
 ### Flow Sequence
 
@@ -735,17 +735,20 @@ Handles injury-related claims: intake injury details → review medical records 
 flowchart TB
     subgraph BI["Bodily Injury Crew"]
         A[1. Intake: Injury details] --> B[2. Medical: Review records]
-        B --> C[3. Negotiation: Propose settlement]
+        B --> C[3. Negotiation: PIP gate, settlement, CMS, minor, structured]
     end
-    C --> Settlement[Settlement Crew]
+    C --> V["Post-crew deterministic PIP and minor checks"]
+    V --> Settlement[Settlement Crew]
 ```
+
+After the crew returns structured `BIWorkflowOutput`, the workflow stage re-runs PIP/MedPay exhaustion against claim state and medical charges; if BI settlement is not allowed in a no-fault state, the claim escalates to `needs_review`. The same stage escalates when minor/incapacitated court approval is required and court approval is not indicated on the claim payload (`minor_court_approval_obtained` in claim data) or explicitly as `minor_court_approval_obtained: true` on the structured `BIWorkflowOutput`. If the last crew task does not return parseable `BIWorkflowOutput`, the workflow escalates so PIP/minor gates are not skipped silently.
 
 ### Exit Conditions
 
 | Outcome | Status | Notes |
 |---------|--------|-------|
 | Success | `settled` | Via Settlement Crew |
-| Escalated | `needs_review` | Returned before crew execution |
+| Escalated | `needs_review` | Router/coverage/escalation before crew, tool `escalate_claim`, post-crew missing structured output, or post-crew PIP/minor gate |
 | Failed | `failed` | Error during crew execution |
 
 **Note:** Claims with both vehicle damage and injury are routed to BI when injury is significant. Vehicle damage is not handled by this crew; consider a combined workflow for such claims.

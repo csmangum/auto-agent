@@ -775,6 +775,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "gap_insurance": "GAP_INSURANCE_ADAPTER",
     "vision": "VISION_ADAPTER",
     "ocr": "OCR_ADAPTER",
+    "cms": "CMS_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
@@ -927,6 +928,7 @@ class Settings(BaseSettings):
     )
     vision_adapter: str = Field(default="real", validation_alias="VISION_ADAPTER")
     ocr_adapter: str = Field(default="mock", validation_alias="OCR_ADAPTER")
+    cms_adapter: str = Field(default="mock", validation_alias="CMS_ADAPTER")
 
     @field_validator("siu_default_state", mode="before")
     @classmethod

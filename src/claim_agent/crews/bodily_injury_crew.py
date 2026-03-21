@@ -84,15 +84,15 @@ Assess liability exposure, check prerequisites, and propose settlement.
 
 1. Extract claim_id, policy_number, loss_state from claim_data.
 2. Use check_pip_medpay_exhaustion with claim_id, policy_number, medical_charges, loss_state. If bi_settlement_allowed is false, escalate_claim (PIP not exhausted).
-3. Use calculate_bi_settlement with claim_id, policy_number, medical_charges, injury_severity, pain_suffering_multiplier (1.5 moderate; 1.0 minor; 2.0+ severe).
-4. If wage loss is indicated in claim_data (e.g., "missed work", "lost wages"), use calculate_loss_of_earnings with pre_accident_income and days_missed. Add recommended_amount to special damages.
-5. Use check_cms_reporting_required with claim_id, settlement_amount, claimant_medicare_eligible (infer from claimant age 65+ or claim data). Document if reporting_required.
-6. Use check_minor_settlement_approval with claim_id, claimant_age (if known), claimant_incapacitated, loss_state. If court_approval_required, note that court approval must be obtained before payout.
+3. If wage loss is indicated in claim_data (e.g., "missed work", "lost wages"), use calculate_loss_of_earnings with pre_accident_income and days_missed first; pass recommended_amount as loss_of_earnings into calculate_bi_settlement (otherwise 0).
+4. Use calculate_bi_settlement with claim_id, policy_number, medical_charges, injury_severity, pain_suffering_multiplier (1.5 moderate; 1.0 minor; 2.0+ severe), and loss_of_earnings from step 3.
+5. Use check_cms_reporting_required with claim_id, settlement_amount (proposed_settlement from calculate_bi_settlement), claimant_medicare_eligible (infer from claimant age 65+ or claim data). Document if reporting_required.
+6. Use check_minor_settlement_approval with claim_id, claimant_age (if known), claimant_incapacitated, loss_state, court_approval_obtained from claim_data if documented. If court_approval_required and not obtained, note payout must wait for court order; set minor_court_approval_obtained in output.
 7. If proposed settlement >= $100,000, use get_structured_settlement_option with claim_id and total_settlement. Offer structured option when recommended.
 8. Use add_claim_note with claim_id, actor_id "Settlement Negotiator", and settlement rationale including PIP status, CMS reporting, minor approval, structured option.
 
-Return structured output: payout_amount, medical_charges, pain_suffering, injury_severity, loss_of_earnings (if any), pip_medpay_exhausted, cms_reporting_required, minor_court_approval_required, structured_settlement_offered, policy_bi_limit_per_person, policy_bi_limit_per_accident.""",
-                expected_output="Structured settlement proposal with payout_amount, medical_charges, pain_suffering, injury_severity, loss_of_earnings, pip_medpay_exhausted, cms_reporting_required, minor_court_approval_required, structured_settlement_offered, policy limits.",
+Return structured output: payout_amount, medical_charges, pain_suffering, injury_severity, loss_of_earnings (if any), pip_medpay_exhausted, cms_reporting_required, minor_court_approval_required, minor_court_approval_obtained, structured_settlement_offered, policy_bi_limit_per_person, policy_bi_limit_per_accident.""",
+                expected_output="Structured settlement proposal with payout_amount, medical_charges, pain_suffering, injury_severity, loss_of_earnings, pip_medpay_exhausted, cms_reporting_required, minor_court_approval_required, minor_court_approval_obtained, structured_settlement_offered, policy limits.",
                 agent_index=2,
                 context_task_indices=[0, 1],
                 output_pydantic=BIWorkflowOutput,

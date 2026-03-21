@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from claim_agent.adapters.base import (
+    CMSReportingAdapter,
     ClaimSearchAdapter,
     GapInsuranceAdapter,
     NMVTISAdapter,
@@ -151,6 +152,22 @@ class StubNMVTISAdapter(NMVTISAdapter):
             "StubNMVTISAdapter: connect to the DOJ/AAMVA-designated NMVTIS reporting channel "
             "(batch upload, web service, or vendor API). "
             "Return nmvtis_reference and status from the provider acknowledgment."
+        )
+
+
+class StubCMSReportingAdapter(CMSReportingAdapter):
+    """Placeholder for CMS COBC / Section 111 production integration."""
+
+    def evaluate_settlement_reporting(
+        self,
+        *,
+        claim_id: str,
+        settlement_amount: float,
+        claimant_medicare_eligible: bool,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubCMSReportingAdapter: connect to CMS Section 111 reporting (COBC). "
+            "Return reporting_required, conditional_payment_amount, msa_required, and notes."
         )
 
 

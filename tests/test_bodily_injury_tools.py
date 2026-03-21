@@ -157,6 +157,32 @@ class TestCalculateBISettlement:
         assert data["policy_bi_limit_per_person"] == 100_000.0
         assert data["policy_bi_limit_per_accident"] == 300_000.0
 
+    def test_loss_of_earnings_adds_to_specials_not_multiplier(self):
+        """LOE is added to economic specials; P&S multiplier applies to medical only."""
+        result = calculate_bi_settlement_impl(
+            claim_id="CLM-001",
+            policy_number="",
+            medical_charges=2000.0,
+            injury_severity="moderate",
+            pain_suffering_multiplier=2.0,
+            loss_of_earnings=300.0,
+        )
+        data = json.loads(result)
+        assert data["economic_specials"] == 2300.0
+        assert data["pain_suffering"] == 4000.0
+        assert data["total_demand"] == 6300.0
+
+    def test_negative_loss_of_earnings_returns_error(self):
+        result = calculate_bi_settlement_impl(
+            claim_id="CLM-001",
+            policy_number="POL-001",
+            medical_charges=1000.0,
+            injury_severity="moderate",
+            loss_of_earnings=-1.0,
+        )
+        data = json.loads(result)
+        assert "error" in data
+
 
 class TestCheckPIPMedPayExhaustion:
     """Tests for check_pip_medpay_exhaustion_impl."""
@@ -253,6 +279,17 @@ class TestCheckMinorSettlementApproval:
         data = json.loads(result)
         assert data["claimant_is_minor"] is True
         assert data["court_approval_required"] is True
+        assert data["court_approval_obtained"] is False
+
+    def test_court_approval_obtained_passthrough(self):
+        result = check_minor_settlement_approval_impl(
+            claim_id="CLM-001",
+            claimant_age=12,
+            loss_state="CA",
+            court_approval_obtained=True,
+        )
+        data = json.loads(result)
+        assert data["court_approval_obtained"] is True
 
 
 class TestGetStructuredSettlementOption:

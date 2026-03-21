@@ -71,12 +71,12 @@ def calculate_bi_settlement(
     medical_charges: float,
     injury_severity: str,
     pain_suffering_multiplier: float = 1.5,
+    loss_of_earnings: float = 0.0,
 ) -> str:
     """Calculate proposed bodily injury settlement within policy limits.
 
-    Combines medical specials with pain and suffering (multiplier method)
-    and caps at policy BI limits. Use after reviewing medical records
-    and assessing injury severity.
+    Combines medical specials and documented loss of earnings with pain and
+    suffering (multiplier on medical only) and caps at policy BI limits.
 
     Args:
         claim_id: The claim ID.
@@ -84,10 +84,11 @@ def calculate_bi_settlement(
         medical_charges: Total medical expenses (specials).
         injury_severity: Severity from assess_injury_severity (minor/moderate/severe/catastrophic).
         pain_suffering_multiplier: Multiplier for pain/suffering (default 1.5).
+        loss_of_earnings: Wage loss from calculate_loss_of_earnings (default 0).
 
     Returns:
-        JSON with proposed_settlement, medical_charges, pain_suffering,
-        policy_bi_limit_per_person, policy_bi_limit_per_accident.
+        JSON with proposed_settlement, medical_charges, loss_of_earnings,
+        economic_specials, pain_suffering, policy BI limits.
     """
     return calculate_bi_settlement_impl(
         claim_id=claim_id,
@@ -95,6 +96,7 @@ def calculate_bi_settlement(
         medical_charges=medical_charges,
         injury_severity=injury_severity,
         pain_suffering_multiplier=pain_suffering_multiplier,
+        loss_of_earnings=loss_of_earnings,
     )
 
 
@@ -158,6 +160,7 @@ def check_minor_settlement_approval(
     claimant_age: int | None = None,
     claimant_incapacitated: bool = False,
     loss_state: str = "",
+    court_approval_obtained: bool = False,
 ) -> str:
     """Check whether court approval is required for minor/incapacitated claimant.
 
@@ -168,6 +171,7 @@ def check_minor_settlement_approval(
         claimant_age: Claimant age (under 18 = minor).
         claimant_incapacitated: Whether claimant is legally incapacitated.
         loss_state: State jurisdiction.
+        court_approval_obtained: True if court order already on file.
 
     Returns:
         JSON with court_approval_required, court_approval_obtained.
@@ -177,6 +181,7 @@ def check_minor_settlement_approval(
         claimant_age=claimant_age,
         claimant_incapacitated=claimant_incapacitated,
         loss_state=loss_state,
+        court_approval_obtained=court_approval_obtained,
     )
 
 
