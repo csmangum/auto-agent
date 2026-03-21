@@ -45,7 +45,9 @@ WORKFLOW OUTPUT:
 {workflow_output}
 
 Arrange disposition by initiating the title transfer. Use initiate_title_transfer with claim_id from claim_data, vin, vehicle_year, vehicle_make, vehicle_model, and disposition_type from the salvage coordinator's recommendation (auction, owner_retention, or scrap).
-Then call record_dmv_salvage_report with claim_id and dmv_reference from the transfer result to persist salvage title tracking on the claim.
+Then call record_dmv_salvage_report with claim_id and dmv_reference from the transfer result to persist salvage title tracking and trigger NMVTIS federal reporting when configured.
+
+If NMVTIS failed or was skipped (check tool response), use submit_nmvtis_report to retry when appropriate.
 
 Output the transfer_id and dmv_reference. Use generate_report to document the title transfer initiation.""",
                 expected_output="Title transfer initiated with transfer_id and DMV reference.",
@@ -75,7 +77,9 @@ CLAIM DATA (JSON):
 WORKFLOW OUTPUT:
 {workflow_output}
 
-Record the salvage disposition outcome. Use record_salvage_disposition with claim_id from claim_data, disposition_type from the salvage assessment, salvage_amount if known (from workflow or assessment), status (pending, auction_scheduled, auction_complete, owner_retained, or scrapped), and notes summarizing the disposition.
+Record the salvage disposition outcome. Use record_salvage_disposition with claim_id from claim_data, disposition_type from the salvage assessment, salvage_amount if known (from workflow or assessment), status (pending, auction_scheduled, auction_complete, owner_retained, or scrapped), and notes summarizing the disposition. Final statuses (auction_complete, owner_retained, scrapped) trigger NMVTIS when not already accepted.
+
+If NMVTIS needs a manual retry, use submit_nmvtis_report with claim_id.
 
 Use generate_report to document the final salvage disposition status and any next steps for auction follow-up or recovery tracking.""",
                 expected_output="Salvage disposition recorded with status and next steps documented.",

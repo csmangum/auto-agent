@@ -151,6 +151,46 @@ class ClaimSearchAdapter(ABC):
         ...
 
 
+class NMVTISAdapter(ABC):
+    """Interface for National Motor Vehicle Title Information System (NMVTIS) insurer reporting.
+
+    Production implementations integrate with the DOJ/AAMVA-designated NMVTIS data provider
+    workflow (49 U.S.C. 30502; 28 CFR Part 25). This codebase only defines the contract.
+    """
+
+    @abstractmethod
+    def submit_total_loss_report(
+        self,
+        *,
+        claim_id: str,
+        vin: str,
+        vehicle_year: int,
+        make: str,
+        model: str,
+        loss_type: str,
+        trigger_event: str,
+        dmv_reference: str | None = None,
+    ) -> dict[str, Any]:
+        """Report a total loss / salvage vehicle to NMVTIS (or queue for submission).
+
+        Parameters
+        ----------
+        loss_type:
+            e.g. ``total_loss``, ``salvage``.
+        trigger_event:
+            ``dmv_salvage_report`` | ``salvage_disposition`` | ``manual_resubmit``.
+        dmv_reference:
+            State DMV / title reference when known.
+
+        Returns
+        -------
+        dict
+            At minimum ``nmvtis_reference`` (str) and ``status`` (``accepted`` | ``pending`` | ``rejected``).
+            Optional: ``message`` (str).
+        """
+        ...
+
+
 class GapInsuranceAdapter(ABC):
     """Interface for gap (loan/lease) carrier coordination after auto total loss."""
 
