@@ -83,6 +83,23 @@ def test_get_claim_parties_filtered_by_type(repo, claim_id):
     assert policyholders[0]["party_type"] == "policyholder"
 
 
+def test_get_primary_contact_attorney_and_witness(repo, claim_id):
+    repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="witness", name="W1", email="w@x.com"),
+    )
+    repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="attorney", name="A1", phone="555-0001"),
+    )
+    w = repo.get_primary_contact_for_user_type(claim_id, "witness")
+    assert w is not None
+    assert w["email"] == "w@x.com"
+    a = repo.get_primary_contact_for_user_type(claim_id, "attorney")
+    assert a is not None
+    assert a["phone"] == "555-0001"
+
+
 def test_get_claim_party_by_type(repo, claim_id):
     repo.add_claim_party(
         claim_id,

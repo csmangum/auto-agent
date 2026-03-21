@@ -74,6 +74,7 @@ src/claim_agent/skills/
 ├── follow_up_outreach.md    # Follow-up Outreach
 ├── message_composition.md   # Message Composition
 ├── response_processing.md   # Response Processing
+├── party_intake.md          # Witness & Attorney Intake
 ├── siu_document_verification.md # SIU Document Verification Specialist
 ├── siu_records_investigator.md # SIU Records Investigator
 └── siu_case_manager.md      # SIU Case Manager

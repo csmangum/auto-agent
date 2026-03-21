@@ -662,6 +662,16 @@ class ClaimRepository:
         if user_type == "policyholder":
             ph = self.get_claim_party_by_type(claim_id, "policyholder")
             return ph if (ph and (ph.get("email") or ph.get("phone"))) else None
+        if user_type == "attorney":
+            for row in self.get_claim_parties(claim_id, party_type="attorney"):
+                if row.get("email") or row.get("phone"):
+                    return row
+            return None
+        if user_type == "witness":
+            for row in self.get_claim_parties(claim_id, party_type="witness"):
+                if row.get("email") or row.get("phone"):
+                    return row
+            return None
         return None
 
     def get_claim(self, claim_id: str) -> dict[str, Any] | None:

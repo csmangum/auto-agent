@@ -131,6 +131,10 @@ _CREW_ALLOWLISTS: dict[str, frozenset[str]] = {
         "id", "claim_id", "policy_number", "vin", "status", "claim_type",
         "incident_description", "damage_description",
     }),
+    "party_intake": frozenset({
+        "id", "claim_id", "policy_number", "vin", "status", "claim_type",
+        "incident_description", "damage_description", "parties",
+    }),
     "dispute": frozenset({
         "claim_id", "policy_number", "vin", "vehicle_year", "vehicle_make", "vehicle_model",
         "incident_date", "incident_description", "damage_description", "estimated_damage",
@@ -218,7 +222,7 @@ def minimize_claim_data_for_crew(
             continue
         if key == "attachments" and isinstance(value, list):
             result[key] = _minimize_attachments(value)
-        elif key == "parties" and crew_name == "bodily_injury":
+        elif key == "parties" and crew_name in ("bodily_injury", "party_intake"):
             result[key] = _strip_party_pii(value) if isinstance(value, list) else value
         elif key == "policy_number" and mask_pii:
             result[key] = mask_policy_number(value) if value else value

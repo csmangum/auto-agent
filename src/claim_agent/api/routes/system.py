@@ -415,6 +415,28 @@ _CREWS_CATALOG = [
         ],
     },
     {
+        "name": "Party Intake Crew",
+        "description": "Witness identification, statement capture, and attorney representation (LOP) intake with represented_by linkage.",
+        "module": "crews/party_intake_crew.py",
+        "agents": [
+            {
+                "name": "Party Intake Specialist (Witness & Attorney)",
+                "skill": "party_intake",
+                "tools": [
+                    "record_witness_party",
+                    "update_witness_party",
+                    "record_witness_statement",
+                    "record_attorney_representation",
+                    "create_claim_task",
+                    "create_document_request",
+                    "get_claim_notes",
+                    "send_user_message",
+                ],
+                "description": "Records witnesses and counsel; routes messaging via claim_parties",
+            },
+        ],
+    },
+    {
         "name": "Settlement Crew",
         "description": "Shared final settlement phase for payout-ready total loss and partial loss claims.",
         "module": "crews/settlement_crew.py",

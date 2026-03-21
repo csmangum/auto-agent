@@ -20,7 +20,9 @@ class UserType(str, Enum):
     | adjuster      | Human reviewer                       | Escalation handback, approval/rejection          |
     | repair_shop   | Body shop / repair facility          | Confirm estimate, schedule repair, supplement    |
     | siu           | Special Investigations Unit           | Fraud referral, investigation updates            |
-    | other         | Generic external party               | Attorneys, medical providers, etc.                |
+    | witness       | Third-party witness on claim_parties | Statements, contact for investigation            |
+    | attorney      | Counsel on claim_parties             | LOP / representation outreach                    |
+    | other         | Generic external party               | Fallback when none of the above apply            |
     """
 
     CLAIMANT = "claimant"
@@ -28,6 +30,8 @@ class UserType(str, Enum):
     ADJUSTER = "adjuster"
     REPAIR_SHOP = "repair_shop"
     SIU = "siu"
+    WITNESS = "witness"
+    ATTORNEY = "attorney"
     OTHER = "other"
 
 
