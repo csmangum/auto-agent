@@ -77,8 +77,12 @@ def fulfill_access_request(
     """Fulfill an access request: collect all PII for the claimant and return export.
 
     Looks up claims by verification_data (claim_id, or policy_number+vin).
-    Collects: claims, claim_parties, claim_audit_log (action, dates, actor_id),
-    claim_notes, documents metadata.
+    Collects: claims, claim_parties, party_relationships (structural edge
+    metadata), claim_audit_log (action, dates, actor_id), claim_notes,
+    documents metadata.
+
+    Party relationships contain no PII (only party ids, relationship_type, and
+    timestamps) and are exported unchanged even for anonymized/redacted claims.
 
     Args:
         request_id: DSAR request ID from submit_access_request.
@@ -86,7 +90,8 @@ def fulfill_access_request(
         actor_id: Actor fulfilling the request.
 
     Returns:
-        Dict with claims, parties, audit_entries, notes for the claimant.
+        Dict with claims, parties, party_relationships, audit_entries, notes for
+        the claimant.
 
     Raises:
         ValueError: If request not found or not access type.
@@ -171,6 +176,7 @@ def fulfill_access_request(
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "claims": [],
             "parties": [],
+            "party_relationships": [],
             "audit_entries": [],
             "notes": [],
         }
@@ -189,6 +195,21 @@ def fulfill_access_request(
             ).fetchall()
             for pr in party_rows:
                 export["parties"].append(row_to_dict(pr))
+
+            # Party relationships are structural metadata (no PII); export unchanged
+            # even after anonymization — redacted party rows still have valid IDs.
+            rel_rows = conn.execute(
+                text(
+                    "SELECT cpr.id, cpr.from_party_id, cpr.to_party_id, "
+                    "cpr.relationship_type, cpr.created_at "
+                    "FROM claim_party_relationships cpr "
+                    "INNER JOIN claim_parties cp ON cp.id = cpr.from_party_id "
+                    "WHERE cp.claim_id = :claim_id"
+                ),
+                {"claim_id": claim_id},
+            ).fetchall()
+            for rr in rel_rows:
+                export["party_relationships"].append(row_to_dict(rr))
 
             audit_rows = conn.execute(
                 text(
