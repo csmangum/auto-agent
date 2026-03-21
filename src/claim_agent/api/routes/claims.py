@@ -253,12 +253,13 @@ def _resolve_attachment_urls(
     """Convert storage keys to fetchable URLs: presigned for S3, download endpoint for local.
 
     When ``audit_presigned`` is true and storage is S3, appends ``document_accessed`` audit rows
-    for each issued presigned URL (chain of custody). SSE and other high-churn callers should
-    leave ``audit_presigned`` false to avoid log flooding.
+    for each issued presigned URL (chain of custody). List/review-queue and SSE callers should
+    leave ``audit_presigned`` false to avoid log flooding and per-row DB writes.
     """
     if "attachments" not in claim_dict or not claim_dict["attachments"]:
         return claim_dict
 
+    do_audit = False
     try:
         raw = claim_dict["attachments"]
         attachments = (
@@ -292,6 +293,7 @@ def _resolve_attachment_urls(
                 storage_key = url
                 attachment["url"] = storage.get_url(claim_id, url)
                 if do_audit:
+                    assert repo is not None and actor_id is not None
                     repo.insert_document_accessed_audit(
                         claim_id,
                         storage_key=storage_key,
@@ -303,7 +305,7 @@ def _resolve_attachment_urls(
             json.dumps(attachments) if isinstance(raw, str) else attachments
         )
     except Exception as e:
-        if audit_presigned:
+        if do_audit:
             raise
         logger.warning(
             "Failed to resolve attachment URLs for claim %s: %s",
@@ -395,15 +397,9 @@ def list_claims(
             params,
         ).fetchall()
 
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     return {
         "claims": [
-            _resolve_attachment_urls(
-                row_to_dict(r),
-                repo=ctx.repo,
-                actor_id=actor_id,
-                audit_presigned=True,
-            )
+            _resolve_attachment_urls(row_to_dict(r))
             for r in rows
         ],
         "total": total,
@@ -435,15 +431,9 @@ def get_review_queue(
         limit=limit,
         offset=offset,
     )
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     return {
         "claims": [
-            _resolve_attachment_urls(
-                c,
-                repo=ctx.repo,
-                actor_id=actor_id,
-                audit_presigned=True,
-            )
+            _resolve_attachment_urls(c)
             for c in claims
         ],
         "total": total,

@@ -148,6 +148,60 @@ class TestClaimsList:
         resp = client.get("/api/claims/review-queue?limit=0")
         assert resp.status_code == 422
 
+    def test_list_claims_s3_no_document_accessed_audit(self, client, monkeypatch):
+        """List responses resolve S3 URLs but do not append document_accessed audit rows."""
+        from claim_agent.storage.s3 import S3StorageAdapter
+
+        class PresignStub(S3StorageAdapter):
+            def __init__(self) -> None:
+                super().__init__(bucket="stub-bucket", prefix="attachments")
+
+            def get_url(self, claim_id: str, stored_path_or_key: str) -> str:
+                return f"https://presigned.example/{stored_path_or_key}"
+
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", PresignStub())
+
+        attachments = [
+            {
+                "url": "attachments/CLM_TEST001/abc123_evidence.pdf",
+                "type": "other",
+                "description": "",
+            }
+        ]
+        with get_connection() as conn:
+            conn.execute(
+                text("UPDATE claims SET attachments = :att WHERE id = :id"),
+                {"att": json.dumps(attachments), "id": "CLM-TEST001"},
+            )
+            n_before = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_accessed'"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()[0]
+
+        resp = client.get("/api/claims")
+        assert resp.status_code == 200
+
+        with get_connection() as conn:
+            n_after = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_accessed'"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()[0]
+        assert n_after == n_before
+
+        claims = resp.json()["claims"]
+        c001 = next(c for c in claims if c["id"] == "CLM-TEST001")
+        raw_att = c001["attachments"]
+        atts = json.loads(raw_att) if isinstance(raw_att, str) else raw_att
+        assert atts[0]["url"].startswith("https://presigned.example/")
+
 
 class TestIncidentsAndClaimLinks:
     """Test incident creation, claim links, related claims, and BI allocation."""
@@ -323,6 +377,31 @@ class TestClaimDetail:
     def test_not_found(self, client):
         resp = client.get("/api/claims/CLM-NOTEXIST")
         assert resp.status_code == 404
+
+    def test_get_claim_malformed_attachments_json_s3_returns_200(self, client, monkeypatch):
+        """Invalid attachments JSON must not 500 when detail uses S3 presign + audit path."""
+        from claim_agent.storage.s3 import S3StorageAdapter
+
+        class PresignStub(S3StorageAdapter):
+            def __init__(self) -> None:
+                super().__init__(bucket="stub-bucket", prefix="attachments")
+
+            def get_url(self, claim_id: str, stored_path_or_key: str) -> str:
+                return f"https://presigned.example/{stored_path_or_key}"
+
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", PresignStub())
+
+        with get_connection() as conn:
+            conn.execute(
+                text("UPDATE claims SET attachments = :att WHERE id = :id"),
+                {"att": "not-valid-json{", "id": "CLM-TEST001"},
+            )
+
+        resp = client.get("/api/claims/CLM-TEST001")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "CLM-TEST001"
 
 
 class TestClaimHistory:
