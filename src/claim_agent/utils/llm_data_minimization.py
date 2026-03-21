@@ -193,7 +193,7 @@ def minimize_claim_data_for_crew(
     - Filters to allowlisted fields only
     - When mask_pii is True (default from config): masks policy_number and vin
     - Strips attachment descriptions (urls only)
-    - For bodily_injury: strips party name/email/phone/address
+    - For bodily_injury crew only: strips party name/email/phone/address
 
     Args:
         claim_data: Full claim dict
@@ -222,7 +222,7 @@ def minimize_claim_data_for_crew(
             continue
         if key == "attachments" and isinstance(value, list):
             result[key] = _minimize_attachments(value)
-        elif key == "parties" and crew_name in ("bodily_injury", "party_intake"):
+        elif key == "parties" and crew_name == "bodily_injury":
             result[key] = _strip_party_pii(value) if isinstance(value, list) else value
         elif key == "policy_number" and mask_pii:
             result[key] = mask_policy_number(value) if value else value
