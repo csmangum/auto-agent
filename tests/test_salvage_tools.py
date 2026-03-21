@@ -367,6 +367,133 @@ class TestRecordDmvSalvageReport:
             except OSError:
                 pass
 
+    def _make_temp_db_with_claim(self, monkeypatch, claim_row: tuple):
+        import sqlite3
+
+        from claim_agent.config import reload_settings
+        from claim_agent.db.database import init_db
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            path = f.name
+        monkeypatch.setenv("CLAIMS_DB_PATH", path)
+        reload_settings()
+        init_db(path)
+        with sqlite3.connect(path) as conn:
+            conn.execute(
+                "INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model, status)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                claim_row,
+            )
+        return path
+
+    def test_record_dmv_nmvtis_skipped_invalid_vin(self, monkeypatch):
+        """NMVTIS is skipped (not fabricated) when VIN is present but not a valid 17-char VIN."""
+        import os
+
+        from claim_agent.db.repository import ClaimRepository
+
+        path = self._make_temp_db_with_claim(
+            monkeypatch,
+            ("CLM-BADVIN", "POL-001", "TOOSHORT", 2021, "Honda", "Accord", "processing"),
+        )
+        try:
+            result = record_dmv_salvage_report_impl(
+                claim_id="CLM-BADVIN",
+                dmv_reference="DMV-BADVIN",
+                ctx=None,
+            )
+            data = json.loads(result)
+            assert data["nmvtis_status"] == "skipped"
+            assert data["nmvtis_skip_reason"] == "invalid_vin"
+            meta = ClaimRepository().get_claim_total_loss_metadata("CLM-BADVIN")
+            assert meta["nmvtis_skip_reason"] == "invalid_vin"
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def test_record_dmv_nmvtis_skipped_missing_year(self, monkeypatch):
+        """NMVTIS is skipped when vehicle_year is absent/zero instead of using a fabricated year."""
+        import os
+
+        from claim_agent.db.repository import ClaimRepository
+
+        path = self._make_temp_db_with_claim(
+            monkeypatch,
+            ("CLM-NOYEAR", "POL-001", "1HGBH41JXMN109186", 0, "Honda", "Accord", "processing"),
+        )
+        try:
+            result = record_dmv_salvage_report_impl(
+                claim_id="CLM-NOYEAR",
+                dmv_reference="DMV-NOYEAR",
+                ctx=None,
+            )
+            data = json.loads(result)
+            assert data["nmvtis_status"] == "skipped"
+            assert data["nmvtis_skip_reason"] == "missing_vehicle_year"
+            meta = ClaimRepository().get_claim_total_loss_metadata("CLM-NOYEAR")
+            assert meta["nmvtis_skip_reason"] == "missing_vehicle_year"
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def test_record_dmv_nmvtis_skipped_missing_make(self, monkeypatch):
+        """NMVTIS is skipped when vehicle_make is absent instead of using 'Unknown'."""
+        import os
+
+        from claim_agent.db.repository import ClaimRepository
+
+        path = self._make_temp_db_with_claim(
+            monkeypatch,
+            ("CLM-NOMAKE", "POL-001", "1HGBH41JXMN109186", 2021, "", "Accord", "processing"),
+        )
+        try:
+            result = record_dmv_salvage_report_impl(
+                claim_id="CLM-NOMAKE",
+                dmv_reference="DMV-NOMAKE",
+                ctx=None,
+            )
+            data = json.loads(result)
+            assert data["nmvtis_status"] == "skipped"
+            assert data["nmvtis_skip_reason"] == "missing_vehicle_make"
+            meta = ClaimRepository().get_claim_total_loss_metadata("CLM-NOMAKE")
+            assert meta["nmvtis_skip_reason"] == "missing_vehicle_make"
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def test_record_dmv_nmvtis_skipped_missing_model(self, monkeypatch):
+        """NMVTIS is skipped when vehicle_model is absent instead of using 'Unknown'."""
+        import os
+
+        from claim_agent.db.repository import ClaimRepository
+
+        path = self._make_temp_db_with_claim(
+            monkeypatch,
+            ("CLM-NOMODEL", "POL-001", "1HGBH41JXMN109186", 2021, "Honda", "", "processing"),
+        )
+        try:
+            result = record_dmv_salvage_report_impl(
+                claim_id="CLM-NOMODEL",
+                dmv_reference="DMV-NOMODEL",
+                ctx=None,
+            )
+            data = json.loads(result)
+            assert data["nmvtis_status"] == "skipped"
+            assert data["nmvtis_skip_reason"] == "missing_vehicle_model"
+            meta = ClaimRepository().get_claim_total_loss_metadata("CLM-NOMODEL")
+            assert meta["nmvtis_skip_reason"] == "missing_vehicle_model"
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
     def test_record_dmv_report_nonexistent_claim_returns_error(self, temp_claim_db):
         """When claim does not exist, return JSON with error and claim_id."""
         result = record_dmv_salvage_report_impl(

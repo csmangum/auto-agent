@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -107,19 +108,38 @@ def get_salvage_value_impl(
     return json.dumps(result)
 
 
-def _claim_vehicle_fields(claim: dict[str, Any]) -> tuple[str, int, str, str] | None:
+# NHTSA standard VINs are 17 uppercase alphanumeric characters.
+# Letters I, O, and Q are excluded to avoid confusion with 1, 0, and 9.
+_VIN_RE = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$", re.IGNORECASE)
+
+
+def _claim_vehicle_fields(
+    claim: dict[str, Any],
+) -> tuple[tuple[str, int, str, str] | None, str | None]:
+    """Extract and validate vehicle fields required for NMVTIS submission.
+
+    Returns ``(vehicle_tuple, None)`` on success or ``(None, skip_reason)``
+    when a required field is absent or invalid so the caller can persist a
+    proper *skipped* status instead of fabricating values.
+    """
     vin = (claim.get("vin") or "").strip()
     if not vin:
-        return None
+        return None, "missing_vin"
+    if not _VIN_RE.match(vin):
+        return None, "invalid_vin"
     try:
         year = int(claim.get("vehicle_year") or 0)
     except (TypeError, ValueError):
         year = 0
     if year <= 0:
-        year = 2020
-    make = str(claim.get("vehicle_make") or "").strip() or "Unknown"
-    model = str(claim.get("vehicle_model") or "").strip() or "Unknown"
-    return vin, year, make, model
+        return None, "missing_vehicle_year"
+    make = str(claim.get("vehicle_make") or "").strip()
+    if not make:
+        return None, "missing_vehicle_make"
+    model = str(claim.get("vehicle_model") or "").strip()
+    if not model:
+        return None, "missing_vehicle_model"
+    return (vin, year, make, model), None
 
 
 def _persist_nmvtis_fields(
@@ -146,18 +166,18 @@ def _attempt_nmvtis_submission(
     if not claim:
         return {"nmvtis_error": "claim_not_found"}
 
-    vehicle = _claim_vehicle_fields(claim)
+    vehicle, skip_reason = _claim_vehicle_fields(claim)
     if not vehicle:
         patch = {
             "nmvtis_status": "skipped",
-            "nmvtis_skip_reason": "missing_vin",
+            "nmvtis_skip_reason": skip_reason,
             "nmvtis_last_trigger": trigger_event,
         }
         meta = repo.get_claim_total_loss_metadata(claim_id) or {}
         _persist_nmvtis_fields(repo, claim_id, meta, patch)
         return {
             "nmvtis_status": "skipped",
-            "nmvtis_skip_reason": "missing_vin",
+            "nmvtis_skip_reason": skip_reason,
         }
 
     vin, year, make, model = vehicle
