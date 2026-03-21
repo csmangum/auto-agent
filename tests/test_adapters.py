@@ -5,6 +5,7 @@ import pytest
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
     PolicyAdapter,
@@ -14,6 +15,7 @@ from claim_agent.adapters.base import (
 )
 from claim_agent.adapters.mock import (
     MockClaimSearchAdapter,
+    MockNMVTISAdapter,
     MockPartsAdapter,
     MockPolicyAdapter,
     MockRepairShopAdapter,
@@ -23,6 +25,7 @@ from claim_agent.adapters.mock import (
 from claim_agent.adapters.mock.ocr import MockOCRAdapter
 from claim_agent.adapters.registry import (
     get_claim_search_adapter,
+    get_nmvtis_adapter,
     get_ocr_adapter,
     get_parts_adapter,
     get_policy_adapter,
@@ -33,6 +36,7 @@ from claim_agent.adapters.registry import (
 )
 from claim_agent.adapters.stub import (
     StubClaimSearchAdapter,
+    StubNMVTISAdapter,
     StubOCRAdapter,
     StubPartsAdapter,
     StubPolicyAdapter,
@@ -75,6 +79,10 @@ class TestABCEnforcement:
     def test_ocr_adapter_is_abstract(self):
         with pytest.raises(TypeError):
             OCRAdapter()  # type: ignore[abstract]
+
+    def test_nmvtis_adapter_is_abstract(self):
+        with pytest.raises(TypeError):
+            NMVTISAdapter()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +154,60 @@ class TestMockRepairShopAdapter:
 
     def test_implements_interface(self):
         assert isinstance(MockRepairShopAdapter(), RepairShopAdapter)
+
+
+class TestMockNMVTISAdapter:
+    def test_submit_returns_reference(self):
+        adapter = MockNMVTISAdapter()
+        out = adapter.submit_total_loss_report(
+            claim_id="CLM-1",
+            vin="1HGBH41JXMN109186",
+            vehicle_year=2020,
+            make="Honda",
+            model="Accord",
+            loss_type="total_loss",
+            trigger_event="dmv_salvage_report",
+            dmv_reference="DMV-REF",
+        )
+        assert out["nmvtis_reference"].startswith("NMVTIS-MOCK-")
+        assert out["status"] == "accepted"
+
+    def test_fail_twice_then_succeed(self):
+        adapter = MockNMVTISAdapter()
+        cid = "CLM-NMVTIS-FAILTWICE-X"
+        with pytest.raises(RuntimeError, match="transient"):
+            adapter.submit_total_loss_report(
+                claim_id=cid,
+                vin="1HGBH41JXMN109186",
+                vehicle_year=2020,
+                make="Honda",
+                model="Accord",
+                loss_type="total_loss",
+                trigger_event="dmv_salvage_report",
+            )
+        with pytest.raises(RuntimeError, match="transient"):
+            adapter.submit_total_loss_report(
+                claim_id=cid,
+                vin="1HGBH41JXMN109186",
+                vehicle_year=2020,
+                make="Honda",
+                model="Accord",
+                loss_type="total_loss",
+                trigger_event="dmv_salvage_report",
+            )
+        out = adapter.submit_total_loss_report(
+            claim_id=cid,
+            vin="1HGBH41JXMN109186",
+            vehicle_year=2020,
+            make="Honda",
+            model="Accord",
+            loss_type="total_loss",
+            trigger_event="dmv_salvage_report",
+        )
+        assert out["status"] == "accepted"
+
+    def test_implements_interface(self):
+        assert isinstance(MockNMVTISAdapter(), NMVTISAdapter)
 
 
 class TestMockPartsAdapter:
@@ -298,6 +360,18 @@ class TestStubAdapters:
         with pytest.raises(NotImplementedError, match="StubClaimSearchAdapter"):
             StubClaimSearchAdapter().search_claims(vin="VIN123")
 
+    def test_stub_nmvtis_raises(self):
+        with pytest.raises(NotImplementedError, match="StubNMVTISAdapter"):
+            StubNMVTISAdapter().submit_total_loss_report(
+                claim_id="C",
+                vin="VIN12345678901234",
+                vehicle_year=2020,
+                make="X",
+                model="Y",
+                loss_type="total_loss",
+                trigger_event="manual_resubmit",
+            )
+
 
 # ---------------------------------------------------------------------------
 # Registry tests
@@ -312,6 +386,7 @@ class TestRegistry:
         assert isinstance(get_parts_adapter(), MockPartsAdapter)
         assert isinstance(get_siu_adapter(), MockSIUAdapter)
         assert isinstance(get_claim_search_adapter(), MockClaimSearchAdapter)
+        assert isinstance(get_nmvtis_adapter(), MockNMVTISAdapter)
         assert isinstance(get_ocr_adapter(), MockOCRAdapter)
 
     def test_stub_backend_via_env(self, monkeypatch):
@@ -322,6 +397,7 @@ class TestRegistry:
         monkeypatch.setenv("PARTS_ADAPTER", "stub")
         monkeypatch.setenv("SIU_ADAPTER", "stub")
         monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "stub")
+        monkeypatch.setenv("NMVTIS_ADAPTER", "stub")
         monkeypatch.setenv("OCR_ADAPTER", "stub")
         reload_settings()
         assert isinstance(get_policy_adapter(), StubPolicyAdapter)
@@ -330,6 +406,7 @@ class TestRegistry:
         assert isinstance(get_parts_adapter(), StubPartsAdapter)
         assert isinstance(get_siu_adapter(), StubSIUAdapter)
         assert isinstance(get_claim_search_adapter(), StubClaimSearchAdapter)
+        assert isinstance(get_nmvtis_adapter(), StubNMVTISAdapter)
         assert isinstance(get_ocr_adapter(), StubOCRAdapter)
 
     def test_singleton_returns_same_instance(self):

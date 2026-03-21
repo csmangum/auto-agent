@@ -4,7 +4,8 @@ Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
 Supported values: ``mock``, ``stub``, ``rest`` (policy only). Valuation also supports
-``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings. Unknown values raise ValueError.
+``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings.
+``nmvtis`` supports ``mock`` and ``stub`` only. Unknown values raise ValueError.
 """
 
 import threading
@@ -12,6 +13,7 @@ from typing import Any, Callable, TypeVar, cast
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
     PolicyAdapter,
@@ -161,6 +163,16 @@ def get_ocr_adapter() -> OCRAdapter:
     from claim_agent.adapters.stub import StubOCRAdapter
     from claim_agent.adapters.mock.ocr import MockOCRAdapter
     return _get_or_create_adapter("ocr", StubOCRAdapter, MockOCRAdapter)
+
+
+def get_nmvtis_adapter() -> NMVTISAdapter:
+    from claim_agent.adapters.mock.nmvtis import MockNMVTISAdapter
+    from claim_agent.adapters.stub import StubNMVTISAdapter
+    return _get_or_create_adapter(
+        "nmvtis",
+        StubNMVTISAdapter,
+        MockNMVTISAdapter,
+    )
 
 
 def reset_adapters() -> None:

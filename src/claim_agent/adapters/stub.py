@@ -10,6 +10,7 @@ from typing import Any
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
     PolicyAdapter,
@@ -128,3 +129,25 @@ class StubOCRAdapter(OCRAdapter):
 
     def extract_structured_data(self, file_path: Path, document_type: str) -> dict[str, Any] | None:
         return None
+
+
+class StubNMVTISAdapter(NMVTISAdapter):
+    """Placeholder for the production NMVTIS data provider / batch submission integration."""
+
+    def submit_total_loss_report(
+        self,
+        *,
+        claim_id: str,
+        vin: str,
+        vehicle_year: int,
+        make: str,
+        model: str,
+        loss_type: str,
+        trigger_event: str,
+        dmv_reference: str | None = None,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubNMVTISAdapter: connect to the DOJ/AAMVA-designated NMVTIS reporting channel "
+            "(batch upload, web service, or vendor API). "
+            "Return nmvtis_reference and status from the provider acknowledgment."
+        )

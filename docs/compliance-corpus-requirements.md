@@ -136,6 +136,8 @@ These apply across every jurisdiction and are currently absent from the corpus e
 | **NMVTIS** (49 USC §30502; 28 CFR Part 25) | National Motor Vehicle Title Information System — reporting totaled/salvage vehicles | Salvage, Title Specialist |
 | **State DMV Salvage/Branding Rules** (varies by state) | Title branding (salvage, rebuilt, flood), transfer timelines, VIN verification | Salvage, Title Specialist |
 
+**Codebase:** NMVTIS is automated via `NMVTISAdapter` (mock/stub), triggered from `record_dmv_salvage_report` and final salvage dispositions; acknowledgments are stored in `total_loss_metadata`. A real deployment must connect `NMVTIS_ADAPTER` to the designated data provider. See [Adapters](adapters.md#nmvtisadapter).
+
 ### 3.6 Electronic Transactions
 
 | Regulation | Relevance | Crews Affected |

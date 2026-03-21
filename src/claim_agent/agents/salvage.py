@@ -12,6 +12,7 @@ from claim_agent.tools import (
     record_dmv_salvage_report,
     record_salvage_disposition,
     search_policy_compliance,
+    submit_nmvtis_report,
 )
 from claim_agent.skills import (
     AUCTION_LIAISON,
@@ -64,7 +65,13 @@ def create_title_specialist_agent(
     else:
         skill = load_skill(TITLE_SPECIALIST)
 
-    tools = [initiate_title_transfer, record_dmv_salvage_report, generate_report, escalate_claim]
+    tools = [
+        initiate_title_transfer,
+        record_dmv_salvage_report,
+        submit_nmvtis_report,
+        generate_report,
+        escalate_claim,
+    ]
     if use_rag:
         tools.extend([get_total_loss_requirements, search_policy_compliance])
 
@@ -92,7 +99,7 @@ def create_auction_liaison_agent(
     else:
         skill = load_skill(AUCTION_LIAISON)
 
-    tools = [record_salvage_disposition, generate_report, escalate_claim]
+    tools = [record_salvage_disposition, submit_nmvtis_report, generate_report, escalate_claim]
     if use_rag:
         tools.extend([get_total_loss_requirements, search_policy_compliance])
 
