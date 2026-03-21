@@ -130,17 +130,6 @@ def get_valuation_adapter() -> ValuationAdapter:
             _cache[key] = StubValuationAdapter()
         elif backend == "mock":
             _cache[key] = MockValuationAdapter()
-        elif backend == "rest":
-            raise ValueError(
-                "VALUATION_ADAPTER=rest is not supported. "
-                "Use ccc, mitchell, or audatex with VALUATION_REST_BASE_URL "
-                "(and optional VALUATION_REST_PATH_TEMPLATE / VALUATION_REST_RESPONSE_KEY)."
-            )
-        else:
-            raise ValueError(
-                f"Unsupported VALUATION_ADAPTER backend: {backend!r}. "
-                f"Use mock, stub, or one of: {sorted(VALUATION_PROVIDER_BACKENDS)}."
-            )
         return cast(ValuationAdapter, _cache[key])
 
 
