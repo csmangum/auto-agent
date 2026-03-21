@@ -122,6 +122,45 @@ class PaymentRepository:
     def __init__(self, db_path: str | None = None):
         self._db_path = db_path
 
+    def _reconcile_idempotent_party_id(
+        self,
+        conn: Any,
+        payment_id: int,
+        existing_party_id: int | None,
+        new_party_id: int | None,
+        claim_id: str,
+    ) -> int:
+        """Reconcile claim_party_id on an existing idempotent payment.
+
+        If *new_party_id* is provided and *existing_party_id* is NULL, validates that the
+        party belongs to *claim_id* and backfills the column. If *existing_party_id* already
+        has a different non-NULL value, raises DomainValidationError to surface the conflict.
+        Returns *payment_id* in all success cases.
+        """
+        if new_party_id is None or new_party_id == existing_party_id:
+            # When IDs match, we trust the FK constraint already enforces referential integrity;
+            # re-validating ownership on every idempotent retry would add unnecessary overhead.
+            return payment_id
+        if existing_party_id is not None:
+            raise DomainValidationError(
+                f"claim_party_id mismatch on idempotent payment {payment_id}: "
+                f"existing={existing_party_id}, provided={new_party_id}"
+            )
+        # existing_party_id is None – validate and backfill
+        prow = conn.execute(
+            text("SELECT id FROM claim_parties WHERE id = :pid AND claim_id = :claim_id"),
+            {"pid": new_party_id, "claim_id": claim_id},
+        ).fetchone()
+        if prow is None:
+            raise DomainValidationError(
+                f"claim_party_id {new_party_id} does not belong to claim {claim_id}"
+            )
+        conn.execute(
+            text("UPDATE claim_payments SET claim_party_id = :pid WHERE id = :payment_id"),
+            {"pid": new_party_id, "payment_id": payment_id},
+        )
+        return payment_id
+
     def create_payment(
         self,
         data: ClaimPaymentCreate,
@@ -155,13 +194,15 @@ class PaymentRepository:
             if ext_ref is not None:
                 existing = conn.execute(
                     text(
-                        "SELECT id FROM claim_payments WHERE claim_id = :claim_id "
+                        "SELECT id, claim_party_id FROM claim_payments WHERE claim_id = :claim_id "
                         "AND external_ref = :external_ref"
                     ),
                     {"claim_id": data.claim_id, "external_ref": ext_ref},
                 ).fetchone()
                 if existing is not None:
-                    return int(existing[0])
+                    return self._reconcile_idempotent_party_id(
+                        conn, int(existing[0]), existing[1], data.claim_party_id, data.claim_id
+                    )
             party_id: int | None = data.claim_party_id
             if party_id is not None:
                 prow = conn.execute(
@@ -208,13 +249,15 @@ class PaymentRepository:
                     raise
                 existing = conn.execute(
                     text(
-                        "SELECT id FROM claim_payments WHERE claim_id = :claim_id "
+                        "SELECT id, claim_party_id FROM claim_payments WHERE claim_id = :claim_id "
                         "AND external_ref = :external_ref"
                     ),
                     {"claim_id": data.claim_id, "external_ref": ext_ref},
                 ).fetchone()
                 if existing is not None:
-                    return int(existing[0])
+                    return self._reconcile_idempotent_party_id(
+                        conn, int(existing[0]), existing[1], data.claim_party_id, data.claim_id
+                    )
                 raise
             rid = result.fetchone()
             payment_id = int(rid[0]) if rid else 0
