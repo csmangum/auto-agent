@@ -13,6 +13,7 @@ from mcp.server.fastmcp import FastMCP
 
 from claim_agent.context import ClaimContext
 from claim_agent.exceptions import AdapterError, DomainValidationError
+from claim_agent.models.policy_lookup import PolicyLookupFailure
 from claim_agent.observability.metrics import get_metrics
 from claim_agent.tools.claims_logic import compute_similarity_impl, search_claims_db_impl
 from claim_agent.tools.compliance_logic import search_california_compliance_impl
@@ -58,11 +59,13 @@ def query_policy_db(policy_number: str, damage_description: str = "") -> str:
     try:
         return query_policy_db_impl(
             policy_number, damage_description=damage_description, ctx=_get_ctx()
-        )
+        ).model_dump_json()
     except DomainValidationError as e:
-        return json.dumps({"valid": False, "message": str(e)})
+        return PolicyLookupFailure(valid=False, message=str(e)).model_dump_json()
     except AdapterError as e:
-        return json.dumps({"valid": False, "message": str(e), "error": "adapter_error"})
+        return PolicyLookupFailure(
+            valid=False, message=str(e), error="adapter_error"
+        ).model_dump_json()
 
 
 @mcp.tool()

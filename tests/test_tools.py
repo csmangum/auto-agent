@@ -14,15 +14,16 @@ os.environ.setdefault(
 
 
 def test_query_policy_db_found():
+    from claim_agent.models.policy_lookup import PolicyLookupSuccess
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-001")
-    data = json.loads(result)
-    assert data["valid"] is True
-    assert "coverage" in data
-    assert data["deductible"] == 500
-    assert data["effective_date"] == "2020-01-01"
-    assert data["expiration_date"] == "2030-12-31"
+    assert isinstance(result, PolicyLookupSuccess)
+    assert result.valid is True
+    assert result.coverage
+    assert result.deductible == 500
+    assert result.effective_date == "2020-01-01"
+    assert result.expiration_date == "2030-12-31"
 
 
 def test_coerce_policy_date_str_normalizes_iso_datetime_strings():
@@ -35,37 +36,39 @@ def test_coerce_policy_date_str_normalizes_iso_datetime_strings():
 
 def test_query_policy_db_term_alias_normalized():
     """term_start/term_end from adapter are exposed as effective_date/expiration_date."""
+    from claim_agent.models.policy_lookup import PolicyLookupSuccess
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-TERM-ALIAS")
-    data = json.loads(result)
-    assert data["valid"] is True
-    assert data["effective_date"] == "2023-06-01"
-    assert data["expiration_date"] == "2026-06-01"
-    assert "term_start" not in data
+    assert isinstance(result, PolicyLookupSuccess)
+    assert result.effective_date == "2023-06-01"
+    assert result.expiration_date == "2026-06-01"
+    dumped = result.model_dump()
+    assert "term_start" not in dumped
 
 
 def test_query_policy_db_masks_full_name_and_display_name():
     """Named insured / drivers from mock_db may use full_name or display_name; output uses name only."""
+    from claim_agent.models.policy_lookup import PolicyLookupSuccess
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-FULLNAME-TEST")
-    data = json.loads(result)
-    assert data["valid"] is True
-    assert data["named_insured"] == [{"name": "Alex Alternate"}]
-    assert data["drivers"] == [{"name": "Alex Alternate", "relationship": "primary"}]
-    dumped = json.dumps(data)
+    assert isinstance(result, PolicyLookupSuccess)
+    assert result.named_insured == [{"name": "Alex Alternate"}]
+    assert result.drivers == [{"name": "Alex Alternate", "relationship": "primary"}]
+    dumped = result.model_dump_json()
     assert "email" not in dumped
     assert "full_name" not in dumped
     assert "display_name" not in dumped
 
 
 def test_query_policy_db_not_found():
+    from claim_agent.models.policy_lookup import PolicyLookupFailure
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-999")
-    data = json.loads(result)
-    assert data["valid"] is False
+    assert isinstance(result, PolicyLookupFailure)
+    assert result.valid is False
 
 
 def test_search_claims_db():
@@ -289,12 +292,12 @@ def test_query_policy_db_invalid_input():
 
 def test_query_policy_db_inactive_returns_invalid():
     """Inactive policy (e.g. POL-021) must return valid False."""
+    from claim_agent.models.policy_lookup import PolicyLookupFailure
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
     result = query_policy_db_impl("POL-021")
-    data = json.loads(result)
-    assert data["valid"] is False
-    assert data.get("status") == "inactive"
+    assert isinstance(result, PolicyLookupFailure)
+    assert result.status == "inactive"
 
 
 def test_mock_db_claim_vins_have_vehicle_values():

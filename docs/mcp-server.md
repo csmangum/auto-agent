@@ -249,9 +249,11 @@ from claim_agent.tools.valuation_logic import (
 mcp = FastMCP("claim-tools", json_response=True)
 
 @mcp.tool()
-def query_policy_db(policy_number: str) -> str:
+def query_policy_db(policy_number: str, damage_description: str = "") -> str:
     """Query the policy database to validate policy and retrieve coverage details."""
-    return query_policy_db_impl(policy_number)
+    return query_policy_db_impl(
+        policy_number, damage_description=damage_description, ctx=_get_ctx()
+    ).model_dump_json()
 
 # ... other tool definitions
 
@@ -262,6 +264,8 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 ```
+
+`_get_ctx()` is defined in the real module for shared `ClaimContext`. `query_policy_db_impl` returns a typed `PolicyLookupResult` (Pydantic); the MCP tool wraps it with `model_dump_json()` for clients.
 
 ## Using with CrewAI
 

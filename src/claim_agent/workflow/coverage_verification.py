@@ -8,31 +8,19 @@ named insureds/drivers, verifies the claimant name against those lists
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING, cast
 
 from claim_agent.config.settings import get_coverage_config
 from claim_agent.exceptions import AdapterError, DomainValidationError
+from claim_agent.models.policy_lookup import PolicyLookupFailure, PolicyLookupSuccess
 from claim_agent.models.stage_outputs import CoverageVerificationResult
 from claim_agent.tools.policy_logic import query_policy_db_impl
 from claim_agent.utils.policy_party_name import get_policy_party_display_name
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
-
-# Policy result keys from query_policy_db_impl
-_POLICY_VALID = "valid"
-_POLICY_STATUS = "status"
-_POLICY_MESSAGE = "message"
-_POLICY_PHYSICAL_DAMAGE_COVERED = "physical_damage_covered"
-_POLICY_PHYSICAL_DAMAGE_COVERAGES = "physical_damage_coverages"
-_POLICY_DEDUCTIBLE = "deductible"
-_POLICY_NAMED_INSURED = "named_insured"
-_POLICY_DRIVERS = "drivers"
-_POLICY_EFFECTIVE_DATE = "effective_date"
-_POLICY_EXPIRATION_DATE = "expiration_date"
 
 logger = logging.getLogger(__name__)
 
@@ -429,7 +417,7 @@ def _extract_person_names(value: object) -> list[str]:
 
 def _verify_named_insured_or_driver(
     claim_data: dict,
-    policy_result: dict,
+    policy: PolicyLookupSuccess,
 ) -> tuple[bool, str | None]:
     """Verify claimant is named insured or authorized driver.
 
@@ -438,8 +426,8 @@ def _verify_named_insured_or_driver(
         - If verification data is incomplete, returns (True, None) to allow claim to proceed
         - Only returns (False, reason) when we have both policy and claimant data but they don't match
     """
-    named_insured_list = policy_result.get(_POLICY_NAMED_INSURED)
-    drivers_list = policy_result.get(_POLICY_DRIVERS)
+    named_insured_list = policy.named_insured
+    drivers_list = policy.drivers
 
     # If policy doesn't expose these fields, allow claim to proceed (legacy policies)
     if named_insured_list is None and drivers_list is None:
@@ -541,14 +529,14 @@ def _incident_date_from_claim(claim_data: dict) -> tuple[date | None, bool]:
 
 def _policy_term_verification_result(
     claim_data: dict,
-    policy_result: dict,
+    policy: PolicyLookupSuccess,
 ) -> CoverageVerificationResult | None:
     """If policy defines a term, verify incident_date is within [effective, expiration].
 
     Returns None to continue when term data is absent or incident date is not provided.
     """
-    eff_raw = policy_result.get(_POLICY_EFFECTIVE_DATE)
-    exp_raw = policy_result.get(_POLICY_EXPIRATION_DATE)
+    eff_raw = policy.effective_date
+    exp_raw = policy.expiration_date
     eff_missing = eff_raw is None or (isinstance(eff_raw, str) and not eff_raw.strip())
     exp_missing = exp_raw is None or (isinstance(exp_raw, str) and not exp_raw.strip())
 
@@ -693,7 +681,7 @@ def verify_coverage_impl(
         )
 
     try:
-        policy_json = query_policy_db_impl(
+        policy = query_policy_db_impl(
             policy_number,
             damage_description=damage_description,
             ctx=ctx,
@@ -719,19 +707,9 @@ def verify_coverage_impl(
             details={"error": "unexpected", "message": str(e)},
         )
 
-    try:
-        policy_result = json.loads(policy_json)
-    except (json.JSONDecodeError, TypeError):
-        return CoverageVerificationResult(
-            under_investigation=True,
-            reason="Invalid policy response; requires manual review",
-            details={"error": "parse_error"},
-        )
-
-    valid = policy_result.get(_POLICY_VALID, False)
-    if not valid:
-        status = policy_result.get(_POLICY_STATUS, "unknown")
-        message = policy_result.get(_POLICY_MESSAGE, "Policy not found or inactive")
+    if isinstance(policy, PolicyLookupFailure):
+        status = policy.status if policy.status is not None else "unknown"
+        message = policy.message
         return CoverageVerificationResult(
             denied=True,
             reason=message,
@@ -741,9 +719,9 @@ def verify_coverage_impl(
             },
         )
 
-    physical_damage_covered = policy_result.get(_POLICY_PHYSICAL_DAMAGE_COVERED, False)
-    if not physical_damage_covered:
-        coverages = policy_result.get(_POLICY_PHYSICAL_DAMAGE_COVERAGES, [])
+    pol: PolicyLookupSuccess = policy
+    if not pol.physical_damage_covered:
+        coverages = pol.physical_damage_coverages
         return CoverageVerificationResult(
             denied=True,
             reason="Loss type not covered under policy (no collision/comprehensive)",
@@ -753,15 +731,15 @@ def verify_coverage_impl(
             },
         )
 
-    term_outcome = _policy_term_verification_result(claim_data, policy_result)
+    term_outcome = _policy_term_verification_result(claim_data, pol)
     if term_outcome is not None:
         return term_outcome
 
     # Verify policy territory restrictions
     incident_location = _incident_location_from_claim(claim_data)
     if incident_location:
-        policy_territory = policy_result.get("territory")
-        excluded_territories = policy_result.get("excluded_territories")
+        policy_territory = pol.territory
+        excluded_territories = pol.excluded_territories
 
         try:
             is_covered, territory_reason = _is_location_in_territory(
@@ -792,8 +770,8 @@ def verify_coverage_impl(
                 },
             )
     elif config.get("require_incident_location", False):
-        policy_territory = policy_result.get("territory")
-        excluded_raw = policy_result.get("excluded_territories")
+        policy_territory = pol.territory
+        excluded_raw = pol.excluded_territories
         has_exclusions = isinstance(excluded_raw, list) and len(excluded_raw) > 0
         if policy_territory is not None or has_exclusions:
             return CoverageVerificationResult(
@@ -807,7 +785,7 @@ def verify_coverage_impl(
             )
 
     # Named insured / driver verification
-    is_verified, verification_reason = _verify_named_insured_or_driver(claim_data, policy_result)
+    is_verified, verification_reason = _verify_named_insured_or_driver(claim_data, pol)
     if not is_verified:
         logger.info(
             "Named insured/driver verification failed: %s",
@@ -821,8 +799,8 @@ def verify_coverage_impl(
                 "verification_failed": True,
                 "verification_reason": verification_reason,
                 # Include only names (no PII: email/phone/license_number) for adjuster review.
-                "named_insured": _extract_person_names(policy_result.get(_POLICY_NAMED_INSURED)),
-                "drivers": _extract_person_names(policy_result.get(_POLICY_DRIVERS)),
+                "named_insured": _extract_person_names(pol.named_insured),
+                "drivers": _extract_person_names(pol.drivers),
             },
         )
 
@@ -831,7 +809,7 @@ def verify_coverage_impl(
     # payout may be $0). Change to ded >= est if business wants to deny when payout
     # would be zero.
     if config.get("deny_when_deductible_exceeds_damage") and estimated_damage is not None:
-        deductible = policy_result.get(_POLICY_DEDUCTIBLE)
+        deductible = pol.deductible
         if deductible is not None:
             try:
                 ded = float(deductible)
@@ -864,17 +842,17 @@ def verify_coverage_impl(
                 )
 
     details_dict = {
-        "policy_status": policy_result.get(_POLICY_STATUS, "active"),
+        "policy_status": pol.status,
         "physical_damage_covered": True,
-        "deductible": policy_result.get(_POLICY_DEDUCTIBLE),
+        "deductible": pol.deductible,
     }
 
     inc_ok, inc_bad = _incident_date_from_claim(claim_data)
     if (
         inc_ok is not None
         and not inc_bad
-        and policy_result.get(_POLICY_EFFECTIVE_DATE) is not None
-        and policy_result.get(_POLICY_EXPIRATION_DATE) is not None
+        and pol.effective_date is not None
+        and pol.expiration_date is not None
     ):
         details_dict["term_verified"] = True
         details_dict["incident_date"] = inc_ok.isoformat()
@@ -882,8 +860,8 @@ def verify_coverage_impl(
     # Include territory verification in success details when a territory or exclusion rule applied
     incident_location = _incident_location_from_claim(claim_data)
     if incident_location:
-        has_positive_territory = policy_result.get("territory") is not None
-        excluded_raw = policy_result.get("excluded_territories")
+        has_positive_territory = pol.territory is not None
+        excluded_raw = pol.excluded_territories
         has_exclusions = isinstance(excluded_raw, list) and len(excluded_raw) > 0
         if has_positive_territory or has_exclusions:
             details_dict["territory_verified"] = True

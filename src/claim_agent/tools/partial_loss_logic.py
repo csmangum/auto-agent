@@ -18,6 +18,7 @@ from claim_agent.config.settings import (
     LABOR_HOURS_RNI_PER_PART,
 )
 from claim_agent.exceptions import AdapterError, DomainValidationError
+from claim_agent.models.policy_lookup import PolicyLookupFailure
 from claim_agent.tools.policy_logic import query_policy_db_impl
 from claim_agent.tools.valuation_logic import fetch_vehicle_value_impl
 
@@ -449,12 +450,14 @@ def calculate_repair_estimate_impl(
     total_estimate = round(parts_cost + labor_cost, 2)
 
     try:
-        policy_result = query_policy_db_impl(policy_number, damage_description=damage_description, ctx=ctx)
+        policy = query_policy_db_impl(policy_number, damage_description=damage_description, ctx=ctx)
     except (DomainValidationError, AdapterError):
         deductible = DEFAULT_DEDUCTIBLE
     else:
-        policy_data = json.loads(policy_result)
-        deductible = policy_data.get("deductible", DEFAULT_DEDUCTIBLE) if policy_data.get("valid") else DEFAULT_DEDUCTIBLE
+        if isinstance(policy, PolicyLookupFailure):
+            deductible = DEFAULT_DEDUCTIBLE
+        else:
+            deductible = policy.deductible
 
     customer_pays = min(deductible, total_estimate)
     insurance_pays = max(0, total_estimate - deductible)
