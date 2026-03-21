@@ -34,10 +34,16 @@ T = TypeVar('T')
 def _resolve_backend(adapter_name: str) -> str:
     backend = get_adapter_backend(adapter_name)
     if adapter_name == "valuation":
-        allowed = VALID_ADAPTER_BACKENDS | VALUATION_PROVIDER_BACKENDS
+        allowed = (VALID_ADAPTER_BACKENDS - {"rest"}) | VALUATION_PROVIDER_BACKENDS
     else:
         allowed = VALID_ADAPTER_BACKENDS
     if backend not in allowed:
+        if adapter_name == "valuation" and backend == "rest":
+            raise ValueError(
+                f"{adapter_name.upper()}_ADAPTER=rest is not supported. "
+                f"Use ccc, mitchell, or audatex with VALUATION_REST_BASE_URL "
+                f"(and optional VALUATION_REST_PATH_TEMPLATE / VALUATION_REST_RESPONSE_KEY)."
+            )
         raise ValueError(
             f"Unknown {adapter_name.upper()}_ADAPTER backend: {backend!r}. "
             f"Expected one of: {sorted(allowed)}."

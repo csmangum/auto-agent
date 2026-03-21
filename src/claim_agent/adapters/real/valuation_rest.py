@@ -62,13 +62,23 @@ def normalize_valuation_response(
     src = raw.get("source") or raw.get("provider") or default_source
     src_s = src if isinstance(src, str) else str(src)
 
-    comps_raw = raw.get("comparables") or raw.get("comparable_vehicles") or raw.get("comps") or []
+    comps_raw = None
+    for k in ("comparables", "comparable_vehicles", "comps"):
+        if k in raw and raw[k] is not None:
+            comps_raw = raw[k]
+            break
+    if comps_raw is None:
+        comps_raw = []
     comparables: list[dict[str, Any]] = []
     if isinstance(comps_raw, list):
         for item in comps_raw:
             if not isinstance(item, dict):
                 continue
-            price = item.get("price") or item.get("amount") or item.get("value")
+            price = None
+            for pk in ("price", "amount", "value"):
+                if pk in item and item[pk] is not None:
+                    price = item[pk]
+                    break
             try:
                 pf = float(price) if price is not None else None
             except (TypeError, ValueError):
