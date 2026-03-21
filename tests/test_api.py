@@ -1681,6 +1681,8 @@ class TestSystemHealth:
 
 
 class TestAgentsCatalog:
+    """Crew list from GET /api/system/agents; count and names track ``_CREWS_CATALOG`` in ``api.routes.system`` (independent of retention/purge config)."""
+
     def test_get_catalog(self, client, monkeypatch):
         _set_admin_auth(monkeypatch)
         resp = client.get("/api/system/agents", headers=_ADMIN_HEADERS)

@@ -433,6 +433,7 @@ class TestRetentionRepository:
             assert "closed_with_litigation_hold" in report
             assert "pending_archive_count" in report
             assert "purge_after_archive_years" in report
+            assert "purge_by_state" in report
             assert "claims_by_retention_tier" in report
             assert "pending_purge_count" in report
             assert "purged_count" in report
@@ -592,6 +593,35 @@ class TestPerStatePurgeHorizon:
             row, datetime(2024, 1, 1, tzinfo=timezone.utc), 2, None
         ) is True
 
+    def test_purge_period_unnormalizable_loss_state_falls_back_to_global(self):
+        """Unsupported loss_state skips map lookup and uses global purge years."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        row = {
+            "archived_at": "2022-01-01T00:00:00+00:00",
+            "loss_state": "Nevada",
+        }
+        purge_by_state = {"Texas": 4}
+        assert _is_archived_past_purge_period(
+            row, datetime(2024, 1, 1, tzinfo=timezone.utc), 2, purge_by_state
+        ) is True
+
+    def test_purge_period_negative_per_state_raises(self):
+        """Negative per-state purge years are rejected."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        with pytest.raises(ValueError, match="per-state purge_after_archive"):
+            _is_archived_past_purge_period(
+                {"archived_at": "2022-01-01T00:00:00+00:00", "loss_state": "Texas"},
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                2,
+                {"Texas": -1},
+            )
+
     def test_list_claims_for_purge_with_state_map(self):
         """list_claims_for_purge respects per-state purge periods."""
         from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
@@ -712,6 +742,25 @@ class TestPerStatePurgeHorizon:
                 s = Settings()
                 result = s.get_purge_after_archive_by_state()
                 assert result == {}
+        finally:
+            os.unlink(tmp_path)
+
+    def test_settings_get_purge_after_archive_by_state_accepts_zero(self):
+        """JSON may set 0 for immediate purge eligibility from archive date."""
+        import tempfile as tf
+        from claim_agent.config.settings_model import Settings
+
+        data = {
+            "retention_by_state": {"California": 5},
+            "purge_after_archive_by_state": {"California": 0, "Texas": 4},
+        }
+        with tf.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            tmp_path = f.name
+        try:
+            with mock.patch.dict(os.environ, {"STATE_RETENTION_PATH": tmp_path}):
+                s = Settings()
+                assert s.get_purge_after_archive_by_state() == {"California": 0, "Texas": 4}
         finally:
             os.unlink(tmp_path)
 

@@ -246,8 +246,8 @@ def _is_archived_past_purge_period(
 ) -> bool:
     """True if ``now`` is on or after the calendar anniversary of archived_at + N years.
 
-    Uses loss_state to pick per-state purge period when purge_by_state is non-empty;
-    falls back to purge_after_archive_years when state is missing or not in map.
+    When ``purge_by_state`` is set, uses the entry for the normalized ``loss_state`` if present;
+    otherwise uses ``purge_after_archive_years``. A non-empty map does not override unknown states.
     """
     if purge_after_archive_years < 0:
         raise ValueError("purge_after_archive_years must be non-negative")
@@ -264,6 +264,8 @@ def _is_archived_past_purge_period(
         except ValueError:
             pass
     state_years = state_map.get(lookup_state) if lookup_state else None
+    if state_years is not None and state_years < 0:
+        raise ValueError("per-state purge_after_archive years must be non-negative")
     years = purge_after_archive_years if state_years is None else state_years
 
     def _to_utc_aware(dt: datetime) -> datetime:

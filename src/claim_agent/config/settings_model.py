@@ -997,6 +997,17 @@ class Settings(BaseSettings):
                     result[k.strip()] = y
         return result
 
+    @staticmethod
+    def _parse_purge_after_archive_state_int_map(raw: dict[str, Any]) -> dict[str, int]:
+        """Parse state -> purge-after-archive years; integers >= 0 kept (0 = eligible from archive date)."""
+        result: dict[str, int] = {}
+        for k, v in raw.items():
+            if isinstance(k, str) and isinstance(v, (int, float)):
+                y = int(v)
+                if y >= 0:
+                    result[k.strip()] = y
+        return result
+
     def get_retention_by_state(self) -> dict[str, int]:
         """Return state-specific retention periods (years). Empty dict = use default only."""
         data = self._read_state_retention_json_root()
@@ -1008,14 +1019,17 @@ class Settings(BaseSettings):
         return self._parse_state_int_map(raw)
 
     def get_purge_after_archive_by_state(self) -> dict[str, int]:
-        """Return per-state purge-after-archive periods (years). Empty dict = use global only."""
+        """Return per-state purge-after-archive periods (years). Empty dict = use global only.
+
+        Values may be ``0`` (purge eligible immediately after archive, same calendar-day cutoff).
+        """
         data = self._read_state_retention_json_root()
         if data is None:
             return {}
         raw = data.get("purge_after_archive_by_state", {})
         if not isinstance(raw, dict):
             return {}
-        return self._parse_state_int_map(raw)
+        return self._parse_purge_after_archive_state_int_map(raw)
 
     def get_attachment_storage_base_path(self) -> Path:
         """Return absolute path for attachment storage. Resolves relative paths against project root."""
