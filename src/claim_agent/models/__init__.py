@@ -42,8 +42,11 @@ from claim_agent.models.incident import (
     BIAllocationResult,
     ClaimantDemandInput,
     ClaimLinkInput,
+    IncidentDetailResponse,
     IncidentInput,
     IncidentOutput,
+    IncidentRecord,
+    RelatedClaimsResponse,
     VehicleClaimInput,
 )
 from claim_agent.models.party import (
@@ -66,8 +69,11 @@ __all__ = [
     "BIAllocationResult",
     "ClaimantDemandInput",
     "ClaimLinkInput",
+    "IncidentDetailResponse",
     "IncidentInput",
     "IncidentOutput",
+    "IncidentRecord",
+    "RelatedClaimsResponse",
     "VehicleClaimInput",
     "Attachment",
     "AttachmentType",

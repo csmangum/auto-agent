@@ -56,8 +56,11 @@ from claim_agent.models.party import PartyRelationshipType
 from claim_agent.models.incident import (
     BIAllocationInput,
     ClaimLinkInput,
+    IncidentDetailResponse,
     IncidentInput,
     IncidentOutput,
+    IncidentRecord,
+    RelatedClaimsResponse,
 )
 from claim_agent.models.document import DocumentRequestStatus, DocumentType, ReviewStatus
 from claim_agent.models.dispute import DisputeType
@@ -1835,7 +1838,7 @@ async def create_incident(
         raise
 
 
-@router.get("/incidents/{incident_id}")
+@router.get("/incidents/{incident_id}", response_model=IncidentDetailResponse)
 async def get_incident(
     incident_id: str,
     auth: AuthContext = RequireAdjuster,
@@ -1847,7 +1850,10 @@ async def get_incident(
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     claims = incident_repo.get_claims_by_incident(incident_id)
-    return {"incident": incident, "claims": claims}
+    return IncidentDetailResponse(
+        incident=IncidentRecord.model_validate(incident),
+        claims=claims,
+    )
 
 
 @router.post("/claim-links")
@@ -1880,7 +1886,7 @@ async def create_claim_link(
     return {"link_id": link_id, "message": "Claim link created"}
 
 
-@router.get("/claims/{claim_id}/related")
+@router.get("/claims/{claim_id}/related", response_model=RelatedClaimsResponse)
 async def get_related_claims(
     claim_id: str,
     link_type: Optional[str] = Query(None, description="Filter by link type"),
@@ -1889,7 +1895,7 @@ async def get_related_claims(
     """Get claims related to this claim (same incident, opposing carrier, etc.)."""
     incident_repo = IncidentRepository(db_path=get_db_path())
     related = incident_repo.get_related_claims(claim_id, link_type=link_type)
-    return {"claim_id": claim_id, "related_claim_ids": related}
+    return RelatedClaimsResponse(claim_id=claim_id, related_claim_ids=related)
 
 
 @router.post("/bi-allocation")

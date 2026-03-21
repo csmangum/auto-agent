@@ -4,10 +4,10 @@ One incident can involve multiple vehicles and multiple claimants.
 Claims are linked to incidents for coordinated handling.
 """
 
-from datetime import date
-from typing import Literal, Optional
+from datetime import date, datetime
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from claim_agent.models.claim import Attachment
 from claim_agent.models.party import ClaimPartyInput
@@ -80,6 +80,51 @@ class IncidentOutput(BaseModel):
             "Per-claim background scheduling result when async=true. "
             "Values: 'scheduled' or 'capacity_exceeded'."
         ),
+    )
+
+
+class IncidentRecord(BaseModel):
+    """Incident row as stored in the database (GET incident detail)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str = Field(..., description="Incident ID")
+    incident_date: str = Field(..., description="Date of incident (storage format)")
+    incident_description: Optional[str] = Field(default=None, description="Incident narrative")
+    loss_state: Optional[str] = Field(
+        default=None,
+        description="State/jurisdiction where the loss occurred",
+    )
+    created_at: Optional[str] = Field(default=None, description="Row creation timestamp")
+    updated_at: Optional[str] = Field(default=None, description="Row last update timestamp")
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _coerce_timestamps(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v.isoformat()
+        return str(v)
+
+
+class IncidentDetailResponse(BaseModel):
+    """Response for GET /incidents/{incident_id}: incident metadata and linked claims."""
+
+    incident: IncidentRecord = Field(..., description="Incident record")
+    claims: list[dict[str, Any]] = Field(
+        ...,
+        description="Full claim rows for all claims linked to this incident",
+    )
+
+
+class RelatedClaimsResponse(BaseModel):
+    """Response for GET /claims/{claim_id}/related."""
+
+    claim_id: str = Field(..., description="Claim ID from the path")
+    related_claim_ids: list[str] = Field(
+        default_factory=list,
+        description="Other claim IDs linked to this claim (sorted)",
     )
 
 
