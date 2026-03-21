@@ -199,9 +199,8 @@ def _is_claim_past_retention(
             lookup_state = normalize_state(raw_state)
         except ValueError:
             pass
-    years = (
-        retention_by_state.get(lookup_state) if lookup_state else None
-    ) or retention_period_years
+    state_years = retention_by_state.get(lookup_state) if lookup_state else None
+    years = retention_period_years if state_years is None else state_years
     cutoff_dt = now - timedelta(days=years * 365)
     created_raw = row_d.get("created_at")
     if not created_raw:
@@ -264,9 +263,8 @@ def _is_archived_past_purge_period(
             lookup_state = normalize_state(raw_state)
         except ValueError:
             pass
-    years = (
-        state_map.get(lookup_state) if lookup_state else None
-    ) or purge_after_archive_years
+    state_years = state_map.get(lookup_state) if lookup_state else None
+    years = purge_after_archive_years if state_years is None else state_years
 
     def _to_utc_aware(dt: datetime) -> datetime:
         if dt.tzinfo is None:

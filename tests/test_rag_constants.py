@@ -13,7 +13,16 @@ class TestRAGConstants:
     """Test RAG module constants."""
 
     def test_supported_states(self):
-        assert SUPPORTED_STATES == ("California", "Texas", "Florida", "New York", "Georgia")
+        assert SUPPORTED_STATES == (
+            "California",
+            "Texas",
+            "Florida",
+            "New York",
+            "Georgia",
+            "New Jersey",
+            "Pennsylvania",
+            "Illinois",
+        )
 
     def test_default_state(self):
         assert DEFAULT_STATE == "California"
@@ -60,10 +69,13 @@ class TestNormalizeState:
         assert normalize_state("\tTexas\t") == "Texas"
 
     def test_accepts_state_abbreviations(self):
-        """State abbreviations (CA, TX, FL, NY, GA) map to canonical names."""
+        """State abbreviations map to canonical names."""
         assert normalize_state("CA") == "California"
         assert normalize_state("ca") == "California"
         assert normalize_state("TX") == "Texas"
         assert normalize_state("FL") == "Florida"
         assert normalize_state("NY") == "New York"
         assert normalize_state("GA") == "Georgia"
+        assert normalize_state("NJ") == "New Jersey"
+        assert normalize_state("PA") == "Pennsylvania"
+        assert normalize_state("IL") == "Illinois"

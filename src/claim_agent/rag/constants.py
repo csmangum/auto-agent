@@ -22,7 +22,7 @@ _STATE_ABBREV_TO_CANONICAL: dict[str, str] = {
 def normalize_state(value: str) -> str:
     """Return canonical state name (title-case) or raise ValueError if unsupported.
 
-    Accepts full state names (case-insensitive) or common abbreviations (CA, TX, FL, NY, GA).
+    Accepts full state names (case-insensitive) or common abbreviations (e.g. CA, TX, NJ, PA, IL).
 
     Args:
         value: State name or abbreviation.

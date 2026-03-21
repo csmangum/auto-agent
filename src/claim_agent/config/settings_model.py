@@ -971,22 +971,24 @@ class Settings(BaseSettings):
                 return value if value >= 1 else None
         return None
 
-    def get_retention_by_state(self) -> dict[str, int]:
-        """Return state-specific retention periods (years). Empty dict = use default only."""
+    def _read_state_retention_json_root(self) -> dict[str, Any] | None:
+        """Load ``state_retention_path`` as a JSON object, or None if missing/unreadable."""
         path = Path(self.paths.state_retention_path)
         if not path.is_absolute():
             project_root = _default_project_data_dir().parent
             path = project_root / path
         if not path.exists():
-            return {}
+            return None
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError):
-            return {}
-        raw = data.get("retention_by_state", data) if isinstance(data, dict) else {}
-        if not isinstance(raw, dict):
-            return {}
+            return None
+        return data if isinstance(data, dict) else None
+
+    @staticmethod
+    def _parse_state_int_map(raw: dict[str, Any]) -> dict[str, int]:
+        """Parse state code -> years entries; only integers >= 1 are kept."""
         result: dict[str, int] = {}
         for k, v in raw.items():
             if isinstance(k, str) and isinstance(v, (int, float)):
@@ -995,29 +997,25 @@ class Settings(BaseSettings):
                     result[k.strip()] = y
         return result
 
-    def get_purge_after_archive_by_state(self) -> dict[str, int]:
-        """Return per-state purge-after-archive periods (years). Empty dict = use global only."""
-        path = Path(self.paths.state_retention_path)
-        if not path.is_absolute():
-            project_root = _default_project_data_dir().parent
-            path = project_root / path
-        if not path.exists():
+    def get_retention_by_state(self) -> dict[str, int]:
+        """Return state-specific retention periods (years). Empty dict = use default only."""
+        data = self._read_state_retention_json_root()
+        if data is None:
             return {}
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return {}
-        raw = data.get("purge_after_archive_by_state", {}) if isinstance(data, dict) else {}
+        raw = data.get("retention_by_state", data)
         if not isinstance(raw, dict):
             return {}
-        result: dict[str, int] = {}
-        for k, v in raw.items():
-            if isinstance(k, str) and isinstance(v, (int, float)):
-                y = int(v)
-                if y >= 1:
-                    result[k.strip()] = y
-        return result
+        return self._parse_state_int_map(raw)
+
+    def get_purge_after_archive_by_state(self) -> dict[str, int]:
+        """Return per-state purge-after-archive periods (years). Empty dict = use global only."""
+        data = self._read_state_retention_json_root()
+        if data is None:
+            return {}
+        raw = data.get("purge_after_archive_by_state", {})
+        if not isinstance(raw, dict):
+            return {}
+        return self._parse_state_int_map(raw)
 
     def get_attachment_storage_base_path(self) -> Path:
         """Return absolute path for attachment storage. Resolves relative paths against project root."""

@@ -514,6 +514,22 @@ class TestPerStatePurgeHorizon:
             row, datetime(2026, 1, 1, tzinfo=timezone.utc), 2, purge_by_state
         ) is True
 
+    def test_purge_period_zero_in_state_map_honored(self):
+        """Per-state 0 is not replaced by global default (0 = eligible from archive date)."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        row = {
+            "archived_at": "2022-01-01T00:00:00+00:00",
+            "loss_state": "Texas",
+        }
+        purge_by_state = {"Texas": 0}
+        # If 0 were falsy-fallen back to global 5y, 2024-01-01 would not be past cutoff.
+        assert _is_archived_past_purge_period(
+            row, datetime(2024, 1, 1, tzinfo=timezone.utc), 5, purge_by_state
+        ) is True
+
     def test_purge_period_falls_back_to_global_when_state_absent(self):
         """Falls back to global purge years when loss_state is not in map."""
         from datetime import datetime, timezone
