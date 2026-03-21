@@ -208,6 +208,9 @@ def _coordinate_gap_shortfall(
             polled = adapter.get_claim_status(gap_ref)
         except NotImplementedError:
             polled = None
+        except Exception as e:
+            logger.warning("Gap claim status poll failed: %s", e)
+            polled = None
         if polled:
             st = polled.get("status")
             if st:
