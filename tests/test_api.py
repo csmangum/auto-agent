@@ -2688,6 +2688,37 @@ class TestDocumentAPI:
         assert data["documents"] == []
         assert data["total"] == 0
 
+    def test_list_documents_group_by_storage_key(self, client):
+        from claim_agent.db.document_repository import DocumentRepository
+        from claim_agent.db.database import get_db_path
+
+        doc_repo = DocumentRepository(db_path=get_db_path())
+        doc_repo.add_document("CLM-TEST001", "grp/estimate.pdf", document_type="estimate", version=1)
+        doc_repo.add_document("CLM-TEST001", "grp/estimate.pdf", document_type="estimate", version=2)
+
+        resp = client.get(
+            "/api/claims/CLM-TEST001/documents",
+            params={"group_by": "storage_key"},
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "version_groups" in data
+        multi = [g for g in data["version_groups"] if g.get("version_count", 0) >= 2]
+        assert len(multi) >= 1
+        g0 = multi[0]
+        currents = [v for v in g0["versions"] if v.get("is_current_version")]
+        assert len(currents) == 1
+        assert currents[0]["version"] == 2
+
+    def test_list_documents_invalid_group_by_returns_400(self, client):
+        resp = client.get(
+            "/api/claims/CLM-TEST001/documents",
+            params={"group_by": "nope"},
+            headers={"X-API-Key": "sk-adj"},
+        )
+        assert resp.status_code == 400
+
     def test_upload_document_success(self, client, monkeypatch, tmp_path):
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.storage.factory as factory_mod

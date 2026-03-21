@@ -742,11 +742,18 @@ export const voidPayment = (
 
 export const getClaimDocuments = (
   claimId: string,
-  params: { document_type?: string; review_status?: string; limit?: number; offset?: number } = {}
+  params: {
+    document_type?: string;
+    review_status?: string;
+    group_by?: 'storage_key';
+    limit?: number;
+    offset?: number;
+  } = {}
 ): Promise<ClaimDocumentList> => {
   const qs = new URLSearchParams();
   if (params.document_type) qs.set('document_type', params.document_type);
   if (params.review_status) qs.set('review_status', params.review_status);
+  if (params.group_by) qs.set('group_by', params.group_by);
   if (params.limit != null) qs.set('limit', String(params.limit));
   if (params.offset != null) qs.set('offset', String(params.offset));
   const q = qs.toString();

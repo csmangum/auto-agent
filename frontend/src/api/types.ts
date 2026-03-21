@@ -398,9 +398,22 @@ export interface ClaimDocument {
   received_from?: string;
   review_status: string;
   privileged: boolean;
+  version?: number;
+  received_date?: string;
+  retention_date?: string;
+  retention_enforced_at?: string;
+  extracted_data?: Record<string, unknown> | null;
+  /** Set when listing with group_by=storage_key */
+  is_current_version?: boolean;
   url?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface DocumentVersionGroup {
+  storage_key: string;
+  versions: ClaimDocument[];
+  version_count: number;
 }
 
 export interface ClaimDocumentList {
@@ -409,6 +422,7 @@ export interface ClaimDocumentList {
   total: number;
   limit: number;
   offset: number;
+  version_groups?: DocumentVersionGroup[];
 }
 
 export interface DocumentRequest {
