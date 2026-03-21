@@ -80,15 +80,23 @@ def upgrade() -> None:
         )
         op.execute(text("ALTER TABLE claim_parties DROP COLUMN represented_by_id"))
     elif dialect == "postgresql":
-        op.execute(
-            text("""
-                INSERT INTO claim_party_relationships (from_party_id, to_party_id, relationship_type)
-                SELECT id, represented_by_id, 'represented_by'
-                FROM claim_parties
-                WHERE represented_by_id IS NOT NULL
-            """)
-        )
-        op.execute(text("ALTER TABLE claim_parties DROP COLUMN IF EXISTS represented_by_id"))
+        has_col = conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = 'claim_parties' "
+                "AND column_name = 'represented_by_id'"
+            )
+        ).scalar()
+        if has_col:
+            op.execute(
+                text("""
+                    INSERT INTO claim_party_relationships (from_party_id, to_party_id, relationship_type)
+                    SELECT id, represented_by_id, 'represented_by'
+                    FROM claim_parties
+                    WHERE represented_by_id IS NOT NULL
+                """)
+            )
+            op.execute(text("ALTER TABLE claim_parties DROP COLUMN IF EXISTS represented_by_id"))
 
 
 def downgrade() -> None:

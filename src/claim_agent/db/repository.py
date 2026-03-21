@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, cast
 
 from sqlalchemy import text
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from claim_agent.models.claim import Attachment
 
@@ -477,17 +477,37 @@ class ClaimRepository:
             if fr_d.get("claim_id") != claim_id or to_d.get("claim_id") != claim_id:
                 raise DomainValidationError("Parties must belong to the same claim")
 
-            result = conn.execute(
-                text("""
-                INSERT INTO claim_party_relationships (
-                    from_party_id, to_party_id, relationship_type
-                ) VALUES (:from_id, :to_id, :rtype)
-                RETURNING id
-                """),
-                {"from_id": from_party_id, "to_id": to_party_id, "rtype": rt},
-            )
+            try:
+                result = conn.execute(
+                    text("""
+                    INSERT INTO claim_party_relationships (
+                        from_party_id, to_party_id, relationship_type
+                    ) VALUES (:from_id, :to_id, :rtype)
+                    RETURNING id
+                    """),
+                    {"from_id": from_party_id, "to_id": to_party_id, "rtype": rt},
+                )
+            except IntegrityError as e:
+                raise DomainValidationError(
+                    "Duplicate party relationship for this from_party_id, to_party_id, "
+                    "and relationship_type"
+                ) from e
             row = result.fetchone()
             return int(row[0]) if row else 0
+
+    def delete_claim_party_relationship(self, claim_id: str, relationship_id: int) -> bool:
+        """Delete a party edge if it exists and both endpoints belong to claim_id."""
+        with get_connection(self._db_path) as conn:
+            result = conn.execute(
+                text("""
+                DELETE FROM claim_party_relationships
+                WHERE id = :rid
+                  AND from_party_id IN (SELECT id FROM claim_parties WHERE claim_id = :cid)
+                  AND to_party_id IN (SELECT id FROM claim_parties WHERE claim_id = :cid)
+                """),
+                {"rid": relationship_id, "cid": claim_id},
+            )
+            return bool(result.rowcount and result.rowcount > 0)
 
     def get_claim_parties(
         self, claim_id: str, party_type: str | None = None

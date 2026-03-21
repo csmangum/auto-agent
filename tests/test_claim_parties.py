@@ -2,14 +2,15 @@
 
 import os
 import tempfile
+from datetime import date
 
 import pytest
 
 from claim_agent.db.database import init_db
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.exceptions import DomainValidationError
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput, PartyRelationshipType
-from datetime import date
 
 
 @pytest.fixture
@@ -205,3 +206,101 @@ def test_create_claim_with_parties(repo):
     assert len(parties) == 2
     types = {p["party_type"] for p in parties}
     assert types == {"claimant", "policyholder"}
+
+
+def test_add_claim_party_relationship_missing_party(repo, claim_id):
+    c = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="claimant", name="A", email="a@x.com"),
+    )
+    with pytest.raises(DomainValidationError, match="do not exist"):
+        repo.add_claim_party_relationship(
+            claim_id, c, 999_999, PartyRelationshipType.REPRESENTED_BY.value
+        )
+
+
+def test_add_claim_party_relationship_invalid_type(repo, claim_id):
+    cid = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="claimant", name="A", email="a@x.com"),
+    )
+    tid = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="attorney", name="B", email="b@x.com"),
+    )
+    with pytest.raises(DomainValidationError, match="Invalid relationship_type"):
+        repo.add_claim_party_relationship(claim_id, cid, tid, "not_a_real_type")
+
+
+def test_add_claim_party_relationship_self_loop(repo, claim_id):
+    cid = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="claimant", name="A", email="a@x.com"),
+    )
+    with pytest.raises(DomainValidationError, match="must differ"):
+        repo.add_claim_party_relationship(
+            claim_id, cid, cid, PartyRelationshipType.REPRESENTED_BY.value
+        )
+
+
+def test_add_claim_party_relationship_wrong_claim_id(repo, claim_id):
+    other = ClaimInput(
+        policy_number="POL-OTHER",
+        vin="5YJSA1E26HF123456",
+        vehicle_year=2022,
+        vehicle_make="Tesla",
+        vehicle_model="Model 3",
+        incident_date=date(2025, 2, 1),
+        incident_description="Other",
+        damage_description="Scratch",
+    )
+    other_id = repo.create_claim(other)
+    a = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="claimant", name="A", email="a@x.com"),
+    )
+    b = repo.add_claim_party(
+        other_id,
+        ClaimPartyInput(party_type="attorney", name="B", email="b@x.com"),
+    )
+    with pytest.raises(DomainValidationError, match="same claim"):
+        repo.add_claim_party_relationship(
+            claim_id, a, b, PartyRelationshipType.REPRESENTED_BY.value
+        )
+
+
+def test_add_claim_party_relationship_duplicate_raises(repo, claim_id):
+    c = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="claimant", name="C", email="c@x.com"),
+    )
+    t = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="attorney", name="T", email="t@x.com"),
+    )
+    repo.add_claim_party_relationship(
+        claim_id, c, t, PartyRelationshipType.WITNESS_FOR.value
+    )
+    with pytest.raises(DomainValidationError, match="Duplicate party relationship"):
+        repo.add_claim_party_relationship(
+            claim_id, c, t, PartyRelationshipType.WITNESS_FOR.value
+        )
+
+
+def test_delete_claim_party_relationship(repo, claim_id):
+    c = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="claimant", name="C", email="c@x.com"),
+    )
+    t = repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(party_type="attorney", name="T", email="t@x.com"),
+    )
+    rid = repo.add_claim_party_relationship(
+        claim_id, c, t, PartyRelationshipType.REPRESENTED_BY.value
+    )
+    assert repo.delete_claim_party_relationship(claim_id, rid) is True
+    assert repo.delete_claim_party_relationship(claim_id, rid) is False
+    parties = repo.get_claim_parties(claim_id)
+    claimant = next(p for p in parties if p["id"] == c)
+    assert claimant.get("relationships") == []

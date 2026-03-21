@@ -326,6 +326,8 @@ CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from ON claim_party_rel
 CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_to ON claim_party_relationships(to_party_id);
 CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
     ON claim_party_relationships(from_party_id, relationship_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
+    ON claim_party_relationships(from_party_id, to_party_id, relationship_type);
 
 -- Subrogation cases: recovery tracking and inter-company arbitration
 CREATE TABLE IF NOT EXISTS subrogation_cases (

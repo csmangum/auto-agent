@@ -21,6 +21,7 @@ from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
 from claim_agent.exceptions import (
     ClaimNotFoundError,
+    DomainValidationError,
     InvalidClaimTransitionError,
     ReserveAuthorityError,
 )
@@ -51,6 +52,7 @@ from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.models.party import PartyRelationshipType
 from claim_agent.models.incident import (
     BIAllocationInput,
     ClaimLinkInput,
@@ -802,6 +804,67 @@ def update_party_consent(
         raise HTTPException(status_code=404, detail="Party not found")
     ctx.repo.update_claim_party(party_id, {"consent_status": body.consent_status})
     return {"claim_id": claim_id, "party_id": party_id, "consent_status": body.consent_status}
+
+
+class CreatePartyRelationshipBody(BaseModel):
+    """Request body for POST /claims/{claim_id}/party-relationships."""
+
+    from_party_id: int = Field(..., ge=1, description="Subject party (edge tail)")
+    to_party_id: int = Field(..., ge=1, description="Related party (edge head)")
+    relationship_type: Literal[
+        PartyRelationshipType.REPRESENTED_BY.value,
+        PartyRelationshipType.LIENHOLDER_FOR.value,
+        PartyRelationshipType.WITNESS_FOR.value,
+    ] = Field(..., description="Directed relationship type")
+
+
+@router.post(
+    "/claims/{claim_id}/party-relationships",
+    dependencies=[RequireAdjuster],
+    status_code=201,
+)
+def create_party_relationship(
+    claim_id: str,
+    body: CreatePartyRelationshipBody,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Create a directed party-to-party link (e.g. claimant represented_by attorney)."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    try:
+        rel_id = ctx.repo.add_claim_party_relationship(
+            claim_id,
+            body.from_party_id,
+            body.to_party_id,
+            body.relationship_type,
+        )
+    except DomainValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {
+        "id": rel_id,
+        "claim_id": claim_id,
+        "from_party_id": body.from_party_id,
+        "to_party_id": body.to_party_id,
+        "relationship_type": body.relationship_type,
+    }
+
+
+@router.delete(
+    "/claims/{claim_id}/party-relationships/{relationship_id}",
+    dependencies=[RequireAdjuster],
+    status_code=204,
+)
+def delete_party_relationship(
+    claim_id: str,
+    relationship_id: int,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Remove a party-to-party link for this claim."""
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    deleted = ctx.repo.delete_claim_party_relationship(claim_id, relationship_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Party relationship not found")
 
 
 class CreatePortalTokenBody(BaseModel):

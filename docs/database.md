@@ -440,6 +440,8 @@ CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from ON claim_party_rel
 CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_to ON claim_party_relationships(to_party_id);
 CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
     ON claim_party_relationships(from_party_id, relationship_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
+    ON claim_party_relationships(from_party_id, to_party_id, relationship_type);
 ```
 
 | Column | Type | Description |
@@ -450,7 +452,11 @@ CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
 | `relationship_type` | TEXT | e.g. `represented_by`, `lienholder_for`, `witness_for` |
 | `created_at` | TEXT | Timestamp |
 
+**Uniqueness:** At most one row per `(from_party_id, to_party_id, relationship_type)` (`uq_claim_party_relationships_edge`).
+
 **Contact routing:** For claimant primary contact, the repository uses the lowest-`id` `represented_by` edge from the claimant party to an attorney (if that attorney has email or phone).
+
+**API:** `POST /api/claims/{claim_id}/party-relationships`, `DELETE /api/claims/{claim_id}/party-relationships/{relationship_id}` ([`src/claim_agent/api/routes/claims.py`](../src/claim_agent/api/routes/claims.py)).
 
 ### claim_payments
 

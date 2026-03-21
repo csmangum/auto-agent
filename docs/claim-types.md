@@ -77,7 +77,7 @@ Optional list of attachments (photos, PDFs, estimates). Default empty array.
 
 Optional list of claim parties. Each party has: `party_type` (claimant, policyholder, witness, attorney, provider, lienholder), `name`, `email`, `phone`, `role`, `consent_status`, `authorization_status`. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement. See [Database](database.md#claim_parties).
 
-Party-to-party links (e.g., claimant represented by attorney) are stored in **`claim_party_relationships`** after both parties exist (`ClaimRepository.add_claim_party_relationship`). They are not set on the FNOL payload; create parties first, then add edges by party id.
+Party-to-party links (e.g., claimant represented by attorney) are stored in **`claim_party_relationships`** after both parties exist. Use `POST /api/claims/{claim_id}/party-relationships` and `DELETE /api/claims/{claim_id}/party-relationships/{id}` (adjuster roles), or `ClaimRepository.add_claim_party_relationship` / `delete_claim_party_relationship`. They are not set on the FNOL payload; create parties first, then add edges by party id.
 
 ### claim_type
 
