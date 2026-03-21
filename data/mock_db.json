@@ -6,14 +6,27 @@
   "policies": {
     "POL-001": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "rental_reimbursement": {
+        "daily_limit": 35,
+        "aggregate_limit": 1050,
+        "max_days": 30
+      },
       "gap_insurance": true,
       "parts_preference": "aftermarket",
       "oem_required_for": ["safety"],
+      "territory": "US",
       "named_insured": [
         {"name": "John Doe", "email": "john.doe@example.com", "phone": "555-987-6543"},
         {"name": "Jane Doe", "email": "jane.doe@example.com", "phone": "555-123-4567"}
@@ -49,11 +62,28 @@
     },
     "POL-003": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 250000,
+        "bi_per_accident": 500000,
+        "pd_per_accident": 100000
+      },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "rental_reimbursement": {
+        "daily_limit": 35,
+        "aggregate_limit": 1050,
+        "max_days": 30
+      },
+      "territory": "US",
+      "excluded_territories": [
+        "Alaska",
+        "Hawaii"
+      ],
       "named_insured": [
         {"name": "Robert Johnson", "email": "rjohnson@example.com", "phone": "555-333-4444"}
       ],
@@ -64,11 +94,23 @@
     },
     "POL-004": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 250000,
+        "bi_per_accident": 500000,
+        "pd_per_accident": 100000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "bodily_injury": { "per_person": 250000, "per_accident": 500000 },
+      "bodily_injury": {
+        "per_person": 250000,
+        "per_accident": 500000
+      },
+      "territory": "USA_Canada",
       "named_insured": [
         {"name": "Emily Davis", "email": "emily.davis@example.com", "phone": "555-444-5555"}
       ],
@@ -78,11 +120,23 @@
     },
     "POL-005": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 250,
       "comprehensive_deductible": 250,
-      "rental_reimbursement": { "daily_limit": 40, "aggregate_limit": 1200, "max_days": 30 },
+      "rental_reimbursement": {
+        "daily_limit": 40,
+        "aggregate_limit": 1200,
+        "max_days": 30
+      },
       "parts_preference": "aftermarket",
       "oem_required_for": ["safety"],
       "named_insured": [{"name": "David Wilson", "email": "dwilson@example.com", "phone": "555-555-6666"}],
@@ -90,8 +144,17 @@
     },
     "POL-006": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive", "uninsured_motorist"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive",
+        "uninsured_motorist"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
       "gap_insurance": true,
@@ -100,8 +163,16 @@
     },
     "POL-007": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 1500,
       "comprehensive_deductible": 1500,
       "named_insured": [{"name": "James Martinez", "email": "jmartinez@example.com", "phone": "555-777-8888"}],
@@ -116,8 +187,16 @@
     },
     "POL-009": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000,
       "named_insured": [{"name": "Thomas Anderson", "email": "tanderson@example.com", "phone": "555-999-0000"}],
@@ -125,8 +204,16 @@
     },
     "POL-010": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 50000, "bi_per_accident": 100000, "pd_per_accident": 25000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 50000,
+        "bi_per_accident": 100000,
+        "pd_per_accident": 25000
+      },
       "collision_deductible": 250,
       "comprehensive_deductible": 250,
       "named_insured": [{"name": "Jennifer Taylor", "email": "jtaylor@example.com", "phone": "555-000-1111"}],
@@ -134,11 +221,23 @@
     },
     "POL-011": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 250000,
+        "bi_per_accident": 500000,
+        "pd_per_accident": 100000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "rental_reimbursement": {
+        "daily_limit": 35,
+        "aggregate_limit": 1050,
+        "max_days": 30
+      },
       "parts_preference": "oem",
       "oem_required_for": ["safety"],
       "named_insured": [{"name": "William Thomas", "email": "wthomas@example.com", "phone": "555-111-2222"}],
@@ -146,8 +245,16 @@
     },
     "POL-012": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 2000,
       "comprehensive_deductible": 2000,
       "named_insured": [{"name": "Barbara Jackson", "email": "bjackson@example.com", "phone": "555-222-3333"}],
@@ -162,8 +269,17 @@
     },
     "POL-014": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive", "uninsured_motorist"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive",
+        "uninsured_motorist"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 250,
       "comprehensive_deductible": 250,
       "named_insured": [{"name": "Susan Harris", "email": "sharris@example.com", "phone": "555-444-5555"}],
@@ -171,8 +287,16 @@
     },
     "POL-015": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000,
       "named_insured": [{"name": "Daniel Martin", "email": "dmartin@example.com", "phone": "555-555-6666"}],
@@ -180,8 +304,16 @@
     },
     "POL-016": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 250000, "bi_per_accident": 500000, "pd_per_accident": 100000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 250000,
+        "bi_per_accident": 500000,
+        "pd_per_accident": 100000
+      },
       "collision_deductible": 250,
       "comprehensive_deductible": 250,
       "rental_reimbursement": { "daily_limit": 50, "aggregate_limit": 1500, "max_days": 30 },
@@ -190,8 +322,16 @@
     },
     "POL-017": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 1500,
       "comprehensive_deductible": 1500,
       "named_insured": [{"name": "Matthew Moore", "email": "mmoore@example.com", "phone": "555-777-8888"}],
@@ -214,8 +354,16 @@
     },
     "POL-020": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 2000,
       "comprehensive_deductible": 2000,
       "named_insured": [{"name": "Laura Hall", "email": "lhall@example.com", "phone": "555-000-1111"}],
@@ -223,141 +371,406 @@
     },
     "POL-021": {
       "status": "inactive",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500
     },
     "POL-022": {
       "status": "inactive",
-      "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+      "coverages": [
+        "liability"
+      ],
+      "liability_limits": {
+        "bi_per_person": 15000,
+        "bi_per_accident": 30000,
+        "pd_per_accident": 5000
+      }
     },
     "POL-023": {
       "status": "expired",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000
     },
     "POL-024": {
       "status": "expired",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500
     },
     "POL-025": {
       "status": "cancelled",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000
     },
     "POL-026": {
       "status": "cancelled",
-      "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 15000, "bi_per_accident": 30000, "pd_per_accident": 5000 }
+      "coverages": [
+        "liability"
+      ],
+      "liability_limits": {
+        "bi_per_person": 15000,
+        "bi_per_accident": 30000,
+        "pd_per_accident": 5000
+      }
     },
     "POL-027": {
       "status": "cancelled",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500
     },
     "POL-028": {
       "status": "suspended",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000
     },
     "POL-029": {
       "status": "suspended",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 500,
       "comprehensive_deductible": 500
     },
     "POL-030": {
       "status": "suspended",
-      "coverages": ["liability"],
-      "liability_limits": { "bi_per_person": 30000, "bi_per_accident": 60000, "pd_per_accident": 25000 }
+      "coverages": [
+        "liability"
+      ],
+      "liability_limits": {
+        "bi_per_person": 30000,
+        "bi_per_accident": 60000,
+        "pd_per_accident": 25000
+      }
     },
     "POL-099": {
       "status": "active",
-      "coverages": ["liability", "collision", "comprehensive"],
-      "liability_limits": { "bi_per_person": 100000, "bi_per_accident": 300000, "pd_per_accident": 50000 },
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
       "collision_deductible": 250,
       "comprehensive_deductible": 1000,
       "named_insured": [{"name": "Test User", "email": "testuser@example.com", "phone": "555-TEST-001"}],
       "drivers": [{"name": "Test User", "license_number": "DTEST001", "relationship": "primary"}]
+    },
+    "POL-100": {
+      "status": "active",
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 15000,
+        "bi_per_accident": 30000,
+        "pd_per_accident": 5000
+      },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "territory": [
+        "California",
+        "Nevada",
+        "Arizona"
+      ]
+    },
+    "POL-101": {
+      "status": "active",
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "territory": "US",
+      "excluded_territories": [
+        "AK",
+        "HI"
+      ]
+    },
+    "POL-EXCL-ONLY": {
+      "status": "active",
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "excluded_territories": [
+        "Florida"
+      ]
     }
   },
   "policy_vehicles": {
     "POL-001": [
-      { "vin": "1HGBH41JXMN109186", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" },
-      { "vin": "5YJSA1E26HF123456", "vehicle_year": 2022, "vehicle_make": "Tesla", "vehicle_model": "Model 3" }
+      {
+        "vin": "1HGBH41JXMN109186",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Accord"
+      },
+      {
+        "vin": "5YJSA1E26HF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3"
+      }
     ],
     "POL-002": [
-      { "vin": "2HGFG3B54CH501234", "vehicle_year": 2020, "vehicle_make": "Honda", "vehicle_model": "Civic" }
+      {
+        "vin": "2HGFG3B54CH501234",
+        "vehicle_year": 2020,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Civic"
+      }
     ],
     "POL-003": [
-      { "vin": "1C4RJFAG5FC612345", "vehicle_year": 2022, "vehicle_make": "Jeep", "vehicle_model": "Grand Cherokee" },
-      { "vin": "WBA3B1C50EK123456", "vehicle_year": 2014, "vehicle_make": "BMW", "vehicle_model": "328i" }
+      {
+        "vin": "1C4RJFAG5FC612345",
+        "vehicle_year": 2022,
+        "vehicle_make": "Jeep",
+        "vehicle_model": "Grand Cherokee"
+      },
+      {
+        "vin": "WBA3B1C50EK123456",
+        "vehicle_year": 2014,
+        "vehicle_make": "BMW",
+        "vehicle_model": "328i"
+      }
     ],
     "POL-004": [
-      { "vin": "1G1ZD5ST0LF123456", "vehicle_year": 2020, "vehicle_make": "Chevrolet", "vehicle_model": "Camaro" }
+      {
+        "vin": "1G1ZD5ST0LF123456",
+        "vehicle_year": 2020,
+        "vehicle_make": "Chevrolet",
+        "vehicle_model": "Camaro"
+      }
     ],
     "POL-005": [
-      { "vin": "5FNRL6H76MB012345", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Odyssey" },
-      { "vin": "4T1BF1FK5EU123456", "vehicle_year": 2014, "vehicle_make": "Toyota", "vehicle_model": "Camry" }
+      {
+        "vin": "5FNRL6H76MB012345",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Odyssey"
+      },
+      {
+        "vin": "4T1BF1FK5EU123456",
+        "vehicle_year": 2014,
+        "vehicle_make": "Toyota",
+        "vehicle_model": "Camry"
+      }
     ],
     "POL-006": [
-      { "vin": "3VWDP7AJ5HM012345", "vehicle_year": 2017, "vehicle_make": "Volkswagen", "vehicle_model": "Passat" }
+      {
+        "vin": "3VWDP7AJ5HM012345",
+        "vehicle_year": 2017,
+        "vehicle_make": "Volkswagen",
+        "vehicle_model": "Passat"
+      }
     ],
     "POL-007": [
-      { "vin": "JM1BL1S58A1234567", "vehicle_year": 2010, "vehicle_make": "Mazda", "vehicle_model": "Mazda3" }
+      {
+        "vin": "JM1BL1S58A1234567",
+        "vehicle_year": 2010,
+        "vehicle_make": "Mazda",
+        "vehicle_model": "Mazda3"
+      }
     ],
     "POL-008": [
-      { "vin": "2T1BURHE5KC123456", "vehicle_year": 2019, "vehicle_make": "Toyota", "vehicle_model": "Corolla" }
+      {
+        "vin": "2T1BURHE5KC123456",
+        "vehicle_year": 2019,
+        "vehicle_make": "Toyota",
+        "vehicle_model": "Corolla"
+      }
     ],
     "POL-009": [
-      { "vin": "1FA6P8TH2L5123456", "vehicle_year": 2020, "vehicle_make": "Ford", "vehicle_model": "Mustang" }
+      {
+        "vin": "1FA6P8TH2L5123456",
+        "vehicle_year": 2020,
+        "vehicle_make": "Ford",
+        "vehicle_model": "Mustang"
+      }
     ],
     "POL-010": [
-      { "vin": "1G1YY22G965112345", "vehicle_year": 2009, "vehicle_make": "Chevrolet", "vehicle_model": "Corvette" },
-      { "vin": "5YJ3E1EA1NF123456", "vehicle_year": 2022, "vehicle_make": "Tesla", "vehicle_model": "Model S" }
+      {
+        "vin": "1G1YY22G965112345",
+        "vehicle_year": 2009,
+        "vehicle_make": "Chevrolet",
+        "vehicle_model": "Corvette"
+      },
+      {
+        "vin": "5YJ3E1EA1NF123456",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model S"
+      }
     ],
     "POL-011": [
-      { "vin": "1HGBH41JXMN109187", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" }
+      {
+        "vin": "1HGBH41JXMN109187",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Accord"
+      }
     ],
     "POL-012": [
-      { "vin": "1C6RR7GT8MS123456", "vehicle_year": 2021, "vehicle_make": "Ram", "vehicle_model": "1500" }
+      {
+        "vin": "1C6RR7GT8MS123456",
+        "vehicle_year": 2021,
+        "vehicle_make": "Ram",
+        "vehicle_model": "1500"
+      }
     ],
     "POL-014": [
-      { "vin": "5YJSA1E26HF123457", "vehicle_year": 2022, "vehicle_make": "Tesla", "vehicle_model": "Model 3" },
-      { "vin": "1HGBH41JXMN109188", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" }
+      {
+        "vin": "5YJSA1E26HF123457",
+        "vehicle_year": 2022,
+        "vehicle_make": "Tesla",
+        "vehicle_model": "Model 3"
+      },
+      {
+        "vin": "1HGBH41JXMN109188",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Accord"
+      }
     ],
     "POL-015": [
-      { "vin": "2HGFG3B54CH501235", "vehicle_year": 2020, "vehicle_make": "Honda", "vehicle_model": "Civic" }
+      {
+        "vin": "2HGFG3B54CH501235",
+        "vehicle_year": 2020,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Civic"
+      }
     ],
     "POL-016": [
-      { "vin": "1C4RJFAG5FC612346", "vehicle_year": 2022, "vehicle_make": "Jeep", "vehicle_model": "Grand Cherokee" }
+      {
+        "vin": "1C4RJFAG5FC612346",
+        "vehicle_year": 2022,
+        "vehicle_make": "Jeep",
+        "vehicle_model": "Grand Cherokee"
+      }
     ],
     "POL-017": [
-      { "vin": "3VWDP7AJ5HM012346", "vehicle_year": 2017, "vehicle_make": "Volkswagen", "vehicle_model": "Passat" }
+      {
+        "vin": "3VWDP7AJ5HM012346",
+        "vehicle_year": 2017,
+        "vehicle_make": "Volkswagen",
+        "vehicle_model": "Passat"
+      }
     ],
     "POL-019": [
-      { "vin": "JM1BL1S58A1234568", "vehicle_year": 2010, "vehicle_make": "Mazda", "vehicle_model": "Mazda3" }
+      {
+        "vin": "JM1BL1S58A1234568",
+        "vehicle_year": 2010,
+        "vehicle_make": "Mazda",
+        "vehicle_model": "Mazda3"
+      }
     ],
     "POL-020": [
-      { "vin": "1FA6P8TH2L5123457", "vehicle_year": 2020, "vehicle_make": "Ford", "vehicle_model": "Mustang" }
+      {
+        "vin": "1FA6P8TH2L5123457",
+        "vehicle_year": 2020,
+        "vehicle_make": "Ford",
+        "vehicle_model": "Mustang"
+      }
     ],
     "POL-099": [
-      { "vin": "1HGBH41JXMN109189", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Accord" },
-      { "vin": "5FNRL6H76MB012346", "vehicle_year": 2021, "vehicle_make": "Honda", "vehicle_model": "Odyssey" }
+      {
+        "vin": "1HGBH41JXMN109189",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Accord"
+      },
+      {
+        "vin": "5FNRL6H76MB012346",
+        "vehicle_year": 2021,
+        "vehicle_make": "Honda",
+        "vehicle_model": "Odyssey"
+      }
     ]
   },
   "claims": [
@@ -525,7 +938,10 @@
       "incident_date": "2025-01-05",
       "incident_description": "Claimed theft from locked garage. No signs of forced entry. Multiple prior theft claims on record.",
       "status": "fraud_suspected",
-      "flags": ["prior_claims", "inconsistent_statements"]
+      "flags": [
+        "prior_claims",
+        "inconsistent_statements"
+      ]
     },
     {
       "claim_id": "CLM-FRAUD02",
@@ -533,7 +949,10 @@
       "incident_date": "2024-12-12",
       "incident_description": "Staged accident indicators: identical damage pattern to prior claim, witnesses left scene.",
       "status": "fraud_suspected",
-      "flags": ["staged_accident", "witness_inconsistency"]
+      "flags": [
+        "staged_accident",
+        "witness_inconsistency"
+      ]
     },
     {
       "claim_id": "CLM-FRAUD03",
@@ -541,7 +960,10 @@
       "incident_date": "2024-11-30",
       "incident_description": "Inflated repair estimate. Shop photos show pre-existing damage. SIU referral.",
       "status": "fraud_confirmed",
-      "flags": ["inflated_damage", "pre_existing"]
+      "flags": [
+        "inflated_damage",
+        "pre_existing"
+      ]
     },
     {
       "claim_id": "CLM-FRAUD04",
@@ -549,7 +971,10 @@
       "incident_date": "2025-01-01",
       "incident_description": "False injury claim. Medical records contradict reported injuries. Under investigation.",
       "status": "fraud_suspected",
-      "flags": ["injury_fraud", "medical_inconsistency"]
+      "flags": [
+        "injury_fraud",
+        "medical_inconsistency"
+      ]
     },
     {
       "claim_id": "CLM-PART01",
@@ -623,48 +1048,174 @@
     }
   ],
   "vehicle_values": {
-    "1HGBH41JXMN109186": { "value": 12000, "condition": "good" },
-    "1HGBH41JXMN109187": { "value": 11500, "condition": "fair" },
-    "1HGBH41JXMN109188": { "value": 11800, "condition": "good" },
-    "1HGBH41JXMN109189": { "value": 12200, "condition": "excellent" },
-    "5YJSA1E26HF123456": { "value": 32000, "condition": "excellent" },
-    "5YJSA1E26HF123457": { "value": 28500, "condition": "good" },
-    "2HGFG3B54CH501234": { "value": 8500, "condition": "good" },
-    "2HGFG3B54CH501235": { "value": 8200, "condition": "fair" },
-    "1C4RJFAG5FC612345": { "value": 42000, "condition": "good" },
-    "1C4RJFAG5FC612346": { "value": 40500, "condition": "good" },
-    "3VWDP7AJ5HM012345": { "value": 18500, "condition": "excellent" },
-    "3VWDP7AJ5HM012346": { "value": 17200, "condition": "good" },
-    "1G1YY22G965112345": { "value": 28000, "condition": "good" },
-    "1G1YY22G965112346": { "value": 26500, "condition": "fair" },
-    "JM1BL1S58A1234567": { "value": 24000, "condition": "excellent" },
-    "JM1BL1S58A1234568": { "value": 22800, "condition": "good" },
-    "1FA6P8TH2L5123456": { "value": 35000, "condition": "good" },
-    "1FA6P8TH2L5123457": { "value": 33500, "condition": "good" },
-    "4T1BF1FK5EU123456": { "value": 9500, "condition": "good" },
-    "4T1BF1FK5EU123457": { "value": 9100, "condition": "fair" },
-    "5FNRL6H76MB012345": { "value": 38000, "condition": "excellent" },
-    "5FNRL6H76MB012346": { "value": 36200, "condition": "good" },
-    "WBA3B1C50EK123456": { "value": 18500, "condition": "good" },
-    "WBA3B1C50EK123457": { "value": 17800, "condition": "fair" },
-    "WBA3B1C50EK123458": { "value": 19200, "condition": "excellent" },
-    "1G1ZD5ST0LF123456": { "value": 22000, "condition": "good" },
-    "1G1ZD5ST0LF123457": { "value": 20800, "condition": "fair" },
-    "1G1ZD5ST0LF123458": { "value": 23500, "condition": "excellent" },
-    "2T1BURHE5KC123456": { "value": 6500, "condition": "fair" },
-    "2T1BURHE5KC123457": { "value": 6200, "condition": "fair" },
-    "2T1BURHE5KC123458": { "value": 6800, "condition": "good" },
-    "5YJ3E1EA1NF123456": { "value": 72000, "condition": "excellent" },
-    "5YJ3E1EA1NF123457": { "value": 68500, "condition": "good" },
-    "1C6RR7GT8MS123456": { "value": 45000, "condition": "good" },
-    "1C6RR7GT8MS123457": { "value": 42800, "condition": "fair" },
-    "2020_Toyota_Camry": { "value": 18000, "condition": "excellent" },
-    "2021_Honda_Accord": { "value": 19500, "condition": "good" },
-    "2022_Tesla_Model_3": { "value": 32000, "condition": "excellent" },
-    "2023_Ford_F150": { "value": 42000, "condition": "good" },
-    "2019_Chevrolet_Equinox": { "value": 16500, "condition": "fair" },
-    "2020_BMW_330i": { "value": 28500, "condition": "good" },
-    "2018_Nissan_Altima": { "value": 11500, "condition": "fair" }
+    "1HGBH41JXMN109186": {
+      "value": 12000,
+      "condition": "good"
+    },
+    "1HGBH41JXMN109187": {
+      "value": 11500,
+      "condition": "fair"
+    },
+    "1HGBH41JXMN109188": {
+      "value": 11800,
+      "condition": "good"
+    },
+    "1HGBH41JXMN109189": {
+      "value": 12200,
+      "condition": "excellent"
+    },
+    "5YJSA1E26HF123456": {
+      "value": 32000,
+      "condition": "excellent"
+    },
+    "5YJSA1E26HF123457": {
+      "value": 28500,
+      "condition": "good"
+    },
+    "2HGFG3B54CH501234": {
+      "value": 8500,
+      "condition": "good"
+    },
+    "2HGFG3B54CH501235": {
+      "value": 8200,
+      "condition": "fair"
+    },
+    "1C4RJFAG5FC612345": {
+      "value": 42000,
+      "condition": "good"
+    },
+    "1C4RJFAG5FC612346": {
+      "value": 40500,
+      "condition": "good"
+    },
+    "3VWDP7AJ5HM012345": {
+      "value": 18500,
+      "condition": "excellent"
+    },
+    "3VWDP7AJ5HM012346": {
+      "value": 17200,
+      "condition": "good"
+    },
+    "1G1YY22G965112345": {
+      "value": 28000,
+      "condition": "good"
+    },
+    "1G1YY22G965112346": {
+      "value": 26500,
+      "condition": "fair"
+    },
+    "JM1BL1S58A1234567": {
+      "value": 24000,
+      "condition": "excellent"
+    },
+    "JM1BL1S58A1234568": {
+      "value": 22800,
+      "condition": "good"
+    },
+    "1FA6P8TH2L5123456": {
+      "value": 35000,
+      "condition": "good"
+    },
+    "1FA6P8TH2L5123457": {
+      "value": 33500,
+      "condition": "good"
+    },
+    "4T1BF1FK5EU123456": {
+      "value": 9500,
+      "condition": "good"
+    },
+    "4T1BF1FK5EU123457": {
+      "value": 9100,
+      "condition": "fair"
+    },
+    "5FNRL6H76MB012345": {
+      "value": 38000,
+      "condition": "excellent"
+    },
+    "5FNRL6H76MB012346": {
+      "value": 36200,
+      "condition": "good"
+    },
+    "WBA3B1C50EK123456": {
+      "value": 18500,
+      "condition": "good"
+    },
+    "WBA3B1C50EK123457": {
+      "value": 17800,
+      "condition": "fair"
+    },
+    "WBA3B1C50EK123458": {
+      "value": 19200,
+      "condition": "excellent"
+    },
+    "1G1ZD5ST0LF123456": {
+      "value": 22000,
+      "condition": "good"
+    },
+    "1G1ZD5ST0LF123457": {
+      "value": 20800,
+      "condition": "fair"
+    },
+    "1G1ZD5ST0LF123458": {
+      "value": 23500,
+      "condition": "excellent"
+    },
+    "2T1BURHE5KC123456": {
+      "value": 6500,
+      "condition": "fair"
+    },
+    "2T1BURHE5KC123457": {
+      "value": 6200,
+      "condition": "fair"
+    },
+    "2T1BURHE5KC123458": {
+      "value": 6800,
+      "condition": "good"
+    },
+    "5YJ3E1EA1NF123456": {
+      "value": 72000,
+      "condition": "excellent"
+    },
+    "5YJ3E1EA1NF123457": {
+      "value": 68500,
+      "condition": "good"
+    },
+    "1C6RR7GT8MS123456": {
+      "value": 45000,
+      "condition": "good"
+    },
+    "1C6RR7GT8MS123457": {
+      "value": 42800,
+      "condition": "fair"
+    },
+    "2020_Toyota_Camry": {
+      "value": 18000,
+      "condition": "excellent"
+    },
+    "2021_Honda_Accord": {
+      "value": 19500,
+      "condition": "good"
+    },
+    "2022_Tesla_Model_3": {
+      "value": 32000,
+      "condition": "excellent"
+    },
+    "2023_Ford_F150": {
+      "value": 42000,
+      "condition": "good"
+    },
+    "2019_Chevrolet_Equinox": {
+      "value": 16500,
+      "condition": "fair"
+    },
+    "2020_BMW_330i": {
+      "value": 28500,
+      "condition": "good"
+    },
+    "2018_Nissan_Altima": {
+      "value": 11500,
+      "condition": "fair"
+    }
   },
   "repair_shops": {
     "SHOP-001": {
@@ -672,10 +1223,18 @@
       "address": "1234 Main St, Los Angeles, CA 90001",
       "phone": "310-555-0101",
       "rating": 4.8,
-      "certifications": ["OEM Certified", "I-CAR Gold", "ASE Certified"],
-      "specialties": ["Collision Repair", "Paint", "Frame Straightening"],
+      "certifications": [
+        "OEM Certified",
+        "I-CAR Gold",
+        "ASE Certified"
+      ],
+      "specialties": [
+        "Collision Repair",
+        "Paint",
+        "Frame Straightening"
+      ],
       "average_wait_days": 3,
-      "labor_rate_per_hour": 85.00,
+      "labor_rate_per_hour": 85.0,
       "network": "preferred",
       "capacity_available": true
     },
@@ -684,10 +1243,17 @@
       "address": "5678 Oak Ave, San Diego, CA 92101",
       "phone": "619-555-0202",
       "rating": 4.5,
-      "certifications": ["ASE Certified", "I-CAR"],
-      "specialties": ["Collision Repair", "Dent Removal", "Glass Replacement"],
+      "certifications": [
+        "ASE Certified",
+        "I-CAR"
+      ],
+      "specialties": [
+        "Collision Repair",
+        "Dent Removal",
+        "Glass Replacement"
+      ],
       "average_wait_days": 2,
-      "labor_rate_per_hour": 75.00,
+      "labor_rate_per_hour": 75.0,
       "network": "preferred",
       "capacity_available": true
     },
@@ -696,10 +1262,18 @@
       "address": "9012 Palm Blvd, San Francisco, CA 94102",
       "phone": "415-555-0303",
       "rating": 4.9,
-      "certifications": ["OEM Certified", "I-CAR Gold", "ASE Master"],
-      "specialties": ["Luxury Vehicles", "Exotic Cars", "Precision Paint"],
+      "certifications": [
+        "OEM Certified",
+        "I-CAR Gold",
+        "ASE Master"
+      ],
+      "specialties": [
+        "Luxury Vehicles",
+        "Exotic Cars",
+        "Precision Paint"
+      ],
       "average_wait_days": 5,
-      "labor_rate_per_hour": 125.00,
+      "labor_rate_per_hour": 125.0,
       "network": "premium",
       "capacity_available": true
     },
@@ -708,10 +1282,15 @@
       "address": "3456 Central Ave, Sacramento, CA 95814",
       "phone": "916-555-0404",
       "rating": 4.2,
-      "certifications": ["ASE Certified"],
-      "specialties": ["General Repair", "Basic Collision"],
+      "certifications": [
+        "ASE Certified"
+      ],
+      "specialties": [
+        "General Repair",
+        "Basic Collision"
+      ],
       "average_wait_days": 1,
-      "labor_rate_per_hour": 55.00,
+      "labor_rate_per_hour": 55.0,
       "network": "standard",
       "capacity_available": true
     },
@@ -720,10 +1299,18 @@
       "address": "7890 Harbor Dr, Long Beach, CA 90802",
       "phone": "562-555-0505",
       "rating": 4.7,
-      "certifications": ["I-CAR Gold", "ASE Certified", "Tesla Approved"],
-      "specialties": ["Electric Vehicles", "Aluminum Repair", "Advanced Materials"],
+      "certifications": [
+        "I-CAR Gold",
+        "ASE Certified",
+        "Tesla Approved"
+      ],
+      "specialties": [
+        "Electric Vehicles",
+        "Aluminum Repair",
+        "Advanced Materials"
+      ],
       "average_wait_days": 4,
-      "labor_rate_per_hour": 110.00,
+      "labor_rate_per_hour": 110.0,
       "network": "preferred",
       "capacity_available": true
     },
@@ -732,10 +1319,17 @@
       "address": "2345 Valley Rd, Fresno, CA 93721",
       "phone": "559-555-0606",
       "rating": 4.4,
-      "certifications": ["ASE Certified", "I-CAR"],
-      "specialties": ["Family Vehicles", "SUVs", "Trucks"],
+      "certifications": [
+        "ASE Certified",
+        "I-CAR"
+      ],
+      "specialties": [
+        "Family Vehicles",
+        "SUVs",
+        "Trucks"
+      ],
       "average_wait_days": 2,
-      "labor_rate_per_hour": 65.00,
+      "labor_rate_per_hour": 65.0,
       "network": "standard",
       "capacity_available": false
     }
@@ -744,162 +1338,259 @@
     "PART-BUMPER-FRONT": {
       "name": "Front Bumper Cover",
       "category": "body",
-      "oem_price": 450.00,
-      "aftermarket_price": 225.00,
-      "refurbished_price": 150.00,
+      "oem_price": 450.0,
+      "aftermarket_price": 225.0,
+      "refurbished_price": 150.0,
       "availability": "in_stock",
       "lead_time_days": 1,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet"
+      ]
     },
     "PART-BUMPER-REAR": {
       "name": "Rear Bumper Cover",
       "category": "body",
-      "oem_price": 425.00,
-      "aftermarket_price": 200.00,
-      "refurbished_price": 135.00,
+      "oem_price": 425.0,
+      "aftermarket_price": 200.0,
+      "refurbished_price": 135.0,
       "availability": "in_stock",
       "lead_time_days": 1,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet"
+      ]
     },
     "PART-FENDER-FRONT": {
       "name": "Front Fender",
       "category": "body",
-      "oem_price": 350.00,
-      "aftermarket_price": 175.00,
-      "refurbished_price": 100.00,
+      "oem_price": 350.0,
+      "aftermarket_price": 175.0,
+      "refurbished_price": 100.0,
       "availability": "in_stock",
       "lead_time_days": 2,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "Nissan"
+      ]
     },
     "PART-HOOD": {
       "name": "Hood",
       "category": "body",
-      "oem_price": 650.00,
-      "aftermarket_price": 325.00,
-      "refurbished_price": 200.00,
+      "oem_price": 650.0,
+      "aftermarket_price": 325.0,
+      "refurbished_price": 200.0,
       "availability": "in_stock",
       "lead_time_days": 3,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "BMW"
+      ]
     },
     "PART-DOOR-FRONT": {
       "name": "Front Door Shell",
       "category": "body",
-      "oem_price": 850.00,
-      "aftermarket_price": 425.00,
-      "refurbished_price": 275.00,
+      "oem_price": 850.0,
+      "aftermarket_price": 425.0,
+      "refurbished_price": 275.0,
       "availability": "in_stock",
       "lead_time_days": 3,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "Nissan"
+      ]
     },
     "PART-DOOR-REAR": {
       "name": "Rear Door Shell",
       "category": "body",
-      "oem_price": 800.00,
-      "aftermarket_price": 400.00,
-      "refurbished_price": 250.00,
+      "oem_price": 800.0,
+      "aftermarket_price": 400.0,
+      "refurbished_price": 250.0,
       "availability": "in_stock",
       "lead_time_days": 3,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet"
+      ]
     },
     "PART-HEADLIGHT": {
       "name": "Headlight Assembly",
       "category": "lighting",
-      "oem_price": 550.00,
-      "aftermarket_price": 175.00,
-      "refurbished_price": 125.00,
+      "oem_price": 550.0,
+      "aftermarket_price": 175.0,
+      "refurbished_price": 125.0,
       "availability": "in_stock",
       "lead_time_days": 2,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW", "Tesla"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "BMW",
+        "Tesla"
+      ]
     },
     "PART-TAILLIGHT": {
       "name": "Taillight Assembly",
       "category": "lighting",
-      "oem_price": 350.00,
-      "aftermarket_price": 125.00,
-      "refurbished_price": 85.00,
+      "oem_price": 350.0,
+      "aftermarket_price": 125.0,
+      "refurbished_price": 85.0,
       "availability": "in_stock",
       "lead_time_days": 2,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "BMW"
+      ]
     },
     "PART-MIRROR-SIDE": {
       "name": "Side Mirror Assembly",
       "category": "body",
-      "oem_price": 275.00,
-      "aftermarket_price": 85.00,
-      "refurbished_price": 60.00,
+      "oem_price": 275.0,
+      "aftermarket_price": 85.0,
+      "refurbished_price": 60.0,
       "availability": "in_stock",
       "lead_time_days": 1,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan", "BMW"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "Nissan",
+        "BMW"
+      ]
     },
     "PART-WINDSHIELD": {
       "name": "Windshield",
       "category": "glass",
-      "oem_price": 450.00,
-      "aftermarket_price": 250.00,
+      "oem_price": 450.0,
+      "aftermarket_price": 250.0,
       "refurbished_price": null,
       "availability": "in_stock",
       "lead_time_days": 1,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan", "BMW", "Tesla"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "Nissan",
+        "BMW",
+        "Tesla"
+      ]
     },
     "PART-QUARTER-PANEL": {
       "name": "Quarter Panel",
       "category": "body",
-      "oem_price": 750.00,
-      "aftermarket_price": 375.00,
-      "refurbished_price": 225.00,
+      "oem_price": 750.0,
+      "aftermarket_price": 375.0,
+      "refurbished_price": 225.0,
       "availability": "limited",
       "lead_time_days": 5,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet"
+      ]
     },
     "PART-RADIATOR": {
       "name": "Radiator",
       "category": "mechanical",
-      "oem_price": 425.00,
-      "aftermarket_price": 175.00,
-      "refurbished_price": 100.00,
+      "oem_price": 425.0,
+      "aftermarket_price": 175.0,
+      "refurbished_price": 100.0,
       "availability": "in_stock",
       "lead_time_days": 2,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "Nissan"
+      ]
     },
     "PART-AIRBAG-DRIVER": {
       "name": "Driver Airbag Module",
       "category": "safety",
-      "oem_price": 1200.00,
+      "oem_price": 1200.0,
       "aftermarket_price": null,
       "refurbished_price": null,
       "availability": "special_order",
       "lead_time_days": 7,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW", "Tesla"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "BMW",
+        "Tesla"
+      ]
     },
     "PART-AIRBAG-PASSENGER": {
       "name": "Passenger Airbag Module",
       "category": "safety",
-      "oem_price": 950.00,
+      "oem_price": 950.0,
       "aftermarket_price": null,
       "refurbished_price": null,
       "availability": "special_order",
       "lead_time_days": 7,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "BMW"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "BMW"
+      ]
     },
     "PART-GRILLE": {
       "name": "Front Grille",
       "category": "body",
-      "oem_price": 225.00,
-      "aftermarket_price": 75.00,
-      "refurbished_price": 50.00,
+      "oem_price": 225.0,
+      "aftermarket_price": 75.0,
+      "refurbished_price": 50.0,
       "availability": "in_stock",
       "lead_time_days": 1,
-      "compatible_makes": ["Honda", "Toyota", "Ford", "Chevrolet", "Nissan", "BMW"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Ford",
+        "Chevrolet",
+        "Nissan",
+        "BMW"
+      ]
     },
     "PART-TRUNK-LID": {
       "name": "Trunk Lid",
       "category": "body",
-      "oem_price": 575.00,
-      "aftermarket_price": 285.00,
-      "refurbished_price": 175.00,
+      "oem_price": 575.0,
+      "aftermarket_price": 285.0,
+      "refurbished_price": 175.0,
       "availability": "in_stock",
       "lead_time_days": 3,
-      "compatible_makes": ["Honda", "Toyota", "Chevrolet", "BMW"]
+      "compatible_makes": [
+        "Honda",
+        "Toyota",
+        "Chevrolet",
+        "BMW"
+      ]
     }
   },
   "labor_operations": {

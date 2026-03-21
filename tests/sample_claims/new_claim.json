@@ -8,6 +8,7 @@
   "incident_description": "Rear-ended at stoplight. Damage to rear bumper and trunk.",
   "damage_description": "Rear bumper and trunk damage.",
   "estimated_damage": 2500,
+  "incident_location": "California",
   "parties": [
     {
       "party_type": "claimant",
