@@ -1,4 +1,4 @@
-"""Mock adapter implementations backed by mock_db.json."""
+"""Mock adapter implementations, mostly backed by mock_db.json; MockGapInsuranceAdapter is in-memory only."""
 
 from claim_agent.adapters.mock.gap_insurance import MockGapInsuranceAdapter
 from claim_agent.adapters.mock.claim_search import MockClaimSearchAdapter
