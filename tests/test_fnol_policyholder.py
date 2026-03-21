@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import pytest
+
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput
@@ -9,6 +11,23 @@ from claim_agent.services.fnol_policyholder import (
     merge_fnol_parties_with_named_insured_policyholder,
     policyholder_party_from_named_insured,
 )
+
+
+@pytest.fixture()
+def pin_mock_policy_adapter(monkeypatch):
+    """Force POLICY_ADAPTER=mock and reload settings + adapter singletons.
+
+    This ensures create_claim tests are deterministic regardless of the
+    environment's POLICY_ADAPTER setting (rest/stub/mock).
+    """
+    monkeypatch.setenv("POLICY_ADAPTER", "mock")
+    from claim_agent.adapters.registry import reset_adapters
+    from claim_agent.config import reload_settings
+
+    reload_settings()
+    reset_adapters()
+    yield
+    reset_adapters()
 
 
 def test_policyholder_from_named_insured_first_with_name():
@@ -60,7 +79,7 @@ def test_merge_prepends_policyholder_from_policy():
     assert out[1].name == "Alice"
 
 
-def test_create_claim_auto_policyholder_from_mock_policy(temp_db):
+def test_create_claim_auto_policyholder_from_mock_policy(temp_db, pin_mock_policy_adapter):
     repo = ClaimRepository(db_path=temp_db)
     claim_id = repo.create_claim(
         ClaimInput(
@@ -81,7 +100,7 @@ def test_create_claim_auto_policyholder_from_mock_policy(temp_db):
     assert ph[0]["email"] == "john.doe@example.com"
 
 
-def test_create_claim_no_duplicate_policyholder_when_intake_has_one(temp_db):
+def test_create_claim_no_duplicate_policyholder_when_intake_has_one(temp_db, pin_mock_policy_adapter):
     repo = ClaimRepository(db_path=temp_db)
     claim_id = repo.create_claim(
         ClaimInput(
