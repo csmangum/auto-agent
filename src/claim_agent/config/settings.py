@@ -121,6 +121,16 @@ def get_retention_purge_after_archive_years() -> int:
     return get_settings().retention_purge_after_archive_years
 
 
+def get_audit_log_retention_years_after_purge() -> int | None:
+    """Years after purged_at for audit log export/purge eligibility; None if unset."""
+    return get_settings().audit_log_retention_years_after_purge
+
+
+def is_audit_log_purge_enabled() -> bool:
+    """True when AUDIT_LOG_PURGE_ENABLED allows audit-log-purge deletes."""
+    return get_settings().audit_log_purge_enabled
+
+
 def get_retention_by_state() -> dict[str, int]:
     """State-specific retention periods (years). Empty = use default only."""
     return get_settings().get_retention_by_state()

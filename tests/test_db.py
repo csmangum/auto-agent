@@ -51,14 +51,14 @@ def test_init_db_creates_tables(temp_db):
 
 
 def test_init_db_creates_append_only_triggers(temp_db):
-    """init_db creates triggers that prevent UPDATE and DELETE on claim_audit_log."""
+    """init_db creates trigger that prevents UPDATE on claim_audit_log (DELETE allowed for retention)."""
     with get_connection(temp_db) as conn:
         cur = conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
         )
         triggers = [row[0] for row in cur.fetchall()]
     assert "claim_audit_log_prevent_update" in triggers
-    assert "claim_audit_log_prevent_delete" in triggers
+    assert "claim_audit_log_prevent_delete" not in triggers
 
 
 def test_audit_log_prevents_update(temp_db):
@@ -83,8 +83,8 @@ def test_audit_log_prevents_update(temp_db):
             )
 
 
-def test_audit_log_prevents_delete(temp_db):
-    """Deleting a claim_audit_log row raises an error (append-only enforcement)."""
+def test_audit_log_delete_allowed_for_retention(temp_db):
+    """DELETE on claim_audit_log succeeds (gated purge tooling; no DB delete trigger)."""
     repo = ClaimRepository(db_path=temp_db)
     claim_input = ClaimInput(
         policy_number="POL-TRIGGER2",
@@ -97,12 +97,90 @@ def test_audit_log_prevents_delete(temp_db):
         damage_description="Interior soaked.",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises(IntegrityError, match="append-only"):
-        with get_connection(temp_db) as conn:
-            conn.execute(
-                text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),
-                {"claim_id": claim_id},
-            )
+    with get_connection(temp_db) as conn:
+        conn.execute(
+            text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),
+            {"claim_id": claim_id},
+        )
+        n = conn.execute(
+            text("SELECT COUNT(*) FROM claim_audit_log WHERE claim_id = :claim_id"),
+            {"claim_id": claim_id},
+        ).scalar()
+    assert n == 0
+
+
+def test_purge_audit_log_for_claim_ids_requires_enabled(temp_db):
+    """purge_audit_log_for_claim_ids raises when purge is disabled."""
+    from claim_agent.db.constants import STATUS_PURGED
+    from claim_agent.exceptions import DomainValidationError
+
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-AUDIT-P",
+        vin="VIN-AUDIT-P",
+        vehicle_year=2022,
+        vehicle_make="Ford",
+        vehicle_model="Focus",
+        incident_date="2024-01-01",
+        incident_description="Test",
+        damage_description="Test",
+    )
+    claim_id = repo.create_claim(claim_input)
+    with get_connection(temp_db) as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE claims SET status = :st, purged_at = datetime('now'),
+                retention_tier = 'purged'
+                WHERE id = :cid
+                """
+            ),
+            {"st": STATUS_PURGED, "cid": claim_id},
+        )
+    with pytest.raises(DomainValidationError, match="AUDIT_LOG_PURGE_ENABLED"):
+        repo.purge_audit_log_for_claim_ids([claim_id], audit_purge_enabled=False)
+
+
+def test_purge_audit_log_for_claim_ids_deletes_rows(temp_db):
+    """purge_audit_log_for_claim_ids removes audit rows when enabled."""
+    from claim_agent.db.constants import STATUS_PURGED
+
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-AUDIT-DEL",
+        vin="VIN-AUDIT-DEL",
+        vehicle_year=2021,
+        vehicle_make="Subaru",
+        vehicle_model="Outback",
+        incident_date="2024-02-01",
+        incident_description="Hail",
+        damage_description="Roof",
+    )
+    claim_id = repo.create_claim(claim_input)
+    with get_connection(temp_db) as conn:
+        before = conn.execute(
+            text("SELECT COUNT(*) FROM claim_audit_log WHERE claim_id = :cid"),
+            {"cid": claim_id},
+        ).scalar()
+        conn.execute(
+            text(
+                """
+                UPDATE claims SET status = :st, purged_at = datetime('now'),
+                retention_tier = 'purged'
+                WHERE id = :cid
+                """
+            ),
+            {"st": STATUS_PURGED, "cid": claim_id},
+        )
+    assert before >= 1
+    deleted = repo.purge_audit_log_for_claim_ids([claim_id], audit_purge_enabled=True)
+    assert deleted >= 1
+    with get_connection(temp_db) as conn:
+        after = conn.execute(
+            text("SELECT COUNT(*) FROM claim_audit_log WHERE claim_id = :cid"),
+            {"cid": claim_id},
+        ).scalar()
+    assert after == 0
 
 
 def test_repository_create_claim(temp_db):

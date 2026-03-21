@@ -231,7 +231,7 @@ CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 
 ### claim_audit_log
 
-Audit trail of all status changes and actions. **Append-only**: no UPDATE or DELETE. Records are immutable for compliance.
+Audit trail of all status changes and actions. **No UPDATE** (trigger-enforced). **DELETE** is permitted for gated retention purge after migration `039` (fresh `init_db` omits the legacy delete trigger). Records are otherwise immutable for compliance.
 
 ```sql
 CREATE TABLE IF NOT EXISTS claim_audit_log (
@@ -295,7 +295,16 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim
 
 #### Retention
 
-Audit log retention is compliance-dependent. Configure via backup/archival policies. The audit table may outlive claims for regulatory requirements. See your compliance team for retention periods.
+`claim_audit_log` is **append-only for updates** (no `UPDATE`). **Deletes** are blocked at the database layer until migration `039` (see [GitHub issue #350](https://github.com/csmangum/auto-agent/issues/350)): after that migration, rows may be removed only through the gated CLI `claim-agent audit-log-purge` (never ad hoc SQL in production).
+
+**Policy template (carrier-defined):**
+
+- **Default:** retain all audit rows indefinitely after claim purge; no automated audit deletion.
+- **Optional:** retain audit rows for **M** calendar years after the parent claim reaches `status=purged` and `purged_at` is set, then **export** (cold storage) and optionally **purge** database rows. Configure `AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE`; purge additionally requires `AUDIT_LOG_PURGE_ENABLED=true` and compliance sign-off.
+
+DSAR deletion and claim retention **purge** anonymize the claim but **preserve** `claim_audit_log` today unless audit purge has been run. `before_state` / `after_state` JSON may still contain historical values—another reason some carriers export then purge audit rows after the legal window.
+
+See [PII and retention](pii-and-retention.md#audit-log-retention-issue-350) and migration `002_audit_trail_enhancements` (append-only triggers), `039_allow_claim_audit_log_delete_for_retention` (removes delete trigger).
 
 ### reserve_history
 

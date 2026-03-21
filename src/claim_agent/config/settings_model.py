@@ -291,9 +291,7 @@ class PaymentConfig(BaseSettings):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")
 
-    @field_validator(
-        "adjuster_limit", "supervisor_limit", "executive_limit", mode="before"
-    )
+    @field_validator("adjuster_limit", "supervisor_limit", "executive_limit", mode="before")
     @classmethod
     def _coerce_limit(cls, v: Any, info: ValidationInfo) -> float:
         defaults = {
@@ -421,7 +419,11 @@ class TracingConfig(BaseSettings):
     )
 
     @field_validator(
-        "langsmith_enabled", "trace_llm_calls", "trace_tool_calls", "log_prompts", "log_responses",
+        "langsmith_enabled",
+        "trace_llm_calls",
+        "trace_tool_calls",
+        "log_prompts",
+        "log_responses",
         "otel_enabled",
         mode="before",
     )
@@ -452,9 +454,7 @@ class PathsConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    claims_db_path: str = Field(
-        default="data/claims.db", validation_alias="CLAIMS_DB_PATH"
-    )
+    claims_db_path: str = Field(default="data/claims.db", validation_alias="CLAIMS_DB_PATH")
     database_url: str | None = Field(
         default=None,
         validation_alias="DATABASE_URL",
@@ -473,6 +473,7 @@ class PathsConfig(BaseSettings):
             return None
         s = str(v).strip()
         return s if s else None
+
     fresh_claims_db_on_startup: bool = Field(
         default=False,
         validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
@@ -489,9 +490,8 @@ class PathsConfig(BaseSettings):
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")
-    mock_db_path: str = Field(
-        default="data/mock_db.json", validation_alias="MOCK_DB_PATH"
-    )
+
+    mock_db_path: str = Field(default="data/mock_db.json", validation_alias="MOCK_DB_PATH")
     ca_compliance_path: str = Field(
         default="data/california_auto_compliance.json",
         validation_alias="CA_COMPLIANCE_PATH",
@@ -704,7 +704,12 @@ class PrivacyConfig(BaseSettings):
         description="When true, claims with litigation_hold are skipped during DSAR deletion.",
     )
 
-    @field_validator("llm_data_minimization", "dsar_verification_required", "litigation_hold_blocks_deletion", mode="before")
+    @field_validator(
+        "llm_data_minimization",
+        "dsar_verification_required",
+        "litigation_hold_blocks_deletion",
+        mode="before",
+    )
     @classmethod
     def _parse_bool(cls, v: Any) -> bool:
         if isinstance(v, bool):
@@ -723,8 +728,12 @@ class ChatConfig(BaseSettings):
     )
 
     max_tool_rounds: int = Field(default=5, ge=1, le=20, description="Max tool-call loops per turn")
-    max_message_history: int = Field(default=50, ge=1, le=200, description="Max messages to send to LLM")
-    system_prompt_override: str = Field(default="", description="Custom system prompt (empty = use default)")
+    max_message_history: int = Field(
+        default=50, ge=1, le=200, description="Max messages to send to LLM"
+    )
+    system_prompt_override: str = Field(
+        default="", description="Custom system prompt (empty = use default)"
+    )
 
 
 class MockImageConfig(BaseSettings):
@@ -736,12 +745,8 @@ class MockImageConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    generator_enabled: bool = Field(
-        default=False, validation_alias="MOCK_IMAGE_GENERATOR_ENABLED"
-    )
-    model: str = Field(
-        default="google/gemini-2.0-flash-exp", validation_alias="MOCK_IMAGE_MODEL"
-    )
+    generator_enabled: bool = Field(default=False, validation_alias="MOCK_IMAGE_GENERATOR_ENABLED")
+    model: str = Field(default="google/gemini-2.0-flash-exp", validation_alias="MOCK_IMAGE_MODEL")
     vision_analysis_source: str = Field(
         default="claim_context",
         validation_alias="MOCK_IMAGE_VISION_ANALYSIS_SOURCE",
@@ -868,8 +873,12 @@ class Settings(BaseSettings):
     high_value_damage_threshold: int = 25_000
     high_value_vehicle_threshold: int = 50_000
     pre_routing_fraud_damage_ratio: float = 0.9
-    max_tokens_per_claim: int = Field(default=150_000, validation_alias="CLAIM_AGENT_MAX_TOKENS_PER_CLAIM")
-    max_llm_calls_per_claim: int = Field(default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM")
+    max_tokens_per_claim: int = Field(
+        default=150_000, validation_alias="CLAIM_AGENT_MAX_TOKENS_PER_CLAIM"
+    )
+    max_llm_calls_per_claim: int = Field(
+        default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM"
+    )
     after_action_note_max_tokens: int = Field(
         default=1024,
         ge=1,
@@ -889,6 +898,19 @@ class Settings(BaseSettings):
         default=2,
         validation_alias="RETENTION_PURGE_AFTER_ARCHIVE_YEARS",
         description="Years after archived_at before retention purge (anonymize + purged status)",
+    )
+    audit_log_retention_years_after_purge: int | None = Field(
+        default=None,
+        validation_alias="AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE",
+        description=(
+            "Calendar years after claim purged_at before audit rows are eligible for "
+            "export/purge tooling; None disables eligibility reporting"
+        ),
+    )
+    audit_log_purge_enabled: bool = Field(
+        default=False,
+        validation_alias="AUDIT_LOG_PURGE_ENABLED",
+        description="When true, allow claim-agent audit-log-purge to delete audit rows",
     )
     policy_adapter: str = Field(default="mock", validation_alias="POLICY_ADAPTER")
     valuation_adapter: str = Field(default="mock", validation_alias="VALUATION_ADAPTER")
@@ -939,6 +961,33 @@ class Settings(BaseSettings):
             except ValueError:
                 pass
         return 2
+
+    @field_validator("audit_log_retention_years_after_purge", mode="before")
+    @classmethod
+    def _coerce_audit_log_retention_years(cls, v: Any) -> int | None:
+        msg = (
+            "AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE must be unset, empty, or a non-negative integer"
+        )
+        if v is None or v == "":
+            return None
+        if isinstance(v, bool):
+            raise ValueError(msg)
+        if isinstance(v, int):
+            if v < 0:
+                raise ValueError(msg)
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return None
+            try:
+                n = int(s)
+            except ValueError as e:
+                raise ValueError(msg) from e
+            if n < 0:
+                raise ValueError(msg)
+            return n
+        raise ValueError(msg)
 
     @model_validator(mode="after")
     def _resolve_retention(self) -> "Settings":

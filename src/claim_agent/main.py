@@ -20,10 +20,12 @@ from pydantic import ValidationError
 
 from claim_agent.config import get_settings
 from claim_agent.config.settings import (
+    get_audit_log_retention_years_after_purge,
     get_purge_after_archive_by_state,
     get_retention_by_state,
     get_retention_period_years,
     get_retention_purge_after_archive_years,
+    is_audit_log_purge_enabled,
 )
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
@@ -55,13 +57,34 @@ def _get_cli_ctx() -> ClaimContext:
     return ClaimContext.from_defaults(db_path=get_db_path())
 
 
+def _resolve_audit_log_retention_years(years_opt: Optional[int]) -> int:
+    """Return years after purged_at for audit tooling, or exit if unset."""
+    y = years_opt if years_opt is not None else get_audit_log_retention_years_after_purge()
+    if y is None:
+        typer.echo(
+            "Error: set AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE or pass --years",
+            err=True,
+        )
+        raise typer.Exit(1)
+    return y
+
+
+def _write_eligible_claim_ids_file(path: Path, claim_ids: list[str]) -> None:
+    """Write one claim ID per line for large eligibility sets (avoid huge stdout JSON)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for cid in claim_ids:
+            f.write(f"{cid}\n")
+
+
 def _usage() -> str:
     """Return usage string (for tests)."""
     return (
         "Usage: claim-agent [OPTIONS] COMMAND [ARGS]...\n\n"
         "Commands: serve, process, status, history, reprocess, metrics, review-queue, "
         "assign, approve, reject, request-info, escalate-siu, retention-enforce, "
-        "retention-purge, dsar-access, dsar-deletion.\n"
+        "retention-purge, retention-report, audit-log-export, audit-log-purge, "
+        "dsar-access, dsar-deletion.\n"
         "Run claim-agent --help for full help."
     )
 
@@ -74,9 +97,7 @@ def _setup_logging(debug: bool = False, json_format: bool = False) -> None:
         os.environ["CLAIM_AGENT_LOG_LEVEL"] = "DEBUG"
     get_settings()  # Validate config at startup
     get_logger("claim_agent")
-    logging.getLogger("claim_agent").setLevel(
-        logging.DEBUG if debug else logging.INFO
-    )
+    logging.getLogger("claim_agent").setLevel(logging.DEBUG if debug else logging.INFO)
 
 
 @app.callback()
@@ -89,13 +110,16 @@ def _global_options(
     _setup_logging(debug=debug, json_format=json_format)
     from claim_agent.diary.auto_create import ensure_diary_listener_registered
     from claim_agent.events import ensure_webhook_listener_registered
+
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
 
 
 @app.command()
 def serve(
-    reload: Annotated[bool, typer.Option("--reload", help="Enable auto-reload for development")] = False,
+    reload: Annotated[
+        bool, typer.Option("--reload", help="Enable auto-reload for development")
+    ] = False,
     port: Annotated[int, typer.Option("--port", help="API server port")] = 8000,
     host: Annotated[str, typer.Option("--host", help="API server host")] = "0.0.0.0",
 ) -> None:
@@ -113,7 +137,9 @@ def process(
     claim_path: Annotated[Path, typer.Argument(help="Path to claim JSON file")],
     attachment: Annotated[
         Optional[list[Path]],
-        typer.Option("--attachment", "-a", help="Attach file (photo, PDF, estimate). May be repeated."),
+        typer.Option(
+            "--attachment", "-a", help="Attach file (photo, PDF, estimate). May be repeated."
+        ),
     ] = None,
 ) -> None:
     """Process a new claim from a JSON file."""
@@ -160,8 +186,10 @@ def process(
     attachments_for_workflow = []
     for a in all_attachments:
         url = a.url
-        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
-            ("http://", "https://", "file://")
+        if (
+            isinstance(storage, LocalStorageAdapter)
+            and url
+            and not url.startswith(("http://", "https://", "file://"))
         ):
             path = storage.get_path(claim_id, url)
             if path.exists():
@@ -170,7 +198,9 @@ def process(
 
     claim_data_with_attachments = {**sanitized, "attachments": attachments_for_workflow}
     try:
-        result = run_claim_workflow(claim_data_with_attachments, existing_claim_id=claim_id, ctx=ctx)
+        result = run_claim_workflow(
+            claim_data_with_attachments, existing_claim_id=claim_id, ctx=ctx
+        )
         typer.echo(json.dumps(result, indent=2))
     except Exception as e:
         typer.echo(f"Error: Claim processing failed: {e}", err=True)
@@ -259,8 +289,12 @@ def reprocess(
 
 @app.command("review-queue")
 def review_queue(
-    assignee: Annotated[Optional[str], typer.Option("--assignee", help="Filter by assignee")] = None,
-    priority: Annotated[Optional[str], typer.Option("--priority", help="Filter by priority")] = None,
+    assignee: Annotated[
+        Optional[str], typer.Option("--assignee", help="Filter by assignee")
+    ] = None,
+    priority: Annotated[
+        Optional[str], typer.Option("--priority", help="Filter by priority")
+    ] = None,
 ) -> None:
     """List claims needing review."""
     ctx = _get_cli_ctx()
@@ -317,7 +351,9 @@ def approve(
         sys.exit(1)
     try:
         if confirmed_payout is not None and (
-            not math.isfinite(confirmed_payout) or confirmed_payout < 0 or confirmed_payout > MAX_PAYOUT
+            not math.isfinite(confirmed_payout)
+            or confirmed_payout < 0
+            or confirmed_payout > MAX_PAYOUT
         ):
             typer.echo(
                 f"Error: confirmed_payout must be 0 <= x <= {MAX_PAYOUT:,.0f}",
@@ -399,11 +435,20 @@ def escalate_siu(
 
 @app.command("dsar-access")
 def dsar_access(
-    claimant_email: Annotated[str, typer.Option("--claimant-email", "-e", help="Claimant email or identifier")],
-    claim_id: Annotated[Optional[str], typer.Option("--claim-id", "-c", help="Claim ID for verification")] = None,
-    policy_number: Annotated[Optional[str], typer.Option("--policy", "-p", help="Policy number for verification")] = None,
+    claimant_email: Annotated[
+        str, typer.Option("--claimant-email", "-e", help="Claimant email or identifier")
+    ],
+    claim_id: Annotated[
+        Optional[str], typer.Option("--claim-id", "-c", help="Claim ID for verification")
+    ] = None,
+    policy_number: Annotated[
+        Optional[str], typer.Option("--policy", "-p", help="Policy number for verification")
+    ] = None,
     vin: Annotated[Optional[str], typer.Option("--vin", "-v", help="VIN for verification")] = None,
-    fulfill: Annotated[bool, typer.Option("--fulfill", "-f", help="Fulfill the request immediately and output export")] = False,
+    fulfill: Annotated[
+        bool,
+        typer.Option("--fulfill", "-f", help="Fulfill the request immediately and output export"),
+    ] = False,
 ) -> None:
     """Submit a DSAR access request (right-to-know). For testing/admin."""
     from claim_agent.services.dsar import fulfill_access_request, submit_access_request
@@ -415,14 +460,14 @@ def dsar_access(
         verification_data["policy_number"] = policy_number
     if vin:
         verification_data["vin"] = vin
-    
+
     has_claim_id = bool(claim_id)
     has_both_policy_and_vin = bool(policy_number) and bool(vin)
-    
+
     if not (has_claim_id or has_both_policy_and_vin):
         typer.echo("Error: Provide --claim-id or (--policy and --vin) for verification", err=True)
         raise typer.Exit(1)
-    
+
     request_id = submit_access_request(
         claimant_identifier=claimant_email,
         verification_data=verification_data,
@@ -441,11 +486,19 @@ def dsar_access(
 
 @app.command("dsar-deletion")
 def dsar_deletion(
-    claimant_email: Annotated[str, typer.Option("--claimant-email", "-e", help="Claimant email or identifier")],
-    claim_id: Annotated[Optional[str], typer.Option("--claim-id", "-c", help="Claim ID for verification")] = None,
-    policy_number: Annotated[Optional[str], typer.Option("--policy", "-p", help="Policy number for verification")] = None,
+    claimant_email: Annotated[
+        str, typer.Option("--claimant-email", "-e", help="Claimant email or identifier")
+    ],
+    claim_id: Annotated[
+        Optional[str], typer.Option("--claim-id", "-c", help="Claim ID for verification")
+    ] = None,
+    policy_number: Annotated[
+        Optional[str], typer.Option("--policy", "-p", help="Policy number for verification")
+    ] = None,
     vin: Annotated[Optional[str], typer.Option("--vin", "-v", help="VIN for verification")] = None,
-    fulfill: Annotated[bool, typer.Option("--fulfill", "-f", help="Fulfill the request immediately")] = False,
+    fulfill: Annotated[
+        bool, typer.Option("--fulfill", "-f", help="Fulfill the request immediately")
+    ] = False,
 ) -> None:
     """Submit a DSAR deletion request (right-to-delete). Anonymizes PII, preserves audit trail."""
     from claim_agent.services.dsar import fulfill_deletion_request, submit_deletion_request
@@ -457,14 +510,14 @@ def dsar_deletion(
         verification_data["policy_number"] = policy_number
     if vin:
         verification_data["vin"] = vin
-    
+
     has_claim_id = bool(claim_id)
     has_both_policy_and_vin = bool(policy_number) and bool(vin)
-    
+
     if not (has_claim_id or has_both_policy_and_vin):
         typer.echo("Error: Provide --claim-id or (--policy and --vin) for verification", err=True)
         raise typer.Exit(1)
-    
+
     request_id = submit_deletion_request(
         claimant_identifier=claimant_email,
         verification_data=verification_data,
@@ -490,7 +543,10 @@ def retention_enforce(
     ] = None,
     include_litigation_hold: Annotated[
         bool,
-        typer.Option("--include-litigation-hold", help="Archive claims with litigation hold (default: exclude)"),
+        typer.Option(
+            "--include-litigation-hold",
+            help="Archive claims with litigation hold (default: exclude)",
+        ),
     ] = False,
 ) -> None:
     """Archive claims older than retention period. Skips litigation hold claims by default."""
@@ -505,12 +561,17 @@ def retention_enforce(
     )
 
     if dry_run:
-        typer.echo(json.dumps({
-            "dry_run": True,
-            "retention_period_years": retention_years,
-            "claims_to_archive": len(claims),
-            "claim_ids": [c["id"] for c in claims],
-        }, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "retention_period_years": retention_years,
+                    "claims_to_archive": len(claims),
+                    "claim_ids": [c["id"] for c in claims],
+                },
+                indent=2,
+            )
+        )
         return
 
     archived = []
@@ -524,13 +585,18 @@ def retention_enforce(
             typer.echo(f"Warning: Could not archive {claim_id}: {e}", err=True)
             failed.append(claim_id)
 
-    typer.echo(json.dumps({
-        "retention_period_years": retention_years,
-        "archived_count": len(archived),
-        "archived_claim_ids": archived,
-        "failed_count": len(failed),
-        "failed_claim_ids": failed,
-    }, indent=2))
+    typer.echo(
+        json.dumps(
+            {
+                "retention_period_years": retention_years,
+                "archived_count": len(archived),
+                "archived_claim_ids": archived,
+                "failed_count": len(failed),
+                "failed_claim_ids": failed,
+            },
+            indent=2,
+        )
+    )
 
     if failed:
         sys.exit(1)
@@ -568,13 +634,18 @@ def retention_purge(
         purge_state_info["purge_by_state"] = purge_by_state
 
     if dry_run:
-        typer.echo(json.dumps({
-            "dry_run": True,
-            "purge_after_archive_years": purge_years,
-            **purge_state_info,
-            "claims_to_purge": len(claims),
-            "claim_ids": [c["id"] for c in claims],
-        }, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "purge_after_archive_years": purge_years,
+                    **purge_state_info,
+                    "claims_to_purge": len(claims),
+                    "claim_ids": [c["id"] for c in claims],
+                },
+                indent=2,
+            )
+        )
         return
 
     purged: list[str] = []
@@ -588,14 +659,19 @@ def retention_purge(
             typer.echo(f"Warning: Could not purge {claim_id}: {e}", err=True)
             failed.append(claim_id)
 
-    typer.echo(json.dumps({
-        "purge_after_archive_years": purge_years,
-        **purge_state_info,
-        "purged_count": len(purged),
-        "purged_claim_ids": purged,
-        "failed_count": len(failed),
-        "failed_claim_ids": failed,
-    }, indent=2))
+    typer.echo(
+        json.dumps(
+            {
+                "purge_after_archive_years": purge_years,
+                **purge_state_info,
+                "purged_count": len(purged),
+                "purged_claim_ids": purged,
+                "failed_count": len(failed),
+                "failed_claim_ids": failed,
+            },
+            indent=2,
+        )
+    )
 
     if failed:
         sys.exit(1)
@@ -614,6 +690,20 @@ def retention_report(
             help="Override years after archive before purge (for pending_purge count)",
         ),
     ] = None,
+    audit_purge_years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--audit-purge-years",
+            help="Years after purged_at for audit eligibility counts (overrides env)",
+        ),
+    ] = None,
+    include_litigation_hold_audit: Annotated[
+        bool,
+        typer.Option(
+            "--include-litigation-hold-audit",
+            help="Include litigation-hold claims in audit eligibility counts",
+        ),
+    ] = False,
 ) -> None:
     """Produce retention audit report: tier/status counts, litigation hold, pending archive/purge."""
     retention_years = years if years is not None else get_retention_period_years()
@@ -622,14 +712,191 @@ def retention_report(
         purge_years if purge_years is not None else get_retention_purge_after_archive_years()
     )
     purge_by_state = get_purge_after_archive_by_state() if purge_years is None else None
+    audit_years_effective = (
+        audit_purge_years
+        if audit_purge_years is not None
+        else get_audit_log_retention_years_after_purge()
+    )
     ctx = _get_cli_ctx()
     report = ctx.repo.retention_report(
         retention_years,
         retention_by_state=retention_by_state,
         purge_after_archive_years=purge_after,
         purge_by_state=purge_by_state,
+        audit_log_retention_years_after_purge=audit_years_effective,
+        exclude_litigation_hold_from_audit_eligibility=not include_litigation_hold_audit,
     )
     typer.echo(json.dumps(report, indent=2))
+
+
+@app.command("audit-log-export")
+def audit_log_export(
+    output: Annotated[Path, typer.Option("--output", "-o", help="NDJSON output file path")],
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print counts only; do not write a file"),
+    ] = False,
+    years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--years",
+            "-y",
+            help="Years after purged_at (overrides AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE)",
+        ),
+    ] = None,
+    include_litigation_hold: Annotated[
+        bool,
+        typer.Option(
+            "--include-litigation-hold",
+            help="Include claims with litigation hold",
+        ),
+    ] = False,
+    print_eligible_claim_ids: Annotated[
+        bool,
+        typer.Option(
+            "--print-eligible-claim-ids",
+            help="Include full eligible claim ID list in dry-run JSON (can be very large)",
+        ),
+    ] = False,
+    eligible_claim_ids_file: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--eligible-claim-ids-file",
+            help="Write one eligible claim ID per line (after eligibility is computed)",
+        ),
+    ] = None,
+) -> None:
+    """Export claim_audit_log rows for purged claims past the audit retention horizon (NDJSON)."""
+    audit_years = _resolve_audit_log_retention_years(years)
+    ctx = _get_cli_ctx()
+    repo = ctx.repo
+    eligible = repo.list_claim_ids_eligible_for_audit_log_retention(
+        audit_years,
+        exclude_litigation_hold=not include_litigation_hold,
+    )
+    row_count = repo.count_audit_log_rows_for_claim_ids(eligible)
+    if eligible_claim_ids_file is not None:
+        _write_eligible_claim_ids_file(eligible_claim_ids_file, eligible)
+    if dry_run:
+        payload: dict[str, Any] = {
+            "dry_run": True,
+            "audit_retention_years_after_purge": audit_years,
+            "eligible_claim_count": len(eligible),
+            "audit_row_count": row_count,
+        }
+        if eligible_claim_ids_file is not None:
+            payload["eligible_claim_ids_file"] = str(eligible_claim_ids_file)
+        if print_eligible_claim_ids:
+            payload["eligible_claim_ids"] = eligible
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    rows = repo.fetch_audit_log_rows_for_claim_ids(eligible)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, default=str) + "\n")
+    summary: dict[str, Any] = {
+        "output": str(output),
+        "audit_retention_years_after_purge": audit_years,
+        "eligible_claim_count": len(eligible),
+        "audit_row_count": len(rows),
+    }
+    if eligible_claim_ids_file is not None:
+        summary["eligible_claim_ids_file"] = str(eligible_claim_ids_file)
+    typer.echo(json.dumps(summary, indent=2))
+
+
+@app.command("audit-log-purge")
+def audit_log_purge(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show what would be deleted; no deletes"),
+    ] = False,
+    years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--years",
+            "-y",
+            help="Years after purged_at (overrides AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE)",
+        ),
+    ] = None,
+    include_litigation_hold: Annotated[
+        bool,
+        typer.Option(
+            "--include-litigation-hold",
+            help="Include claims with litigation hold",
+        ),
+    ] = False,
+    ack_exported: Annotated[
+        bool,
+        typer.Option(
+            "--ack-exported",
+            help="Required: confirm audit rows were exported to cold storage",
+        ),
+    ] = False,
+    print_eligible_claim_ids: Annotated[
+        bool,
+        typer.Option(
+            "--print-eligible-claim-ids",
+            help="Include full eligible claim ID list in dry-run JSON (can be very large)",
+        ),
+    ] = False,
+    eligible_claim_ids_file: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--eligible-claim-ids-file",
+            help="Write one eligible claim ID per line (after eligibility is computed)",
+        ),
+    ] = None,
+) -> None:
+    """Delete claim_audit_log rows for eligible purged claims (requires env gate + --ack-exported)."""
+    audit_years = _resolve_audit_log_retention_years(years)
+    ctx = _get_cli_ctx()
+    repo = ctx.repo
+    eligible = repo.list_claim_ids_eligible_for_audit_log_retention(
+        audit_years,
+        exclude_litigation_hold=not include_litigation_hold,
+    )
+    row_count = repo.count_audit_log_rows_for_claim_ids(eligible)
+    if eligible_claim_ids_file is not None:
+        _write_eligible_claim_ids_file(eligible_claim_ids_file, eligible)
+    if dry_run:
+        payload: dict[str, Any] = {
+            "dry_run": True,
+            "audit_retention_years_after_purge": audit_years,
+            "eligible_claim_count": len(eligible),
+            "audit_row_count": row_count,
+            "audit_log_purge_enabled": is_audit_log_purge_enabled(),
+        }
+        if eligible_claim_ids_file is not None:
+            payload["eligible_claim_ids_file"] = str(eligible_claim_ids_file)
+        if print_eligible_claim_ids:
+            payload["eligible_claim_ids"] = eligible
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    if not ack_exported:
+        typer.echo(
+            "Error: pass --ack-exported after exporting audit rows to cold storage", err=True
+        )
+        raise typer.Exit(1)
+    if not is_audit_log_purge_enabled():
+        typer.echo(
+            "Error: set AUDIT_LOG_PURGE_ENABLED=true after compliance approval",
+            err=True,
+        )
+        raise typer.Exit(1)
+    deleted = repo.purge_audit_log_for_claim_ids(
+        eligible,
+        audit_purge_enabled=is_audit_log_purge_enabled(),
+    )
+    summary: dict[str, Any] = {
+        "audit_retention_years_after_purge": audit_years,
+        "eligible_claim_count": len(eligible),
+        "deleted_audit_row_count": deleted,
+    }
+    if eligible_claim_ids_file is not None:
+        summary["eligible_claim_ids_file"] = str(eligible_claim_ids_file)
+    typer.echo(json.dumps(summary, indent=2))
 
 
 @app.command("litigation-hold")
@@ -690,12 +957,16 @@ def ucspa_deadlines(
                 c["due_date"],
                 c.get("loss_state"),
             )
-    typer.echo(json.dumps({"days_ahead": days_ahead, "count": len(claims), "claims": claims}, indent=2))
+    typer.echo(
+        json.dumps({"days_ahead": days_ahead, "count": len(claims), "claims": claims}, indent=2)
+    )
 
 
 @app.command()
 def metrics(
-    claim_id: Annotated[Optional[str], typer.Argument(help="Optional claim ID for per-claim metrics")] = None,
+    claim_id: Annotated[
+        Optional[str], typer.Argument(help="Optional claim ID for per-claim metrics")
+    ] = None,
 ) -> None:
     """Display metrics for claims."""
     metrics_obj = get_metrics()
@@ -704,7 +975,10 @@ def metrics(
         summary = metrics_obj.get_claim_summary(claim_id)
         if summary is None:
             typer.echo(f"No metrics found for claim: {claim_id}", err=True)
-            typer.echo("Note: Metrics are only available for claims processed in the current session.", err=True)
+            typer.echo(
+                "Note: Metrics are only available for claims processed in the current session.",
+                err=True,
+            )
             sys.exit(1)
         typer.echo(json.dumps(summary.to_dict(), indent=2, default=str))
     else:
@@ -721,7 +995,9 @@ def metrics(
             typer.echo(f"    LLM Calls: {summary.total_llm_calls}")
             typer.echo(f"    Tokens: {summary.total_tokens}")
             typer.echo(f"    Cost: ${summary.total_cost_usd:.4f}")
-            typer.echo(f"    Latency: {summary.total_latency_ms:.0f}ms (avg: {summary.avg_latency_ms:.0f}ms)")
+            typer.echo(
+                f"    Latency: {summary.total_latency_ms:.0f}ms (avg: {summary.avg_latency_ms:.0f}ms)"
+            )
             typer.echo(f"    Status: {summary.status}")
 
 
@@ -729,7 +1005,7 @@ def _main() -> None:
     """Entry point: handle legacy file path, then invoke Typer app."""
     # Parse args to detect legacy file-path invocation
     args = sys.argv[1:]
-    
+
     # Separate global options from other args and track actual positional args
     global_opts = []
     other_args = []
@@ -753,7 +1029,7 @@ def _main() -> None:
             other_args.append(arg)
             positional.append(arg)
             i += 1
-    
+
     # Legacy: single positional arg that looks like a file path
     if len(positional) == 1:
         path = Path(positional[0])
