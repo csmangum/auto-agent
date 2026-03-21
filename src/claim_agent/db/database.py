@@ -263,36 +263,6 @@ CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_id ON claim_documents(claim
 CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_type ON claim_documents(claim_id, document_type);
 CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_review ON claim_documents(claim_id, review_status);
 
--- Claim payments: disbursement tracking (authorized -> issued -> cleared/voided)
-CREATE TABLE IF NOT EXISTS claim_payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT NOT NULL,
-    amount REAL NOT NULL,
-    payee TEXT NOT NULL,
-    payee_type TEXT NOT NULL,
-    payment_method TEXT NOT NULL,
-    check_number TEXT,
-    status TEXT NOT NULL DEFAULT 'authorized',
-    authorized_by TEXT NOT NULL,
-    issued_at TEXT,
-    cleared_at TEXT,
-    voided_at TEXT,
-    void_reason TEXT,
-    payee_secondary TEXT,
-    payee_secondary_type TEXT,
-    external_ref TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id) REFERENCES claims(id)
-);
-CREATE INDEX IF NOT EXISTS idx_claim_payments_claim_id ON claim_payments(claim_id);
-CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
-CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
-CREATE INDEX IF NOT EXISTS idx_claims_incident_id ON claims(incident_id);
-
 -- Claim parties: claimant, policyholder, witness, attorney, provider, lienholder
 CREATE TABLE IF NOT EXISTS claim_parties (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -328,6 +298,38 @@ CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
     ON claim_party_relationships(from_party_id, relationship_type);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
     ON claim_party_relationships(from_party_id, to_party_id, relationship_type);
+
+-- Claim payments: disbursement tracking (authorized -> issued -> cleared/voided)
+CREATE TABLE IF NOT EXISTS claim_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    payee TEXT NOT NULL,
+    payee_type TEXT NOT NULL,
+    payment_method TEXT NOT NULL,
+    check_number TEXT,
+    status TEXT NOT NULL DEFAULT 'authorized',
+    authorized_by TEXT NOT NULL,
+    issued_at TEXT,
+    cleared_at TEXT,
+    voided_at TEXT,
+    void_reason TEXT,
+    payee_secondary TEXT,
+    payee_secondary_type TEXT,
+    external_ref TEXT,
+    claim_party_id INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    FOREIGN KEY (claim_party_id) REFERENCES claim_parties(id)
+);
+CREATE INDEX IF NOT EXISTS idx_claim_payments_claim_id ON claim_payments(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
+CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
+CREATE INDEX IF NOT EXISTS idx_claims_incident_id ON claims(incident_id);
 
 -- Subrogation cases: recovery tracking and inter-company arbitration
 CREATE TABLE IF NOT EXISTS subrogation_cases (
@@ -690,12 +692,17 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_fraud_filings_claim_id ON fraud_report_filings(claim_id);
             CREATE INDEX IF NOT EXISTS idx_fraud_filings_filing_type ON fraud_report_filings(filing_type);
         """)
-    # claim_payments.external_ref + idempotency index (existing SQLite DBs pre-column)
+    # claim_payments.external_ref, claim_party_id + idempotency index (existing SQLite DBs)
     try:
         cursor = conn.execute("PRAGMA table_info(claim_payments)")
         cp_columns = {row[1] for row in cursor.fetchall()}
         if cp_columns and "external_ref" not in cp_columns:
             conn.execute("ALTER TABLE claim_payments ADD COLUMN external_ref TEXT")
+        if cp_columns and "claim_party_id" not in cp_columns:
+            conn.execute(
+                "ALTER TABLE claim_payments ADD COLUMN claim_party_id INTEGER "
+                "REFERENCES claim_parties(id)"
+            )
         if cp_columns:
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref "

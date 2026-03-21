@@ -15,7 +15,11 @@ from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.config import get_settings
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
-from claim_agent.db.payment_repository import PaymentRepository, settlement_payee_from_claim_data
+from claim_agent.db.payment_repository import (
+    PaymentRepository,
+    settlement_claim_party_id_from_claim_data,
+    settlement_payee_from_claim_data,
+)
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 from claim_agent.models.stage_outputs import (
@@ -128,6 +132,7 @@ def _maybe_record_workflow_settlement_payment(
     if payout is None or payout <= 0:
         return
     payee = settlement_payee_from_claim_data(wf_ctx.claim_data_with_id)
+    party_id = settlement_claim_party_id_from_claim_data(wf_ctx.claim_data_with_id)
     ext_ref = f"workflow_settlement:{workflow_run_id}"
     pdata = ClaimPaymentCreate(
         claim_id=claim_id,
@@ -136,6 +141,7 @@ def _maybe_record_workflow_settlement_payment(
         payee_type=PayeeType.CLAIMANT,
         payment_method=PaymentMethod.CHECK,
         external_ref=ext_ref,
+        claim_party_id=party_id,
     )
     pay_repo = PaymentRepository(db_path=claim_repo.db_path)
     try:
