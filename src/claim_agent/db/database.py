@@ -15,6 +15,15 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
 
+from claim_agent.db.schema_incidents_sqlite import (
+    CLAIM_LINKS_TABLE_SQLITE,
+    INCIDENTS_TABLE_SQLITE,
+    IDX_CLAIM_LINKS_CLAIM_A,
+    IDX_CLAIM_LINKS_CLAIM_B,
+    IDX_CLAIMS_INCIDENT_ID,
+    IDX_INCIDENTS_INCIDENT_DATE,
+)
+
 logger = logging.getLogger(__name__)
 
 # Tracks which database paths have had schema applied (avoid running on every connection)
@@ -27,17 +36,15 @@ _engine_lock = threading.Lock()
 # SQLite engines for override paths (e.g. tests)
 _sqlite_engines: dict[str, Engine] = {}
 
-SCHEMA_SQL = """
+SCHEMA_SQL = (
+    """
 -- Incidents table: groups multiple claims under one event (multi-vehicle accident)
-CREATE TABLE IF NOT EXISTS incidents (
-    id TEXT PRIMARY KEY,
-    incident_date TEXT NOT NULL,
-    incident_description TEXT,
-    loss_state TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_incidents_incident_date ON incidents(incident_date);
+"""
+    + INCIDENTS_TABLE_SQLITE
+    + ";\n"
+    + IDX_INCIDENTS_INCIDENT_DATE
+    + ";\n"
+    + """
 
 -- Claims table (main record)
 CREATE TABLE IF NOT EXISTS claims (
@@ -75,20 +82,14 @@ CREATE TABLE IF NOT EXISTS claims (
 );
 
 -- Claim links: typed relationships between claims (same_incident, opposing_carrier, etc.)
-CREATE TABLE IF NOT EXISTS claim_links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id_a TEXT NOT NULL,
-    claim_id_b TEXT NOT NULL,
-    link_type TEXT NOT NULL,
-    opposing_carrier TEXT,
-    notes TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id_a) REFERENCES claims(id),
-    FOREIGN KEY (claim_id_b) REFERENCES claims(id),
-    UNIQUE (claim_id_a, claim_id_b, link_type)
-);
-CREATE INDEX IF NOT EXISTS idx_claim_links_claim_a ON claim_links(claim_id_a);
-CREATE INDEX IF NOT EXISTS idx_claim_links_claim_b ON claim_links(claim_id_b);
+"""
+    + CLAIM_LINKS_TABLE_SQLITE
+    + ";\n"
+    + IDX_CLAIM_LINKS_CLAIM_A
+    + ";\n"
+    + IDX_CLAIM_LINKS_CLAIM_B
+    + ";\n"
+    + """
 
 -- Audit log (state changes). Append-only: no UPDATE or DELETE.
 CREATE TABLE IF NOT EXISTS claim_audit_log (
@@ -331,7 +332,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref ON claim
 
 CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
 CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
-CREATE INDEX IF NOT EXISTS idx_claims_incident_id ON claims(incident_id);
+"""
+    + IDX_CLAIMS_INCIDENT_ID
+    + """;
 
 -- Subrogation cases: recovery tracking and inter-company arbitration
 CREATE TABLE IF NOT EXISTS subrogation_cases (
@@ -423,6 +426,7 @@ CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_claim_id ON claim_access_toke
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_token_hash ON claim_access_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_expires_at ON claim_access_tokens(expires_at);
 """
+)
 
 
 def _get_database_url() -> str:
@@ -543,42 +547,27 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         ]:
             if col not in columns:
                 conn.execute(f"ALTER TABLE claims ADD COLUMN {col} {col_type}")
+        conn.execute(IDX_CLAIMS_INCIDENT_ID)
     except sqlite3.OperationalError:
         pass
     # Incidents and claim_links for multi-vehicle support
     try:
         conn.execute("SELECT 1 FROM incidents LIMIT 1")
     except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE incidents (
-                id TEXT PRIMARY KEY,
-                incident_date TEXT NOT NULL,
-                incident_description TEXT,
-                loss_state TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_incidents_incident_date ON incidents(incident_date);
-        """)
+        conn.executescript(
+            INCIDENTS_TABLE_SQLITE + ";\n" + IDX_INCIDENTS_INCIDENT_DATE + ";\n"
+        )
     try:
         conn.execute("SELECT 1 FROM claim_links LIMIT 1")
     except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE claim_links (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                claim_id_a TEXT NOT NULL,
-                claim_id_b TEXT NOT NULL,
-                link_type TEXT NOT NULL,
-                opposing_carrier TEXT,
-                notes TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (claim_id_a) REFERENCES claims(id),
-                FOREIGN KEY (claim_id_b) REFERENCES claims(id),
-                UNIQUE (claim_id_a, claim_id_b, link_type)
-            );
-            CREATE INDEX IF NOT EXISTS idx_claim_links_claim_a ON claim_links(claim_id_a);
-            CREATE INDEX IF NOT EXISTS idx_claim_links_claim_b ON claim_links(claim_id_b);
-        """)
+        conn.executescript(
+            CLAIM_LINKS_TABLE_SQLITE
+            + ";\n"
+            + IDX_CLAIM_LINKS_CLAIM_A
+            + ";\n"
+            + IDX_CLAIM_LINKS_CLAIM_B
+            + ";\n"
+        )
     try:
         cursor = conn.execute("PRAGMA table_info(subrogation_cases)")
         sc_columns = {row[1] for row in cursor.fetchall()}

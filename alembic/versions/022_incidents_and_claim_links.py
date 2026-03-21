@@ -12,6 +12,15 @@ Creates incident level above claims: one incident -> multiple claims.
 from alembic import op
 from sqlalchemy import text
 
+from claim_agent.db.schema_incidents_sqlite import (
+    ALTER_CLAIMS_ADD_INCIDENT_ID_FK,
+    CLAIM_LINKS_TABLE_SQLITE,
+    INCIDENTS_TABLE_SQLITE,
+    IDX_CLAIM_LINKS_CLAIM_A,
+    IDX_CLAIM_LINKS_CLAIM_B,
+    IDX_CLAIMS_INCIDENT_ID,
+    IDX_INCIDENTS_INCIDENT_DATE,
+)
 
 revision = "022"
 down_revision = "021"
@@ -22,42 +31,20 @@ depends_on = None
 def upgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         return
-    op.execute("""
-        CREATE TABLE IF NOT EXISTS incidents (
-            id TEXT PRIMARY KEY,
-            incident_date TEXT NOT NULL,
-            incident_description TEXT,
-            loss_state TEXT,
-            created_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    op.execute("CREATE INDEX IF NOT EXISTS idx_incidents_incident_date ON incidents(incident_date)")
+    op.execute(INCIDENTS_TABLE_SQLITE)
+    op.execute(IDX_INCIDENTS_INCIDENT_DATE)
 
     # Add incident_id to claims (nullable for existing single-claim flow)
     conn = op.get_bind()
     cursor = conn.execute(text("PRAGMA table_info(claims)"))
     columns = {row[1] for row in cursor.fetchall()}
     if "incident_id" not in columns:
-        op.execute(text("ALTER TABLE claims ADD COLUMN incident_id TEXT REFERENCES incidents(id)"))
+        op.execute(text(ALTER_CLAIMS_ADD_INCIDENT_ID_FK))
 
-    op.execute("""
-        CREATE TABLE IF NOT EXISTS claim_links (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            claim_id_a TEXT NOT NULL,
-            claim_id_b TEXT NOT NULL,
-            link_type TEXT NOT NULL,
-            opposing_carrier TEXT,
-            notes TEXT,
-            created_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (claim_id_a) REFERENCES claims(id),
-            FOREIGN KEY (claim_id_b) REFERENCES claims(id),
-            UNIQUE (claim_id_a, claim_id_b, link_type)
-        )
-    """)
-    op.execute("CREATE INDEX IF NOT EXISTS idx_claim_links_claim_a ON claim_links(claim_id_a)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_claim_links_claim_b ON claim_links(claim_id_b)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_claims_incident_id ON claims(incident_id)")
+    op.execute(CLAIM_LINKS_TABLE_SQLITE)
+    op.execute(IDX_CLAIM_LINKS_CLAIM_A)
+    op.execute(IDX_CLAIM_LINKS_CLAIM_B)
+    op.execute(IDX_CLAIMS_INCIDENT_ID)
 
 
 def downgrade() -> None:

@@ -23,17 +23,24 @@ When using PostgreSQL:
 
 ## Schema Change Process
 
-The schema is defined in two places and both must be kept in sync:
+**Alembic is the source of truth** for schema evolution on databases that are upgraded with `alembic upgrade head` (typical production and PostgreSQL setups).
 
-1. **`src/claim_agent/db/database.py`** – `SCHEMA_SQL` used by `init_db()`. New installs and tests use this; `CREATE TABLE IF NOT EXISTS` applies the full schema when tables do not exist.
+SQLite also supports **non-Alembic** bootstrap and legacy repair paths in the same codebase; those must stay aligned with migrations:
 
-2. **`alembic/versions/`** – Incremental migrations for existing databases. Production upgrades use `alembic upgrade head`.
+1. **`alembic/versions/`** – Incremental migrations for existing databases. Add a revision for each schema change (e.g. `alembic revision -m "description"`).
+
+2. **`src/claim_agent/db/database.py` – `SCHEMA_SQL`** – Full `CREATE TABLE IF NOT EXISTS` script for **new** SQLite files when the app calls `init_db()` without having run Alembic. New installs and many tests rely on this.
+
+3. **Same file – `_run_migrations()`** – Best-effort `ALTER TABLE` / `CREATE TABLE` steps for **older** SQLite databases that already existed before the current `SCHEMA_SQL` shape (deployments that never use Alembic on SQLite). This path is not a substitute for Alembic on long-lived DBs when you expect full migration history.
+
+**PostgreSQL:** schema comes from Alembic only (`init_db()` does not apply DDL). New Postgres databases use the combined migration **`023_postgres_full_schema.py`**, which duplicates the logical shape of SQLite with dialect-specific types (`SERIAL`, `TIMESTAMP`, etc.). When you change **`incidents`**, **`claim_links`**, or **`claims.incident_id`**, update both **`src/claim_agent/db/schema_incidents_sqlite.py`** (shared SQLite DDL used by `database.py` and revision **022**) and the matching sections in **`023_postgres_full_schema.py`**.
 
 **When changing the schema:**
 
-- Add an Alembic migration for the change (e.g. `alembic revision -m "description"`).
-- Update `SCHEMA_SQL` in `database.py` so new installs and tests get the same schema.
-- Run migrations on existing DBs; `init_db` will not modify existing table columns, although `SCHEMA_SQL` may still create new indexes or triggers defined there. All schema changes for existing databases must go through Alembic.
+- Add an Alembic migration for the change.
+- Update `SCHEMA_SQL` (and any shared module it uses, e.g. `schema_incidents_sqlite.py`) so new SQLite installs match.
+- For Postgres-only DDL in `023`, update in parallel when the same tables/columns are touched.
+- Run migrations on existing DBs; `init_db` will not modify existing table columns in all cases, although `SCHEMA_SQL` may still create new indexes or triggers defined there. All schema changes for existing databases that use Alembic must go through Alembic.
 
 ## Schema Overview
 
