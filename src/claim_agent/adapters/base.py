@@ -35,11 +35,17 @@ class PolicyAdapter(ABC):
         Expected keys when found: ``status``, and either:
         - New format: ``coverages`` (list, e.g. ["liability","collision","comprehensive"]),
           ``collision_deductible``, ``comprehensive_deductible``, ``liability_limits``.
-          Optionally, when available: ``named_insured`` (list of dicts with name, email,
-          phone) and ``drivers`` (list of dicts with name, license_number, relationship).
+          Optionally, when available: ``named_insured`` (list of dicts; use ``name``,
+          or ``full_name`` / ``display_name`` per ``get_policy_party_display_name``,
+          plus optional ``email``, ``phone``) and ``drivers`` (list of dicts with name,
+          license_number, relationship).
           These optional keys may be omitted entirely, especially for legacy/backends
           that still use a simpler schema — omitting them disables claimant verification
           rather than escalating all claims.
+          When ``named_insured`` is present, FNOL claim creation may auto-add a
+          **policyholder** party from the first entry with a resolvable display name
+          if the intake payload did not already include a policyholder
+          (see ``merge_fnol_parties_with_named_insured_policyholder``).
         - Legacy: ``coverage`` (str), ``deductible`` (number)
         
         Territory coverage (optional):

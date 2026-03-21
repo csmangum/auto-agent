@@ -34,6 +34,8 @@ class RestPolicyAdapter(PolicyAdapter):
       or coverage/deductible (legacy format).
     - Optional FNOL fields: effective_date, expiration_date (ISO YYYY-MM-DD), or term_start/term_end
       aliases, for incident-vs-policy-term coverage verification.
+    - Optional ``named_insured`` (list of party dicts): when returned, FNOL can auto-add a
+      policyholder party if the claim intake did not list one.
     """
 
     def __init__(
