@@ -2653,12 +2653,65 @@ class TestProcessClaimEndpoint:
         resp = client.get(f"/api/claims/CLM-TEST001/attachments/{stored_key}")
         assert resp.status_code == 200
         assert resp.content == b"fake image content"
+        with get_connection() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT action, actor_id, after_state FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_downloaded' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()
+        assert row is not None
+        assert row[0] == "document_downloaded"
+        state = json.loads(row[2])
+        assert state["storage_key"] == stored_key
+        assert state["channel"] == "adjuster_api"
+
+    def test_attachment_download_audit_uses_api_key_actor(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        monkeypatch.setenv("API_KEYS", "sk-doc-audit:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        storage = factory_mod.get_storage_adapter()
+        stored_key = storage.save(
+            claim_id="CLM-TEST001",
+            filename="keyed.jpg",
+            content=b"x",
+        )
+        resp = client.get(
+            f"/api/claims/CLM-TEST001/attachments/{stored_key}",
+            headers={"X-API-Key": "sk-doc-audit"},
+        )
+        assert resp.status_code == 200
+        with get_connection() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT actor_id FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_downloaded' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()
+        assert row and row[0].startswith("key-")
 
     def test_attachment_download_claim_not_found(self, client, monkeypatch, tmp_path):
         """Attachment download returns 404 for non-existent claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        with get_connection() as conn:
+            n_before = conn.execute(
+                text("SELECT COUNT(*) FROM claim_audit_log WHERE action = 'document_downloaded'")
+            ).fetchone()[0]
         resp = client.get("/api/claims/CLM-NONEXISTENT/attachments/abc123_photo.jpg")
         assert resp.status_code == 404
+        with get_connection() as conn:
+            n_after = conn.execute(
+                text("SELECT COUNT(*) FROM claim_audit_log WHERE action = 'document_downloaded'")
+            ).fetchone()[0]
+        assert n_after == n_before
 
 
 # -------------------------------------------------------------------

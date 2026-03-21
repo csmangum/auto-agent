@@ -371,6 +371,13 @@ def get_portal_attachment(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Attachment not found: {key}")
 
+    actor_id = claimant.identity or "portal-claimant"
+    repo.insert_document_download_audit(
+        claim_id,
+        storage_key=key,
+        actor_id=actor_id,
+        channel="portal",
+    )
     return FileResponse(path=str(file_path), filename=key)
 
 

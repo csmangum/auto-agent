@@ -29,6 +29,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_CLAIM_REVIEW,
     AUDIT_EVENT_COVERAGE_VERIFICATION,
     AUDIT_EVENT_CREATED,
+    AUDIT_EVENT_DOCUMENT_DOWNLOADED,
     AUDIT_EVENT_DENIAL_LETTER,
     AUDIT_EVENT_ESCALATE_TO_SIU,
     AUDIT_EVENT_FOLLOW_UP_RESPONSE,
@@ -1741,6 +1742,36 @@ class ClaimRepository:
                     "before_state": before_state,
                     "after_state": after_state,
                 },
+            )
+
+    def insert_document_download_audit(
+        self,
+        claim_id: str,
+        *,
+        storage_key: str,
+        actor_id: str,
+        channel: str,
+    ) -> None:
+        """Append audit row when an attachment file is served (chain of custody).
+
+        ``channel`` should distinguish caller surface (e.g. ``adjuster_api``, ``portal``).
+        Structured fields are stored in ``after_state`` JSON for querying.
+        """
+        log = logging.getLogger(__name__)
+        try:
+            payload = truncate_audit_json({"storage_key": storage_key, "channel": channel})
+            self.insert_audit_entry(
+                claim_id,
+                AUDIT_EVENT_DOCUMENT_DOWNLOADED,
+                actor_id=sanitize_actor_id(actor_id),
+                details="",
+                after_state=payload,
+            )
+        except Exception:
+            log.exception(
+                "document_downloaded audit insert failed claim_id=%s storage_key=%s",
+                claim_id,
+                storage_key,
             )
 
     def update_claim_siu_case_id(
