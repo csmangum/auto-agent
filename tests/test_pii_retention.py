@@ -438,10 +438,65 @@ class TestRetentionRepository:
             assert "pending_purge_count" in report
             assert "purged_count" in report
             assert "audit_log_rows" in report
+            assert "audit_log_rows_for_purged_claims" in report
+            assert "audit_log_rows_for_non_purged_claims" in report
+            assert "audit_log_retention_years_after_purge" in report
+            assert "audit_log_rows_eligible_for_retention" in report
+            assert report["audit_log_retention_years_after_purge"] is None
+            assert report["audit_log_rows_eligible_for_retention"] is None
+            assert (
+                report["audit_log_rows_for_purged_claims"]
+                + report["audit_log_rows_for_non_purged_claims"]
+                == report["audit_log_rows"]
+            )
             assert report["active_count"] >= 0
             assert report["closed_count"] >= 0
             assert report["archived_count"] >= 0
             assert report["litigation_hold_count"] >= 0
+        finally:
+            os.unlink(db_path)
+
+    def test_retention_report_audit_eligibility_with_old_purged_at(self):
+        """audit_log_rows_eligible_for_retention counts rows for old purged claims."""
+        from claim_agent.db.constants import STATUS_PURGED
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            claim_id = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-AUDIT-R",
+                    vin="VIN-AUDIT-R",
+                    vehicle_year=2020,
+                    vehicle_make="Honda",
+                    vehicle_model="Civic",
+                    incident_date="2024-01-15",
+                    incident_description="Test",
+                    damage_description="Test",
+                )
+            )
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE claims SET status = :st, purged_at = :p, retention_tier = 'purged'
+                        WHERE id = :id
+                        """
+                    ),
+                    {
+                        "st": STATUS_PURGED,
+                        "p": "2000-06-15T12:00:00+00:00",
+                        "id": claim_id,
+                    },
+                )
+            report = repo.retention_report(5, audit_log_retention_years_after_purge=7)
+            assert report["audit_log_rows_for_purged_claims"] >= 1
+            assert report["audit_log_rows_eligible_for_retention"] >= 1
         finally:
             os.unlink(db_path)
 

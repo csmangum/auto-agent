@@ -83,7 +83,10 @@ Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `C
 |----------|---------|-------------|
 | `CLAIM_AGENT_MASK_PII` | `true` | Mask policy_number and vin in logs. Set `false` for dev. |
 | `RETENTION_PERIOD_YEARS` | 5 (from compliance) | Override retention period. Run `claim-agent retention-enforce` to archive. |
+| `RETENTION_PURGE_AFTER_ARCHIVE_YEARS` | `2` | Years after `archived_at` before `claim-agent retention-purge` may anonymize. |
 | `STATE_RETENTION_PATH` | `data/state_retention_periods.json` | Path to state-specific retention periods (per-state years). |
+| `AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE` | (unset) | Calendar years after claim `purged_at` before audit rows are eligible for `audit-log-export` / `audit-log-purge` tooling. |
+| `AUDIT_LOG_PURGE_ENABLED` | `false` | Must be `true` for `claim-agent audit-log-purge` to delete `claim_audit_log` rows. |
 
 See [PII and Retention](pii-and-retention.md) for full documentation.
 

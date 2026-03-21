@@ -20,10 +20,12 @@ from pydantic import ValidationError
 
 from claim_agent.config import get_settings
 from claim_agent.config.settings import (
+    get_audit_log_retention_years_after_purge,
     get_purge_after_archive_by_state,
     get_retention_by_state,
     get_retention_period_years,
     get_retention_purge_after_archive_years,
+    is_audit_log_purge_enabled,
 )
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import WORKFLOW_STAGES, run_claim_workflow
@@ -55,13 +57,26 @@ def _get_cli_ctx() -> ClaimContext:
     return ClaimContext.from_defaults(db_path=get_db_path())
 
 
+def _resolve_audit_log_retention_years(years_opt: Optional[int]) -> int:
+    """Return years after purged_at for audit tooling, or exit if unset."""
+    y = years_opt if years_opt is not None else get_audit_log_retention_years_after_purge()
+    if y is None:
+        typer.echo(
+            "Error: set AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE or pass --years",
+            err=True,
+        )
+        raise typer.Exit(1)
+    return y
+
+
 def _usage() -> str:
     """Return usage string (for tests)."""
     return (
         "Usage: claim-agent [OPTIONS] COMMAND [ARGS]...\n\n"
         "Commands: serve, process, status, history, reprocess, metrics, review-queue, "
         "assign, approve, reject, request-info, escalate-siu, retention-enforce, "
-        "retention-purge, dsar-access, dsar-deletion.\n"
+        "retention-purge, retention-report, audit-log-export, audit-log-purge, "
+        "dsar-access, dsar-deletion.\n"
         "Run claim-agent --help for full help."
     )
 
@@ -614,6 +629,20 @@ def retention_report(
             help="Override years after archive before purge (for pending_purge count)",
         ),
     ] = None,
+    audit_purge_years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--audit-purge-years",
+            help="Years after purged_at for audit eligibility counts (overrides env)",
+        ),
+    ] = None,
+    include_litigation_hold_audit: Annotated[
+        bool,
+        typer.Option(
+            "--include-litigation-hold-audit",
+            help="Include litigation-hold claims in audit eligibility counts",
+        ),
+    ] = False,
 ) -> None:
     """Produce retention audit report: tier/status counts, litigation hold, pending archive/purge."""
     retention_years = years if years is not None else get_retention_period_years()
@@ -622,14 +651,163 @@ def retention_report(
         purge_years if purge_years is not None else get_retention_purge_after_archive_years()
     )
     purge_by_state = get_purge_after_archive_by_state() if purge_years is None else None
+    audit_years_effective = (
+        audit_purge_years
+        if audit_purge_years is not None
+        else get_audit_log_retention_years_after_purge()
+    )
     ctx = _get_cli_ctx()
     report = ctx.repo.retention_report(
         retention_years,
         retention_by_state=retention_by_state,
         purge_after_archive_years=purge_after,
         purge_by_state=purge_by_state,
+        audit_log_retention_years_after_purge=audit_years_effective,
+        exclude_litigation_hold_from_audit_eligibility=not include_litigation_hold_audit,
     )
     typer.echo(json.dumps(report, indent=2))
+
+
+@app.command("audit-log-export")
+def audit_log_export(
+    output: Annotated[Path, typer.Option("--output", "-o", help="NDJSON output file path")],
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print counts only; do not write a file"),
+    ] = False,
+    years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--years",
+            "-y",
+            help="Years after purged_at (overrides AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE)",
+        ),
+    ] = None,
+    include_litigation_hold: Annotated[
+        bool,
+        typer.Option(
+            "--include-litigation-hold",
+            help="Include claims with litigation hold",
+        ),
+    ] = False,
+) -> None:
+    """Export claim_audit_log rows for purged claims past the audit retention horizon (NDJSON)."""
+    audit_years = _resolve_audit_log_retention_years(years)
+    ctx = _get_cli_ctx()
+    repo = ctx.repo
+    eligible = repo.list_claim_ids_eligible_for_audit_log_retention(
+        audit_years,
+        exclude_litigation_hold=not include_litigation_hold,
+    )
+    row_count = repo.count_audit_log_rows_for_claim_ids(eligible)
+    if dry_run:
+        typer.echo(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "audit_retention_years_after_purge": audit_years,
+                    "eligible_claim_ids": eligible,
+                    "eligible_claim_count": len(eligible),
+                    "audit_row_count": row_count,
+                },
+                indent=2,
+            )
+        )
+        return
+    rows = repo.fetch_audit_log_rows_for_claim_ids(eligible)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, default=str) + "\n")
+    typer.echo(
+        json.dumps(
+            {
+                "output": str(output),
+                "audit_retention_years_after_purge": audit_years,
+                "eligible_claim_count": len(eligible),
+                "audit_row_count": len(rows),
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("audit-log-purge")
+def audit_log_purge(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show what would be deleted; no deletes"),
+    ] = False,
+    years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--years",
+            "-y",
+            help="Years after purged_at (overrides AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE)",
+        ),
+    ] = None,
+    include_litigation_hold: Annotated[
+        bool,
+        typer.Option(
+            "--include-litigation-hold",
+            help="Include claims with litigation hold",
+        ),
+    ] = False,
+    ack_exported: Annotated[
+        bool,
+        typer.Option(
+            "--ack-exported",
+            help="Required: confirm audit rows were exported to cold storage",
+        ),
+    ] = False,
+) -> None:
+    """Delete claim_audit_log rows for eligible purged claims (requires env gate + --ack-exported)."""
+    audit_years = _resolve_audit_log_retention_years(years)
+    ctx = _get_cli_ctx()
+    repo = ctx.repo
+    eligible = repo.list_claim_ids_eligible_for_audit_log_retention(
+        audit_years,
+        exclude_litigation_hold=not include_litigation_hold,
+    )
+    row_count = repo.count_audit_log_rows_for_claim_ids(eligible)
+    if dry_run:
+        typer.echo(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "audit_retention_years_after_purge": audit_years,
+                    "eligible_claim_ids": eligible,
+                    "eligible_claim_count": len(eligible),
+                    "audit_row_count": row_count,
+                    "audit_log_purge_enabled": is_audit_log_purge_enabled(),
+                },
+                indent=2,
+            )
+        )
+        return
+    if not ack_exported:
+        typer.echo("Error: pass --ack-exported after exporting audit rows to cold storage", err=True)
+        raise typer.Exit(1)
+    if not is_audit_log_purge_enabled():
+        typer.echo(
+            "Error: set AUDIT_LOG_PURGE_ENABLED=true after compliance approval",
+            err=True,
+        )
+        raise typer.Exit(1)
+    deleted = repo.purge_audit_log_for_claim_ids(
+        eligible,
+        audit_purge_enabled=is_audit_log_purge_enabled(),
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "audit_retention_years_after_purge": audit_years,
+                "eligible_claim_count": len(eligible),
+                "deleted_audit_row_count": deleted,
+            },
+            indent=2,
+        )
+    )
 
 
 @app.command("litigation-hold")

@@ -1,7 +1,9 @@
 """Claim repository: CRUD, audit logging, and search.
 
-This repository treats claim_audit_log as append-only: it only inserts new
-audit entries and does not perform UPDATE or DELETE operations on that table.
+This repository treats claim_audit_log as append-only for updates: it only
+inserts new audit entries and does not UPDATE rows. DELETE is used only by
+purge_audit_log_for_claims when AUDIT_LOG_PURGE_ENABLED is true (after DB
+migration removing the delete trigger).
 """
 
 import calendar
@@ -289,6 +291,51 @@ def _is_archived_past_purge_period(
 
     cutoff = _add_calendar_years(_to_utc_aware(archived_dt), years)
     return _to_utc_aware(now) >= cutoff
+
+
+def _is_purged_past_audit_retention_period(
+    row_d: dict[str, Any],
+    now: datetime,
+    audit_retention_years_after_purge: int,
+) -> bool:
+    """True if ``now`` is on or after purged_at + N calendar years (claim must be purged)."""
+    if audit_retention_years_after_purge < 0:
+        raise ValueError("audit_retention_years_after_purge must be non-negative")
+    purged_raw = row_d.get("purged_at")
+    if not purged_raw:
+        return False
+
+    def _to_utc_aware(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    purged_dt: datetime
+    if isinstance(purged_raw, datetime):
+        purged_dt = purged_raw
+    elif isinstance(purged_raw, str):
+        try:
+            purged_dt = datetime.fromisoformat(purged_raw)
+        except ValueError:
+            try:
+                purged_dt = datetime.strptime(purged_raw, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return False
+    else:
+        return False
+
+    cutoff = _add_calendar_years(_to_utc_aware(purged_dt), audit_retention_years_after_purge)
+    return _to_utc_aware(now) >= cutoff
+
+
+def _sql_in_params(prefix: str, ids: list[str]) -> tuple[str, dict[str, Any]]:
+    """Build ``IN (:p0,:p1,...)`` fragment and param dict."""
+    if not ids:
+        return "", {}
+    keys = [f"{prefix}{i}" for i in range(len(ids))]
+    placeholders = ",".join(f":{k}" for k in keys)
+    params = dict(zip(keys, ids, strict=True))
+    return placeholders, params
 
 
 class ClaimRepository:
@@ -2970,6 +3017,8 @@ class ClaimRepository:
         retention_by_state: dict[str, int] | None = None,
         purge_after_archive_years: int = 2,
         purge_by_state: dict[str, int] | None = None,
+        audit_log_retention_years_after_purge: int | None = None,
+        exclude_litigation_hold_from_audit_eligibility: bool = True,
     ) -> dict[str, Any]:
         """Produce retention audit report: counts by tier, litigation hold, pending archive/purge."""
         state_map = retention_by_state or {}
@@ -2999,6 +3048,55 @@ class ClaimRepository:
             )
 
             audit_count = conn.execute(text("SELECT COUNT(*) FROM claim_audit_log")).scalar() or 0
+
+            audit_rows_for_purged_claims = (
+                conn.execute(
+                    text("""
+                    SELECT COUNT(*) FROM claim_audit_log AS a
+                    INNER JOIN claims AS c ON c.id = a.claim_id
+                    WHERE c.status = :st
+                    """),
+                    {"st": STATUS_PURGED},
+                ).scalar()
+                or 0
+            )
+            audit_rows_for_non_purged_claims = max(0, audit_count - audit_rows_for_purged_claims)
+
+            audit_rows_eligible_for_retention: int | None = None
+            if audit_log_retention_years_after_purge is not None:
+                purged_claim_rows = conn.execute(
+                    text("""
+                    SELECT id, purged_at, litigation_hold
+                    FROM claims
+                    WHERE status = :st AND purged_at IS NOT NULL
+                    """),
+                    {"st": STATUS_PURGED},
+                ).fetchall()
+                eligible_ids: list[str] = []
+                for r in purged_claim_rows:
+                    row_d = row_to_dict(r)
+                    if exclude_litigation_hold_from_audit_eligibility and row_d.get(
+                        "litigation_hold"
+                    ):
+                        continue
+                    if _is_purged_past_audit_retention_period(
+                        row_d, now, audit_log_retention_years_after_purge
+                    ):
+                        eligible_ids.append(str(row_d["id"]))
+                audit_rows_eligible_for_retention = 0
+                chunk_size = 400
+                for i in range(0, len(eligible_ids), chunk_size):
+                    chunk = eligible_ids[i : i + chunk_size]
+                    placeholders, in_params = _sql_in_params("ac_", chunk)
+                    audit_rows_eligible_for_retention += (
+                        conn.execute(
+                            text(
+                                f"SELECT COUNT(*) FROM claim_audit_log WHERE claim_id IN ({placeholders})"
+                            ),
+                            in_params,
+                        ).scalar()
+                        or 0
+                    )
 
             closed_rows = conn.execute(
                 text("""
@@ -3060,6 +3158,10 @@ class ClaimRepository:
             "pending_archive_count": pending_archive,
             "pending_purge_count": pending_purge,
             "audit_log_rows": audit_count,
+            "audit_log_rows_for_purged_claims": audit_rows_for_purged_claims,
+            "audit_log_rows_for_non_purged_claims": audit_rows_for_non_purged_claims,
+            "audit_log_retention_years_after_purge": audit_log_retention_years_after_purge,
+            "audit_log_rows_eligible_for_retention": audit_rows_eligible_for_retention,
         }
 
     def archive_claim(
@@ -3228,6 +3330,110 @@ class ClaimRepository:
                 payout_amount=row_d["payout_amount"],
             )
         )
+
+    def list_claim_ids_eligible_for_audit_log_retention(
+        self,
+        audit_retention_years_after_purge: int,
+        *,
+        exclude_litigation_hold: bool = True,
+    ) -> list[str]:
+        """Claim IDs (status purged) past purged_at + N calendar years for audit export/purge."""
+        if audit_retention_years_after_purge < 0:
+            raise ValueError("audit_retention_years_after_purge must be non-negative")
+        now = datetime.now(timezone.utc)
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                text("""
+                SELECT id, purged_at, litigation_hold
+                FROM claims
+                WHERE status = :st AND purged_at IS NOT NULL
+                ORDER BY id ASC
+                """),
+                {"st": STATUS_PURGED},
+            ).fetchall()
+        eligible: list[str] = []
+        for r in rows:
+            row_d = row_to_dict(r)
+            if exclude_litigation_hold and row_d.get("litigation_hold"):
+                continue
+            if _is_purged_past_audit_retention_period(
+                row_d, now, audit_retention_years_after_purge
+            ):
+                eligible.append(str(row_d["id"]))
+        return eligible
+
+    def fetch_audit_log_rows_for_claim_ids(
+        self, claim_ids: list[str], *, chunk_size: int = 400
+    ) -> list[dict[str, Any]]:
+        """Return audit log rows for the given claim IDs (ordered by claim_id, id)."""
+        if not claim_ids:
+            return []
+        out: list[dict[str, Any]] = []
+        with get_connection(self._db_path) as conn:
+            for i in range(0, len(claim_ids), chunk_size):
+                chunk = claim_ids[i : i + chunk_size]
+                placeholders, in_params = _sql_in_params("ex_", chunk)
+                rows = conn.execute(
+                    text(
+                        f"""
+                        SELECT * FROM claim_audit_log
+                        WHERE claim_id IN ({placeholders})
+                        ORDER BY claim_id ASC, id ASC
+                        """
+                    ),
+                    in_params,
+                ).fetchall()
+                out.extend(row_to_dict(r) for r in rows)
+        return out
+
+    def count_audit_log_rows_for_claim_ids(
+        self, claim_ids: list[str], *, chunk_size: int = 400
+    ) -> int:
+        """Count claim_audit_log rows whose claim_id is in claim_ids."""
+        if not claim_ids:
+            return 0
+        total = 0
+        with get_connection(self._db_path) as conn:
+            for i in range(0, len(claim_ids), chunk_size):
+                chunk = claim_ids[i : i + chunk_size]
+                placeholders, in_params = _sql_in_params("cn_", chunk)
+                total += (
+                    conn.execute(
+                        text(
+                            f"SELECT COUNT(*) FROM claim_audit_log WHERE claim_id IN ({placeholders})"
+                        ),
+                        in_params,
+                    ).scalar()
+                    or 0
+                )
+        return total
+
+    def purge_audit_log_for_claim_ids(
+        self,
+        claim_ids: list[str],
+        *,
+        audit_purge_enabled: bool,
+        chunk_size: int = 400,
+    ) -> int:
+        """Delete claim_audit_log rows for claim_ids. Requires AUDIT_LOG_PURGE_ENABLED."""
+        if not audit_purge_enabled:
+            raise DomainValidationError(
+                "Audit log purge is disabled; set AUDIT_LOG_PURGE_ENABLED=true after compliance approval"
+            )
+        if not claim_ids:
+            return 0
+        deleted = 0
+        with get_connection(self._db_path) as conn:
+            for i in range(0, len(claim_ids), chunk_size):
+                chunk = claim_ids[i : i + chunk_size]
+                placeholders, in_params = _sql_in_params("dl_", chunk)
+                result = conn.execute(
+                    text(f"DELETE FROM claim_audit_log WHERE claim_id IN ({placeholders})"),
+                    in_params,
+                )
+                raw = result.rowcount
+                deleted += int(raw) if raw is not None else 0
+        return deleted
 
     # ------------------------------------------------------------------
     # Task management

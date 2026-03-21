@@ -112,11 +112,7 @@ BEGIN
     SELECT RAISE(ABORT, 'claim_audit_log is append-only: updates are not allowed');
 END;
 
-CREATE TRIGGER IF NOT EXISTS claim_audit_log_prevent_delete
-BEFORE DELETE ON claim_audit_log
-BEGIN
-    SELECT RAISE(ABORT, 'claim_audit_log is append-only: deletes are not allowed');
-END;
+-- DELETE is allowed for gated retention tooling (see migration 039, audit-log-purge CLI).
 
 CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
 
@@ -754,6 +750,11 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 """)
         except sqlite3.OperationalError:
             pass
+    # GitHub #350: drop legacy delete trigger so audit-log-purge works (schema no longer creates it).
+    try:
+        conn.execute("DROP TRIGGER IF EXISTS claim_audit_log_prevent_delete")
+    except sqlite3.OperationalError:
+        pass
 
 
 def _run_schema(db_path: str) -> None:

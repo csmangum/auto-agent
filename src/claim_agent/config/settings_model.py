@@ -890,6 +890,19 @@ class Settings(BaseSettings):
         validation_alias="RETENTION_PURGE_AFTER_ARCHIVE_YEARS",
         description="Years after archived_at before retention purge (anonymize + purged status)",
     )
+    audit_log_retention_years_after_purge: int | None = Field(
+        default=None,
+        validation_alias="AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE",
+        description=(
+            "Calendar years after claim purged_at before audit rows are eligible for "
+            "export/purge tooling; None disables eligibility reporting"
+        ),
+    )
+    audit_log_purge_enabled: bool = Field(
+        default=False,
+        validation_alias="AUDIT_LOG_PURGE_ENABLED",
+        description="When true, allow claim-agent audit-log-purge to delete audit rows",
+    )
     policy_adapter: str = Field(default="mock", validation_alias="POLICY_ADAPTER")
     valuation_adapter: str = Field(default="mock", validation_alias="VALUATION_ADAPTER")
     repair_shop_adapter: str = Field(default="mock", validation_alias="REPAIR_SHOP_ADAPTER")
@@ -939,6 +952,24 @@ class Settings(BaseSettings):
             except ValueError:
                 pass
         return 2
+
+    @field_validator("audit_log_retention_years_after_purge", mode="before")
+    @classmethod
+    def _coerce_audit_log_retention_years(cls, v: Any) -> int | None:
+        if v is None or v == "":
+            return None
+        if isinstance(v, int):
+            return v if v >= 0 else None
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return None
+            try:
+                n = int(s)
+                return n if n >= 0 else None
+            except ValueError:
+                return None
+        return None
 
     @model_validator(mode="after")
     def _resolve_retention(self) -> "Settings":

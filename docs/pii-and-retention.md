@@ -138,7 +138,28 @@ claim-agent retention-report --years 7
 claim-agent retention-report --purge-years 3
 ```
 
-Output includes: `retention_period_years`, `purge_after_archive_years`, `retention_by_state`, `purge_by_state`, `claims_by_status`, `claims_by_retention_tier`, `active_count`, `closed_count`, `archived_count`, `purged_count`, `litigation_hold_count`, `closed_with_litigation_hold`, `pending_archive_count`, `pending_purge_count`, `audit_log_rows`.
+Output includes: `retention_period_years`, `purge_after_archive_years`, `retention_by_state`, `purge_by_state`, `claims_by_status`, `claims_by_retention_tier`, `active_count`, `closed_count`, `archived_count`, `purged_count`, `litigation_hold_count`, `closed_with_litigation_hold`, `pending_archive_count`, `pending_purge_count`, `audit_log_rows`, `audit_log_rows_for_purged_claims`, `audit_log_rows_for_non_purged_claims`, `audit_log_retention_years_after_purge`, `audit_log_rows_eligible_for_retention` (eligibility counts require `AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE` or `retention-report --audit-purge-years`).
+
+### Audit log retention (issue #350)
+
+[GitHub #350](https://github.com/csmangum/auto-agent/issues/350) tracks policy and tooling for **unbounded** `claim_audit_log` growth. Claim-level retention (`retention-purge`) does **not** remove audit rows; triggers historically blocked `DELETE` until migration `039_allow_claim_audit_log_delete_for_retention`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE` | (unset) | Calendar years after `purged_at` before audit rows are eligible for export/purge reporting. Unset = no eligibility window; counts in reports are `null`. |
+| `AUDIT_LOG_PURGE_ENABLED` | `false` | Must be `true` for `claim-agent audit-log-purge` to delete rows (in addition to `--ack-exported`). |
+
+**Recommended operational flow:** configure a retention period → run `claim-agent retention-report` for breakdowns → `claim-agent audit-log-export --output ...` (cold storage) → `claim-agent audit-log-purge --ack-exported` only after legal/compliance approval.
+
+```bash
+claim-agent retention-report
+claim-agent retention-report --audit-purge-years 7
+claim-agent audit-log-export --output /secure/audit_export.ndjson --dry-run
+claim-agent audit-log-export --output /secure/audit_export.ndjson
+# After compliance sign-off and export verified:
+AUDIT_LOG_PURGE_ENABLED=true claim-agent audit-log-purge --ack-exported --dry-run
+AUDIT_LOG_PURGE_ENABLED=true claim-agent audit-log-purge --ack-exported
+```
 
 ### Tiered retention (cold → archived → purged)
 
@@ -210,6 +231,6 @@ Set `LLM_DATA_MINIMIZATION=false` for debugging.
 
 ## Related
 
-- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
+- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE, AUDIT_LOG_PURGE_ENABLED, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
 - [Observability](observability.md) – Structured logging, claim context
 - [Database](database.md) – Schema, audit log
