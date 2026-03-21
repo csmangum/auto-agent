@@ -36,6 +36,7 @@ from claim_agent.models.document import DocumentType
 from claim_agent.services.portal_verification import ClaimantContext
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
+from claim_agent.storage.s3 import S3StorageAdapter
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from fastapi.responses import FileResponse
@@ -224,9 +225,20 @@ def list_portal_documents(
         claim_id, document_type=document_type, review_status=None, limit=limit, offset=offset
     )
     storage = get_storage_adapter()
+    portal_actor = claimant.identity or "portal-claimant"
     for doc in documents:
         sk = doc.get("storage_key", "")
-        doc["url"] = storage.get_url(claim_id, sk) if sk else None
+        if sk:
+            doc["url"] = storage.get_url(claim_id, sk)
+            if isinstance(storage, S3StorageAdapter):
+                repo.insert_document_accessed_audit(
+                    claim_id,
+                    storage_key=sk,
+                    actor_id=portal_actor,
+                    channel="portal",
+                )
+        else:
+            doc["url"] = None
     return {"claim_id": claim_id, "documents": documents, "total": total, "limit": limit, "offset": offset}
 
 
@@ -346,6 +358,14 @@ async def upload_portal_document(
     doc = doc_repo.get_document(doc_id)
     if doc:
         doc["url"] = storage.get_url(claim_id, stored_key)
+        if isinstance(storage, S3StorageAdapter):
+            portal_actor = claimant.identity or "portal-claimant"
+            repo.insert_document_accessed_audit(
+                claim_id,
+                storage_key=stored_key,
+                actor_id=portal_actor,
+                channel="portal",
+            )
     return {"claim_id": claim_id, "document_id": doc_id, "document": doc}
 
 
@@ -367,7 +387,10 @@ def get_portal_attachment(
             detail="Attachment download is only available for local storage",
         )
 
-    file_path = storage.get_path(claim_id, key)
+    try:
+        file_path = storage.get_path(claim_id, key)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid attachment key") from None
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Attachment not found: {key}")
 

@@ -1,10 +1,26 @@
 """Local filesystem storage for claim attachments."""
 
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import BinaryIO
 
 from claim_agent.storage.base import StorageAdapter
+
+
+def _safe_attachment_filename(stored_key: str) -> str:
+    """Return the basename for a stored attachment key; reject path traversal."""
+    if not stored_key or not str(stored_key).strip():
+        raise ValueError("Invalid attachment key")
+    raw = str(stored_key)
+    stored_name = raw.split("/")[-1] if "/" in raw else raw
+    if not stored_name:
+        raise ValueError("Invalid attachment key")
+    parts = PurePath(stored_name).parts
+    if len(parts) != 1 or parts[0] in (".", ".."):
+        raise ValueError("Invalid attachment key")
+    if "\x00" in stored_name:
+        raise ValueError("Invalid attachment key")
+    return stored_name
 
 
 class LocalStorageAdapter(StorageAdapter):
@@ -51,12 +67,19 @@ class LocalStorageAdapter(StorageAdapter):
 
     def exists(self, claim_id: str, stored_path_or_key: str) -> bool:
         """Check if file exists."""
-        safe_claim = "".join(c if c.isalnum() or c in "-_" else "_" for c in claim_id)
-        return (self._base / safe_claim / stored_path_or_key).exists()
+        try:
+            return self.get_path(claim_id, stored_path_or_key).exists()
+        except ValueError:
+            return False
 
     def get_path(self, claim_id: str, stored_key: str) -> Path:
         """Return filesystem path for a stored file. Key is stored_name (from save) or last segment of get_url result."""
-        # Handle "safe_claim/stored_name" format from get_url
-        stored_name = stored_key.split("/")[-1] if "/" in stored_key else stored_key
+        stored_name = _safe_attachment_filename(stored_key)
         safe_claim = "".join(c if c.isalnum() or c in "-_" else "_" for c in claim_id)
-        return self._base / safe_claim / stored_name
+        target_dir = (self._base / safe_claim).resolve()
+        candidate = (target_dir / stored_name).resolve()
+        try:
+            candidate.relative_to(target_dir)
+        except ValueError as e:
+            raise ValueError("Invalid attachment key") from e
+        return candidate

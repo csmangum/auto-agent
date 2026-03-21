@@ -63,6 +63,7 @@ from claim_agent.models.document import DocumentRequestStatus, DocumentType, Rev
 from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
+from claim_agent.storage.s3 import S3StorageAdapter
 from claim_agent.services.bi_allocation import allocate_bi_limits
 from claim_agent.services.portal_verification import create_claim_access_token
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
@@ -242,8 +243,19 @@ async def _try_run_workflow_background(
         )
 
 
-def _resolve_attachment_urls(claim_dict: dict) -> dict:
-    """Convert storage keys to fetchable URLs: presigned for S3, download endpoint for local."""
+def _resolve_attachment_urls(
+    claim_dict: dict,
+    *,
+    repo: ClaimRepository | None = None,
+    actor_id: str | None = None,
+    audit_presigned: bool = False,
+) -> dict:
+    """Convert storage keys to fetchable URLs: presigned for S3, download endpoint for local.
+
+    When ``audit_presigned`` is true and storage is S3, appends ``document_accessed`` audit rows
+    for each issued presigned URL (chain of custody). SSE and other high-churn callers should
+    leave ``audit_presigned`` false to avoid log flooding.
+    """
     if "attachments" not in claim_dict or not claim_dict["attachments"]:
         return claim_dict
 
@@ -257,6 +269,12 @@ def _resolve_attachment_urls(claim_dict: dict) -> dict:
 
         storage = get_storage_adapter()
         claim_id = claim_dict.get("id", "")
+        do_audit = (
+            audit_presigned
+            and repo is not None
+            and actor_id is not None
+            and isinstance(storage, S3StorageAdapter)
+        )
 
         for attachment in attachments:
             url = attachment.get("url", "")
@@ -271,12 +289,22 @@ def _resolve_attachment_urls(claim_dict: dict) -> dict:
                 stored_name = url.split("/")[-1] if "/" in url else url
                 attachment["url"] = f"/api/claims/{claim_id}/attachments/{stored_name}"
             else:
+                storage_key = url
                 attachment["url"] = storage.get_url(claim_id, url)
+                if do_audit:
+                    repo.insert_document_accessed_audit(
+                        claim_id,
+                        storage_key=storage_key,
+                        actor_id=actor_id,
+                        channel="adjuster_api",
+                    )
 
         claim_dict["attachments"] = (
             json.dumps(attachments) if isinstance(raw, str) else attachments
         )
     except Exception as e:
+        if audit_presigned:
+            raise
         logger.warning(
             "Failed to resolve attachment URLs for claim %s: %s",
             claim_dict.get("id"),
@@ -325,6 +353,8 @@ def list_claims(
     include_purged: bool = Query(False, description="Include purged claims (retention)"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """List claims with optional filtering. Archived and purged claims are excluded by default."""
     conditions = []
@@ -365,8 +395,17 @@ def list_claims(
             params,
         ).fetchall()
 
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     return {
-        "claims": [_resolve_attachment_urls(row_to_dict(r)) for r in rows],
+        "claims": [
+            _resolve_attachment_urls(
+                row_to_dict(r),
+                repo=ctx.repo,
+                actor_id=actor_id,
+                audit_presigned=True,
+            )
+            for r in rows
+        ],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -380,6 +419,7 @@ def get_review_queue(
     older_than_hours: Optional[float] = Query(None, ge=0, description="Claims older than N hours in queue"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """List claims with status needs_review for the adjuster workflow."""
@@ -395,8 +435,17 @@ def get_review_queue(
         limit=limit,
         offset=offset,
     )
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     return {
-        "claims": [_resolve_attachment_urls(c) for c in claims],
+        "claims": [
+            _resolve_attachment_urls(
+                c,
+                repo=ctx.repo,
+                actor_id=actor_id,
+                audit_presigned=True,
+            )
+            for c in claims
+        ],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -763,13 +812,23 @@ def get_claim_status(claim_id: str, ctx: ClaimContext = Depends(get_claim_contex
 
 
 @router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
-def get_claim(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+def get_claim(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
     """Get a single claim by ID. Includes claim notes and follow-up messages."""
     row = ctx.repo.get_claim(claim_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
-    result = _resolve_attachment_urls(row)
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    result = _resolve_attachment_urls(
+        row,
+        repo=ctx.repo,
+        actor_id=actor_id,
+        audit_presigned=True,
+    )
     result["notes"] = ctx.repo.get_notes(claim_id)
     result["follow_up_messages"] = ctx.repo.get_follow_up_messages(claim_id)
     result["parties"] = ctx.repo.get_claim_parties(claim_id)
@@ -928,7 +987,10 @@ def get_claim_attachment(
             detail="Attachment download is only available for local storage",
         )
 
-    file_path = storage.get_path(claim_id, key)
+    try:
+        file_path = storage.get_path(claim_id, key)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid attachment key") from None
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Attachment not found: {key}")
 
@@ -983,6 +1045,7 @@ def list_claim_documents(
     review_status: Optional[str] = Query(None, description="Filter by review_status"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """List documents for a claim with optional filters."""
@@ -993,9 +1056,20 @@ def list_claim_documents(
         claim_id, document_type=document_type, review_status=review_status, limit=limit, offset=offset
     )
     storage = get_storage_adapter()
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     for doc in documents:
         sk = doc.get("storage_key", "")
-        doc["url"] = storage.get_url(claim_id, sk) if sk else None
+        if sk:
+            doc["url"] = storage.get_url(claim_id, sk)
+            if isinstance(storage, S3StorageAdapter):
+                ctx.repo.insert_document_accessed_audit(
+                    claim_id,
+                    storage_key=sk,
+                    actor_id=actor_id,
+                    channel="adjuster_api",
+                )
+        else:
+            doc["url"] = None
     return {"claim_id": claim_id, "documents": documents, "total": total, "limit": limit, "offset": offset}
 
 
@@ -1005,6 +1079,7 @@ async def upload_claim_document(
     file: UploadFile = File(...),
     document_type: Optional[str] = Query(None, description="Document type (police_report, estimate, etc.)"),
     received_from: Optional[str] = Query(None, description="Source (claimant, repair_shop, etc.)"),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Upload a document and create a claim_documents record."""
@@ -1051,6 +1126,14 @@ async def upload_claim_document(
     doc = doc_repo.get_document(doc_id)
     if doc:
         doc["url"] = storage.get_url(claim_id, stored_key)
+        if isinstance(storage, S3StorageAdapter):
+            actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+            ctx.repo.insert_document_accessed_audit(
+                claim_id,
+                storage_key=stored_key,
+                actor_id=actor_id,
+                channel="adjuster_api",
+            )
     return {"claim_id": claim_id, "document_id": doc_id, "document": doc}
 
 
@@ -1933,6 +2016,13 @@ async def _process_claim_with_attachments(
                 content_type=content_type,
             )
             url = storage.get_url(claim_id, stored_key)
+            if isinstance(storage, S3StorageAdapter):
+                repo.insert_document_accessed_audit(
+                    claim_id,
+                    storage_key=stored_key,
+                    actor_id=actor_id,
+                    channel="adjuster_api",
+                )
             atype = infer_attachment_type(filename)
             all_attachments.append(
                 Attachment(url=url, type=atype, description=f"Uploaded: {filename}")

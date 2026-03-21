@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import time
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -2739,6 +2740,64 @@ class TestProcessClaimEndpoint:
             resp = tc.get(f"/api/claims/CLM-TEST001/attachments/{stored_key}")
         assert resp.status_code == 500
         assert b"secret-bytes" not in resp.content
+
+    def test_attachment_download_invalid_key_returns_400(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        # Percent-encode dots (urllib.parse.quote never encodes `.`); avoids client path normalization.
+        resp = client.get("/api/claims/CLM-TEST001/attachments/%2e%2e")
+        assert resp.status_code == 400
+
+    def test_get_claim_s3_presigned_audits_document_accessed(self, client, monkeypatch):
+        """S3-backed resolver issues presigned URLs and appends document_accessed audit rows."""
+        from claim_agent.storage.s3 import S3StorageAdapter
+
+        class PresignStub(S3StorageAdapter):
+            def __init__(self) -> None:
+                super().__init__(bucket="stub-bucket", prefix="attachments")
+
+            def get_url(self, claim_id: str, stored_path_or_key: str) -> str:
+                return f"https://presigned.example/{stored_path_or_key}"
+
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", PresignStub())
+
+        attachments = [
+            {
+                "url": "attachments/CLM_TEST001/abc123_evidence.pdf",
+                "type": "other",
+                "description": "",
+            }
+        ]
+        with get_connection() as conn:
+            conn.execute(
+                text("UPDATE claims SET attachments = :att WHERE id = :id"),
+                {"att": json.dumps(attachments), "id": "CLM-TEST001"},
+            )
+
+        resp = client.get("/api/claims/CLM-TEST001")
+        assert resp.status_code == 200
+        raw_att = resp.json()["attachments"]
+        atts = json.loads(raw_att) if isinstance(raw_att, str) else raw_att
+        att = atts[0]
+        assert att["url"].startswith("https://presigned.example/")
+
+        with get_connection() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT action, after_state FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_accessed' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()
+        assert row is not None
+        state = json.loads(row[1])
+        assert state["channel"] == "adjuster_api"
+        assert state["storage_key"] == "attachments/CLM_TEST001/abc123_evidence.pdf"
 
 
 # -------------------------------------------------------------------

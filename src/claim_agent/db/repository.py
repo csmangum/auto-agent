@@ -29,6 +29,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_CLAIM_REVIEW,
     AUDIT_EVENT_COVERAGE_VERIFICATION,
     AUDIT_EVENT_CREATED,
+    AUDIT_EVENT_DOCUMENT_ACCESSED,
     AUDIT_EVENT_DOCUMENT_DOWNLOADED,
     AUDIT_EVENT_DENIAL_LETTER,
     AUDIT_EVENT_ESCALATE_TO_SIU,
@@ -1763,6 +1764,28 @@ class ClaimRepository:
         self.insert_audit_entry(
             claim_id,
             AUDIT_EVENT_DOCUMENT_DOWNLOADED,
+            actor_id=sanitize_actor_id(actor_id),
+            details="",
+            after_state=payload,
+        )
+
+    def insert_document_accessed_audit(
+        self,
+        claim_id: str,
+        *,
+        storage_key: str,
+        actor_id: str,
+        channel: str,
+    ) -> None:
+        """Append audit row when a presigned (or equivalent) document URL is issued.
+
+        ``channel`` distinguishes caller surface (e.g. ``adjuster_api``, ``portal``).
+        Raises if the audit row cannot be inserted; callers must not return the URL without it.
+        """
+        payload = truncate_audit_json({"storage_key": storage_key, "channel": channel})
+        self.insert_audit_entry(
+            claim_id,
+            AUDIT_EVENT_DOCUMENT_ACCESSED,
             actor_id=sanitize_actor_id(actor_id),
             details="",
             after_state=payload,

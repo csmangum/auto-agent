@@ -279,7 +279,7 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id_action ON claim_audit_lo
 | `attachments_updated` | Attachments modified |
 | `document_viewed` | Reserved for future document metadata views (chain of custody) |
 | `document_downloaded` | Attachment file served via `GET /api/claims/.../attachments/{key}` or portal equivalent; `after_state` JSON: `storage_key`, `channel` (`adjuster_api` \| `portal`) |
-| `document_accessed` | Reserved for other document access surfaces (e.g. presigned URL issuance) |
+| `document_accessed` | Presigned GET URL issued for S3-backed attachments (claim payload attachment URLs, document list/upload responses, process-with-files); `after_state` JSON: `storage_key`, `channel` (`adjuster_api` \| `portal`) |
 | `request_info` | Adjuster requested more info from claimant |
 | `escalate_to_siu` | Escalated to Special Investigations Unit |
 | `siu_case_created` | SIU case created by fraud workflow (automated referral) |
