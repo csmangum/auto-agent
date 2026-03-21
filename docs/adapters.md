@@ -69,6 +69,8 @@ class PolicyAdapter(ABC):
 
 **Named Insured / Driver Verification**: When `named_insured` and/or `drivers` are present in the policy response, coverage verification will check if the claimant matches. If the claimant is not listed, the claim is routed to `under_investigation` for manual review. This prevents unauthorized individuals from filing claims on a policy.
 
+**FNOL policyholder party**: On `ClaimRepository.create_claim`, if the intake `parties` list does not already include a `policyholder`, the repository loads the policy (via the configured policy adapter when no `policy=` argument is passed) and, when `named_insured` is present, prepends a policyholder party built from the **first** named insured with a resolvable display name (`name`, then `full_name`, then `display_name`). **Mock** adapter: policies in `data/mock_db.json` include sample `named_insured`. **REST** adapter: returns whatever the PAS JSON includes under `named_insured` (or nested behind `POLICY_REST_RESPONSE_KEY`). **Stub** adapter: `get_policy` is not implemented, so no auto-policyholder from the adapter.
+
 **Policy term (incident date)**: Optional `effective_date` and `expiration_date` (ISO `YYYY-MM-DD`, inclusive bounds) may be returned; `term_start` / `term_end` are accepted as aliases and normalized in `query_policy_db_impl`. When both are present on the policy response and the claim includes a parseable `incident_date`, FNOL coverage verification denies if the loss falls outside the term. If both term fields are omitted, verification skips this check (legacy backends). If only one of `effective_date` / `expiration_date` (or `term_start` / `term_end`) is provided, the policy term configuration is treated as invalid and the claim is routed to `under_investigation` for manual review. In `data/mock_db.json`, `_meta.policy_term_defaults` supplies default term dates for policies that omit them; `load_mock_db()` merges those defaults before adapters read policy records (empty or whitespace-only term strings count as omitted for default merge).
 
 **Policy territory (`incident_location` / `loss_state`)**: For `territory: "US"`, matching includes US states, DC, and common US insular areas (e.g. Puerto Rico / PR, U.S. Virgin Islands / VI, Guam, American Samoa, Northern Mariana Islands). For `territory: "USA_Canada"`, matching includes the same US geography plus Canada (the string `Canada` or any province/territory by English name or two-letter code, e.g. Ontario / ON). `excluded_territories` uses the same normalization so exclusions can list codes or names. Policies may define only `excluded_territories` (no positive `territory`); in that case only carve-outs are enforced.
@@ -124,7 +126,7 @@ Located in `src/claim_agent/adapters/mock/`. Each adapter reads from `mock_db.js
 
 | Class | File | Data Source |
 |-------|------|-------------|
-| `MockPolicyAdapter` | `mock/policy.py` | `mock_db["policies"]` |
+| `MockPolicyAdapter` | `mock/policy.py` | `mock_db["policies"]` (often includes `named_insured` for FNOL policyholder seeding) |
 | `MockValuationAdapter` | `mock/valuation.py` | `mock_db["vehicle_values"]` |
 | `MockRepairShopAdapter` | `mock/repair_shop.py` | `mock_db["repair_shops"]`, `mock_db["labor_operations"]` |
 | `MockPartsAdapter` | `mock/parts.py` | `mock_db["parts_catalog"]` |

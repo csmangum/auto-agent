@@ -23,7 +23,8 @@ class StubPolicyAdapter(PolicyAdapter):
     """Placeholder for a real policy-database integration (REST API / SQL).
 
     Replace the body of ``get_policy`` with a call to the production
-    policy management system.
+    policy management system. This stub does not return policy data or
+    ``named_insured``, so FNOL will not auto-add a policyholder from the adapter.
     """
 
     def get_policy(self, policy_number: str) -> dict[str, Any] | None:
