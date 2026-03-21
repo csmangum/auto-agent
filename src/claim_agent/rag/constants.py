@@ -1,6 +1,9 @@
 """RAG module constants: supported states and canonical names."""
 
-SUPPORTED_STATES = ("California", "Texas", "Florida", "New York", "Georgia")
+SUPPORTED_STATES = (
+    "California", "Texas", "Florida", "New York", "Georgia",
+    "New Jersey", "Pennsylvania", "Illinois",
+)
 
 DEFAULT_STATE = "California"
 
@@ -10,6 +13,9 @@ _STATE_ABBREV_TO_CANONICAL: dict[str, str] = {
     "FL": "Florida",
     "NY": "New York",
     "GA": "Georgia",
+    "NJ": "New Jersey",
+    "PA": "Pennsylvania",
+    "IL": "Illinois",
 }
 
 

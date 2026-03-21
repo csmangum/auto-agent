@@ -103,7 +103,8 @@ def get_fraud_report_template_tool(state: str = "California") -> str:
     required fields, filing deadline, and bureau contact info.
 
     Args:
-        state: State jurisdiction - California, Texas, Florida, New York, or Georgia.
+        state: State jurisdiction - California, Texas, Florida, New York, Georgia,
+            New Jersey, Pennsylvania, or Illinois.
 
     Returns:
         JSON with form_id, form_name, required_fields, filing_deadline_days,
