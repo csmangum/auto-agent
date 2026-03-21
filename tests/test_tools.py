@@ -518,3 +518,74 @@ def test_calculate_payout_uses_explicit_coverage_type():
     assert collision_data["deductible"] == 250.0
     assert comprehensive_data["payout_amount"] == 11000.0
     assert comprehensive_data["deductible"] == 1000.0
+
+
+def test_calculate_payout_gap_coordination_when_shortfall_and_policy_has_gap():
+    from claim_agent.adapters.registry import reset_adapters
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    reset_adapters()
+    result = calculate_payout_impl(
+        12000,
+        "POL-001",
+        loan_balance=18000.0,
+        claim_id="CLM-GAP-1",
+        vin="1HGBH41JXMN109186",
+    )
+    data = json.loads(result)
+    assert data["gap_insurance_applied"] is True
+    assert data["gap_shortfall_amount"] == 6500.0
+    assert data["gap_claim_id"].startswith("GAP-MOCK-")
+    assert data["gap_claim_status"] == "approved_pending_payment"
+    assert data["gap_approved_amount"] == 6500.0
+    assert data.get("gap_remaining_shortfall") == 0.0
+
+
+def test_calculate_payout_gap_partial_when_large_shortfall():
+    from claim_agent.adapters.registry import reset_adapters
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    reset_adapters()
+    result = calculate_payout_impl(12000, "POL-001", loan_balance=125_000.0)
+    data = json.loads(result)
+    assert data["gap_insurance_applied"] is True
+    assert data["gap_claim_status"] == "partial_approval"
+    assert data["gap_shortfall_amount"] == 113500.0
+    assert data["gap_approved_amount"] == 56750.0
+    assert data["gap_remaining_shortfall"] == 56750.0
+
+
+def test_calculate_payout_no_gap_coordination_without_loan_balance():
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    result = calculate_payout_impl(12000, "POL-001")
+    data = json.loads(result)
+    assert data.get("gap_insurance_applied") in (False, None)
+    assert "gap_claim_id" not in data
+
+
+def test_calculate_payout_no_gap_when_policy_lacks_gap_coverage():
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    result = calculate_payout_impl(12000, "POL-012", loan_balance=50_000.0)
+    data = json.loads(result)
+    assert data["gap_insurance_applied"] is False
+    assert "gap_claim_id" not in data
+
+
+def test_calculate_payout_stub_gap_adapter_surfaces_coordination_error(monkeypatch):
+    from claim_agent.adapters.registry import reset_adapters
+    from claim_agent.config import reload_settings
+    from claim_agent.tools.valuation_logic import calculate_payout_impl
+
+    reset_adapters()
+    monkeypatch.setenv("GAP_INSURANCE_ADAPTER", "stub")
+    reload_settings()
+    result = calculate_payout_impl(12000, "POL-001", loan_balance=20_000.0)
+    data = json.loads(result)
+    assert data["gap_insurance_applied"] is True
+    assert "gap_coordination_error" in data
+    assert "manual coordination" in data["gap_coordination_error"].lower()
+    monkeypatch.delenv("GAP_INSURANCE_ADAPTER", raising=False)
+    reload_settings()
+    reset_adapters()

@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from claim_agent.adapters.registry import get_valuation_adapter
+from claim_agent.adapters.registry import get_gap_insurance_adapter, get_valuation_adapter
 from claim_agent.config.settings import (
     DEFAULT_BASE_VALUE,
     DEPRECIATION_PER_YEAR,
@@ -155,6 +155,92 @@ _DEFAULT_SALES_TAX_PCT = 0.08
 _DEFAULT_DMV_FEES = 150.0
 
 
+def _coordinate_gap_shortfall(
+    *,
+    claim_id: str | None,
+    policy_number: str,
+    payout_amount: float,
+    loan_balance: float,
+    shortfall_amount: float,
+    vin: str | None,
+    ctx: ClaimContext | None,
+) -> dict[str, object]:
+    """Call gap carrier adapter; returned keys merge into calculate_payout JSON."""
+    adapter = ctx.adapters.gap_insurance if ctx else get_gap_insurance_adapter()
+    out: dict[str, object] = {
+        "gap_shortfall_amount": round(shortfall_amount, 2),
+    }
+    try:
+        submitted = adapter.submit_shortfall_claim(
+            claim_id=claim_id or "",
+            policy_number=policy_number,
+            auto_payout_amount=payout_amount,
+            loan_balance=loan_balance,
+            shortfall_amount=shortfall_amount,
+            vin=vin,
+        )
+    except NotImplementedError as e:
+        logger.warning("Gap insurance adapter unavailable: %s", e)
+        out["gap_coordination_error"] = (
+            "Gap carrier integration not configured; manual coordination required."
+        )
+        return out
+    except Exception:
+        logger.exception("Gap insurance submission failed")
+        out["gap_coordination_error"] = (
+            "Gap carrier submission failed; manual coordination required."
+        )
+        return out
+
+    out["gap_claim_id"] = submitted.get("gap_claim_id")
+    out["gap_claim_status"] = submitted.get("status")
+    if submitted.get("approved_amount") is not None:
+        out["gap_approved_amount"] = submitted["approved_amount"]
+    if submitted.get("denial_reason"):
+        out["gap_denial_reason"] = submitted["denial_reason"]
+    rem = submitted.get("remaining_shortfall_after_gap")
+    if rem is not None:
+        out["gap_remaining_shortfall"] = rem
+    if submitted.get("message"):
+        out["gap_carrier_message"] = submitted["message"]
+
+    # Only poll the gap carrier when the initial submission response does not
+    # provide all of the fields we care about. This avoids an extra network
+    # call in cases where the submission already contains final status data.
+    should_poll = any(
+        key not in out or out[key] is None
+        for key in (
+            "gap_claim_status",
+            "gap_approved_amount",
+            "gap_denial_reason",
+            "gap_remaining_shortfall",
+        )
+    )
+
+    gap_ref = out.get("gap_claim_id")
+    if isinstance(gap_ref, str) and gap_ref and should_poll:
+        try:
+            polled = adapter.get_claim_status(gap_ref)
+        except NotImplementedError:
+            polled = None
+        except Exception as e:
+            logger.warning("Gap insurance status poll failed for %s: %s", gap_ref, e)
+            polled = None
+        if polled:
+            st = polled.get("status")
+            if st:
+                out["gap_claim_status"] = st
+            if polled.get("approved_amount") is not None:
+                out["gap_approved_amount"] = polled["approved_amount"]
+            if polled.get("denial_reason"):
+                out["gap_denial_reason"] = polled["denial_reason"]
+            pr = polled.get("remaining_shortfall_after_gap")
+            if pr is not None:
+                out["gap_remaining_shortfall"] = pr
+
+    return out
+
+
 def _estimate_tax_title_fees(vehicle_value: float, loss_state: str | None) -> float:
     """Estimate tax, title, and registration fees for total loss replacement."""
     if not loss_state:
@@ -176,6 +262,8 @@ def calculate_payout_impl(
     owner_retain_salvage: bool = False,
     salvage_value: float | None = None,
     loan_balance: float | None = None,
+    claim_id: str | None = None,
+    vin: str | None = None,
     ctx: ClaimContext | None = None,
 ) -> str:
     """Calculate total loss payout.
@@ -266,17 +354,32 @@ def calculate_payout_impl(
 
     payout_amount = max(0.0, acv_total - deductible - salvage_deduction)
 
-    # Gap insurance: when payout < loan balance and policy has gap, flag for coordination
+    # Gap insurance: when payout < loan balance and policy has gap, flag and coordinate
     gap_insurance_applied = False
+    gap_coordination: dict[str, object] = {}
     if (
         loan_balance is not None
         and isinstance(loan_balance, (int, float))
         and loan_balance > 0
         and payout_amount < loan_balance
     ):
+        lb = float(loan_balance)
         gap_insurance = bool(policy_data.gap_insurance)
         if gap_insurance:
             gap_insurance_applied = True
+            shortfall = max(0.0, round(lb - payout_amount, 2))
+            vin_clean = vin.strip() if isinstance(vin, str) else None
+            if vin_clean == "":
+                vin_clean = None
+            gap_coordination = _coordinate_gap_shortfall(
+                claim_id=claim_id.strip() if isinstance(claim_id, str) and claim_id.strip() else None,
+                policy_number=policy_number,
+                payout_amount=payout_amount,
+                loan_balance=lb,
+                shortfall_amount=shortfall,
+                vin=vin_clean,
+                ctx=ctx,
+            )
 
     calc_parts = [f"${acv_total:,.2f} (ACV"]
     if ttf > 0:
@@ -299,5 +402,7 @@ def calculate_payout_impl(
         "owner_retain_option": owner_retain_salvage,
         "gap_insurance_applied": gap_insurance_applied,
     }
+    if gap_coordination:
+        result.update(gap_coordination)
 
     return json.dumps(result)

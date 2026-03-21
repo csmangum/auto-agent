@@ -10,6 +10,7 @@ from typing import Any
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    GapInsuranceAdapter,
     OCRAdapter,
     PartsAdapter,
     PolicyAdapter,
@@ -128,3 +129,23 @@ class StubOCRAdapter(OCRAdapter):
 
     def extract_structured_data(self, file_path: Path, document_type: str) -> dict[str, Any] | None:
         return None
+
+
+class StubGapInsuranceAdapter(GapInsuranceAdapter):
+    """Placeholder for a dealer or standalone gap carrier API (REST, EDI, portal)."""
+
+    def submit_shortfall_claim(
+        self,
+        *,
+        claim_id: str,
+        policy_number: str,
+        auto_payout_amount: float,
+        loan_balance: float,
+        shortfall_amount: float,
+        vin: str | None = None,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubGapInsuranceAdapter: connect to a production gap carrier "
+            "(dealer F&I platform, lender, or standalone GAP administrator). "
+            "Submit total-loss settlement vs loan balance and return carrier claim id and status."
+        )

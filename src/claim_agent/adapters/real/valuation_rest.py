@@ -137,6 +137,13 @@ class RestValuationAdapter(ValuationAdapter):
             auth_value=auth_value,
             timeout=timeout,
         )
+        _required = ("{vin}", "{year}")
+        for _placeholder in _required:
+            if _placeholder not in path_template:
+                raise ValueError(
+                    f"VALUATION_REST_PATH_TEMPLATE is missing required placeholder"
+                    f" '{_placeholder}': {path_template!r}"
+                )
         self._path_template = path_template
 
     def get_vehicle_value(
