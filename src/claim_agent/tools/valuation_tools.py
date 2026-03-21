@@ -46,7 +46,8 @@ def calculate_diminished_value(
         damage_severity_tier: When repair_cost unknown: cosmetic, light, moderate, major, structural, or severe.
 
     Returns:
-        JSON with diminished_value, formula, multipliers, and message.
+        JSON with diminished_value, multipliers, and message; formula is included when the state
+        requires diminished value or a state-specific formula is applicable.
     """
     return calculate_diminished_value_impl(
         vehicle_value,

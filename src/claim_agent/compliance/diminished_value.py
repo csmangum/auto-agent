@@ -25,7 +25,18 @@ DamageBasis = Literal["repair_ratio", "tier", "default_assumption", "none"]
 
 def _mileage_multiplier(mileage: int | None) -> float:
     """NADA-style mileage brackets used on Georgia 17c worksheets."""
-    if mileage is None or mileage < 0:
+    if mileage is None:
+        return 1.0
+
+    # Be tolerant of non-numeric inputs (e.g., strings from JSON/tooling).
+    # If normalization fails, default to no mileage-based reduction.
+    if not isinstance(mileage, (int, float)):
+        try:
+            mileage = int(mileage)  # type: ignore[assignment]
+        except (TypeError, ValueError):
+            return 1.0
+
+    if mileage < 0:
         return 1.0
     if mileage < 20_000:
         return 1.0
@@ -98,7 +109,7 @@ def calculate_ga_17c_diminished_value(
     damage_severity_tier: str | None = None,
 ) -> dict[str, Any]:
     """Return diminished value and multiplier breakdown for Georgia 17c-style estimate."""
-    if not isinstance(fmv, (int, float)) or math.isnan(fmv) or fmv <= 0:
+    if not isinstance(fmv, (int, float)) or not math.isfinite(fmv) or fmv <= 0:
         return {
             "diminished_value": 0.0,
             "required": True,
