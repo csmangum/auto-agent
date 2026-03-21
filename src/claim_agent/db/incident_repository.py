@@ -51,8 +51,17 @@ class IncidentRepository:
     ) -> tuple[str, list[str]]:
         """Create incident and one claim per vehicle. Returns (incident_id, claim_ids).
 
-        The operation is made as atomic as possible: if any claim creation fails,
-        the incident row and any already-created claims are removed before re-raising.
+        This is not a single atomic transaction: the incident insert, each
+        ``ClaimRepository.create_claim`` (which itself uses multiple commits), and each
+        claim link each run in separate connections that commit on success.
+
+        On in-process exceptions, best-effort compensating cleanup runs via
+        ``_rollback_incident``; that cleanup can still fail, leaving inconsistent rows.
+        Process crash or abrupt termination after any commit can leave partial incidents,
+        claims, or links with no cleanup.
+
+        For stronger cross-step consistency, consider a saga, transactional outbox, or a
+        deliberately scoped single-transaction design if the call stack allows it.
         """
         incident_id = _generate_incident_id()
         incident_date_str = incident_input.incident_date.isoformat()

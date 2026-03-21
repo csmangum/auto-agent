@@ -1,10 +1,10 @@
 """Pydantic models for claim input, output, and workflow state."""
 
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from claim_agent.models.party import ClaimPartyInput
 
@@ -55,6 +55,76 @@ class RouterOutput(BaseModel):
         default="",
         description="Brief reasoning for the classification",
     )
+
+
+class ClaimRecord(BaseModel):
+    """Full ``claims`` table row as returned by repositories (e.g. GET incident detail).
+
+    Matches ``SELECT * FROM claims`` shape across SQLite and PostgreSQL. Unknown or
+    migration-added columns are preserved via ``extra="allow"``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str = Field(..., description="Claim ID")
+    policy_number: str = Field(..., description="Insurance policy number")
+    vin: str = Field(..., description="Vehicle identification number")
+    vehicle_year: Optional[int] = Field(default=None, description="Vehicle model year")
+    vehicle_make: Optional[str] = Field(default=None, description="Vehicle manufacturer")
+    vehicle_model: Optional[str] = Field(default=None, description="Vehicle model")
+    incident_date: Optional[str] = Field(default=None, description="Date of incident (storage)")
+    incident_description: Optional[str] = Field(default=None, description="Incident narrative")
+    damage_description: Optional[str] = Field(default=None, description="Damage narrative")
+    estimated_damage: Optional[float] = Field(default=None, description="Estimated repair cost")
+    claim_type: Optional[str] = Field(default=None, description="Workflow classification")
+    loss_state: Optional[str] = Field(default=None, description="Loss jurisdiction")
+    status: Optional[str] = Field(default=None, description="Claim status")
+    payout_amount: Optional[float] = Field(default=None, description="Payout amount when set")
+    reserve_amount: Optional[float] = Field(default=None, description="Reserve amount")
+    attachments: Optional[str] = Field(
+        default=None,
+        description="JSON array string of attachment metadata",
+    )
+    assignee: Optional[str] = Field(default=None, description="Assigned adjuster id")
+    review_started_at: Optional[str] = Field(default=None)
+    review_notes: Optional[str] = Field(default=None)
+    due_at: Optional[str] = Field(default=None)
+    priority: Optional[str] = Field(default=None)
+    siu_case_id: Optional[str] = Field(default=None)
+    archived_at: Optional[str] = Field(default=None)
+    incident_id: Optional[str] = Field(default=None, description="Parent incident id when set")
+    litigation_hold: Optional[int] = Field(default=None)
+    repair_ready_for_settlement: Optional[int] = Field(default=None)
+    total_loss_settlement_authorized: Optional[int] = Field(default=None)
+    retention_tier: Optional[str] = Field(default=None)
+    purged_at: Optional[str] = Field(default=None)
+    created_at: Optional[str] = Field(default=None)
+    updated_at: Optional[str] = Field(default=None)
+    total_loss_metadata: Optional[str] = Field(default=None)
+    liability_percentage: Optional[float] = Field(default=None)
+    liability_basis: Optional[str] = Field(default=None)
+    acknowledged_at: Optional[str] = Field(default=None)
+    acknowledgment_due: Optional[str] = Field(default=None)
+    investigation_due: Optional[str] = Field(default=None)
+    payment_due: Optional[str] = Field(default=None)
+    denial_reason: Optional[str] = Field(default=None)
+    denial_letter_sent_at: Optional[str] = Field(default=None)
+    denial_letter_body: Optional[str] = Field(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_temporal(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out: dict[str, Any] = {}
+        for key, val in data.items():
+            if isinstance(val, datetime):
+                out[key] = val.isoformat()
+            elif isinstance(val, date):
+                out[key] = val.isoformat()
+            else:
+                out[key] = val
+        return out
 
 
 class ClaimInput(BaseModel):

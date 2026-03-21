@@ -16,6 +16,8 @@ def upgrade() -> None:
     if conn.dialect.name != "postgresql":
         return
 
+    # incidents / claim_links / claims.incident_id: keep columns, indexes, and uniqueness
+    # aligned with claim_agent.db.schema_incidents_sqlite (SQLite bootstrap + migration 022).
     op.execute("""
         CREATE TABLE IF NOT EXISTS incidents (
             id TEXT PRIMARY KEY,
