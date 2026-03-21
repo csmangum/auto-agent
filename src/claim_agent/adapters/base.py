@@ -41,6 +41,11 @@ class PolicyAdapter(ABC):
           that still use a simpler schema — omitting them disables claimant verification
           rather than escalating all claims.
         - Legacy: ``coverage`` (str), ``deductible`` (number)
+        
+        Territory coverage (optional):
+        - ``territory`` (str or list): Geographic coverage area (e.g., "US", "USA_Canada", 
+          ["California", "Nevada", "Oregon"], or state code like "TX")
+        - ``excluded_territories`` (list): Territories explicitly excluded from coverage
         """
         ...
 

@@ -178,6 +178,10 @@ def query_policy_db_impl(
             rental = p.get("rental_reimbursement") or p.get("transportation_expenses")
             if rental and isinstance(rental, dict):
                 result["rental_reimbursement"] = rental
+            if p.get("territory") is not None:
+                result["territory"] = p["territory"]
+            if p.get("excluded_territories") is not None:
+                result["excluded_territories"] = p["excluded_territories"]
             if p.get("named_insured") is not None:
                 # Mask PII: single ``name`` field for LLM/tool consumers; email/phone stripped.
                 # Use same name keys as coverage verification (name | full_name | display_name).

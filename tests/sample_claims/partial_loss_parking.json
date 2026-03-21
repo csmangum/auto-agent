@@ -8,5 +8,6 @@
   "incident_description": "Minor fender bender in parking lot. Front bumper scratch.",
   "damage_description": "Scratches and small dent on front bumper. No structural damage.",
   "estimated_damage": 1200,
-  "loss_state": "California"
+  "loss_state": "California",
+  "incident_location": "California"
 }

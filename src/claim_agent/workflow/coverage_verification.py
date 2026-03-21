@@ -33,6 +33,156 @@ _POLICY_DRIVERS = "drivers"
 
 logger = logging.getLogger(__name__)
 
+# US state codes and names for territory normalization
+_US_STATE_CODES = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+    "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+    "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+    "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"
+}
+
+_US_STATE_NAMES = {
+    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
+    "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
+    "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana",
+    "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota",
+    "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada",
+    "New Hampshire", "New Jersey", "New Mexico", "New York",
+    "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
+    "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+    "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+    "West Virginia", "Wisconsin", "Wyoming"
+}
+
+_STATE_CODE_TO_NAME = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+    "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
+    "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
+    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York",
+    "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma",
+    "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah",
+    "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
+    "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia"
+}
+
+
+def _normalize_location(location: str) -> str:
+    """Normalize location string for territory comparison.
+    
+    Handles case-insensitive matching, state codes, and common variations.
+    Returns uppercase normalized location.
+    """
+    if not location:
+        return ""
+    loc = location.strip().upper()
+    # Handle common variations
+    if loc in ("USA", "UNITED STATES", "UNITED STATES OF AMERICA"):
+        return "US"
+    return loc
+
+
+def _canonical_us_state(location: str) -> str | None:
+    """Return the canonical (title-case full name) for a US state, or None.
+
+    Handles both state codes (CA, TX) and full names (California, Texas),
+    enabling bidirectional code/name equivalence for territory comparisons.
+    """
+    loc = location.strip()
+    # Try as 2-letter state code
+    name = _STATE_CODE_TO_NAME.get(loc.upper())
+    if name:
+        return name
+    # Try as full state name (case-insensitive)
+    if loc.title() in _US_STATE_NAMES:
+        return loc.title()
+    return None
+
+
+def _is_location_in_territory(
+    incident_location: str,
+    policy_territory: str | list[str] | None,
+    excluded_territories: list[str] | None = None,
+) -> tuple[bool, str]:
+    """Check if incident location is within policy territory.
+    
+    Args:
+        incident_location: Where the incident occurred (e.g., "California", "TX", "Canada")
+        policy_territory: Policy coverage area (e.g., "US", "USA_Canada", ["CA", "NV"])
+        excluded_territories: Explicitly excluded territories
+    
+    Returns:
+        Tuple of (is_covered: bool, reason: str)
+    """
+    if not incident_location:
+        return False, "Incident location not provided"
+    
+    if policy_territory is None:
+        return True, "No territory restrictions on policy"
+    
+    incident_loc = _normalize_location(incident_location)
+    
+    # Check excluded territories first
+    if excluded_territories:
+        incident_canon = _canonical_us_state(incident_location)
+        for excluded in excluded_territories:
+            excluded_norm = _normalize_location(excluded)
+            # Direct normalized match
+            if incident_loc == excluded_norm:
+                return False, f"Incident location '{incident_location}' is in excluded territory"
+            # Bidirectional state code/name equivalence (e.g., AK <-> Alaska)
+            excluded_canon = _canonical_us_state(excluded)
+            if incident_canon and excluded_canon and incident_canon == excluded_canon:
+                return False, f"Incident location '{incident_location}' is in excluded territory"
+    
+    # Handle string territory
+    if isinstance(policy_territory, str):
+        territory_norm = _normalize_location(policy_territory)
+        
+        # Special cases: US or USA_Canada
+        if territory_norm == "US":
+            if incident_loc in _US_STATE_CODES or incident_location.title() in _US_STATE_NAMES:
+                return True, "Incident in US territory"
+            if incident_loc == "US":
+                return True, "Incident in US territory"
+            return False, f"Incident location '{incident_location}' is outside US territory"
+        
+        if territory_norm == "USA_CANADA":
+            if incident_loc in _US_STATE_CODES or incident_location.title() in _US_STATE_NAMES:
+                return True, "Incident in US territory (USA_Canada policy)"
+            if incident_loc in ("US", "CANADA"):
+                return True, "Incident in USA/Canada territory"
+            return False, f"Incident location '{incident_location}' is outside USA/Canada territory"
+        
+        # Direct match
+        if incident_loc == territory_norm:
+            return True, f"Incident in policy territory ({policy_territory})"
+        
+        return False, f"Incident location '{incident_location}' is outside policy territory ({policy_territory})"
+    
+    # Handle list of territories
+    if isinstance(policy_territory, list):
+        incident_canon = _canonical_us_state(incident_location)
+        for territory in policy_territory:
+            territory_norm = _normalize_location(territory)
+            # Direct normalized match
+            if incident_loc == territory_norm:
+                return True, f"Incident in policy territory ({territory})"
+            # Bidirectional state code/name equivalence (e.g., NV <-> Nevada, TX <-> Texas)
+            territory_canon = _canonical_us_state(territory)
+            if incident_canon and territory_canon and incident_canon == territory_canon:
+                return True, f"Incident in policy territory ({territory})"
+        
+        territories_str = ", ".join(policy_territory)
+        return False, f"Incident location '{incident_location}' is outside policy territories ({territories_str})"
+    
+    return False, f"Invalid policy territory configuration: {policy_territory}"
+
 
 def _normalize_name(name: str | None) -> str:
     """Normalize a name for comparison (lowercase, normalize whitespace)."""
@@ -234,6 +384,42 @@ def verify_coverage_impl(
             },
         )
 
+    # Verify policy territory restrictions
+    incident_location = claim_data.get("incident_location") or claim_data.get("loss_state")
+    if incident_location:
+        policy_territory = policy_result.get("territory")
+        excluded_territories = policy_result.get("excluded_territories")
+
+        is_covered, territory_reason = _is_location_in_territory(
+            incident_location,
+            policy_territory,
+            excluded_territories,
+        )
+
+        if not is_covered:
+            return CoverageVerificationResult(
+                denied=True,
+                reason=territory_reason,
+                details={
+                    "incident_location": incident_location,
+                    "policy_territory": policy_territory,
+                    "excluded_territories": excluded_territories,
+                    "territory_verification": "denied",
+                },
+            )
+    elif config.get("require_incident_location", False):
+        # Optional: require incident location when territory restrictions exist
+        policy_territory = policy_result.get("territory")
+        if policy_territory is not None:
+            return CoverageVerificationResult(
+                under_investigation=True,
+                reason="Incident location required for territory verification",
+                details={
+                    "policy_territory": policy_territory,
+                    "territory_verification": "location_missing",
+                },
+            )
+
     # Named insured / driver verification
     is_verified, verification_reason = _verify_named_insured_or_driver(claim_data, policy_result)
     if not is_verified:
@@ -291,12 +477,20 @@ def verify_coverage_impl(
                     },
                 )
 
+    details_dict = {
+        "policy_status": policy_result.get(_POLICY_STATUS, "active"),
+        "physical_damage_covered": True,
+        "deductible": policy_result.get(_POLICY_DEDUCTIBLE),
+    }
+    
+    # Include territory verification in success details
+    incident_location = claim_data.get("incident_location") or claim_data.get("loss_state")
+    if incident_location and policy_result.get("territory") is not None:
+        details_dict["territory_verified"] = True
+        details_dict["incident_location"] = incident_location
+    
     return CoverageVerificationResult(
         passed=True,
         reason="Coverage verified",
-        details={
-            "policy_status": policy_result.get(_POLICY_STATUS, "active"),
-            "physical_damage_covered": True,
-            "deductible": policy_result.get(_POLICY_DEDUCTIBLE),
-        },
+        details=details_dict,
     )
