@@ -127,6 +127,22 @@ async function patchJSON<T>(url: string, body: unknown, retries = 1): Promise<T>
   return res.json() as Promise<T>;
 }
 
+async function deleteJSON(url: string, retries = 1): Promise<void> {
+  const res = await fetch(`${BASE}${url}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const msg = parseApiError(res.status, text);
+    if (res.status >= 500 && retries > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      return deleteJSON(url, retries - 1);
+    }
+    throw new Error(msg);
+  }
+}
+
 export const getClaimsStats = (): Promise<ClaimsStats> =>
   fetchJSON<ClaimsStats>('/claims/stats');
 
@@ -842,3 +858,36 @@ export const getComplianceTemplates = (
   const qs = state ? `?state=${encodeURIComponent(state)}` : '';
   return fetchJSON<ComplianceTemplatesResponse>(`/diary/compliance-templates${qs}`);
 };
+
+// ---------------------------------------------------------------------------
+// Party Relationships
+// ---------------------------------------------------------------------------
+
+export interface CreatePartyRelationshipPayload {
+  from_party_id: number;
+  to_party_id: number;
+  relationship_type: string;
+}
+
+export interface CreatePartyRelationshipResponse {
+  id: number;
+  claim_id: string;
+  from_party_id: number;
+  to_party_id: number;
+  relationship_type: string;
+}
+
+export const createPartyRelationship = (
+  claimId: string,
+  body: CreatePartyRelationshipPayload,
+): Promise<CreatePartyRelationshipResponse> =>
+  postJSON<CreatePartyRelationshipResponse>(
+    `/claims/${claimId}/party-relationships`,
+    body,
+  );
+
+export const deletePartyRelationship = (
+  claimId: string,
+  relationshipId: number,
+): Promise<void> =>
+  deleteJSON(`/claims/${claimId}/party-relationships/${relationshipId}`);
