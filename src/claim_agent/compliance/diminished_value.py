@@ -41,16 +41,14 @@ def _mileage_multiplier(mileage: int | None) -> float:
     if mileage < 20_000:
         return 1.0
     if mileage < 40_000:
-        return 0.95
-    if mileage < 60_000:
-        return 0.90
-    if mileage < 80_000:
-        return 0.85
-    if mileage < 100_000:
         return 0.80
-    if mileage < 120_000:
-        return 0.75
-    return 0.70
+    if mileage < 60_000:
+        return 0.60
+    if mileage < 80_000:
+        return 0.40
+    if mileage < 100_000:
+        return 0.20
+    return 0.00
 
 
 def _damage_multiplier_from_repair_ratio(ratio: float) -> float:
@@ -145,7 +143,10 @@ def calculate_ga_17c_diminished_value(
     if ratio is not None:
         out["repair_cost_ratio"] = round(ratio, 4)
     if mileage is not None:
-        out["mileage_used"] = int(mileage)
+        try:
+            out["mileage_used"] = int(mileage)
+        except (TypeError, ValueError):
+            out["mileage_used"] = mileage
     return out
 
 

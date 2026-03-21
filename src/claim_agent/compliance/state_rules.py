@@ -96,7 +96,7 @@ _STATE_RULES: dict[str, StateRules] = {
         investigation_days=30,
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
-        comparative_fault_bar=51.0,
+        comparative_fault_bar=50.0,
     ),
     "Texas": StateRules(
         state="Texas",

@@ -42,12 +42,11 @@
         "requirement": "Mileage odometer reading maps to a multiplier applied after base and damage factors.",
         "brackets": [
           {"max_miles_exclusive": 20000, "multiplier": 1.0},
-          {"max_miles_exclusive": 40000, "multiplier": 0.95},
-          {"max_miles_exclusive": 60000, "multiplier": 0.9},
-          {"max_miles_exclusive": 80000, "multiplier": 0.85},
-          {"max_miles_exclusive": 100000, "multiplier": 0.8},
-          {"max_miles_exclusive": 120000, "multiplier": 0.75},
-          {"max_miles_exclusive": null, "multiplier": 0.7}
+          {"max_miles_exclusive": 40000, "multiplier": 0.8},
+          {"max_miles_exclusive": 60000, "multiplier": 0.6},
+          {"max_miles_exclusive": 80000, "multiplier": 0.4},
+          {"max_miles_exclusive": 100000, "multiplier": 0.2},
+          {"max_miles_exclusive": null, "multiplier": 0.0}
         ]
       },
       {
