@@ -331,7 +331,7 @@ class DocumentRepository:
                 WHERE retention_date IS NOT NULL
                   AND length(trim(retention_date)) > 0
                   AND trim(retention_date) < :cutoff
-                  AND (retention_enforced_at IS NULL OR trim(retention_enforced_at) = '')
+                  AND retention_enforced_at IS NULL
                 ORDER BY id ASC
                 """),
                 {"cutoff": cutoff_date},
@@ -364,7 +364,7 @@ class DocumentRepository:
                 UPDATE claim_documents
                 SET retention_enforced_at = :ts, updated_at = :ts
                 WHERE id = :id
-                  AND (retention_enforced_at IS NULL OR trim(retention_enforced_at) = '')
+                  AND retention_enforced_at IS NULL
                 """),
                 {"ts": now, "id": document_id},
             )
