@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from claim_agent.adapters.registry import get_policy_adapter
+from claim_agent.adapters.registry import get_cms_reporting_adapter, get_policy_adapter
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -169,9 +169,10 @@ def calculate_bi_settlement_impl(
 ) -> str:
     """Calculate proposed BI settlement within policy limits.
 
-    Combines medical specials with pain/suffering (multiplier method) and
-    caps at policy BI limits. Real implementation would apply jurisdiction-
-    specific rules and policy terms.
+    Combines medical specials, optional documented loss of earnings (not
+    multiplied for pain/suffering), and pain/suffering (multiplier applies to
+    medical charges only). Returns ``economic_specials`` (medicals + LOE) and
+    caps the total demand at policy BI per-person limits.
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -322,8 +323,6 @@ def check_cms_reporting_required_impl(
                 "reporting_required": False,
             }
         )
-    from claim_agent.adapters.registry import get_cms_reporting_adapter
-
     adapter = get_cms_reporting_adapter()
     if ctx is not None and getattr(ctx, "adapters", None) is not None:
         adapter = ctx.adapters.cms

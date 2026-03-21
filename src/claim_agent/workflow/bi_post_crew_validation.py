@@ -91,11 +91,29 @@ def maybe_escalate_bodily_injury_post_crew(
 
     bio = extract_bi_workflow_output_from_crew_result(workflow_result)
     if bio is None:
-        logger.info(
-            "BI post-crew validation skipped: no BIWorkflowOutput on last task (claim_id=%s)",
+        logger.warning(
+            "BI post-crew: no BIWorkflowOutput on last task; escalating (claim_id=%s)",
             claim_id,
         )
-        return None
+        return _handle_mid_workflow_escalation(
+            MidWorkflowEscalation(
+                reason="bi_structured_output_missing",
+                indicators=["bi_post_crew_gate"],
+                priority="high",
+                claim_id=claim_id,
+            ),
+            claim_id=claim_id,
+            claim_type=claim_type,
+            raw_output=raw_output,
+            context=context,
+            workflow_logger=logger,
+            workflow_start_time=workflow_start_time,
+            prior_workflow_output=routed_output,
+            actor_id=actor_id,
+            stage="workflow",
+            payout_amount=None,
+            workflow_run_id=workflow_run_id,
+        )
 
     policy_number = str(claim_data.get("policy_number") or "").strip()
     loss_state = str(claim_data.get("loss_state") or DEFAULT_STATE).strip()
@@ -137,7 +155,10 @@ def maybe_escalate_bodily_injury_post_crew(
 
     claimant_age = _resolve_claimant_age(claim_data)
     incap = bool(claim_data.get("claimant_incapacitated", False))
-    court_ok = bool(claim_data.get("minor_court_approval_obtained", False))
+    # Claim payload is authoritative when True; crew structured output can also record approval.
+    court_ok = bool(claim_data.get("minor_court_approval_obtained", False)) or (
+        bio.minor_court_approval_obtained is True
+    )
 
     minor_raw = check_minor_settlement_approval_impl(
         claim_id=claim_id,

@@ -741,14 +741,14 @@ flowchart TB
     V --> Settlement[Settlement Crew]
 ```
 
-After the crew returns structured `BIWorkflowOutput`, the workflow stage re-runs PIP/MedPay exhaustion against claim state and medical charges; if BI settlement is not allowed in a no-fault state, the claim escalates to `needs_review`. The same stage escalates when minor/incapacitated court approval is required and `minor_court_approval_obtained` is not set on the claim payload (`minor_court_approval_obtained` in claim data).
+After the crew returns structured `BIWorkflowOutput`, the workflow stage re-runs PIP/MedPay exhaustion against claim state and medical charges; if BI settlement is not allowed in a no-fault state, the claim escalates to `needs_review`. The same stage escalates when minor/incapacitated court approval is required and court approval is not indicated on the claim payload (`minor_court_approval_obtained` in claim data) or explicitly as `minor_court_approval_obtained: true` on the structured `BIWorkflowOutput`. If the last crew task does not return parseable `BIWorkflowOutput`, the workflow escalates so PIP/minor gates are not skipped silently.
 
 ### Exit Conditions
 
 | Outcome | Status | Notes |
 |---------|--------|-------|
 | Success | `settled` | Via Settlement Crew |
-| Escalated | `needs_review` | Router/coverage/escalation before crew, tool `escalate_claim`, or post-crew PIP/minor gate |
+| Escalated | `needs_review` | Router/coverage/escalation before crew, tool `escalate_claim`, post-crew missing structured output, or post-crew PIP/minor gate |
 | Failed | `failed` | Error during crew execution |
 
 **Note:** Claims with both vehicle damage and injury are routed to BI when injury is significant. Vehicle damage is not handled by this crew; consider a combined workflow for such claims.

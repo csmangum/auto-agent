@@ -61,22 +61,26 @@ class TestMaybeEscalateBodilyInjuryPostCrew:
             is None
         )
 
-    def test_skips_when_no_structured_output(self):
-        assert (
-            maybe_escalate_bodily_injury_post_crew(
-                claim_type=ClaimType.BODILY_INJURY.value,
-                claim_id="C1",
-                claim_data={"policy_number": "P1", "loss_state": "CA"},
-                workflow_result=SimpleNamespace(tasks_output=[]),
-                routed_output="text",
-                raw_output="",
-                context=MagicMock(),
-                workflow_start_time=0.0,
-                workflow_run_id=None,
-                actor_id=None,
-            )
-            is None
+    @patch("claim_agent.workflow.bi_post_crew_validation._handle_mid_workflow_escalation")
+    def test_escalates_when_structured_output_missing(self, mock_handle: MagicMock):
+        mock_handle.return_value = {"status": "needs_review"}
+        ctx = _fake_context(MagicMock())
+        out = maybe_escalate_bodily_injury_post_crew(
+            claim_type=ClaimType.BODILY_INJURY.value,
+            claim_id="C1",
+            claim_data={"policy_number": "P1", "loss_state": "CA"},
+            workflow_result=SimpleNamespace(tasks_output=[]),
+            routed_output="text",
+            raw_output="",
+            context=ctx,
+            workflow_start_time=0.0,
+            workflow_run_id=None,
+            actor_id=None,
         )
+        assert out == {"status": "needs_review"}
+        exc = mock_handle.call_args.args[0]
+        assert isinstance(exc, MidWorkflowEscalation)
+        assert exc.reason == "bi_structured_output_missing"
 
     @patch("claim_agent.workflow.bi_post_crew_validation._handle_mid_workflow_escalation")
     def test_escalates_when_pip_not_exhausted_fl(self, mock_handle: MagicMock):
@@ -153,6 +157,35 @@ class TestMaybeEscalateBodilyInjuryPostCrew:
                 "loss_state": "CA",
                 "claimant_age": 10,
                 "minor_court_approval_obtained": True,
+            },
+            workflow_result=result,
+            routed_output="crew out",
+            raw_output="router",
+            context=ctx,
+            workflow_start_time=0.0,
+            workflow_run_id=None,
+            actor_id=None,
+        )
+        assert out is None
+
+    def test_minor_allowed_when_structured_output_sets_court_approval_only(self):
+        """Post-crew gate honors minor_court_approval_obtained on BIWorkflowOutput."""
+        bio = BIWorkflowOutput(
+            payout_amount=2000.0,
+            medical_charges=1000.0,
+            pain_suffering=1000.0,
+            minor_court_approval_obtained=True,
+        )
+        result = SimpleNamespace(tasks_output=[SimpleNamespace(output=bio)])
+        ctx = _fake_context(MagicMock())
+        out = maybe_escalate_bodily_injury_post_crew(
+            claim_type=ClaimType.BODILY_INJURY.value,
+            claim_id="C-MIN-BIO",
+            claim_data={
+                "policy_number": "P1",
+                "loss_state": "CA",
+                "claimant_age": 10,
+                "minor_court_approval_obtained": False,
             },
             workflow_result=result,
             routed_output="crew out",
