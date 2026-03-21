@@ -142,6 +142,8 @@ class FraudConfig(BaseSettings):
     claimsearch_match_threshold: int = 2
     claimsearch_match_score: int = 25
     photo_exif_anomaly_score: int = 10
+    #: Fraud score for ``photo_gps_far_from_incident`` (other EXIF anomalies use ``photo_exif_anomaly_score``).
+    photo_gps_far_from_incident_score: int = 10
     photo_gps_incident_max_distance: float = 50.0
     photo_gps_incident_distance_unit: Literal["miles", "km"] = "miles"
 
@@ -188,6 +190,7 @@ class FraudConfig(BaseSettings):
         "claimsearch_match_threshold",
         "claimsearch_match_score",
         "photo_exif_anomaly_score",
+        "photo_gps_far_from_incident_score",
         mode="before",
     )
     @classmethod
@@ -208,6 +211,7 @@ class FraudConfig(BaseSettings):
             "claimsearch_match_threshold": 2,
             "claimsearch_match_score": 25,
             "photo_exif_anomaly_score": 10,
+            "photo_gps_far_from_incident_score": 10,
         }
         fallback = defaults.get(info.field_name or "", 1)
         try:

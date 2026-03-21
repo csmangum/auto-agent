@@ -54,6 +54,7 @@ def test_get_fraud_config_returns_dict():
     assert "graph_max_nodes" in config
     assert "provider_ring_threshold" in config
     assert "photo_exif_anomaly_score" in config
+    assert "photo_gps_far_from_incident_score" in config
     assert "photo_gps_incident_max_distance" in config
     assert "photo_gps_incident_distance_unit" in config
 
