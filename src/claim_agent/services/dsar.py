@@ -200,11 +200,13 @@ def fulfill_access_request(
             # even after anonymization — redacted party rows still have valid IDs.
             rel_rows = conn.execute(
                 text(
-                    "SELECT cpr.id, cpr.from_party_id, cpr.to_party_id, "
+                    "SELECT DISTINCT cpr.id, cpr.from_party_id, cpr.to_party_id, "
                     "cpr.relationship_type, cpr.created_at "
                     "FROM claim_party_relationships cpr "
-                    "INNER JOIN claim_parties cp ON cp.id = cpr.from_party_id "
-                    "WHERE cp.claim_id = :claim_id"
+                    "WHERE cpr.from_party_id IN "
+                    "(SELECT id FROM claim_parties WHERE claim_id = :claim_id) "
+                    "OR cpr.to_party_id IN "
+                    "(SELECT id FROM claim_parties WHERE claim_id = :claim_id)"
                 ),
                 {"claim_id": claim_id},
             ).fetchall()
