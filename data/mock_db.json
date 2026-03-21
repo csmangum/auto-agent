@@ -74,9 +74,16 @@
       },
       "collision_deductible": 1000,
       "comprehensive_deductible": 1000,
-      "rental_reimbursement": { "daily_limit": 35, "aggregate_limit": 1050, "max_days": 30 },
+      "rental_reimbursement": {
+        "daily_limit": 35,
+        "aggregate_limit": 1050,
+        "max_days": 30
+      },
       "territory": "US",
-      "excluded_territories": ["Alaska", "Hawaii"],
+      "excluded_territories": [
+        "Alaska",
+        "Hawaii"
+      ],
       "named_insured": [
         {"name": "Robert Johnson", "email": "rjohnson@example.com", "phone": "555-333-4444"}
       ],
@@ -99,7 +106,10 @@
       },
       "collision_deductible": 500,
       "comprehensive_deductible": 500,
-      "bodily_injury": { "per_person": 250000, "per_accident": 500000 },
+      "bodily_injury": {
+        "per_person": 250000,
+        "per_accident": 500000
+      },
       "territory": "USA_Canada",
       "named_insured": [
         {"name": "Emily Davis", "email": "emily.davis@example.com", "phone": "555-444-5555"}

@@ -1,5 +1,7 @@
 """Unit tests for FNOL coverage verification."""
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -756,6 +758,36 @@ class TestTerritoryVerification:
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
         assert result.details.get("territory_verification") == "config_error"
+
+
+class TestMockDbJson:
+    """Smoke tests: data/mock_db.json parses; territory fixtures match tests."""
+
+    def test_mock_db_json_parses_and_territory_policies_present(self):
+        mock_path = Path(__file__).resolve().parents[1] / "data" / "mock_db.json"
+        data = json.loads(mock_path.read_text(encoding="utf-8"))
+        policies = data["policies"]
+        for pid in (
+            "POL-001",
+            "POL-003",
+            "POL-004",
+            "POL-005",
+            "POL-100",
+            "POL-101",
+            "POL-EXCL-ONLY",
+        ):
+            assert pid in policies, f"missing policy {pid}"
+        assert policies["POL-001"].get("territory") == "US"
+        assert policies["POL-003"].get("territory") == "US"
+        assert policies["POL-003"].get("excluded_territories") == ["Alaska", "Hawaii"]
+        assert policies["POL-004"].get("territory") == "USA_Canada"
+        assert "territory" not in policies["POL-005"]
+        assert policies["POL-100"].get("territory") == ["California", "Nevada", "Arizona"]
+        assert policies["POL-101"].get("territory") == "US"
+        assert policies["POL-101"].get("excluded_territories") == ["AK", "HI"]
+        excl = policies["POL-EXCL-ONLY"]
+        assert excl.get("territory") is None
+        assert excl.get("excluded_territories") == ["Florida"]
 
 
 class TestCoverageStageIntegration:
