@@ -11,7 +11,7 @@ import logging
 import math
 import os
 import sys
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -624,10 +624,15 @@ def document_retention_enforce(
     to ``claim_audit_log``. Schedule with cron alongside ``retention-enforce`` as needed.
     Does not delete files or remove rows.
     """
-    cutoff = as_of or date.today().isoformat()
-    if len(cutoff) < 10 or cutoff[4] != "-" or cutoff[7] != "-":
-        typer.echo("Error: --as-of must be YYYY-MM-DD", err=True)
-        raise typer.Exit(1)
+    if as_of is not None:
+        cutoff = as_of
+        try:
+            datetime.strptime(cutoff, "%Y-%m-%d")
+        except ValueError:
+            typer.echo("Error: --as-of must be a valid calendar date YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+    else:
+        cutoff = datetime.now(timezone.utc).date().isoformat()
     result = run_document_retention_enforce(
         db_path=get_db_path(),
         cutoff_date=cutoff,

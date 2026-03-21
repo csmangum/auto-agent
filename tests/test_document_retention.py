@@ -1,6 +1,7 @@
 """Tests for claim_documents retention enforcement (issue #284)."""
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import text
@@ -155,3 +156,52 @@ def test_cli_document_retention_enforce_dry_run(claim_with_documents, monkeypatc
     data = json.loads(result.stdout)
     assert data["dry_run"] is True
     assert data["document_count"] >= 1
+
+
+def test_cli_document_retention_enforce_default_as_of_uses_utc_calendar_date(
+    claim_with_documents, monkeypatch
+):
+    """Without --as-of, cutoff must be UTC calendar date (not host-local date.today())."""
+    db_path = claim_with_documents["db_path"]
+    monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+    reload_settings()
+
+    class PatchedDatetime:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2030, 6, 2, 23, 30, 0, tzinfo=timezone.utc)
+
+        strptime = datetime.strptime
+
+    monkeypatch.setattr("claim_agent.main.datetime", PatchedDatetime)
+
+    received: dict[str, str] = {}
+
+    def capture_run(*, db_path, cutoff_date, dry_run):
+        received["cutoff_date"] = cutoff_date
+        return {
+            "dry_run": dry_run,
+            "cutoff_date": cutoff_date,
+            "document_count": 0,
+            "documents": [],
+        }
+
+    monkeypatch.setattr("claim_agent.main.run_document_retention_enforce", capture_run)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["document-retention-enforce", "--dry-run"])
+    assert result.exit_code == 0
+    assert received["cutoff_date"] == "2030-06-02"
+
+
+def test_cli_document_retention_enforce_rejects_invalid_as_of(claim_with_documents, monkeypatch):
+    db_path = claim_with_documents["db_path"]
+    monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+    reload_settings()
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["document-retention-enforce", "--dry-run", "--as-of", "2025-13-40"],
+    )
+    assert result.exit_code == 1
+    assert "YYYY-MM-DD" in result.output

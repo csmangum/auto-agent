@@ -5,6 +5,10 @@ Revises: 039
 Create Date: 2026-03-21
 
 GitHub issue #284: soft-archive documents past retention_date; index for eligibility scan.
+
+Downgrade: On SQLite, only the partial index is dropped; the column is left in place
+(SQLite lacks portable DROP COLUMN without a table rebuild on older versions). On
+PostgreSQL, the column is dropped as well.
 """
 
 from alembic import op
@@ -56,6 +60,7 @@ def downgrade() -> None:
     conn = op.get_bind()
     op.execute(text("DROP INDEX IF EXISTS idx_claim_documents_retention_eligible"))
     if conn.dialect.name == "sqlite":
+        # See module docstring: column intentionally not dropped on SQLite.
         pass
     else:
         op.execute(text("ALTER TABLE claim_documents DROP COLUMN IF EXISTS retention_enforced_at"))
