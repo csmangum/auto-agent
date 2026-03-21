@@ -102,6 +102,7 @@ _STATE_TO_FILENAME: dict[str, str] = {
     "Texas": "texas_auto_compliance.json",
     "Florida": "florida_auto_compliance.json",
     "New York": "new_york_auto_compliance.json",
+    "Georgia": "georgia_auto_compliance.json",
 }
 
 

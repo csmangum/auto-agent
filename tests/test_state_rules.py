@@ -48,6 +48,12 @@ class TestGetStateRules:
         assert get_state_rules("") is None
         assert get_state_rules(None) is None
 
+    def test_georgia_diminished_value_formula(self):
+        rules = get_state_rules("Georgia")
+        assert rules is not None
+        assert rules.diminished_value_required is True
+        assert rules.diminished_value_formula == "ga_17c"
+
 
 class TestGetTotalLossThreshold:
     def test_california_75_percent(self):

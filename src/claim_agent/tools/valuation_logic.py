@@ -14,7 +14,7 @@ from claim_agent.config.settings import (
     MIN_PAYOUT_VEHICLE_VALUE,
     MIN_VEHICLE_VALUE,
 )
-from claim_agent.compliance.state_rules import get_state_rules
+from claim_agent.compliance.diminished_value import compute_diminished_value_payload
 from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.models.policy_lookup import PolicyLookupFailure, PolicyLookupSuccess
 from claim_agent.tools.policy_logic import query_policy_db_impl
@@ -28,30 +28,30 @@ logger = logging.getLogger(__name__)
 def calculate_diminished_value_impl(
     vehicle_value: float,
     loss_state: str | None,
+    *,
+    mileage: int | None = None,
+    vehicle_year: int | None = None,
+    repair_cost: float | None = None,
+    damage_severity_tier: str | None = None,
 ) -> str:
-    """Calculate diminished value when state requires it (e.g. Georgia).
+    """Calculate diminished value when state requires it (e.g. Georgia 17c-style).
+
+    Georgia uses base cap (10% of ACV) × damage × mileage multipliers when
+    ``diminished_value_formula`` is ``ga_17c``. Other required states use a
+    generic percentage fallback until a formula is configured.
 
     Returns 0 when state does not require diminished value consideration.
-    Stub implementation: real formula varies by state.
     """
-    rules = get_state_rules(loss_state)
-    if not rules or not rules.diminished_value_required:
-        return json.dumps({
-            "diminished_value": 0.0,
-            "required": False,
-            "state": loss_state or "unknown",
-            "message": "Diminished value not required in this state.",
-        })
-    # Stub: placeholder formula (e.g. 10% cap for Georgia-style)
-    cap_pct = 0.10
-    dv = round(vehicle_value * cap_pct, 2)
-    return json.dumps({
-        "diminished_value": dv,
-        "required": True,
-        "state": rules.state,
-        "cap_percent": cap_pct * 100,
-        "message": f"State requires diminished value consideration. Stub estimate: ${dv:,.2f}.",
-    })
+    return json.dumps(
+        compute_diminished_value_payload(
+            vehicle_value,
+            loss_state,
+            mileage=mileage,
+            vehicle_year=vehicle_year,
+            repair_cost=repair_cost,
+            damage_severity_tier=damage_severity_tier,
+        )
+    )
 
 
 def _mock_comparables_for_value(

@@ -60,7 +60,8 @@ Pass vehicle value from the valuation step and policy_number from claim_data.
 Use loss_state from claim_data when available for tax/title/fees (required in many states).
 If the policyholder may retain salvage, call get_salvage_value with vin, vehicle_year, vehicle_make, vehicle_model, damage_description, and vehicle_value from claim_data or valuation. Then call calculate_payout with owner_retain_salvage=True and salvage_value from get_salvage_value.
 Use get_total_loss_requirements(state=loss_state) for state-specific requirements.
-Return TotalLossWorkflowOutput with payout_amount, vehicle_value, deductible, calculation, and total_loss_details (acv_base, tax_title_fees, acv_total, salvage_deduction, owner_retain_option, comparable_vehicles from valuation if available).""",
+When loss_state is Georgia (or diminished value applies), call calculate_diminished_value with vehicle_value, mileage and estimated_damage or repair estimate as repair_cost when available, and optional damage_severity_tier (cosmetic, moderate, structural, severe) if itemized repairs are unknown; include diminished_value in total_loss_details when returned.
+Return TotalLossWorkflowOutput with payout_amount, vehicle_value, deductible, calculation, and total_loss_details (acv_base, tax_title_fees, acv_total, salvage_deduction, owner_retain_option, comparable_vehicles from valuation if available, diminished_value if computed).""",
                 expected_output="Structured output: payout_amount, vehicle_value, deductible, calculation, total_loss_details (ACV breakdown, tax/fees, salvage deduction, owner-retain option).",
                 agent_index=2,
                 context_task_indices=[0, 1],
