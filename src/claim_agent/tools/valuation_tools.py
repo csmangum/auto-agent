@@ -81,6 +81,8 @@ def calculate_payout(
     owner_retain_salvage: bool = False,
     salvage_value: float | None = None,
     loan_balance: float | None = None,
+    claim_id: str | None = None,
+    vin: str | None = None,
 ) -> str:
     """Calculate total loss payout.
 
@@ -96,10 +98,13 @@ def calculate_payout(
         owner_retain_salvage: Whether policyholder retains the salvage vehicle.
         salvage_value: Salvage value to deduct when owner_retain_salvage is True.
         loan_balance: Optional loan balance; when payout < loan_balance and policy has
-            gap_insurance, gap_insurance_applied is set True.
+            gap_insurance, coordinates with the gap adapter (see gap_claim_id, status fields).
+        claim_id: Optional claim id passed to the gap carrier when submitting shortfall.
+        vin: Optional VIN forwarded to the gap carrier.
     Returns:
         JSON with payout_amount, vehicle_value, deductible, calculation, acv_base,
-        tax_title_fees, acv_total, salvage_deduction, owner_retain_option.
+        tax_title_fees, acv_total, salvage_deduction, owner_retain_option,
+        gap_insurance_applied, and gap coordination fields when applicable.
     """
     return calculate_payout_impl(
         vehicle_value,
@@ -111,4 +116,6 @@ def calculate_payout(
         owner_retain_salvage=owner_retain_salvage,
         salvage_value=salvage_value,
         loan_balance=loan_balance,
+        claim_id=claim_id,
+        vin=vin,
     )

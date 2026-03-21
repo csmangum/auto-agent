@@ -51,7 +51,7 @@ def _check_adapters() -> dict[str, str]:
                 else:
                     checks[f"adapter_{name}"] = "skipped"
             except Exception as e:
-                logger.error("Adapter %s health check failed: %s", name, e)
+                logger.exception("Adapter %s health check failed: %s", name, e)
                 checks[f"adapter_{name}"] = f"error:{e!s}"
             continue
         if backend != "rest":
@@ -68,7 +68,7 @@ def _check_adapters() -> dict[str, str]:
             else:
                 checks[f"adapter_{name}"] = "skipped"
         except Exception as e:
-            logger.error("Adapter %s health check failed: %s", name, e)
+            logger.exception("Adapter %s health check failed: %s", name, e)
             checks[f"adapter_{name}"] = f"error:{e!s}"
     return checks
 
