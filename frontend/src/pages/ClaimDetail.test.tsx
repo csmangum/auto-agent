@@ -23,6 +23,8 @@ vi.mock('../api/queries', () => ({
   useClearPayment: vi.fn(),
   useVoidPayment: vi.fn(),
   usePolicies: vi.fn(),
+  useCreatePartyRelationship: vi.fn(),
+  useDeletePartyRelationship: vi.fn(),
 }));
 
 const {
@@ -44,6 +46,8 @@ const {
   useClearPayment,
   useVoidPayment,
   usePolicies,
+  useCreatePartyRelationship,
+  useDeletePartyRelationship,
 } = await import('../api/queries');
 
 const mockClaim = {
@@ -171,6 +175,18 @@ describe('ClaimDetail', () => {
     vi.mocked(usePolicies).mockReturnValue({
       data: { policies: [] },
       isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(useCreatePartyRelationship).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    } as never);
+    vi.mocked(useDeletePartyRelationship).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
       error: null,
     } as never);
   });
