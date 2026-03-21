@@ -32,7 +32,8 @@ def send_user_message(
 
     Args:
         claim_id: The claim ID.
-        user_type: One of claimant, policyholder, adjuster, repair_shop, siu, other.
+        user_type: One of claimant, policyholder, witness, attorney, adjuster,
+            repair_shop, siu, other.
         message_content: The message to send (questions, requests, clarifications).
         email: Optional email for claimant/policyholder.
         phone: Optional phone for SMS.

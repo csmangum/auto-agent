@@ -131,6 +131,10 @@ _CREW_ALLOWLISTS: dict[str, frozenset[str]] = {
         "id", "claim_id", "policy_number", "vin", "status", "claim_type",
         "incident_description", "damage_description",
     }),
+    "party_intake": frozenset({
+        "id", "claim_id", "policy_number", "vin", "status", "claim_type",
+        "incident_description", "damage_description", "parties",
+    }),
     "dispute": frozenset({
         "claim_id", "policy_number", "vin", "vehicle_year", "vehicle_make", "vehicle_model",
         "incident_date", "incident_description", "damage_description", "estimated_damage",

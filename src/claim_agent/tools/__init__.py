@@ -105,6 +105,11 @@ __all__ = [
     "send_user_message",
     "record_user_response",
     "check_pending_responses",
+    # Party intake (witness / attorney)
+    "record_witness_party",
+    "update_witness_party",
+    "record_witness_statement",
+    "record_attorney_representation",
     # Claim review tools
     "get_claim_process_context",
     # SIU investigation tools
@@ -445,6 +450,22 @@ def __getattr__(name: str):
         from claim_agent.tools.follow_up_tools import check_pending_responses
         setattr(mod, "check_pending_responses", check_pending_responses)
         return check_pending_responses
+    if name == "record_witness_party":
+        from claim_agent.tools.party_intake_tools import record_witness_party
+        setattr(mod, "record_witness_party", record_witness_party)
+        return record_witness_party
+    if name == "update_witness_party":
+        from claim_agent.tools.party_intake_tools import update_witness_party
+        setattr(mod, "update_witness_party", update_witness_party)
+        return update_witness_party
+    if name == "record_witness_statement":
+        from claim_agent.tools.party_intake_tools import record_witness_statement
+        setattr(mod, "record_witness_statement", record_witness_statement)
+        return record_witness_statement
+    if name == "record_attorney_representation":
+        from claim_agent.tools.party_intake_tools import record_attorney_representation
+        setattr(mod, "record_attorney_representation", record_attorney_representation)
+        return record_attorney_representation
     # Claim review tools
     if name == "get_claim_process_context":
         from claim_agent.tools.review_tools import get_claim_process_context

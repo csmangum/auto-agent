@@ -240,6 +240,8 @@ CLAIM_REVIEW_SUPERVISOR = "claim_review_supervisor"
 FOLLOW_UP_OUTREACH = "follow_up_outreach"
 MESSAGE_COMPOSITION = "message_composition"
 RESPONSE_PROCESSING = "response_processing"
+# Party intake (witness / attorney)
+PARTY_INTAKE = "party_intake"
 # SIU investigation
 SIU_DOCUMENT_VERIFICATION = "siu_document_verification"
 SIU_RECORDS_INVESTIGATOR = "siu_records_investigator"
