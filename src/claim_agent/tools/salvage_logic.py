@@ -27,6 +27,12 @@ _NMVTIS_DISPOSITION_TRIGGERS = frozenset({
     "owner_retained",
     "scrapped",
 })
+_DMV_REFERENCE_MAX_LEN = 256
+_ALLOWED_SALVAGE_TITLE_STATUSES = frozenset({
+    "pending",
+    "dmv_reported",
+    "certificate_issued",
+})
 
 
 def _utc_now() -> datetime.datetime:
@@ -420,8 +426,34 @@ def record_dmv_salvage_report_impl(
 
     Updates claim total_loss_metadata with dmv_reference, reported_at,
     salvage_title_status: pending | dmv_reported | certificate_issued.
-    Returns JSON with confirmation or, on failure, error and claim_id.
+
+    Returns JSON with confirmation fields on success. On validation failure,
+    missing claim, or other errors, returns JSON with exactly ``error`` (str) and
+    ``claim_id`` (str) so callers can branch without raising.
     """
+    dmv_ref = (dmv_reference or "").strip()
+    if not dmv_ref:
+        return json.dumps({"error": "dmv_reference is required", "claim_id": claim_id})
+    if len(dmv_ref) > _DMV_REFERENCE_MAX_LEN:
+        return json.dumps(
+            {
+                "error": f"dmv_reference exceeds {_DMV_REFERENCE_MAX_LEN} characters",
+                "claim_id": claim_id,
+            }
+        )
+    st_norm = (salvage_title_status or "").strip()
+    if st_norm not in _ALLOWED_SALVAGE_TITLE_STATUSES:
+        return json.dumps(
+            {
+                "error": (
+                    "salvage_title_status must be one of: "
+                    + ", ".join(sorted(_ALLOWED_SALVAGE_TITLE_STATUSES))
+                ),
+                "claim_id": claim_id,
+            }
+        )
+    dmv_reference = dmv_ref
+    salvage_title_status = st_norm
     try:
         repo = ctx.repo if ctx else ClaimRepository()
         existing = repo.get_claim_total_loss_metadata(claim_id) or {}
