@@ -185,7 +185,15 @@ The module `src/claim_agent/config/settings.py` provides backward-compatible fun
 
 Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATION_ENABLED` (default false). When `ROUTER_VALIDATION_ENABLED=true`, the optional second-pass validation LLM call uses `OPENAI_MODEL_NAME` (the same variable that controls all other LLM calls; default `gpt-4o-mini`).
 
-Coverage verification: `COVERAGE_ENABLED` (default true) enables FNOL coverage verification before routing. When enabled, claims are checked for active policy, physical damage coverage, and optionally `COVERAGE_DENY_WHEN_DEDUCTIBLE_EXCEEDS_DAMAGE` (default false) to deny when deductible exceeds estimated damage.
+Coverage verification: `COVERAGE_ENABLED` (default true) enables FNOL coverage verification before routing. When enabled, claims are checked for:
+- Active policy status
+- Physical damage coverage (collision/comprehensive)
+- Named insured or authorized driver verification (when policy data available)
+- Optionally `COVERAGE_DENY_WHEN_DEDUCTIBLE_EXCEEDS_DAMAGE` (default false) to deny when deductible exceeds estimated damage
+
+When a claimant is provided but does not match the named insured or authorized drivers on the policy, the claim is routed to `under_investigation` for manual review.
+
+**`under_investigation` status (overload):** The same claim status is used for several manual-review situations: SIU / fraud escalation, policy lookup or parsing failures during coverage verification, deductible comparison errors, and claimant vs. named-insured/driver mismatches. It is **not** exclusively a fraud flag. Use audit metadata, `workflow_output`, and task checkpoints (e.g. `coverage_verification`) to distinguish the reason. Compliance and dashboard views that group `under_investigation` with fraud should treat the status as “needs human review” unless other signals indicate SIU.
 
 Duplicate detection: `DUPLICATE_SIMILARITY_THRESHOLD` (default 40), `DUPLICATE_SIMILARITY_THRESHOLD_HIGH_VALUE` (default 60), `DUPLICATE_DAYS_WINDOW` (default 3). These control when claims with the same VIN are considered duplicates for routing.
 

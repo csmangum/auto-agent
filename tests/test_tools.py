@@ -21,6 +21,21 @@ def test_query_policy_db_found():
     assert data["deductible"] == 500
 
 
+def test_query_policy_db_masks_full_name_and_display_name():
+    """Named insured / drivers from mock_db may use full_name or display_name; output uses name only."""
+    from claim_agent.tools.policy_logic import query_policy_db_impl
+
+    result = query_policy_db_impl("POL-FULLNAME-TEST")
+    data = json.loads(result)
+    assert data["valid"] is True
+    assert data["named_insured"] == [{"name": "Alex Alternate"}]
+    assert data["drivers"] == [{"name": "Alex Alternate", "relationship": "primary"}]
+    dumped = json.dumps(data)
+    assert "email" not in dumped
+    assert "full_name" not in dumped
+    assert "display_name" not in dumped
+
+
 def test_query_policy_db_not_found():
     from claim_agent.tools.policy_logic import query_policy_db_impl
 
