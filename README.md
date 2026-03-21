@@ -12,7 +12,7 @@ Proof of concept for an agentic AI system acting as a Claim Representative for a
 - **Payment ledger** - `claim_payments` disbursements, API issue/clear/void, authority limits, optional auto-row from settlement payout (see [Database](docs/database.md#claim_payments), [Configuration](docs/configuration.md#disbursements--payment-authority))
 - **Observability** - Structured logging, correlation IDs, LLM tracing (LangSmith/LiteLLM), cost and latency metrics
 - **Configuration** - Centralized settings for escalation, fraud, valuation, token budgets (see `.env.example`)
-- **Security & Resilience** - Input sanitization, parameterized DB queries, retry for transient LLM failures
+- **Security & Resilience** - Input sanitization, parameterized DB queries, retry for transient LLM failures; API rate limiting (in-memory by default, **`REDIS_URL`** + `pip install -e '.[redis]'` for shared limits across instances — see [Configuration](docs/configuration.md#api-rate-limiting))
 - **MCP Server** - Optional external tool access and health check via Model Context Protocol
 - **RAG** - Semantic search over policy and compliance (see [RAG](docs/rag.md))
 - **Webhooks** - Outbound webhooks for status changes and repair authorization

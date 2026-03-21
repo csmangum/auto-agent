@@ -34,6 +34,7 @@ cp .env.example .env
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
 | `IDEMPOTENCY_TTL_SECONDS` | `86400` | Time-to-live (seconds) for API idempotency keys (default 24h). Expired rows are purged periodically while the API server runs. |
+| `REDIS_URL` | (unset) | Redis URL for **shared API rate limiting** across multiple app instances or workers (e.g. `redis://localhost:6379/0`). Requires `pip install -e '.[redis]'`. When unset, rate limits use an in-process store (not shared). |
 
 ### Authentication and RBAC
 
@@ -44,6 +45,7 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 | `API_KEYS` | Comma-separated `key:role` pairs, e.g. `sk-adj-xxx:adjuster,sk-sup-yyy:supervisor,sk-exe-zzz:executive,sk-admin-zzz:admin` |
 | `CLAIMS_API_KEY` | Single API key (backward compat). When set and `API_KEYS` unset, treated as admin role |
 | `JWT_SECRET` | Secret for verifying JWT Bearer tokens. JWT payload should include `sub` (user id) and `role` |
+| `TRUST_FORWARDED_FOR` | Default `false`. If `true`, trust `X-Forwarded-For` for client IP (API rate limiting and similar). Enable only behind a trusted reverse proxy. |
 
 **Roles**: `adjuster` (submit/view claims, docs), `supervisor` (all adjuster + reprocess, metrics), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system; may set `skip_authority_check` on reserve updates).
 
@@ -62,6 +64,10 @@ Mutating claim endpoints support an optional **`Idempotency-Key`** request heade
 | **TTL** | Controlled by `IDEMPOTENCY_TTL_SECONDS`. After expiry, a new request with the same key is treated as a new operation. |
 
 **Endpoints that honor `Idempotency-Key`:** `POST /api/claims`, `POST /api/claims/process`, `POST /api/claims/process/async`, `POST /api/incidents`, `POST /api/claim-links`, `POST /api/claims/{claim_id}/portal-token`, and `POST /api/claims/generate` when the body requests submission (`submit: true`).
+
+### API rate limiting
+
+The HTTP API applies a **per-client-IP sliding window** (100 requests per 60 seconds by default; see [`src/claim_agent/api/rate_limit.py`](../src/claim_agent/api/rate_limit.py) for constants). With **`REDIS_URL`** set and the **`redis`** optional dependency installed, counters live in Redis so limits are **consistent across replicas**. If Redis is unavailable at runtime, checks **fail open** (request allowed) after a warning. Client IP uses `X-Forwarded-For` only when **`TRUST_FORWARDED_FOR=true`** (see table above).
 
 ### Adapter Backends
 
