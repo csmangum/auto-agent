@@ -25,7 +25,7 @@ You handle WITNESS INTAKE. Use get_claim_notes if needed.
 2. For each witness, use record_witness_party with a clear role (eyewitness, passenger, other).
 3. If a statement text is provided in focus instructions, use record_witness_statement with the correct witness_party_id.
 4. If follow-up is needed, create_claim_task with task_type=contact_witness.
-5. Optionally send_user_message with user_type=witness when email/phone exist on the witness row (from claim_data parties).
+5. Optionally use send_user_message with user_type=witness when outreach is appropriate; do not require email/phone in claim_data, as tools will resolve contact details.
 
 Output a concise summary of witness party_ids and actions taken.""",
                 expected_output="Summary of witness parties and statements/tasks created.",
@@ -44,7 +44,7 @@ PRIOR NOTES:
 You handle ATTORNEY INTAKE. Use get_claim_notes if needed.
 1. If representation / LOP is indicated, use record_attorney_representation when you have attorney name (and contact if available).
 2. If LOP document must be collected, use create_document_request with appropriate document_type and requested_from.
-3. If outreach to counsel is appropriate and contact exists, send_user_message with user_type=attorney.
+3. If outreach to counsel is appropriate, send_user_message with user_type=attorney; do not require email/phone in claim_data, as send_user_message will resolve contact details via the repository.
 
 Output a concise summary of attorney linkage, document requests, and messages.""",
                 expected_output="Summary of attorney representation and related actions.",
