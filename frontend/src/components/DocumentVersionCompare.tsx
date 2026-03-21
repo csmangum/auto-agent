@@ -24,7 +24,13 @@ export default function DocumentVersionCompare({ documents }: DocumentVersionCom
   const [rightId, setRightId] = useState<string>('');
 
   const sorted = useMemo(
-    () => [...documents].sort((a, b) => a.id - b.id),
+    () =>
+      [...documents].sort((a, b) => {
+        const va = a.version ?? 1;
+        const vb = b.version ?? 1;
+        if (va !== vb) return va - vb;
+        return a.id - b.id;
+      }),
     [documents]
   );
 

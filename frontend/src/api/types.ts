@@ -400,14 +400,11 @@ export interface ClaimDocument {
   review_status: string;
   privileged: boolean;
   version?: number;
-  received_date?: string;
   retention_date?: string;
   retention_enforced_at?: string;
   extracted_data?: Record<string, unknown> | null;
   /** Set when listing with group_by=storage_key */
   is_current_version?: boolean;
-  retention_date?: string;
-  retention_enforced_at?: string;
   url?: string;
   created_at?: string;
   updated_at?: string;
@@ -426,6 +423,8 @@ export interface ClaimDocumentList {
   limit: number;
   offset: number;
   version_groups?: DocumentVersionGroup[];
+  /** True when group_by=storage_key and more than 500 rows match (grouping uses first 500 only) */
+  version_groups_truncated?: boolean;
 }
 
 export interface DocumentRequest {

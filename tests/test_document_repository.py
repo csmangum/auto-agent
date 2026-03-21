@@ -133,3 +133,22 @@ class TestBuildDocumentVersionGroups:
         assert current[0]["version"] == 2
         assert by_key["other/photo.jpg"]["version_count"] == 1
         assert all(v["is_current_version"] for v in by_key["other/photo.jpg"]["versions"])
+
+    def test_tie_on_version_breaks_by_largest_id(self, seeded_temp_db):
+        from claim_agent.db.document_repository import DocumentRepository, build_document_version_groups
+        from claim_agent.db.database import get_db_path
+
+        doc_repo = DocumentRepository(db_path=get_db_path())
+        id_low = doc_repo.add_document(
+            "CLM-TEST001", "dup/tie.pdf", document_type="estimate", version=2
+        )
+        id_high = doc_repo.add_document(
+            "CLM-TEST001", "dup/tie.pdf", document_type="estimate", version=2
+        )
+        assert id_high > id_low
+        docs, _ = doc_repo.list_documents("CLM-TEST001", limit=50, offset=0)
+        groups = build_document_version_groups(docs)
+        g = next(x for x in groups if x["storage_key"] == "dup/tie.pdf")
+        currents = [v for v in g["versions"] if v.get("is_current_version")]
+        assert len(currents) == 1
+        assert currents[0]["id"] == id_high

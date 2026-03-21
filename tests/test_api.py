@@ -2928,6 +2928,7 @@ class TestDocumentAPI:
         currents = [v for v in g0["versions"] if v.get("is_current_version")]
         assert len(currents) == 1
         assert currents[0]["version"] == 2
+        assert data.get("version_groups_truncated") is False
 
     def test_list_documents_invalid_group_by_returns_400(self, client):
         resp = client.get(

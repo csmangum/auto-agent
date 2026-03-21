@@ -371,6 +371,7 @@ const DOC_TYPE_ICONS: Record<string, string> = {
 interface DocumentsTabProps {
   documents: ClaimDocument[];
   versionGroups?: DocumentVersionGroup[];
+  versionGroupsTruncated?: boolean;
   attachments: Array<{ url: string; type: string; description?: string }>;
   docRequests: Array<{
     id: number; claim_id: string; document_type: string;
@@ -384,6 +385,7 @@ interface DocumentsTabProps {
 function DocumentsTab({
   documents,
   versionGroups,
+  versionGroupsTruncated,
   attachments,
   docRequests,
   uploadMutation,
@@ -503,6 +505,12 @@ function DocumentsTab({
             Documents with the same storage key are shown as a timeline. The highest version is marked
             current; older rows are superseded.
           </p>
+          {versionGroupsTruncated && (
+            <p className="text-xs text-amber-400/90 mb-4">
+              Version grouping used the first 500 matching documents only; totals may be incomplete for
+              this claim.
+            </p>
+          )}
           <div className="space-y-4">
             {versionGroups.map((g) => (
               <div
@@ -1126,6 +1134,7 @@ export default function ClaimDetail() {
           <DocumentsTab
             documents={documents}
             versionGroups={docsData?.version_groups}
+            versionGroupsTruncated={docsData?.version_groups_truncated}
             attachments={attachments}
             docRequests={docRequests}
             uploadMutation={uploadDocMutation}

@@ -1,6 +1,7 @@
 """Document repository: CRUD for claim_documents and document_requests."""
 
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -38,8 +39,6 @@ def build_document_version_groups(documents: list[dict[str, Any]]) -> list[dict[
     Adds ``is_current_version`` on each document dict copy: true for the row with the
     highest ``version`` (ties broken by largest ``id``).
     """
-    from collections import defaultdict
-
     by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for d in documents:
         sk = (d.get("storage_key") or "").strip()
