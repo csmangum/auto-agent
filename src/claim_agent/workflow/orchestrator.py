@@ -241,6 +241,10 @@ def run_claim_workflow(
     ):
         repo.update_claim_status(claim_id, STATUS_PROCESSING, actor_id=_actor)
         logger.log_event("workflow_started", status=STATUS_PROCESSING)
+        
+        db_parties = repo.get_claim_parties(claim_id)
+        if db_parties:
+            claim_data["parties"] = db_parties
 
         litellm_callback = LiteLLMTracingCallback(
             claim_id=claim_id,
