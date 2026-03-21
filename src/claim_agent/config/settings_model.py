@@ -767,6 +767,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "siu": "SIU_ADAPTER",
     "claim_search": "CLAIM_SEARCH_ADAPTER",
     "nmvtis": "NMVTIS_ADAPTER",
+    "gap_insurance": "GAP_INSURANCE_ADAPTER",
     "vision": "VISION_ADAPTER",
     "ocr": "OCR_ADAPTER",
 }
@@ -896,6 +897,7 @@ class Settings(BaseSettings):
     siu_adapter: str = Field(default="mock", validation_alias="SIU_ADAPTER")
     claim_search_adapter: str = Field(default="mock", validation_alias="CLAIM_SEARCH_ADAPTER")
     nmvtis_adapter: str = Field(default="mock", validation_alias="NMVTIS_ADAPTER")
+    gap_insurance_adapter: str = Field(default="mock", validation_alias="GAP_INSURANCE_ADAPTER")
     siu_default_state: str = Field(
         default="California",
         validation_alias="SIU_DEFAULT_STATE",

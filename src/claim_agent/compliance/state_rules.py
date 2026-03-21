@@ -27,6 +27,8 @@ class StateRules:
     """Fraction of ACV (0.0-1.0) above which vehicle is declared total loss. E.g. 0.75 = 75%."""
     diminished_value_required: bool
     """Whether state mandates diminished value consideration (e.g. Georgia)."""
+    diminished_value_formula: str | None
+    """Formula key when DV is required (e.g. ``ga_17c``). ``None`` = generic percentage fallback."""
     siu_referral_threshold: int | None
     """Fraud score above which SIU referral is mandatory (None = no mandatory threshold)."""
     acknowledgment_days: int
@@ -49,6 +51,7 @@ _STATE_RULES: dict[str, StateRules] = {
         prompt_payment_days=30,
         total_loss_threshold=0.75,
         diminished_value_required=False,
+        diminished_value_formula=None,
         siu_referral_threshold=75,
         acknowledgment_days=15,
         investigation_days=40,
@@ -61,6 +64,7 @@ _STATE_RULES: dict[str, StateRules] = {
         prompt_payment_days=90,
         total_loss_threshold=0.80,
         diminished_value_required=False,
+        diminished_value_formula=None,
         siu_referral_threshold=80,
         acknowledgment_days=14,
         investigation_days=90,
@@ -73,6 +77,7 @@ _STATE_RULES: dict[str, StateRules] = {
         prompt_payment_days=30,
         total_loss_threshold=0.75,
         diminished_value_required=False,
+        diminished_value_formula=None,
         siu_referral_threshold=70,
         acknowledgment_days=15,
         investigation_days=30,
@@ -85,18 +90,20 @@ _STATE_RULES: dict[str, StateRules] = {
         prompt_payment_days=30,
         total_loss_threshold=0.75,
         diminished_value_required=True,
+        diminished_value_formula="ga_17c",
         siu_referral_threshold=75,
         acknowledgment_days=15,
         investigation_days=30,
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
-        comparative_fault_bar=51.0,
+        comparative_fault_bar=50.0,
     ),
     "Texas": StateRules(
         state="Texas",
         prompt_payment_days=30,
         total_loss_threshold=0.80,
         diminished_value_required=False,
+        diminished_value_formula=None,
         siu_referral_threshold=75,
         acknowledgment_days=15,
         investigation_days=15,

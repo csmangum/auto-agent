@@ -189,3 +189,38 @@ class NMVTISAdapter(ABC):
             Optional: ``message`` (str).
         """
         ...
+
+
+class GapInsuranceAdapter(ABC):
+    """Interface for gap (loan/lease) carrier coordination after auto total loss."""
+
+    @abstractmethod
+    def submit_shortfall_claim(
+        self,
+        *,
+        claim_id: str,
+        policy_number: str,
+        auto_payout_amount: float,
+        loan_balance: float,
+        shortfall_amount: float,
+        vin: str | None = None,
+    ) -> dict[str, Any]:
+        """Notify the gap carrier or open a gap claim for the loan/lease shortfall.
+
+        Returns a dict with at least:
+        - ``gap_claim_id`` (str): carrier reference
+        - ``status`` (str): e.g. ``submitted``, ``approved_pending_payment``,
+          ``partial_approval``, ``denied``
+        Optional:
+        - ``approved_amount`` (float | None): amount the gap carrier expects to pay
+        - ``denial_reason`` (str | None)
+        - ``remaining_shortfall_after_gap`` (float | None): balance after gap decision
+        - ``message`` (str): human-readable carrier message
+        """
+        ...
+
+    def get_claim_status(self, gap_claim_id: str) -> dict[str, Any] | None:
+        """Return current gap claim status from the carrier, or None if unknown."""
+        raise NotImplementedError(
+            "GapInsuranceAdapter.get_claim_status: override for carrier status polling."
+        )

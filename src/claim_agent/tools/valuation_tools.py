@@ -29,18 +29,34 @@ def fetch_vehicle_value(vin: str, year: int, make: str, model: str) -> str:
 def calculate_diminished_value(
     vehicle_value: float,
     loss_state: str | None = None,
+    mileage: int | None = None,
+    vehicle_year: int | None = None,
+    repair_cost: float | None = None,
+    damage_severity_tier: str | None = None,
 ) -> str:
-    """Calculate diminished value when state requires it (e.g. Georgia).
+    """Calculate diminished value when state requires it (e.g. Georgia 17c-style).
 
     Returns 0 when state does not require diminished value.
     Args:
-        vehicle_value: ACV of the vehicle.
-        loss_state: State/jurisdiction (Georgia mandates; most states do not).
+        vehicle_value: ACV / pre-loss fair market value of the vehicle.
+        loss_state: State/jurisdiction (Georgia uses 17c multipliers; most states do not require DV).
+        mileage: Odometer for mileage bracket (Georgia 17c); optional.
+        vehicle_year: Model year (echoed in output for documentation).
+        repair_cost: Actual or estimated repair cost (preferred for damage multiplier from repair/FMV ratio).
+        damage_severity_tier: When repair_cost unknown: cosmetic, light, moderate, major, structural, or severe.
 
     Returns:
-        JSON with diminished_value, required, state, message.
+        JSON with diminished_value, multipliers, and message; formula is included when the state
+        requires diminished value or a state-specific formula is applicable.
     """
-    return calculate_diminished_value_impl(vehicle_value, loss_state)
+    return calculate_diminished_value_impl(
+        vehicle_value,
+        loss_state,
+        mileage=mileage,
+        vehicle_year=vehicle_year,
+        repair_cost=repair_cost,
+        damage_severity_tier=damage_severity_tier,
+    )
 
 
 @tool("Evaluate Damage Severity")
@@ -66,6 +82,8 @@ def calculate_payout(
     owner_retain_salvage: bool = False,
     salvage_value: float | None = None,
     loan_balance: float | None = None,
+    claim_id: str | None = None,
+    vin: str | None = None,
 ) -> str:
     """Calculate total loss payout.
 
@@ -81,10 +99,13 @@ def calculate_payout(
         owner_retain_salvage: Whether policyholder retains the salvage vehicle.
         salvage_value: Salvage value to deduct when owner_retain_salvage is True.
         loan_balance: Optional loan balance; when payout < loan_balance and policy has
-            gap_insurance, gap_insurance_applied is set True.
+            gap_insurance, coordinates with the gap adapter (see gap_claim_id, status fields).
+        claim_id: Optional claim id passed to the gap carrier when submitting shortfall.
+        vin: Optional VIN forwarded to the gap carrier.
     Returns:
         JSON with payout_amount, vehicle_value, deductible, calculation, acv_base,
-        tax_title_fees, acv_total, salvage_deduction, owner_retain_option.
+        tax_title_fees, acv_total, salvage_deduction, owner_retain_option,
+        gap_insurance_applied, and gap coordination fields when applicable.
     """
     return calculate_payout_impl(
         vehicle_value,
@@ -96,4 +117,6 @@ def calculate_payout(
         owner_retain_salvage=owner_retain_salvage,
         salvage_value=salvage_value,
         loan_balance=loan_balance,
+        claim_id=claim_id,
+        vin=vin,
     )

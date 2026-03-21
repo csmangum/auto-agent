@@ -5,7 +5,7 @@ corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
 Supported values: ``mock``, ``stub``, ``rest`` (policy only). Valuation also supports
 ``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings.
-``nmvtis`` supports ``mock`` and ``stub`` only. Unknown values raise ValueError.
+``nmvtis`` and ``gap_insurance`` support ``mock`` and ``stub`` only. Unknown values raise ValueError.
 """
 
 import threading
@@ -13,6 +13,7 @@ from typing import Any, Callable, TypeVar, cast
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    GapInsuranceAdapter,
     NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
@@ -172,6 +173,16 @@ def get_nmvtis_adapter() -> NMVTISAdapter:
         "nmvtis",
         StubNMVTISAdapter,
         MockNMVTISAdapter,
+    )
+
+
+def get_gap_insurance_adapter() -> GapInsuranceAdapter:
+    from claim_agent.adapters.mock.gap_insurance import MockGapInsuranceAdapter
+    from claim_agent.adapters.stub import StubGapInsuranceAdapter
+    return _get_or_create_adapter(
+        "gap_insurance",
+        StubGapInsuranceAdapter,
+        MockGapInsuranceAdapter,
     )
 
 

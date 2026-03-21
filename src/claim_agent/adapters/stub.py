@@ -10,6 +10,7 @@ from typing import Any
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    GapInsuranceAdapter,
     NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
@@ -150,4 +151,24 @@ class StubNMVTISAdapter(NMVTISAdapter):
             "StubNMVTISAdapter: connect to the DOJ/AAMVA-designated NMVTIS reporting channel "
             "(batch upload, web service, or vendor API). "
             "Return nmvtis_reference and status from the provider acknowledgment."
+        )
+
+
+class StubGapInsuranceAdapter(GapInsuranceAdapter):
+    """Placeholder for a dealer or standalone gap carrier API (REST, EDI, portal)."""
+
+    def submit_shortfall_claim(
+        self,
+        *,
+        claim_id: str,
+        policy_number: str,
+        auto_payout_amount: float,
+        loan_balance: float,
+        shortfall_amount: float,
+        vin: str | None = None,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubGapInsuranceAdapter: connect to a production gap carrier "
+            "(dealer F&I platform, lender, or standalone GAP administrator). "
+            "Submit total-loss settlement vs loan balance and return carrier claim id and status."
         )

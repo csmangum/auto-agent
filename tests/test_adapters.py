@@ -5,6 +5,7 @@ import pytest
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    GapInsuranceAdapter,
     NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
@@ -15,6 +16,7 @@ from claim_agent.adapters.base import (
 )
 from claim_agent.adapters.mock import (
     MockClaimSearchAdapter,
+    MockGapInsuranceAdapter,
     MockNMVTISAdapter,
     MockPartsAdapter,
     MockPolicyAdapter,
@@ -25,6 +27,7 @@ from claim_agent.adapters.mock import (
 from claim_agent.adapters.mock.ocr import MockOCRAdapter
 from claim_agent.adapters.registry import (
     get_claim_search_adapter,
+    get_gap_insurance_adapter,
     get_nmvtis_adapter,
     get_ocr_adapter,
     get_parts_adapter,
@@ -36,6 +39,7 @@ from claim_agent.adapters.registry import (
 )
 from claim_agent.adapters.stub import (
     StubClaimSearchAdapter,
+    StubGapInsuranceAdapter,
     StubNMVTISAdapter,
     StubOCRAdapter,
     StubPartsAdapter,
@@ -83,6 +87,10 @@ class TestABCEnforcement:
     def test_nmvtis_adapter_is_abstract(self):
         with pytest.raises(TypeError):
             NMVTISAdapter()  # type: ignore[abstract]
+
+    def test_gap_insurance_adapter_is_abstract(self):
+        with pytest.raises(TypeError):
+            GapInsuranceAdapter()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +227,38 @@ class TestMockPartsAdapter:
 
     def test_implements_interface(self):
         assert isinstance(MockPartsAdapter(), PartsAdapter)
+
+
+class TestMockGapInsuranceAdapter:
+    def test_submit_shortfall_returns_carrier_id(self):
+        adapter = MockGapInsuranceAdapter()
+        out = adapter.submit_shortfall_claim(
+            claim_id="CLM-1",
+            policy_number="POL-001",
+            auto_payout_amount=10000.0,
+            loan_balance=15000.0,
+            shortfall_amount=5000.0,
+            vin="VIN123",
+        )
+        assert out["gap_claim_id"].startswith("GAP-MOCK-")
+        assert out["status"] == "approved_pending_payment"
+        assert out["approved_amount"] == 5000.0
+
+    def test_get_claim_status_after_submit(self):
+        adapter = MockGapInsuranceAdapter()
+        out = adapter.submit_shortfall_claim(
+            claim_id="CLM-2",
+            policy_number="POL-001",
+            auto_payout_amount=1.0,
+            loan_balance=150_000.0,
+            shortfall_amount=120_000.0,
+        )
+        st = adapter.get_claim_status(out["gap_claim_id"])
+        assert st is not None
+        assert st["status"] == "partial_approval"
+
+    def test_implements_interface(self):
+        assert isinstance(MockGapInsuranceAdapter(), GapInsuranceAdapter)
 
 
 class TestMockSIUAdapter:
@@ -372,6 +412,16 @@ class TestStubAdapters:
                 trigger_event="manual_resubmit",
             )
 
+    def test_stub_gap_insurance_raises(self):
+        with pytest.raises(NotImplementedError, match="StubGapInsuranceAdapter"):
+            StubGapInsuranceAdapter().submit_shortfall_claim(
+                claim_id="C",
+                policy_number="P",
+                auto_payout_amount=1.0,
+                loan_balance=2.0,
+                shortfall_amount=1.0,
+            )
+
 
 # ---------------------------------------------------------------------------
 # Registry tests
@@ -387,6 +437,7 @@ class TestRegistry:
         assert isinstance(get_siu_adapter(), MockSIUAdapter)
         assert isinstance(get_claim_search_adapter(), MockClaimSearchAdapter)
         assert isinstance(get_nmvtis_adapter(), MockNMVTISAdapter)
+        assert isinstance(get_gap_insurance_adapter(), MockGapInsuranceAdapter)
         assert isinstance(get_ocr_adapter(), MockOCRAdapter)
 
     def test_stub_backend_via_env(self, monkeypatch):
@@ -398,6 +449,7 @@ class TestRegistry:
         monkeypatch.setenv("SIU_ADAPTER", "stub")
         monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "stub")
         monkeypatch.setenv("NMVTIS_ADAPTER", "stub")
+        monkeypatch.setenv("GAP_INSURANCE_ADAPTER", "stub")
         monkeypatch.setenv("OCR_ADAPTER", "stub")
         reload_settings()
         assert isinstance(get_policy_adapter(), StubPolicyAdapter)
@@ -407,6 +459,7 @@ class TestRegistry:
         assert isinstance(get_siu_adapter(), StubSIUAdapter)
         assert isinstance(get_claim_search_adapter(), StubClaimSearchAdapter)
         assert isinstance(get_nmvtis_adapter(), StubNMVTISAdapter)
+        assert isinstance(get_gap_insurance_adapter(), StubGapInsuranceAdapter)
         assert isinstance(get_ocr_adapter(), StubOCRAdapter)
 
     def test_singleton_returns_same_instance(self):
