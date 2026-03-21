@@ -155,6 +155,8 @@ Output includes: `retention_period_years`, `purge_after_archive_years`, `retenti
 claim-agent retention-report
 claim-agent retention-report --audit-purge-years 7
 claim-agent audit-log-export --output /secure/audit_export.ndjson --dry-run
+# Dry-run JSON omits claim ID lists by default (use --print-eligible-claim-ids to include).
+# Write IDs to a file: --eligible-claim-ids-file /secure/eligible_claim_ids.txt
 claim-agent audit-log-export --output /secure/audit_export.ndjson
 # After compliance sign-off and export verified:
 AUDIT_LOG_PURGE_ENABLED=true claim-agent audit-log-purge --ack-exported --dry-run

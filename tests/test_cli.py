@@ -8,10 +8,12 @@ from io import StringIO
 from unittest.mock import patch
 
 import pytest
+from typer.testing import CliRunner
 
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.main import (
     _usage,
+    app,
     cmd_process,
     cmd_status,
     cmd_history,
@@ -155,12 +157,12 @@ class TestCmdStatus:
                     damage_description="Test damage.",
                 )
             )
-            
+
             # Capture stdout
             with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                 cmd_status(claim_id)
                 output = mock_stdout.getvalue()
-            
+
             data = json.loads(output)
             assert data["id"] == claim_id
             assert data["policy_number"] == "POL-001"
@@ -216,11 +218,11 @@ class TestCmdHistory:
                 )
             )
             repo.update_claim_status(claim_id, "processing")
-            
+
             with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                 cmd_history(claim_id)
                 output = mock_stdout.getvalue()
-            
+
             history = json.loads(output)
             assert len(history) >= 2
             assert history[0]["action"] == "created"
@@ -265,8 +267,13 @@ class TestCmdProcess:
 
             def fake_run_workflow(claim_data, existing_claim_id=None, **kwargs):
                 if existing_claim_id:
-                    return {"claim_id": existing_claim_id, "claim_type": "new", "workflow_output": "Reprocessed."}
+                    return {
+                        "claim_id": existing_claim_id,
+                        "claim_type": "new",
+                        "workflow_output": "Reprocessed.",
+                    }
                 from claim_agent.models.claim import ClaimInput
+
                 repo = ClaimRepository()
                 claim_input = ClaimInput.model_validate(claim_data)
                 claim_id = repo.create_claim(claim_input)
@@ -299,7 +306,7 @@ class TestCmdProcess:
         """Test cmd_process with non-existent file."""
         with pytest.raises(SystemExit) as exc_info:
             cmd_process(Path("/nonexistent/claim.json"))
-        
+
         assert exc_info.value.code == 1
 
     def test_cmd_process_invalid_json(self):
@@ -307,11 +314,11 @@ class TestCmdProcess:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("not valid json {")
             path = f.name
-        
+
         try:
             with pytest.raises(SystemExit) as exc_info:
                 cmd_process(Path(path))
-            
+
             assert exc_info.value.code == 1
         finally:
             os.unlink(path)
@@ -321,11 +328,11 @@ class TestCmdProcess:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump({"policy_number": "POL-001"}, f)  # Missing required fields
             path = f.name
-        
+
         try:
             with pytest.raises(SystemExit) as exc_info:
                 cmd_process(Path(path))
-            
+
             assert exc_info.value.code == 1
         finally:
             os.unlink(path)
@@ -498,7 +505,7 @@ class TestMain:
                     damage_description="Test damage.",
                 )
             )
-            
+
             with patch("sys.argv", ["claim-agent", "status", claim_id]):
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                     try:
@@ -507,7 +514,7 @@ class TestMain:
                         if e.code != 0:
                             raise
                     output = mock_stdout.getvalue()
-            
+
             data = json.loads(output)
             assert data["id"] == claim_id
         finally:
@@ -539,7 +546,7 @@ class TestMain:
                     damage_description="Test damage.",
                 )
             )
-            
+
             with patch("sys.argv", ["claim-agent", "history", claim_id]):
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                     try:
@@ -548,7 +555,7 @@ class TestMain:
                         if e.code != 0:
                             raise
                     output = mock_stdout.getvalue()
-            
+
             history = json.loads(output)
             assert len(history) >= 1
         finally:
@@ -564,7 +571,7 @@ class TestMain:
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         prev = os.environ.get("CLAIMS_DB_PATH")
-        
+
         claim_data = {
             "policy_number": "POL-001",
             "vin": "VIN123",
@@ -575,11 +582,11 @@ class TestMain:
             "incident_description": "Test incident.",
             "damage_description": "Test damage.",
         }
-        
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(claim_data, f)
             claim_path = f.name
-        
+
         try:
             init_db(db_path)
             monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
@@ -592,7 +599,7 @@ class TestMain:
                         except SystemExit as e:
                             if e.code != 0:
                                 raise
-                    
+
                     mock_workflow.assert_called_once()
         finally:
             os.unlink(db_path)
@@ -609,26 +616,26 @@ class TestCmdMetrics:
     def test_cmd_metrics_no_claims(self, capsys):
         """Test metrics with no claims processed."""
         from claim_agent.main import cmd_metrics
-        
+
         cmd_metrics(claim_id=None)
-        
+
         captured = capsys.readouterr()
         assert "No claims have been processed" in captured.out
 
     def test_cmd_metrics_claim_not_found(self, capsys):
         """Test metrics with non-existent claim ID."""
         from claim_agent.main import cmd_metrics
-        
+
         with pytest.raises(SystemExit) as exc_info:
             cmd_metrics(claim_id="CLM-NONEXISTENT")
-        
+
         assert exc_info.value.code == 1
 
     def test_cmd_metrics_with_claim(self, capsys):
         """Test metrics with a claim that has been tracked."""
         from claim_agent.main import cmd_metrics
         from claim_agent.observability import get_metrics
-        
+
         metrics = get_metrics()
         claim_id = "CLM-TEST-METRICS"
         metrics.start_claim(claim_id)
@@ -642,9 +649,9 @@ class TestCmdMetrics:
             status="success",
         )
         metrics.end_claim(claim_id, status="completed")
-        
+
         cmd_metrics(claim_id=claim_id)
-        
+
         captured = capsys.readouterr()
         parsed = json.loads(captured.out)
         assert parsed["claim_id"] == claim_id
@@ -654,7 +661,7 @@ class TestCmdMetrics:
         """Test global metrics with processed claims."""
         from claim_agent.main import cmd_metrics
         from claim_agent.observability import get_metrics
-        
+
         metrics = get_metrics()
         claim_id = "CLM-GLOBAL-METRICS"
         metrics.start_claim(claim_id)
@@ -668,9 +675,9 @@ class TestCmdMetrics:
             status="success",
         )
         metrics.end_claim(claim_id, status="completed")
-        
+
         cmd_metrics(claim_id=None)
-        
+
         captured = capsys.readouterr()
         assert "Global Metrics Summary" in captured.out
         assert "total_claims" in captured.out
@@ -687,7 +694,7 @@ class TestMainMetrics:
             except SystemExit as e:
                 if e.code != 0:
                     raise
-        
+
         captured = capsys.readouterr()
         # With reset metrics, this should always show the no-claims message
         assert "No claims have been processed" in captured.out
@@ -695,19 +702,242 @@ class TestMainMetrics:
     def test_main_metrics_with_claim_id(self, capsys):
         """Test main metrics command with claim_id."""
         from claim_agent.observability import get_metrics
-        
+
         # Set up a claim with metrics
         metrics = get_metrics()
         claim_id = "CLM-MAIN-METRICS"
         metrics.start_claim(claim_id)
         metrics.end_claim(claim_id)
-        
+
         with patch("sys.argv", ["claim-agent", "metrics", claim_id]):
             try:
                 main()
             except SystemExit as e:
                 if e.code != 0:
                     raise
-        
+
         captured = capsys.readouterr()
         assert claim_id in captured.out
+
+
+class TestAuditLogRetentionCli:
+    """Typer CLI tests for retention-report and audit log export/purge."""
+
+    @staticmethod
+    def _runner() -> CliRunner:
+        """Separate stderr so Typer error lines are visible on result.stderr."""
+        return CliRunner(mix_stderr=False)
+
+    def test_retention_report_audit_purge_years(self, monkeypatch):
+        """--audit-purge-years overrides audit retention in report JSON."""
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
+            runner = self._runner()
+            result = runner.invoke(
+                app,
+                ["retention-report", "--audit-purge-years", "3"],
+                env={**os.environ},
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
+            data = json.loads(result.stdout)
+            assert data["audit_log_retention_years_after_purge"] == 3
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+            reload_settings()
+
+    def test_retention_report_include_litigation_hold_audit_flag(self, monkeypatch):
+        """--include-litigation-hold-audit runs without error."""
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
+            runner = self._runner()
+            result = runner.invoke(
+                app,
+                [
+                    "retention-report",
+                    "--audit-purge-years",
+                    "2",
+                    "--include-litigation-hold-audit",
+                ],
+                env={**os.environ},
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
+            data = json.loads(result.stdout)
+            assert data["audit_log_retention_years_after_purge"] == 2
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+            reload_settings()
+
+    def test_audit_log_export_dry_run_omits_claim_ids_by_default(self, monkeypatch):
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
+            runner = self._runner()
+            result = runner.invoke(
+                app,
+                ["audit-log-export", "--dry-run", "-y", "1", "-o", "/tmp/audit_out.ndjson"],
+                env={**os.environ},
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
+            data = json.loads(result.stdout)
+            assert "eligible_claim_ids" not in data
+            assert data.get("eligible_claim_count") == 0
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+            reload_settings()
+
+    def test_audit_log_export_dry_run_print_eligible_claim_ids(self, monkeypatch):
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
+            runner = self._runner()
+            result = runner.invoke(
+                app,
+                [
+                    "audit-log-export",
+                    "--dry-run",
+                    "-y",
+                    "1",
+                    "-o",
+                    "/tmp/audit_out.ndjson",
+                    "--print-eligible-claim-ids",
+                ],
+                env={**os.environ},
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
+            data = json.loads(result.stdout)
+            assert "eligible_claim_ids" in data
+            assert data["eligible_claim_ids"] == []
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+            reload_settings()
+
+    def test_audit_log_export_eligible_claim_ids_file(self, monkeypatch):
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        ids_fd, ids_path = tempfile.mkstemp(suffix=".txt")
+        os.close(ids_fd)
+        os.unlink(ids_path)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
+            runner = self._runner()
+            result = runner.invoke(
+                app,
+                [
+                    "audit-log-export",
+                    "--dry-run",
+                    "-y",
+                    "1",
+                    "-o",
+                    "/tmp/audit_out.ndjson",
+                    "--eligible-claim-ids-file",
+                    ids_path,
+                ],
+                env={**os.environ},
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
+            data = json.loads(result.stdout)
+            assert data.get("eligible_claim_ids_file") == ids_path
+            assert Path(ids_path).read_text(encoding="utf-8") == ""
+        finally:
+            os.unlink(db_path)
+            if Path(ids_path).exists():
+                os.unlink(ids_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+            reload_settings()
+
+    def test_audit_log_purge_dry_run_omits_claim_ids_by_default(self, monkeypatch):
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev = os.environ.get("CLAIMS_DB_PATH")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            reload_settings()
+            runner = self._runner()
+            result = runner.invoke(
+                app,
+                ["audit-log-purge", "--dry-run", "-y", "1"],
+                env={**os.environ},
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
+            data = json.loads(result.stdout)
+            assert "eligible_claim_ids" not in data
+            assert "audit_log_purge_enabled" in data
+        finally:
+            os.unlink(db_path)
+            if prev is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev
+            reload_settings()
+
+    def test_audit_log_purge_requires_ack_exported(self, monkeypatch):
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        prev_db = os.environ.get("CLAIMS_DB_PATH")
+        prev_purge = os.environ.get("AUDIT_LOG_PURGE_ENABLED")
+        try:
+            init_db(db_path)
+            monkeypatch.setenv("CLAIMS_DB_PATH", db_path)
+            monkeypatch.setenv("AUDIT_LOG_PURGE_ENABLED", "true")
+            reload_settings()
+            runner = self._runner()
+            result = runner.invoke(
+                app,
+                ["audit-log-purge", "-y", "1"],
+                env={**os.environ},
+            )
+            assert result.exit_code == 1
+            combined = (result.stdout or "") + (result.stderr or "")
+            assert "ack-exported" in combined.lower()
+        finally:
+            os.unlink(db_path)
+            if prev_db is None:
+                os.environ.pop("CLAIMS_DB_PATH", None)
+            else:
+                os.environ["CLAIMS_DB_PATH"] = prev_db
+            if prev_purge is None:
+                os.environ.pop("AUDIT_LOG_PURGE_ENABLED", None)
+            else:
+                os.environ["AUDIT_LOG_PURGE_ENABLED"] = prev_purge
+            reload_settings()

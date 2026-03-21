@@ -4,8 +4,9 @@ import os
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
-from claim_agent.config import reload_settings
+from claim_agent.config import get_settings, reload_settings
 from claim_agent.config import settings
 
 
@@ -31,7 +32,9 @@ def test_get_router_config_returns_dict():
 
 def test_get_router_config_respects_env():
     """get_router_config reads ROUTER_CONFIDENCE_THRESHOLD and ROUTER_VALIDATION_ENABLED."""
-    with patch.dict(os.environ, {"ROUTER_CONFIDENCE_THRESHOLD": "0.5", "ROUTER_VALIDATION_ENABLED": "true"}):
+    with patch.dict(
+        os.environ, {"ROUTER_CONFIDENCE_THRESHOLD": "0.5", "ROUTER_VALIDATION_ENABLED": "true"}
+    ):
         reload_settings()
         config = settings.get_router_config()
         assert config["confidence_threshold"] == 0.5
@@ -332,3 +335,48 @@ def test_get_adapter_backend_vision_invalid_falls_back_to_real():
     with patch.dict(os.environ, {"VISION_ADAPTER": "stub"}):
         reload_settings()
         assert settings.get_adapter_backend("vision") == "real"
+
+
+def test_audit_log_retention_years_after_purge_invalid_string_raises():
+    """Non-integer AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE fails settings load."""
+    prev = os.environ.get("AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE")
+    try:
+        with patch.dict(os.environ, {"AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE": "not-a-number"}):
+            with pytest.raises(ValidationError, match="non-negative integer"):
+                reload_settings()
+    finally:
+        if prev is None:
+            os.environ.pop("AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE", None)
+        else:
+            os.environ["AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE"] = prev
+        reload_settings()
+
+
+def test_audit_log_retention_years_after_purge_negative_raises():
+    """Negative AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE fails settings load."""
+    prev = os.environ.get("AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE")
+    try:
+        with patch.dict(os.environ, {"AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE": "-1"}):
+            with pytest.raises(ValidationError, match="non-negative integer"):
+                reload_settings()
+    finally:
+        if prev is None:
+            os.environ.pop("AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE", None)
+        else:
+            os.environ["AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE"] = prev
+        reload_settings()
+
+
+def test_audit_log_retention_years_after_purge_valid():
+    """Valid AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE is parsed."""
+    prev = os.environ.get("AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE")
+    try:
+        with patch.dict(os.environ, {"AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE": "7"}):
+            reload_settings()
+            assert get_settings().audit_log_retention_years_after_purge == 7
+    finally:
+        if prev is None:
+            os.environ.pop("AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE", None)
+        else:
+            os.environ["AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE"] = prev
+        reload_settings()
