@@ -71,6 +71,17 @@ def test_settlement_recomputes_payment_due(temp_db):
     # When settlement occurs the same calendar day as FNOL, payment_due may match the FNOL estimate.
     assert pd_fnol
 
+    tasks, _ = repo.get_tasks_for_claim(claim_id)
+    pay_tasks = [
+        t
+        for t in tasks
+        if t.get("auto_created_from") == "ucspa:prompt_payment"
+        and t.get("status") not in ("completed", "cancelled")
+    ]
+    assert pay_tasks
+    for t in pay_tasks:
+        assert t.get("due_date") == expected
+
 
 def test_get_ucspa_deadlines_unknown_state_uses_defaults():
     """Unknown state uses default 15/40/30."""

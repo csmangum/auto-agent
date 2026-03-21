@@ -3,10 +3,12 @@
 Implements NAIC Model Unfair Claims Settlement Practices Act requirements:
 - Acknowledgment deadlines (must acknowledge receipt within X days)
 - Investigation completion deadlines
-- Payment deadlines (computed from FNOL/receipt date as an FNOL-based SLA;
-  the prompt-payment clock under some state statutes starts at settlement
-  agreement, so this is an early-warning estimate rather than the definitive
-  statutory deadline)
+- Payment deadlines: stored ``payment_due`` on the claim is FNOL-based until the
+  claim first reaches ``settled``; :func:`get_ucspa_deadlines` reflects that at
+  FNOL. On first transition to settled, ``ClaimRepository.update_claim_status``
+  sets ``settlement_agreed_at`` and recomputes ``payment_due`` via
+  :func:`payment_due_iso_after_settlement_moment` (state prompt-payment days
+  from the settlement instant's UTC calendar date).
 - Denial explanation requirements (written, specific, with appeal rights)
 - Communication response deadlines
 
@@ -31,7 +33,7 @@ def get_ucspa_deadlines(
     """Return UCSPA deadline dates for a claim.
 
     All deadlines are computed from ``base_date`` (the FNOL/claim-receipt
-    date).      ``payment_due`` is an FNOL-based SLA until the claim first reaches
+    date). ``payment_due`` is an FNOL-based SLA until the claim first reaches
     ``settled``; ``ClaimRepository.update_claim_status`` then sets
     ``settlement_agreed_at`` and recomputes ``payment_due`` using
     ``payment_due_iso_after_settlement_moment``.
@@ -189,12 +191,14 @@ def claims_with_deadlines_approaching(
                             due_date_str = due_date_val.isoformat()
                         else:
                             due_date_str = str(due_date_val)
-                        results.append({
-                            "claim_id": d["id"],
-                            "deadline_type": deadline_type,
-                            "due_date": due_date_str,
-                            "loss_state": d.get("loss_state"),
-                        })
+                        results.append(
+                            {
+                                "claim_id": d["id"],
+                                "deadline_type": deadline_type,
+                                "due_date": due_date_str,
+                                "loss_state": d.get("loss_state"),
+                            }
+                        )
             except Exception as e:
                 # Columns may not exist if migration 026 not applied
                 logger.debug("ucspa_deadline_query_failed col=%s: %s", col, e)
