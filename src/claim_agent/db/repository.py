@@ -18,6 +18,8 @@ from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from claim_agent.models.claim import Attachment
 
+from claim_agent.compliance.ucspa import payment_due_iso_after_settlement_moment
+
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
     ACTOR_SYSTEM,
@@ -856,7 +858,7 @@ class ClaimRepository:
                 text(
                     "SELECT status, claim_type, payout_amount, "
                     "repair_ready_for_settlement, total_loss_settlement_authorized, "
-                    "reserve_amount, estimated_damage "
+                    "reserve_amount, estimated_damage, loss_state, settlement_agreed_at "
                     "FROM claims WHERE id = :claim_id"
                 ),
                 {"claim_id": claim_id},
@@ -986,6 +988,23 @@ class ClaimRepository:
                         "claim_id": claim_id,
                     },
                 )
+
+            if (
+                new_status == STATUS_SETTLED
+                and old_status != STATUS_SETTLED
+                and row_d.get("settlement_agreed_at") is None
+            ):
+                loss_state_val = row_d.get("loss_state")
+                new_pd = payment_due_iso_after_settlement_moment(now, loss_state_val)
+                if new_pd:
+                    conn.execute(
+                        text("""
+                        UPDATE claims SET settlement_agreed_at = :sa,
+                            payment_due = :pd, updated_at = :now_u
+                        WHERE id = :claim_id
+                        """),
+                        {"sa": now, "pd": new_pd, "now_u": now, "claim_id": claim_id},
+                    )
 
             if new_status == STATUS_CLOSED:
                 conn.execute(

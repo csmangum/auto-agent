@@ -547,6 +547,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         ]:
             if col not in columns:
                 conn.execute(f"ALTER TABLE claims ADD COLUMN {col} {col_type}")
+        cursor = conn.execute("PRAGMA table_info(claims)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "settlement_agreed_at" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN settlement_agreed_at TEXT")
         conn.execute(IDX_CLAIMS_INCIDENT_ID)
     except sqlite3.OperationalError:
         pass

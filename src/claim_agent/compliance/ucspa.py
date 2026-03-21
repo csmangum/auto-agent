@@ -16,7 +16,7 @@ State-specific deadlines are sourced from state_rules.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from claim_agent.compliance.state_rules import get_compliance_due_date
@@ -31,10 +31,10 @@ def get_ucspa_deadlines(
     """Return UCSPA deadline dates for a claim.
 
     All deadlines are computed from ``base_date`` (the FNOL/claim-receipt
-    date).  ``payment_due`` is an FNOL-based SLA estimate; many state statutes
-    start the prompt-payment clock at settlement agreement, so callers should
-    treat ``payment_due`` as an early-warning target rather than the definitive
-    statutory deadline.
+    date).      ``payment_due`` is an FNOL-based SLA until the claim first reaches
+    ``settled``; ``ClaimRepository.update_claim_status`` then sets
+    ``settlement_agreed_at`` and recomputes ``payment_due`` using
+    ``payment_due_iso_after_settlement_moment``.
 
     Args:
         base_date: Reference date (claim receipt / FNOL date).
@@ -51,6 +51,31 @@ def get_ucspa_deadlines(
         "investigation_due": inv.isoformat() if inv else None,
         "payment_due": pay.isoformat() if pay else None,
     }
+
+
+def payment_due_iso_after_settlement_moment(
+    settlement_timestamp_iso: str,
+    loss_state: str | None,
+) -> str | None:
+    """ISO date (YYYY-MM-DD) for prompt-payment deadline from settlement agreement time.
+
+    Uses the UTC calendar date of ``settlement_timestamp_iso`` as day zero, then adds
+    state-specific ``prompt_payment`` days (see :func:`get_compliance_due_date`).
+    """
+    raw = (settlement_timestamp_iso or "").strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    base_date = dt.astimezone(timezone.utc).date()
+    due = get_compliance_due_date(base_date, "prompt_payment", loss_state)
+    return due.isoformat() if due else None
 
 
 def create_ucspa_compliance_tasks(

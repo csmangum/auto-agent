@@ -65,6 +65,8 @@ export interface Claim {
   damage_description?: string;
   estimated_damage?: number;
   claim_type?: string;
+  /** Loss jurisdiction for UCSPA / state rules */
+  loss_state?: string;
   status: string;
   payout_amount?: number;
   reserve_amount?: number;
@@ -88,6 +90,15 @@ export interface Claim {
   attachments?: Array<{ url: string; type: string; description?: string }>;
   /** Subrogation cases with arbitration tracking */
   subrogation_cases?: SubrogationCase[];
+  /** UCSPA / prompt-payment compliance (ISO date strings unless noted) */
+  acknowledged_at?: string;
+  acknowledgment_due?: string;
+  investigation_due?: string;
+  payment_due?: string;
+  /** When status first became settled; used to recompute prompt payment deadline */
+  settlement_agreed_at?: string;
+  denial_reason?: string;
+  denial_letter_sent_at?: string;
 }
 
 export interface SubrogationCase {

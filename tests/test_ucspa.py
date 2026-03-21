@@ -5,6 +5,7 @@ from datetime import date
 from claim_agent.compliance.ucspa import (
     get_ucspa_deadlines,
     claims_with_deadlines_approaching,
+    payment_due_iso_after_settlement_moment,
 )
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
@@ -26,6 +27,49 @@ def test_get_ucspa_deadlines_florida():
     assert deadlines["acknowledgment_due"] == "2026-03-15"
     assert deadlines["investigation_due"] == "2026-05-30"
     assert deadlines["payment_due"] == "2026-05-30"
+
+
+def test_payment_due_iso_after_settlement_moment():
+    """Prompt-payment due date from settlement instant uses state day count."""
+    assert (
+        payment_due_iso_after_settlement_moment("2026-03-01T12:00:00+00:00", "California")
+        == "2026-03-31"
+    )
+    assert payment_due_iso_after_settlement_moment("", "California") is None
+
+
+def test_settlement_recomputes_payment_due(temp_db):
+    """First transition to settled sets settlement_agreed_at and refreshes payment_due."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Accord",
+        incident_date=date(2026, 3, 1),
+        incident_description="Test",
+        damage_description="Test",
+        loss_state="California",
+    )
+    claim_id = repo.create_claim(claim_input)
+    before = repo.get_claim(claim_id)
+    pd_fnol = before.get("payment_due")
+    assert pd_fnol
+
+    repo.update_claim_status(claim_id, "processing")
+    repo.update_claim_status(claim_id, "settled", payout_amount=5000.0)
+
+    after = repo.get_claim(claim_id)
+    assert after.get("status") == "settled"
+    assert after.get("settlement_agreed_at") is not None
+    expected = payment_due_iso_after_settlement_moment(
+        after["settlement_agreed_at"],
+        "California",
+    )
+    assert after.get("payment_due") == expected
+    # When settlement occurs the same calendar day as FNOL, payment_due may match the FNOL estimate.
+    assert pd_fnol
 
 
 def test_get_ucspa_deadlines_unknown_state_uses_defaults():
