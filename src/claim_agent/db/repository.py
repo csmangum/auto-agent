@@ -453,7 +453,9 @@ class ClaimRepository:
 
         Returns new relationship row id.
         """
-        rt = str(relationship_type).strip().lower()
+        # Extract .value if it's an enum, otherwise treat as string
+        rt_value = getattr(relationship_type, 'value', relationship_type)
+        rt = str(rt_value).strip().lower()
         allowed = {e.value for e in PartyRelationshipType}
         if rt not in allowed:
             raise DomainValidationError(
