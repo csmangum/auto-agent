@@ -7,6 +7,7 @@ from claim_agent.tools.salvage_logic import (
     initiate_title_transfer_impl,
     record_dmv_salvage_report_impl,
     record_salvage_disposition_impl,
+    submit_nmvtis_report_impl,
 )
 
 
@@ -130,3 +131,20 @@ def record_salvage_disposition(
         status=status,
         notes=notes or "",
     )
+
+
+@tool("Submit NMVTIS Report")
+def submit_nmvtis_report(claim_id: str, force_resubmit: bool = False) -> str:
+    """Manually trigger or retry federal NMVTIS total-loss / salvage reporting.
+
+    Normally runs automatically after DMV salvage reporting or final salvage disposition.
+    Use when a prior submission failed (nmvtis_status=failed) or operations must resubmit.
+
+    Args:
+        claim_id: Claim identifier.
+        force_resubmit: If True, submit again even when a prior submission was accepted.
+
+    Returns:
+        JSON with nmvtis_reference / nmvtis_status or error details.
+    """
+    return submit_nmvtis_report_impl(claim_id, force_resubmit=force_resubmit)

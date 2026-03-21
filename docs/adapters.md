@@ -50,6 +50,7 @@ All interfaces are defined as abstract base classes in `src/claim_agent/adapters
 | **RepairShopAdapter** | `get_shops()`, `get_shop(shop_id)`, `get_labor_operations()` | `dict` / `dict \| None` / `dict` | Repair shop network and labor catalog |
 | **PartsAdapter** | `get_catalog()` | `dict` | Parts catalog (part_id -> part data) |
 | **SIUAdapter** | `create_case(claim_id, indicators)` | `str` | SIU case creation, returns case ID |
+| **NMVTISAdapter** | `submit_total_loss_report(...)` | `dict` | Federal NMVTIS insurer reporting (totaled/salvage vehicles) |
 | **GapInsuranceAdapter** | `submit_shortfall_claim(...)`, `get_claim_status(gap_claim_id)` | `dict` / `dict \| None` | Gap carrier coordination after auto total loss (loan/lease shortfall) |
 
 ### PolicyAdapter
@@ -119,6 +120,10 @@ class SIUAdapter(ABC):
         """Create SIU case, return case_id."""
 ```
 
+### NMVTISAdapter
+
+National Motor Vehicle Title Information System reporting (49 U.S.C. 30502; 28 CFR Part 25). The claim-agent wires submission from `record_dmv_salvage_report` and from terminal salvage dispositions (`auction_complete`, `owner_retained`, `scrapped`) via `salvage_logic._attempt_nmvtis_submission`, with retries and persistence under `claims.total_loss_metadata` (`nmvtis_reference`, `nmvtis_status`, `nmvtis_last_error`, etc.). Operators can retry with the `submit_nmvtis_report` tool. Production requires integration with the DOJ/AAMVA-designated NMVTIS data provider (not included here).
+
 ### GapInsuranceAdapter
 
 Used when `calculate_payout` detects a loan/lease **shortfall** (payout below balance) and the policy includes **gap** coverage (`gap_insurance` on the policy record). The logic layer calls `submit_shortfall_claim` and merges carrier metadata into the payout JSON (`gap_claim_id`, `gap_claim_status`, `gap_approved_amount`, `gap_remaining_shortfall`, `gap_denial_reason`, or `gap_coordination_error` if the adapter is a stub or the call fails). Production implementations should call the dealer F&I platform, lender, or standalone GAP administrator API.
@@ -136,6 +141,7 @@ Located in `src/claim_agent/adapters/mock/`. Each adapter reads from `mock_db.js
 | `MockRepairShopAdapter` | `mock/repair_shop.py` | `mock_db["repair_shops"]`, `mock_db["labor_operations"]` |
 | `MockPartsAdapter` | `mock/parts.py` | `mock_db["parts_catalog"]` |
 | `MockSIUAdapter` | `mock/siu.py` | No-op; returns generated case ID |
+| `MockNMVTISAdapter` | `mock/nmvtis.py` | Returns synthetic `NMVTIS-MOCK-*` references; optional transient failures for retry tests |
 | `MockGapInsuranceAdapter` | `mock/gap_insurance.py` | In-memory gap carrier; simulates approve / partial / deny by shortfall amount |
 
 ### Stub Adapters
@@ -163,6 +169,7 @@ Adapter selection is controlled by environment variables. Each defaults to `mock
 | `PARTS_ADAPTER` | `mock`, `stub` | `mock` | Parts catalog backend |
 | `SIU_ADAPTER` | `mock`, `stub` | `mock` | SIU case management backend |
 | `CLAIM_SEARCH_ADAPTER` | `mock`, `stub` | `mock` | Claim search backend (fraud cross-reference) |
+| `NMVTIS_ADAPTER` | `mock`, `stub` | `mock` | NMVTIS federal salvage / total-loss reporting |
 | `GAP_INSURANCE_ADAPTER` | `mock`, `stub` | `mock` | Gap (loan/lease) carrier coordination after total loss |
 | `VISION_ADAPTER` | `real`, `mock` | `real` | Vision analysis (litellm or claim-context derived) |
 | `OCR_ADAPTER` | `mock`, `stub` | `mock` | OCR for document extraction |

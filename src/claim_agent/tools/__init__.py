@@ -86,6 +86,7 @@ __all__ = [
     "initiate_title_transfer",
     "record_dmv_salvage_report",
     "record_salvage_disposition",
+    "submit_nmvtis_report",
     # Bodily injury tools
     "query_medical_records",
     "assess_injury_severity",
@@ -386,6 +387,10 @@ def __getattr__(name: str):
         from claim_agent.tools.salvage_tools import record_salvage_disposition
         setattr(mod, "record_salvage_disposition", record_salvage_disposition)
         return record_salvage_disposition
+    if name == "submit_nmvtis_report":
+        from claim_agent.tools.salvage_tools import submit_nmvtis_report
+        setattr(mod, "submit_nmvtis_report", submit_nmvtis_report)
+        return submit_nmvtis_report
     # Bodily injury tools
     if name == "query_medical_records":
         from claim_agent.tools.bodily_injury_tools import query_medical_records
