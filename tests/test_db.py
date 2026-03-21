@@ -50,6 +50,18 @@ def test_init_db_creates_tables(temp_db):
     assert "claim_notes" in tables
 
 
+def test_init_db_creates_claim_audit_log_action_index(temp_db):
+    """init_db creates composite index for claim_id + action (document access queries)."""
+    with get_connection(temp_db) as conn:
+        cur = conn.execute(
+            text(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='claim_audit_log'"
+            )
+        )
+        names = [row[0] for row in cur.fetchall()]
+    assert "idx_claim_audit_log_claim_id_action" in names
+
+
 def test_init_db_creates_append_only_triggers(temp_db):
     """init_db creates trigger that prevents UPDATE on claim_audit_log (DELETE allowed for retention)."""
     with get_connection(temp_db) as conn:

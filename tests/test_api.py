@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import time
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -146,6 +147,60 @@ class TestClaimsList:
     def test_review_queue_limit_zero_returns_422(self, client):
         resp = client.get("/api/claims/review-queue?limit=0")
         assert resp.status_code == 422
+
+    def test_list_claims_s3_no_document_accessed_audit(self, client, monkeypatch):
+        """List responses resolve S3 URLs but do not append document_accessed audit rows."""
+        from claim_agent.storage.s3 import S3StorageAdapter
+
+        class PresignStub(S3StorageAdapter):
+            def __init__(self) -> None:
+                super().__init__(bucket="stub-bucket", prefix="attachments")
+
+            def get_url(self, claim_id: str, stored_path_or_key: str) -> str:
+                return f"https://presigned.example/{stored_path_or_key}"
+
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", PresignStub())
+
+        attachments = [
+            {
+                "url": "attachments/CLM_TEST001/abc123_evidence.pdf",
+                "type": "other",
+                "description": "",
+            }
+        ]
+        with get_connection() as conn:
+            conn.execute(
+                text("UPDATE claims SET attachments = :att WHERE id = :id"),
+                {"att": json.dumps(attachments), "id": "CLM-TEST001"},
+            )
+            n_before = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_accessed'"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()[0]
+
+        resp = client.get("/api/claims")
+        assert resp.status_code == 200
+
+        with get_connection() as conn:
+            n_after = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_accessed'"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()[0]
+        assert n_after == n_before
+
+        claims = resp.json()["claims"]
+        c001 = next(c for c in claims if c["id"] == "CLM-TEST001")
+        raw_att = c001["attachments"]
+        atts = json.loads(raw_att) if isinstance(raw_att, str) else raw_att
+        assert atts[0]["url"].startswith("https://presigned.example/")
 
 
 class TestIncidentsAndClaimLinks:
@@ -322,6 +377,31 @@ class TestClaimDetail:
     def test_not_found(self, client):
         resp = client.get("/api/claims/CLM-NOTEXIST")
         assert resp.status_code == 404
+
+    def test_get_claim_malformed_attachments_json_s3_returns_200(self, client, monkeypatch):
+        """Invalid attachments JSON must not 500 when detail uses S3 presign + audit path."""
+        from claim_agent.storage.s3 import S3StorageAdapter
+
+        class PresignStub(S3StorageAdapter):
+            def __init__(self) -> None:
+                super().__init__(bucket="stub-bucket", prefix="attachments")
+
+            def get_url(self, claim_id: str, stored_path_or_key: str) -> str:
+                return f"https://presigned.example/{stored_path_or_key}"
+
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", PresignStub())
+
+        with get_connection() as conn:
+            conn.execute(
+                text("UPDATE claims SET attachments = :att WHERE id = :id"),
+                {"att": "not-valid-json{", "id": "CLM-TEST001"},
+            )
+
+        resp = client.get("/api/claims/CLM-TEST001")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "CLM-TEST001"
 
 
 class TestClaimHistory:
@@ -2653,12 +2733,150 @@ class TestProcessClaimEndpoint:
         resp = client.get(f"/api/claims/CLM-TEST001/attachments/{stored_key}")
         assert resp.status_code == 200
         assert resp.content == b"fake image content"
+        with get_connection() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT action, actor_id, after_state FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_downloaded' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()
+        assert row is not None
+        assert row[0] == "document_downloaded"
+        state = json.loads(row[2])
+        assert state["storage_key"] == stored_key
+        assert state["channel"] == "adjuster_api"
+
+    def test_attachment_download_audit_uses_api_key_actor(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        monkeypatch.setenv("API_KEYS", "sk-doc-audit:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        storage = factory_mod.get_storage_adapter()
+        stored_key = storage.save(
+            claim_id="CLM-TEST001",
+            filename="keyed.jpg",
+            content=b"x",
+        )
+        resp = client.get(
+            f"/api/claims/CLM-TEST001/attachments/{stored_key}",
+            headers={"X-API-Key": "sk-doc-audit"},
+        )
+        assert resp.status_code == 200
+        with get_connection() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT actor_id FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_downloaded' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()
+        assert row and row[0].startswith("key-")
 
     def test_attachment_download_claim_not_found(self, client, monkeypatch, tmp_path):
         """Attachment download returns 404 for non-existent claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        with get_connection() as conn:
+            n_before = conn.execute(
+                text("SELECT COUNT(*) FROM claim_audit_log WHERE action = 'document_downloaded'")
+            ).fetchone()[0]
         resp = client.get("/api/claims/CLM-NONEXISTENT/attachments/abc123_photo.jpg")
         assert resp.status_code == 404
+        with get_connection() as conn:
+            n_after = conn.execute(
+                text("SELECT COUNT(*) FROM claim_audit_log WHERE action = 'document_downloaded'")
+            ).fetchone()[0]
+        assert n_after == n_before
+
+    def test_attachment_download_fails_when_audit_insert_fails(
+        self, monkeypatch, tmp_path
+    ):
+        """Do not serve attachment bytes if document_downloaded audit cannot be written."""
+        from claim_agent.api.server import app
+        from claim_agent.db.repository import ClaimRepository
+
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        storage = factory_mod.get_storage_adapter()
+        stored_key = storage.save(
+            claim_id="CLM-TEST001",
+            filename="blocked.jpg",
+            content=b"secret-bytes",
+        )
+
+        def fail_audit(*_args, **_kwargs):
+            raise RuntimeError("audit insert failed")
+
+        monkeypatch.setattr(ClaimRepository, "insert_audit_entry", fail_audit)
+        with TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.get(f"/api/claims/CLM-TEST001/attachments/{stored_key}")
+        assert resp.status_code == 500
+        assert b"secret-bytes" not in resp.content
+
+    def test_attachment_download_invalid_key_returns_400(self, client, monkeypatch, tmp_path):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        # Percent-encode dots (urllib.parse.quote never encodes `.`); avoids client path normalization.
+        resp = client.get("/api/claims/CLM-TEST001/attachments/%2e%2e")
+        assert resp.status_code == 400
+
+    def test_get_claim_s3_presigned_audits_document_accessed(self, client, monkeypatch):
+        """S3-backed resolver issues presigned URLs and appends document_accessed audit rows."""
+        from claim_agent.storage.s3 import S3StorageAdapter
+
+        class PresignStub(S3StorageAdapter):
+            def __init__(self) -> None:
+                super().__init__(bucket="stub-bucket", prefix="attachments")
+
+            def get_url(self, claim_id: str, stored_path_or_key: str) -> str:
+                return f"https://presigned.example/{stored_path_or_key}"
+
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", PresignStub())
+
+        attachments = [
+            {
+                "url": "attachments/CLM_TEST001/abc123_evidence.pdf",
+                "type": "other",
+                "description": "",
+            }
+        ]
+        with get_connection() as conn:
+            conn.execute(
+                text("UPDATE claims SET attachments = :att WHERE id = :id"),
+                {"att": json.dumps(attachments), "id": "CLM-TEST001"},
+            )
+
+        resp = client.get("/api/claims/CLM-TEST001")
+        assert resp.status_code == 200
+        raw_att = resp.json()["attachments"]
+        atts = json.loads(raw_att) if isinstance(raw_att, str) else raw_att
+        att = atts[0]
+        assert att["url"].startswith("https://presigned.example/")
+
+        with get_connection() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT action, after_state FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_accessed' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()
+        assert row is not None
+        state = json.loads(row[1])
+        assert state["channel"] == "adjuster_api"
+        assert state["storage_key"] == "attachments/CLM_TEST001/abc123_evidence.pdf"
 
 
 # -------------------------------------------------------------------

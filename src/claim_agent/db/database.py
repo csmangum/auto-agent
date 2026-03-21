@@ -115,6 +115,7 @@ END;
 -- DELETE is allowed for gated retention tooling (see migration 039, audit-log-purge CLI).
 
 CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id_action ON claim_audit_log(claim_id, action);
 
 -- Workflow results (preserves each processing run)
 CREATE TABLE IF NOT EXISTS workflow_runs (
@@ -249,6 +250,7 @@ CREATE TABLE IF NOT EXISTS claim_documents (
     review_status TEXT NOT NULL DEFAULT 'pending',
     privileged INTEGER NOT NULL DEFAULT 0,
     retention_date TEXT,
+    retention_enforced_at TEXT,
     version INTEGER NOT NULL DEFAULT 1,
     extracted_data TEXT,
     created_at TEXT DEFAULT (datetime('now')),
@@ -258,6 +260,10 @@ CREATE TABLE IF NOT EXISTS claim_documents (
 CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_id ON claim_documents(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_type ON claim_documents(claim_id, document_type);
 CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_review ON claim_documents(claim_id, review_status);
+CREATE INDEX IF NOT EXISTS idx_claim_documents_retention_eligible
+    ON claim_documents(retention_date)
+    WHERE retention_enforced_at IS NULL AND retention_date IS NOT NULL
+        AND length(trim(retention_date)) > 0;
 
 -- Claim parties: claimant, policyholder, witness, attorney, provider, lienholder
 CREATE TABLE IF NOT EXISTS claim_parties (
@@ -595,6 +601,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                 review_status TEXT NOT NULL DEFAULT 'pending',
                 privileged INTEGER NOT NULL DEFAULT 0,
                 retention_date TEXT,
+                retention_enforced_at TEXT,
                 version INTEGER NOT NULL DEFAULT 1,
                 extracted_data TEXT,
                 created_at TEXT DEFAULT (datetime('now')),
@@ -604,7 +611,27 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_id ON claim_documents(claim_id);
             CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_type ON claim_documents(claim_id, document_type);
             CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_review ON claim_documents(claim_id, review_status);
+            CREATE INDEX IF NOT EXISTS idx_claim_documents_retention_eligible
+                ON claim_documents(retention_date)
+                WHERE retention_enforced_at IS NULL AND retention_date IS NOT NULL
+                    AND length(trim(retention_date)) > 0;
         """)
+    try:
+        cursor = conn.execute("PRAGMA table_info(claim_documents)")
+        cd_columns = {row[1] for row in cursor.fetchall()}
+        if cd_columns and "retention_enforced_at" not in cd_columns:
+            conn.execute("ALTER TABLE claim_documents ADD COLUMN retention_enforced_at TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_claim_documents_retention_eligible "
+            "ON claim_documents(retention_date) "
+            "WHERE retention_enforced_at IS NULL AND retention_date IS NOT NULL "
+            "AND length(trim(retention_date)) > 0"
+        )
+    except sqlite3.OperationalError:
+        pass
     try:
         conn.execute("SELECT 1 FROM document_requests LIMIT 1")
     except sqlite3.OperationalError:

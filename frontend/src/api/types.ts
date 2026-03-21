@@ -395,6 +395,7 @@ export interface ClaimDocument {
   claim_id: string;
   storage_key: string;
   document_type: string;
+  received_date?: string;
   received_from?: string;
   review_status: string;
   privileged: boolean;
@@ -405,6 +406,8 @@ export interface ClaimDocument {
   extracted_data?: Record<string, unknown> | null;
   /** Set when listing with group_by=storage_key */
   is_current_version?: boolean;
+  retention_date?: string;
+  retention_enforced_at?: string;
   url?: string;
   created_at?: string;
   updated_at?: string;
