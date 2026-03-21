@@ -12,7 +12,6 @@ from typing import Any
 
 from claim_agent.db.audit_events import ACTOR_RETENTION, AUDIT_EVENT_DOCUMENT_RETENTION_ENFORCED
 from claim_agent.db.document_repository import DocumentRepository
-from claim_agent.db.repository import ClaimRepository
 from claim_agent.utils.sanitization import sanitize_actor_id, truncate_audit_json
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,6 @@ def run_document_retention_enforce(
     Does not delete storage objects or DB rows.
     """
     doc_repo = DocumentRepository(db_path)
-    claim_repo = ClaimRepository(db_path)
     rows = doc_repo.list_documents_past_retention(cutoff_date)
     if dry_run:
         return {
@@ -57,9 +55,6 @@ def run_document_retention_enforce(
         doc_id = int(r["id"])
         claim_id = str(r["claim_id"])
         try:
-            updated = doc_repo.mark_retention_enforced(doc_id)
-            if not updated:
-                continue
             payload = truncate_audit_json(
                 {
                     "document_id": doc_id,
@@ -69,13 +64,16 @@ def run_document_retention_enforce(
                     "enforced_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 }
             )
-            claim_repo.insert_audit_entry(
+            updated = doc_repo.mark_retention_enforced_with_audit(
+                doc_id,
                 claim_id,
-                AUDIT_EVENT_DOCUMENT_RETENTION_ENFORCED,
+                action=AUDIT_EVENT_DOCUMENT_RETENTION_ENFORCED,
                 actor_id=safe_actor,
                 details=f"Document {doc_id} soft-archived (retention_date past cutoff {cutoff_date})",
                 after_state=payload,
             )
+            if not updated:
+                continue
             enforced_ids.append(doc_id)
         except Exception:
             logger.exception("document retention enforce failed for document_id=%s", doc_id)

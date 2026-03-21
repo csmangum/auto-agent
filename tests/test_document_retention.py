@@ -4,12 +4,15 @@ import json
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from typer.testing import CliRunner
 
 from claim_agent.config import reload_settings
+from claim_agent.db.audit_events import AUDIT_EVENT_DOCUMENT_RETENTION_ENFORCED
 from claim_agent.db.database import get_connection
 from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.utils.sanitization import truncate_audit_json
 from claim_agent.main import app
 from claim_agent.models.claim import ClaimInput
 from claim_agent.services.document_retention import run_document_retention_enforce
@@ -99,6 +102,25 @@ def test_run_document_retention_enforce_soft_archives_and_audits(claim_with_docu
     assert row is not None
     state = json.loads(row[1])
     assert state["document_id"] == past_id
+
+
+def test_mark_retention_enforced_with_audit_rolls_back_when_audit_fails(claim_with_documents):
+    """If audit insert fails, document must not stay marked enforced (single transaction)."""
+    db_path = claim_with_documents["db_path"]
+    past_id = claim_with_documents["past_id"]
+    doc_repo = DocumentRepository(db_path=db_path)
+    payload = truncate_audit_json({"document_id": past_id})
+    with pytest.raises(IntegrityError):
+        doc_repo.mark_retention_enforced_with_audit(
+            past_id,
+            "CLM-NONEXISTENT",
+            action=AUDIT_EVENT_DOCUMENT_RETENTION_ENFORCED,
+            actor_id="retention",
+            details="test",
+            after_state=payload,
+        )
+    doc = doc_repo.get_document(past_id)
+    assert not doc.get("retention_enforced_at")
 
 
 def test_second_enforce_is_idempotent(claim_with_documents):

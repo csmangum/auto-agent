@@ -342,8 +342,21 @@ class DocumentRepository:
             out.append(d)
         return out
 
-    def mark_retention_enforced(self, document_id: int) -> bool:
-        """Set ``retention_enforced_at`` if not already set. Returns True if a row was updated."""
+    def mark_retention_enforced_with_audit(
+        self,
+        document_id: int,
+        claim_id: str,
+        *,
+        action: str,
+        actor_id: str,
+        details: str,
+        after_state: str,
+    ) -> bool:
+        """Set ``retention_enforced_at`` and append ``claim_audit_log`` in one transaction.
+
+        Returns True if the document row was updated (was not already enforced). If the
+        audit insert fails, the document update is rolled back with the same connection.
+        """
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with get_connection(self._db_path) as conn:
             result = conn.execute(
@@ -355,4 +368,23 @@ class DocumentRepository:
                 """),
                 {"ts": now, "id": document_id},
             )
-            return bool(result.rowcount)
+            if not result.rowcount:
+                return False
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log
+                    (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)
+                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id, :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": action,
+                    "old_status": None,
+                    "new_status": None,
+                    "details": details or "",
+                    "actor_id": actor_id,
+                    "before_state": None,
+                    "after_state": after_state,
+                },
+            )
+            return True
