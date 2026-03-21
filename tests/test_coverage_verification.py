@@ -653,6 +653,110 @@ class TestTerritoryVerification:
         assert result.denied
         assert "excluded" in result.reason.lower()
 
+    def test_district_of_columbia_passes_us_territory_casefold(self):
+        """DC full name must match US territory without .title() artifacts."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "district of columbia",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert result.details.get("territory_verified") is True
+
+    def test_exclusions_enforced_when_no_positive_territory(self):
+        """POL-EXCL-ONLY has excluded_territories only; Florida denied, Texas passes."""
+        ctx = _ctx_with_mock_db(":memory:")
+        denied = verify_coverage_impl(
+            {
+                "policy_number": "POL-EXCL-ONLY",
+                "damage_description": "Collision damage",
+                "estimated_damage": 2000,
+                "incident_location": "Florida",
+            },
+            ctx=ctx,
+        )
+        assert denied.denied
+        assert "excluded" in denied.reason.lower()
+
+        ok = verify_coverage_impl(
+            {
+                "policy_number": "POL-EXCL-ONLY",
+                "damage_description": "Collision damage",
+                "estimated_damage": 2000,
+                "incident_location": "Texas",
+            },
+            ctx=ctx,
+        )
+        assert ok.passed
+
+    def test_require_incident_location_when_policy_has_only_exclusions(self):
+        """Missing location escalates when excluded_territories set but territory absent."""
+        claim_data = {
+            "policy_number": "POL-EXCL-ONLY",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.get_coverage_config"
+        ) as mock:
+            mock.return_value = {
+                "enabled": True,
+                "require_incident_location": True,
+            }
+            ctx = _ctx_with_mock_db(":memory:")
+            result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.under_investigation
+        assert result.details.get("excluded_territories") == ["Florida"]
+        assert "location required" in result.reason.lower() or "territory verification" in result.reason.lower()
+
+    def test_whitespace_only_incident_location_treated_as_missing(self):
+        """Whitespace-only location does not run territory deny path; can trigger require."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "   \t",
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.get_coverage_config"
+        ) as mock:
+            mock.return_value = {
+                "enabled": True,
+                "require_incident_location": True,
+            }
+            ctx = _ctx_with_mock_db(":memory:")
+            result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.under_investigation
+
+    def test_under_investigation_when_territory_list_has_non_strings(self):
+        """Non-string entries in territory list -> config_error, not workflow crash."""
+        import json as json_module
+
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "California",
+        }
+        fake_policy = {
+            "valid": True,
+            "status": "active",
+            "physical_damage_covered": True,
+            "physical_damage_coverages": ["collision", "comprehensive"],
+            "deductible": 500,
+            "territory": ["CA", 99],
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
+        ) as mock:
+            mock.return_value = json_module.dumps(fake_policy)
+            result = verify_coverage_impl(claim_data, ctx=None)
+        assert result.under_investigation
+        assert result.details.get("territory_verification") == "config_error"
+
 
 class TestCoverageStageIntegration:
     """Integration-style tests: coverage stage denies before router runs."""

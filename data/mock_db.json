@@ -553,6 +553,24 @@
         "AK",
         "HI"
       ]
+    },
+    "POL-EXCL-ONLY": {
+      "status": "active",
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "excluded_territories": [
+        "Florida"
+      ]
     }
   },
   "policy_vehicles": {
