@@ -16,6 +16,8 @@ The base graph below applies to all claims. **Claim-type variants** add extra ed
 | disputed | dispute_resolved, needs_review |
 | settled | disputed, closed |
 | under_investigation | fraud_suspected, fraud_confirmed, needs_review |
+
+**Note:** `under_investigation` is also set by **non-SIU** paths (e.g. FNOL coverage verification when the policy adapter fails, the policy response is invalid, or the claimant does not match named insureds/drivers). See [Configuration](configuration.md#environment-variables) for coverage behavior; use claim audit / workflow output to tell *why* a claim landed in this status.
 | fraud_suspected | fraud_confirmed, needs_review |
 | fraud_confirmed | closed |
 | duplicate | closed |

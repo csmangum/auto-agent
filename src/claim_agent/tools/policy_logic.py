@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from claim_agent.adapters.registry import get_policy_adapter
 from claim_agent.exceptions import AdapterError, DomainValidationError
+from claim_agent.utils.policy_party_name import get_policy_party_display_name
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -19,11 +20,7 @@ def _normalized_coverages(p: dict[str, Any]) -> set[str]:
     """Return normalized coverage set from new or legacy policy formats."""
     coverages = p.get("coverages")
     if isinstance(coverages, list):
-        return {
-            str(coverage).strip().lower()
-            for coverage in coverages
-            if str(coverage).strip()
-        }
+        return {str(coverage).strip().lower() for coverage in coverages if str(coverage).strip()}
 
     legacy_coverage = str(p.get("coverage", "")).strip().lower()
     if legacy_coverage in {"full_coverage", "full"}:
@@ -40,9 +37,26 @@ def _infer_physical_damage_coverage(damage_description: str) -> str | None:
 
     damage_lower = damage_description.lower()
     comprehensive_keywords = {
-        "theft", "stolen", "vandalism", "vandalized", "fire", "burned", "burning",
-        "weather", "hail", "flood", "flooded", "water damage", "wind", "tornado",
-        "hurricane", "animal", "deer", "glass", "windshield", "window",
+        "theft",
+        "stolen",
+        "vandalism",
+        "vandalized",
+        "fire",
+        "burned",
+        "burning",
+        "weather",
+        "hail",
+        "flood",
+        "flooded",
+        "water damage",
+        "wind",
+        "tornado",
+        "hurricane",
+        "animal",
+        "deer",
+        "glass",
+        "windshield",
+        "window",
     }
     if any(keyword in damage_lower for keyword in comprehensive_keywords):
         return "comprehensive"
@@ -152,9 +166,7 @@ def query_policy_db_impl(
                     coverage_type=coverage_type,
                 ),
                 "physical_damage_coverages": sorted(
-                    coverage
-                    for coverage in coverages
-                    if coverage in {"collision", "comprehensive"}
+                    coverage for coverage in coverages if coverage in {"collision", "comprehensive"}
                 ),
             }
             if p.get("collision_deductible") is not None:
@@ -167,23 +179,34 @@ def query_policy_db_impl(
             if rental and isinstance(rental, dict):
                 result["rental_reimbursement"] = rental
             if p.get("named_insured") is not None:
-                # Mask PII: retain only name for LLM/tool consumers; email/phone stripped.
-                result["named_insured"] = [
-                    {"name": entry["name"]}
-                    for entry in p["named_insured"]
-                    if isinstance(entry, dict) and isinstance(entry.get("name"), str)
-                ]
+                # Mask PII: single ``name`` field for LLM/tool consumers; email/phone stripped.
+                # Use same name keys as coverage verification (name | full_name | display_name).
+                masked_insured: list[dict[str, str]] = []
+                for entry in p["named_insured"]:
+                    if not isinstance(entry, dict):
+                        continue
+                    disp = get_policy_party_display_name(entry)
+                    if disp:
+                        masked_insured.append({"name": disp})
+                result["named_insured"] = masked_insured
             if p.get("drivers") is not None:
-                # Mask PII: retain only name and relationship; license_number stripped.
-                result["drivers"] = [
-                    {"name": entry.get("name"), "relationship": entry.get("relationship")}
-                    for entry in p["drivers"]
-                    if isinstance(entry, dict) and isinstance(entry.get("name"), str)
-                ]
+                # Mask PII: name and relationship only; license_number stripped.
+                masked_drivers: list[dict[str, Any]] = []
+                for entry in p["drivers"]:
+                    if not isinstance(entry, dict):
+                        continue
+                    disp = get_policy_party_display_name(entry)
+                    if disp:
+                        masked_drivers.append(
+                            {"name": disp, "relationship": entry.get("relationship")}
+                        )
+                result["drivers"] = masked_drivers
             return json.dumps(result)
-        return json.dumps({
-            "valid": False,
-            "status": status,
-            "message": "Policy not found or inactive",
-        })
+        return json.dumps(
+            {
+                "valid": False,
+                "status": status,
+                "message": "Policy not found or inactive",
+            }
+        )
     return json.dumps({"valid": False, "message": "Policy not found or inactive"})

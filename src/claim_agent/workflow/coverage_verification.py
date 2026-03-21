@@ -1,7 +1,9 @@
 """FNOL coverage verification: gate before routing.
 
 Deterministic verification (no LLM) using policy adapter. Denies or escalates
-claims that lack coverage before the router runs.
+claims that lack coverage before the router runs. When the policy exposes
+named insureds/drivers, verifies the claimant name against those lists
+(case-insensitive, whitespace-normalized).
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from claim_agent.config.settings import get_coverage_config
 from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.models.stage_outputs import CoverageVerificationResult
 from claim_agent.tools.policy_logic import query_policy_db_impl
+from claim_agent.utils.policy_party_name import get_policy_party_display_name
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -39,17 +42,6 @@ def _normalize_name(name: str | None) -> str:
     return " ".join(name.split()).lower()
 
 
-def _get_name_from_dict(item: dict) -> str | None:
-    """Extract name from a dict, checking multiple possible keys.
-    
-    Supports 'name', 'full_name', and 'display_name' keys to handle varying adapter schemas.
-    """
-    candidate = item.get("name") or item.get("full_name") or item.get("display_name")
-    if isinstance(candidate, str) and candidate:
-        return candidate
-    return None
-
-
 def _extract_person_names(value: object) -> list[str]:
     """Extract display names from a policy party structure, omitting PII fields.
 
@@ -65,7 +57,7 @@ def _extract_person_names(value: object) -> list[str]:
     for item in items:
         if not isinstance(item, dict):
             continue
-        name = _get_name_from_dict(item)
+        name = get_policy_party_display_name(item)
         if name:
             names.append(name)
     return names
@@ -76,7 +68,7 @@ def _verify_named_insured_or_driver(
     policy_result: dict,
 ) -> tuple[bool, str | None]:
     """Verify claimant is named insured or authorized driver.
-    
+
     Returns:
         (is_verified, reason_if_not_verified)
         - If verification data is incomplete, returns (True, None) to allow claim to proceed
@@ -84,11 +76,11 @@ def _verify_named_insured_or_driver(
     """
     named_insured_list = policy_result.get(_POLICY_NAMED_INSURED)
     drivers_list = policy_result.get(_POLICY_DRIVERS)
-    
+
     # If policy doesn't expose these fields, allow claim to proceed (legacy policies)
     if named_insured_list is None and drivers_list is None:
         return True, None
-    
+
     # Extract claimant name from claim data
     claimant_name = None
     parties = claim_data.get("parties")
@@ -104,37 +96,37 @@ def _verify_named_insured_or_driver(
         if party_type == "claimant":
             claimant_name = party.get("name")
             break
-    
+
     # Fallback: check claimant_name field directly
     if not claimant_name:
         claimant_name = claim_data.get("claimant_name")
-    
+
     # If no claimant identified, allow claim to proceed (will be captured by agents)
     if not claimant_name:
         return True, None
-    
+
     claimant_normalized = _normalize_name(claimant_name)
     if not claimant_normalized:
         return True, None
-    
+
     # Check if claimant matches any named insured
     if isinstance(named_insured_list, list):
         for insured in named_insured_list:
             if not isinstance(insured, dict):
                 continue
-            insured_name = _normalize_name(_get_name_from_dict(insured))
+            insured_name = _normalize_name(get_policy_party_display_name(insured))
             if insured_name and insured_name == claimant_normalized:
                 return True, None
-    
+
     # Check if claimant matches any authorized driver
     if isinstance(drivers_list, list):
         for driver in drivers_list:
             if not isinstance(driver, dict):
                 continue
-            driver_name = _normalize_name(_get_name_from_dict(driver))
+            driver_name = _normalize_name(get_policy_party_display_name(driver))
             if driver_name and driver_name == claimant_normalized:
                 return True, None
-    
+
     # Claimant does not match named insured or drivers
     return False, f"Claimant '{claimant_name}' is not listed as named insured or authorized driver"
 
@@ -147,7 +139,9 @@ def verify_coverage_impl(
 ) -> CoverageVerificationResult:
     """Verify policy coverage for the claim before routing.
 
-    Checks: policy active, coverage type matches loss type, deductible vs damage.
+    Checks: policy active, physical damage coverage for the loss, optional
+    named-insured/authorized-driver match when policy data includes parties,
+    and optionally deductible vs estimated damage.
 
     Returns:
         CoverageVerificationResult with passed, denied, or under_investigation.

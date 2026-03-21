@@ -317,6 +317,22 @@ class TestVerifyCoverageImpl:
         result = verify_coverage_impl(claim_data, ctx=ctx)
         assert result.passed
 
+    def test_passes_full_name_display_name_via_real_policy_query_path(self):
+        """POL-FULLNAME-TEST uses full_name/display_name in mock_db; real query_policy_db_impl path."""
+        claim_data = {
+            "policy_number": "POL-FULLNAME-TEST",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "parties": [
+                {"party_type": "claimant", "name": "Alex Alternate", "role": "driver"},
+            ],
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert not result.denied
+        assert not result.under_investigation
+
     def test_under_investigation_details_contain_no_pii(self):
         """Under-investigation result should not include email/phone/license in details."""
         claim_data = {
