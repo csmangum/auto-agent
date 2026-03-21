@@ -100,13 +100,21 @@ def calculate_payout(
     policy_number: str,
     damage_description: str = "",
     coverage_type: str | None = None,
+    loss_state: str | None = None,
+    loan_balance: float | None = None,
+    claim_id: str | None = None,
+    vin: str | None = None,
 ) -> str:
-    """Calculate total loss payout by subtracting policy deductible from vehicle value."""
+    """Calculate total loss payout; optional loan_balance triggers gap coordination when applicable."""
     return calculate_payout_impl(
         vehicle_value,
         policy_number,
         damage_description=damage_description,
         coverage_type=coverage_type,
+        loss_state=loss_state,
+        loan_balance=loan_balance,
+        claim_id=claim_id,
+        vin=vin,
         ctx=_get_ctx(),
     )
 
