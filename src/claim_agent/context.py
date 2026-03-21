@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from claim_agent.adapters.base import (
+    CMSReportingAdapter,
     ClaimSearchAdapter,
     GapInsuranceAdapter,
     NMVTISAdapter,
@@ -38,6 +39,7 @@ class AdapterRegistry:
     claim_search: ClaimSearchAdapter
     nmvtis: NMVTISAdapter
     gap_insurance: GapInsuranceAdapter
+    cms: CMSReportingAdapter
 
     @classmethod
     def from_defaults(cls) -> AdapterRegistry:
@@ -45,6 +47,7 @@ class AdapterRegistry:
         # Inline import to avoid circular dependency with adapters.registry
         from claim_agent.adapters.registry import (
             get_claim_search_adapter,
+            get_cms_reporting_adapter,
             get_gap_insurance_adapter,
             get_nmvtis_adapter,
             get_parts_adapter,
@@ -63,6 +66,7 @@ class AdapterRegistry:
             claim_search=get_claim_search_adapter(),
             nmvtis=get_nmvtis_adapter(),
             gap_insurance=get_gap_insurance_adapter(),
+            cms=get_cms_reporting_adapter(),
         )
 
 

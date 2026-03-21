@@ -17,6 +17,7 @@ class TestAdapterRegistry:
         assert reg.claim_search is not None
         assert reg.nmvtis is not None
         assert reg.gap_insurance is not None
+        assert reg.cms is not None
 
 
 class TestClaimContext:

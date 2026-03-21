@@ -80,6 +80,7 @@ from claim_agent.workflow.escalation import (
     _handle_mid_workflow_escalation,
     _sla_hours_for_priority,
 )
+from claim_agent.workflow.bi_post_crew_validation import maybe_escalate_bodily_injury_post_crew
 from claim_agent.workflow.helpers import (
     _combine_workflow_outputs,
     _extract_payout_from_workflow_result,
@@ -1116,6 +1117,21 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             or getattr(workflow_result, "output", None)
             or str(workflow_result)
         )
+
+        bi_escalation = maybe_escalate_bodily_injury_post_crew(
+            claim_type=c.claim_type,
+            claim_id=c.claim_id,
+            claim_data=c.claim_data_with_id,
+            workflow_result=workflow_result,
+            routed_output=routed_output,
+            raw_output=c.raw_output,
+            context=c.context,
+            workflow_start_time=c.workflow_start_time,
+            workflow_run_id=c.workflow_run_id,
+            actor_id=c.actor_id,
+        )
+        if bi_escalation is not None:
+            return bi_escalation
 
         if workflow_stage_key == f"workflow:{ClaimType.REOPENED.value}":
             c.workflow_output = _combine_workflow_outputs(

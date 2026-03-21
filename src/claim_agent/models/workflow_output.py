@@ -179,6 +179,10 @@ class BIWorkflowOutput(BaseModel):
     minor_court_approval_required: bool | None = Field(
         default=None, description="Whether court approval required for minor/incapacitated"
     )
+    minor_court_approval_obtained: bool | None = Field(
+        default=None,
+        description="Whether court approval already obtained (claim data may also set minor_court_approval_obtained)",
+    )
     structured_settlement_offered: bool | None = Field(
         default=None, description="Whether structured settlement option offered"
     )

@@ -191,6 +191,30 @@ class NMVTISAdapter(ABC):
         ...
 
 
+class CMSReportingAdapter(ABC):
+    """Interface for Medicare/CMS reporting eligibility (MMSEA Section 111 style).
+
+    Production implementations integrate with CMS COBC / Section 111 reporting.
+    """
+
+    @abstractmethod
+    def evaluate_settlement_reporting(
+        self,
+        *,
+        claim_id: str,
+        settlement_amount: float,
+        claimant_medicare_eligible: bool,
+    ) -> dict[str, Any]:
+        """Return reporting flags and amounts for a proposed settlement.
+
+        Expected keys: ``settlement_amount``, ``claimant_medicare_eligible``,
+        ``reporting_threshold``, ``reporting_required`` (bool),
+        ``conditional_payment_amount`` (float | None), ``msa_required`` (bool),
+        ``notes`` (str).
+        """
+        ...
+
+
 class GapInsuranceAdapter(ABC):
     """Interface for gap (loan/lease) carrier coordination after auto total loss."""
 
