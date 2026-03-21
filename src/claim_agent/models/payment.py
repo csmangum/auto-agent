@@ -52,6 +52,10 @@ class ClaimPaymentCreate(BaseModel):
         max_length=200,
         description="Optional idempotency key per claim (e.g. workflow_settlement:run_id)",
     )
+    claim_party_id: int | None = Field(
+        default=None,
+        description="Optional FK to claim_parties.id for primary payee linkage",
+    )
 
 
 class IssuePaymentBody(BaseModel):
@@ -85,6 +89,7 @@ class ClaimPayment(BaseModel):
     payee_secondary: str | None = None
     payee_secondary_type: PayeeType | None = None
     external_ref: str | None = None
+    claim_party_id: int | None = None
     created_at: str
     updated_at: str
 

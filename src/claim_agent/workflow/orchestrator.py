@@ -15,7 +15,10 @@ from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.context import ClaimContext
 from claim_agent.config import get_settings
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
-from claim_agent.db.payment_repository import PaymentRepository, settlement_payee_from_claim_data
+from claim_agent.db.payment_repository import (
+    PaymentRepository,
+    settlement_payee_and_party_id_from_claim_data,
+)
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 from claim_agent.models.stage_outputs import (
@@ -26,7 +29,7 @@ from claim_agent.models.stage_outputs import (
     FraudPrescreeningResult,
     RouterStageResult,
 )
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
 from claim_agent.models.claim import ClaimInput
 from claim_agent.observability import claim_context, get_logger
@@ -127,7 +130,7 @@ def _maybe_record_workflow_settlement_payment(
     payout = wf_ctx.extracted_payout
     if payout is None or payout <= 0:
         return
-    payee = settlement_payee_from_claim_data(wf_ctx.claim_data_with_id)
+    payee, party_id = settlement_payee_and_party_id_from_claim_data(wf_ctx.claim_data_with_id)
     ext_ref = f"workflow_settlement:{workflow_run_id}"
     pdata = ClaimPaymentCreate(
         claim_id=claim_id,
@@ -136,6 +139,7 @@ def _maybe_record_workflow_settlement_payment(
         payee_type=PayeeType.CLAIMANT,
         payment_method=PaymentMethod.CHECK,
         external_ref=ext_ref,
+        claim_party_id=party_id,
     )
     pay_repo = PaymentRepository(db_path=claim_repo.db_path)
     try:
@@ -145,7 +149,7 @@ def _maybe_record_workflow_settlement_payment(
             role="adjuster",
             skip_authority_check=True,
         )
-    except (IntegrityError, OperationalError) as e:
+    except (IntegrityError, OperationalError, DomainValidationError) as e:
         logger.warning(
             "Workflow settlement payment ledger insert failed (best-effort); continuing",
             extra={
@@ -237,6 +241,10 @@ def run_claim_workflow(
     ):
         repo.update_claim_status(claim_id, STATUS_PROCESSING, actor_id=_actor)
         logger.log_event("workflow_started", status=STATUS_PROCESSING)
+        
+        db_parties = repo.get_claim_parties(claim_id)
+        if db_parties:
+            claim_data["parties"] = db_parties
 
         litellm_callback = LiteLLMTracingCallback(
             claim_id=claim_id,

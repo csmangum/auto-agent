@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from claim_agent.db.database import init_db
-from claim_agent.db.payment_repository import PaymentRepository, settlement_payee_from_claim_data
+from claim_agent.db.payment_repository import (
+    PaymentRepository,
+    settlement_claim_party_id_from_claim_data,
+    settlement_payee_from_claim_data,
+)
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, PaymentAuthorityError
 from claim_agent.models.payment import (
     ClaimPaymentCreate,
@@ -16,6 +20,21 @@ from claim_agent.models.payment import (
     PaymentStatus,
     PayeeType,
 )
+
+
+def _insert_claim_party(db_path: str, claim_id: str, party_type: str, name: str) -> int:
+    """Helper: insert a claim party row and return its ID."""
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO claim_parties (claim_id, party_type, name) VALUES (?, ?, ?)",
+        (claim_id, party_type, name),
+    )
+    party_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+    return int(party_id)
 
 
 @pytest.fixture
@@ -349,3 +368,197 @@ def test_create_payment_external_ref_recovers_after_unique_violation(seeded_db, 
     row = repo.get_payment(pid1)
     assert row is not None
     assert row["amount"] == 77.0
+
+
+def test_settlement_claim_party_id_from_claim_data():
+    assert (
+        settlement_claim_party_id_from_claim_data(
+            {
+                "parties": [
+                    {"party_type": "policyholder", "id": 10, "name": "PH"},
+                    {"party_type": "claimant", "id": 20, "name": "Jane"},
+                ]
+            }
+        )
+        == 20
+    )
+    assert settlement_claim_party_id_from_claim_data({"parties": []}) is None
+    assert (
+        settlement_claim_party_id_from_claim_data(
+            {"parties": [{"party_type": "claimant", "name": "No id"}]}
+        )
+        is None
+    )
+
+
+def test_create_payment_with_claim_party_id(seeded_db):
+    import sqlite3
+
+    conn = sqlite3.connect(seeded_db)
+    conn.execute(
+        "INSERT INTO claim_parties (claim_id, party_type, name) VALUES (?, ?, ?)",
+        ("CLM-TEST01", "claimant", "Jane Claimant"),
+    )
+    party_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    repo = PaymentRepository(db_path=seeded_db)
+    data = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=100.0,
+        payee="Jane Claimant",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        claim_party_id=int(party_id),
+    )
+    pid = repo.create_payment(data, actor_id="adj-1", skip_authority_check=True)
+    payment = repo.get_payment(pid)
+    assert payment is not None
+    assert payment["claim_party_id"] == int(party_id)
+
+
+def test_create_payment_claim_party_id_wrong_claim(seeded_db):
+    import sqlite3
+
+    conn = sqlite3.connect(seeded_db)
+    conn.execute(
+        "INSERT INTO claims (id, policy_number, vin, status) VALUES (?, ?, ?, ?)",
+        ("CLM-OTHER", "POL-002", "VIN999", "open"),
+    )
+    conn.execute(
+        "INSERT INTO claim_parties (claim_id, party_type, name) VALUES (?, ?, ?)",
+        ("CLM-OTHER", "claimant", "Other"),
+    )
+    party_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    repo = PaymentRepository(db_path=seeded_db)
+    data = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=50.0,
+        payee="X",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        claim_party_id=int(party_id),
+    )
+    with pytest.raises(DomainValidationError):
+        repo.create_payment(data, actor_id="adj-1", skip_authority_check=True)
+
+
+def test_idempotent_payment_backfills_null_claim_party_id(seeded_db):
+    """When an idempotent payment has NULL claim_party_id, a retry with a valid party should backfill it."""
+    party_id = _insert_claim_party(seeded_db, "CLM-TEST01", "claimant", "Jane Claimant")
+
+    repo = PaymentRepository(db_path=seeded_db)
+    # First call: no claim_party_id
+    data1 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=100.0,
+        payee="Jane Claimant",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="backfill-test-1",
+    )
+    pid1 = repo.create_payment(data1, actor_id="adj-1", skip_authority_check=True)
+    payment = repo.get_payment(pid1)
+    assert payment is not None
+    assert payment["claim_party_id"] is None
+
+    # Second call (retry): same external_ref but now includes claim_party_id
+    data2 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=100.0,
+        payee="Jane Claimant",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="backfill-test-1",
+        claim_party_id=int(party_id),
+    )
+    pid2 = repo.create_payment(data2, actor_id="adj-1", skip_authority_check=True)
+    assert pid1 == pid2
+    payment = repo.get_payment(pid1)
+    assert payment is not None
+    assert payment["claim_party_id"] == int(party_id)
+
+
+def test_idempotent_payment_raises_on_claim_party_id_mismatch(seeded_db):
+    """When an idempotent payment already has a non-NULL claim_party_id, a retry with a different
+    party id should raise DomainValidationError rather than silently ignoring the conflict."""
+    party_id_a = _insert_claim_party(seeded_db, "CLM-TEST01", "claimant", "Jane Claimant")
+    party_id_b = _insert_claim_party(seeded_db, "CLM-TEST01", "policyholder", "PH")
+
+    repo = PaymentRepository(db_path=seeded_db)
+    # First call: party_id_a
+    data1 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=50.0,
+        payee="Jane Claimant",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="mismatch-test-1",
+        claim_party_id=int(party_id_a),
+    )
+    pid1 = repo.create_payment(data1, actor_id="adj-1", skip_authority_check=True)
+    payment = repo.get_payment(pid1)
+    assert payment is not None
+    assert payment["claim_party_id"] == int(party_id_a)
+
+    # Retry with party_id_b: should raise
+    data2 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=50.0,
+        payee="Jane Claimant",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="mismatch-test-1",
+        claim_party_id=int(party_id_b),
+    )
+    with pytest.raises(DomainValidationError, match="mismatch"):
+        repo.create_payment(data2, actor_id="adj-1", skip_authority_check=True)
+
+
+def test_idempotent_payment_backfill_wrong_claim_party_raises(seeded_db):
+    """Backfilling claim_party_id from a different claim should raise DomainValidationError."""
+    import sqlite3
+
+    conn = sqlite3.connect(seeded_db)
+    conn.execute(
+        "INSERT INTO claims (id, policy_number, vin, status) VALUES (?, ?, ?, ?)",
+        ("CLM-BACKFILL-OTHER", "POL-BK1", "VIN-BK1", "open"),
+    )
+    conn.commit()
+    conn.close()
+    wrong_party_id = _insert_claim_party(seeded_db, "CLM-BACKFILL-OTHER", "claimant", "Other Claimant")
+
+    repo = PaymentRepository(db_path=seeded_db)
+    # First call: no claim_party_id
+    data1 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=30.0,
+        payee="Someone",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="backfill-wrong-party",
+    )
+    pid1 = repo.create_payment(data1, actor_id="adj-1", skip_authority_check=True)
+
+    # Retry with a party from a different claim
+    data2 = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=30.0,
+        payee="Someone",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref="backfill-wrong-party",
+        claim_party_id=int(wrong_party_id),
+    )
+    with pytest.raises(DomainValidationError):
+        repo.create_payment(data2, actor_id="adj-1", skip_authority_check=True)
+
+    # Confirm no changes were made to the existing payment
+    payment = repo.get_payment(pid1)
+    assert payment is not None
+    assert payment["claim_party_id"] is None
+
