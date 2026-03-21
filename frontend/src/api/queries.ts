@@ -41,6 +41,8 @@ import {
   getOverdueTasks,
   getComplianceTemplates,
   updateClaimDocument,
+  createPartyRelationship,
+  deletePartyRelationship,
 } from './client';
 import type {
   CostBreakdown,
@@ -50,6 +52,7 @@ import type {
   PatchClaimReserveBody,
   PostClaimRepairStatusPayload,
   UpdateDocumentBody,
+  CreatePartyRelationshipPayload,
 } from './client';
 
 export const queryKeys = {
@@ -459,5 +462,35 @@ export function useComplianceTemplates(state?: string) {
   return useQuery({
     queryKey: queryKeys.complianceTemplates(state),
     queryFn: () => getComplianceTemplates(state),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Party Relationships
+// ---------------------------------------------------------------------------
+
+export function useCreatePartyRelationship(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreatePartyRelationshipPayload) =>
+      createPartyRelationship(claimId!, body),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
+  });
+}
+
+export function useDeletePartyRelationship(claimId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (relationshipId: number) =>
+      deletePartyRelationship(claimId!, relationshipId),
+    onSuccess: () => {
+      if (claimId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
+      }
+    },
   });
 }

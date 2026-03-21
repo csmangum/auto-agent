@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import type { UseMutationResult } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
@@ -24,9 +24,11 @@ import {
   useUpdateDocument,
   useDocumentRequests,
   useCreateDocumentRequest,
+  useCreatePartyRelationship,
+  useDeletePartyRelationship,
 } from '../api/queries';
 import { formatDateTime } from '../utils/date';
-import type { ReserveAdequacyResponse, ReserveHistoryEntry } from '../api/types';
+import type { ReserveAdequacyResponse, ReserveHistoryEntry, ClaimParty } from '../api/types';
 import type { PatchClaimReserveBody } from '../api/client';
 
 interface ReserveTabProps {
@@ -631,6 +633,119 @@ function DocumentsTab({
   );
 }
 
+const RELATIONSHIP_TYPES = ['represented_by', 'lienholder_for', 'witness_for'];
+
+interface AddRelationshipFormProps {
+  parties: ClaimParty[];
+  onSubmit: (body: { from_party_id: number; to_party_id: number; relationship_type: string }) => void;
+  isPending: boolean;
+  error: Error | null;
+  onSuccess: () => void;
+}
+
+function AddRelationshipForm({ parties, onSubmit, isPending, error, onSuccess }: AddRelationshipFormProps) {
+  const [fromId, setFromId] = useState('');
+  const [toId, setToId] = useState('');
+  const [relType, setRelType] = useState(RELATIONSHIP_TYPES[0]);
+  const [prevPending, setPrevPending] = useState(isPending);
+
+  useEffect(() => {
+    if (prevPending && !isPending && !error) {
+      setFromId('');
+      setToId('');
+      setRelType(RELATIONSHIP_TYPES[0]);
+      onSuccess();
+    }
+    setPrevPending(isPending);
+  }, [isPending, prevPending, error, onSuccess]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fromId || !toId || fromId === toId) return;
+    onSubmit({
+      from_party_id: Number(fromId),
+      to_party_id: Number(toId),
+      relationship_type: relType,
+    });
+  };
+
+  const partyLabel = (p: ClaimParty) =>
+    `${p.name ?? `#${p.id}`} (${p.party_type.replace(/_/g, ' ')})`;
+
+  if (parties.length < 2) return null;
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-4 pt-4 border-t border-gray-700/50 space-y-3">
+      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+        Add Relationship
+      </h4>
+      {error && (
+        <p className="text-xs text-red-400">
+          {error.message}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[140px]">
+          <label htmlFor="rel-from" className="block text-xs text-gray-500 mb-1">From</label>
+          <select
+            id="rel-from"
+            value={fromId}
+            onChange={(e) => {
+              const newFromId = e.target.value;
+              setFromId(newFromId);
+              if (newFromId === toId) {
+                setToId('');
+              }
+            }}
+            required
+            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">Select party…</option>
+            {parties.map((p) => (
+              <option key={p.id} value={p.id}>{partyLabel(p)}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label htmlFor="rel-type" className="block text-xs text-gray-500 mb-1">Type</label>
+          <select
+            id="rel-type"
+            value={relType}
+            onChange={(e) => setRelType(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {RELATIONSHIP_TYPES.map((t) => (
+              <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label htmlFor="rel-to" className="block text-xs text-gray-500 mb-1">To</label>
+          <select
+            id="rel-to"
+            value={toId}
+            onChange={(e) => setToId(e.target.value)}
+            required
+            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">Select party…</option>
+            {parties.filter((p) => String(p.id) !== fromId).map((p) => (
+              <option key={p.id} value={p.id}>{partyLabel(p)}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={isPending || !fromId || !toId}
+          className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-sm text-white disabled:opacity-50 transition-colors"
+        >
+          {isPending ? 'Adding…' : 'Add'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
   const [activeTab, setActiveTab] = useState('overview');
@@ -661,6 +776,8 @@ export default function ClaimDetail() {
   const updateDocMutation = useUpdateDocument(claimId);
   const { data: docRequestsData } = useDocumentRequests(claimId);
   const createDocRequestMutation = useCreateDocumentRequest(claimId);
+  const createRelMutation = useCreatePartyRelationship(claimId);
+  const deleteRelMutation = useDeletePartyRelationship(claimId);
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
@@ -827,17 +944,39 @@ export default function ClaimDetail() {
                         </span>
                       )}
                       {p.relationships && p.relationships.length > 0 && (
-                        <span className="text-gray-500 text-xs w-full basis-full">
+                        <div className="w-full basis-full mt-1 space-y-1">
                           {p.relationships.map((r) => {
                             const target = parties.find((x) => x.id === r.to_party_id);
                             const label = target?.name ?? `#${r.to_party_id}`;
-                            return `${r.relationship_type} → ${label}`;
-                          }).join(' · ')}
-                        </span>
+                            return (
+                              <span
+                                key={r.id}
+                                className="inline-flex items-center gap-1 text-gray-500 text-xs mr-3"
+                              >
+                                {r.relationship_type.replace(/_/g, ' ')} → {label}
+                                <button
+                                  type="button"
+                                  title="Remove relationship"
+                                  onClick={() => deleteRelMutation.mutate(r.id)}
+                                  className="ml-1 text-red-400/60 hover:text-red-400 transition-colors"
+                                >
+                                  ✕
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   ))}
                 </div>
+                <AddRelationshipForm
+                  parties={parties}
+                  onSubmit={(body) => createRelMutation.mutate(body)}
+                  isPending={createRelMutation.isPending}
+                  error={createRelMutation.error}
+                  onSuccess={() => {}}
+                />
               </div>
             )}
 
