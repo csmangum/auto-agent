@@ -105,6 +105,55 @@ _TEMPLATES: dict[str, FraudReportTemplate] = {
         bureau_name="Georgia Department of Insurance Fraud Unit",
         bureau_url="https://oci.georgia.gov/",
     ),
+    "New Jersey": FraudReportTemplate(
+        state="New Jersey",
+        form_id="NJ-OIFP-FR-1",
+        form_name="New Jersey Office of Insurance Fraud Prosecutor Referral",
+        required_fields=(
+            "claim_id",
+            "policy_number",
+            "vin",
+            "indicators_summary",
+            "incident_date",
+            "claimant_name",
+            "estimated_loss",
+        ),
+        filing_deadline_days=30,
+        bureau_name="New Jersey Office of the Insurance Fraud Prosecutor",
+        bureau_url="https://www.nj.gov/oag/oifp/",
+    ),
+    "Pennsylvania": FraudReportTemplate(
+        state="Pennsylvania",
+        form_id="PA-IFP-FR-1",
+        form_name="Pennsylvania Insurance Fraud Prevention Referral",
+        required_fields=(
+            "claim_id",
+            "policy_number",
+            "vin",
+            "indicators_summary",
+            "incident_date",
+            "claimant_name",
+        ),
+        filing_deadline_days=30,
+        bureau_name="Pennsylvania Insurance Fraud Prevention Authority",
+        bureau_url="https://www.insurance.pa.gov/",
+    ),
+    "Illinois": FraudReportTemplate(
+        state="Illinois",
+        form_id="IL-DOI-FR-1",
+        form_name="Illinois Department of Insurance Fraud Referral",
+        required_fields=(
+            "claim_id",
+            "policy_number",
+            "vin",
+            "indicators_summary",
+            "incident_date",
+            "claimant_name",
+        ),
+        filing_deadline_days=30,
+        bureau_name="Illinois Department of Insurance Fraud Division",
+        bureau_url="https://insurance.illinois.gov/",
+    ),
 }
 
 
@@ -112,7 +161,8 @@ def get_fraud_report_template(state: str | None) -> dict[str, Any] | None:
     """Return fraud report template for the given state, or None if unsupported.
 
     Args:
-        state: State jurisdiction (California, Texas, Florida, New York, Georgia).
+        state: State jurisdiction (California, Texas, Florida, New York, Georgia,
+            New Jersey, Pennsylvania, or Illinois).
 
     Returns:
         Dict with form_id, form_name, required_fields, filing_deadline_days,

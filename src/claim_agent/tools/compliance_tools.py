@@ -61,7 +61,8 @@ def get_state_compliance_summary(state: str) -> str:
 
     Returns:
         JSON with acknowledgment_days, investigation_days, prompt_payment_days,
-        total_loss_threshold, siu_referral_threshold, diminished_value_required.
+        total_loss_threshold, siu_referral_threshold, diminished_value_required,
+        diminished_value_formula.
     """
     if not isinstance(state, str) or not state.strip():
         return json.dumps({
@@ -89,6 +90,7 @@ def get_state_compliance_summary(state: str) -> str:
         "total_loss_threshold": rules.total_loss_threshold,
         "siu_referral_threshold": rules.siu_referral_threshold,
         "diminished_value_required": rules.diminished_value_required,
+        "diminished_value_formula": rules.diminished_value_formula,
         "appraisal_rights": rules.appraisal_rights,
     })
 
@@ -101,7 +103,8 @@ def get_fraud_report_template_tool(state: str = "California") -> str:
     required fields, filing deadline, and bureau contact info.
 
     Args:
-        state: State jurisdiction - California, Texas, Florida, New York, or Georgia.
+        state: State jurisdiction - California, Texas, Florida, New York, Georgia,
+            New Jersey, Pennsylvania, or Illinois.
 
     Returns:
         JSON with form_id, form_name, required_fields, filing_deadline_days,

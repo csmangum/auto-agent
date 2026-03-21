@@ -458,6 +458,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
 
 **API:** `POST /api/claims/{claim_id}/party-relationships`, `DELETE /api/claims/{claim_id}/party-relationships/{relationship_id}` ([`src/claim_agent/api/routes/claims.py`](../src/claim_agent/api/routes/claims.py)).
 
+**DSAR / Privacy:** DSAR access exports include `party_relationships` edges for each claim (columns: `id`, `from_party_id`, `to_party_id`, `relationship_type`, `created_at`). Because this table stores only structural metadata (party IDs and relationship type) with **no direct PII**, relationship rows are exported unchanged even after anonymization/deletion — the referenced party rows will have redacted names and contact details but the edges remain intact so the data subject can see structural links such as attorney representation.
+
 ### claim_payments
 
 Disbursement ledger for a claim: multiple payments (repair advances, rental, BI to providers, settlement checks, etc.) are modeled as separate rows. **`claims.payout_amount`** remains a summary settlement figure from workflow; detailed issuance uses this table.

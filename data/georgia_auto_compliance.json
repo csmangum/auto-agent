@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "state": "Georgia",
+    "jurisdiction": "GA",
+    "data_type": "auto_insurance_compliance",
+    "version": "2026.1",
+    "last_updated": "2026-03-21",
+    "sources": [
+      "Georgia Office of the Insurance Commissioner diminished value guidance (17c methodology)",
+      "Georgia unfair claims practices and total loss handling (industry practice)"
+    ]
+  },
+  "diminished_value_17c": {
+    "regulation_reference": "Georgia OIC diminished value / 17c worksheet methodology (insurer first-party repairable vehicle claims)",
+    "description": "Georgia commonly applies a three-part estimate: base value loss (10% cap on pre-accident FMV) multiplied by a damage-severity factor (from repair cost as a percentage of FMV) and a mileage factor (NADA-style brackets). This file documents the brackets implemented in code; adjust when OIC publishes updates.",
+    "provisions": [
+      {
+        "id": "DV-17C-001",
+        "section": "17c_base_cap",
+        "title": "Base value loss cap",
+        "requirement": "Base value loss = 10% × pre-accident fair market value (ACV) before applying damage and mileage multipliers.",
+        "formula": "base_value_loss = 0.10 * FMV"
+      },
+      {
+        "id": "DV-17C-002",
+        "section": "17c_damage_multiplier",
+        "title": "Damage multiplier from repair cost ÷ FMV",
+        "requirement": "Repair cost as a fraction of FMV maps to a damage multiplier: under 20% → 0; 20% to under 40% → 0.10; 40% to under 60% → 0.20; 60% to under 80% → 0.40; 80% to under 95% → 0.60; 95%+ → 1.00.",
+        "brackets": [
+          {"max_ratio_exclusive": 0.2, "multiplier": 0.0},
+          {"max_ratio_exclusive": 0.4, "multiplier": 0.1},
+          {"max_ratio_exclusive": 0.6, "multiplier": 0.2},
+          {"max_ratio_exclusive": 0.8, "multiplier": 0.4},
+          {"max_ratio_exclusive": 0.95, "multiplier": 0.6},
+          {"max_ratio_exclusive": null, "multiplier": 1.0}
+        ]
+      },
+      {
+        "id": "DV-17C-003",
+        "section": "17c_mileage_multiplier",
+        "title": "Mileage multiplier (NADA-style brackets)",
+        "requirement": "Mileage odometer reading maps to a multiplier applied after base and damage factors.",
+        "brackets": [
+          {"max_miles_exclusive": 20000, "multiplier": 1.0},
+          {"max_miles_exclusive": 40000, "multiplier": 0.8},
+          {"max_miles_exclusive": 60000, "multiplier": 0.6},
+          {"max_miles_exclusive": 80000, "multiplier": 0.4},
+          {"max_miles_exclusive": 100000, "multiplier": 0.2},
+          {"max_miles_exclusive": null, "multiplier": 0.0}
+        ]
+      },
+      {
+        "id": "DV-17C-004",
+        "section": "17c_damage_tiers",
+        "title": "Qualitative damage tiers (when repair cost unknown)",
+        "requirement": "When itemized repair cost is not available, use damage_severity_tier: cosmetic/light → 0.10; moderate → 0.40; major → 0.60; structural → 0.80; severe → 1.00. Unknown labels default to moderate (0.40).",
+        "tiers": {
+          "cosmetic": 0.1,
+          "light": 0.1,
+          "moderate": 0.4,
+          "major": 0.6,
+          "structural": 0.8,
+          "severe": 1.0
+        }
+      },
+      {
+        "id": "DV-17C-005",
+        "section": "17c_final_formula",
+        "title": "Combined estimate",
+        "requirement": "Estimated diminished value = base_value_loss × damage_multiplier × mileage_multiplier (rounded to cents).",
+        "formula": "DV = base_value_loss * damage_multiplier * mileage_multiplier"
+      }
+    ]
+  }
+}

@@ -31,3 +31,47 @@ class TestGetFraudReportTemplate:
         assert "template" in data
         assert data["template"]["state"] == "Texas"
         assert data["template"]["form_id"] == "TX-DFR-FR-1"
+
+    def test_returns_template_for_new_jersey(self):
+        template = get_fraud_report_template("New Jersey")
+        assert template is not None
+        assert template["state"] == "New Jersey"
+        assert template["form_id"] == "NJ-OIFP-FR-1"
+        assert "claim_id" in template["required_fields"]
+        assert "estimated_loss" in template["required_fields"]
+        assert template["filing_deadline_days"] == 30
+        assert template["bureau_name"] == (
+            "New Jersey Office of the Insurance Fraud Prosecutor"
+        )
+        assert template["bureau_url"] is not None
+
+    def test_returns_template_for_pennsylvania(self):
+        template = get_fraud_report_template("Pennsylvania")
+        assert template is not None
+        assert template["state"] == "Pennsylvania"
+        assert template["form_id"] == "PA-IFP-FR-1"
+        assert "claim_id" in template["required_fields"]
+        assert template["filing_deadline_days"] == 30
+        assert template["bureau_name"] == (
+            "Pennsylvania Insurance Fraud Prevention Authority"
+        )
+        assert template["bureau_url"] is not None
+
+    def test_returns_template_for_illinois(self):
+        template = get_fraud_report_template("Illinois")
+        assert template is not None
+        assert template["state"] == "Illinois"
+        assert template["form_id"] == "IL-DOI-FR-1"
+        assert "claim_id" in template["required_fields"]
+        assert template["filing_deadline_days"] == 30
+        assert template["bureau_name"] == (
+            "Illinois Department of Insurance Fraud Division"
+        )
+        assert template["bureau_url"] is not None
+
+    def test_returns_template_for_new_state_abbreviations(self):
+        for abbrev, expected in [("NJ", "New Jersey"), ("PA", "Pennsylvania"),
+                                 ("IL", "Illinois")]:
+            template = get_fraud_report_template(abbrev)
+            assert template is not None, f"Expected template for {abbrev}"
+            assert template["state"] == expected
