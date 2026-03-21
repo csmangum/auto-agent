@@ -427,9 +427,11 @@ def record_dmv_salvage_report_impl(
     Updates claim total_loss_metadata with dmv_reference, reported_at,
     salvage_title_status: pending | dmv_reported | certificate_issued.
 
-    Returns JSON with confirmation fields on success. On validation failure,
-    missing claim, or other errors, returns JSON with exactly ``error`` (str) and
-    ``claim_id`` (str) so callers can branch without raising.
+    On success, returns JSON with at least claim_id, dmv_reference, reported_at,
+    salvage_title_status, message, plus NMVTIS-related keys when submission runs
+    (see ``_attempt_nmvtis_submission``). On validation failure, missing claim,
+    or other errors, returns JSON with exactly ``error`` (str) and ``claim_id``
+    (str) so callers can branch without raising.
     """
     dmv_ref = (dmv_reference or "").strip()
     if not dmv_ref:

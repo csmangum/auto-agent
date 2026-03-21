@@ -515,6 +515,7 @@ class TestRecordDmvSalvageReport:
         )
         data = json.loads(result)
         assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-DMV-001"
         assert data["error"] == "dmv_reference is required"
 
     def test_record_dmv_report_dmv_reference_too_long_returns_error(self, temp_claim_db):
@@ -526,6 +527,7 @@ class TestRecordDmvSalvageReport:
         )
         data = json.loads(result)
         assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-DMV-001"
         assert "dmv_reference exceeds" in data["error"]
 
     def test_record_dmv_report_invalid_salvage_title_status_returns_error(self, temp_claim_db):
@@ -537,6 +539,7 @@ class TestRecordDmvSalvageReport:
         )
         data = json.loads(result)
         assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-DMV-001"
         assert "salvage_title_status must be one of:" in data["error"]
 
     def test_record_dmv_salvage_report_tool_missing_claim_via_run(self, temp_claim_db):
@@ -549,6 +552,7 @@ class TestRecordDmvSalvageReport:
         )
         data = json.loads(out)
         assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-NONEXISTENT"
         assert data["error"] == "Claim not found: CLM-NONEXISTENT"
 
 
