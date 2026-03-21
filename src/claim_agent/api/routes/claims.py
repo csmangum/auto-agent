@@ -1061,12 +1061,12 @@ def list_claim_documents(
     storage = get_storage_adapter()
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
 
-    def enrich_document_urls(docs: list[dict[str, Any]]) -> None:
+    def enrich_document_urls(docs: list[dict[str, Any]], insert_audit: bool = True) -> None:
         for doc in docs:
             sk = doc.get("storage_key", "")
             if sk:
                 doc["url"] = storage.get_url(claim_id, sk)
-                if isinstance(storage, S3StorageAdapter):
+                if insert_audit and isinstance(storage, S3StorageAdapter):
                     ctx.repo.insert_document_accessed_audit(
                         claim_id,
                         storage_key=sk,
@@ -1092,7 +1092,7 @@ def list_claim_documents(
             limit=500,
             offset=0,
         )
-        enrich_document_urls(all_docs)
+        enrich_document_urls(all_docs, insert_audit=False)
         payload["version_groups"] = build_document_version_groups(all_docs)
         payload["version_groups_truncated"] = docs_total > 500
     return payload
