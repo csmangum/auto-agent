@@ -188,7 +188,7 @@ Router variables: `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), `ROUTER_VALIDATIO
 Coverage verification: `COVERAGE_ENABLED` (default true) enables FNOL coverage verification before routing. When enabled, claims are checked for:
 - Active policy status
 - Physical damage coverage (collision/comprehensive)
-- Policy territory restrictions (`incident_location` or `loss_state` vs. policy `territory` / `excluded_territories`)
+- Policy territory restrictions (`incident_location` or `loss_state` vs. policy `territory` / `excluded_territories`; see [adapters.md](adapters.md) for US insular areas and Canadian province matching)
 - Named insured or authorized driver verification (when policy data available)
 - Optionally `COVERAGE_DENY_WHEN_DEDUCTIBLE_EXCEEDS_DAMAGE` (default false) to deny when deductible exceeds estimated damage
 

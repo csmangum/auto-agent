@@ -43,9 +43,18 @@ class PolicyAdapter(ABC):
         - Legacy: ``coverage`` (str), ``deductible`` (number)
         
         Territory coverage (optional):
-        - ``territory`` (str or list): Geographic coverage area (e.g., "US", "USA_Canada", 
-          ["California", "Nevada", "Oregon"], or state code like "TX")
+        - ``territory`` (str or list): Geographic coverage area (e.g., "US", "USA_Canada",
+          US states/DC/insular areas (e.g. PR, Puerto Rico), Canadian provinces/territories
+          (e.g. ON, Ontario), or a list mixing names and codes)
         - ``excluded_territories`` (list): Territories explicitly excluded from coverage
+
+        Policy term (optional, ISO date ``YYYY-MM-DD`` or date-like values):
+        - ``effective_date`` / ``expiration_date``: inclusive coverage window for FNOL checks.
+        - Aliases: ``term_start`` maps to effective, ``term_end`` to expiration (normalized
+          in policy query output). Omit both to skip incident-vs-term verification.
+        - If only one of effective/expiration (or ``term_start`` / ``term_end``) is provided,
+          the term is treated as incomplete and FNOL coverage verification escalates to
+          ``under_investigation``; adapters should supply both dates or omit both.
         """
         ...
 

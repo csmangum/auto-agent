@@ -32,6 +32,8 @@ class RestPolicyAdapter(PolicyAdapter):
     - GET {base_url}/policies/{policy_number} returns 200 with JSON policy, or 404 when not found.
     - Policy JSON should include: status, and either coverages/collision_deductible/etc. (new format)
       or coverage/deductible (legacy format).
+    - Optional FNOL fields: effective_date, expiration_date (ISO YYYY-MM-DD), or term_start/term_end
+      aliases, for incident-vs-policy-term coverage verification.
     """
 
     def __init__(
