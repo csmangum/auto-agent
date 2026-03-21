@@ -173,8 +173,11 @@ def _attempt_nmvtis_submission(
             "nmvtis_skip_reason": skip_reason,
             "nmvtis_last_trigger": trigger_event,
         }
-        meta = repo.get_claim_total_loss_metadata(claim_id) or {}
-        _persist_nmvtis_fields(repo, claim_id, meta, patch)
+        try:
+            meta = repo.get_claim_total_loss_metadata(claim_id) or {}
+            _persist_nmvtis_fields(repo, claim_id, meta, patch)
+        except ClaimNotFoundError:
+            return {"nmvtis_error": "claim_not_found"}
         return {
             "nmvtis_status": "skipped",
             "nmvtis_skip_reason": skip_reason,
