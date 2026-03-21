@@ -84,7 +84,7 @@ class ValuationAdapter(ABC):
         comparables: list of {vin, year, make, model, price, mileage, source}."""
 ```
 
-**CCC/Mitchell/Audatex integration**: Stubs in `adapters/valuation_stubs/` document the expected contract for total loss valuation providers. Each returns ACV + comparables list. Replace with real API calls for production.
+**CCC/Mitchell/Audatex integration**: Set `VALUATION_ADAPTER` to `ccc`, `mitchell`, or `audatex` and configure `VALUATION_REST_BASE_URL` (optional `VALUATION_REST_PATH_TEMPLATE`, `VALUATION_REST_RESPONSE_KEY`, auth headers). The implementation (`adapters/real/valuation_rest.py`) performs a GET, unwraps an optional JSON envelope, and normalizes vendor keys (`acv`, `vehicle_value`, `comparables` / `comps`, etc.) into `{value, condition, source, comparables}`. Reference-only classes remain under `adapters/valuation_stubs/`.
 
 ### RepairShopAdapter
 
@@ -141,6 +141,7 @@ Located in `src/claim_agent/adapters/real/`. Production-ready implementations:
 | Class | File | Description |
 |-------|------|-------------|
 | `RestPolicyAdapter` | `real/policy_rest.py` | REST PAS integration with auth, retry, circuit breaker |
+| `RestValuationAdapter` | `real/valuation_rest.py` | REST valuation gateway (CCC/Mitchell/Audatex-style JSON) |
 
 ## Configuration
 
@@ -149,7 +150,7 @@ Adapter selection is controlled by environment variables. Each defaults to `mock
 | Variable | Values | Default | Description |
 |----------|--------|---------|-------------|
 | `POLICY_ADAPTER` | `mock`, `stub`, `rest` | `mock` | Policy database backend |
-| `VALUATION_ADAPTER` | `mock`, `stub` | `mock` | Vehicle valuation backend |
+| `VALUATION_ADAPTER` | `mock`, `stub`, `ccc`, `mitchell`, `audatex` | `mock` | Vehicle valuation backend |
 | `REPAIR_SHOP_ADAPTER` | `mock`, `stub` | `mock` | Repair shop network backend |
 | `PARTS_ADAPTER` | `mock`, `stub` | `mock` | Parts catalog backend |
 | `SIU_ADAPTER` | `mock`, `stub` | `mock` | SIU case management backend |
@@ -169,6 +170,19 @@ When `POLICY_ADAPTER=rest`, configure the PAS REST API:
 | `POLICY_REST_PATH_TEMPLATE` | Path with `{policy_number}` placeholder | `/policies/{policy_number}` |
 | `POLICY_REST_RESPONSE_KEY` | JSON key for policy (e.g. `data`) | (none) |
 | `POLICY_REST_TIMEOUT` | Request timeout seconds | `15` |
+
+### REST valuation (CCC / Mitchell / Audatex)
+
+When `VALUATION_ADAPTER` is `ccc`, `mitchell`, or `audatex`, configure the valuation gateway:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VALUATION_REST_BASE_URL` | Gateway base URL | (required) |
+| `VALUATION_REST_AUTH_HEADER` | Auth header name | `Authorization` |
+| `VALUATION_REST_AUTH_VALUE` | Bearer token or API key | (empty) |
+| `VALUATION_REST_PATH_TEMPLATE` | Path/query with `{vin}`, `{year}`, `{make}`, `{model}` (URL-encoded) | Provider default |
+| `VALUATION_REST_RESPONSE_KEY` | Optional JSON envelope key | (none) |
+| `VALUATION_REST_TIMEOUT` | Request timeout seconds | `15` |
 
 See [Adapter SLA Requirements](adapter_sla.md) for latency and availability targets.
 
