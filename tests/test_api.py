@@ -2713,6 +2713,33 @@ class TestProcessClaimEndpoint:
             ).fetchone()[0]
         assert n_after == n_before
 
+    def test_attachment_download_fails_when_audit_insert_fails(
+        self, monkeypatch, tmp_path
+    ):
+        """Do not serve attachment bytes if document_downloaded audit cannot be written."""
+        from claim_agent.api.server import app
+        from claim_agent.db.repository import ClaimRepository
+
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        storage = factory_mod.get_storage_adapter()
+        stored_key = storage.save(
+            claim_id="CLM-TEST001",
+            filename="blocked.jpg",
+            content=b"secret-bytes",
+        )
+
+        def fail_audit(*_args, **_kwargs):
+            raise RuntimeError("audit insert failed")
+
+        monkeypatch.setattr(ClaimRepository, "insert_audit_entry", fail_audit)
+        with TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.get(f"/api/claims/CLM-TEST001/attachments/{stored_key}")
+        assert resp.status_code == 500
+        assert b"secret-bytes" not in resp.content
+
 
 # -------------------------------------------------------------------
 # Document Management API (RequireAdjuster)

@@ -1756,23 +1756,17 @@ class ClaimRepository:
 
         ``channel`` should distinguish caller surface (e.g. ``adjuster_api``, ``portal``).
         Structured fields are stored in ``after_state`` JSON for querying.
+
+        Raises if the audit row cannot be inserted; callers must not serve the file without it.
         """
-        log = logging.getLogger(__name__)
-        try:
-            payload = truncate_audit_json({"storage_key": storage_key, "channel": channel})
-            self.insert_audit_entry(
-                claim_id,
-                AUDIT_EVENT_DOCUMENT_DOWNLOADED,
-                actor_id=sanitize_actor_id(actor_id),
-                details="",
-                after_state=payload,
-            )
-        except Exception:
-            log.exception(
-                "document_downloaded audit insert failed claim_id=%s storage_key=%s",
-                claim_id,
-                storage_key,
-            )
+        payload = truncate_audit_json({"storage_key": storage_key, "channel": channel})
+        self.insert_audit_entry(
+            claim_id,
+            AUDIT_EVENT_DOCUMENT_DOWNLOADED,
+            actor_id=sanitize_actor_id(actor_id),
+            details="",
+            after_state=payload,
+        )
 
     def update_claim_siu_case_id(
         self,

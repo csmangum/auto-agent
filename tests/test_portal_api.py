@@ -318,6 +318,37 @@ class TestPortalAttachmentDownload:
         assert state["storage_key"] == stored_key
         assert state["channel"] == "portal"
 
+    def test_portal_attachment_download_fails_when_audit_insert_fails(
+        self, monkeypatch, tmp_path
+    ):
+        from claim_agent.api.server import app
+        from claim_agent.db.repository import ClaimRepository
+
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
+        reload_settings()
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        storage = factory_mod.get_storage_adapter()
+        stored_key = storage.save(
+            claim_id="CLM-TEST001",
+            filename="portal_blocked.pdf",
+            content=b"portal secret",
+        )
+
+        def fail_audit(*_args, **_kwargs):
+            raise RuntimeError("audit insert failed")
+
+        monkeypatch.setattr(ClaimRepository, "insert_audit_entry", fail_audit)
+        with TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.get(
+                f"/api/portal/claims/CLM-TEST001/attachments/{stored_key}",
+                headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
+            )
+        assert resp.status_code == 500
+        assert b"portal secret" not in resp.content
+
 
 class TestPortalFollowUpResponse:
     """Portal follow-up response recording."""
