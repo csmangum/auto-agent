@@ -1,7 +1,7 @@
 """Composite index on claim_audit_log(claim_id, action) for document audit queries.
 
-Revision ID: 040
-Revises: 039
+Revision ID: 041
+Revises: 040
 Create Date: 2026-03-21
 
 GitHub issue #283: chain-of-custody / document access audit rows filtered by action.
@@ -10,8 +10,8 @@ GitHub issue #283: chain-of-custody / document access audit rows filtered by act
 from alembic import op
 from sqlalchemy import text
 
-revision = "040"
-down_revision = "039"
+revision = "041"
+down_revision = "040"
 branch_labels = None
 depends_on = None
 
