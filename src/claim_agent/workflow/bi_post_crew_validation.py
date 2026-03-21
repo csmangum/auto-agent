@@ -33,18 +33,31 @@ def extract_bi_workflow_output_from_crew_result(result: Any) -> BIWorkflowOutput
         return None
     try:
         last_task = tasks_output[-1]
-        output = getattr(last_task, "pydantic", None) or getattr(last_task, "output", None)
     except (IndexError, TypeError, AttributeError):
         return None
-    if output is None:
-        return None
-    if isinstance(output, BIWorkflowOutput):
-        return output
-    if isinstance(output, dict):
-        try:
-            return BIWorkflowOutput.model_validate(output)
-        except ValidationError:
+
+    def _coerce(candidate: Any) -> BIWorkflowOutput | None:
+        if candidate is None:
             return None
+        if isinstance(candidate, BIWorkflowOutput):
+            return candidate
+        if isinstance(candidate, dict):
+            try:
+                return BIWorkflowOutput.model_validate(candidate)
+            except ValidationError:
+                return None
+        return None
+
+    # Try ``pydantic`` then ``output`` (CrewAI may use either). Do not use
+    # ``pydantic or output``: unittest.mock.MagicMock task stubs expose a
+    # truthy auto-created ``pydantic`` that would hide a real ``output``.
+    for candidate in (
+        getattr(last_task, "pydantic", None),
+        getattr(last_task, "output", None),
+    ):
+        parsed = _coerce(candidate)
+        if parsed is not None:
+            return parsed
     return None
 
 
