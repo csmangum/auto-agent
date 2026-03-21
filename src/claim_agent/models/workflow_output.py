@@ -40,7 +40,30 @@ class TotalLossDetails(BaseModel):
         default=None, description="Diminished value amount if state requires"
     )
     gap_insurance_applied: bool = Field(
-        default=False, description="Whether gap insurance covered shortfall"
+        default=False,
+        description=(
+            "True when policy includes gap and payout is below loan/lease balance "
+            "(carrier coordination triggered or required)"
+        ),
+    )
+    gap_claim_id: str | None = Field(
+        default=None, description="Gap carrier reference after submission"
+    )
+    gap_claim_status: str | None = Field(
+        default=None, description="Carrier status: submitted, approved_pending_payment, etc."
+    )
+    gap_shortfall_amount: float | None = Field(
+        default=None, description="Loan/lease balance minus auto payout (before gap)"
+    )
+    gap_approved_amount: float | None = Field(
+        default=None, description="Amount gap carrier approved toward shortfall"
+    )
+    gap_remaining_shortfall: float | None = Field(
+        default=None,
+        description="Balance owed after gap decision (partial pay or denial)",
+    )
+    gap_denial_reason: str | None = Field(
+        default=None, description="Reason when gap claim denied or partially denied"
     )
 
 
