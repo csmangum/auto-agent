@@ -457,7 +457,14 @@ def _get_engine() -> Engine:
             return _engine
         url = _get_database_url()
         if _is_postgres():
-            _engine = create_engine(url, pool_size=5, max_overflow=10)
+            from claim_agent.config import get_settings
+
+            paths = get_settings().paths
+            _engine = create_engine(
+                url,
+                pool_size=paths.db_pool_size,
+                max_overflow=paths.db_max_overflow,
+            )
         else:
             _engine = create_engine(url, poolclass=NullPool)
     return _engine

@@ -24,12 +24,17 @@ cp .env.example .env
 |----------|---------|-------------|
 | `OPENAI_API_BASE` | (none) | Custom API base URL (for OpenRouter) |
 | `OPENAI_MODEL_NAME` | `gpt-4o-mini` | Model to use for agents |
-| `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database |
+| `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database (ignored when `DATABASE_URL` is set) |
+| `DATABASE_URL` | (unset) | PostgreSQL URL for production; see [Database](database.md) |
+| `DB_POOL_SIZE` | `5` | PostgreSQL pool size (see [Database](database.md)) |
+| `DB_MAX_OVERFLOW` | `10` | PostgreSQL pool overflow (see [Database](database.md)) |
 | `MOCK_DB_PATH` | `data/mock_db.json` | Path to mock policy/vehicle data |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
+| `IDEMPOTENCY_TTL_SECONDS` | `86400` | Time-to-live (seconds) for API idempotency keys (default 24h). Expired rows are purged periodically while the API server runs. |
+| `REDIS_URL` | (unset) | Redis URL for **shared API rate limiting** across multiple app instances or workers (e.g. `redis://localhost:6379/0`). Requires `pip install -e '.[redis]'`. When unset, rate limits use an in-process store (not shared). |
 
 ### Authentication and RBAC
 
@@ -40,10 +45,29 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 | `API_KEYS` | Comma-separated `key:role` pairs, e.g. `sk-adj-xxx:adjuster,sk-sup-yyy:supervisor,sk-exe-zzz:executive,sk-admin-zzz:admin` |
 | `CLAIMS_API_KEY` | Single API key (backward compat). When set and `API_KEYS` unset, treated as admin role |
 | `JWT_SECRET` | Secret for verifying JWT Bearer tokens. JWT payload should include `sub` (user id) and `role` |
+| `TRUST_FORWARDED_FOR` | Default `false`. If `true`, trust `X-Forwarded-For` for client IP (API rate limiting and similar). Enable only behind a trusted reverse proxy. |
 
 **Roles**: `adjuster` (submit/view claims, docs), `supervisor` (all adjuster + reprocess, metrics), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system; may set `skip_authority_check` on reserve updates).
 
 Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
+
+### API idempotency (`Idempotency-Key`)
+
+Mutating claim endpoints support an optional **`Idempotency-Key`** request header so safe retries (e.g. after a timeout) do not create duplicate resources or run duplicate work.
+
+| Behavior | Details |
+|----------|---------|
+| **Header** | `Idempotency-Key`: 1–256 characters; only `a-z`, `A-Z`, `0-9`, `_`, `-`. Invalid values → **400**. |
+| **Scoped key** | The server combines the header with HTTP method, request path, and a fingerprint of auth (`Authorization` if present) and client host so the same key is not shared across users or routes. |
+| **Success cache** | Only **HTTP 200** responses are stored and replayed. **4xx/5xx** are not cached; the in-progress row is released so the client can retry. |
+| **In flight** | If a second request uses the same key while the first is still processing → **409** with `Retry-After: 5`. |
+| **TTL** | Controlled by `IDEMPOTENCY_TTL_SECONDS`. After expiry, a new request with the same key is treated as a new operation. |
+
+**Endpoints that honor `Idempotency-Key`:** `POST /api/claims`, `POST /api/claims/process`, `POST /api/claims/process/async`, `POST /api/incidents`, `POST /api/claim-links`, `POST /api/claims/{claim_id}/portal-token`, and `POST /api/claims/generate` when the body requests submission (`submit: true`).
+
+### API rate limiting
+
+The HTTP API applies a **per-client-IP sliding window** (100 requests per 60 seconds by default; see [`src/claim_agent/api/rate_limit.py`](../src/claim_agent/api/rate_limit.py) for constants). With **`REDIS_URL`** set and the **`redis`** optional dependency installed, counters live in Redis so limits are **consistent across replicas**. If Redis is unavailable at runtime, checks **fail open** (request allowed) after a warning. Client IP uses `X-Forwarded-For` only when **`TRUST_FORWARDED_FOR=true`** (see table above).
 
 ### Adapter Backends
 

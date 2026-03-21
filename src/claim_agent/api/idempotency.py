@@ -1,7 +1,8 @@
-"""Idempotency key support for claim-creation endpoints.
+"""Idempotency key support for selected mutating claim API endpoints.
 
 When clients send an optional Idempotency-Key header, duplicate requests
-with the same key return the cached response without creating a new claim.
+with the same key return the cached response without repeating the operation
+(e.g. duplicate claim creation or portal token issuance).
 
 Uses claim-before-process pattern: first request inserts with status=in_progress,
 processes, then updates to completed. Duplicate requests see in_progress (409) or

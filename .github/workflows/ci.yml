@@ -89,6 +89,37 @@ jobs:
         run: |
           pytest tests/integration/test_postgres.py -v -m integration
 
+  integration-redis:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,redis]"
+
+      - name: Run Redis rate limit integration tests
+        env:
+          REDIS_URL: redis://localhost:6379/15
+        run: |
+          pytest tests/integration/test_rate_limit_redis.py -v -m integration
+
   e2e:
     runs-on: ubuntu-latest
     steps:
