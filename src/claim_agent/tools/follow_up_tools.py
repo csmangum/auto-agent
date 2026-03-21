@@ -35,8 +35,8 @@ def send_user_message(
         user_type: One of claimant, policyholder, witness, attorney, adjuster,
             repair_shop, siu, other.
         message_content: The message to send (questions, requests, clarifications).
-        email: Optional email for claimant/policyholder.
-        phone: Optional phone for SMS.
+        email: Optional email address for the user (any supported user_type).
+        phone: Optional phone number for SMS (any supported user_type).
         identifier: Optional user identifier (e.g., repair shop ID).
 
     Returns:

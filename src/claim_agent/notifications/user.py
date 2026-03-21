@@ -28,7 +28,7 @@ def notify_user(
     """Send follow-up message to a user based on their type.
 
     Routes to the appropriate channel for each user type:
-    - claimant, policyholder: email/SMS via claimant adapter
+    - claimant, policyholder, witness, attorney: email/SMS via claimant adapter
     - repair_shop: portal/API (stub)
     - adjuster, siu: internal (stub)
     - other: generic (stub)
