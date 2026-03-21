@@ -826,6 +826,15 @@ export default function ClaimDetail() {
                           Consent: {p.consent_status ?? '—'} · Auth: {p.authorization_status ?? '—'}
                         </span>
                       )}
+                      {p.relationships && p.relationships.length > 0 && (
+                        <span className="text-gray-500 text-xs w-full basis-full">
+                          {p.relationships.map((r) => {
+                            const target = parties.find((x) => x.id === r.to_party_id);
+                            const label = target?.name ?? `#${r.to_party_id}`;
+                            return `${r.relationship_type} → ${label}`;
+                          }).join(' · ')}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

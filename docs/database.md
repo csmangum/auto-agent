@@ -124,12 +124,22 @@ erDiagram
         text phone
         text address
         text role
-        int represented_by_id
         text consent_status
         text authorization_status
         text created_at
         text updated_at
     }
+
+    claim_party_relationships {
+        int id PK
+        int from_party_id FK
+        int to_party_id FK
+        text relationship_type
+        text created_at
+    }
+
+    claim_parties ||--o{ claim_party_relationships : "from_party"
+    claim_parties ||--o{ claim_party_relationships : "to_party"
 
     claim_payments {
         int id PK
@@ -375,6 +385,8 @@ CREATE INDEX IF NOT EXISTS idx_task_checkpoints_claim_run ON task_checkpoints(cl
 
 Claim parties (claimant, policyholder, witness, attorney, provider, lienholder). Stores identity and contact info for people involved in a claim. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement.
 
+Directed links between parties (attorney representation, lienholder-for-party, etc.) live in **`claim_party_relationships`**, not on `claim_parties`.
+
 ```sql
 CREATE TABLE IF NOT EXISTS claim_parties (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -385,13 +397,11 @@ CREATE TABLE IF NOT EXISTS claim_parties (
     phone TEXT,
     address TEXT,
     role TEXT,
-    represented_by_id INTEGER,
     consent_status TEXT DEFAULT 'pending',
     authorization_status TEXT DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id) REFERENCES claims(id),
-    FOREIGN KEY (represented_by_id) REFERENCES claim_parties(id)
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_id ON claim_parties(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_id, party_type);
@@ -407,11 +417,46 @@ CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_i
 | `phone` | TEXT | Phone for SMS/contact |
 | `address` | TEXT | Address (optional) |
 | `role` | TEXT | Role within claim (e.g., driver, passenger, named_insured) |
-| `represented_by_id` | INTEGER | FK to claim_parties.id of attorney representing this party |
 | `consent_status` | TEXT | pending, granted, revoked |
 | `authorization_status` | TEXT | pending, authorized, denied |
 | `created_at` | TEXT | Timestamp |
 | `updated_at` | TEXT | Last update timestamp |
+
+### claim_party_relationships
+
+Many-to-many-style edges between rows in `claim_parties` on the same claim. Examples: `represented_by` (from represented party to attorney), `lienholder_for`, `witness_for`.
+
+```sql
+CREATE TABLE IF NOT EXISTS claim_party_relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_party_id INTEGER NOT NULL,
+    to_party_id INTEGER NOT NULL,
+    relationship_type TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (from_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from ON claim_party_relationships(from_party_id);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_to ON claim_party_relationships(to_party_id);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
+    ON claim_party_relationships(from_party_id, relationship_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
+    ON claim_party_relationships(from_party_id, to_party_id, relationship_type);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Auto-increment primary key |
+| `from_party_id` | INTEGER | FK to claim_parties.id (subject of the relationship) |
+| `to_party_id` | INTEGER | FK to claim_parties.id (related party) |
+| `relationship_type` | TEXT | e.g. `represented_by`, `lienholder_for`, `witness_for` |
+| `created_at` | TEXT | Timestamp |
+
+**Uniqueness:** At most one row per `(from_party_id, to_party_id, relationship_type)` (`uq_claim_party_relationships_edge`).
+
+**Contact routing:** For claimant primary contact, the repository uses the lowest-`id` `represented_by` edge from the claimant party to an attorney (if that attorney has email or phone).
+
+**API:** `POST /api/claims/{claim_id}/party-relationships`, `DELETE /api/claims/{claim_id}/party-relationships/{relationship_id}` ([`src/claim_agent/api/routes/claims.py`](../src/claim_agent/api/routes/claims.py)).
 
 ### claim_payments
 

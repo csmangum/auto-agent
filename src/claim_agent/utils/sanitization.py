@@ -277,7 +277,6 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
                             "role": _remove_injection_patterns(
                                 _sanitize_text(item.get("role"), MAX_PARTY_ROLE)
                             ) or None,
-                            "represented_by_id": None,  # Invalid at creation; set via update
                             "consent_status": "pending",
                             "authorization_status": "pending",
                         }

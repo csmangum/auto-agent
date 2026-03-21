@@ -18,6 +18,14 @@ export type PartyType =
   | "provider"
   | "lienholder";
 
+/** Outgoing edge from a claim party (see claim_party_relationships). */
+export interface ClaimPartyRelationship {
+  id: number;
+  to_party_id: number;
+  relationship_type: string;
+  created_at?: string;
+}
+
 export interface ClaimParty {
   id: number;
   claim_id: string;
@@ -27,7 +35,7 @@ export interface ClaimParty {
   phone?: string;
   address?: string;
   role?: string;
-  represented_by_id?: number;
+  relationships?: ClaimPartyRelationship[];
   consent_status?: string;
   authorization_status?: string;
   created_at?: string;

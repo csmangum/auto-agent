@@ -75,9 +75,9 @@ Optional list of attachments (photos, PDFs, estimates). Default empty array.
 
 ### parties
 
-Optional list of claim parties. Each party has: `party_type` (claimant, policyholder, witness, attorney, provider, lienholder), `name`, `email`, `phone`, `role`, `represented_by_id`, `consent_status`, `authorization_status`. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement. See [Database](database.md#claim_parties).
+Optional list of claim parties. Each party has: `party_type` (claimant, policyholder, witness, attorney, provider, lienholder), `name`, `email`, `phone`, `role`, `consent_status`, `authorization_status`. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement. See [Database](database.md#claim_parties).
 
-**represented_by_id**: ID of the attorney party representing this party. Only valid when updating an existing party (attorney must already exist in `claim_parties`). At claim creation, `represented_by_id` is ignored—after the claim is created, update the party record to link a claimant to their attorney.
+Party-to-party links (e.g., claimant represented by attorney) are stored in **`claim_party_relationships`** after both parties exist. Use `POST /api/claims/{claim_id}/party-relationships` and `DELETE /api/claims/{claim_id}/party-relationships/{id}` (adjuster roles), or `ClaimRepository.add_claim_party_relationship` / `delete_claim_party_relationship`. They are not set on the FNOL payload; create parties first, then add edges by party id.
 
 ### claim_type
 

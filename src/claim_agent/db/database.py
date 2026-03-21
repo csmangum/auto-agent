@@ -303,16 +303,31 @@ CREATE TABLE IF NOT EXISTS claim_parties (
     phone TEXT,
     address TEXT,
     role TEXT,
-    represented_by_id INTEGER,
     consent_status TEXT DEFAULT 'pending',
     authorization_status TEXT DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id) REFERENCES claims(id),
-    FOREIGN KEY (represented_by_id) REFERENCES claim_parties(id)
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_id ON claim_parties(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_id, party_type);
+
+-- Party-to-party edges (e.g. represented_by, lienholder_for)
+CREATE TABLE IF NOT EXISTS claim_party_relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_party_id INTEGER NOT NULL,
+    to_party_id INTEGER NOT NULL,
+    relationship_type TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (from_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from ON claim_party_relationships(from_party_id);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_to ON claim_party_relationships(to_party_id);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
+    ON claim_party_relationships(from_party_id, relationship_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
+    ON claim_party_relationships(from_party_id, to_party_id, relationship_type);
 
 -- Subrogation cases: recovery tracking and inter-company arbitration
 CREATE TABLE IF NOT EXISTS subrogation_cases (
@@ -694,6 +709,44 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+    # claim_party_relationships: directed typed edges replacing claim_parties.represented_by_id
+    try:
+        conn.execute("SELECT 1 FROM claim_party_relationships LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS claim_party_relationships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_party_id INTEGER NOT NULL,
+                to_party_id INTEGER NOT NULL,
+                relationship_type TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (from_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE,
+                FOREIGN KEY (to_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from
+                ON claim_party_relationships(from_party_id);
+            CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_to
+                ON claim_party_relationships(to_party_id);
+            CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
+                ON claim_party_relationships(from_party_id, relationship_type);
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
+                ON claim_party_relationships(from_party_id, to_party_id, relationship_type);
+        """)
+        # Backfill existing represented_by_id values into the new edges table.
+        try:
+            cursor = conn.execute("PRAGMA table_info(claim_parties)")
+            cp_columns = {row[1] for row in cursor.fetchall()}
+            if "represented_by_id" in cp_columns:
+                # 'represented_by' matches PartyRelationshipType.REPRESENTED_BY.value
+                conn.execute("""
+                    INSERT OR IGNORE INTO claim_party_relationships
+                        (from_party_id, to_party_id, relationship_type)
+                    SELECT id, represented_by_id, 'represented_by'
+                    FROM claim_parties
+                    WHERE represented_by_id IS NOT NULL
+                """)
+        except sqlite3.OperationalError:
+            pass
 
 
 def _run_schema(db_path: str) -> None:

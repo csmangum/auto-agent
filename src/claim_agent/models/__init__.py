@@ -46,7 +46,13 @@ from claim_agent.models.incident import (
     IncidentOutput,
     VehicleClaimInput,
 )
-from claim_agent.models.party import ClaimParty, ClaimPartyInput, PartyType
+from claim_agent.models.party import (
+    ClaimParty,
+    ClaimPartyInput,
+    ClaimPartyRelationship,
+    PartyRelationshipType,
+    PartyType,
+)
 from claim_agent.models.policy_lookup import (
     PolicyLookupFailure,
     PolicyLookupResult,
@@ -96,6 +102,8 @@ __all__ = [
     "UserType",
     "ClaimParty",
     "ClaimPartyInput",
+    "ClaimPartyRelationship",
+    "PartyRelationshipType",
     "PartyType",
     "PolicyLookupFailure",
     "PolicyLookupResult",
