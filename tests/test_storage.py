@@ -78,3 +78,11 @@ class TestLocalStorageAdapter:
         key = storage.save("CLM-008", "", b"x")
         assert "file" in key
         assert storage.exists("CLM-008", key)
+
+    def test_get_path_rejects_parent_segment(self, storage):
+        """Reject .. and other traversal keys before touching the filesystem."""
+        with pytest.raises(ValueError, match="Invalid attachment key"):
+            storage.get_path("CLM-009", "..")
+
+    def test_exists_false_for_invalid_key(self, storage):
+        assert storage.exists("CLM-010", "..") is False

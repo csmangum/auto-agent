@@ -115,6 +115,7 @@ END;
 -- DELETE is allowed for gated retention tooling (see migration 039, audit-log-purge CLI).
 
 CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
+CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id_action ON claim_audit_log(claim_id, action);
 
 -- Workflow results (preserves each processing run)
 CREATE TABLE IF NOT EXISTS workflow_runs (
