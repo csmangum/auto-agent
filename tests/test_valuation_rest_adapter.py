@@ -43,7 +43,8 @@ def test_rest_valuation_adapter_get_vehicle_value(monkeypatch):
             self.kw = kw
 
         def get(self, path, params=None):
-            assert "vin" in path or "VIN99" in path
+            assert "vin=VIN99" in path
+            assert "year=2019" in path
 
             class R:
                 status_code = 200
