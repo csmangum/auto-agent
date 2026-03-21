@@ -152,6 +152,16 @@ class PaymentRepository:
             ).fetchone()
             if row is None:
                 raise ClaimNotFoundError(f"Claim not found: {data.claim_id}")
+            if ext_ref is not None:
+                existing = conn.execute(
+                    text(
+                        "SELECT id FROM claim_payments WHERE claim_id = :claim_id "
+                        "AND external_ref = :external_ref"
+                    ),
+                    {"claim_id": data.claim_id, "external_ref": ext_ref},
+                ).fetchone()
+                if existing is not None:
+                    return int(existing[0])
             party_id: int | None = data.claim_party_id
             if party_id is not None:
                 prow = conn.execute(
@@ -164,16 +174,6 @@ class PaymentRepository:
                     raise DomainValidationError(
                         f"claim_party_id {party_id} does not belong to claim {data.claim_id}"
                     )
-            if ext_ref is not None:
-                existing = conn.execute(
-                    text(
-                        "SELECT id FROM claim_payments WHERE claim_id = :claim_id "
-                        "AND external_ref = :external_ref"
-                    ),
-                    {"claim_id": data.claim_id, "external_ref": ext_ref},
-                ).fetchone()
-                if existing is not None:
-                    return int(existing[0])
             insert_params = {
                 "claim_id": data.claim_id,
                 "amount": data.amount,
