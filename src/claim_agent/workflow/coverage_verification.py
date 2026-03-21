@@ -603,6 +603,10 @@ def _policy_term_verification_result(
             },
         )
 
+    # When ``bad_incident`` is false we already returned if ``incident_d`` was unset.
+    if incident_d is None:
+        return None
+
     if incident_d < eff:
         return CoverageVerificationResult(
             denied=True,

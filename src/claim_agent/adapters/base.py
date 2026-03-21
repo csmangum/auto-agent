@@ -52,6 +52,9 @@ class PolicyAdapter(ABC):
         - ``effective_date`` / ``expiration_date``: inclusive coverage window for FNOL checks.
         - Aliases: ``term_start`` maps to effective, ``term_end`` to expiration (normalized
           in policy query output). Omit both to skip incident-vs-term verification.
+        - If only one of effective/expiration (or ``term_start`` / ``term_end``) is provided,
+          the term is treated as incomplete and FNOL coverage verification escalates to
+          ``under_investigation``; adapters should supply both dates or omit both.
         """
         ...
 

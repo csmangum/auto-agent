@@ -18,6 +18,15 @@ _DEFAULT_DB: dict[str, Any] = {
 }
 
 
+def _policy_term_field_present(value: Any) -> bool:
+    """True if *value* counts as a set term field (non-empty after strip for strings)."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
 def _merge_policy_term_defaults(data: dict[str, Any]) -> None:
     """Apply _meta.policy_term_defaults to policies missing term dates (in-place)."""
     meta = data.get("_meta")
@@ -36,8 +45,12 @@ def _merge_policy_term_defaults(data: dict[str, Any]) -> None:
     for pol in policies.values():
         if not isinstance(pol, dict):
             continue
-        has_eff = pol.get("effective_date") is not None or pol.get("term_start") is not None
-        has_exp = pol.get("expiration_date") is not None or pol.get("term_end") is not None
+        has_eff = _policy_term_field_present(
+            pol.get("effective_date")
+        ) or _policy_term_field_present(pol.get("term_start"))
+        has_exp = _policy_term_field_present(
+            pol.get("expiration_date")
+        ) or _policy_term_field_present(pol.get("term_end"))
         if not has_eff:
             pol["effective_date"] = eff
         if not has_exp:

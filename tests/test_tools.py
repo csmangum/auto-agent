@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 # Point to project data for mock_db
-os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
+os.environ.setdefault(
+    "MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json")
+)
 
 
 def test_query_policy_db_found():
@@ -21,6 +23,14 @@ def test_query_policy_db_found():
     assert data["deductible"] == 500
     assert data["effective_date"] == "2020-01-01"
     assert data["expiration_date"] == "2030-12-31"
+
+
+def test_coerce_policy_date_str_normalizes_iso_datetime_strings():
+    from claim_agent.tools.policy_logic import _coerce_policy_date_str
+
+    assert _coerce_policy_date_str("2023-06-01T14:30:00") == "2023-06-01"
+    assert _coerce_policy_date_str("2023-06-01T14:30:00Z") == "2023-06-01"
+    assert _coerce_policy_date_str("  ") is None
 
 
 def test_query_policy_db_term_alias_normalized():
@@ -234,7 +244,9 @@ def test_generate_claim_id():
 def test_generate_report():
     from claim_agent.tools.document_logic import generate_report_impl
 
-    result = generate_report_impl("CLM-ABC123", "new", "open", "Claim validated and assigned.", None)
+    result = generate_report_impl(
+        "CLM-ABC123", "new", "open", "Claim validated and assigned.", None
+    )
     data = json.loads(result)
     assert data["claim_id"] == "CLM-ABC123"
     assert data["status"] == "open"

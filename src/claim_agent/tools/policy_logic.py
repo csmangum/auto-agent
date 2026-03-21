@@ -18,7 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 def _coerce_policy_date_str(value: Any) -> str | None:
-    """Normalize policy term dates to ISO YYYY-MM-DD for JSON output."""
+    """Normalize policy term dates to ISO ``YYYY-MM-DD`` for JSON output when parseable.
+
+    String inputs: ISO date, ISO datetime (time portion stripped), or other values
+    ``datetime.fromisoformat`` accepts after normalizing a trailing ``Z``. Unparseable
+    non-empty strings are returned trimmed so downstream verification can surface
+    ``policy_term_parse`` rather than silently dropping the field.
+    """
     if value is None:
         return None
     if isinstance(value, date) and not isinstance(value, datetime):
@@ -27,7 +33,18 @@ def _coerce_policy_date_str(value: Any) -> str | None:
         return value.date().isoformat()
     if isinstance(value, str):
         s = value.strip()
-        return s or None
+        if not s:
+            return None
+        if len(s) >= 10:
+            try:
+                return date.fromisoformat(s[:10]).isoformat()
+            except ValueError:
+                pass
+        try:
+            normalized = s.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized).date().isoformat()
+        except ValueError:
+            return s
     return None
 
 

@@ -108,10 +108,9 @@ class TestVerifyCoverageImpl:
             "policy_number": "POL-001",
             "damage_description": "Collision",
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
             from claim_agent.exceptions import AdapterError
+
             mock.side_effect = AdapterError("Policy lookup failed")
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
@@ -122,9 +121,7 @@ class TestVerifyCoverageImpl:
     def test_disabled_returns_passed(self):
         """When coverage verification disabled, returns passed."""
         claim_data = {"policy_number": "POL-001", "damage_description": "Collision"}
-        with patch(
-            "claim_agent.workflow.coverage_verification.get_coverage_config"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.get_coverage_config") as mock:
             mock.return_value = {"enabled": False}
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.passed
@@ -137,9 +134,7 @@ class TestVerifyCoverageImpl:
             "damage_description": "Minor scratch",
             "estimated_damage": 500,
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.get_coverage_config"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.get_coverage_config") as mock:
             mock.return_value = {
                 "enabled": True,
                 "deny_when_deductible_exceeds_damage": True,
@@ -156,9 +151,7 @@ class TestVerifyCoverageImpl:
             "damage_description": "Collision",
             "estimated_damage": "N/A",
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.get_coverage_config"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.get_coverage_config") as mock:
             mock.return_value = {
                 "enabled": True,
                 "deny_when_deductible_exceeds_damage": True,
@@ -379,9 +372,7 @@ class TestVerifyCoverageImpl:
             "named_insured": [{"full_name": "John Doe", "email": "john@example.com"}],
             "drivers": [{"display_name": "Jane Doe", "phone": "555-1234"}],
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
             mock.return_value = json.dumps(policy_response1)
             result1 = verify_coverage_impl(claim_data1, ctx=None)
         assert result1.passed
@@ -396,9 +387,7 @@ class TestVerifyCoverageImpl:
                 {"party_type": "claimant", "name": "Jane Doe"},
             ],
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
             mock.return_value = json.dumps(policy_response1)
             result2 = verify_coverage_impl(claim_data2, ctx=None)
         assert result2.passed
@@ -579,9 +568,7 @@ class TestTerritoryVerification:
             "damage_description": "Collision damage",
             "estimated_damage": 2000,
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.get_coverage_config"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.get_coverage_config") as mock:
             mock.return_value = {
                 "enabled": True,
                 "require_incident_location": True,
@@ -589,7 +576,10 @@ class TestTerritoryVerification:
             ctx = _ctx_with_mock_db(":memory:")
             result = verify_coverage_impl(claim_data, ctx=ctx)
         assert result.under_investigation
-        assert "location required" in result.reason.lower() or "territory verification" in result.reason.lower()
+        assert (
+            "location required" in result.reason.lower()
+            or "territory verification" in result.reason.lower()
+        )
 
     def test_uses_loss_state_as_fallback_for_incident_location(self):
         """When incident_location missing but loss_state present, uses loss_state."""
@@ -752,9 +742,7 @@ class TestTerritoryVerification:
             "damage_description": "Collision damage",
             "estimated_damage": 2000,
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.get_coverage_config"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.get_coverage_config") as mock:
             mock.return_value = {
                 "enabled": True,
                 "require_incident_location": True,
@@ -763,7 +751,10 @@ class TestTerritoryVerification:
             result = verify_coverage_impl(claim_data, ctx=ctx)
         assert result.under_investigation
         assert result.details.get("excluded_territories") == ["Florida"]
-        assert "location required" in result.reason.lower() or "territory verification" in result.reason.lower()
+        assert (
+            "location required" in result.reason.lower()
+            or "territory verification" in result.reason.lower()
+        )
 
     def test_whitespace_only_incident_location_treated_as_missing(self):
         """Whitespace-only location does not run territory deny path; can trigger require."""
@@ -773,9 +764,7 @@ class TestTerritoryVerification:
             "estimated_damage": 2000,
             "incident_location": "   \t",
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.get_coverage_config"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.get_coverage_config") as mock:
             mock.return_value = {
                 "enabled": True,
                 "require_incident_location": True,
@@ -802,9 +791,7 @@ class TestTerritoryVerification:
             "deductible": 500,
             "territory": ["CA", 99],
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
             mock.return_value = json_module.dumps(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
@@ -928,9 +915,7 @@ class TestPolicyTermVerification:
             "estimated_damage": 2000,
             "incident_date": "2025-01-01",
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
             mock.return_value = json_module.dumps(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
@@ -954,9 +939,7 @@ class TestPolicyTermVerification:
             "estimated_damage": 2000,
             "incident_date": "not-a-date",
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
             mock.return_value = json_module.dumps(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
@@ -980,9 +963,7 @@ class TestPolicyTermVerification:
             "estimated_damage": 2000,
             "incident_date": "2025-01-01",
         }
-        with patch(
-            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
-        ) as mock:
+        with patch("claim_agent.workflow.coverage_verification.query_policy_db_impl") as mock:
             mock.return_value = json_module.dumps(fake_policy)
             result = verify_coverage_impl(claim_data, ctx=None)
         assert result.under_investigation
@@ -1029,14 +1010,37 @@ class TestMockDbJson:
         assert db["policies"]["POL-001"]["expiration_date"] == "2030-12-31"
         assert db["policies"]["POL-TERM-EXPIRED"]["expiration_date"] == "2024-06-01"
 
+    def test_merge_policy_term_defaults_empty_string_counts_as_missing(self):
+        """Whitespace-only term fields should not block _meta.policy_term_defaults merge."""
+        from claim_agent.data.loader import _merge_policy_term_defaults
+
+        data: dict = {
+            "_meta": {
+                "policy_term_defaults": {
+                    "effective_date": "2020-01-01",
+                    "expiration_date": "2030-01-01",
+                }
+            },
+            "policies": {
+                "P-EMPTY": {
+                    "effective_date": "",
+                    "expiration_date": "   ",
+                    "term_start": "\t",
+                    "term_end": "",
+                }
+            },
+        }
+        _merge_policy_term_defaults(data)
+        pol = data["policies"]["P-EMPTY"]
+        assert pol["effective_date"] == "2020-01-01"
+        assert pol["expiration_date"] == "2030-01-01"
+
 
 class TestCoverageStageIntegration:
     """Integration-style tests: coverage stage denies before router runs."""
 
     @pytest.mark.integration
-    def test_workflow_denies_coverage_before_router(
-        self, integration_db, mock_llm_instance
-    ):
+    def test_workflow_denies_coverage_before_router(self, integration_db, mock_llm_instance):
         """Claim with POL-008 + theft is denied at coverage stage; router never runs."""
         from claim_agent.crews.main_crew import run_claim_workflow
 
@@ -1058,7 +1062,10 @@ class TestCoverageStageIntegration:
 
         assert result["status"] == STATUS_DENIED
         assert "claim_id" in result
-        assert "denied" in result.get("workflow_output", "").lower() or "coverage" in result.get("summary", "").lower()
+        assert (
+            "denied" in result.get("workflow_output", "").lower()
+            or "coverage" in result.get("summary", "").lower()
+        )
 
         repo = ClaimRepository(db_path=integration_db)
         claim = repo.get_claim(result["claim_id"])
