@@ -502,8 +502,58 @@ class TestRecordDmvSalvageReport:
             ctx=None,
         )
         data = json.loads(result)
-        assert "error" in data
+        assert set(data.keys()) == {"error", "claim_id"}
         assert data["claim_id"] == "CLM-NONEXISTENT"
+        assert data["error"] == "Claim not found: CLM-NONEXISTENT"
+        assert isinstance(data["error"], str) and data["error"]
+
+    def test_record_dmv_report_empty_dmv_reference_returns_error(self, temp_claim_db):
+        result = record_dmv_salvage_report_impl(
+            claim_id="CLM-DMV-001",
+            dmv_reference="   ",
+            ctx=None,
+        )
+        data = json.loads(result)
+        assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-DMV-001"
+        assert data["error"] == "dmv_reference is required"
+
+    def test_record_dmv_report_dmv_reference_too_long_returns_error(self, temp_claim_db):
+        long_ref = "X" * 257
+        result = record_dmv_salvage_report_impl(
+            claim_id="CLM-DMV-001",
+            dmv_reference=long_ref,
+            ctx=None,
+        )
+        data = json.loads(result)
+        assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-DMV-001"
+        assert "dmv_reference exceeds" in data["error"]
+
+    def test_record_dmv_report_invalid_salvage_title_status_returns_error(self, temp_claim_db):
+        result = record_dmv_salvage_report_impl(
+            claim_id="CLM-DMV-001",
+            dmv_reference="DMV-OK",
+            salvage_title_status="not_a_valid_status",
+            ctx=None,
+        )
+        data = json.loads(result)
+        assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-DMV-001"
+        assert "salvage_title_status must be one of:" in data["error"]
+
+    def test_record_dmv_salvage_report_tool_missing_claim_via_run(self, temp_claim_db):
+        """CrewAI tool wrapper returns the same error shape as the impl."""
+        from claim_agent.tools.salvage_tools import record_dmv_salvage_report
+
+        out = record_dmv_salvage_report.run(
+            claim_id="CLM-NONEXISTENT",
+            dmv_reference="DMV-WRAPPER",
+        )
+        data = json.loads(out)
+        assert set(data.keys()) == {"error", "claim_id"}
+        assert data["claim_id"] == "CLM-NONEXISTENT"
+        assert data["error"] == "Claim not found: CLM-NONEXISTENT"
 
 
 class TestSubmitNmvtisReport:
