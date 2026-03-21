@@ -397,8 +397,11 @@ class ClaimRepository:
                         "after_state": reserve_state,
                     },
                 )
+        intake_has_policyholder = any(
+            getattr(p, "party_type", None) == "policyholder" for p in (claim_input.parties or [])
+        )
         policy_for_fnol = policy
-        if policy_for_fnol is None:
+        if not intake_has_policyholder and policy_for_fnol is None:
             try:
                 from claim_agent.adapters.registry import get_policy_adapter
 

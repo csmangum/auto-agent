@@ -1,12 +1,7 @@
 """FNOL policyholder merge from policy named_insured (issue #266)."""
 
-import os
-import tempfile
 from datetime import date
 
-import pytest
-
-from claim_agent.db.database import init_db
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput
@@ -14,20 +9,6 @@ from claim_agent.services.fnol_policyholder import (
     merge_fnol_parties_with_named_insured_policyholder,
     policyholder_party_from_named_insured,
 )
-
-
-@pytest.fixture
-def temp_db():
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    init_db(path)
-    try:
-        yield path
-    finally:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
 
 
 def test_policyholder_from_named_insured_first_with_name():
