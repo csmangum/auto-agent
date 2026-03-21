@@ -11,6 +11,7 @@ import TaskPanel from '../components/TaskPanel';
 import PaymentPanel from '../components/PaymentPanel';
 import CommunicationLog from '../components/CommunicationLog';
 import CoverageSummary from '../components/CoverageSummary';
+import DocumentVersionCompare from '../components/DocumentVersionCompare';
 import {
   useClaim,
   useClaimHistory,
@@ -28,7 +29,13 @@ import {
   useDeletePartyRelationship,
 } from '../api/queries';
 import { formatDateTime } from '../utils/date';
-import type { ReserveAdequacyResponse, ReserveHistoryEntry, ClaimParty } from '../api/types';
+import type {
+  ReserveAdequacyResponse,
+  ReserveHistoryEntry,
+  ClaimParty,
+  ClaimDocument,
+  DocumentVersionGroup,
+} from '../api/types';
 import type { PatchClaimReserveBody } from '../api/client';
 
 interface ReserveTabProps {
@@ -362,11 +369,8 @@ const DOC_TYPE_ICONS: Record<string, string> = {
 };
 
 interface DocumentsTabProps {
-  documents: Array<{
-    id: number; claim_id: string; storage_key: string; document_type: string;
-    received_from?: string; review_status: string; privileged: boolean;
-    url?: string; created_at?: string; updated_at?: string;
-  }>;
+  documents: ClaimDocument[];
+  versionGroups?: DocumentVersionGroup[];
   attachments: Array<{ url: string; type: string; description?: string }>;
   docRequests: Array<{
     id: number; claim_id: string; document_type: string;
@@ -378,8 +382,13 @@ interface DocumentsTabProps {
 }
 
 function DocumentsTab({
-  documents, attachments, docRequests,
-  uploadMutation, updateDocMutation, createDocRequestMutation,
+  documents,
+  versionGroups,
+  attachments,
+  docRequests,
+  uploadMutation,
+  updateDocMutation,
+  createDocRequestMutation,
 }: DocumentsTabProps) {
   const [uploadType, setUploadType] = useState('other');
   const [uploadFrom, setUploadFrom] = useState('claimant');
@@ -486,6 +495,45 @@ function DocumentsTab({
         )}
       </div>
 
+      {/* Version history (grouped by storage_key when API returns version_groups) */}
+      {versionGroups && versionGroups.length > 0 && (
+        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+          <h3 className="text-sm font-semibold text-gray-300 mb-2">Version history</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Documents with the same storage key are shown as a timeline. The highest version is marked
+            current; older rows are superseded.
+          </p>
+          <div className="space-y-4">
+            {versionGroups.map((g) => (
+              <div
+                key={g.storage_key || `grp-${g.versions[0]?.id}`}
+                className="rounded-lg bg-gray-900/40 ring-1 ring-gray-700/40 p-3"
+              >
+                <p className="text-xs text-gray-400 truncate font-mono" title={g.storage_key}>
+                  {(g.storage_key || '').split('/').pop() || g.storage_key || '—'}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {g.versions.map((v) => (
+                    <div
+                      key={v.id}
+                      className={`rounded-md px-2 py-1 text-xs ${
+                        v.is_current_version
+                          ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30'
+                          : 'bg-gray-700/40 text-gray-400'
+                      }`}
+                    >
+                      v{v.version ?? 1}
+                      {v.is_current_version ? ' · current' : ' · superseded'}
+                      <span className="text-gray-500 ml-1">#{v.id}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Documents list */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-4">
@@ -518,6 +566,9 @@ function DocumentsTab({
                             {doc.review_status}
                           </span>
                           {doc.privileged && <span className="text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">Privileged</span>}
+                          <span className="text-xs bg-gray-700/60 text-gray-300 px-1.5 py-0.5 rounded">
+                            v{doc.version ?? 1}
+                          </span>
                           <span className="text-xs text-gray-600">{formatDateTime(doc.created_at)}</span>
                         </div>
                         {/* Preview for images */}
@@ -567,6 +618,8 @@ function DocumentsTab({
           </div>
         )}
       </div>
+
+      <DocumentVersionCompare documents={documents} />
 
       {/* Document Requests */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
@@ -771,7 +824,7 @@ export default function ClaimDetail() {
   } = useClaimReserveAdequacy(claimId);
   const patchReserveMutation = usePatchClaimReserve(claimId);
   const addNoteMutation = useAddClaimNote(claimId);
-  const { data: docsData } = useClaimDocuments(claimId);
+  const { data: docsData } = useClaimDocuments(claimId, { groupBy: 'storage_key' });
   const uploadDocMutation = useUploadDocument(claimId);
   const updateDocMutation = useUpdateDocument(claimId);
   const { data: docRequestsData } = useDocumentRequests(claimId);
@@ -1072,6 +1125,7 @@ export default function ClaimDetail() {
         {activeTab === 'documents' && (
           <DocumentsTab
             documents={documents}
+            versionGroups={docsData?.version_groups}
             attachments={attachments}
             docRequests={docRequests}
             uploadMutation={uploadDocMutation}
