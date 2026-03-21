@@ -415,4 +415,84 @@ describe('ClaimDetail', () => {
     expect(screen.getByText('routed')).toBeInTheDocument();
     expect(screen.getByText('done')).toBeInTheDocument();
   });
+
+  it('shows liability fields in claim details when present', () => {
+    vi.mocked(useClaim).mockReturnValue({
+      data: {
+        ...mockClaim,
+        liability_percentage: 40,
+        liability_basis: 'Comparative negligence per police report',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+
+    expect(screen.getByText('Liability %')).toBeInTheDocument();
+    expect(screen.getByText('40%')).toBeInTheDocument();
+    expect(screen.getByText('Liability Basis')).toBeInTheDocument();
+    expect(screen.getByText('Comparative negligence per police report')).toBeInTheDocument();
+  });
+
+  it('shows subrogation cases with amounts, carrier, status badges, and liability line', () => {
+    vi.mocked(useClaim).mockReturnValue({
+      data: {
+        ...mockClaim,
+        subrogation_cases: [
+          {
+            id: 1,
+            claim_id: 'CLM-001',
+            case_id: 'SUB-2025-01',
+            amount_sought: 12000,
+            opposing_carrier: 'Other Insurance Co',
+            status: 'pending',
+            liability_percentage: 25,
+            liability_basis: 'BI demand basis',
+            recovery_amount: 3000,
+          },
+          {
+            id: 2,
+            claim_id: 'CLM-001',
+            case_id: 'SUB-ARB',
+            amount_sought: 5000,
+            opposing_carrier: 'ACME Ins',
+            status: 'partial',
+            arbitration_status: 'filed',
+            arbitration_forum: 'AAA',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+
+    expect(screen.getByText('Subrogation Cases')).toBeInTheDocument();
+    expect(screen.getByText('SUB-2025-01')).toBeInTheDocument();
+    expect(screen.getByText('SUB-ARB')).toBeInTheDocument();
+    expect(screen.getByText('$12,000 sought')).toBeInTheDocument();
+    expect(screen.getByText('$12,000')).toBeInTheDocument();
+    expect(screen.getByText(/sought/i)).toBeInTheDocument();
+    expect(screen.getByText('vs Other Insurance Co')).toBeInTheDocument();
+    expect(screen.getByText('vs ACME Ins')).toBeInTheDocument();
+    expect(screen.getByText('pending')).toBeInTheDocument();
+    expect(screen.getByText('Arbitration: AAA')).toBeInTheDocument();
+    expect(screen.getByText(/Liability: 25%/)).toBeInTheDocument();
+    expect(screen.getByText(/BI demand basis/)).toBeInTheDocument();
+    expect(screen.getByText(/Recovered:.*3,000/)).toBeInTheDocument();
+    expect(screen.getByText('Liability: 25%')).toBeInTheDocument();
+    expect(screen.getByText('BI demand basis')).toBeInTheDocument();
+    expect(screen.getByText(/Recovered:/i)).toBeInTheDocument();
+    expect(screen.getByText('3,000')).toBeInTheDocument();
+  });
 });
