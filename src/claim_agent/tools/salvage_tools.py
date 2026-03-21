@@ -95,7 +95,9 @@ def record_dmv_salvage_report(
         salvage_title_status: pending, dmv_reported, or certificate_issued.
 
     Returns:
-        JSON with recorded DMV report details.
+        JSON with recorded DMV report details on success. On validation error or
+        if the claim does not exist, JSON with ``error`` (message string) and
+        ``claim_id`` only.
     """
     return record_dmv_salvage_report_impl(
         claim_id=claim_id,
