@@ -39,6 +39,10 @@ describe('date utils', () => {
       expect(typeof result).toBe('string');
     });
 
+    it('treats ISO date-only strings as local calendar dates (not UTC midnight)', () => {
+      expect(formatDate('2026-03-31')).toBe(new Date(2026, 2, 31).toLocaleDateString());
+    });
+
     it('returns null for null', () => {
       expect(formatDate(null)).toBeNull();
     });

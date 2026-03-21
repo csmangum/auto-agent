@@ -12,6 +12,7 @@ from claim_agent.compliance.ucspa import (
     get_ucspa_deadlines,
     create_ucspa_compliance_tasks,
     claims_with_deadlines_approaching,
+    payment_due_iso_after_settlement_moment,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "get_ucspa_deadlines",
     "create_ucspa_compliance_tasks",
     "claims_with_deadlines_approaching",
+    "payment_due_iso_after_settlement_moment",
 ]

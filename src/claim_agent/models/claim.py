@@ -107,6 +107,7 @@ class ClaimRecord(BaseModel):
     acknowledgment_due: Optional[str] = Field(default=None)
     investigation_due: Optional[str] = Field(default=None)
     payment_due: Optional[str] = Field(default=None)
+    settlement_agreed_at: Optional[str] = Field(default=None)
     denial_reason: Optional[str] = Field(default=None)
     denial_letter_sent_at: Optional[str] = Field(default=None)
     denial_letter_body: Optional[str] = Field(default=None)

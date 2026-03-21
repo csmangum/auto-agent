@@ -18,6 +18,8 @@ from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from claim_agent.models.claim import Attachment
 
+from claim_agent.compliance.ucspa import payment_due_iso_after_settlement_moment
+
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
     ACTOR_SYSTEM,
@@ -88,6 +90,9 @@ from claim_agent.models.party import ClaimPartyInput, PartyRelationshipType
 RELATION_SHARED_VIN = "shared_vin"
 RELATION_SHARED_ADDRESS = "shared_address"
 RELATION_SHARED_PROVIDER = "shared_provider"
+
+# Matches ``auto_created_from`` for FNOL UCSPA prompt-payment tasks (see ucspa.create_ucspa_compliance_tasks).
+_UCSPA_PROMPT_PAYMENT_TASK_MARKER = "ucspa:prompt_payment"
 
 
 def _generate_claim_id(prefix: str = "CLM") -> str:
@@ -550,7 +555,7 @@ class ClaimRepository:
         Returns new relationship row id.
         """
         # Extract .value if it's an enum, otherwise treat as string
-        rt_value = getattr(relationship_type, 'value', relationship_type)
+        rt_value = getattr(relationship_type, "value", relationship_type)
         rt = str(rt_value).strip().lower()
         allowed = {e.value for e in PartyRelationshipType}
         if rt not in allowed:
@@ -794,16 +799,14 @@ class ClaimRepository:
             return
         warn_details = (
             f"Reserve inadequate at status={new_status} (warn mode allows transition); "
-            f"warning_codes={','.join(codes)}; "
-            + "; ".join(warnings[:5])
+            f"warning_codes={','.join(codes)}; " + "; ".join(warnings[:5])
         )
         if mode == "warn":
             details = warn_details
         elif mode == "block" and skip_adequacy_check and elevated:
             details = (
                 f"Reserve adequacy waived (role={role}); "
-                f"warning_codes={','.join(codes)}; "
-                + "; ".join(warnings[:5])
+                f"warning_codes={','.join(codes)}; " + "; ".join(warnings[:5])
             )
         else:
             return
@@ -856,7 +859,8 @@ class ClaimRepository:
                 text(
                     "SELECT status, claim_type, payout_amount, "
                     "repair_ready_for_settlement, total_loss_settlement_authorized, "
-                    "reserve_amount, estimated_damage "
+                    "reserve_amount, estimated_damage, loss_state, settlement_agreed_at, "
+                    "payment_due "
                     "FROM claims WHERE id = :claim_id"
                 ),
                 {"claim_id": claim_id},
@@ -904,19 +908,16 @@ class ClaimRepository:
                 else old_tla
             )
 
+            final_payment_due = row_d.get("payment_due")
+            final_settlement_agreed_at = row_d.get("settlement_agreed_at")
             before_state = {
                 "status": old_status,
                 "claim_type": old_claim_type,
                 "payout_amount": old_payout,
                 "repair_ready_for_settlement": old_rr,
                 "total_loss_settlement_authorized": old_tla,
-            }
-            after_state = {
-                "status": new_status,
-                "claim_type": claim_type if claim_type is not None else old_claim_type,
-                "payout_amount": payout_amount if payout_amount is not None else old_payout,
-                "repair_ready_for_settlement": new_rr,
-                "total_loss_settlement_authorized": new_tla,
+                "payment_due": final_payment_due,
+                "settlement_agreed_at": final_settlement_agreed_at,
             }
 
             # Explicit parameterized queries (no dynamic SQL)
@@ -987,6 +988,58 @@ class ClaimRepository:
                     },
                 )
 
+            if (
+                new_status == STATUS_SETTLED
+                and old_status != STATUS_SETTLED
+                and row_d.get("settlement_agreed_at") is None
+            ):
+                loss_state_val = row_d.get("loss_state")
+                new_pd = payment_due_iso_after_settlement_moment(now, loss_state_val)
+                if new_pd:
+                    conn.execute(
+                        text("""
+                        UPDATE claims SET settlement_agreed_at = :sa,
+                            payment_due = :pd, updated_at = :now_u
+                        WHERE id = :claim_id
+                        """),
+                        {"sa": now, "pd": new_pd, "now_u": now, "claim_id": claim_id},
+                    )
+                    final_payment_due = new_pd
+                    final_settlement_agreed_at = now
+                    task_rows = conn.execute(
+                        text("""
+                        SELECT id FROM claim_tasks
+                        WHERE claim_id = :claim_id
+                          AND auto_created_from = :marker
+                          AND status NOT IN ('completed', 'cancelled')
+                        """),
+                        {
+                            "claim_id": claim_id,
+                            "marker": _UCSPA_PROMPT_PAYMENT_TASK_MARKER,
+                        },
+                    ).fetchall()
+                    for tr in task_rows:
+                        tid = int(tr[0])
+                        conn.execute(
+                            text("""
+                            UPDATE claim_tasks SET due_date = :due, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = :tid
+                            """),
+                            {"due": new_pd, "tid": tid},
+                        )
+                        conn.execute(
+                            text("""
+                            INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
+                            VALUES (:claim_id, :action, :details, :actor_id)
+                            """),
+                            {
+                                "claim_id": claim_id,
+                                "action": AUDIT_EVENT_TASK_UPDATED,
+                                "details": json.dumps({"task_id": tid, "due_date": new_pd}),
+                                "actor_id": actor_id,
+                            },
+                        )
+
             if new_status == STATUS_CLOSED:
                 conn.execute(
                     text(
@@ -1000,6 +1053,15 @@ class ClaimRepository:
                     },
                 )
 
+            after_state = {
+                "status": new_status,
+                "claim_type": claim_type if claim_type is not None else old_claim_type,
+                "payout_amount": payout_amount if payout_amount is not None else old_payout,
+                "repair_ready_for_settlement": new_rr,
+                "total_loss_settlement_authorized": new_tla,
+                "payment_due": final_payment_due,
+                "settlement_agreed_at": final_settlement_agreed_at,
+            }
             conn.execute(
                 text("""
                 INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id, before_state, after_state)

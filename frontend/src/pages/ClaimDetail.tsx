@@ -28,7 +28,7 @@ import {
   useCreatePartyRelationship,
   useDeletePartyRelationship,
 } from '../api/queries';
-import { formatDateTime } from '../utils/date';
+import { formatDateTime, formatDate } from '../utils/date';
 import type {
   ReserveAdequacyResponse,
   ReserveHistoryEntry,
@@ -906,6 +906,7 @@ export default function ClaimDetail() {
       { label: 'Liability %', value: claim.liability_percentage != null ? `${claim.liability_percentage}%` : '—' },
       { label: 'Liability Basis', value: claim.liability_basis ?? '—' },
     ] : []),
+    { label: 'Loss state', value: claim.loss_state ?? '—' },
     { label: 'Created', value: formatDateTime(claim.created_at) ?? '—' },
     { label: 'Updated', value: formatDateTime(claim.updated_at) ?? '—' },
   ];
@@ -965,6 +966,67 @@ export default function ClaimDetail() {
                 ))}
               </div>
             </div>
+
+            {/* UCSPA / compliance deadlines */}
+            {(claim.acknowledgment_due ||
+              claim.investigation_due ||
+              claim.payment_due ||
+              claim.acknowledged_at ||
+              claim.settlement_agreed_at ||
+              claim.denial_letter_sent_at ||
+              claim.denial_reason) && (
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 border-l-[3px] border-l-emerald-500/40">
+                <h3 className="text-sm font-semibold text-gray-300 mb-1">UCSPA &amp; deadlines</h3>
+                <p className="text-xs text-gray-500 mb-4">
+                  State SLAs and prompts. Payment due uses the settlement date when the claim has
+                  reached settled status (otherwise FNOL-based estimate).
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Acknowledgment due</p>
+                    <p className="text-sm mt-0.5 text-gray-200 font-mono">
+                      {formatDate(claim.acknowledgment_due) ?? claim.acknowledgment_due ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Acknowledged at</p>
+                    <p className="text-sm mt-0.5 text-gray-200 font-mono">
+                      {formatDateTime(claim.acknowledged_at) ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Investigation due</p>
+                    <p className="text-sm mt-0.5 text-gray-200 font-mono">
+                      {formatDate(claim.investigation_due) ?? claim.investigation_due ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Payment due</p>
+                    <p className="text-sm mt-0.5 text-gray-200 font-mono">
+                      {formatDate(claim.payment_due) ?? claim.payment_due ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Settlement agreed</p>
+                    <p className="text-sm mt-0.5 text-gray-200 font-mono">
+                      {formatDateTime(claim.settlement_agreed_at) ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Denial letter sent</p>
+                    <p className="text-sm mt-0.5 text-gray-200 font-mono">
+                      {formatDateTime(claim.denial_letter_sent_at) ?? '—'}
+                    </p>
+                  </div>
+                </div>
+                {claim.denial_reason && (
+                  <div className="mt-4 pt-4 border-t border-gray-700/50">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Denial reason</p>
+                    <p className="text-sm text-gray-300 whitespace-pre-wrap">{claim.denial_reason}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Parties */}
             {parties.length > 0 && (
