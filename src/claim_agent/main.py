@@ -12,7 +12,7 @@ import math
 import os
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 import uvicorn
@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from claim_agent.config import get_settings
 from claim_agent.config.settings import (
+    get_purge_after_archive_by_state,
     get_retention_by_state,
     get_retention_period_years,
     get_retention_purge_after_archive_years,
@@ -553,17 +554,24 @@ def retention_purge(
 ) -> None:
     """Purge archived claims past purge horizon (anonymize PII, status purged)."""
     purge_years = years if years is not None else get_retention_purge_after_archive_years()
+    purge_by_state = get_purge_after_archive_by_state() if years is None else None
     ctx = _get_cli_ctx()
     repo = ctx.repo
     claims = repo.list_claims_for_purge(
         purge_years,
+        purge_by_state=purge_by_state,
         exclude_litigation_hold=not include_litigation_hold,
     )
+
+    purge_state_info: dict[str, Any] = {}
+    if purge_by_state:
+        purge_state_info["purge_by_state"] = purge_by_state
 
     if dry_run:
         typer.echo(json.dumps({
             "dry_run": True,
             "purge_after_archive_years": purge_years,
+            **purge_state_info,
             "claims_to_purge": len(claims),
             "claim_ids": [c["id"] for c in claims],
         }, indent=2))
@@ -582,6 +590,7 @@ def retention_purge(
 
     typer.echo(json.dumps({
         "purge_after_archive_years": purge_years,
+        **purge_state_info,
         "purged_count": len(purged),
         "purged_claim_ids": purged,
         "failed_count": len(failed),
@@ -612,11 +621,13 @@ def retention_report(
     purge_after = (
         purge_years if purge_years is not None else get_retention_purge_after_archive_years()
     )
+    purge_by_state = get_purge_after_archive_by_state() if purge_years is None else None
     ctx = _get_cli_ctx()
     report = ctx.repo.retention_report(
         retention_years,
         retention_by_state=retention_by_state,
         purge_after_archive_years=purge_after,
+        purge_by_state=purge_by_state,
     )
     typer.echo(json.dumps(report, indent=2))
 
