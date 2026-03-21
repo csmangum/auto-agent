@@ -14,6 +14,7 @@ Requirements for a RAG corpus that provides prompt context and agentic search to
 | Texas | `data/texas_auto_policy_language.json` | Complete |
 | Florida | `data/florida_auto_policy_language.json` | Complete |
 | New York | `data/new_york_auto_policy_language.json` | Complete |
+| Georgia | — | Gap (compliance JSON added; policy language file not yet) |
 
 ### Compliance / Regulatory (statutes, regulations, deadlines, disclosures)
 
@@ -23,8 +24,9 @@ Requirements for a RAG corpus that provides prompt context and agentic search to
 | Texas | `data/texas_auto_compliance.json` | Complete |
 | Florida | `data/florida_auto_compliance.json` | Complete |
 | New York | `data/new_york_auto_compliance.json` | Complete |
+| Georgia | `data/georgia_auto_compliance.json` | Partial (diminished value / 17c; expand over time) |
 
-All four states are indexed by the RAG retriever. Compliance tools (`get_compliance_deadlines`, `get_required_disclosures`, `get_fraud_detection_guidance`, `get_repair_standards`, `get_total_loss_requirements`, `search_state_compliance`) return state-specific results when passed the appropriate state.
+California, Texas, Florida, New York, and Georgia compliance JSON files under `data/` are ingested by the RAG chunker (`*_auto_compliance.json`). Compliance tools (`get_compliance_deadlines`, `get_required_disclosures`, `get_fraud_detection_guidance`, `get_repair_standards`, `get_total_loss_requirements`, `search_state_compliance`) return state-specific results when passed the appropriate state.
 
 ---
 
