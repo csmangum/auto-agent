@@ -303,16 +303,29 @@ CREATE TABLE IF NOT EXISTS claim_parties (
     phone TEXT,
     address TEXT,
     role TEXT,
-    represented_by_id INTEGER,
     consent_status TEXT DEFAULT 'pending',
     authorization_status TEXT DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id) REFERENCES claims(id),
-    FOREIGN KEY (represented_by_id) REFERENCES claim_parties(id)
+    FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_id ON claim_parties(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_parties_claim_type ON claim_parties(claim_id, party_type);
+
+-- Party-to-party edges (e.g. represented_by, lienholder_for)
+CREATE TABLE IF NOT EXISTS claim_party_relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_party_id INTEGER NOT NULL,
+    to_party_id INTEGER NOT NULL,
+    relationship_type TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (from_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from ON claim_party_relationships(from_party_id);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_to ON claim_party_relationships(to_party_id);
+CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
+    ON claim_party_relationships(from_party_id, relationship_type);
 
 -- Subrogation cases: recovery tracking and inter-company arbitration
 CREATE TABLE IF NOT EXISTS subrogation_cases (

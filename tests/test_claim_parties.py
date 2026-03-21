@@ -8,7 +8,7 @@ import pytest
 from claim_agent.db.database import init_db
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
-from claim_agent.models.party import ClaimPartyInput
+from claim_agent.models.party import ClaimPartyInput, PartyRelationshipType
 from datetime import date
 
 
@@ -62,6 +62,7 @@ def test_add_claim_party(repo, claim_id):
     assert parties[0]["name"] == "Jane Doe"
     assert parties[0]["email"] == "jane@example.com"
     assert parties[0]["phone"] == "555-123-4567"
+    assert parties[0].get("relationships") == []
 
 
 def test_get_claim_parties_filtered_by_type(repo, claim_id):
@@ -138,7 +139,18 @@ def test_get_primary_contact_for_user_type_claimant_with_attorney(repo, claim_id
             phone="555-999",
         ),
     )
-    repo.update_claim_party(claimant_id, {"represented_by_id": attorney_id})
+    repo.add_claim_party_relationship(
+        claim_id,
+        claimant_id,
+        attorney_id,
+        PartyRelationshipType.REPRESENTED_BY.value,
+    )
+    claimant_row = repo.get_claim_party_by_type(claim_id, "claimant")
+    assert claimant_row is not None
+    rels = claimant_row.get("relationships") or []
+    assert len(rels) == 1
+    assert rels[0]["to_party_id"] == attorney_id
+    assert rels[0]["relationship_type"] == PartyRelationshipType.REPRESENTED_BY.value
     contact = repo.get_primary_contact_for_user_type(claim_id, "claimant")
     assert contact is not None
     assert contact["email"] == "attorney@law.com"

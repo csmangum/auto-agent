@@ -121,7 +121,6 @@ def test_sanitize_claim_data_parties():
                 "email": "jane@example.com",
                 "phone": "555-123-4567",
                 "role": "driver",
-                "represented_by_id": 999,  # Stripped at creation
             },
             {"party_type": "invalid_type", "name": "Bad"},  # Skipped - invalid type
             {
@@ -136,7 +135,7 @@ def test_sanitize_claim_data_parties():
     claimant = out["parties"][0]
     assert claimant["party_type"] == "claimant"
     assert claimant["name"] == "Jane Doe"
-    assert claimant["represented_by_id"] is None
+    assert "represented_by_id" not in claimant
     policyholder = out["parties"][1]
     assert policyholder["party_type"] == "policyholder"
     assert "[redacted]" in policyholder["name"]
