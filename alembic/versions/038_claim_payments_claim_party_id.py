@@ -24,12 +24,18 @@ def upgrade() -> None:
             )
         )
     else:
-        op.execute(
-            text(
-                "ALTER TABLE claim_payments ADD COLUMN claim_party_id INTEGER "
-                "REFERENCES claim_parties(id)"
+        # For SQLite (and other non-PostgreSQL dialects), first check whether
+        # the column already exists to avoid duplicate-column errors when the
+        # application has already applied schema changes outside Alembic.
+        existing_columns_result = bind.execute(text("PRAGMA table_info(claim_payments)"))
+        existing_column_names = {row[1] for row in existing_columns_result}
+        if "claim_party_id" not in existing_column_names:
+            op.execute(
+                text(
+                    "ALTER TABLE claim_payments ADD COLUMN claim_party_id INTEGER "
+                    "REFERENCES claim_parties(id)"
+                )
             )
-        )
 
 
 def downgrade() -> None:
