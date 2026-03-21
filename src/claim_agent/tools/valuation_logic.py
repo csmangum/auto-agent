@@ -185,9 +185,11 @@ def _coordinate_gap_shortfall(
             "Gap carrier integration not configured; manual coordination required."
         )
         return out
-    except Exception as e:
+    except Exception:
         logger.exception("Gap insurance submission failed")
-        out["gap_coordination_error"] = str(e)
+        out["gap_coordination_error"] = (
+            "Gap carrier submission failed; manual coordination required."
+        )
         return out
 
     out["gap_claim_id"] = submitted.get("gap_claim_id")
@@ -202,14 +204,27 @@ def _coordinate_gap_shortfall(
     if submitted.get("message"):
         out["gap_carrier_message"] = submitted["message"]
 
+    # Only poll the gap carrier when the initial submission response does not
+    # provide all of the fields we care about. This avoids an extra network
+    # call in cases where the submission already contains final status data.
+    should_poll = any(
+        key not in out or out[key] is None
+        for key in (
+            "gap_claim_status",
+            "gap_approved_amount",
+            "gap_denial_reason",
+            "gap_remaining_shortfall",
+        )
+    )
+
     gap_ref = out.get("gap_claim_id")
-    if isinstance(gap_ref, str) and gap_ref:
+    if isinstance(gap_ref, str) and gap_ref and should_poll:
         try:
             polled = adapter.get_claim_status(gap_ref)
         except NotImplementedError:
             polled = None
         except Exception as e:
-            logger.exception("Gap insurance status polling failed for %s", gap_ref)
+            logger.warning("Gap insurance status poll failed for %s: %s", gap_ref, e)
             polled = None
         if polled:
             st = polled.get("status")
