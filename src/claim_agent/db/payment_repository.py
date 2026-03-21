@@ -37,22 +37,45 @@ _STATUS_VOIDED = PaymentStatus.VOIDED.value
 _EXTERNAL_REF_MAX = 200
 
 
+def settlement_payee_and_party_id_from_claim_data(claim_data: dict) -> tuple[str, int | None]:
+    """Primary payee label and DB party id for automated settlement disbursement.
+
+    Returns (payee, claim_party_id) from the same matched party to maintain referential integrity.
+    Prefers claimant, then policyholder. Returns ("Claimant", None) if no valid party is found.
+    """
+    parties = claim_data.get("parties") or []
+    if not isinstance(parties, list):
+        return ("Claimant", None)
+    for pref in ("claimant", "policyholder"):
+        for p in parties:
+            if not isinstance(p, dict):
+                continue
+            if (p.get("party_type") or "").lower() != pref:
+                continue
+            name = (p.get("name") or "").strip()
+            raw_id = p.get("id")
+            sanitized = sanitize_payee(name) if name else None
+            if sanitized:
+                party_id: int | None = None
+                if raw_id is not None:
+                    try:
+                        party_id = int(raw_id)
+                    except (TypeError, ValueError):
+                        pass
+                return (sanitized, party_id)
+    return ("Claimant", None)
+
+
 def settlement_payee_from_claim_data(claim_data: dict) -> str:
     """Primary payee label for automated settlement disbursement rows."""
-    parties = claim_data.get("parties") or []
-    if isinstance(parties, list):
-        for pref in ("claimant", "policyholder"):
-            for p in parties:
-                if not isinstance(p, dict):
-                    continue
-                if (p.get("party_type") or "").lower() != pref:
-                    continue
-                name = (p.get("name") or "").strip()
-                if name:
-                    sanitized = sanitize_payee(name)
-                    if sanitized:
-                        return sanitized
-    return "Claimant"
+    payee, _ = settlement_payee_and_party_id_from_claim_data(claim_data)
+    return payee
+
+
+def settlement_claim_party_id_from_claim_data(claim_data: dict) -> int | None:
+    """DB party id for automated settlement disbursement, if present on embedded parties."""
+    _, party_id = settlement_payee_and_party_id_from_claim_data(claim_data)
+    return party_id
 
 
 _VALID_TRANSITIONS: dict[str, set[str]] = {
@@ -139,6 +162,18 @@ class PaymentRepository:
                 ).fetchone()
                 if existing is not None:
                     return int(existing[0])
+            party_id: int | None = data.claim_party_id
+            if party_id is not None:
+                prow = conn.execute(
+                    text(
+                        "SELECT id FROM claim_parties WHERE id = :pid AND claim_id = :claim_id"
+                    ),
+                    {"pid": party_id, "claim_id": data.claim_id},
+                ).fetchone()
+                if prow is None:
+                    raise DomainValidationError(
+                        f"claim_party_id {party_id} does not belong to claim {data.claim_id}"
+                    )
             insert_params = {
                 "claim_id": data.claim_id,
                 "amount": data.amount,
@@ -153,13 +188,16 @@ class PaymentRepository:
                 if data.payee_secondary_type
                 else None,
                 "external_ref": ext_ref,
+                "claim_party_id": party_id,
             }
             insert_sql = text("""
                 INSERT INTO claim_payments
                     (claim_id, amount, payee, payee_type, payment_method, check_number,
-                     status, authorized_by, payee_secondary, payee_secondary_type, external_ref)
+                     status, authorized_by, payee_secondary, payee_secondary_type, external_ref,
+                     claim_party_id)
                 VALUES (:claim_id, :amount, :payee, :payee_type, :payment_method, :check_number,
-                        :status, :authorized_by, :payee_secondary, :payee_secondary_type, :external_ref)
+                        :status, :authorized_by, :payee_secondary, :payee_secondary_type, :external_ref,
+                        :claim_party_id)
                 RETURNING id
                 """)
             try:
@@ -180,15 +218,16 @@ class PaymentRepository:
                 raise
             rid = result.fetchone()
             payment_id = int(rid[0]) if rid else 0
-            details = json.dumps(
-                {
-                    "payment_id": payment_id,
-                    "amount": data.amount,
-                    "payee": safe_payee,
-                    "payee_type": data.payee_type.value,
-                    "payment_method": data.payment_method.value,
-                }
-            )
+            audit_payload: dict[str, Any] = {
+                "payment_id": payment_id,
+                "amount": data.amount,
+                "payee": safe_payee,
+                "payee_type": data.payee_type.value,
+                "payment_method": data.payment_method.value,
+            }
+            if party_id is not None:
+                audit_payload["claim_party_id"] = party_id
+            details = json.dumps(audit_payload)
             conn.execute(
                 text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id)

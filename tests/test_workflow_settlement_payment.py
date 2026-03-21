@@ -84,6 +84,54 @@ def test_maybe_record_workflow_settlement_payment_creates_row(monkeypatch, seede
     reload_settings()
 
 
+def test_maybe_record_workflow_settlement_sets_claim_party_id(monkeypatch, seeded_db):
+    import sqlite3
+
+    monkeypatch.setenv("PAYMENT_AUTO_RECORD_FROM_SETTLEMENT", "true")
+    reload_settings()
+
+    conn = sqlite3.connect(seeded_db)
+    conn.execute(
+        "INSERT INTO claim_parties (claim_id, party_type, name) VALUES (?, ?, ?)",
+        ("CLM-TEST01", "claimant", "Pat Claimant"),
+    )
+    party_db_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+    conn.commit()
+    conn.close()
+
+    ctx = ClaimContext.from_defaults(db_path=seeded_db, llm=None)
+    wf_ctx = orch._WorkflowCtx(
+        claim_id="CLM-TEST01",
+        claim_data={},
+        claim_data_with_id={
+            "claim_id": "CLM-TEST01",
+            "parties": [
+                {"party_type": "claimant", "id": party_db_id, "name": "Pat Claimant"},
+            ],
+        },
+        inputs={},
+        similarity_score_for_escalation=None,
+        context=ctx,
+        workflow_run_id="party-link",
+        workflow_start_time=0.0,
+        actor_id="workflow",
+        extracted_payout=100.0,
+    )
+    orch._maybe_record_workflow_settlement_payment(
+        claim_id="CLM-TEST01",
+        wf_ctx=wf_ctx,
+        workflow_run_id="party-link",
+        claim_repo=ctx.repo,
+    )
+    pay_repo = PaymentRepository(db_path=seeded_db)
+    rows, total = pay_repo.get_payments_for_claim("CLM-TEST01")
+    assert total == 1
+    assert rows[0]["claim_party_id"] == party_db_id
+
+    monkeypatch.setenv("PAYMENT_AUTO_RECORD_FROM_SETTLEMENT", "false")
+    reload_settings()
+
+
 def test_maybe_record_skipped_when_disabled(monkeypatch, seeded_db):
     monkeypatch.setenv("PAYMENT_AUTO_RECORD_FROM_SETTLEMENT", "false")
     reload_settings()
