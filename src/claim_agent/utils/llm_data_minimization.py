@@ -131,6 +131,10 @@ _CREW_ALLOWLISTS: dict[str, frozenset[str]] = {
         "id", "claim_id", "policy_number", "vin", "status", "claim_type",
         "incident_description", "damage_description",
     }),
+    "party_intake": frozenset({
+        "id", "claim_id", "policy_number", "vin", "status", "claim_type",
+        "incident_description", "damage_description", "parties",
+    }),
     "dispute": frozenset({
         "claim_id", "policy_number", "vin", "vehicle_year", "vehicle_make", "vehicle_model",
         "incident_date", "incident_description", "damage_description", "estimated_damage",
@@ -189,7 +193,7 @@ def minimize_claim_data_for_crew(
     - Filters to allowlisted fields only
     - When mask_pii is True (default from config): masks policy_number and vin
     - Strips attachment descriptions (urls only)
-    - For bodily_injury: strips party name/email/phone/address
+    - For bodily_injury crew only: strips party name/email/phone/address
 
     Args:
         claim_data: Full claim dict

@@ -20,6 +20,7 @@ from claim_agent.crews.supplemental_crew import create_supplemental_crew
 from claim_agent.crews.rental_crew import create_rental_crew
 from claim_agent.crews.reopened_crew import create_reopened_crew
 from claim_agent.crews.follow_up_crew import create_follow_up_crew
+from claim_agent.crews.party_intake_crew import create_party_intake_crew
 from claim_agent.crews.siu_crew import create_siu_crew
 
 __all__ = [
@@ -40,5 +41,6 @@ __all__ = [
     "create_rental_crew",
     "create_reopened_crew",
     "create_follow_up_crew",
+    "create_party_intake_crew",
     "create_siu_crew",
 ]

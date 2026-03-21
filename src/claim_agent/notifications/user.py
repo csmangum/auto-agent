@@ -28,13 +28,13 @@ def notify_user(
     """Send follow-up message to a user based on their type.
 
     Routes to the appropriate channel for each user type:
-    - claimant, policyholder: email/SMS via claimant adapter
+    - claimant, policyholder, witness, attorney: email/SMS via claimant adapter
     - repair_shop: portal/API (stub)
     - adjuster, siu: internal (stub)
     - other: generic (stub)
 
     Args:
-        user_type: One of claimant, policyholder, adjuster, repair_shop, siu, other.
+        user_type: claimant, policyholder, witness, attorney, adjuster, repair_shop, siu, other.
         claim_id: Claim ID.
         message: Message content to send.
         email: Optional email for outreach.
@@ -52,7 +52,7 @@ def notify_user(
         logger.warning("Unknown user_type for notify_user: %s", user_type)
         return False
 
-    if ut in (UserType.CLAIMANT, UserType.POLICYHOLDER):
+    if ut in (UserType.CLAIMANT, UserType.POLICYHOLDER, UserType.WITNESS, UserType.ATTORNEY):
         config = get_notification_config()
         if not config["email_enabled"] and not config["sms_enabled"]:
             logger.debug(
@@ -63,7 +63,8 @@ def notify_user(
             return False
         if not email and not phone:
             logger.debug(
-                "No email or phone for claimant/policyholder; skipping follow-up for claim_id=%s",
+                "No email or phone for %s; skipping follow-up for claim_id=%s",
+                user_type,
                 claim_id,
             )
             return False
