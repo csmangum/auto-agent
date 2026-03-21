@@ -49,7 +49,7 @@ from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
-from claim_agent.db.document_repository import DocumentRepository
+from claim_agent.db.document_repository import DocumentRepository, build_document_version_groups
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.models.claim import Attachment, ClaimInput
 from claim_agent.models.party import PartyRelationshipType
@@ -1033,6 +1033,13 @@ def list_claim_documents(
     claim_id: str,
     document_type: Optional[str] = Query(None, description="Filter by document_type"),
     review_status: Optional[str] = Query(None, description="Filter by review_status"),
+    group_by: Optional[str] = Query(
+        None,
+        description=(
+            "If 'storage_key', response includes version_groups built from the first 500 matching "
+            "rows (see version_groups_truncated when total exceeds 500)"
+        ),
+    ),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     auth: AuthContext = RequireAdjuster,
@@ -1041,26 +1048,54 @@ def list_claim_documents(
     """List documents for a claim with optional filters."""
     if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    gb = (group_by or "").strip().lower()
+    if gb and gb != "storage_key":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid group_by. Supported value: storage_key",
+        )
     doc_repo = _get_doc_repo()
     documents, total = doc_repo.list_documents(
         claim_id, document_type=document_type, review_status=review_status, limit=limit, offset=offset
     )
     storage = get_storage_adapter()
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    for doc in documents:
-        sk = doc.get("storage_key", "")
-        if sk:
-            doc["url"] = storage.get_url(claim_id, sk)
-            if isinstance(storage, S3StorageAdapter):
-                ctx.repo.insert_document_accessed_audit(
-                    claim_id,
-                    storage_key=sk,
-                    actor_id=actor_id,
-                    channel="adjuster_api",
-                )
-        else:
-            doc["url"] = None
-    return {"claim_id": claim_id, "documents": documents, "total": total, "limit": limit, "offset": offset}
+
+    def enrich_document_urls(docs: list[dict[str, Any]], insert_audit: bool = True) -> None:
+        for doc in docs:
+            sk = doc.get("storage_key", "")
+            if sk:
+                doc["url"] = storage.get_url(claim_id, sk)
+                if insert_audit and isinstance(storage, S3StorageAdapter):
+                    ctx.repo.insert_document_accessed_audit(
+                        claim_id,
+                        storage_key=sk,
+                        actor_id=actor_id,
+                        channel="adjuster_api",
+                    )
+            else:
+                doc["url"] = None
+
+    enrich_document_urls(documents)
+    payload: dict[str, Any] = {
+        "claim_id": claim_id,
+        "documents": documents,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+    if gb == "storage_key":
+        all_docs, docs_total = doc_repo.list_documents(
+            claim_id,
+            document_type=document_type,
+            review_status=review_status,
+            limit=500,
+            offset=0,
+        )
+        enrich_document_urls(all_docs, insert_audit=False)
+        payload["version_groups"] = build_document_version_groups(all_docs)
+        payload["version_groups_truncated"] = docs_total > 500
+    return payload
 
 
 @router.post("/claims/{claim_id}/documents", dependencies=[RequireAdjuster])

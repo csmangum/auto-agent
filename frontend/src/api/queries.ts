@@ -78,7 +78,10 @@ export const queryKeys = {
   costBreakdown: ['metrics', 'cost'] as const,
   reviewQueue: (params: GetReviewQueueParams) => ['claims', 'review-queue', params] as const,
   claimPayments: (id: string) => ['claims', id, 'payments'] as const,
-  claimDocuments: (id: string) => ['claims', id, 'documents'] as const,
+  claimDocuments: (id: string, opts?: { groupBy?: 'storage_key' }) =>
+    opts?.groupBy
+      ? (['claims', id, 'documents', { groupBy: opts.groupBy }] as const)
+      : (['claims', id, 'documents'] as const),
   documentRequests: (id: string) => ['claims', id, 'document-requests'] as const,
   overdueTasks: (limit: number) => ['tasks', 'overdue', limit] as const,
   complianceTemplates: (state?: string) => ['diary', 'templates', state ?? ''] as const,
@@ -368,10 +371,16 @@ export function useVoidPayment(claimId: string | undefined) {
 // Documents
 // ---------------------------------------------------------------------------
 
-export function useClaimDocuments(claimId: string | undefined) {
+export function useClaimDocuments(
+  claimId: string | undefined,
+  opts?: { groupBy?: 'storage_key' }
+) {
   return useQuery({
-    queryKey: queryKeys.claimDocuments(claimId ?? ''),
-    queryFn: () => getClaimDocuments(claimId!),
+    queryKey: queryKeys.claimDocuments(claimId ?? '', opts),
+    queryFn: () =>
+      getClaimDocuments(claimId!, {
+        group_by: opts?.groupBy,
+      }),
     enabled: !!claimId,
   });
 }

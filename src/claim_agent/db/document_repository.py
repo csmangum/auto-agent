@@ -1,6 +1,7 @@
 """Document repository: CRUD for claim_documents and document_requests."""
 
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -30,6 +31,45 @@ def _row_to_document(row: Any) -> dict[str, Any]:
 def _row_to_request(row: Any) -> dict[str, Any]:
     """Convert DB row to document request dict."""
     return row_to_dict(row)
+
+
+def build_document_version_groups(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group documents by ``storage_key`` and order by version (ascending) for timeline UI.
+
+    Adds ``is_current_version`` on each document dict copy: true for the row with the
+    highest ``version`` (ties broken by largest ``id``).
+    """
+    by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for d in documents:
+        sk = (d.get("storage_key") or "").strip()
+        key = sk if sk else f"__noid_{d.get('id')}"
+        by_key[key].append(d)
+
+    out: list[dict[str, Any]] = []
+    for group_key, versions in sorted(by_key.items(), key=lambda x: x[0]):
+        max_ver = max((v.get("version") or 1) for v in versions)
+        candidates = [v for v in versions if (v.get("version") or 1) == max_ver]
+        current_id = max(int(v["id"]) for v in candidates) if candidates else None
+
+        sorted_versions = sorted(
+            versions,
+            key=lambda x: ((x.get("version") or 1), int(x.get("id") or 0)),
+        )
+        enriched: list[dict[str, Any]] = []
+        for v in sorted_versions:
+            vd = dict(v)
+            vd["is_current_version"] = current_id is not None and int(vd.get("id") or 0) == current_id
+            enriched.append(vd)
+
+        display_key = versions[0].get("storage_key") or ""
+        out.append(
+            {
+                "storage_key": display_key,
+                "versions": enriched,
+                "version_count": len(enriched),
+            }
+        )
+    return out
 
 
 class DocumentRepository:
