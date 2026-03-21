@@ -1,7 +1,11 @@
 {
   "_meta": {
     "mock_data_version": "2025.02",
-    "description": "Reference policies with realistic coverage bundles (liability, collision, comprehensive, UM), vehicle values, and seed claims."
+    "description": "Reference policies with realistic coverage bundles (liability, collision, comprehensive, UM), vehicle values, and seed claims.",
+    "policy_term_defaults": {
+      "effective_date": "2020-01-01",
+      "expiration_date": "2030-12-31"
+    }
   },
   "policies": {
     "POL-001": {
@@ -581,6 +585,37 @@
       "excluded_territories": [
         "Florida"
       ]
+    },
+    "POL-TERM-EXPIRED": {
+      "status": "active",
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "liability_limits": {
+        "bi_per_person": 100000,
+        "bi_per_accident": 300000,
+        "pd_per_accident": 50000
+      },
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "territory": "US",
+      "effective_date": "2020-01-01",
+      "expiration_date": "2024-06-01"
+    },
+    "POL-TERM-ALIAS": {
+      "status": "active",
+      "coverages": [
+        "liability",
+        "collision",
+        "comprehensive"
+      ],
+      "collision_deductible": 500,
+      "comprehensive_deductible": 500,
+      "territory": "US",
+      "term_start": "2023-06-01",
+      "term_end": "2026-06-01"
     }
   },
   "policy_vehicles": {

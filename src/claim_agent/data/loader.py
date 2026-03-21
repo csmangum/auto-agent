@@ -18,6 +18,32 @@ _DEFAULT_DB: dict[str, Any] = {
 }
 
 
+def _merge_policy_term_defaults(data: dict[str, Any]) -> None:
+    """Apply _meta.policy_term_defaults to policies missing term dates (in-place)."""
+    meta = data.get("_meta")
+    if not isinstance(meta, dict):
+        return
+    defaults = meta.get("policy_term_defaults")
+    if not isinstance(defaults, dict):
+        return
+    eff = defaults.get("effective_date")
+    exp = defaults.get("expiration_date")
+    if not isinstance(eff, str) or not isinstance(exp, str):
+        return
+    policies = data.get("policies")
+    if not isinstance(policies, dict):
+        return
+    for pol in policies.values():
+        if not isinstance(pol, dict):
+            continue
+        has_eff = pol.get("effective_date") is not None or pol.get("term_start") is not None
+        has_exp = pol.get("expiration_date") is not None or pol.get("term_end") is not None
+        if not has_eff:
+            pol["effective_date"] = eff
+        if not has_exp:
+            pol["expiration_date"] = exp
+
+
 def _project_data_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent / "data"
 
@@ -38,7 +64,9 @@ def load_mock_db() -> dict[str, Any]:
     if path.exists():
         try:
             with open(path, encoding="utf-8") as f:
-                return cast(dict[str, Any], json.load(f))
+                data = cast(dict[str, Any], json.load(f))
+            _merge_policy_term_defaults(data)
+            return data
         except (json.JSONDecodeError, OSError):
             pass
     return _DEFAULT_DB.copy()

@@ -69,6 +69,8 @@ class PolicyAdapter(ABC):
 
 **Named Insured / Driver Verification**: When `named_insured` and/or `drivers` are present in the policy response, coverage verification will check if the claimant matches. If the claimant is not listed, the claim is routed to `under_investigation` for manual review. This prevents unauthorized individuals from filing claims on a policy.
 
+**Policy term (incident date)**: Optional `effective_date` and `expiration_date` (ISO `YYYY-MM-DD`, inclusive bounds) may be returned; `term_start` / `term_end` are accepted as aliases and normalized in `query_policy_db_impl`. When both are present on the policy response and the claim includes a parseable `incident_date`, FNOL coverage verification denies if the loss falls outside the term. If both term fields are omitted, verification skips this check (legacy backends). In `data/mock_db.json`, `_meta.policy_term_defaults` supplies default term dates for policies that omit them; `load_mock_db()` merges those defaults before adapters read policy records.
+
 ### ValuationAdapter
 
 ```python

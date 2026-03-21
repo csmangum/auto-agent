@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from claim_agent.adapters.registry import get_policy_adapter
@@ -14,6 +15,32 @@ if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_policy_date_str(value: Any) -> str | None:
+    """Normalize policy term dates to ISO YYYY-MM-DD for JSON output."""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, str):
+        s = value.strip()
+        return s or None
+    return None
+
+
+def _policy_term_fields_for_result(p: dict[str, Any]) -> dict[str, str]:
+    """Map effective/expiration (or term_start/term_end aliases) onto canonical keys."""
+    eff = _coerce_policy_date_str(p.get("effective_date") or p.get("term_start"))
+    exp = _coerce_policy_date_str(p.get("expiration_date") or p.get("term_end"))
+    out: dict[str, str] = {}
+    if eff is not None:
+        out["effective_date"] = eff
+    if exp is not None:
+        out["expiration_date"] = exp
+    return out
 
 
 def _normalized_coverages(p: dict[str, Any]) -> set[str]:
@@ -205,6 +232,7 @@ def query_policy_db_impl(
                             {"name": disp, "relationship": entry.get("relationship")}
                         )
                 result["drivers"] = masked_drivers
+            result.update(_policy_term_fields_for_result(p))
             return json.dumps(result)
         return json.dumps(
             {

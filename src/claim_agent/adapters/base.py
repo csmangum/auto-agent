@@ -46,6 +46,11 @@ class PolicyAdapter(ABC):
         - ``territory`` (str or list): Geographic coverage area (e.g., "US", "USA_Canada", 
           ["California", "Nevada", "Oregon"], or state code like "TX")
         - ``excluded_territories`` (list): Territories explicitly excluded from coverage
+
+        Policy term (optional, ISO date ``YYYY-MM-DD`` or date-like values):
+        - ``effective_date`` / ``expiration_date``: inclusive coverage window for FNOL checks.
+        - Aliases: ``term_start`` maps to effective, ``term_end`` to expiration (normalized
+          in policy query output). Omit both to skip incident-vs-term verification.
         """
         ...
 

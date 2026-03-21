@@ -19,6 +19,20 @@ def test_query_policy_db_found():
     assert data["valid"] is True
     assert "coverage" in data
     assert data["deductible"] == 500
+    assert data["effective_date"] == "2020-01-01"
+    assert data["expiration_date"] == "2030-12-31"
+
+
+def test_query_policy_db_term_alias_normalized():
+    """term_start/term_end from adapter are exposed as effective_date/expiration_date."""
+    from claim_agent.tools.policy_logic import query_policy_db_impl
+
+    result = query_policy_db_impl("POL-TERM-ALIAS")
+    data = json.loads(result)
+    assert data["valid"] is True
+    assert data["effective_date"] == "2023-06-01"
+    assert data["expiration_date"] == "2026-06-01"
+    assert "term_start" not in data
 
 
 def test_query_policy_db_masks_full_name_and_display_name():

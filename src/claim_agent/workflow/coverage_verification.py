@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, datetime
 from typing import TYPE_CHECKING, cast
 
 from claim_agent.config.settings import get_coverage_config
@@ -30,6 +31,8 @@ _POLICY_PHYSICAL_DAMAGE_COVERAGES = "physical_damage_coverages"
 _POLICY_DEDUCTIBLE = "deductible"
 _POLICY_NAMED_INSURED = "named_insured"
 _POLICY_DRIVERS = "drivers"
+_POLICY_EFFECTIVE_DATE = "effective_date"
+_POLICY_EXPIRATION_DATE = "expiration_date"
 
 logger = logging.getLogger(__name__)
 
@@ -399,6 +402,145 @@ def _verify_named_insured_or_driver(
     return False, f"Claimant '{claimant_name}' is not listed as named insured or authorized driver"
 
 
+def _parse_iso_date_str(value: object) -> date | None:
+    """Parse YYYY-MM-DD from string; return None if missing or invalid."""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        s = value.strip()
+        if len(s) < 10:
+            return None
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _incident_date_from_claim(claim_data: dict) -> tuple[date | None, bool]:
+    """Return (incident_date, unparseable).
+
+    (None, False): no incident date to verify (skip policy-term check).
+    (date, False): parsed successfully.
+    (None, True): incident_date present but not parseable.
+    """
+    raw = claim_data.get("incident_date")
+    if raw is None:
+        return (None, False)
+    if isinstance(raw, date) and not isinstance(raw, datetime):
+        return (raw, False)
+    if isinstance(raw, datetime):
+        return (raw.date(), False)
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return (None, False)
+        try:
+            return (date.fromisoformat(s[:10]), False)
+        except ValueError:
+            return (None, True)
+    return (None, True)
+
+
+def _policy_term_verification_result(
+    claim_data: dict,
+    policy_result: dict,
+) -> CoverageVerificationResult | None:
+    """If policy defines a term, verify incident_date is within [effective, expiration].
+
+    Returns None to continue when term data is absent or incident date is not provided.
+    """
+    eff_raw = policy_result.get(_POLICY_EFFECTIVE_DATE)
+    exp_raw = policy_result.get(_POLICY_EXPIRATION_DATE)
+    eff_missing = eff_raw is None or (isinstance(eff_raw, str) and not eff_raw.strip())
+    exp_missing = exp_raw is None or (isinstance(exp_raw, str) and not exp_raw.strip())
+
+    if eff_missing and exp_missing:
+        return None
+    if eff_missing or exp_missing:
+        return CoverageVerificationResult(
+            under_investigation=True,
+            reason="Invalid policy term configuration; requires manual review",
+            details={
+                "error": "policy_term_config",
+                "effective_date": eff_raw,
+                "expiration_date": exp_raw,
+            },
+        )
+
+    eff = _parse_iso_date_str(eff_raw)
+    exp = _parse_iso_date_str(exp_raw)
+    if eff is None or exp is None:
+        return CoverageVerificationResult(
+            under_investigation=True,
+            reason="Invalid policy term dates; requires manual review",
+            details={
+                "error": "policy_term_parse",
+                "effective_date": eff_raw,
+                "expiration_date": exp_raw,
+            },
+        )
+    if exp < eff:
+        return CoverageVerificationResult(
+            under_investigation=True,
+            reason="Invalid policy term configuration; requires manual review",
+            details={
+                "error": "policy_term_inverted",
+                "effective_date": eff.isoformat(),
+                "expiration_date": exp.isoformat(),
+            },
+        )
+
+    incident_d, bad_incident = _incident_date_from_claim(claim_data)
+    if incident_d is None and not bad_incident:
+        return None
+    if bad_incident:
+        return CoverageVerificationResult(
+            under_investigation=True,
+            reason="Unable to parse incident date for policy term verification",
+            details={
+                "error": "incident_date_parse",
+                "term_verification": "incident_unparseable",
+                "effective_date": eff.isoformat(),
+                "expiration_date": exp.isoformat(),
+            },
+        )
+
+    if incident_d < eff:
+        return CoverageVerificationResult(
+            denied=True,
+            reason=(
+                f"Incident date {incident_d.isoformat()} is before policy effective date "
+                f"{eff.isoformat()}"
+            ),
+            details={
+                "incident_date": incident_d.isoformat(),
+                "effective_date": eff.isoformat(),
+                "expiration_date": exp.isoformat(),
+                "term_verification": "before_effective",
+            },
+        )
+    if incident_d > exp:
+        return CoverageVerificationResult(
+            denied=True,
+            reason=(
+                f"Incident date {incident_d.isoformat()} is after policy expiration date "
+                f"{exp.isoformat()}"
+            ),
+            details={
+                "incident_date": incident_d.isoformat(),
+                "effective_date": eff.isoformat(),
+                "expiration_date": exp.isoformat(),
+                "term_verification": "after_expiration",
+            },
+        )
+    return None
+
+
 def _incident_location_from_claim(claim_data: dict) -> str | None:
     """Return trimmed incident location, or None if absent or whitespace-only."""
     raw = claim_data.get("incident_location") or claim_data.get("loss_state")
@@ -514,6 +656,10 @@ def verify_coverage_impl(
             },
         )
 
+    term_outcome = _policy_term_verification_result(claim_data, policy_result)
+    if term_outcome is not None:
+        return term_outcome
+
     # Verify policy territory restrictions
     incident_location = _incident_location_from_claim(claim_data)
     if incident_location:
@@ -625,6 +771,16 @@ def verify_coverage_impl(
         "physical_damage_covered": True,
         "deductible": policy_result.get(_POLICY_DEDUCTIBLE),
     }
+
+    inc_ok, inc_bad = _incident_date_from_claim(claim_data)
+    if (
+        inc_ok is not None
+        and not inc_bad
+        and policy_result.get(_POLICY_EFFECTIVE_DATE) is not None
+        and policy_result.get(_POLICY_EXPIRATION_DATE) is not None
+    ):
+        details_dict["term_verified"] = True
+        details_dict["incident_date"] = inc_ok.isoformat()
 
     # Include territory verification in success details
     incident_location = _incident_location_from_claim(claim_data)

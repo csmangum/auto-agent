@@ -1,6 +1,7 @@
 """Unit tests for FNOL coverage verification."""
 
 import json
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -760,6 +761,184 @@ class TestTerritoryVerification:
         assert result.details.get("territory_verification") == "config_error"
 
 
+class TestPolicyTermVerification:
+    """Incident date vs policy effective/expiration (issue #257)."""
+
+    def test_passes_with_incident_within_default_term(self):
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": "2025-06-15",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert result.details.get("term_verified") is True
+        assert result.details.get("incident_date") == "2025-06-15"
+
+    def test_datetime_incident_date_accepted(self):
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": datetime(2025, 6, 15, 14, 30, 0),
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert result.details.get("term_verified") is True
+        assert result.details.get("incident_date") == "2025-06-15"
+
+    def test_date_incident_date_accepted(self):
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": date(2025, 6, 15),
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_skips_term_when_no_incident_date(self):
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert result.details.get("term_verified") is None
+
+    def test_denies_after_policy_expiration(self):
+        claim_data = {
+            "policy_number": "POL-TERM-EXPIRED",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": "2025-01-20",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.denied
+        assert "after" in result.reason.lower() or "expiration" in result.reason.lower()
+        assert result.details.get("term_verification") == "after_expiration"
+
+    def test_denies_before_policy_effective(self):
+        claim_data = {
+            "policy_number": "POL-TERM-EXPIRED",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": "2019-07-01",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.denied
+        assert "before" in result.reason.lower() or "effective" in result.reason.lower()
+        assert result.details.get("term_verification") == "before_effective"
+
+    def test_inclusive_boundaries_on_fixed_term_policy(self):
+        ctx = _ctx_with_mock_db(":memory:")
+        on_effective = verify_coverage_impl(
+            {
+                "policy_number": "POL-TERM-EXPIRED",
+                "damage_description": "Collision damage",
+                "estimated_damage": 2000,
+                "incident_date": "2020-01-01",
+            },
+            ctx=ctx,
+        )
+        assert on_effective.passed
+        on_exp = verify_coverage_impl(
+            {
+                "policy_number": "POL-TERM-EXPIRED",
+                "damage_description": "Collision damage",
+                "estimated_damage": 2000,
+                "incident_date": "2024-06-01",
+            },
+            ctx=ctx,
+        )
+        assert on_exp.passed
+
+    def test_under_investigation_when_only_one_term_field(self):
+        import json as json_module
+
+        fake_policy = {
+            "valid": True,
+            "status": "active",
+            "physical_damage_covered": True,
+            "physical_damage_coverages": ["collision", "comprehensive"],
+            "deductible": 500,
+            "effective_date": "2020-01-01",
+        }
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": "2025-01-01",
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
+        ) as mock:
+            mock.return_value = json_module.dumps(fake_policy)
+            result = verify_coverage_impl(claim_data, ctx=None)
+        assert result.under_investigation
+        assert result.details.get("error") == "policy_term_config"
+
+    def test_under_investigation_when_incident_unparseable(self):
+        import json as json_module
+
+        fake_policy = {
+            "valid": True,
+            "status": "active",
+            "physical_damage_covered": True,
+            "physical_damage_coverages": ["collision", "comprehensive"],
+            "deductible": 500,
+            "effective_date": "2020-01-01",
+            "expiration_date": "2030-01-01",
+        }
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": "not-a-date",
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
+        ) as mock:
+            mock.return_value = json_module.dumps(fake_policy)
+            result = verify_coverage_impl(claim_data, ctx=None)
+        assert result.under_investigation
+        assert result.details.get("term_verification") == "incident_unparseable"
+
+    def test_under_investigation_when_term_dates_malformed(self):
+        import json as json_module
+
+        fake_policy = {
+            "valid": True,
+            "status": "active",
+            "physical_damage_covered": True,
+            "physical_damage_coverages": ["collision", "comprehensive"],
+            "deductible": 500,
+            "effective_date": "2020-01-01",
+            "expiration_date": "bogus",
+        }
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_date": "2025-01-01",
+        }
+        with patch(
+            "claim_agent.workflow.coverage_verification.query_policy_db_impl"
+        ) as mock:
+            mock.return_value = json_module.dumps(fake_policy)
+            result = verify_coverage_impl(claim_data, ctx=None)
+        assert result.under_investigation
+        assert result.details.get("error") == "policy_term_parse"
+
+
 class TestMockDbJson:
     """Smoke tests: data/mock_db.json parses; territory fixtures match tests."""
 
@@ -788,6 +967,17 @@ class TestMockDbJson:
         excl = policies["POL-EXCL-ONLY"]
         assert excl.get("territory") is None
         assert excl.get("excluded_territories") == ["Florida"]
+        assert "POL-TERM-EXPIRED" in policies
+        assert policies["POL-TERM-EXPIRED"]["expiration_date"] == "2024-06-01"
+        assert data["_meta"].get("policy_term_defaults", {}).get("effective_date") == "2020-01-01"
+
+    def test_load_mock_db_merges_policy_term_defaults(self):
+        from claim_agent.data.loader import load_mock_db
+
+        db = load_mock_db()
+        assert db["policies"]["POL-001"]["effective_date"] == "2020-01-01"
+        assert db["policies"]["POL-001"]["expiration_date"] == "2030-12-31"
+        assert db["policies"]["POL-TERM-EXPIRED"]["expiration_date"] == "2024-06-01"
 
 
 class TestCoverageStageIntegration:
