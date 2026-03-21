@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
+from claim_agent.observability import claim_context
 from claim_agent.tools.vision_logic import analyze_damage_photo_impl
 from claim_agent.tools.vision_tools import analyze_damage_photo
 
@@ -87,6 +88,67 @@ class TestAnalyzeDamagePhotoImpl:
         call_kwargs = mock_completion.call_args[1]
         messages = call_kwargs["messages"]
         assert "bumper damage" in messages[0]["content"][0]["text"]
+
+    def test_file_url_merges_thread_local_context_for_gps_distance_forensics(self):
+        """Workflow thread-local claim_context supplies incident coords for forensics."""
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"fake")
+            path = f.name
+        try:
+            url = f"file://{path}"
+            mock_resp = type(
+                "Resp",
+                (),
+                {
+                    "choices": [
+                        type(
+                            "C",
+                            (),
+                            {
+                                "message": type(
+                                    "M",
+                                    (),
+                                    {
+                                        "content": '{"severity":"low","parts_affected":[],"consistency_with_description":"unknown","notes":""}'
+                                    },
+                                )()
+                            },
+                        )()
+                    ]
+                },
+            )()
+            with _USE_REAL_VISION, patch(
+                "claim_agent.tools.vision_logic.get_settings"
+            ) as mock_get, patch(
+                "claim_agent.tools.vision_logic.get_fraud_config"
+            ) as mock_fc, patch(
+                "claim_agent.tools.vision_logic.extract_exif_metadata"
+            ) as mock_exif, patch(
+                "litellm.completion"
+            ) as mock_completion:
+                mock_get.return_value.paths.attachment_storage_path = str(Path(path).parent)
+                mock_fc.return_value = {
+                    "photo_gps_incident_max_distance": 0.01,
+                    "photo_gps_incident_distance_unit": "miles",
+                }
+                mock_exif.return_value = {
+                    "has_exif": True,
+                    "gps": (34.0522, -118.2437),
+                    "captured_at": "2026:01:11 10:00:00",
+                    "errors": [],
+                }
+                mock_completion.return_value = mock_resp
+                with claim_context(
+                    claim_id="CLM-TEST",
+                    incident_latitude=40.7128,
+                    incident_longitude=-74.0060,
+                    incident_date="2026-01-10",
+                ):
+                    result = analyze_damage_photo_impl(url)
+            parsed = json.loads(result)
+            assert "photo_gps_far_from_incident" in parsed["photo_forensics"]["anomalies"]
+        finally:
+            Path(path).unlink(missing_ok=True)
 
 
 class TestAnalyzeDamagePhotoTool:

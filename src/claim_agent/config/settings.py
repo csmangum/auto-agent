@@ -93,6 +93,8 @@ def get_fraud_config() -> dict:
         "claimsearch_match_threshold": s.claimsearch_match_threshold,
         "claimsearch_match_score": s.claimsearch_match_score,
         "photo_exif_anomaly_score": s.photo_exif_anomaly_score,
+        "photo_gps_incident_max_distance": s.photo_gps_incident_max_distance,
+        "photo_gps_incident_distance_unit": s.photo_gps_incident_distance_unit,
     }
 
 

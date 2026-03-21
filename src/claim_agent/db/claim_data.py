@@ -15,6 +15,8 @@ _CLAIM_DATA_KEYS = (
     "attachments",
     "claim_type",
     "loss_state",
+    "incident_latitude",
+    "incident_longitude",
     "liability_percentage",
     "liability_basis",
 )
@@ -31,6 +33,8 @@ _CLAIM_DATA_DEFAULTS = {
     "attachments": [],
     "claim_type": None,
     "loss_state": None,
+    "incident_latitude": None,
+    "incident_longitude": None,
     "liability_percentage": None,
     "liability_basis": None,
 }

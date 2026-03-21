@@ -10,6 +10,7 @@ from claim_agent.observability.logger import (
     ClaimLogger,
     get_logger,
     claim_context,
+    get_current_claim_log_context,
     siu_workflow_scope,
     get_siu_workflow_scope,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "ClaimLogger",
     "get_logger",
     "claim_context",
+    "get_current_claim_log_context",
     "siu_workflow_scope",
     "get_siu_workflow_scope",
     # Tracing
