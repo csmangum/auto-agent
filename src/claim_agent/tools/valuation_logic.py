@@ -209,6 +209,9 @@ def _coordinate_gap_shortfall(
         except NotImplementedError:
             polled = None
         except Exception as e:
+            logger.exception("Gap insurance status polling failed for %s", gap_ref)
+            polled = None
+        except Exception as e:
             logger.warning("Gap claim status poll failed: %s", e)
             polled = None
         if polled:
