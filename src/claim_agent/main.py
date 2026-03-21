@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -33,6 +34,7 @@ from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.database import get_db_path
+from claim_agent.services.document_retention import run_document_retention_enforce
 from claim_agent.exceptions import ClaimAgentError
 from claim_agent.models.claim import Attachment, ClaimInput
 from claim_agent.observability import get_logger, get_metrics
@@ -83,7 +85,7 @@ def _usage() -> str:
         "Usage: claim-agent [OPTIONS] COMMAND [ARGS]...\n\n"
         "Commands: serve, process, status, history, reprocess, metrics, review-queue, "
         "assign, approve, reject, request-info, escalate-siu, retention-enforce, "
-        "retention-purge, retention-report, audit-log-export, audit-log-purge, "
+        "document-retention-enforce, retention-purge, retention-report, audit-log-export, audit-log-purge, "
         "dsar-access, dsar-deletion.\n"
         "Run claim-agent --help for full help."
     )
@@ -602,6 +604,40 @@ def retention_enforce(
         sys.exit(1)
 
 
+@app.command("document-retention-enforce")
+def document_retention_enforce(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List documents that would be soft-archived"),
+    ] = False,
+    as_of: Annotated[
+        Optional[str],
+        typer.Option(
+            "--as-of",
+            help="Cutoff date YYYY-MM-DD (default: today UTC); documents with retention_date before this are eligible",
+        ),
+    ] = None,
+) -> None:
+    """Soft-archive claim documents past ``retention_date`` (separate from claim retention).
+
+    Sets ``retention_enforced_at`` on each row and appends ``document_retention_enforced``
+    to ``claim_audit_log``. Schedule with cron alongside ``retention-enforce`` as needed.
+    Does not delete files or remove rows.
+    """
+    cutoff = as_of or date.today().isoformat()
+    if len(cutoff) < 10 or cutoff[4] != "-" or cutoff[7] != "-":
+        typer.echo("Error: --as-of must be YYYY-MM-DD", err=True)
+        raise typer.Exit(1)
+    result = run_document_retention_enforce(
+        db_path=get_db_path(),
+        cutoff_date=cutoff,
+        dry_run=dry_run,
+    )
+    typer.echo(json.dumps(result, indent=2))
+    if not dry_run and result.get("failed_count"):
+        sys.exit(1)
+
+
 @app.command("retention-purge")
 def retention_purge(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show what would be purged")] = False,
@@ -1079,6 +1115,14 @@ def cmd_retention_enforce(
 ) -> None:
     """Archive claims older than retention period. Used by tests."""
     retention_enforce(dry_run, years, include_litigation_hold)
+
+
+def cmd_document_retention_enforce(
+    dry_run: bool = False,
+    as_of: str | None = None,
+) -> None:
+    """Soft-archive documents past retention_date. Used by tests."""
+    document_retention_enforce(dry_run, as_of)
 
 
 def cmd_retention_purge(
