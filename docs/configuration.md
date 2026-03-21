@@ -33,6 +33,7 @@ cp .env.example .env
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
+| `IDEMPOTENCY_TTL_SECONDS` | `86400` | Time-to-live (seconds) for API idempotency keys (default 24h). Expired rows are purged periodically while the API server runs. |
 
 ### Authentication and RBAC
 
@@ -47,6 +48,20 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 **Roles**: `adjuster` (submit/view claims, docs), `supervisor` (all adjuster + reprocess, metrics), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system; may set `skip_authority_check` on reserve updates).
 
 Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
+
+### API idempotency (`Idempotency-Key`)
+
+Mutating claim endpoints support an optional **`Idempotency-Key`** request header so safe retries (e.g. after a timeout) do not create duplicate resources or run duplicate work.
+
+| Behavior | Details |
+|----------|---------|
+| **Header** | `Idempotency-Key`: 1–256 characters; only `a-z`, `A-Z`, `0-9`, `_`, `-`. Invalid values → **400**. |
+| **Scoped key** | The server combines the header with HTTP method, request path, and a fingerprint of auth (`Authorization` if present) and client host so the same key is not shared across users or routes. |
+| **Success cache** | Only **HTTP 200** responses are stored and replayed. **4xx/5xx** are not cached; the in-progress row is released so the client can retry. |
+| **In flight** | If a second request uses the same key while the first is still processing → **409** with `Retry-After: 5`. |
+| **TTL** | Controlled by `IDEMPOTENCY_TTL_SECONDS`. After expiry, a new request with the same key is treated as a new operation. |
+
+**Endpoints that honor `Idempotency-Key`:** `POST /api/claims`, `POST /api/claims/process`, `POST /api/claims/process/async`, `POST /api/incidents`, `POST /api/claim-links`, `POST /api/claims/{claim_id}/portal-token`, and `POST /api/claims/generate` when the body requests submission (`submit: true`).
 
 ### Adapter Backends
 

@@ -924,34 +924,45 @@ class CreatePortalTokenBody(BaseModel):
 
 @router.post("/claims/{claim_id}/portal-token", dependencies=[RequireAdjuster])
 def create_portal_token(
+    request: Request,
     claim_id: str,
     body: CreatePortalTokenBody = Body(...),
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Create a claim access token for the claimant portal. Returns the raw token (send to claimant once)."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    if not get_settings().portal.enabled:
-        raise HTTPException(status_code=503, detail="Claimant portal is disabled")
-    email = body.email
-    party_id = body.party_id
-    if not email and party_id:
-        parties = ctx.repo.get_claim_parties(claim_id)
-        for p in parties:
-            if p.get("id") == party_id:
-                email = p.get("email")
-                break
-    if not email and not party_id:
-        parties = ctx.repo.get_claim_parties(claim_id)
-        for p in parties:
-            if p.get("party_type") in ("claimant", "policyholder") and p.get("email"):
-                email = p.get("email")
-                party_id = p.get("id")
-                break
-    token = create_claim_access_token(
-        claim_id, party_id=party_id, email=email
-    )
-    return {"claim_id": claim_id, "token": token}
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
+
+    try:
+        if ctx.repo.get_claim(claim_id) is None:
+            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+        if not get_settings().portal.enabled:
+            raise HTTPException(status_code=503, detail="Claimant portal is disabled")
+        email = body.email
+        party_id = body.party_id
+        if not email and party_id:
+            parties = ctx.repo.get_claim_parties(claim_id)
+            for p in parties:
+                if p.get("id") == party_id:
+                    email = p.get("email")
+                    break
+        if not email and not party_id:
+            parties = ctx.repo.get_claim_parties(claim_id)
+            for p in parties:
+                if p.get("party_type") in ("claimant", "policyholder") and p.get("email"):
+                    email = p.get("email")
+                    party_id = p.get("id")
+                    break
+        token = create_claim_access_token(
+            claim_id, party_id=party_id, email=email
+        )
+        result = {"claim_id": claim_id, "token": token}
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
 
 
 @router.get("/claims/{claim_id}/attachments/{key}", dependencies=[RequireAdjuster])
@@ -1858,6 +1869,7 @@ async def get_incident(
 
 @router.post("/claim-links")
 async def create_claim_link(
+    request: Request,
     link_input: ClaimLinkInput = Body(..., description="Link between two claims"),
     auth: AuthContext = RequireAdjuster,
 ):
@@ -1866,24 +1878,34 @@ async def create_claim_link(
     Use for: opposing_carrier (your insured hit their insured), subrogation,
     cross_carrier, or same_incident when linking claims from different submissions.
     """
-    claim_repo = ClaimRepository(db_path=get_db_path())
-    for cid in (link_input.claim_id_a, link_input.claim_id_b):
-        if claim_repo.get_claim(cid) is None:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {cid}")
-    incident_repo = IncidentRepository(db_path=get_db_path())
-    link_id = incident_repo.create_claim_link(
-        link_input.claim_id_a,
-        link_input.claim_id_b,
-        link_input.link_type,
-        opposing_carrier=link_input.opposing_carrier,
-        notes=link_input.notes,
-    )
-    if link_id is None:
-        raise HTTPException(
-            status_code=409,
-            detail="A claim link with this combination already exists",
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
+
+    try:
+        claim_repo = ClaimRepository(db_path=get_db_path())
+        for cid in (link_input.claim_id_a, link_input.claim_id_b):
+            if claim_repo.get_claim(cid) is None:
+                raise HTTPException(status_code=404, detail=f"Claim not found: {cid}")
+        incident_repo = IncidentRepository(db_path=get_db_path())
+        link_id = incident_repo.create_claim_link(
+            link_input.claim_id_a,
+            link_input.claim_id_b,
+            link_input.link_type,
+            opposing_carrier=link_input.opposing_carrier,
+            notes=link_input.notes,
         )
-    return {"link_id": link_id, "message": "Claim link created"}
+        if link_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail="A claim link with this combination already exists",
+            )
+        result = {"link_id": link_id, "message": "Claim link created"}
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
 
 
 @router.get("/claims/{claim_id}/related", response_model=RelatedClaimsResponse)
