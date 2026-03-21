@@ -903,8 +903,16 @@ def create_portal_token(
 
 
 @router.get("/claims/{claim_id}/attachments/{key}", dependencies=[RequireAdjuster])
-def get_claim_attachment(claim_id: str, key: str):
-    """Serve an attachment file for a claim. Local storage only; S3 uses presigned URLs."""
+def get_claim_attachment(
+    claim_id: str,
+    key: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Serve an attachment file for a claim. Local storage only; S3 uses presigned URLs.
+
+    Appends a ``document_downloaded`` row to ``claim_audit_log`` (chain of custody).
+    """
     with get_connection() as conn:
         row = conn.execute(
             text("SELECT id FROM claims WHERE id = :claim_id"),
@@ -924,6 +932,13 @@ def get_claim_attachment(claim_id: str, key: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Attachment not found: {key}")
 
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    ctx.repo.insert_document_download_audit(
+        claim_id,
+        storage_key=key,
+        actor_id=actor_id,
+        channel="adjuster_api",
+    )
     return FileResponse(path=str(file_path), filename=key)
 
 

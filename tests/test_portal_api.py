@@ -1,9 +1,13 @@
 """Tests for the Claimant Portal API endpoints."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from claim_agent.config import reload_settings
+from claim_agent.db.database import get_connection
 from claim_agent.services.portal_verification import create_claim_access_token
 
 
@@ -274,6 +278,45 @@ class TestPortalDocumentUpload:
         )
         assert resp.status_code == 400
         assert "not allowed" in resp.json()["detail"].lower()
+
+
+class TestPortalAttachmentDownload:
+    """Portal attachment download and chain-of-custody audit."""
+
+    def test_portal_attachment_download_appends_document_downloaded_audit(
+        self, client, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+        monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
+        reload_settings()
+        import claim_agent.storage.factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "_storage_instance", None)
+        storage = factory_mod.get_storage_adapter()
+        stored_key = storage.save(
+            claim_id="CLM-TEST001",
+            filename="portal_chain.pdf",
+            content=b"portal attachment bytes",
+        )
+        resp = client.get(
+            f"/api/portal/claims/CLM-TEST001/attachments/{stored_key}",
+            headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
+        )
+        assert resp.status_code == 200
+        assert resp.content == b"portal attachment bytes"
+        with get_connection() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT action, actor_id, after_state FROM claim_audit_log "
+                    "WHERE claim_id = :cid AND action = 'document_downloaded' "
+                    "ORDER BY id DESC LIMIT 1"
+                ),
+                {"cid": "CLM-TEST001"},
+            ).fetchone()
+        assert row is not None
+        state = json.loads(row[2])
+        assert state["storage_key"] == stored_key
+        assert state["channel"] == "portal"
 
 
 class TestPortalFollowUpResponse:
