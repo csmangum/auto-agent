@@ -352,6 +352,58 @@ class TestRegistry:
         with pytest.raises(ValueError, match="Unknown POLICY_ADAPTER backend.*invalid"):
             get_policy_adapter()
 
+    def test_valuation_ccc_requires_rest_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("VALUATION_ADAPTER", "ccc")
+        monkeypatch.setenv("VALUATION_REST_BASE_URL", "")
+        reload_settings()
+        with pytest.raises(ValueError, match="VALUATION_REST_BASE_URL"):
+            get_valuation_adapter()
+        reset_adapters()
+
+    def test_valuation_rest_backend_rejected(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("VALUATION_ADAPTER", "rest")
+        reload_settings()
+        with pytest.raises(ValueError, match="VALUATION_ADAPTER=rest"):
+            get_valuation_adapter()
+        reset_adapters()
+
+    def test_valuation_ccc_registry_returns_rest_adapter(self, monkeypatch):
+        from claim_agent.adapters.real.valuation_rest import RestValuationAdapter
+
+        reset_adapters()
+        monkeypatch.setenv("VALUATION_ADAPTER", "ccc")
+        monkeypatch.setenv("VALUATION_REST_BASE_URL", "https://gw.example.com")
+        reload_settings()
+
+        class HC:
+            def __init__(self, **kw):
+                pass
+
+            def get(self, path, params=None):
+                class R:
+                    status_code = 200
+
+                    def raise_for_status(self):
+                        pass
+
+                    def json(self):
+                        return {"value": 21000, "condition": "good", "comparables": []}
+
+                return R()
+
+        monkeypatch.setattr(
+            "claim_agent.adapters.real.valuation_rest.AdapterHttpClient",
+            HC,
+        )
+        v = get_valuation_adapter()
+        assert isinstance(v, RestValuationAdapter)
+        out = v.get_vehicle_value("VIN123", 2022, "Toyota", "Camry")
+        assert out is not None
+        assert out["value"] == 21000
+        reset_adapters()
+
 
 # ---------------------------------------------------------------------------
 # Adapter caller tests: logic that catches NotImplementedError from stubs

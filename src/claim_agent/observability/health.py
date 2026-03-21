@@ -7,7 +7,11 @@ from sqlalchemy import text
 
 from claim_agent.config.llm import get_llm
 from claim_agent.config.settings import get_adapter_backend
-from claim_agent.config.settings_model import VALID_ADAPTER_BACKENDS, REST_CAPABLE_ADAPTERS
+from claim_agent.config.settings_model import (
+    REST_CAPABLE_ADAPTERS,
+    VALID_ADAPTER_BACKENDS,
+    VALUATION_PROVIDER_BACKENDS,
+)
 from claim_agent.db.database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -25,11 +29,30 @@ def _check_adapters() -> dict[str, str]:
     ]
     for name, getter_name in adapters_to_check:
         backend = get_adapter_backend(name)
-        if backend not in VALID_ADAPTER_BACKENDS:
+        if name == "valuation":
+            backend_ok = backend in VALID_ADAPTER_BACKENDS or backend in VALUATION_PROVIDER_BACKENDS
+        else:
+            backend_ok = backend in VALID_ADAPTER_BACKENDS
+        if not backend_ok:
             checks[f"adapter_{name}"] = f"degraded:invalid backend {backend!r}"
             continue
         if backend == "rest" and name not in REST_CAPABLE_ADAPTERS:
             checks[f"adapter_{name}"] = f"degraded:rest backend not supported for {name} adapter"
+            continue
+        if name == "valuation" and backend in VALUATION_PROVIDER_BACKENDS:
+            try:
+                from claim_agent.adapters import registry
+
+                getter = getattr(registry, getter_name)
+                adapter = getter()
+                if hasattr(adapter, "health_check"):
+                    ok, msg = adapter.health_check()
+                    checks[f"adapter_{name}"] = "ok" if ok else f"degraded:{msg}"
+                else:
+                    checks[f"adapter_{name}"] = "skipped"
+            except Exception as e:
+                logger.error("Adapter %s health check failed: %s", name, e)
+                checks[f"adapter_{name}"] = f"error:{e!s}"
             continue
         if backend != "rest":
             checks[f"adapter_{name}"] = "skipped"

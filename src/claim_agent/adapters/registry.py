@@ -3,7 +3,8 @@
 Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
-Supported values: ``mock``, ``stub``, ``rest`` (policy only). Unknown values raise ValueError.
+Supported values: ``mock``, ``stub``, ``rest`` (policy only). Valuation also supports
+``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings. Unknown values raise ValueError.
 """
 
 import threading
@@ -19,7 +20,10 @@ from claim_agent.adapters.base import (
     ValuationAdapter,
 )
 from claim_agent.config.settings import VALID_ADAPTER_BACKENDS, get_adapter_backend
-from claim_agent.config.settings_model import REST_CAPABLE_ADAPTERS
+from claim_agent.config.settings_model import (
+    REST_CAPABLE_ADAPTERS,
+    VALUATION_PROVIDER_BACKENDS,
+)
 
 _lock = threading.Lock()
 _cache: dict[str, Any] = {}
@@ -29,10 +33,20 @@ T = TypeVar('T')
 
 def _resolve_backend(adapter_name: str) -> str:
     backend = get_adapter_backend(adapter_name)
-    if backend not in VALID_ADAPTER_BACKENDS:
+    if adapter_name == "valuation":
+        allowed = (VALID_ADAPTER_BACKENDS - {"rest"}) | VALUATION_PROVIDER_BACKENDS
+    else:
+        allowed = VALID_ADAPTER_BACKENDS
+    if backend not in allowed:
+        if adapter_name == "valuation" and backend == "rest":
+            raise ValueError(
+                f"{adapter_name.upper()}_ADAPTER=rest is not supported. "
+                f"Use ccc, mitchell, or audatex with VALUATION_REST_BASE_URL "
+                f"(and optional VALUATION_REST_PATH_TEMPLATE / VALUATION_REST_RESPONSE_KEY)."
+            )
         raise ValueError(
             f"Unknown {adapter_name.upper()}_ADAPTER backend: {backend!r}. "
-            f"Expected one of: {sorted(VALID_ADAPTER_BACKENDS)}."
+            f"Expected one of: {sorted(allowed)}."
         )
     if backend == "rest" and adapter_name not in REST_CAPABLE_ADAPTERS:
         raise ValueError(
@@ -99,9 +113,35 @@ def get_policy_adapter() -> PolicyAdapter:
 
 
 def get_valuation_adapter() -> ValuationAdapter:
-    from claim_agent.adapters.stub import StubValuationAdapter
     from claim_agent.adapters.mock.valuation import MockValuationAdapter
-    return _get_or_create_adapter("valuation", StubValuationAdapter, MockValuationAdapter)
+    from claim_agent.adapters.real.valuation_rest import create_valuation_rest_adapter
+    from claim_agent.adapters.stub import StubValuationAdapter
+
+    key = "valuation"
+    if key in _cache:
+        return cast(ValuationAdapter, _cache[key])
+    with _lock:
+        if key in _cache:
+            return cast(ValuationAdapter, _cache[key])
+        backend = _resolve_backend(key)
+        if backend in VALUATION_PROVIDER_BACKENDS:
+            _cache[key] = create_valuation_rest_adapter(backend)
+        elif backend == "stub":
+            _cache[key] = StubValuationAdapter()
+        elif backend == "mock":
+            _cache[key] = MockValuationAdapter()
+        elif backend == "rest":
+            raise ValueError(
+                "VALUATION_ADAPTER=rest is not supported. "
+                "Use ccc, mitchell, or audatex with VALUATION_REST_BASE_URL "
+                "(and optional VALUATION_REST_PATH_TEMPLATE / VALUATION_REST_RESPONSE_KEY)."
+            )
+        else:
+            raise ValueError(
+                f"Unsupported VALUATION_ADAPTER backend: {backend!r}. "
+                f"Use mock, stub, or one of: {sorted(VALUATION_PROVIDER_BACKENDS)}."
+            )
+        return cast(ValuationAdapter, _cache[key])
 
 
 def get_repair_shop_adapter() -> RepairShopAdapter:
