@@ -43,8 +43,9 @@ class PolicyAdapter(ABC):
         - Legacy: ``coverage`` (str), ``deductible`` (number)
         
         Territory coverage (optional):
-        - ``territory`` (str or list): Geographic coverage area (e.g., "US", "USA_Canada", 
-          ["California", "Nevada", "Oregon"], or state code like "TX")
+        - ``territory`` (str or list): Geographic coverage area (e.g., "US", "USA_Canada",
+          US states/DC/insular areas (e.g. PR, Puerto Rico), Canadian provinces/territories
+          (e.g. ON, Ontario), or a list mixing names and codes)
         - ``excluded_territories`` (list): Territories explicitly excluded from coverage
 
         Policy term (optional, ISO date ``YYYY-MM-DD`` or date-like values):

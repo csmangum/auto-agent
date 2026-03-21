@@ -71,6 +71,8 @@ class PolicyAdapter(ABC):
 
 **Policy term (incident date)**: Optional `effective_date` and `expiration_date` (ISO `YYYY-MM-DD`, inclusive bounds) may be returned; `term_start` / `term_end` are accepted as aliases and normalized in `query_policy_db_impl`. When both are present on the policy response and the claim includes a parseable `incident_date`, FNOL coverage verification denies if the loss falls outside the term. If both term fields are omitted, verification skips this check (legacy backends). In `data/mock_db.json`, `_meta.policy_term_defaults` supplies default term dates for policies that omit them; `load_mock_db()` merges those defaults before adapters read policy records.
 
+**Policy territory (`incident_location` / `loss_state`)**: For `territory: "US"`, matching includes US states, DC, and common US insular areas (e.g. Puerto Rico / PR, U.S. Virgin Islands / VI, Guam, American Samoa, Northern Mariana Islands). For `territory: "USA_Canada"`, matching includes the same US geography plus Canada (the string `Canada` or any province/territory by English name or two-letter code, e.g. Ontario / ON). `excluded_territories` uses the same normalization so exclusions can list codes or names. Policies may define only `excluded_territories` (no positive `territory`); in that case only carve-outs are enforced.
+
 ### ValuationAdapter
 
 ```python

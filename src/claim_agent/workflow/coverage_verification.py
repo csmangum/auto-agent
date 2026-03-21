@@ -150,6 +150,48 @@ _STATE_NAME_BY_CASEFOLD: dict[str, str] = {
     name.casefold(): name for name in _STATE_CODE_TO_NAME.values()
 }
 
+# US insular areas (policy "US" territory typically includes these; ISO-style codes).
+_US_INSULAR_CODE_TO_NAME: dict[str, str] = {
+    "PR": "Puerto Rico",
+    "VI": "U.S. Virgin Islands",
+    "GU": "Guam",
+    "AS": "American Samoa",
+    "MP": "Northern Mariana Islands",
+}
+_US_INSULAR_CODES = frozenset(_US_INSULAR_CODE_TO_NAME.keys())
+
+_US_INSULAR_NAME_BY_CASEFOLD: dict[str, str] = {
+    "puerto rico": "Puerto Rico",
+    "u.s. virgin islands": "U.S. Virgin Islands",
+    "us virgin islands": "U.S. Virgin Islands",
+    "united states virgin islands": "U.S. Virgin Islands",
+    "virgin islands": "U.S. Virgin Islands",
+    "guam": "Guam",
+    "american samoa": "American Samoa",
+    "northern mariana islands": "Northern Mariana Islands",
+}
+
+# Canadian provinces and territories (ISO 3166-2:CA codes).
+_CANADA_PROVINCE_CODE_TO_NAME: dict[str, str] = {
+    "AB": "Alberta",
+    "BC": "British Columbia",
+    "MB": "Manitoba",
+    "NB": "New Brunswick",
+    "NL": "Newfoundland and Labrador",
+    "NS": "Nova Scotia",
+    "NT": "Northwest Territories",
+    "NU": "Nunavut",
+    "ON": "Ontario",
+    "PE": "Prince Edward Island",
+    "QC": "Quebec",
+    "SK": "Saskatchewan",
+    "YT": "Yukon",
+}
+_CANADA_PROVINCE_CODES = frozenset(_CANADA_PROVINCE_CODE_TO_NAME.keys())
+_CANADA_NAME_BY_CASEFOLD: dict[str, str] = {
+    name.casefold(): name for name in _CANADA_PROVINCE_CODE_TO_NAME.values()
+}
+
 
 class TerritoryConfigurationError(ValueError):
     """Policy adapter returned territory data we cannot interpret safely."""
@@ -203,11 +245,50 @@ def _canonical_us_state(location: str) -> str | None:
     return _STATE_NAME_BY_CASEFOLD.get(loc.casefold())
 
 
-def _incident_in_us_geography(incident_location: str, incident_loc_norm: str) -> bool:
-    """True if the incident resolves to a US state/DC (code or canonical name)."""
-    return (
-        incident_loc_norm in _US_STATE_CODES or _canonical_us_state(incident_location) is not None
-    )
+def _canonical_us_insular_area(location: str) -> str | None:
+    """Canonical name for a US insular area (code or English name), or None."""
+    loc = location.strip()
+    if not loc:
+        return None
+    code = loc.upper()
+    if code in _US_INSULAR_CODE_TO_NAME:
+        return _US_INSULAR_CODE_TO_NAME[code]
+    return _US_INSULAR_NAME_BY_CASEFOLD.get(loc.casefold())
+
+
+def _canonical_us_region(location: str) -> str | None:
+    """US state, DC, or US insular area canonical name."""
+    s = _canonical_us_state(location)
+    if s:
+        return s
+    return _canonical_us_insular_area(location)
+
+
+def _canonical_canada_region(location: str) -> str | None:
+    """Canadian province or territory canonical name (code or English name), or None."""
+    loc = location.strip()
+    if not loc:
+        return None
+    code = loc.upper()
+    if code in _CANADA_PROVINCE_CODE_TO_NAME:
+        return _CANADA_PROVINCE_CODE_TO_NAME[code]
+    return _CANADA_NAME_BY_CASEFOLD.get(loc.casefold())
+
+
+def _incident_in_us_policy_geography(incident_location: str, incident_loc_norm: str) -> bool:
+    """True if the incident resolves to a US state, DC, or US insular area."""
+    if incident_loc_norm in _US_STATE_CODES or incident_loc_norm in _US_INSULAR_CODES:
+        return True
+    return _canonical_us_region(incident_location) is not None
+
+
+def _incident_in_canada_geography(incident_location: str, incident_loc_norm: str) -> bool:
+    """True if the incident is Canada-wide or a province/territory (code or name)."""
+    if incident_loc_norm == "CANADA":
+        return True
+    if incident_loc_norm in _CANADA_PROVINCE_CODES:
+        return True
+    return _canonical_canada_region(incident_location) is not None
 
 
 def _is_location_in_territory(
@@ -237,15 +318,20 @@ def _is_location_in_territory(
 
     # Enforce exclusions even when there is no positive territory (worldwide + carve-outs).
     if excluded_list:
-        incident_canon = _canonical_us_state(incident_location)
+        incident_us = _canonical_us_region(incident_location)
+        incident_ca = _canonical_canada_region(incident_location)
         for excluded in excluded_list:
             excluded_norm = _normalize_location(excluded)
             # Direct normalized match
             if incident_loc == excluded_norm:
                 return False, f"Incident location '{incident_location}' is in excluded territory"
-            # Bidirectional state code/name equivalence (e.g., AK <-> Alaska)
-            excluded_canon = _canonical_us_state(excluded)
-            if incident_canon and excluded_canon and incident_canon == excluded_canon:
+            # US state/DC/insular code or name equivalence (e.g., AK <-> Alaska, PR <-> Puerto Rico)
+            excluded_us = _canonical_us_region(excluded)
+            if incident_us and excluded_us and incident_us == excluded_us:
+                return False, f"Incident location '{incident_location}' is in excluded territory"
+            # Canadian province/territory equivalence (e.g., ON <-> Ontario)
+            excluded_ca = _canonical_canada_region(excluded)
+            if incident_ca and excluded_ca and incident_ca == excluded_ca:
                 return False, f"Incident location '{incident_location}' is in excluded territory"
 
     if policy_territory is None:
@@ -256,15 +342,17 @@ def _is_location_in_territory(
 
         # Special cases: US or USA_Canada
         if territory_norm == "US":
-            if _incident_in_us_geography(incident_location, incident_loc):
+            if _incident_in_us_policy_geography(incident_location, incident_loc):
                 return True, "Incident in US territory"
             if incident_loc == "US":
                 return True, "Incident in US territory"
             return False, f"Incident location '{incident_location}' is outside US territory"
 
         if territory_norm == "USA_CANADA":
-            if _incident_in_us_geography(incident_location, incident_loc):
+            if _incident_in_us_policy_geography(incident_location, incident_loc):
                 return True, "Incident in US territory (USA_Canada policy)"
+            if _incident_in_canada_geography(incident_location, incident_loc):
+                return True, "Incident in Canada (USA_Canada policy)"
             if incident_loc in ("US", "CANADA"):
                 return True, "Incident in USA/Canada territory"
             return False, f"Incident location '{incident_location}' is outside USA/Canada territory"
@@ -283,15 +371,20 @@ def _is_location_in_territory(
             list[str],
             _ensure_str_list(policy_territory, label="territory"),
         )
-        incident_canon = _canonical_us_state(incident_location)
+        incident_us = _canonical_us_region(incident_location)
+        incident_ca = _canonical_canada_region(incident_location)
         for territory in territories_list:
             territory_norm = _normalize_location(territory)
             # Direct normalized match
             if incident_loc == territory_norm:
                 return True, f"Incident in policy territory ({territory})"
-            # Bidirectional state code/name equivalence (e.g., NV <-> Nevada, TX <-> Texas)
-            territory_canon = _canonical_us_state(territory)
-            if incident_canon and territory_canon and incident_canon == territory_canon:
+            # US state/DC/insular code or name equivalence (e.g., NV <-> Nevada, PR <-> Puerto Rico)
+            territory_us = _canonical_us_region(territory)
+            if incident_us and territory_us and incident_us == territory_us:
+                return True, f"Incident in policy territory ({territory})"
+            # Canadian province/territory equivalence (e.g., ON <-> Ontario)
+            territory_ca = _canonical_canada_region(territory)
+            if incident_ca and territory_ca and incident_ca == territory_ca:
                 return True, f"Incident in policy territory ({territory})"
 
         territories_str = ", ".join(territories_list)
@@ -782,11 +875,15 @@ def verify_coverage_impl(
         details_dict["term_verified"] = True
         details_dict["incident_date"] = inc_ok.isoformat()
 
-    # Include territory verification in success details
+    # Include territory verification in success details when a territory or exclusion rule applied
     incident_location = _incident_location_from_claim(claim_data)
-    if incident_location and policy_result.get("territory") is not None:
-        details_dict["territory_verified"] = True
-        details_dict["incident_location"] = incident_location
+    if incident_location:
+        has_positive_territory = policy_result.get("territory") is not None
+        excluded_raw = policy_result.get("excluded_territories")
+        has_exclusions = isinstance(excluded_raw, list) and len(excluded_raw) > 0
+        if has_positive_territory or has_exclusions:
+            details_dict["territory_verified"] = True
+            details_dict["incident_location"] = incident_location
 
     return CoverageVerificationResult(
         passed=True,

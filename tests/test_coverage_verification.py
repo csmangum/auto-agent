@@ -694,6 +694,56 @@ class TestTerritoryVerification:
             ctx=ctx,
         )
         assert ok.passed
+        assert ok.details.get("territory_verified") is True
+        assert ok.details.get("incident_location") == "Texas"
+
+    def test_passes_puerto_rico_under_us_territory(self):
+        """territory='US' includes US insular areas (e.g. Puerto Rico / PR)."""
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "Puerto Rico",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert result.details.get("territory_verified") is True
+
+    def test_passes_pr_code_under_us_territory(self):
+        claim_data = {
+            "policy_number": "POL-001",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "PR",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+
+    def test_passes_ontario_under_usa_canada_territory(self):
+        """USA_Canada matches Canadian provinces by name or code."""
+        claim_data = {
+            "policy_number": "POL-004",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "Ontario",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
+        assert result.details.get("territory_verified") is True
+
+    def test_passes_on_code_under_usa_canada_territory(self):
+        claim_data = {
+            "policy_number": "POL-004",
+            "damage_description": "Collision damage",
+            "estimated_damage": 2000,
+            "incident_location": "ON",
+        }
+        ctx = _ctx_with_mock_db(":memory:")
+        result = verify_coverage_impl(claim_data, ctx=ctx)
+        assert result.passed
 
     def test_require_incident_location_when_policy_has_only_exclusions(self):
         """Missing location escalates when excluded_territories set but territory absent."""
