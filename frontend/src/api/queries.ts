@@ -398,7 +398,7 @@ export function useUploadDocument(claimId: string | undefined) {
     }),
     onSuccess: () => {
       if (claimId) {
-        queryClient.invalidateQueries({ queryKey: ['claims', claimId, 'documents'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimDocuments(claimId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       }
     },
@@ -412,7 +412,7 @@ export function useUpdateDocument(claimId: string | undefined) {
       updateClaimDocument(claimId!, docId, body),
     onSuccess: () => {
       if (claimId) {
-        queryClient.invalidateQueries({ queryKey: ['claims', claimId, 'documents'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.claimDocuments(claimId) });
       }
     },
   });
