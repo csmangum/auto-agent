@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import type { UseMutationResult } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
@@ -640,24 +640,33 @@ interface AddRelationshipFormProps {
   onSubmit: (body: { from_party_id: number; to_party_id: number; relationship_type: string }) => void;
   isPending: boolean;
   error: Error | null;
+  onSuccess: () => void;
 }
 
-function AddRelationshipForm({ parties, onSubmit, isPending, error }: AddRelationshipFormProps) {
+function AddRelationshipForm({ parties, onSubmit, isPending, error, onSuccess }: AddRelationshipFormProps) {
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [relType, setRelType] = useState(RELATIONSHIP_TYPES[0]);
+  const [prevPending, setPrevPending] = useState(isPending);
+
+  useEffect(() => {
+    if (prevPending && !isPending && !error) {
+      setFromId('');
+      setToId('');
+      setRelType(RELATIONSHIP_TYPES[0]);
+      onSuccess();
+    }
+    setPrevPending(isPending);
+  }, [isPending, prevPending, error, onSuccess]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fromId || !toId) return;
+    if (!fromId || !toId || fromId === toId) return;
     onSubmit({
       from_party_id: Number(fromId),
       to_party_id: Number(toId),
       relationship_type: relType,
     });
-    setFromId('');
-    setToId('');
-    setRelType(RELATIONSHIP_TYPES[0]);
   };
 
   const partyLabel = (p: ClaimParty) =>
@@ -681,7 +690,13 @@ function AddRelationshipForm({ parties, onSubmit, isPending, error }: AddRelatio
           <select
             id="rel-from"
             value={fromId}
-            onChange={(e) => setFromId(e.target.value)}
+            onChange={(e) => {
+              const newFromId = e.target.value;
+              setFromId(newFromId);
+              if (newFromId === toId) {
+                setToId('');
+              }
+            }}
             required
             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
@@ -960,6 +975,7 @@ export default function ClaimDetail() {
                   onSubmit={(body) => createRelMutation.mutate(body)}
                   isPending={createRelMutation.isPending}
                   error={createRelMutation.error}
+                  onSuccess={() => {}}
                 />
               </div>
             )}
