@@ -57,6 +57,10 @@ class ClaimDocument(BaseModel):
     retention_date: Optional[str] = Field(
         default=None, description="ISO date for retention policy"
     )
+    retention_enforced_at: Optional[str] = Field(
+        default=None,
+        description="When document-level retention was applied (soft archive); set by document-retention-enforce",
+    )
     version: int = Field(default=1, description="Document version")
     extracted_data: Optional[dict[str, Any]] = Field(
         default=None, description="OCR/extracted structured data"

@@ -316,3 +316,43 @@ class DocumentRepository:
                 {"claim_id": claim_id, "document_type": document_type},
             ).fetchall()
         return [_row_to_request(r) for r in rows]
+
+    def list_documents_past_retention(self, cutoff_date: str) -> list[dict[str, Any]]:
+        """Rows with ``retention_date`` before ``cutoff_date`` (YYYY-MM-DD), not yet enforced.
+
+        Ignores blank ``retention_date``. Compares trimmed non-empty values lexicographically
+        (ISO dates) against ``cutoff_date``.
+        """
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                text("""
+                SELECT id, claim_id, storage_key, retention_date, document_type
+                FROM claim_documents
+                WHERE retention_date IS NOT NULL
+                  AND length(trim(retention_date)) > 0
+                  AND trim(retention_date) < :cutoff
+                  AND (retention_enforced_at IS NULL OR trim(retention_enforced_at) = '')
+                ORDER BY id ASC
+                """),
+                {"cutoff": cutoff_date},
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = row_to_dict(r)
+            out.append(d)
+        return out
+
+    def mark_retention_enforced(self, document_id: int) -> bool:
+        """Set ``retention_enforced_at`` if not already set. Returns True if a row was updated."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_connection(self._db_path) as conn:
+            result = conn.execute(
+                text("""
+                UPDATE claim_documents
+                SET retention_enforced_at = :ts, updated_at = :ts
+                WHERE id = :id
+                  AND (retention_enforced_at IS NULL OR trim(retention_enforced_at) = '')
+                """),
+                {"ts": now, "id": document_id},
+            )
+            return bool(result.rowcount)
