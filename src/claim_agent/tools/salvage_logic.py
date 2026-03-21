@@ -232,6 +232,8 @@ def _attempt_nmvtis_submission(
                         "NMVTIS integration not configured; manual federal reporting may be required."
                     ),
                 }
+            except ClaimNotFoundError:
+                raise
             except Exception as e:
                 last_exc = e
                 if attempt < _NMVTIS_MAX_ATTEMPTS - 1:
@@ -357,6 +359,21 @@ def record_salvage_disposition_impl(
             "salvage_disposition_recorded_at": recorded_at,
         }
         repo.update_claim_total_loss_metadata(claim_id, merged)
+
+        if status in _NMVTIS_DISPOSITION_TRIGGERS:
+            dmv_ref = merged.get("dmv_reference")
+            if isinstance(dmv_ref, str):
+                dmv_ref = dmv_ref.strip() or None
+            else:
+                dmv_ref = None
+            nmvtis_out = _attempt_nmvtis_submission(
+                repo,
+                claim_id,
+                trigger_event="salvage_disposition",
+                dmv_reference=dmv_ref,
+                ctx=ctx,
+            )
+            result.update(nmvtis_out)
     except ClaimNotFoundError as e:
         logger.warning("Salvage disposition persist failed (claim not found): %s", claim_id)
         result["error"] = str(e)
@@ -365,21 +382,6 @@ def record_salvage_disposition_impl(
         logger.warning("Failed to persist salvage disposition for %s: %s", claim_id, e)
         result["error"] = str(e)
         return json.dumps(result)
-
-    if status in _NMVTIS_DISPOSITION_TRIGGERS:
-        dmv_ref = merged.get("dmv_reference")
-        if isinstance(dmv_ref, str):
-            dmv_ref = dmv_ref.strip() or None
-        else:
-            dmv_ref = None
-        nmvtis_out = _attempt_nmvtis_submission(
-            repo,
-            claim_id,
-            trigger_event="salvage_disposition",
-            dmv_reference=dmv_ref,
-            ctx=ctx,
-        )
-        result.update(nmvtis_out)
 
     return json.dumps(result)
 
