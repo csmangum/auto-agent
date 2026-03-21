@@ -76,9 +76,16 @@ Example:
     "Florida": 5,
     "New York": 6,
     "Georgia": 7
+  },
+  "purge_after_archive_by_state": {
+    "California": 3,
+    "Texas": 4,
+    "New York": 3
   }
 }
 ```
+
+Optional `purge_after_archive_by_state` sets how many **calendar years** after `archived_at` before a claim may be purged, per `loss_state`. Values must be integers **≥ 0** (`0` means eligible as of the archive timestamp’s calendar day). Unlisted states and claims whose `loss_state` cannot be normalized (typos, unsupported states) use the global `RETENTION_PURGE_AFTER_ARCHIVE_YEARS` instead. **`retention-purge` / `retention-report` with `--years` / `--purge-years` forces the global value and ignores this map** (operational override).
 
 **Important:** JSON keys must match canonical state names from `rag.constants.normalize_state` (e.g. `"California"`, not `"CA"`). Supported states are defined in `SUPPORTED_STATES`. Adding a new state (e.g. Nevada) to the JSON alone will not take effect—claims with unsupported `loss_state` values fall back to the default retention period. To support a new state, update both `state_retention_periods.json` and `rag.constants` (SUPPORTED_STATES, _STATE_ABBREV_TO_CANONICAL).
 
@@ -110,7 +117,7 @@ claim-agent retention-enforce --include-litigation-hold
 
 ### Retention purge (after archive)
 
-After claims have been archived for `RETENTION_PURGE_AFTER_ARCHIVE_YEARS` (default 2), purge anonymizes PII and sets `status=purged`:
+After claims have been archived for `RETENTION_PURGE_AFTER_ARCHIVE_YEARS` (default 2), purge anonymizes PII and sets `status=purged`. Per-state delays may be set in `state_retention_periods.json` under `purge_after_archive_by_state` (see State-Specific Retention example above).
 
 ```bash
 claim-agent retention-purge --dry-run
@@ -118,6 +125,8 @@ claim-agent retention-purge
 claim-agent retention-purge --years 3
 claim-agent retention-purge --include-litigation-hold
 ```
+
+Dry-run and post-purge JSON output may include `purge_by_state` when the per-state map is loaded from config (omitted when you pass `--years`, which disables the map).
 
 ### Retention Audit Report
 
@@ -129,7 +138,7 @@ claim-agent retention-report --years 7
 claim-agent retention-report --purge-years 3
 ```
 
-Output includes: `retention_period_years`, `purge_after_archive_years`, `retention_by_state`, `claims_by_status`, `claims_by_retention_tier`, `active_count`, `closed_count`, `archived_count`, `purged_count`, `litigation_hold_count`, `closed_with_litigation_hold`, `pending_archive_count`, `pending_purge_count`, `audit_log_rows`.
+Output includes: `retention_period_years`, `purge_after_archive_years`, `retention_by_state`, `purge_by_state`, `claims_by_status`, `claims_by_retention_tier`, `active_count`, `closed_count`, `archived_count`, `purged_count`, `litigation_hold_count`, `closed_with_litigation_hold`, `pending_archive_count`, `pending_purge_count`, `audit_log_rows`.
 
 ### Tiered retention (cold → archived → purged)
 

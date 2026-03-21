@@ -1681,6 +1681,8 @@ class TestSystemHealth:
 
 
 class TestAgentsCatalog:
+    """Crew list from GET /api/system/agents; count and names track ``_CREWS_CATALOG`` in ``api.routes.system`` (independent of retention/purge config)."""
+
     def test_get_catalog(self, client, monkeypatch):
         _set_admin_auth(monkeypatch)
         resp = client.get("/api/system/agents", headers=_ADMIN_HEADERS)
@@ -1688,13 +1690,14 @@ class TestAgentsCatalog:
         data = resp.json()
         assert "crews" in data
         crews = data["crews"]
-        assert len(crews) == 20
+        assert len(crews) == 21
         # Check crew names
         crew_names = [c["name"] for c in crews]
         assert "Router Crew" in crew_names
         assert "Fraud Detection Crew" in crew_names
         assert "Denial / Coverage Dispute Crew" in crew_names
         assert "Follow-up Crew" in crew_names
+        assert "Party Intake Crew" in crew_names
         assert "Settlement Crew" in crew_names
         assert "Subrogation Crew" in crew_names
         # Check agents within a crew

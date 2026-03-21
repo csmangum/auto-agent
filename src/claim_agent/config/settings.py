@@ -126,6 +126,11 @@ def get_retention_by_state() -> dict[str, int]:
     return get_settings().get_retention_by_state()
 
 
+def get_purge_after_archive_by_state() -> dict[str, int]:
+    """State-specific purge-after-archive periods (years). Empty = use global only."""
+    return get_settings().get_purge_after_archive_by_state()
+
+
 def get_crew_verbose() -> bool:
     """Whether CrewAI runs in verbose mode."""
     return get_settings().crew_verbose

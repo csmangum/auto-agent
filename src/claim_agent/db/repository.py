@@ -199,9 +199,8 @@ def _is_claim_past_retention(
             lookup_state = normalize_state(raw_state)
         except ValueError:
             pass
-    years = (
-        retention_by_state.get(lookup_state) if lookup_state else None
-    ) or retention_period_years
+    state_years = retention_by_state.get(lookup_state) if lookup_state else None
+    years = retention_period_years if state_years is None else state_years
     cutoff_dt = now - timedelta(days=years * 365)
     created_raw = row_d.get("created_at")
     if not created_raw:
@@ -243,13 +242,31 @@ def _is_archived_past_purge_period(
     row_d: dict[str, Any],
     now: datetime,
     purge_after_archive_years: int,
+    purge_by_state: dict[str, int] | None = None,
 ) -> bool:
-    """True if ``now`` is on or after the calendar anniversary of archived_at + N years."""
+    """True if ``now`` is on or after the calendar anniversary of archived_at + N years.
+
+    When ``purge_by_state`` is set, uses the entry for the normalized ``loss_state`` if present;
+    otherwise uses ``purge_after_archive_years``. A non-empty map does not override unknown states.
+    """
     if purge_after_archive_years < 0:
         raise ValueError("purge_after_archive_years must be non-negative")
     archived_raw = row_d.get("archived_at")
     if not archived_raw:
         return False
+
+    state_map = purge_by_state or {}
+    raw_state = (row_d.get("loss_state") or "").strip()
+    lookup_state: str | None = None
+    if raw_state:
+        try:
+            lookup_state = normalize_state(raw_state)
+        except ValueError:
+            pass
+    state_years = state_map.get(lookup_state) if lookup_state else None
+    if state_years is not None and state_years < 0:
+        raise ValueError("per-state purge_after_archive years must be non-negative")
+    years = purge_after_archive_years if state_years is None else state_years
 
     def _to_utc_aware(dt: datetime) -> datetime:
         if dt.tzinfo is None:
@@ -270,7 +287,7 @@ def _is_archived_past_purge_period(
     else:
         return False
 
-    cutoff = _add_calendar_years(_to_utc_aware(archived_dt), purge_after_archive_years)
+    cutoff = _add_calendar_years(_to_utc_aware(archived_dt), years)
     return _to_utc_aware(now) >= cutoff
 
 
@@ -2952,9 +2969,11 @@ class ClaimRepository:
         *,
         retention_by_state: dict[str, int] | None = None,
         purge_after_archive_years: int = 2,
+        purge_by_state: dict[str, int] | None = None,
     ) -> dict[str, Any]:
         """Produce retention audit report: counts by tier, litigation hold, pending archive/purge."""
         state_map = retention_by_state or {}
+        purge_state_map = purge_by_state or {}
         now = datetime.now(timezone.utc)
 
         with get_connection(self._db_path) as conn:
@@ -2991,7 +3010,7 @@ class ClaimRepository:
 
             archived_rows = conn.execute(
                 text("""
-                SELECT id, archived_at, litigation_hold FROM claims
+                SELECT id, archived_at, loss_state, litigation_hold FROM claims
                 WHERE status = :st AND archived_at IS NOT NULL
                 """),
                 {"st": STATUS_ARCHIVED},
@@ -3012,13 +3031,16 @@ class ClaimRepository:
             row_d = row_to_dict(r)
             if row_d.get("litigation_hold"):
                 continue
-            if _is_archived_past_purge_period(row_d, now, purge_after_archive_years):
+            if _is_archived_past_purge_period(
+                row_d, now, purge_after_archive_years, purge_state_map
+            ):
                 pending_purge += 1
 
         return {
             "retention_period_years": retention_period_years,
             "purge_after_archive_years": purge_after_archive_years,
             "retention_by_state": state_map,
+            "purge_by_state": purge_state_map,
             "claims_by_status": status_counts,
             "claims_by_retention_tier": claims_by_retention_tier,
             "active_count": sum(
@@ -3108,6 +3130,7 @@ class ClaimRepository:
         self,
         purge_after_archive_years: int,
         *,
+        purge_by_state: dict[str, int] | None = None,
         exclude_litigation_hold: bool = True,
     ) -> list[dict[str, Any]]:
         """List archived claims past purge horizon (archived_at + N calendar years)."""
@@ -3131,7 +3154,9 @@ class ClaimRepository:
         result = []
         for r in rows:
             row_d = row_to_dict(r)
-            if _is_archived_past_purge_period(row_d, now, purge_after_archive_years):
+            if _is_archived_past_purge_period(
+                row_d, now, purge_after_archive_years, purge_by_state
+            ):
                 result.append(row_d)
         return result
 
