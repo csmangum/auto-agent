@@ -811,11 +811,7 @@ class CreatePartyRelationshipBody(BaseModel):
 
     from_party_id: int = Field(..., ge=1, description="Subject party (edge tail)")
     to_party_id: int = Field(..., ge=1, description="Related party (edge head)")
-    relationship_type: Literal[
-        PartyRelationshipType.REPRESENTED_BY.value,
-        PartyRelationshipType.LIENHOLDER_FOR.value,
-        PartyRelationshipType.WITNESS_FOR.value,
-    ] = Field(..., description="Directed relationship type")
+    relationship_type: PartyRelationshipType = Field(..., description="Directed relationship type")
 
 
 @router.post(
