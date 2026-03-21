@@ -33,7 +33,7 @@ def extract_bi_workflow_output_from_crew_result(result: Any) -> BIWorkflowOutput
         return None
     try:
         last_task = tasks_output[-1]
-        output = getattr(last_task, "output", None)
+        output = getattr(last_task, "pydantic", None) or getattr(last_task, "output", None)
     except (IndexError, TypeError, AttributeError):
         return None
     if output is None:
