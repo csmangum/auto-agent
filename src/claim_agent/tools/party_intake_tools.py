@@ -182,6 +182,7 @@ def record_attorney_representation(
                     {"success": False, "error": f"claimant_party_id {cid} not on claim {claim_id}"}
                 )
             claimant_id = cid
+            claimant_row = match
         else:
             claimant = repo.get_claim_party_by_type(claim_id, "claimant")
             if claimant is None:
@@ -192,11 +193,8 @@ def record_attorney_representation(
                     }
                 )
             claimant_id = int(claimant["id"])
+            claimant_row = claimant
 
-        claimant_row = next(
-            (p for p in repo.get_claim_parties(claim_id) if int(p["id"]) == claimant_id),
-            None,
-        )
         if claimant_row:
             for r in claimant_row.get("relationships") or []:
                 if r.get("relationship_type") == PartyRelationshipType.REPRESENTED_BY.value:
