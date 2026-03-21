@@ -530,13 +530,15 @@ class ClaimRepository:
                     text("SELECT * FROM claim_parties WHERE claim_id = :claim_id"),
                     {"claim_id": claim_id},
                 ).fetchall()
-        parties = [row_to_dict(r) for r in rows]
-        if not parties:
-            return []
-        party_ids = [int(p["id"]) for p in parties]
-        placeholders = ", ".join(f":pid{i}" for i in range(len(party_ids)))
-        params: dict[str, Any] = {f"pid{i}": pid for i, pid in enumerate(party_ids)}
-        with get_connection(self._db_path) as conn:
+            parties = [row_to_dict(r) for r in rows]
+            # Strip legacy column that older SQLite schemas may still expose.
+            for p in parties:
+                p.pop("represented_by_id", None)
+            if not parties:
+                return []
+            party_ids = [int(p["id"]) for p in parties]
+            placeholders = ", ".join(f":pid{i}" for i in range(len(party_ids)))
+            params: dict[str, Any] = {f"pid{i}": pid for i, pid in enumerate(party_ids)}
             rel_rows = conn.execute(
                 text(
                     f"SELECT * FROM claim_party_relationships WHERE from_party_id IN ({placeholders}) "
