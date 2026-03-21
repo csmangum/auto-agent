@@ -480,12 +480,16 @@ describe('ClaimDetail', () => {
     expect(screen.getByText('Subrogation Cases')).toBeInTheDocument();
     expect(screen.getByText('SUB-2025-01')).toBeInTheDocument();
     expect(screen.getByText('SUB-ARB')).toBeInTheDocument();
+    expect(screen.getByText('$12,000 sought')).toBeInTheDocument();
     expect(screen.getByText('$12,000')).toBeInTheDocument();
     expect(screen.getByText(/sought/i)).toBeInTheDocument();
     expect(screen.getByText('vs Other Insurance Co')).toBeInTheDocument();
     expect(screen.getByText('vs ACME Ins')).toBeInTheDocument();
     expect(screen.getByText('pending')).toBeInTheDocument();
     expect(screen.getByText('Arbitration: AAA')).toBeInTheDocument();
+    expect(screen.getByText(/Liability: 25%/)).toBeInTheDocument();
+    expect(screen.getByText(/BI demand basis/)).toBeInTheDocument();
+    expect(screen.getByText(/Recovered:.*3,000/)).toBeInTheDocument();
     expect(screen.getByText('Liability: 25%')).toBeInTheDocument();
     expect(screen.getByText('BI demand basis')).toBeInTheDocument();
     expect(screen.getByText(/Recovered:/i)).toBeInTheDocument();
