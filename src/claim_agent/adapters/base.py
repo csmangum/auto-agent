@@ -34,7 +34,12 @@ class PolicyAdapter(ABC):
 
         Expected keys when found: ``status``, and either:
         - New format: ``coverages`` (list, e.g. ["liability","collision","comprehensive"]),
-          ``collision_deductible``, ``comprehensive_deductible``, ``liability_limits``
+          ``collision_deductible``, ``comprehensive_deductible``, ``liability_limits``.
+          Optionally, when available: ``named_insured`` (list of dicts with name, email,
+          phone) and ``drivers`` (list of dicts with name, license_number, relationship).
+          These optional keys may be omitted entirely, especially for legacy/backends
+          that still use a simpler schema — omitting them disables claimant verification
+          rather than escalating all claims.
         - Legacy: ``coverage`` (str), ``deductible`` (number)
         
         Territory coverage (optional):

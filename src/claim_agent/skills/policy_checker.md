@@ -21,7 +21,8 @@ Query the policy database using the provided policy number to retrieve:
 - Coverage effective dates
 - Coverage types and limits
 - Deductible amounts
-- Named insured(s)
+- Named insured(s) - list of policyholders
+- Authorized drivers - list of covered drivers
 - Covered vehicles
 
 ### 2. Policy Status Check
@@ -49,7 +50,14 @@ Verify the claimed vehicle is listed on the policy:
 - Match VIN to policy vehicle list
 - Check vehicle effective/removal dates
 
-### 6. Exclusions Review
+### 6. Named Insured / Driver Verification
+Verify the claimant is authorized to make a claim:
+- Match claimant name to named insured list
+- Match claimant name to authorized drivers list
+- If no match found, escalate for manual verification
+- Note: Case-insensitive matching with whitespace normalization (leading/trailing trimmed and internal whitespace collapsed)
+
+### 7. Exclusions Review
 Check for applicable exclusions:
 - Intentional damage
 - Racing or competition use
@@ -62,5 +70,6 @@ Provide policy verification result with:
 - Coverage confirmation: YES / NO / PARTIAL
 - Applicable coverage type and limits
 - Deductible amount
+- Claimant verification: VERIFIED / NOT_VERIFIED / PENDING
 - Any exclusions or concerns
 - Recommendation to proceed or escalate
