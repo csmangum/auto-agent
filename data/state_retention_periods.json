@@ -6,5 +6,10 @@
     "Florida": 5,
     "New York": 6,
     "Georgia": 7
+  },
+  "purge_after_archive_by_state": {
+    "California": 3,
+    "Texas": 4,
+    "New York": 3
   }
 }

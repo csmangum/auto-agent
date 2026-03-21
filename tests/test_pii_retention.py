@@ -491,6 +491,215 @@ class TestRetentionRepository:
             os.unlink(db_path)
 
 
+class TestPerStatePurgeHorizon:
+    """Tests for per-state purge-after-archive periods."""
+
+    def test_purge_period_uses_state_map(self):
+        """_is_archived_past_purge_period uses per-state purge years when available."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        row = {
+            "archived_at": "2022-01-01T00:00:00+00:00",
+            "loss_state": "Texas",
+        }
+        purge_by_state = {"Texas": 4}
+        # Global is 2y → would be eligible at 2024-01-01; but TX requires 4y
+        assert _is_archived_past_purge_period(
+            row, datetime(2024, 6, 1, tzinfo=timezone.utc), 2, purge_by_state
+        ) is False
+        # After 4 years → eligible
+        assert _is_archived_past_purge_period(
+            row, datetime(2026, 1, 1, tzinfo=timezone.utc), 2, purge_by_state
+        ) is True
+
+    def test_purge_period_falls_back_to_global_when_state_absent(self):
+        """Falls back to global purge years when loss_state is not in map."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        row = {
+            "archived_at": "2022-01-01T00:00:00+00:00",
+            "loss_state": "Florida",
+        }
+        purge_by_state = {"Texas": 4}
+        # Florida not in map → uses global 2y
+        assert _is_archived_past_purge_period(
+            row, datetime(2024, 1, 1, tzinfo=timezone.utc), 2, purge_by_state
+        ) is True
+
+    def test_purge_period_falls_back_when_no_loss_state(self):
+        """Falls back to global when claim has no loss_state."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        row = {
+            "archived_at": "2022-01-01T00:00:00+00:00",
+            "loss_state": "",
+        }
+        purge_by_state = {"Texas": 4}
+        # No loss_state → global 2y
+        assert _is_archived_past_purge_period(
+            row, datetime(2024, 1, 1, tzinfo=timezone.utc), 2, purge_by_state
+        ) is True
+
+    def test_purge_period_normalizes_state_abbreviation(self):
+        """State abbreviations are normalized for lookup."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        row = {
+            "archived_at": "2022-01-01T00:00:00+00:00",
+            "loss_state": "TX",
+        }
+        purge_by_state = {"Texas": 4}
+        # TX normalizes to Texas → uses 4y
+        assert _is_archived_past_purge_period(
+            row, datetime(2024, 6, 1, tzinfo=timezone.utc), 2, purge_by_state
+        ) is False
+
+    def test_purge_period_none_map_uses_global(self):
+        """When purge_by_state is None, global period is used."""
+        from datetime import datetime, timezone
+
+        from claim_agent.db.repository import _is_archived_past_purge_period
+
+        row = {
+            "archived_at": "2022-01-01T00:00:00+00:00",
+            "loss_state": "Texas",
+        }
+        assert _is_archived_past_purge_period(
+            row, datetime(2024, 1, 1, tzinfo=timezone.utc), 2, None
+        ) is True
+
+    def test_list_claims_for_purge_with_state_map(self):
+        """list_claims_for_purge respects per-state purge periods."""
+        from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
+        from claim_agent.db.database import get_connection, init_db
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            # Create a claim with loss_state=Texas
+            cid_tx = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-TX",
+                    vin="1HGCM82633A123460",
+                    vehicle_year=2020,
+                    vehicle_make="Honda",
+                    vehicle_model="Civic",
+                    incident_date="2020-01-15",
+                    incident_description="Test",
+                    damage_description="Test",
+                    loss_state="Texas",
+                )
+            )
+            # Create a claim with loss_state=Florida
+            cid_fl = repo.create_claim(
+                ClaimInput(
+                    policy_number="POL-FL",
+                    vin="1HGCM82633A123461",
+                    vehicle_year=2020,
+                    vehicle_make="Honda",
+                    vehicle_model="Civic",
+                    incident_date="2020-01-15",
+                    incident_description="Test",
+                    damage_description="Test",
+                    loss_state="Florida",
+                )
+            )
+            for cid in (cid_tx, cid_fl):
+                repo.update_claim_status(cid, STATUS_PROCESSING, skip_validation=True)
+                repo.update_claim_status(cid, STATUS_OPEN, skip_validation=True)
+                repo.update_claim_status(
+                    cid, STATUS_CLOSED, payout_amount=0.0, skip_validation=True
+                )
+                repo.archive_claim(cid)
+            # Set archived_at to 3 years ago
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    text(
+                        "UPDATE claims SET archived_at = datetime('now', '-3 years')"
+                    ),
+                )
+            # Texas requires 4y, Florida uses global 2y
+            purge_by_state = {"Texas": 4}
+            results = repo.list_claims_for_purge(
+                2, purge_by_state=purge_by_state, exclude_litigation_hold=True
+            )
+            result_ids = [c["id"] for c in results]
+            # Florida (global 2y) should be eligible
+            assert cid_fl in result_ids
+            # Texas (4y) should NOT be eligible yet
+            assert cid_tx not in result_ids
+        finally:
+            os.unlink(db_path)
+
+    def test_retention_report_includes_purge_by_state(self):
+        """retention_report returns purge_by_state in output."""
+        from claim_agent.db.database import init_db
+        from claim_agent.db.repository import ClaimRepository
+
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            init_db(db_path)
+            repo = ClaimRepository(db_path=db_path)
+            purge_map = {"Texas": 4, "California": 3}
+            report = repo.retention_report(
+                5, purge_after_archive_years=2, purge_by_state=purge_map
+            )
+            assert report["purge_by_state"] == purge_map
+            assert report["purge_after_archive_years"] == 2
+        finally:
+            os.unlink(db_path)
+
+    def test_settings_get_purge_after_archive_by_state(self):
+        """Settings.get_purge_after_archive_by_state reads from JSON file."""
+        import tempfile as tf
+        from claim_agent.config.settings_model import Settings
+
+        data = {
+            "retention_by_state": {"California": 5},
+            "purge_after_archive_by_state": {"California": 3, "Texas": 4},
+        }
+        with tf.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            tmp_path = f.name
+        try:
+            with mock.patch.dict(os.environ, {"STATE_RETENTION_PATH": tmp_path}):
+                s = Settings()
+                result = s.get_purge_after_archive_by_state()
+                assert result == {"California": 3, "Texas": 4}
+        finally:
+            os.unlink(tmp_path)
+
+    def test_settings_get_purge_after_archive_by_state_empty_when_missing(self):
+        """Returns empty dict when purge_after_archive_by_state key is absent."""
+        import tempfile as tf
+        from claim_agent.config.settings_model import Settings
+
+        data = {"retention_by_state": {"California": 5}}
+        with tf.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            tmp_path = f.name
+        try:
+            with mock.patch.dict(os.environ, {"STATE_RETENTION_PATH": tmp_path}):
+                s = Settings()
+                result = s.get_purge_after_archive_by_state()
+                assert result == {}
+        finally:
+            os.unlink(tmp_path)
+
+
 class TestRetentionCLI:
     """Tests for retention-enforce CLI command."""
 

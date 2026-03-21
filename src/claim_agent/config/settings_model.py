@@ -993,6 +993,30 @@ class Settings(BaseSettings):
                     result[k.strip()] = y
         return result
 
+    def get_purge_after_archive_by_state(self) -> dict[str, int]:
+        """Return per-state purge-after-archive periods (years). Empty dict = use global only."""
+        path = Path(self.paths.state_retention_path)
+        if not path.is_absolute():
+            project_root = _default_project_data_dir().parent
+            path = project_root / path
+        if not path.exists():
+            return {}
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+        raw = data.get("purge_after_archive_by_state", {}) if isinstance(data, dict) else {}
+        if not isinstance(raw, dict):
+            return {}
+        result: dict[str, int] = {}
+        for k, v in raw.items():
+            if isinstance(k, str) and isinstance(v, (int, float)):
+                y = int(v)
+                if y >= 1:
+                    result[k.strip()] = y
+        return result
+
     def get_attachment_storage_base_path(self) -> Path:
         """Return absolute path for attachment storage. Resolves relative paths against project root."""
         base = Path(self.paths.attachment_storage_path)
