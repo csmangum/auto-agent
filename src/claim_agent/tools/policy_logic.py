@@ -6,6 +6,8 @@ import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from claim_agent.adapters.registry import get_policy_adapter
 from claim_agent.exceptions import AdapterError, DomainValidationError
 from claim_agent.models.policy_lookup import PolicyLookupResult, policy_lookup_from_dict
@@ -170,6 +172,15 @@ def _has_physical_damage_coverage(p: dict[str, Any], coverage_type: str | None =
     return any(coverage in coverages for coverage in ("collision", "comprehensive"))
 
 
+def _validated_policy_lookup(data: dict[str, Any]) -> PolicyLookupResult:
+    """Parse policy lookup dict; map Pydantic failures to AdapterError for tool boundaries."""
+    try:
+        return policy_lookup_from_dict(data)
+    except ValidationError as exc:
+        logger.exception("Policy lookup response failed validation")
+        raise AdapterError("Policy lookup returned invalid data") from exc
+
+
 def query_policy_db_impl(
     policy_number: str,
     *,
@@ -250,12 +261,12 @@ def query_policy_db_impl(
                         )
                 result["drivers"] = masked_drivers
             result.update(_policy_term_fields_for_result(p))
-            return policy_lookup_from_dict(result)
-        return policy_lookup_from_dict(
+            return _validated_policy_lookup(result)
+        return _validated_policy_lookup(
             {
                 "valid": False,
                 "status": status,
                 "message": "Policy not found or inactive",
             }
         )
-    return policy_lookup_from_dict({"valid": False, "message": "Policy not found or inactive"})
+    return _validated_policy_lookup({"valid": False, "message": "Policy not found or inactive"})

@@ -53,8 +53,10 @@ def query_policy_db(policy_number: str, damage_description: str = "") -> str:
             'theft', 'hail damage') to verify this loss type is covered under the policy.
             Required for accurate coverage determination before authorizing benefits.
     Returns:
-        JSON string with valid (bool), physical_damage_covered (bool), coverage (str),
-        deductible (int), and optional message.
+        JSON string: on success, valid (true), coverage (str), deductible (float),
+        physical_damage_covered (bool), physical_damage_coverages (list), status (str),
+        and optional term/territory/named_insured/drivers fields. On failure, valid (false),
+        message (str), and optional status or error (e.g. adapter_error).
     """
     try:
         return query_policy_db_impl(
@@ -163,10 +165,13 @@ def get_claim_metrics(claim_id: str | None = None) -> str:
             return json.dumps({"error": f"No metrics found for claim: {claim_id}"})
         return json.dumps(summary.to_dict(), default=str)
     else:
-        return json.dumps({
-            "global_stats": metrics.get_global_stats(),
-            "claims": [s.to_dict() for s in metrics.get_all_summaries()],
-        }, default=str)
+        return json.dumps(
+            {
+                "global_stats": metrics.get_global_stats(),
+                "claims": [s.to_dict() for s in metrics.get_all_summaries()],
+            },
+            default=str,
+        )
 
 
 @mcp.tool()
@@ -179,11 +184,13 @@ def get_observability_config() -> str:
     from claim_agent.observability.tracing import TracingConfig
 
     config = TracingConfig.from_env()
-    return json.dumps({
-        "langsmith_enabled": config.langsmith_enabled,
-        "trace_llm_calls": config.trace_llm_calls,
-        "trace_tool_calls": config.trace_tool_calls,
-    })
+    return json.dumps(
+        {
+            "langsmith_enabled": config.langsmith_enabled,
+            "trace_llm_calls": config.trace_llm_calls,
+            "trace_tool_calls": config.trace_tool_calls,
+        }
+    )
 
 
 @mcp.tool()
@@ -193,10 +200,12 @@ def health_check() -> str:
     Returns:
         JSON string with status and timestamp.
     """
-    return json.dumps({
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    return json.dumps(
+        {
+            "status": "healthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
 
 def main() -> None:

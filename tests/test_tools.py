@@ -290,6 +290,25 @@ def test_query_policy_db_invalid_input():
         query_policy_db_impl("   ")
 
 
+def test_query_policy_db_impl_validation_error_maps_to_adapter_error(monkeypatch):
+    """Pydantic validation failures become AdapterError so MCP/CrewAI tools return JSON errors."""
+    from pydantic import ValidationError
+
+    from claim_agent.exceptions import AdapterError
+    from claim_agent.tools import policy_logic as policy_logic_mod
+
+    def boom(data: dict) -> None:
+        raise ValidationError.from_exception_data(
+            "PolicyLookupResult",
+            [{"type": "missing", "loc": ("coverage",), "input": data}],
+        )
+
+    monkeypatch.setattr(policy_logic_mod, "policy_lookup_from_dict", boom)
+
+    with pytest.raises(AdapterError, match="invalid data"):
+        policy_logic_mod.query_policy_db_impl("POL-001")
+
+
 def test_query_policy_db_inactive_returns_invalid():
     """Inactive policy (e.g. POL-021) must return valid False."""
     from claim_agent.models.policy_lookup import PolicyLookupFailure
