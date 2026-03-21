@@ -773,6 +773,8 @@ VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 # Adapters that have a REST implementation; "rest" is invalid for all others
 REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy"})
+# Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
+VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
 
 
 class PolicyRestConfig(BaseSettings):
@@ -793,6 +795,30 @@ class PolicyRestConfig(BaseSettings):
         description="Path template; {policy_number} placeholder",
     )
     response_key: str = Field(default="", description="JSON key for policy (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
+class ValuationRestConfig(BaseSettings):
+    """REST valuation gateway (VALUATION_ADAPTER=ccc|mitchell|audatex)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="VALUATION_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="Valuation gateway base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    path_template: str = Field(
+        default="",
+        description="Path with {vin},{year},{make},{model} placeholders; empty = provider default",
+    )
+    response_key: str = Field(
+        default="",
+        description="Optional JSON envelope key (e.g. data) before normalization",
+    )
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
@@ -829,6 +855,7 @@ class Settings(BaseSettings):
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
+    valuation_rest: ValuationRestConfig = Field(default_factory=ValuationRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
 

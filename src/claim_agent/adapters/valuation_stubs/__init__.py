@@ -1,8 +1,8 @@
-"""Stub adapters for third-party valuation providers (CCC, Mitchell, Audatex).
+"""Reference classes for CCC, Mitchell, and Audatex valuation contracts.
 
-These stubs document the expected contract for total loss valuation integrations.
-Each returns NotImplementedError; replace with real API calls for production.
-See docs/adapters.md for integration requirements.
+HTTP integration is provided by ``claim_agent.adapters.real.valuation_rest`` when
+``VALUATION_ADAPTER`` is ``ccc``, ``mitchell``, or ``audatex`` (see docs/adapters.md).
+The classes here remain importable documentation stubs and raise if instantiated directly.
 """
 
 from claim_agent.adapters.valuation_stubs.ccc import CCCValuationAdapter
