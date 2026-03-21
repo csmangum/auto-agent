@@ -563,15 +563,15 @@ def retention_purge(
         exclude_litigation_hold=not include_litigation_hold,
     )
 
-    dry_run_extra: dict[str, Any] = {}
+    purge_state_info: dict[str, Any] = {}
     if purge_by_state:
-        dry_run_extra["purge_by_state"] = purge_by_state
+        purge_state_info["purge_by_state"] = purge_by_state
 
     if dry_run:
         typer.echo(json.dumps({
             "dry_run": True,
             "purge_after_archive_years": purge_years,
-            **dry_run_extra,
+            **purge_state_info,
             "claims_to_purge": len(claims),
             "claim_ids": [c["id"] for c in claims],
         }, indent=2))
@@ -590,7 +590,7 @@ def retention_purge(
 
     typer.echo(json.dumps({
         "purge_after_archive_years": purge_years,
-        **dry_run_extra,
+        **purge_state_info,
         "purged_count": len(purged),
         "purged_claim_ids": purged,
         "failed_count": len(failed),
