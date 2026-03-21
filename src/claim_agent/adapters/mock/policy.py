@@ -7,7 +7,12 @@ from claim_agent.data.loader import load_mock_db
 
 
 class MockPolicyAdapter(PolicyAdapter):
-    """Caches loaded mock DB to avoid repeated disk I/O."""
+    """Caches loaded mock DB to avoid repeated disk I/O.
+
+    Policies in ``mock_db.json`` may include ``named_insured``; those entries are
+    returned as-is from ``get_policy`` and support FNOL auto-creation of a
+    policyholder party when intake omits one.
+    """
 
     def __init__(self) -> None:
         self._db_cache: dict[str, Any] | None = None

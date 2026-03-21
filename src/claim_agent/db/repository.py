@@ -290,8 +290,15 @@ class ClaimRepository:
         claim_input: ClaimInput,
         *,
         actor_id: str = ACTOR_WORKFLOW,
+        policy: dict[str, Any] | None = None,
     ) -> str:
-        """Insert new claim, generate ID, log 'created' audit entry. Returns claim_id."""
+        """Insert new claim, generate ID, log 'created' audit entry. Returns claim_id.
+
+        When *policy* is omitted, the configured policy adapter is queried for
+        ``claim_input.policy_number`` to optionally merge a policyholder party from
+        ``named_insured`` (see ``merge_fnol_parties_with_named_insured_policyholder``).
+        Pass a pre-fetched policy dict to avoid a duplicate lookup or to override.
+        """
         claim_id = _generate_claim_id()
         attachments_json = json.dumps(
             [a.model_dump(mode="json") for a in claim_input.attachments],
@@ -390,9 +397,29 @@ class ClaimRepository:
                         "after_state": reserve_state,
                     },
                 )
-        if claim_input.parties:
-            for p in claim_input.parties:
-                self.add_claim_party(claim_id, p)
+        policy_for_fnol = policy
+        if policy_for_fnol is None:
+            try:
+                from claim_agent.adapters.registry import get_policy_adapter
+
+                policy_for_fnol = get_policy_adapter().get_policy(claim_input.policy_number)
+            except Exception:
+                logging.getLogger(__name__).debug(
+                    "fnol_policy_lookup_failed policy_number=%s",
+                    claim_input.policy_number,
+                    exc_info=True,
+                )
+                policy_for_fnol = None
+
+        from claim_agent.services.fnol_policyholder import (
+            merge_fnol_parties_with_named_insured_policyholder,
+        )
+
+        effective_parties = merge_fnol_parties_with_named_insured_policyholder(
+            claim_input.parties, policy_for_fnol
+        )
+        for p in effective_parties:
+            self.add_claim_party(claim_id, p)
 
         # UCSPA: set state-specific deadlines and create compliance tasks at FNOL
         try:
