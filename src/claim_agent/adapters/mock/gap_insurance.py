@@ -1,6 +1,7 @@
 """Mock gap insurance carrier — in-memory shortfall coordination for tests and dev."""
 
 import copy
+import threading
 import uuid
 from typing import Any
 
@@ -12,6 +13,7 @@ class MockGapInsuranceAdapter(GapInsuranceAdapter):
 
     def __init__(self) -> None:
         self._claims: dict[str, dict[str, Any]] = {}
+        self._lock = threading.Lock()
 
     def submit_shortfall_claim(
         self,
@@ -54,7 +56,8 @@ class MockGapInsuranceAdapter(GapInsuranceAdapter):
             "denial_reason": denial_reason,
             "remaining_shortfall_after_gap": remaining,
         }
-        self._claims[gap_claim_id] = record
+        with self._lock:
+            self._claims[gap_claim_id] = record
         return {
             "gap_claim_id": gap_claim_id,
             "status": status,
@@ -65,5 +68,6 @@ class MockGapInsuranceAdapter(GapInsuranceAdapter):
         }
 
     def get_claim_status(self, gap_claim_id: str) -> dict[str, Any] | None:
-        row = self._claims.get(gap_claim_id)
+        with self._lock:
+            row = self._claims.get(gap_claim_id)
         return copy.deepcopy(row) if row else None
