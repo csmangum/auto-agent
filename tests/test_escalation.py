@@ -3,11 +3,14 @@
 import json
 import os
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 # Point to project data for mock_db
-os.environ.setdefault("MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json"))
+os.environ.setdefault(
+    "MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json")
+)
 
 
 @pytest.fixture(autouse=True)
@@ -109,7 +112,9 @@ def test_escalation_ambiguous_similarity_triggers():
         "estimated_damage": 1500.0,
     }
     router_output = "duplicate\nSimilar to existing claim."
-    result = evaluate_escalation_impl(claim_data, router_output, similarity_score=65.0, payout_amount=None)
+    result = evaluate_escalation_impl(
+        claim_data, router_output, similarity_score=65.0, payout_amount=None
+    )
     data = json.loads(result)
     assert data["needs_review"] is True
     assert "ambiguous_similarity" in data["escalation_reasons"]
@@ -117,8 +122,6 @@ def test_escalation_ambiguous_similarity_triggers():
 
 def test_validate_router_classification_uses_minimized_data():
     """Router validation prompt should use minimized claim data, not full claim payload."""
-    from unittest.mock import MagicMock, patch
-
     from claim_agent.tools.escalation_logic import validate_router_classification_impl
 
     claim_data = {
@@ -132,7 +135,11 @@ def test_validate_router_classification_uses_minimized_data():
     }
 
     mocked_response = MagicMock()
-    mocked_response.choices = [MagicMock(message=MagicMock(content='{"claim_type":"new","confidence":0.8,"reasoning":"ok"}'))]
+    mocked_response.choices = [
+        MagicMock(
+            message=MagicMock(content='{"claim_type":"new","confidence":0.8,"reasoning":"ok"}')
+        )
+    ]
     mocked_response.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
     mocked_response.model = "test-model"
 
@@ -148,7 +155,53 @@ def test_validate_router_classification_uses_minimized_data():
 
     assert '"claim_type": "new"' in result
     mock_litellm.completion.assert_called_once()
-    called_prompt = mock_litellm.completion.call_args.kwargs.get("messages", [{}])[0].get("content", "")
+    called_prompt = mock_litellm.completion.call_args.kwargs.get("messages", [{}])[0].get(
+        "content", ""
+    )
+    assert "secret_field" not in called_prompt
+    assert "claimant_name" not in called_prompt
+
+
+def test_validate_router_classification_strips_disallowed_fields_when_minimization_disabled():
+    """Router validation must still apply router allowlist when PRIVACY_LLM_DATA_MINIMIZATION=false."""
+    from claim_agent.tools.escalation_logic import validate_router_classification_impl
+
+    claim_data = {
+        "claim_id": "CLM-123",
+        "policy_number": "POL-12345-001",
+        "vin": "1HGCM82633A123456",
+        "incident_description": "Rear-end collision at stoplight",
+        "claimant_name": "Jane Doe",
+        "secret_field": "must_not_be_sent",
+    }
+
+    mocked_response = MagicMock()
+    mocked_response.choices = [
+        MagicMock(
+            message=MagicMock(content='{"claim_type":"new","confidence":0.8,"reasoning":"ok"}')
+        )
+    ]
+    mocked_response.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mocked_response.model = "test-model"
+
+    mock_settings = MagicMock()
+    mock_settings.privacy.llm_data_minimization = False
+
+    with (
+        patch("claim_agent.tools.escalation_logic.litellm") as mock_litellm,
+        patch("claim_agent.utils.llm_data_minimization.get_settings", return_value=mock_settings),
+    ):
+        mock_litellm.completion.return_value = mocked_response
+        validate_router_classification_impl(
+            claim_data,
+            "new",
+            0.6,
+            "initial router output",
+        )
+
+    called_prompt = mock_litellm.completion.call_args.kwargs.get("messages", [{}])[0].get(
+        "content", ""
+    )
     assert "secret_field" not in called_prompt
     assert "claimant_name" not in called_prompt
 
@@ -166,7 +219,11 @@ def test_escalation_priority_multiple_reasons():
     assert r["priority"] == "medium"
 
     # 3+ reasons -> high
-    r = json.loads(compute_escalation_priority_impl(["high_value", "low_confidence", "ambiguous_similarity"], []))
+    r = json.loads(
+        compute_escalation_priority_impl(
+            ["high_value", "low_confidence", "ambiguous_similarity"], []
+        )
+    )
     assert r["priority"] == "high"
 
     # fraud_suspected -> high
@@ -174,7 +231,9 @@ def test_escalation_priority_multiple_reasons():
     assert r["priority"] == "high"
 
     # multiple fraud indicators -> critical
-    r = json.loads(compute_escalation_priority_impl(["fraud_suspected", "high_value"], ["staged", "inflated"]))
+    r = json.loads(
+        compute_escalation_priority_impl(["fraud_suspected", "high_value"], ["staged", "inflated"])
+    )
     assert r["priority"] == "critical"
 
 
@@ -356,17 +415,13 @@ def test_evaluate_escalation_uses_explicit_router_confidence():
     # Router output with uncertainty keywords would normally give low confidence
     router_output = "possibly new. Unclear."
     # But explicit confidence 0.9 should override -> no low_confidence reason
-    result = evaluate_escalation_impl(
-        claim_data, router_output, None, None, router_confidence=0.9
-    )
+    result = evaluate_escalation_impl(claim_data, router_output, None, None, router_confidence=0.9)
     data = json.loads(result)
     assert "low_confidence" not in data["escalation_reasons"]
     assert data["needs_review"] is False
 
     # Explicit low confidence should trigger
-    result2 = evaluate_escalation_impl(
-        claim_data, "new\nClear.", None, None, router_confidence=0.5
-    )
+    result2 = evaluate_escalation_impl(claim_data, "new\nClear.", None, None, router_confidence=0.5)
     data2 = json.loads(result2)
     assert "low_confidence" in data2["escalation_reasons"]
 
@@ -414,7 +469,9 @@ def test_run_claim_workflow_escalates_on_low_router_confidence(_temp_claims_db):
 
     with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
         with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
-            with patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation):
+            with patch(
+                "claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation
+            ):
                 mock_llm.return_value = MagicMock()
                 mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
 
@@ -446,30 +503,42 @@ def test_run_claim_workflow_validation_enabled_agrees_high_confidence(_temp_clai
     }
     router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
     # Validator agrees: same claim_type, high confidence
-    val_result = json.dumps({
-        "claim_type": "new",
-        "confidence": 0.9,
-        "reasoning": "First-time submission confirmed.",
-        "validation_agrees": True,
-    })
-    no_escalation = json.dumps({
-        "needs_review": False,
-        "escalation_reasons": [],
-        "priority": "low",
-        "fraud_indicators": [],
-        "recommended_action": "",
-    })
+    val_result = json.dumps(
+        {
+            "claim_type": "new",
+            "confidence": 0.9,
+            "reasoning": "First-time submission confirmed.",
+            "validation_agrees": True,
+        }
+    )
+    no_escalation = json.dumps(
+        {
+            "needs_review": False,
+            "escalation_reasons": [],
+            "priority": "low",
+            "fraud_indicators": [],
+            "recommended_action": "",
+        }
+    )
     workflow_output = MagicMock()
     workflow_output.raw = "Claim processed successfully."
 
-    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
-         patch("claim_agent.workflow.stages.create_router_crew") as mock_router, \
-         patch("claim_agent.workflow.stages.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
-         patch("claim_agent.workflow.stages.validate_router_classification_impl", return_value=val_result), \
-         patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation), \
-         patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew, \
-         patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner, \
-         patch("claim_agent.workflow.stages.create_after_action_crew") as mock_aa:
+    with (
+        patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm,
+        patch("claim_agent.workflow.stages.create_router_crew") as mock_router,
+        patch(
+            "claim_agent.workflow.stages.get_router_config",
+            return_value={"confidence_threshold": 0.7, "validation_enabled": True},
+        ),
+        patch(
+            "claim_agent.workflow.stages.validate_router_classification_impl",
+            return_value=val_result,
+        ),
+        patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation),
+        patch("claim_agent.workflow.stages.create_new_claim_crew") as mock_crew,
+        patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner,
+        patch("claim_agent.workflow.stages.create_after_action_crew") as mock_aa,
+    ):
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
         mock_crew.return_value.kickoff.return_value = workflow_output
@@ -503,44 +572,60 @@ def test_run_claim_workflow_validation_enabled_disagrees_reclassifies(_temp_clai
     }
     router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
     # Validator disagrees: different claim_type, high confidence
-    val_result = json.dumps({
-        "claim_type": "total_loss",
-        "confidence": 0.88,
-        "reasoning": "Frame damage indicates total loss.",
-        "validation_agrees": False,
-    })
-    no_escalation = json.dumps({
-        "needs_review": False,
-        "escalation_reasons": [],
-        "priority": "low",
-        "fraud_indicators": [],
-        "recommended_action": "",
-    })
+    val_result = json.dumps(
+        {
+            "claim_type": "total_loss",
+            "confidence": 0.88,
+            "reasoning": "Frame damage indicates total loss.",
+            "validation_agrees": False,
+        }
+    )
+    no_escalation = json.dumps(
+        {
+            "needs_review": False,
+            "escalation_reasons": [],
+            "priority": "low",
+            "fraud_indicators": [],
+            "recommended_action": "",
+        }
+    )
     workflow_output = MagicMock()
     workflow_output.raw = "Total loss settlement initiated."
     settlement_output = MagicMock()
     settlement_output.raw = "Settlement completed."
 
-    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
-         patch("claim_agent.workflow.stages.create_router_crew") as mock_router, \
-         patch("claim_agent.workflow.stages.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
-         patch("claim_agent.workflow.stages.validate_router_classification_impl", return_value=val_result), \
-         patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation), \
-         patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_tl_crew, \
-         patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner, \
-         patch("claim_agent.workflow.stages.create_liability_determination_crew") as mock_liability, \
-         patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settle_crew, \
-         patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation, \
-         patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage, \
-         patch("claim_agent.workflow.stages.create_after_action_crew") as mock_aa:
+    with (
+        patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm,
+        patch("claim_agent.workflow.stages.create_router_crew") as mock_router,
+        patch(
+            "claim_agent.workflow.stages.get_router_config",
+            return_value={"confidence_threshold": 0.7, "validation_enabled": True},
+        ),
+        patch(
+            "claim_agent.workflow.stages.validate_router_classification_impl",
+            return_value=val_result,
+        ),
+        patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation),
+        patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_tl_crew,
+        patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner,
+        patch("claim_agent.workflow.stages.create_liability_determination_crew") as mock_liability,
+        patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settle_crew,
+        patch("claim_agent.workflow.stages.create_subrogation_crew") as mock_subrogation,
+        patch("claim_agent.workflow.stages.create_salvage_crew") as mock_salvage,
+        patch("claim_agent.workflow.stages.create_after_action_crew") as mock_aa,
+    ):
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
         mock_tl_crew.return_value.kickoff.return_value = workflow_output
         mock_task_planner.return_value.kickoff.return_value = MagicMock(raw="Tasks created.")
         mock_liability.return_value.kickoff.return_value = MagicMock(raw="Liability determined.")
         mock_settle_crew.return_value.kickoff.return_value = settlement_output
-        mock_subrogation.return_value.kickoff.return_value = MagicMock(raw="Subrogation assessment complete.")
-        mock_salvage.return_value.kickoff.return_value = MagicMock(raw="Salvage disposition complete.")
+        mock_subrogation.return_value.kickoff.return_value = MagicMock(
+            raw="Subrogation assessment complete."
+        )
+        mock_salvage.return_value.kickoff.return_value = MagicMock(
+            raw="Salvage disposition complete."
+        )
         mock_aa.return_value.kickoff.return_value = MagicMock(raw="After-action complete.")
 
         result = run_claim_workflow(claim_data)
@@ -570,17 +655,27 @@ def test_run_claim_workflow_validation_enabled_low_confidence_escalates(_temp_cl
     }
     router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
     # Validator also returns low confidence
-    val_result = json.dumps({
-        "claim_type": "new",
-        "confidence": 0.4,
-        "reasoning": "Still uncertain after review.",
-        "validation_agrees": True,
-    })
+    val_result = json.dumps(
+        {
+            "claim_type": "new",
+            "confidence": 0.4,
+            "reasoning": "Still uncertain after review.",
+            "validation_agrees": True,
+        }
+    )
 
-    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
-         patch("claim_agent.workflow.stages.create_router_crew") as mock_router, \
-         patch("claim_agent.workflow.stages.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
-         patch("claim_agent.workflow.stages.validate_router_classification_impl", return_value=val_result):
+    with (
+        patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm,
+        patch("claim_agent.workflow.stages.create_router_crew") as mock_router,
+        patch(
+            "claim_agent.workflow.stages.get_router_config",
+            return_value={"confidence_threshold": 0.7, "validation_enabled": True},
+        ),
+        patch(
+            "claim_agent.workflow.stages.validate_router_classification_impl",
+            return_value=val_result,
+        ),
+    ):
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
 
@@ -611,10 +706,18 @@ def test_run_claim_workflow_validation_parse_error_escalates(_temp_claims_db):
     }
     router_low_conf_raw = '{"claim_type": "new", "confidence": 0.5, "reasoning": "Unclear."}'
 
-    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
-         patch("claim_agent.workflow.stages.create_router_crew") as mock_router, \
-         patch("claim_agent.workflow.stages.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
-         patch("claim_agent.workflow.stages.validate_router_classification_impl", return_value="not valid json {{"):
+    with (
+        patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm,
+        patch("claim_agent.workflow.stages.create_router_crew") as mock_router,
+        patch(
+            "claim_agent.workflow.stages.get_router_config",
+            return_value={"confidence_threshold": 0.7, "validation_enabled": True},
+        ),
+        patch(
+            "claim_agent.workflow.stages.validate_router_classification_impl",
+            return_value="not valid json {{",
+        ),
+    ):
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
 
@@ -647,10 +750,18 @@ def test_run_claim_workflow_validation_non_numeric_confidence_escalates(_temp_cl
     # Confidence is a non-numeric string; float() raises ValueError
     val_result = json.dumps({"claim_type": "new", "confidence": "high", "reasoning": "Looks new."})
 
-    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
-         patch("claim_agent.workflow.stages.create_router_crew") as mock_router, \
-         patch("claim_agent.workflow.stages.get_router_config", return_value={"confidence_threshold": 0.7, "validation_enabled": True}), \
-         patch("claim_agent.workflow.stages.validate_router_classification_impl", return_value=val_result):
+    with (
+        patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm,
+        patch("claim_agent.workflow.stages.create_router_crew") as mock_router,
+        patch(
+            "claim_agent.workflow.stages.get_router_config",
+            return_value={"confidence_threshold": 0.7, "validation_enabled": True},
+        ),
+        patch(
+            "claim_agent.workflow.stages.validate_router_classification_impl",
+            return_value=val_result,
+        ),
+    ):
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_low_conf_raw)
 
@@ -679,10 +790,14 @@ def test_run_claim_workflow_escalation_high_value(_temp_claims_db):
         "damage_description": "Scratches on bumper.",
         "estimated_damage": 15000.0,
     }
-    router_high_conf_raw = '{"claim_type": "new", "confidence": 0.9, "reasoning": "First-time submission."}'
+    router_high_conf_raw = (
+        '{"claim_type": "new", "confidence": 0.9, "reasoning": "First-time submission."}'
+    )
 
-    with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm, \
-         patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
+    with (
+        patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm,
+        patch("claim_agent.workflow.stages.create_router_crew") as mock_router,
+    ):
         mock_llm.return_value = MagicMock()
         mock_router.return_value.kickoff.return_value = MagicMock(raw=router_high_conf_raw)
 
@@ -756,7 +871,12 @@ def test_escalate_claim_tool_raises_mid_workflow_escalation(_temp_claims_db):
     claim_data = json.dumps({"claim_id": claim_id, "vin": "5YJSA1E26HF123456"})
 
     with pytest.raises(MidWorkflowEscalation) as exc_info:
-        escalate_claim.run(claim_data=claim_data, reason="fraud_indicators", indicators='["staged"]', priority="critical")
+        escalate_claim.run(
+            claim_data=claim_data,
+            reason="fraud_indicators",
+            indicators='["staged"]',
+            priority="critical",
+        )
 
     e = exc_info.value
     assert e.claim_id == claim_id
@@ -824,7 +944,11 @@ def test_main_crew_handles_mid_workflow_escalation(_temp_claims_db):
     def mock_kickoff(inputs=None, **kwargs):
         # Simulate escalate_claim tool: persist to DB then raise (tool always does this)
         if inputs and "claim_data" in inputs:
-            data = json.loads(inputs["claim_data"]) if isinstance(inputs["claim_data"], str) else inputs["claim_data"]
+            data = (
+                json.loads(inputs["claim_data"])
+                if isinstance(inputs["claim_data"], str)
+                else inputs["claim_data"]
+            )
             claim_id = data.get("claim_id")
             if claim_id:
                 escalate_claim_impl(
@@ -845,7 +969,10 @@ def test_main_crew_handles_mid_workflow_escalation(_temp_claims_db):
     with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
         with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
             with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_crew:
-                with patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation):
+                with patch(
+                    "claim_agent.workflow.stages.evaluate_escalation_impl",
+                    return_value=no_escalation,
+                ):
                     mock_llm.return_value = MagicMock()
                     mock_router.return_value.kickoff.return_value = MagicMock(
                         raw="total_loss\nVehicle damage suggests total loss."
@@ -895,7 +1022,11 @@ def test_settlement_crew_handles_mid_workflow_escalation(_temp_claims_db):
 
     def settlement_crew_kickoff(inputs=None, **kwargs):
         if inputs and "claim_data" in inputs:
-            data = json.loads(inputs["claim_data"]) if isinstance(inputs["claim_data"], str) else inputs["claim_data"]
+            data = (
+                json.loads(inputs["claim_data"])
+                if isinstance(inputs["claim_data"], str)
+                else inputs["claim_data"]
+            )
             claim_id = data.get("claim_id")
             if claim_id:
                 escalate_claim_impl(
@@ -916,18 +1047,35 @@ def test_settlement_crew_handles_mid_workflow_escalation(_temp_claims_db):
     with patch("claim_agent.workflow.orchestrator.get_llm") as mock_llm:
         with patch("claim_agent.workflow.stages.create_router_crew") as mock_router:
             with patch("claim_agent.workflow.stages.create_total_loss_crew") as mock_primary_crew:
-                with patch("claim_agent.workflow.stages.create_task_planner_crew") as mock_task_planner:
-                    with patch("claim_agent.workflow.stages.create_liability_determination_crew") as mock_liability:
-                        with patch("claim_agent.workflow.stages.create_settlement_crew") as mock_settlement_crew:
-                            with patch("claim_agent.workflow.stages.evaluate_escalation_impl", return_value=no_escalation):
+                with patch(
+                    "claim_agent.workflow.stages.create_task_planner_crew"
+                ) as mock_task_planner:
+                    with patch(
+                        "claim_agent.workflow.stages.create_liability_determination_crew"
+                    ) as mock_liability:
+                        with patch(
+                            "claim_agent.workflow.stages.create_settlement_crew"
+                        ) as mock_settlement_crew:
+                            with patch(
+                                "claim_agent.workflow.stages.evaluate_escalation_impl",
+                                return_value=no_escalation,
+                            ):
                                 mock_llm.return_value = MagicMock()
                                 mock_router.return_value.kickoff.return_value = MagicMock(
                                     raw="total_loss\nVehicle is a total loss."
                                 )
-                                mock_primary_crew.return_value.kickoff.side_effect = primary_crew_kickoff
-                                mock_task_planner.return_value.kickoff.return_value = MagicMock(raw="Tasks created.")
-                                mock_liability.return_value.kickoff.return_value = MagicMock(raw="Liability determined.")
-                                mock_settlement_crew.return_value.kickoff.side_effect = settlement_crew_kickoff
+                                mock_primary_crew.return_value.kickoff.side_effect = (
+                                    primary_crew_kickoff
+                                )
+                                mock_task_planner.return_value.kickoff.return_value = MagicMock(
+                                    raw="Tasks created."
+                                )
+                                mock_liability.return_value.kickoff.return_value = MagicMock(
+                                    raw="Liability determined."
+                                )
+                                mock_settlement_crew.return_value.kickoff.side_effect = (
+                                    settlement_crew_kickoff
+                                )
 
                                 result = run_claim_workflow(claim_data)
 

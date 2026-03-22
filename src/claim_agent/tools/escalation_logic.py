@@ -98,14 +98,16 @@ def validate_router_classification_impl(
 ) -> str:
     """Optional validation: second LLM call to confirm or correct router classification."""
     if litellm is None:
-        return json.dumps({
-            "claim_type": original_claim_type,
-            "confidence": original_confidence,
-            "reasoning": "Validation skipped: litellm not available",
-            "validation_agrees": True,
-        })
+        return json.dumps(
+            {
+                "claim_type": original_claim_type,
+                "confidence": original_confidence,
+                "reasoning": "Validation skipped: litellm not available",
+                "validation_agrees": True,
+            }
+        )
 
-    minimized_claim_data = minimize_claim_data_for_crew(claim_data, "router")
+    minimized_claim_data = minimize_claim_data_for_crew(claim_data, "router", force_allowlist=True)
     claim_str = json.dumps(minimized_claim_data, default=str)[:2000]
     prompt = f"""A claim was classified as "{original_claim_type}" with confidence {original_confidence:.2f}. Reasoning: {original_reasoning}
 
@@ -125,12 +127,14 @@ Independently verify the classification. Return JSON only:
             v_reason = str(parsed.get("reasoning", "") or "").strip()
             orig_normalized = normalize_claim_type(original_claim_type)
             agrees = v_type == orig_normalized
-            result = json.dumps({
-                "claim_type": v_type,
-                "confidence": v_conf,
-                "reasoning": v_reason,
-                "validation_agrees": agrees,
-            })
+            result = json.dumps(
+                {
+                    "claim_type": v_type,
+                    "confidence": v_conf,
+                    "reasoning": v_reason,
+                    "validation_agrees": agrees,
+                }
+            )
             if metrics is not None and claim_id:
                 usage = getattr(resp, "usage", None)
                 prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
@@ -145,12 +149,14 @@ Independently verify the classification. Return JSON only:
             return result
     except Exception as e:
         logger.warning("Router validation failed: %s", e, exc_info=True)
-    return json.dumps({
-        "claim_type": original_claim_type,
-        "confidence": original_confidence,
-        "reasoning": "Validation failed, using original",
-        "validation_agrees": False,
-    })
+    return json.dumps(
+        {
+            "claim_type": original_claim_type,
+            "confidence": original_confidence,
+            "reasoning": "Validation failed, using original",
+            "validation_agrees": False,
+        }
+    )
 
 
 def _parse_router_confidence(router_output: str) -> float:
@@ -310,13 +316,15 @@ def evaluate_escalation_impl(
     else:
         recommended = "No escalation needed."
 
-    return json.dumps({
-        "needs_review": needs_review,
-        "escalation_reasons": reasons,
-        "priority": priority,
-        "fraud_indicators": fraud_indicators,
-        "recommended_action": recommended.strip(),
-    })
+    return json.dumps(
+        {
+            "needs_review": needs_review,
+            "escalation_reasons": reasons,
+            "priority": priority,
+            "fraud_indicators": fraud_indicators,
+            "recommended_action": recommended.strip(),
+        }
+    )
 
 
 def escalate_claim_impl(
@@ -348,13 +356,15 @@ def escalate_claim_impl(
         priority = "medium"
 
     _repo = ctx.repo if ctx else ClaimRepository()
-    details = json.dumps({
-        "escalation": True,
-        "mid_workflow": True,
-        "reason": reason,
-        "indicators": indicators,
-        "priority": priority,
-    })
+    details = json.dumps(
+        {
+            "escalation": True,
+            "mid_workflow": True,
+            "reason": reason,
+            "indicators": indicators,
+            "priority": priority,
+        }
+    )
 
     _repo.update_claim_status(
         claim_id,
