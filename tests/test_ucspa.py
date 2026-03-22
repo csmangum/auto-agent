@@ -221,11 +221,6 @@ def test_record_denial_letter(temp_db):
             email="claimant@example.com",
             phone="+15551234567",
         ),
-        "Policy exclusion: pre-existing damage",
-        "Dear Policyholder,\n\nWe deny your claim because...\n\nAPPEAL RIGHTS: You may appeal...",
-        denial_letter_delivery_method="certified_mail",
-        denial_letter_tracking_id="USPS-9407-1234-5678-9012",
-        denial_letter_delivered_at="2026-03-05T10:30:00+00:00",
     )
     repo.update_claim_status(claim_id, "processing")
     repo.update_claim_status(claim_id, "denied")
@@ -234,6 +229,9 @@ def test_record_denial_letter(temp_db):
             claim_id,
             "Policy exclusion: pre-existing damage",
             "Dear Policyholder,\n\nWe deny your claim because...\n\nAPPEAL RIGHTS: You may appeal...",
+            denial_letter_delivery_method="certified_mail",
+            denial_letter_tracking_id="USPS-9407-1234-5678-9012",
+            denial_letter_delivered_at="2026-03-05T10:30:00+00:00",
         )
         mock_notify.assert_called_once()
         assert mock_notify.call_args[0][0] == "denial_letter"
