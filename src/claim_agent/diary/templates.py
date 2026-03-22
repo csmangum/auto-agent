@@ -135,11 +135,27 @@ STATUS_TRANSITION_TEMPLATES: list[StatusTransitionTemplate] = [
         due_days=5,
     ),
     StatusTransitionTemplate(
+        from_status="processing",
+        to_status="under_investigation",
+        title="Start investigation workflow",
+        task_type="review_documents",
+        description="Assign investigator and gather required evidence.",
+        due_days=1,
+    ),
+    StatusTransitionTemplate(
         from_status="open",
         to_status="settled",
         title="Verify settlement and payment",
         task_type="other",
         description="Confirm payment issued and claimant notified.",
+        due_days=1,
+    ),
+    StatusTransitionTemplate(
+        from_status="open",
+        to_status="disputed",
+        title="Prepare dispute response",
+        task_type="review_documents",
+        description="Review dispute details and prepare response package.",
         due_days=1,
     ),
     StatusTransitionTemplate(
@@ -151,12 +167,28 @@ STATUS_TRANSITION_TEMPLATES: list[StatusTransitionTemplate] = [
         due_days=2,
     ),
     StatusTransitionTemplate(
+        from_status="needs_review",
+        to_status="under_investigation",
+        title="Escalate reviewed claim to investigation",
+        task_type="review_documents",
+        description="Escalate reviewed findings to investigation handling.",
+        due_days=1,
+    ),
+    StatusTransitionTemplate(
         from_status="open",
         to_status="needs_review",
         title="Address review items",
         task_type="review_documents",
         description="Address items flagged in human review.",
         due_days=3,
+    ),
+    StatusTransitionTemplate(
+        from_status="settled",
+        to_status="closed",
+        title="Finalize claim closure",
+        task_type="other",
+        description="Confirm all settlement obligations are complete before closure.",
+        due_days=1,
     ),
 ]
 

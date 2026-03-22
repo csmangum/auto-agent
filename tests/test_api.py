@@ -2000,7 +2000,7 @@ class TestComplianceFraudReporting:
         assert "unsupported" in detail.lower() or "invalid" in detail.lower()
 
     def test_filing_flags_reflect_fraud_report_filings(self, client):
-        """state_report_filed, nicb_filed, niss_filed reflect rows in fraud_report_filings."""
+        """Filing flags and compliance fields reflect fraud_report_filings rows."""
         resp = client.get("/api/compliance/fraud-reporting")
         assert resp.status_code == 200
         data = resp.json()
@@ -2013,6 +2013,156 @@ class TestComplianceFraudReporting:
         filing_types = {f["filing_type"] for f in clm003["filings"]}
         assert "state_bureau" in filing_types
         assert "nicb" in filing_types
+        assert clm003["required_filing_types"] == ["state_bureau"]
+        assert clm003["missing_required_filings"] == []
+        assert clm003["compliant"] is True
+
+    def test_fraud_confirmed_claim_requires_nicb_and_niss(self, client):
+        """Fraud-confirmed claims are non-compliant when NICB/NISS filings are missing."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-COMP001",
+                    "policy_number": "POL-COMP001",
+                    "vin": "VIN-COMP001",
+                    "vehicle_year": 2020,
+                    "vehicle_make": "Honda",
+                    "vehicle_model": "Civic",
+                    "incident_date": "2025-02-10",
+                    "incident_description": "Confirmed staged collision",
+                    "damage_description": "Inflated estimate",
+                    "estimated_damage": 12000.0,
+                    "claim_type": "fraud",
+                    "status": "fraud_confirmed",
+                    "loss_state": "California",
+                },
+            )
+            conn.execute(
+                text("""
+                INSERT INTO fraud_report_filings
+                (claim_id, siu_case_id, filing_type, state, report_id, filed_at, filed_by,
+                 indicators_count, template_version, metadata)
+                VALUES (:claim_id, :siu_case_id, :filing_type, :state, :report_id, :filed_at,
+                        :filed_by, :indicators_count, :template_version, :metadata)
+                """),
+                {
+                    "claim_id": "CLM-COMP001",
+                    "siu_case_id": "SIU-COMP001",
+                    "filing_type": "state_bureau",
+                    "state": "California",
+                    "report_id": "FRB-COMP001",
+                    "filed_at": "2025-02-11T10:00:00Z",
+                    "filed_by": "siu_crew",
+                    "indicators_count": 3,
+                    "template_version": None,
+                    "metadata": None,
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim = next((c for c in data["claims"] if c["claim_id"] == "CLM-COMP001"), None)
+        assert claim is not None
+        assert claim["required_filing_types"] == ["state_bureau", "nicb", "niss"]
+        assert claim["missing_required_filings"] == ["nicb", "niss"]
+        assert claim["compliant"] is False
+
+    def test_coverage_under_investigation_excluded(self, client):
+        """Coverage-verification claims in under_investigation are NOT returned."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-COVTEST001",
+                    "policy_number": "POL-COVTEST001",
+                    "vin": "VIN-COVTEST001",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Ford",
+                    "vehicle_model": "F-150",
+                    "incident_date": "2025-03-01",
+                    "incident_description": "Coverage question on flood claim",
+                    "damage_description": "Water damage",
+                    "estimated_damage": 8000.0,
+                    "claim_type": "partial_loss",
+                    "status": "under_investigation",
+                    "loss_state": "Texas",
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim_ids = [c["claim_id"] for c in data["claims"]]
+        assert "CLM-COVTEST001" not in claim_ids, (
+            "Coverage-verification under_investigation claims must not appear in fraud reporting"
+        )
+
+    def test_fraud_under_investigation_with_siu_case_included(self, client):
+        """under_investigation claims with an SIU case ID are included in fraud reporting."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, siu_case_id, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :siu_case_id, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-SIUTEST001",
+                    "policy_number": "POL-SIUTEST001",
+                    "vin": "VIN-SIUTEST001",
+                    "vehicle_year": 2022,
+                    "vehicle_make": "Chevrolet",
+                    "vehicle_model": "Malibu",
+                    "incident_date": "2025-03-05",
+                    "incident_description": "Possible staged theft",
+                    "damage_description": "Vehicle reported stolen",
+                    "estimated_damage": 22000.0,
+                    "claim_type": "new",
+                    "status": "under_investigation",
+                    "siu_case_id": "SIU-TESTCASE-001",
+                    "loss_state": "Nevada",
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim = next((c for c in data["claims"] if c["claim_id"] == "CLM-SIUTEST001"), None)
+        assert claim is not None, "under_investigation claim with siu_case_id must appear in fraud reporting"
+        assert claim["required_filing_types"] == ["state_bureau"]
+        assert claim["missing_required_filings"] == ["state_bureau"]
+        assert claim["compliant"] is False
 
 
 class TestHealthEndpoint:

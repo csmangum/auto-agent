@@ -36,6 +36,7 @@ flowchart LR
 - **[Database](database.md)** - Schema and repository operations
 - **[State Machine](state-machine.md)** - Claim status transitions and guards
 - **[Configuration](configuration.md)** - Environment and LLM setup
+- **[Compliance API](compliance-api.md)** - Fraud reporting and compliance HTTP endpoints
 - **[Observability](observability.md)** - Logging, tracing, and metrics
 - **[PII and Retention](pii-and-retention.md)** - PII masking in logs and data retention enforcement
 - **[User Types](user-types.md)** - User types and follow-up agent for HITL flows
