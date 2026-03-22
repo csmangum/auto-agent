@@ -43,6 +43,7 @@ import {
   updateClaimDocument,
   createPartyRelationship,
   deletePartyRelationship,
+  getFraudReportingCompliance,
 } from './client';
 import type {
   CostBreakdown,
@@ -53,6 +54,7 @@ import type {
   PostClaimRepairStatusPayload,
   UpdateDocumentBody,
   CreatePartyRelationshipPayload,
+  GetFraudReportingComplianceParams,
 } from './client';
 
 export const queryKeys = {
@@ -85,6 +87,8 @@ export const queryKeys = {
   documentRequests: (id: string) => ['claims', id, 'document-requests'] as const,
   overdueTasks: (limit: number) => ['tasks', 'overdue', limit] as const,
   complianceTemplates: (state?: string) => ['diary', 'templates', state ?? ''] as const,
+  fraudReportingCompliance: (params: GetFraudReportingComplianceParams) =>
+    ['compliance', 'fraud-reporting', params] as const,
 };
 
 export function useClaimsStats() {
@@ -501,5 +505,16 @@ export function useDeletePartyRelationship(claimId: string | undefined) {
         queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       }
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Fraud Compliance
+// ---------------------------------------------------------------------------
+
+export function useFraudReportingCompliance(params: GetFraudReportingComplianceParams = {}) {
+  return useQuery({
+    queryKey: queryKeys.fraudReportingCompliance(params),
+    queryFn: () => getFraudReportingCompliance(params),
   });
 }

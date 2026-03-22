@@ -47,7 +47,8 @@ Each element of `claims` includes:
 | `missing_required_filings` | Subset of `required_filing_types` with no matching row in `fraud_report_filings` |
 | `compliant` | `true` if `missing_required_filings` is empty |
 | `nicb_required` | Whether NICB filing is mandatory for this claim |
-| `nicb_due_at` | Computed NICB due timestamp (ISO-8601 UTC) from incident date + state template deadline |
+| `nicb_deadline_days` | Calendar days from incident date to NICB due date (state-specific theft schedule via `get_nicb_deadline_days`; conservative default) |
+| `nicb_due_at` | Computed NICB due timestamp (ISO-8601 UTC) from incident date + `nicb_deadline_days` |
 | `nicb_overdue` | `true` when NICB is required, missing, and due date has passed |
 | `nicb_alert` | `overdue`, `due_soon`, or `null` |
 | `filings` | List of filing records (type, report id, state, filed time) |

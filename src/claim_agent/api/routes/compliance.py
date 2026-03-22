@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from claim_agent.api.deps import require_role
-from claim_agent.compliance.fraud_report_templates import get_fraud_report_template
+from claim_agent.compliance.state_rules import get_nicb_deadline_days
 from claim_agent.db.database import get_connection
 from claim_agent.rag.constants import _STATE_ABBREV_TO_CANONICAL, normalize_state
 
@@ -86,16 +86,20 @@ def _parse_flexible_iso_datetime(value: Any) -> datetime | None:
 
 
 def _nicb_deadline_days_for_claim(claim: dict[str, Any]) -> int:
+    """Return the NICB filing deadline in calendar days for the given claim.
+
+    Always uses the **theft** NICB schedule from
+    :func:`~claim_agent.compliance.state_rules.get_nicb_deadline_days`.
+    Workflow ``claim_type`` (e.g. ``fraud``, ``total_loss``) does not reliably
+    reflect NICB report categories (theft vs salvage); defaulting to theft is
+    conservative (typically shorter deadlines in states like CA/NJ). When
+    filings persist a ``report_type`` in metadata, this can be extended to
+    select salvage vs theft explicitly.
+
+    Falls back to 30 days when the state has no specific requirement.
+    """
     state = claim.get("loss_state")
-    tpl = get_fraud_report_template(state if isinstance(state, str) else None)
-    days = tpl.get("filing_deadline_days") if isinstance(tpl, dict) else None
-    if days is None:
-        return 30
-    try:
-        n = int(days)
-        return n if n > 0 else 30
-    except (TypeError, ValueError):
-        return 30
+    return get_nicb_deadline_days(state if isinstance(state, str) else None, "theft")
 
 
 def _nicb_deadline_summary(
@@ -104,16 +108,18 @@ def _nicb_deadline_summary(
     *,
     now: datetime,
 ) -> dict[str, Any]:
+    deadline_days = _nicb_deadline_days_for_claim(claim)
     incident_dt = _parse_flexible_iso_datetime(claim.get("incident_date"))
     if incident_dt is None:
         return {
             "nicb_required": "nicb" in _required_filing_types_for_claim(claim),
             "nicb_due_at": None,
+            "nicb_deadline_days": deadline_days,
             "nicb_overdue": False,
             "nicb_alert": None,
         }
 
-    nicb_due_at = incident_dt + timedelta(days=_nicb_deadline_days_for_claim(claim))
+    nicb_due_at = incident_dt + timedelta(days=deadline_days)
     nicb_due_at_iso = nicb_due_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     nicb_filings = [f for f in filings if f.get("filing_type") == "nicb"]
     nicb_filed = bool(nicb_filings)
@@ -124,6 +130,7 @@ def _nicb_deadline_summary(
     return {
         "nicb_required": nicb_required,
         "nicb_due_at": nicb_due_at_iso,
+        "nicb_deadline_days": deadline_days,
         "nicb_overdue": overdue,
         "nicb_alert": alert,
     }

@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Optional
 
 from claim_agent.adapters.registry import get_claim_search_adapter, get_siu_adapter
-from claim_agent.compliance.state_rules import get_siu_referral_threshold
+from claim_agent.compliance.state_rules import get_mandatory_referral_indicators, get_siu_referral_threshold
 from claim_agent.config.settings import get_fraud_config
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.fraud_detectors import (
@@ -314,6 +314,7 @@ def perform_fraud_assessment_impl(
             "siu_referral": False,
             "assessment_details": {},
             "mandatory_referral_applied": False,
+            "mandatory_referral_trigger": None,
             "state_referral_threshold": None,
         })
 
@@ -330,6 +331,7 @@ def perform_fraud_assessment_impl(
         "siu_case_id": None,
         "assessment_details": {},
         "mandatory_referral_applied": False,
+        "mandatory_referral_trigger": None,
         "state_referral_threshold": None,
     }
 
@@ -439,20 +441,38 @@ def perform_fraud_assessment_impl(
             "Document any minor discrepancies."
         )
 
-    # State-specific mandatory referral: when fraud score meets state threshold,
-    # mandatory referral takes precedence (overrides any prior siu_referral from pattern analysis).
+    # State-specific mandatory referral: check both score threshold and indicator-based rules.
+    # Either trigger forces siu_referral=True regardless of the pattern-based determination above.
     state = (claim_data.get("state") or claim_data.get("loss_state") or "").strip()
     state_threshold = get_siu_referral_threshold(state) if state else None
-    if state_threshold is not None and total_score >= state_threshold:
+    state_mandatory_indicators = get_mandatory_referral_indicators(state) if state else []
+    triggered_indicators = [ind for ind in result["fraud_indicators"] if ind in state_mandatory_indicators]
+
+    score_triggers_referral = state_threshold is not None and total_score >= state_threshold
+    indicator_triggers_referral = bool(triggered_indicators)
+
+    if score_triggers_referral or indicator_triggers_referral:
         result["siu_referral"] = True
         result["mandatory_referral_applied"] = True
         result["state_referral_threshold"] = state_threshold
-        result["assessment_details"]["mandatory_referral_reason"] = (
-            f"State {state} requires SIU referral when fraud score >= {state_threshold}"
-        )
+        # "indicator" takes priority when both fire; each is individually sufficient
+        result["mandatory_referral_trigger"] = "indicator" if indicator_triggers_referral else "score"
+
+        if indicator_triggers_referral:
+            result["assessment_details"]["mandatory_referral_indicators"] = triggered_indicators
+            reason = (
+                f"State {state} requires mandatory SIU referral for indicators: "
+                + ", ".join(triggered_indicators)
+            )
+            if score_triggers_referral:
+                reason += f" (fraud score {total_score} also meets threshold {state_threshold})"
+        else:
+            reason = f"State {state} requires SIU referral when fraud score >= {state_threshold}"
+
+        result["assessment_details"]["mandatory_referral_reason"] = reason
         if result["recommended_action"] and "SIU referral" not in result["recommended_action"]:
             result["recommended_action"] = (
-                f"Mandatory SIU referral per state {state} (score {total_score} >= {state_threshold}). "
+                f"Mandatory SIU referral per state {state} ({result['mandatory_referral_trigger']} trigger). "
                 + result["recommended_action"]
             )
 

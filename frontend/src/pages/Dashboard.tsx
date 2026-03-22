@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import StatCard from '../components/StatCard';
 import ClaimTable from '../components/ClaimTable';
+import FraudComplianceSection from '../components/FraudComplianceSection';
 import { useClaimsStats, useClaims } from '../api/queries';
 
 const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
@@ -169,6 +170,9 @@ export default function Dashboard() {
       >
         <DashboardCharts typeData={typeData} statusData={statusData} />
       </Suspense>
+
+      {/* Fraud compliance */}
+      <FraudComplianceSection />
 
       {/* Recent claims */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">

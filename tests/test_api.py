@@ -2237,6 +2237,175 @@ class TestComplianceFraudReporting:
         alert_claim_ids = [a["claim_id"] for a in payload["alerts"]]
         assert "CLM-ALERT001" in alert_claim_ids
 
+    def test_nicb_deadline_days_field_returned_in_response(self, client):
+        """Response includes nicb_deadline_days for transparency."""
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        clm003 = next((c for c in data["claims"] if c["claim_id"] == "CLM-TEST003"), None)
+        assert clm003 is not None
+        assert "nicb_deadline_days" in clm003
+        assert isinstance(clm003["nicb_deadline_days"], int)
+        assert clm003["nicb_deadline_days"] > 0
+
+    def test_california_theft_claim_uses_7_day_nicb_deadline(self, client):
+        """CA theft claims use 7 calendar-day NICB deadline (≈5 working days per Cal. Ins. Code §1875.20)."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-CADEADLINE",
+                    "policy_number": "POL-CADEADLINE",
+                    "vin": "VIN-CADEADLINE",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Toyota",
+                    "vehicle_model": "Camry",
+                    "incident_date": "2020-06-01T00:00:00Z",
+                    "incident_description": "Theft",
+                    "damage_description": "Vehicle stolen",
+                    "estimated_damage": 25000.0,
+                    "claim_type": "fraud",
+                    "status": "fraud_confirmed",
+                    "loss_state": "California",
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting?state=California")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim = next((c for c in data["claims"] if c["claim_id"] == "CLM-CADEADLINE"), None)
+        assert claim is not None
+        assert claim["nicb_deadline_days"] == 7
+        # due_at should be 7 days after incident (2020-06-08)
+        assert claim["nicb_due_at"] is not None
+        assert "2020-06-08" in claim["nicb_due_at"]
+
+    def test_new_jersey_theft_claim_uses_3_day_nicb_deadline(self, client):
+        """NJ theft claims use 3 calendar-day NICB deadline (≈2 working days per NJSA 17:33A-15)."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-NJDEADLINE",
+                    "policy_number": "POL-NJDEADLINE",
+                    "vin": "VIN-NJDEADLINE",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Honda",
+                    "vehicle_model": "Accord",
+                    "incident_date": "2020-06-01T00:00:00Z",
+                    "incident_description": "Theft",
+                    "damage_description": "Vehicle stolen",
+                    "estimated_damage": 20000.0,
+                    "claim_type": "fraud",
+                    "status": "fraud_confirmed",
+                    "loss_state": "New Jersey",
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim = next((c for c in data["claims"] if c["claim_id"] == "CLM-NJDEADLINE"), None)
+        assert claim is not None
+        assert claim["nicb_deadline_days"] == 3
+        # due_at should be 3 days after incident (2020-06-04)
+        assert claim["nicb_due_at"] is not None
+        assert "2020-06-04" in claim["nicb_due_at"]
+
+    def test_overdue_detection_uses_state_specific_nicb_deadline(self, client):
+        """Overdue flag is set based on the state-specific NICB deadline, not a fixed 30 days."""
+        # Use a CA fraud_confirmed claim with incident 10 days ago (past 7-day CA deadline, but within 30 days).
+        # Without state-specific rules, nicb_overdue would be False (within generic 30-day window).
+        # With CA rules (7 days), nicb_overdue must be True.
+        from datetime import datetime, timedelta, timezone
+
+        incident = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-CAOVERDUE",
+                    "policy_number": "POL-CAOVERDUE",
+                    "vin": "VIN-CAOVERDUE",
+                    "vehicle_year": 2022,
+                    "vehicle_make": "Nissan",
+                    "vehicle_model": "Altima",
+                    "incident_date": incident,
+                    "incident_description": "Stolen vehicle",
+                    "damage_description": "Vehicle stolen",
+                    "estimated_damage": 22000.0,
+                    "claim_type": "fraud",
+                    "status": "fraud_confirmed",
+                    "loss_state": "California",
+                },
+            )
+            # Only state_bureau filed; NICB not filed
+            conn.execute(
+                text("""
+                INSERT INTO fraud_report_filings
+                (claim_id, siu_case_id, filing_type, state, report_id, filed_at, filed_by,
+                 indicators_count, template_version, metadata)
+                VALUES (:claim_id, :siu_case_id, :filing_type, :state, :report_id, :filed_at,
+                        :filed_by, :indicators_count, :template_version, :metadata)
+                """),
+                {
+                    "claim_id": "CLM-CAOVERDUE",
+                    "siu_case_id": None,
+                    "filing_type": "state_bureau",
+                    "state": "California",
+                    "report_id": "FRB-CAOVERDUE",
+                    "filed_at": incident,
+                    "filed_by": "siu_crew",
+                    "indicators_count": 3,
+                    "template_version": None,
+                    "metadata": None,
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting?state=California")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim = next((c for c in data["claims"] if c["claim_id"] == "CLM-CAOVERDUE"), None)
+        assert claim is not None
+        assert claim["nicb_required"] is True
+        assert claim["nicb_deadline_days"] == 7
+        # 10 days ago > 7-day CA deadline → overdue
+        assert claim["nicb_overdue"] is True
+        assert claim["nicb_alert"] == "overdue"
+
 
 class TestHealthEndpoint:
     def test_basic_health(self, client):

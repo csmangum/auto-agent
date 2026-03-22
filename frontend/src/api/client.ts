@@ -35,6 +35,7 @@ import type {
   ReviewQueueResponse,
   OverdueTasksResponse,
   ComplianceTemplatesResponse,
+  FraudReportingComplianceResponse,
 } from './types';
 
 const BASE = '/api';
@@ -898,3 +899,22 @@ export const deletePartyRelationship = (
   relationshipId: number,
 ): Promise<void> =>
   deleteJSON(`/claims/${claimId}/party-relationships/${relationshipId}`);
+
+// ---------------------------------------------------------------------------
+// Fraud Compliance
+// ---------------------------------------------------------------------------
+
+export interface GetFraudReportingComplianceParams {
+  state?: string;
+  limit?: number;
+}
+
+export const getFraudReportingCompliance = (
+  params: GetFraudReportingComplianceParams = {},
+): Promise<FraudReportingComplianceResponse> => {
+  const qs = new URLSearchParams();
+  if (params.state) qs.set('state', params.state);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  const q = qs.toString();
+  return fetchJSON<FraudReportingComplianceResponse>(`/compliance/fraud-reporting${q ? '?' + q : ''}`);
+};
