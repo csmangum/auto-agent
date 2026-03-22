@@ -167,7 +167,7 @@ class ClaimMetrics:
     - Error rates
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Use RLock (reentrant lock) to allow nested lock acquisition
         self._lock = threading.RLock()
         self._claims: dict[str, dict[str, Any]] = {}

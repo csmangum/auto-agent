@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from claim_agent.config import reload_settings
@@ -25,6 +27,8 @@ from claim_agent.services.dsar_verification import (
     verify_otp,
 )
 from sqlalchemy import text
+
+from tests.conftest import LogCaptureHandler
 
 
 # ---------------------------------------------------------------------------
@@ -405,31 +409,49 @@ class TestIsVerified:
 
 
 class TestOTPNotificationDelivery:
-    def test_send_otp_notification_email_disabled_logs_warning(self, caplog, monkeypatch):
+    def test_send_otp_notification_email_disabled_logs_warning(self, monkeypatch):
         """send_otp_notification logs a warning when email is disabled."""
         monkeypatch.setenv("NOTIFICATION_EMAIL_ENABLED", "false")
         reload_settings()
         from claim_agent.notifications.claimant import send_otp_notification
 
-        with caplog.at_level("WARNING", logger="claim_agent.notifications.claimant"):
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.WARNING)
+        try:
             send_otp_notification("x@example.com", "email", "123456", "vid-1")
-        assert "disabled" in caplog.text.lower()
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("disabled" in m.lower() for m in cap.messages)
 
-    def test_send_otp_notification_sms_disabled_logs_warning(self, caplog, monkeypatch):
+    def test_send_otp_notification_sms_disabled_logs_warning(self, monkeypatch):
         monkeypatch.setenv("NOTIFICATION_SMS_ENABLED", "false")
         reload_settings()
         from claim_agent.notifications.claimant import send_otp_notification
 
-        with caplog.at_level("WARNING", logger="claim_agent.notifications.claimant"):
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.WARNING)
+        try:
             send_otp_notification("+15005550006", "sms", "654321", "vid-2")
-        assert "disabled" in caplog.text.lower()
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("disabled" in m.lower() for m in cap.messages)
 
-    def test_send_otp_notification_unknown_channel_logs_warning(self, caplog, monkeypatch):
+    def test_send_otp_notification_unknown_channel_logs_warning(self):
         from claim_agent.notifications.claimant import send_otp_notification
 
-        with caplog.at_level("WARNING", logger="claim_agent.notifications.claimant"):
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.WARNING)
+        try:
             send_otp_notification("x@example.com", "fax", "000000", "vid-3")
-        assert "unknown channel" in caplog.text.lower()
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("unknown channel" in m.lower() for m in cap.messages)
 
 
 # ---------------------------------------------------------------------------

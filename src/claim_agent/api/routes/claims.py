@@ -480,6 +480,7 @@ def get_review_queue(
             status_code=400,
             detail=f"Invalid priority: {priority}. Must be one of: {', '.join(PRIORITY_VALUES)}",
         )
+    eff_assignee: str | None
     if adjuster_identity_scopes_assignee(auth):
         eff_assignee = auth.identity
     else:
