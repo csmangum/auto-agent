@@ -783,6 +783,32 @@ class PrivacyConfig(BaseSettings):
         validation_alias="LITIGATION_HOLD_BLOCKS_DELETION",
         description="When true, claims with litigation_hold are skipped during DSAR deletion.",
     )
+    data_region: str = Field(
+        default="us",
+        validation_alias="DATA_REGION",
+        description=(
+            "Primary data region for this deployment: 'us', 'eu', or 'other'. "
+            "Controls how cross-border transfer checks classify the data source."
+        ),
+    )
+    cross_border_policy: str = Field(
+        default="audit",
+        validation_alias="CROSS_BORDER_POLICY",
+        description=(
+            "Policy for cross-border data transfers: "
+            "'allow' (permit, log), 'audit' (permit with warning), "
+            "or 'restrict' (block transfers lacking a documented mechanism)."
+        ),
+    )
+    llm_transfer_mechanism: str = Field(
+        default="scc",
+        validation_alias="LLM_TRANSFER_MECHANISM",
+        description=(
+            "Transfer mechanism documenting the legal basis for sending claim data "
+            "to the LLM provider: 'scc', 'adequacy_decision', 'explicit_consent', "
+            "'bcr', 'legitimate_interests', or 'none'."
+        ),
+    )
 
     @field_validator(
         "llm_data_minimization",

@@ -40,6 +40,7 @@ from claim_agent.api.routes.dsar import router as dsar_router
 from claim_agent.api.routes.portal import router as portal_router
 from claim_agent.api.routes.reserve_reports import router as reserve_reports_router
 from claim_agent.api.routes.retention import router as retention_router
+from claim_agent.api.routes.privacy import router as privacy_router
 from claim_agent.config import get_settings
 from claim_agent.db.database import ensure_fresh_db_on_startup, is_postgres_backend
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
@@ -291,6 +292,7 @@ app.include_router(dsar_router, prefix="/api")
 app.include_router(portal_router, prefix="/api")
 app.include_router(reserve_reports_router, prefix="/api")
 app.include_router(retention_router, prefix="/api")
+app.include_router(privacy_router, prefix="/api")
 
 
 # Serve frontend static files in production (when built)
