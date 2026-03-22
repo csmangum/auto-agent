@@ -96,3 +96,32 @@ def test_postgres_repository_crud(postgres_db):
             {"cid": claim_id},
         ).fetchall()
     assert len(rows) >= 1
+
+
+def test_postgres_graph_phone_sql_matches_python_normalization(postgres_db):
+    """sql_expr_phone_normalized_postgres matches normalize_party_phone_for_graph."""
+    from sqlalchemy import text
+
+    from claim_agent.db.database import get_connection
+    from claim_agent.utils.graph_contact_normalize import (
+        normalize_party_phone_for_graph,
+        sql_expr_phone_normalized_postgres,
+    )
+
+    phones = [
+        "+1 (555) 234-5678",
+        "(555) 234-5678",
+        "555-234-5678",
+        "12345678901234",
+        "+44 20 7946 0958",
+    ]
+    expr = sql_expr_phone_normalized_postgres("cp")
+    with get_connection() as conn:
+        for p in phones:
+            row = conn.execute(
+                text(f"SELECT {expr} AS n FROM (SELECT :phone AS phone) AS cp"),
+                {"phone": p},
+            ).fetchone()
+            expected = normalize_party_phone_for_graph(p) or ""
+            assert row is not None
+            assert row[0] == expected, f"phone={p!r} sql={row[0]!r} py={expected!r}"

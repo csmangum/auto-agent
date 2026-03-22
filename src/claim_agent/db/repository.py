@@ -69,7 +69,7 @@ from claim_agent.db.constants import (
 from claim_agent.db.reserve_adequacy import compute_reserve_adequacy_details
 from claim_agent.config.settings import get_reserve_config
 from claim_agent.rag.constants import normalize_state
-from claim_agent.db.database import get_connection, row_to_dict
+from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
@@ -85,11 +85,18 @@ from claim_agent.utils.sanitization import (
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput, PartyRelationshipType
+from claim_agent.utils.graph_contact_normalize import (
+    normalize_party_email_for_graph,
+    normalize_party_phone_for_graph,
+    sql_expr_phone_normalized_postgres,
+)
 
 # Relation types for build_relationship_snapshot edges
 RELATION_SHARED_VIN = "shared_vin"
 RELATION_SHARED_ADDRESS = "shared_address"
 RELATION_SHARED_PROVIDER = "shared_provider"
+RELATION_SHARED_PHONE = "shared_phone"
+RELATION_SHARED_EMAIL = "shared_email"
 
 # Matches ``auto_created_from`` for FNOL UCSPA prompt-payment tasks (see ucspa.create_ucspa_compliance_tasks).
 _UCSPA_PROMPT_PAYMENT_TASK_MARKER = "ucspa:prompt_payment"
@@ -2814,8 +2821,9 @@ class ClaimRepository:
     ) -> dict[str, Any]:
         """Build an in-memory 1-hop relationship graph snapshot from existing claims/parties.
 
-        Finds claims related to the root by shared VIN, shared party address, or shared
-        provider name. Uses a single connection for all lookups to avoid N+1 churn.
+        Finds claims related to the root by shared VIN, shared party address, shared
+        provider name, shared normalized phone, or shared normalized email. Uses a single
+        connection for all lookups to avoid N+1 churn.
 
         This is a migration-ready compatibility layer. It derives graph signals from
         existing tables without requiring dedicated graph persistence.
@@ -2861,6 +2869,20 @@ class ClaimRepository:
             and isinstance(p.get("name"), str)
             and str(p.get("name")).strip()
         ]
+        phones_unique = list(
+            dict.fromkeys(
+                n
+                for p in parties
+                if (n := normalize_party_phone_for_graph(p.get("phone"))) is not None
+            )
+        )
+        emails_unique = list(
+            dict.fromkeys(
+                n
+                for p in parties
+                if (n := normalize_party_email_for_graph(p.get("email"))) is not None
+            )
+        )
 
         related_ids: set[str] = set()
         with get_connection(self._db_path) as conn:
@@ -2870,7 +2892,10 @@ class ClaimRepository:
                     if rid and rid != claim_id:
                         related_ids.add(rid)
             if addresses:
-                params: dict[str, Any] = {"limit": max_nodes * len(addresses)}
+                params: dict[str, Any] = {
+                    "limit": max_nodes * len(addresses),
+                    "root_claim_id": claim_id,
+                }
                 for i, addr in enumerate(addresses):
                     params[f"addr{i}"] = addr
                 placeholders = ", ".join(f":addr{i}" for i in range(len(addresses)))
@@ -2880,6 +2905,7 @@ class ClaimRepository:
                     FROM claim_parties cp
                     JOIN claims c ON c.id = cp.claim_id
                     WHERE lower(trim(cp.address)) IN ({placeholders})
+                      AND c.id != :root_claim_id
                     ORDER BY c.created_at DESC
                     LIMIT :limit
                     """),
@@ -2890,7 +2916,10 @@ class ClaimRepository:
                     if rid and rid != claim_id:
                         related_ids.add(rid)
             if provider_names:
-                params = {"limit": max_nodes * len(provider_names)}
+                params = {
+                    "limit": max_nodes * len(provider_names),
+                    "root_claim_id": claim_id,
+                }
                 for i, pn in enumerate(provider_names):
                     params[f"pn{i}"] = pn
                 placeholders = ", ".join(f":pn{i}" for i in range(len(provider_names)))
@@ -2901,6 +2930,60 @@ class ClaimRepository:
                     JOIN claims c ON c.id = cp.claim_id
                     WHERE cp.party_type = 'provider'
                       AND lower(trim(cp.name)) IN ({placeholders})
+                      AND c.id != :root_claim_id
+                    ORDER BY c.created_at DESC
+                    LIMIT :limit
+                    """),
+                    params,
+                ).fetchall()
+                for r in rows:
+                    rid = str(r[0] if r else "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
+            if emails_unique:
+                params = {
+                    "limit": max_nodes * len(emails_unique),
+                    "root_claim_id": claim_id,
+                }
+                for i, em in enumerate(emails_unique):
+                    params[f"em{i}"] = em
+                placeholders = ", ".join(f":em{i}" for i in range(len(emails_unique)))
+                rows = conn.execute(
+                    text(f"""
+                    SELECT DISTINCT c.id
+                    FROM claim_parties cp
+                    JOIN claims c ON c.id = cp.claim_id
+                    WHERE lower(trim(cp.email)) IN ({placeholders})
+                      AND c.id != :root_claim_id
+                    ORDER BY c.created_at DESC
+                    LIMIT :limit
+                    """),
+                    params,
+                ).fetchall()
+                for r in rows:
+                    rid = str(r[0] if r else "").strip()
+                    if rid and rid != claim_id:
+                        related_ids.add(rid)
+            if phones_unique:
+                phone_expr = (
+                    sql_expr_phone_normalized_postgres()
+                    if is_postgres_backend()
+                    else "graph_phone_digits(cp.phone)"
+                )
+                params = {
+                    "limit": max_nodes * len(phones_unique),
+                    "root_claim_id": claim_id,
+                }
+                for i, ph in enumerate(phones_unique):
+                    params[f"ph{i}"] = ph
+                placeholders = ", ".join(f":ph{i}" for i in range(len(phones_unique)))
+                rows = conn.execute(
+                    text(f"""
+                    SELECT DISTINCT c.id
+                    FROM claim_parties cp
+                    JOIN claims c ON c.id = cp.claim_id
+                    WHERE {phone_expr} IN ({placeholders})
+                      AND c.id != :root_claim_id
                     ORDER BY c.created_at DESC
                     LIMIT :limit
                     """),
@@ -2958,10 +3041,24 @@ class ClaimRepository:
                     and isinstance(p.get("name"), str)
                     and str(p.get("name")).strip()
                 }
+                related_phones = {
+                    normalize_party_phone_for_graph(p.get("phone"))
+                    for p in related_parties
+                }
+                related_phones.discard(None)
+                related_emails = {
+                    normalize_party_email_for_graph(p.get("email"))
+                    for p in related_parties
+                }
+                related_emails.discard(None)
                 if set(addresses) & related_addresses:
                     relation_types.append(RELATION_SHARED_ADDRESS)
                 if set(provider_names) & related_providers:
                     relation_types.append(RELATION_SHARED_PROVIDER)
+                if set(phones_unique) & related_phones:
+                    relation_types.append(RELATION_SHARED_PHONE)
+                if set(emails_unique) & related_emails:
+                    relation_types.append(RELATION_SHARED_EMAIL)
                 if not relation_types:
                     continue
                 edges.append(
@@ -2970,6 +3067,8 @@ class ClaimRepository:
                 if (
                     RELATION_SHARED_PROVIDER in relation_types
                     or RELATION_SHARED_ADDRESS in relation_types
+                    or RELATION_SHARED_PHONE in relation_types
+                    or RELATION_SHARED_EMAIL in relation_types
                 ):
                     high_risk_link_count += 1
 

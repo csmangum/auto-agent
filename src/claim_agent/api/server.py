@@ -40,7 +40,7 @@ from claim_agent.api.routes.dsar import router as dsar_router
 from claim_agent.api.routes.portal import router as portal_router
 from claim_agent.api.routes.reserve_reports import router as reserve_reports_router
 from claim_agent.config import get_settings
-from claim_agent.db.database import ensure_fresh_db_on_startup, _is_postgres
+from claim_agent.db.database import ensure_fresh_db_on_startup, is_postgres_backend
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
 from claim_agent.exceptions import InvalidClaimTransitionError
@@ -52,13 +52,13 @@ _server_logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    if _is_postgres() and get_settings().paths.run_migrations_on_startup:
+    if is_postgres_backend() and get_settings().paths.run_migrations_on_startup:
         from alembic import command
         from alembic.config import Config
 
         alembic_cfg = Config(Path(__file__).resolve().parent.parent.parent.parent / "alembic.ini")
         command.upgrade(alembic_cfg, "head")
-    elif not _is_postgres():
+    elif not is_postgres_backend():
         ensure_fresh_db_on_startup()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
