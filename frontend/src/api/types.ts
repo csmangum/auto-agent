@@ -503,6 +503,9 @@ export interface FraudFiling {
   filed_at: string | null;
 }
 
+/** Mandatory filing type codes returned by fraud-reporting compliance APIs. */
+export type FraudFilingType = FraudFiling['filing_type'];
+
 export interface FraudComplianceClaim {
   claim_id: string;
   status: string;
@@ -512,8 +515,8 @@ export interface FraudComplianceClaim {
   state_report_filed: boolean;
   nicb_filed: boolean;
   niss_filed: boolean;
-  required_filing_types: string[];
-  missing_required_filings: string[];
+  required_filing_types: FraudFilingType[];
+  missing_required_filings: FraudFilingType[];
   compliant: boolean;
   nicb_required: boolean;
   nicb_due_at: string | null;
