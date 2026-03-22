@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy import text
 
+from claim_agent.compliance.dsar_state_rules import get_state_response_metadata
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
@@ -33,6 +34,7 @@ def submit_access_request(
     *,
     db_path: str | None = None,
     actor_id: str = "claimant",
+    state: str | None = None,
 ) -> str:
     """Submit a DSAR access request. Returns request_id.
 
@@ -41,12 +43,17 @@ def submit_access_request(
         verification_data: Dict with claim_id and/or policy_number, vin for verification.
         db_path: Optional DB path. Uses default when None.
         actor_id: Actor submitting the request.
+        state: Consumer's state of residence (e.g., ``"California"``). When provided,
+            state-specific response metadata is embedded in the fulfilled export.
 
     Returns:
         Unique request_id (UUID string) for tracking.
     """
     request_id = str(uuid.uuid4())
     path = db_path or get_db_path()
+    vdata = dict(verification_data) if verification_data else {}
+    if state:
+        vdata["state"] = state
     with get_connection(path) as conn:
         conn.execute(
             text("""
@@ -62,7 +69,7 @@ def submit_access_request(
                 "request_type": DSAR_REQUEST_ACCESS,
                 "status": DSAR_STATUS_PENDING,
                 "actor_id": actor_id,
-                "verification_data": json.dumps(verification_data) if verification_data else None,
+                "verification_data": json.dumps(vdata) if vdata else None,
             },
         )
     return request_id
@@ -171,9 +178,11 @@ def fulfill_access_request(
             },
         )
 
+        state_from_verification = verification.get("state")
         export: dict[str, Any] = {
             "request_id": request_id,
             "exported_at": datetime.now(timezone.utc).isoformat(),
+            "state_response_info": get_state_response_metadata(state_from_verification),
             "claims": [],
             "parties": [],
             "party_relationships": [],
@@ -328,10 +337,23 @@ def submit_deletion_request(
     *,
     db_path: str | None = None,
     actor_id: str = "claimant",
+    state: str | None = None,
 ) -> str:
-    """Submit a DSAR deletion request. Returns request_id."""
+    """Submit a DSAR deletion request. Returns request_id.
+
+    Args:
+        claimant_identifier: Email or hashed policy+vin identifier.
+        verification_data: Dict with claim_id and/or policy_number, vin for verification.
+        db_path: Optional DB path. Uses default when None.
+        actor_id: Actor submitting the request.
+        state: Consumer's state of residence (e.g., ``"California"``). Stored for
+            audit and state-specific processing.
+    """
     request_id = str(uuid.uuid4())
     path = db_path or get_db_path()
+    vdata = dict(verification_data) if verification_data else {}
+    if state:
+        vdata["state"] = state
     with get_connection(path) as conn:
         conn.execute(
             text("""
@@ -347,7 +369,7 @@ def submit_deletion_request(
                 "request_type": DSAR_REQUEST_DELETION,
                 "status": DSAR_STATUS_PENDING,
                 "actor_id": actor_id,
-                "verification_data": json.dumps(verification_data) if verification_data else None,
+                "verification_data": json.dumps(vdata) if vdata else None,
             },
         )
     return request_id

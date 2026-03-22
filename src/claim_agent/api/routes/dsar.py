@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
+from claim_agent.compliance.dsar_state_rules import (
+    get_dsar_form_schema,
+    get_dsar_state_rules,
+    get_supported_dsar_states,
+)
 from claim_agent.services.dsar import (
     fulfill_access_request,
     fulfill_deletion_request,
@@ -27,6 +32,13 @@ class AccessRequestInput(BaseModel):
     claim_id: Optional[str] = Field(None, description="Claim ID for verification")
     policy_number: Optional[str] = Field(None, description="Policy number for verification")
     vin: Optional[str] = Field(None, description="VIN for verification")
+    state: Optional[str] = Field(
+        None,
+        description=(
+            "Consumer's state of residence (e.g., 'California'). When provided, "
+            "state-specific response metadata and timelines are included in the export."
+        ),
+    )
 
 
 @router.post("/access")
@@ -59,6 +71,7 @@ def dsar_submit_access(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
         actor_id=_auth.identity or "api",
+        state=body.state,
     )
     return {"request_id": request_id, "status": "pending"}
 
@@ -103,6 +116,10 @@ class DeletionRequestInput(BaseModel):
     claim_id: Optional[str] = Field(None, description="Claim ID for verification")
     policy_number: Optional[str] = Field(None, description="Policy number for verification")
     vin: Optional[str] = Field(None, description="VIN for verification")
+    state: Optional[str] = Field(
+        None,
+        description="Consumer's state of residence (e.g., 'California'). Stored for audit.",
+    )
 
 
 @router.post("/deletion")
@@ -132,6 +149,7 @@ def dsar_submit_deletion(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
         actor_id=_auth.identity or "api",
+        state=body.state,
     )
     return {"request_id": request_id, "status": "pending"}
 
@@ -185,3 +203,49 @@ def dsar_fulfill_access(
         return export
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/form-schema")
+def dsar_form_schema(
+    state: Optional[str] = Query(None, description="Consumer's state of residence (e.g., 'California')"),
+    request_type: str = Query("access", description="Request type: 'access' or 'deletion'"),
+    _auth: AuthContext = require_role("admin"),
+) -> dict[str, Any]:
+    """Return the DSAR form schema for the given state and request type.
+
+    Describes the required fields, consumer rights, data categories, response
+    timelines, and applicable privacy law for the state. Use this to render a
+    guided intake form or validate submission data on the client.
+
+    When ``state`` is omitted or unsupported, a generic fallback schema is returned.
+    """
+    if request_type not in ("access", "deletion"):
+        raise HTTPException(status_code=400, detail="request_type must be 'access' or 'deletion'")
+    return get_dsar_form_schema(state, request_type=request_type)
+
+
+@router.get("/state-requirements")
+def dsar_state_requirements(
+    _auth: AuthContext = require_role("admin"),
+) -> dict[str, Any]:
+    """List all states with defined DSAR requirements.
+
+    Returns a summary of each supported state's applicable privacy law, response
+    deadline, extension allowance, and consumer rights.
+    """
+    supported = get_supported_dsar_states()
+    summaries = []
+    for state_name in supported:
+        rules = get_dsar_state_rules(state_name)
+        if rules:
+            summaries.append(
+                {
+                    "state": rules.state,
+                    "law_name": rules.law_name,
+                    "response_days": rules.response_days,
+                    "extension_days": rules.extension_days,
+                    "consumer_rights": rules.consumer_rights,
+                    "annual_request_limit": rules.annual_request_limit,
+                }
+            )
+    return {"supported_states": summaries, "total": len(summaries)}
