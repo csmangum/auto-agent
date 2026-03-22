@@ -35,6 +35,8 @@ class StateRules:
     """Days to acknowledge claim receipt."""
     investigation_days: int
     """Days to complete investigation."""
+    communication_response_days: int | None
+    """Days to respond to claimant communications. None = no explicit state requirement."""
     appraisal_rights: bool
     """Whether policyholder has appraisal clause invocation rights."""
     comparative_fault_type: str
@@ -55,6 +57,7 @@ _STATE_RULES: dict[str, StateRules] = {
         siu_referral_threshold=75,
         acknowledgment_days=15,
         investigation_days=40,
+        communication_response_days=15,
         appraisal_rights=True,
         comparative_fault_type="pure_comparative",
         comparative_fault_bar=None,
@@ -68,6 +71,7 @@ _STATE_RULES: dict[str, StateRules] = {
         siu_referral_threshold=80,
         acknowledgment_days=14,
         investigation_days=90,
+        communication_response_days=14,
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=51.0,
@@ -81,6 +85,7 @@ _STATE_RULES: dict[str, StateRules] = {
         siu_referral_threshold=70,
         acknowledgment_days=15,
         investigation_days=30,
+        communication_response_days=15,
         appraisal_rights=True,
         comparative_fault_type="pure_comparative",
         comparative_fault_bar=None,
@@ -94,6 +99,7 @@ _STATE_RULES: dict[str, StateRules] = {
         siu_referral_threshold=75,
         acknowledgment_days=15,
         investigation_days=30,
+        communication_response_days=15,
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=50.0,
@@ -107,6 +113,7 @@ _STATE_RULES: dict[str, StateRules] = {
         siu_referral_threshold=75,
         acknowledgment_days=15,
         investigation_days=15,
+        communication_response_days=15,
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=51.0,
@@ -163,9 +170,11 @@ def get_compliance_due_date(
         days = rules.investigation_days if rules else 40
     elif deadline_type == "prompt_payment":
         days = rules.prompt_payment_days if rules else 30
+    elif deadline_type == "communication_response":
+        days = rules.communication_response_days if rules else 15
     else:
         return None
-    return base_date + timedelta(days=days)
+    return None if days is None else base_date + timedelta(days=days)
 
 
 def get_siu_referral_threshold(state: str | None) -> int | None:
