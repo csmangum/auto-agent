@@ -1108,6 +1108,80 @@ class ClaimSearchRestConfig(BaseSettings):
 # ---------------------------------------------------------------------------
 
 
+class RetentionExportConfig(BaseSettings):
+    """S3/Glacier cold-storage export configuration for retention pipeline."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(
+        default=False,
+        validation_alias="RETENTION_EXPORT_ENABLED",
+        description="Enable cold-storage export pipeline (requires S3 bucket).",
+    )
+    s3_bucket: str = Field(
+        default="",
+        validation_alias="RETENTION_EXPORT_S3_BUCKET",
+        description="S3 bucket for cold-storage exports.",
+    )
+    s3_prefix: str = Field(
+        default="retention-exports",
+        validation_alias="RETENTION_EXPORT_S3_PREFIX",
+        description="Key prefix inside the export bucket.",
+    )
+    s3_endpoint: str | None = Field(
+        default=None,
+        validation_alias="RETENTION_EXPORT_S3_ENDPOINT",
+        description="Optional endpoint URL (MinIO or S3-compatible).",
+    )
+    s3_storage_class: str = Field(
+        default="GLACIER_IR",
+        validation_alias="RETENTION_EXPORT_S3_STORAGE_CLASS",
+        description=(
+            "S3 storage class applied to uploaded objects "
+            "(e.g. GLACIER_IR, GLACIER, STANDARD_IA)."
+        ),
+    )
+    encryption: str = Field(
+        default="AES256",
+        validation_alias="RETENTION_EXPORT_ENCRYPTION",
+        description="Server-side encryption: AES256 or aws:kms.",
+    )
+    kms_key_id: str | None = Field(
+        default=None,
+        validation_alias="RETENTION_EXPORT_KMS_KEY_ID",
+        description="KMS key ARN/ID when encryption=aws:kms.",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("s3_endpoint", "kms_key_id", mode="before")
+    @classmethod
+    def _empty_to_none(cls, v: Any) -> str | None:
+        if v is None or str(v).strip() == "":
+            return None
+        return str(v).strip()
+
+    @field_validator("encryption", mode="before")
+    @classmethod
+    def _normalize_encryption(cls, v: Any) -> str:
+        s = str(v or "AES256").strip()
+        return s if s else "AES256"
+
+
+# ---------------------------------------------------------------------------
+# Root Settings
+# ---------------------------------------------------------------------------
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -1143,6 +1217,7 @@ class Settings(BaseSettings):
     claim_search_rest: ClaimSearchRestConfig = Field(default_factory=ClaimSearchRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
+    retention_export: RetentionExportConfig = Field(default_factory=RetentionExportConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40
