@@ -69,7 +69,7 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
         )
         payload = self._extract_payload(resp.json())
         return {
-            "report_id": _to_string(payload.get("report_id"), "UNKNOWN"),
+            "report_id": _to_string(payload.get("report_id")),
             "state": _to_string(payload.get("state"), state or "California"),
             "indicators_count": int(payload.get("indicators_count", len(indicators))),
             "message": _to_string(payload.get("message"), "State bureau report filed"),
@@ -94,7 +94,7 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
         )
         payload = self._extract_payload(resp.json())
         return {
-            "report_id": _to_string(payload.get("report_id"), "UNKNOWN"),
+            "report_id": _to_string(payload.get("report_id")),
             "report_type": _to_string(payload.get("report_type"), report_type),
             "indicators_count": int(payload.get("indicators_count", len(indicators))),
             "message": _to_string(payload.get("message"), "NICB report filed"),
@@ -119,7 +119,7 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
         )
         payload = self._extract_payload(resp.json())
         return {
-            "report_id": _to_string(payload.get("report_id"), "UNKNOWN"),
+            "report_id": _to_string(payload.get("report_id")),
             "report_type": _to_string(payload.get("report_type"), report_type),
             "indicators_count": int(payload.get("indicators_count", len(indicators))),
             "message": _to_string(payload.get("message"), "NISS report filed"),

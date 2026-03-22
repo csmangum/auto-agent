@@ -39,6 +39,17 @@ def _adapter_error_json(
     return json.dumps(payload)
 
 
+def _fraud_reporting_not_implemented_json(filing_target: str, *, claim_id: str, case_id: str) -> str:
+    from claim_agent.config.settings import get_adapter_backend
+
+    backend = get_adapter_backend("fraud_reporting")
+    return _adapter_error_json(
+        f"{filing_target} filing not implemented for FRAUD_REPORTING_ADAPTER={backend}",
+        case_id=case_id,
+        claim_id=claim_id,
+    )
+
+
 def _validate_siu_scope(claim_id: str | None = None, case_id: str | None = None) -> str | None:
     """Validate claim_id/case_id against SIU workflow scope. Returns error JSON string or None if valid."""
     scope = None
@@ -350,7 +361,11 @@ def file_fraud_report_state_bureau_impl(
         )
         return json.dumps(result)
     except NotImplementedError:
-        return _adapter_error_json("State bureau filing not implemented", case_id=case_id, claim_id=claim_id)
+        return _fraud_reporting_not_implemented_json(
+            "State bureau",
+            claim_id=claim_id,
+            case_id=case_id,
+        )
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("file_fraud_report_state_bureau failed: %s", e)
         return _adapter_error_json(
@@ -457,7 +472,11 @@ def file_nicb_report_impl(
         )
         return json.dumps(result)
     except NotImplementedError:
-        return _adapter_error_json("NICB filing not implemented", case_id=case_id, claim_id=claim_id)
+        return _fraud_reporting_not_implemented_json(
+            "NICB",
+            claim_id=claim_id,
+            case_id=case_id,
+        )
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("file_nicb_report failed: %s", e)
         return _adapter_error_json(
@@ -528,7 +547,11 @@ def file_niss_report_impl(
         )
         return json.dumps(result)
     except NotImplementedError:
-        return _adapter_error_json("NISS filing not implemented", case_id=case_id, claim_id=claim_id)
+        return _fraud_reporting_not_implemented_json(
+            "NISS",
+            claim_id=claim_id,
+            case_id=case_id,
+        )
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("file_niss_report failed: %s", e)
         return _adapter_error_json(

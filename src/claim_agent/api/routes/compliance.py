@@ -28,6 +28,7 @@ _CLAIM_COLS = (
 )
 _FILING_COLS = ("claim_id", "filing_type", "report_id", "state", "filed_at")
 _CANONICAL_TO_ABBREV = {v: k for k, v in _STATE_ABBREV_TO_CANONICAL.items()}
+_NICB_DUE_SOON_THRESHOLD = timedelta(days=2)
 
 
 def _state_filter_values(state: str) -> tuple[str, ...]:
@@ -64,7 +65,7 @@ def _required_filing_types_for_claim(claim: dict[str, Any]) -> list[str]:
     return []
 
 
-def _parse_iso_datetime(value: Any) -> datetime | None:
+def _parse_flexible_iso_datetime(value: Any) -> datetime | None:
     if value is None:
         return None
     s = str(value).strip()
@@ -101,7 +102,7 @@ def _nicb_deadline_summary(
     *,
     now: datetime,
 ) -> dict[str, Any]:
-    incident_dt = _parse_iso_datetime(claim.get("incident_date"))
+    incident_dt = _parse_flexible_iso_datetime(claim.get("incident_date"))
     if incident_dt is None:
         return {
             "nicb_required": "nicb" in _required_filing_types_for_claim(claim),
@@ -116,7 +117,7 @@ def _nicb_deadline_summary(
     nicb_filed = bool(nicb_filings)
     nicb_required = "nicb" in _required_filing_types_for_claim(claim)
     overdue = nicb_required and (not nicb_filed) and now > nicb_due_at
-    due_soon = nicb_required and (not nicb_filed) and (not overdue) and (nicb_due_at - now).days <= 2
+    due_soon = nicb_required and (not nicb_filed) and (not overdue) and (nicb_due_at - now) <= _NICB_DUE_SOON_THRESHOLD
     alert = "overdue" if overdue else ("due_soon" if due_soon else None)
     return {
         "nicb_required": nicb_required,
