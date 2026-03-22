@@ -79,7 +79,7 @@ def _get_or_create_adapter(
             if rest_factory is None:
                 raise ValueError(
                     f"No REST implementation for {adapter_name} adapter. "
-                    f"REST backend is only supported for policy adapter."
+                    f"REST backend is only supported for: {sorted(REST_CAPABLE_ADAPTERS)}."
                 )
             _cache[adapter_name] = rest_factory()
         elif backend == "stub":
@@ -192,7 +192,17 @@ def get_state_bureau_adapter() -> StateBureauAdapter:
 def get_claim_search_adapter() -> ClaimSearchAdapter:
     from claim_agent.adapters.stub import StubClaimSearchAdapter
     from claim_agent.adapters.mock.claim_search import MockClaimSearchAdapter
-    return _get_or_create_adapter("claim_search", StubClaimSearchAdapter, MockClaimSearchAdapter)
+    return _get_or_create_adapter(
+        "claim_search",
+        StubClaimSearchAdapter,
+        MockClaimSearchAdapter,
+        rest_factory=_claim_search_rest_factory,
+    )
+
+
+def _claim_search_rest_factory() -> ClaimSearchAdapter:
+    from claim_agent.adapters.real.claim_search_rest import create_rest_claim_search_adapter
+    return create_rest_claim_search_adapter()
 
 
 def get_ocr_adapter() -> OCRAdapter:

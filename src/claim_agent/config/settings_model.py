@@ -975,7 +975,7 @@ VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 # Adapters that have a REST implementation; "rest" is invalid for all others
 REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset(
-    {"policy", "fraud_reporting", "state_bureau"}
+    {"policy", "fraud_reporting", "state_bureau", "claim_search"}
 )
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
 VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
@@ -1079,6 +1079,30 @@ class StateBureauConfig(BaseSettings):
         return endpoints
 
 
+class ClaimSearchRestConfig(BaseSettings):
+    """REST ClaimSearch adapter configuration (CLAIM_SEARCH_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="CLAIM_SEARCH_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="ClaimSearch API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    search_path: str = Field(
+        default="/claims/search",
+        description="Search endpoint path on the ClaimSearch API",
+    )
+    response_key: str = Field(
+        default="",
+        description="Optional JSON envelope key containing the results list (e.g. 'results')",
+    )
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
 # ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
@@ -1116,6 +1140,7 @@ class Settings(BaseSettings):
     valuation_rest: ValuationRestConfig = Field(default_factory=ValuationRestConfig)
     fraud_reporting_rest: FraudReportingRestConfig = Field(default_factory=FraudReportingRestConfig)
     state_bureau: StateBureauConfig = Field(default_factory=StateBureauConfig)
+    claim_search_rest: ClaimSearchRestConfig = Field(default_factory=ClaimSearchRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
 
