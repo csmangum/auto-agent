@@ -87,6 +87,9 @@ def test_get_adapter_backend_respects_env():
     with patch.dict(os.environ, {"POLICY_ADAPTER": "  MOCK  "}):
         reload_settings()
         assert settings.get_adapter_backend("policy") == "mock"
+    with patch.dict(os.environ, {"STATE_BUREAU_ADAPTER": "ReSt"}):
+        reload_settings()
+        assert settings.get_adapter_backend("state_bureau") == "rest"
 
 
 def test_get_adapter_backend_blank_treated_as_unset():

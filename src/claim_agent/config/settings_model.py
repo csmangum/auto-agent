@@ -850,6 +850,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "repair_shop": "REPAIR_SHOP_ADAPTER",
     "parts": "PARTS_ADAPTER",
     "siu": "SIU_ADAPTER",
+    "state_bureau": "STATE_BUREAU_ADAPTER",
     "claim_search": "CLAIM_SEARCH_ADAPTER",
     "nmvtis": "NMVTIS_ADAPTER",
     "gap_insurance": "GAP_INSURANCE_ADAPTER",
@@ -860,9 +861,10 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 # Adapters that have a REST implementation; "rest" is invalid for all others
-REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy"})
+REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy", "state_bureau"})
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
 VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
+STATE_BUREAU_SUPPORTED_CODES: tuple[str, ...] = ("CA", "TX", "FL", "NY", "GA")
 
 
 class PolicyRestConfig(BaseSettings):
@@ -910,6 +912,38 @@ class ValuationRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
+class StateBureauConfig(BaseSettings):
+    """State bureau fraud filing adapter configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="STATE_BUREAU_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    supported_state_codes: tuple[str, ...] = Field(
+        default=STATE_BUREAU_SUPPORTED_CODES,
+        description="Supported state bureau endpoint codes for configuration mapping.",
+    )
+    ca_endpoint: str = Field(default="", description="California DOI fraud endpoint base URL")
+    tx_endpoint: str = Field(default="", description="Texas DOI fraud endpoint base URL")
+    fl_endpoint: str = Field(default="", description="Florida DOI fraud endpoint base URL")
+    ny_endpoint: str = Field(default="", description="New York DOI fraud endpoint base URL")
+    ga_endpoint: str = Field(default="", description="Georgia DOI fraud endpoint base URL")
+
+    def get_state_endpoints(self) -> dict[str, str]:
+        endpoints: dict[str, str] = {}
+        for code in self.supported_state_codes:
+            attr = f"{code.lower()}_endpoint"
+            value = getattr(self, attr, "")
+            endpoints[code] = (value or "").strip()
+        return endpoints
+
+
 # ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
@@ -945,6 +979,7 @@ class Settings(BaseSettings):
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
     valuation_rest: ValuationRestConfig = Field(default_factory=ValuationRestConfig)
+    state_bureau: StateBureauConfig = Field(default_factory=StateBureauConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
 
@@ -999,6 +1034,7 @@ class Settings(BaseSettings):
     repair_shop_adapter: str = Field(default="mock", validation_alias="REPAIR_SHOP_ADAPTER")
     parts_adapter: str = Field(default="mock", validation_alias="PARTS_ADAPTER")
     siu_adapter: str = Field(default="mock", validation_alias="SIU_ADAPTER")
+    state_bureau_adapter: str = Field(default="mock", validation_alias="STATE_BUREAU_ADAPTER")
     claim_search_adapter: str = Field(default="mock", validation_alias="CLAIM_SEARCH_ADAPTER")
     nmvtis_adapter: str = Field(default="mock", validation_alias="NMVTIS_ADAPTER")
     gap_insurance_adapter: str = Field(default="mock", validation_alias="GAP_INSURANCE_ADAPTER")

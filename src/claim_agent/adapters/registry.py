@@ -21,6 +21,7 @@ from claim_agent.adapters.base import (
     PolicyAdapter,
     RepairShopAdapter,
     SIUAdapter,
+    StateBureauAdapter,
     ValuationAdapter,
 )
 from claim_agent.config.settings import VALID_ADAPTER_BACKENDS, get_adapter_backend
@@ -105,6 +106,25 @@ def _policy_rest_factory() -> PolicyAdapter:
     )
 
 
+def _state_bureau_rest_factory() -> StateBureauAdapter:
+    from claim_agent.adapters.real.state_bureau_rest import RestStateBureauAdapter
+    from claim_agent.config import get_settings
+
+    cfg = get_settings().state_bureau
+    endpoints = {k: v for k, v in cfg.get_state_endpoints().items() if v}
+    if not endpoints:
+        raise ValueError(
+            "At least one STATE_BUREAU_<STATE>_ENDPOINT is required when "
+            "STATE_BUREAU_ADAPTER=rest (e.g. STATE_BUREAU_CA_ENDPOINT)."
+        )
+    return RestStateBureauAdapter(
+        auth_header=cfg.auth_header,
+        auth_value=cfg.auth_value,
+        timeout=cfg.timeout,
+        state_endpoints=endpoints,
+    )
+
+
 def get_policy_adapter() -> PolicyAdapter:
     from claim_agent.adapters.stub import StubPolicyAdapter
     from claim_agent.adapters.mock.policy import MockPolicyAdapter
@@ -153,6 +173,18 @@ def get_siu_adapter() -> SIUAdapter:
     from claim_agent.adapters.stub import StubSIUAdapter
     from claim_agent.adapters.mock.siu import MockSIUAdapter
     return _get_or_create_adapter("siu", StubSIUAdapter, MockSIUAdapter)
+
+
+def get_state_bureau_adapter() -> StateBureauAdapter:
+    from claim_agent.adapters.mock.state_bureau import MockStateBureauAdapter
+    from claim_agent.adapters.stub import StubStateBureauAdapter
+
+    return _get_or_create_adapter(
+        "state_bureau",
+        StubStateBureauAdapter,
+        MockStateBureauAdapter,
+        rest_factory=_state_bureau_rest_factory,
+    )
 
 
 def get_claim_search_adapter() -> ClaimSearchAdapter:
