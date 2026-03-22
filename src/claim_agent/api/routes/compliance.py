@@ -88,20 +88,18 @@ def _parse_flexible_iso_datetime(value: Any) -> datetime | None:
 def _nicb_deadline_days_for_claim(claim: dict[str, Any]) -> int:
     """Return the NICB filing deadline in calendar days for the given claim.
 
-    Derives the NICB report type from the claim's claim_type field:
-    - salvage / total_loss → salvage deadline
-    - all other types (theft, fraud, etc.) → theft deadline (stricter by default)
+    Always uses the **theft** NICB schedule from
+    :func:`~claim_agent.compliance.state_rules.get_nicb_deadline_days`.
+    Workflow ``claim_type`` (e.g. ``fraud``, ``total_loss``) does not reliably
+    reflect NICB report categories (theft vs salvage); defaulting to theft is
+    conservative (typically shorter deadlines in states like CA/NJ). When
+    filings persist a ``report_type`` in metadata, this can be extended to
+    select salvage vs theft explicitly.
 
-    Uses state-specific deadlines from :func:`~claim_agent.compliance.state_rules.get_nicb_deadline_days`.
     Falls back to 30 days when the state has no specific requirement.
     """
     state = claim.get("loss_state")
-    claim_type = (claim.get("claim_type") or "").lower()
-    if "salvage" in claim_type or "total_loss" in claim_type:
-        report_type = "salvage"
-    else:
-        report_type = "theft"
-    return get_nicb_deadline_days(state if isinstance(state, str) else None, report_type)
+    return get_nicb_deadline_days(state if isinstance(state, str) else None, "theft")
 
 
 def _nicb_deadline_summary(

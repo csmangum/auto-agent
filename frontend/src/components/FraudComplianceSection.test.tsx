@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -24,6 +24,7 @@ const mockCompliantClaim = {
   compliant: true,
   nicb_required: true,
   nicb_due_at: '2025-02-15T00:00:00Z',
+  nicb_deadline_days: 30,
   nicb_overdue: false,
   nicb_alert: null,
   filings: [
@@ -33,23 +34,32 @@ const mockCompliantClaim = {
   ],
 };
 
+/** Matches API: NICB overdue only when nicb_required and filing missing past due_at. */
 const mockOverdueClaim = {
   claim_id: 'CLM-002',
-  status: 'fraud_suspected',
+  status: 'fraud_confirmed',
   claim_type: 'fraud',
-  siu_case_id: null,
+  siu_case_id: 'SIU-002',
   loss_state: 'Texas',
-  state_report_filed: false,
+  state_report_filed: true,
   nicb_filed: false,
   niss_filed: false,
-  required_filing_types: ['state_bureau'],
-  missing_required_filings: ['state_bureau'],
+  required_filing_types: ['state_bureau', 'nicb', 'niss'],
+  missing_required_filings: ['nicb', 'niss'],
   compliant: false,
-  nicb_required: false,
+  nicb_required: true,
+  nicb_deadline_days: 30,
   nicb_due_at: '2024-12-01T00:00:00Z',
   nicb_overdue: true,
   nicb_alert: 'overdue' as const,
-  filings: [],
+  filings: [
+    {
+      filing_type: 'state_bureau',
+      report_id: 'FRB-002',
+      state: 'Texas',
+      filed_at: '2024-12-02T10:00:00Z',
+    },
+  ],
 };
 
 function createWrapper() {
@@ -155,6 +165,46 @@ describe('FraudComplianceSection', () => {
     const link = screen.getByRole('link', { name: 'CLM-001' });
     expect(link).toHaveAttribute('href', '/claims/CLM-001');
     expect(screen.getByRole('link', { name: 'CLM-002' })).toHaveAttribute('href', '/claims/CLM-002');
+  });
+
+  it('shows pending NICB line when required, not filed, and no alert yet', () => {
+    vi.mocked(useFraudReportingCompliance).mockReturnValue({
+      data: {
+        claims: [
+          {
+            claim_id: 'CLM-PEND',
+            status: 'fraud_confirmed',
+            claim_type: 'fraud',
+            siu_case_id: 'SIU-PEND',
+            loss_state: 'Florida',
+            state_report_filed: true,
+            nicb_filed: false,
+            niss_filed: true,
+            required_filing_types: ['state_bureau', 'nicb', 'niss'],
+            missing_required_filings: ['nicb'],
+            compliant: false,
+            nicb_required: true,
+            nicb_deadline_days: 30,
+            nicb_due_at: '2030-06-15T12:00:00Z',
+            nicb_overdue: false,
+            nicb_alert: null,
+            filings: [],
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <FraudComplianceSection />
+      </Wrapper>
+    );
+    const row = screen.getByRole('row', { name: /CLM-PEND/ });
+    expect(within(row).getByText(/Pending/)).toBeInTheDocument();
+    expect(within(row).getByText(/due/)).toBeInTheDocument();
   });
 
   it('shows overdue alert for overdue claims', () => {

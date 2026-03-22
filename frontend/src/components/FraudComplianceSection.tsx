@@ -2,6 +2,13 @@ import { Link } from 'react-router-dom';
 import { useFraudReportingCompliance } from '../api/queries';
 import type { FraudComplianceClaim } from '../api/types';
 
+function formatNicbDueDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 const STATUS_LABELS: Record<string, string> = {
   fraud_suspected: 'Suspected',
   fraud_confirmed: 'Confirmed',
@@ -117,51 +124,64 @@ export default function FraudComplianceSection() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700/30">
-                  {data.claims.map((claim) => (
-                    <tr key={claim.claim_id} className="hover:bg-gray-700/20 transition-colors">
-                      <td className="py-2 pr-3">
-                        <Link
-                          to={`/claims/${claim.claim_id}`}
-                          className="text-blue-400 hover:text-blue-300 font-mono transition-colors"
-                        >
-                          {claim.claim_id}
-                        </Link>
-                      </td>
-                      <td className="py-2 pr-3">
-                        <span className={`font-medium ${STATUS_COLORS[claim.status] ?? 'text-gray-400'}`}>
-                          {STATUS_LABELS[claim.status] ?? claim.status}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3 text-gray-400">
-                        {claim.loss_state ?? '—'}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <div className="flex flex-wrap gap-1">
-                          {claim.required_filing_types.includes('state_bureau') && (
-                            <FilingBadge filed={claim.state_report_filed} label="State" />
-                          )}
-                          {claim.required_filing_types.includes('nicb') && (
-                            <FilingBadge filed={claim.nicb_filed} label="NICB" />
-                          )}
-                          {claim.required_filing_types.includes('niss') && (
-                            <FilingBadge filed={claim.niss_filed} label="NISS" />
-                          )}
-                          {claim.required_filing_types.length === 0 && (
-                            <span className="text-gray-600">None required</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2">
-                        <AlertBadge alert={claim.nicb_alert} />
-                        {!claim.nicb_alert && claim.nicb_filed && (
-                          <span className="text-xs text-green-400">Filed</span>
-                        )}
-                        {!claim.nicb_alert && !claim.nicb_filed && !claim.nicb_required && (
-                          <span className="text-xs text-gray-600">N/A</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {data.claims.map((claim) => {
+                    const nicbDueLabel = formatNicbDueDate(claim.nicb_due_at);
+                    return (
+                      <tr key={claim.claim_id} className="hover:bg-gray-700/20 transition-colors">
+                        <td className="py-2 pr-3">
+                          <Link
+                            to={`/claims/${claim.claim_id}`}
+                            className="text-blue-400 hover:text-blue-300 font-mono transition-colors"
+                          >
+                            {claim.claim_id}
+                          </Link>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className={`font-medium ${STATUS_COLORS[claim.status] ?? 'text-gray-400'}`}>
+                            {STATUS_LABELS[claim.status] ?? claim.status}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-gray-400">
+                          {claim.loss_state ?? '—'}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div className="flex flex-wrap gap-1">
+                            {claim.required_filing_types.includes('state_bureau') && (
+                              <FilingBadge filed={claim.state_report_filed} label="State" />
+                            )}
+                            {claim.required_filing_types.includes('nicb') && (
+                              <FilingBadge filed={claim.nicb_filed} label="NICB" />
+                            )}
+                            {claim.required_filing_types.includes('niss') && (
+                              <FilingBadge filed={claim.niss_filed} label="NISS" />
+                            )}
+                            {claim.required_filing_types.length === 0 && (
+                              <span className="text-gray-600">None required</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2">
+                          <div className="flex flex-col gap-0.5">
+                            <AlertBadge alert={claim.nicb_alert} />
+                            {!claim.nicb_alert && claim.nicb_filed && (
+                              <span className="text-xs text-green-400">Filed</span>
+                            )}
+                            {!claim.nicb_alert && !claim.nicb_filed && !claim.nicb_required && (
+                              <span className="text-xs text-gray-600">N/A</span>
+                            )}
+                            {!claim.nicb_alert && claim.nicb_required && !claim.nicb_filed && (
+                              <span className="text-xs text-gray-400">
+                                Pending
+                                {nicbDueLabel && (
+                                  <span className="text-gray-500"> · due {nicbDueLabel}</span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
