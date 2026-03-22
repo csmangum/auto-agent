@@ -23,12 +23,15 @@ _scheduler_lock = threading.Lock()
 
 def _run_diary_escalation_job() -> None:
     """Run overdue-task notification and escalation sweep."""
-    result = run_deadline_escalation()
-    logger.info(
-        "Scheduler diary escalation complete: notified=%d escalated=%d",
-        result.get("notified_count", 0),
-        result.get("escalated_count", 0),
-    )
+    try:
+        result = run_deadline_escalation()
+        logger.info(
+            "Scheduler diary escalation complete: notified=%d escalated=%d",
+            result.get("notified_count", 0),
+            result.get("escalated_count", 0),
+        )
+    except Exception as e:
+        logger.warning("Scheduler diary escalation failed: %s", e)
 
 
 def _run_ucspa_deadline_job() -> None:
@@ -39,12 +42,20 @@ def _run_ucspa_deadline_job() -> None:
         days_ahead=settings.ucspa_days_ahead,
     )
     for claim in claims:
-        dispatch_ucspa_deadline_approaching(
-            claim["claim_id"],
-            claim["deadline_type"],
-            claim["due_date"],
-            claim.get("loss_state"),
-        )
+        try:
+            dispatch_ucspa_deadline_approaching(
+                claim["claim_id"],
+                claim["deadline_type"],
+                claim["due_date"],
+                claim.get("loss_state"),
+            )
+        except Exception as e:
+            logger.warning(
+                "Scheduler UCSPA deadline dispatch failed: claim_id=%s deadline_type=%s error=%s",
+                claim.get("claim_id"),
+                claim.get("deadline_type"),
+                e,
+            )
     logger.info("Scheduler UCSPA deadline sweep complete: alerts=%d", len(claims))
 
 

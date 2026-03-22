@@ -6,6 +6,14 @@ from unittest.mock import patch
 import claim_agent.scheduler as scheduler
 
 
+def setup_function() -> None:
+    scheduler._scheduler = None
+
+
+def teardown_function() -> None:
+    scheduler._scheduler = None
+
+
 def _scheduler_settings(enabled: bool = True) -> SimpleNamespace:
     return SimpleNamespace(
         enabled=enabled,
@@ -27,16 +35,23 @@ def test_ensure_scheduler_running_noop_when_disabled():
 
 def test_ensure_scheduler_running_starts_jobs_when_enabled():
     scheduler._scheduler = None
-    fake_scheduler = SimpleNamespace(
-        add_job=lambda *args, **kwargs: None,
-        start=lambda: None,
-    )
+    add_job_calls: list[dict] = []
+
+    def _add_job(*args, **kwargs):
+        add_job_calls.append({"args": args, "kwargs": kwargs})
+
+    fake_scheduler = SimpleNamespace(add_job=_add_job, start=lambda: None)
     with patch("claim_agent.scheduler.get_settings") as mock_get_settings:
         mock_get_settings.return_value = SimpleNamespace(scheduler=_scheduler_settings(enabled=True))
         with patch("claim_agent.scheduler.BackgroundScheduler", return_value=fake_scheduler):
             scheduler.ensure_scheduler_running()
 
     assert scheduler._scheduler is fake_scheduler
+    assert len(add_job_calls) == 2
+    job_ids = {call["kwargs"]["id"] for call in add_job_calls}
+    assert job_ids == {"diary_escalate", "ucspa_deadlines"}
+    funcs = {call["args"][0] for call in add_job_calls}
+    assert funcs == {scheduler._run_diary_escalation_job, scheduler._run_ucspa_deadline_job}
     scheduler._scheduler = None
 
 
