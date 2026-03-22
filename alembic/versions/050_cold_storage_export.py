@@ -1,7 +1,7 @@
 """Add cold_storage_exported_at and cold_storage_export_key to claims.
 
-Revision ID: 049
-Revises: 048
+Revision ID: 050
+Revises: 049
 
 These columns track idempotent S3/Glacier cold-storage exports written before
 or instead of in-place retention purge (see ``claim-agent retention-export``).
@@ -10,8 +10,8 @@ or instead of in-place retention purge (see ``claim-agent retention-export``).
 from alembic import op
 from sqlalchemy import text
 
-revision = "049"
-down_revision = "048"
+revision = "050"
+down_revision = "049"
 branch_labels = None
 depends_on = None
 
