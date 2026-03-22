@@ -215,19 +215,21 @@ class TestVisionLogicReverseImageIntegration:
             lambda name: "mock",
         )
         # Stub out the LLM call to avoid needing a real API key.
+        import types
 
-        class _FakeLLMResp:
-            class _Choice:
-                class _Msg:
-                    content = '{"severity": "low", "parts_affected": [], "notes": "ok"}'
-
-                message = _Msg()
-
-            choices = [_Choice()]
+        _fake_resp = types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(
+                        content='{"severity": "low", "parts_affected": [], "notes": "ok"}'
+                    )
+                )
+            ]
+        )
 
         monkeypatch.setattr(
             "claim_agent.tools.vision_logic.litellm.completion",
-            lambda *a, **kw: _FakeLLMResp(),
+            lambda *a, **kw: _fake_resp,
         )
 
         from claim_agent.tools.vision_logic import analyze_damage_photo_impl
