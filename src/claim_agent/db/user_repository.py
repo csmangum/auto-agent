@@ -102,7 +102,7 @@ class UserRepository:
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text(
-                    "SELECT id, email, password_hash, role, is_active, created_at, updated_at "
+                    "SELECT id, email, role, is_active, created_at, updated_at "
                     "FROM users WHERE email = :email"
                 ),
                 {"email": em},
@@ -242,23 +242,29 @@ class UserRepository:
             ).fetchone()
         return row_to_dict(row) if row else None
 
-    def revoke_refresh_token(self, token_id: str, *, replaced_by: str | None = None) -> None:
+    def revoke_refresh_token(
+        self, token_id: str, *, replaced_by: str | None = None, conditional: bool = False
+    ) -> bool:
+        """Revoke a refresh token by ID.
+
+        When *conditional* is ``True`` the UPDATE is conditioned on
+        ``revoked_at IS NULL``, which prevents double-revocation in concurrent
+        scenarios and makes the return value meaningful (``True`` = token was
+        consumed by this call, ``False`` = already revoked).
+        """
         now = _utcnow()
+        # Use explicit SQL strings (no string interpolation) to avoid any SQL injection risk.
+        if conditional:
+            sql = (
+                "UPDATE refresh_tokens SET revoked_at = :rv, replaced_by = :rb "
+                "WHERE id = :id AND revoked_at IS NULL"
+            )
+        else:
+            sql = "UPDATE refresh_tokens SET revoked_at = :rv, replaced_by = :rb WHERE id = :id"
+        ts = now if is_postgres_backend() else _dt_iso(now)
         with get_connection(self._db_path) as conn:
-            if is_postgres_backend():
-                conn.execute(
-                    text(
-                        "UPDATE refresh_tokens SET revoked_at = :rv, replaced_by = :rb WHERE id = :id"
-                    ),
-                    {"id": token_id, "rv": now, "rb": replaced_by},
-                )
-            else:
-                conn.execute(
-                    text(
-                        "UPDATE refresh_tokens SET revoked_at = :rv, replaced_by = :rb WHERE id = :id"
-                    ),
-                    {"id": token_id, "rv": _dt_iso(now), "rb": replaced_by},
-                )
+            result = conn.execute(text(sql), {"id": token_id, "rv": ts, "rb": replaced_by})
+            return int(getattr(result, "rowcount", 0) or 0) > 0
 
     def rotate_refresh_token(
         self,
@@ -266,10 +272,90 @@ class UserRepository:
         user_id: str,
         ttl_seconds: int,
     ) -> tuple[str, str]:
-        """Revoke old row and issue new refresh token. Returns (raw_token, new_row_id)."""
+        """Revoke old row and issue new refresh token. Returns (raw_token, new_row_id).
+
+        The revocation is conditional (WHERE revoked_at IS NULL) so that concurrent
+        callers cannot both successfully rotate the same token.
+        """
         raw, new_id = self.issue_refresh_token(user_id, ttl_seconds)
-        self.revoke_refresh_token(old_token_id, replaced_by=new_id)
+        self.revoke_refresh_token(old_token_id, replaced_by=new_id, conditional=True)
         return raw, new_id
+
+    def consume_and_rotate_refresh_token(
+        self,
+        token_hash: str,
+        ttl_seconds: int,
+    ) -> tuple[dict[str, Any], str] | None:
+        """Atomically validate, consume (revoke), and rotate a refresh token.
+
+        Performs the full operation within a single database transaction so that
+        concurrent requests presenting the same refresh token cannot both succeed.
+        Only the first caller wins; subsequent callers receive ``None``.
+
+        Returns ``(old_row_dict, raw_new_token)`` on success, or ``None`` when the
+        token is invalid, expired, or has already been consumed.
+        """
+        now = _utcnow()
+        pg = is_postgres_backend()
+
+        def _ts(dt: datetime) -> Any:
+            return dt if pg else _dt_iso(dt)
+
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text(
+                    "SELECT id, user_id, token_hash, expires_at, revoked_at, replaced_by, created_at "
+                    "FROM refresh_tokens WHERE token_hash = :h"
+                ),
+                {"h": token_hash},
+            ).fetchone()
+
+            if row is None:
+                return None
+
+            row_dict = row_to_dict(row)
+            if not self.is_refresh_token_valid(row_dict):
+                return None
+
+            old_id = str(row_dict["id"])
+            user_id = str(row_dict["user_id"])
+
+            # Conditionally revoke – only succeeds if not yet revoked (prevents concurrent reuse).
+            result = conn.execute(
+                text(
+                    "UPDATE refresh_tokens SET revoked_at = :rv "
+                    "WHERE id = :id AND revoked_at IS NULL"
+                ),
+                {"id": old_id, "rv": _ts(now)},
+            )
+
+            if int(getattr(result, "rowcount", 0) or 0) == 0:
+                # Another concurrent request already consumed this token.
+                return None
+
+            # Issue the new refresh token within the same transaction.
+            raw = secrets.token_urlsafe(48)
+            new_id = str(uuid.uuid4())
+            new_exp = now + timedelta(seconds=ttl_seconds)
+            conn.execute(
+                text(
+                    "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at) "
+                    "VALUES (:id, :user_id, :token_hash, :expires_at, :created_at)"
+                ),
+                {
+                    "id": new_id,
+                    "user_id": user_id,
+                    "token_hash": hash_refresh_token(raw),
+                    "expires_at": _ts(new_exp),
+                    "created_at": _ts(now),
+                },
+            )
+            conn.execute(
+                text("UPDATE refresh_tokens SET replaced_by = :rb WHERE id = :id"),
+                {"rb": new_id, "id": old_id},
+            )
+
+        return row_dict, raw
 
     def is_refresh_token_valid(self, row: dict[str, Any]) -> bool:
         if row.get("revoked_at"):

@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.exc import IntegrityError
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.rbac_roles import KNOWN_ROLES
@@ -87,10 +88,8 @@ def update_user(user_id: str, body: UserUpdateBody, _auth: AuthContext = Require
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        if "UNIQUE" in str(e).upper():
-            raise HTTPException(status_code=409, detail="Email already in use") from e
-        raise
+    except IntegrityError as e:
+        raise HTTPException(status_code=409, detail="Email already in use") from e
     assert u is not None
     return _public_user(u)
 

@@ -340,7 +340,7 @@ def _resolve_attachment_urls(
     return claim_dict
 
 
-@router.get("/claims/stats", dependencies=[RequireAdjuster])
+@router.get("/claims/stats")
 def get_claims_stats(auth: AuthContext = RequireAdjuster):
     """Aggregate statistics: count by status, count by type, totals."""
     scope = _adjuster_scope_params(auth)
