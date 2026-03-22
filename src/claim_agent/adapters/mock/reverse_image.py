@@ -1,5 +1,6 @@
 """Mock reverse-image adapter -- deterministic results for development/testing."""
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -36,4 +37,4 @@ class MockReverseImageAdapter(ReverseImageAdapter):
 
     def match_web_occurrences(self, image: bytes | Path) -> list[dict[str, Any]]:
         """Return fixed deterministic matches (no network call is made)."""
-        return list(_MOCK_MATCHES)
+        return copy.deepcopy(_MOCK_MATCHES)

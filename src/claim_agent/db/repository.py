@@ -3089,18 +3089,22 @@ class ClaimRepository:
         """
         vin = str(claim.get("vin") or "").strip()
         vins = [vin] if vin else []
-        addresses = [
-            str(p.get("address")).strip().lower()
-            for p in parties
-            if isinstance(p.get("address"), str) and str(p.get("address")).strip()
-        ]
-        provider_names = [
-            str(p.get("name")).strip().lower()
-            for p in parties
-            if str(p.get("party_type") or "").strip() == "provider"
-            and isinstance(p.get("name"), str)
-            and str(p.get("name")).strip()
-        ]
+        addresses = list(
+            dict.fromkeys(
+                str(p.get("address")).strip().lower()
+                for p in parties
+                if isinstance(p.get("address"), str) and str(p.get("address")).strip()
+            )
+        )
+        provider_names = list(
+            dict.fromkeys(
+                str(p.get("name")).strip().lower()
+                for p in parties
+                if str(p.get("party_type") or "").strip() == "provider"
+                and isinstance(p.get("name"), str)
+                and str(p.get("name")).strip()
+            )
+        )
         phones = list(
             dict.fromkeys(
                 n
@@ -3143,7 +3147,9 @@ class ClaimRepository:
                 v_params[f"v{i}"] = v
             v_in = ", ".join(f":v{i}" for i in range(len(vins)))
             rows = conn.execute(
-                text(f"SELECT DISTINCT id FROM claims WHERE vin IN ({v_in}) LIMIT :limit"),
+                text(
+                    f"SELECT DISTINCT id FROM claims WHERE vin IN ({v_in}) ORDER BY id LIMIT :limit"
+                ),
                 v_params,
             ).fetchall()
             for r in rows:
