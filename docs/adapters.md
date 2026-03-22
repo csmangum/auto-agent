@@ -52,6 +52,7 @@ All interfaces are defined as abstract base classes in `src/claim_agent/adapters
 | **SIUAdapter** | `create_case(claim_id, indicators)` | `str` | SIU case creation, returns case ID |
 | **NMVTISAdapter** | `submit_total_loss_report(...)` | `dict` | Federal NMVTIS insurer reporting (totaled/salvage vehicles) |
 | **GapInsuranceAdapter** | `submit_shortfall_claim(...)`, `get_claim_status(gap_claim_id)` | `dict` / `dict \| None` | Gap carrier coordination after auto total loss (loan/lease shortfall) |
+| **ReverseImageAdapter** | `match_web_occurrences(image)` | `list[dict]` | Optional reverse-image / stock-photo lookup for fraud forensics (feature-flagged) |
 
 ### PolicyAdapter
 
@@ -128,6 +129,32 @@ National Motor Vehicle Title Information System reporting (49 U.S.C. 30502; 28 C
 
 Used when `calculate_payout` detects a loan/lease **shortfall** (payout below balance) and the policy includes **gap** coverage (`gap_insurance` on the policy record). The logic layer calls `submit_shortfall_claim` and merges carrier metadata into the payout JSON (`gap_claim_id`, `gap_claim_status`, `gap_approved_amount`, `gap_remaining_shortfall`, `gap_denial_reason`, or `gap_coordination_error` if the adapter is a stub or the call fails). Production implementations should call the dealer F&I platform, lender, or standalone GAP administrator API.
 
+### ReverseImageAdapter
+
+Optional fraud signal used during photo forensics. When `REVERSE_IMAGE_ADAPTER` is set to `mock` (or any non-`stub` backend), the vision analysis pipeline calls `match_web_occurrences` after EXIF analysis to check whether a submitted photo appears on stock-photo sites, social media, or prior-claim indexes. A high match score (`≥ 0.8`) adds a `reverse_image_stock_photo_match` anomaly to `photo_forensics.anomalies`, which feeds the fraud-scoring logic.
+
+The adapter is **never called automatically when `REVERSE_IMAGE_ADAPTER=stub`** so FNOL processing is never blocked on external API latency or availability. When the env var is not set, the default backend is `mock` (safe for dev/test); set it to `stub` in environments where no external provider should be contacted.
+
+**Environment variable:** `REVERSE_IMAGE_ADAPTER` — supported values: `mock` (deterministic test data, no network), `stub` (raises `NotImplementedError`; use as a placeholder for a real integration).
+
+**Privacy and API-key posture:**
+
+* Images may contain PII (licence plates, faces, GPS EXIF data). Scrub EXIF metadata before submission to a third-party provider where required by policy.
+* Verify that the production provider's Data Processing Agreement (DPA) covers your jurisdiction (see cross-border transfer controls in `src/claim_agent/privacy/cross_border.py`).
+* API keys must be stored in secrets management (e.g. environment secrets, AWS Secrets Manager, Vault) and **never** committed to source code.
+* Disclose reverse-image lookups in the applicable privacy notice and include them in DSAR records where regulatorily required.
+
+```python
+# Example: custom production adapter
+from pathlib import Path
+from claim_agent.adapters.base import ReverseImageAdapter
+
+class MyReverseImageAdapter(ReverseImageAdapter):
+    def match_web_occurrences(self, image: bytes | Path) -> list[dict]:
+        # Call your provider (e.g. Google Vision similarWebPages, TinEye)
+        ...
+```
+
 ## Implementations
 
 ### Mock Adapters (default)
@@ -143,6 +170,7 @@ Located in `src/claim_agent/adapters/mock/`. Each adapter reads from `mock_db.js
 | `MockSIUAdapter` | `mock/siu.py` | No-op; returns generated case ID |
 | `MockNMVTISAdapter` | `mock/nmvtis.py` | Returns synthetic `NMVTIS-MOCK-*` references; optional transient failures for retry tests |
 | `MockGapInsuranceAdapter` | `mock/gap_insurance.py` | In-memory gap carrier; simulates approve / partial / deny by shortfall amount |
+| `MockReverseImageAdapter` | `mock/reverse_image.py` | Deterministic stock-photo / social-media matches; no network calls |
 
 ### Stub Adapters
 

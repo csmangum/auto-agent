@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 
 import litellm
 
+from claim_agent.adapters.registry import get_reverse_image_adapter
 from claim_agent.config import get_settings
 from claim_agent.config.settings import (
     get_adapter_backend,
@@ -94,7 +95,30 @@ def analyze_damage_photo_impl(
                     ),
                 )
                 with open(path, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode("ascii")
+                    _image_bytes = f.read()
+                # Optional reverse-image / stock-photo check (feature-flagged).
+                # Default is ``mock`` (deterministic, no network). Set
+                # ``REVERSE_IMAGE_ADAPTER=stub`` to skip this block so we never call
+                # the stub (which raises NotImplementedError) and FNOL stays unblocked.
+                if get_adapter_backend("reverse_image") != "stub":
+                    try:
+                        ri_adapter = get_reverse_image_adapter()
+                        web_matches = ri_adapter.match_web_occurrences(_image_bytes)
+                        result["photo_forensics"]["reverse_image_matches"] = web_matches
+                        if web_matches:
+                            top_score = max(
+                                (m.get("match_score", 0) for m in web_matches), default=0
+                            )
+                            if top_score >= 0.8:
+                                result["photo_forensics"]["anomalies"] = list(
+                                    result["photo_forensics"].get("anomalies", [])
+                                ) + ["reverse_image_stock_photo_match"]
+                    except Exception:
+                        logger.warning(
+                            "Reverse-image lookup failed; continuing without it",
+                            exc_info=True,
+                        )
+                b64 = base64.b64encode(_image_bytes).decode("ascii")
                 ext = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"
                 mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}" if ext in ("png", "gif", "webp") else "image/jpeg"
                 content_for_vision = f"data:{mime};base64,{b64}"

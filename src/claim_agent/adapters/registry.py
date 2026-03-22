@@ -3,7 +3,7 @@
 Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
-Supported values: ``mock``, ``stub``, ``rest`` (policy, fraud_reporting, state_bureau). Valuation also supports
+Supported values: ``mock``, ``stub``, ``rest`` (policy, fraud_reporting, state_bureau, claim_search). Valuation also supports
 ``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings.
 ``nmvtis``, ``gap_insurance``, and ``cms`` support ``mock`` and ``stub`` only. Unknown values raise ValueError.
 """
@@ -21,6 +21,7 @@ from claim_agent.adapters.base import (
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
+    ReverseImageAdapter,
     SIUAdapter,
     StateBureauAdapter,
     ValuationAdapter,
@@ -78,7 +79,7 @@ def _get_or_create_adapter(
             if rest_factory is None:
                 raise ValueError(
                     f"No REST implementation for {adapter_name} adapter. "
-                    f"REST backend is only supported for policy adapter."
+                    f"REST backend is only supported for: {sorted(REST_CAPABLE_ADAPTERS)}."
                 )
             _cache[adapter_name] = rest_factory()
         elif backend == "stub":
@@ -191,7 +192,17 @@ def get_state_bureau_adapter() -> StateBureauAdapter:
 def get_claim_search_adapter() -> ClaimSearchAdapter:
     from claim_agent.adapters.stub import StubClaimSearchAdapter
     from claim_agent.adapters.mock.claim_search import MockClaimSearchAdapter
-    return _get_or_create_adapter("claim_search", StubClaimSearchAdapter, MockClaimSearchAdapter)
+    return _get_or_create_adapter(
+        "claim_search",
+        StubClaimSearchAdapter,
+        MockClaimSearchAdapter,
+        rest_factory=_claim_search_rest_factory,
+    )
+
+
+def _claim_search_rest_factory() -> ClaimSearchAdapter:
+    from claim_agent.adapters.real.claim_search_rest import create_rest_claim_search_adapter
+    return create_rest_claim_search_adapter()
 
 
 def get_ocr_adapter() -> OCRAdapter:
@@ -244,6 +255,28 @@ def get_fraud_reporting_adapter() -> FraudReportingAdapter:
         MockFraudReportingAdapter,
         rest_factory=_fraud_reporting_rest_factory,
     )
+
+
+def get_reverse_image_adapter() -> ReverseImageAdapter:
+    """Return the configured reverse-image / stock-photo lookup adapter.
+
+    Backend is selected by the ``REVERSE_IMAGE_ADAPTER`` environment variable
+    (default: ``mock``).  Supported values: ``mock``, ``stub``.
+
+    * ``mock`` – :class:`~claim_agent.adapters.mock.reverse_image.MockReverseImageAdapter`
+      returns deterministic results without any network calls; suitable for tests
+      and development.
+    * ``stub`` – :class:`~claim_agent.adapters.stub.StubReverseImageAdapter` raises
+      ``NotImplementedError``, acting as a placeholder for a real integration.
+
+    The adapter should be called **only** when a reverse-image check is explicitly
+    requested (e.g. via the ``REVERSE_IMAGE_ADAPTER`` feature flag) to avoid
+    blocking FNOL processing on external API latency.
+    """
+    from claim_agent.adapters.mock.reverse_image import MockReverseImageAdapter
+    from claim_agent.adapters.stub import StubReverseImageAdapter
+
+    return _get_or_create_adapter("reverse_image", StubReverseImageAdapter, MockReverseImageAdapter)
 
 
 def reset_adapters() -> None:

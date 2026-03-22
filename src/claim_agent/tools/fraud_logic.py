@@ -277,6 +277,7 @@ def cross_reference_fraud_indicators_impl(
         except NotImplementedError:
             logger.debug("ClaimSearch adapter stub in use; skipping external claim-search cross-reference")
         except Exception as e:
+            # Includes HTTP/network errors from RestClaimSearchAdapter (AdapterHttpClient).
             logger.debug("ClaimSearch cross-reference skipped due to error: %s", e)
 
     score = result["cross_reference_score"]
