@@ -117,7 +117,7 @@ def test_escalation_ambiguous_similarity_triggers():
 
 def test_validate_router_classification_uses_minimized_data():
     """Router validation prompt should use minimized claim data, not full claim payload."""
-    from unittest.mock import patch
+    from unittest.mock import MagicMock, patch
 
     from claim_agent.tools.escalation_logic import validate_router_classification_impl
 
@@ -131,15 +131,10 @@ def test_validate_router_classification_uses_minimized_data():
         "secret_field": "must_not_be_sent",
     }
 
-    mocked_response = type(
-        "MockResp",
-        (),
-        {
-            "choices": [type("Choice", (), {"message": type("Msg", (), {"content": "{\"claim_type\":\"new\",\"confidence\":0.8,\"reasoning\":\"ok\"}"})()})()],
-            "usage": type("Usage", (), {"prompt_tokens": 10, "completion_tokens": 5})(),
-            "model": "test-model",
-        },
-    )()
+    mocked_response = MagicMock()
+    mocked_response.choices = [MagicMock(message=MagicMock(content='{"claim_type":"new","confidence":0.8,"reasoning":"ok"}'))]
+    mocked_response.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    mocked_response.model = "test-model"
 
     with patch("claim_agent.tools.escalation_logic.litellm") as mock_litellm:
         mock_litellm.completion.return_value = mocked_response
@@ -152,7 +147,8 @@ def test_validate_router_classification_uses_minimized_data():
         )
 
     assert '"claim_type": "new"' in result
-    called_prompt = mock_litellm.completion.call_args.kwargs["messages"][0]["content"]
+    mock_litellm.completion.assert_called_once()
+    called_prompt = mock_litellm.completion.call_args.kwargs.get("messages", [{}])[0].get("content", "")
     assert "secret_field" not in called_prompt
     assert "claimant_name" not in called_prompt
 
