@@ -5,7 +5,13 @@ from claim_agent.db.audit_events import (
     ACTOR_WORKFLOW,
     AUDIT_EVENT_TYPES,
 )
-from claim_agent.db.database import get_connection, get_db_path, init_db, row_to_dict
+from claim_agent.db.database import (
+    get_connection,
+    get_connection_async,
+    get_db_path,
+    init_db,
+    row_to_dict,
+)
 from claim_agent.db.repository import ClaimRepository
 
 __all__ = [
@@ -14,6 +20,7 @@ __all__ = [
     "AUDIT_EVENT_TYPES",
     "ClaimRepository",
     "get_connection",
+    "get_connection_async",
     "get_db_path",
     "init_db",
     "row_to_dict",

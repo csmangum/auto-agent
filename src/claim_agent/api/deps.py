@@ -1,9 +1,11 @@
-"""FastAPI dependencies for auth and RBAC."""
+"""FastAPI dependencies for auth, RBAC, and database connections."""
 
 import logging
+from collections.abc import AsyncGenerator
 from typing import cast
 
 from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from claim_agent.api.auth import AuthContext, is_auth_required
 
@@ -52,3 +54,22 @@ def require_role(*roles: str):
         return auth
 
     return Depends(_check)
+
+
+async def get_async_db() -> AsyncGenerator[AsyncConnection, None]:
+    """FastAPI dependency that yields an async SQLAlchemy connection (PostgreSQL only).
+
+    Use as a route dependency when the PostgreSQL backend is active and
+    non-blocking database I/O is desired::
+
+        @router.get("/example")
+        async def example(conn: AsyncConnection = Depends(get_async_db)):
+            result = await conn.execute(text("SELECT 1"))
+
+    Raises:
+        RuntimeError: If the active backend is SQLite (DATABASE_URL not set).
+    """
+    from claim_agent.db.database import get_connection_async
+
+    async with get_connection_async() as conn:
+        yield conn
