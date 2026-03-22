@@ -25,20 +25,31 @@ def _state_filter_values(state: str) -> tuple[str, ...]:
     return (canonical, abbrev) if abbrev else (canonical,)
 
 
-def _required_filing_types_for_claim(status: str) -> list[str]:
-    """Return mandatory filing types for a fraud claim status.
+def _is_fraud_signal(claim: dict[str, Any]) -> bool:
+    """Return True if the claim has a fraud-specific signal (claim_type or SIU case)."""
+    return claim.get("claim_type") == "fraud" or claim.get("siu_case_id") is not None
+
+
+def _required_filing_types_for_claim(claim: dict[str, Any]) -> list[str]:
+    """Return mandatory filing types for a fraud-related claim.
 
     Rules engine:
-    - fraud_suspected/under_investigation/fraud_confirmed: state bureau filing required
-    - fraud_confirmed: cross-carrier reporting required (NICB + NISS)
+    - fraud_suspected: state bureau filing required
+    - under_investigation with fraud signal (claim_type='fraud' or siu_case_id set):
+      state bureau filing required
+    - fraud_confirmed: cross-carrier reporting required (state_bureau + NICB + NISS)
+
+    Non-fraud under_investigation claims (e.g. coverage verification) have no
+    fraud filing obligations and return an empty list.
     """
-    status_norm = (status or "").strip().lower()
-    if status_norm not in {"fraud_suspected", "under_investigation", "fraud_confirmed"}:
-        return []
-    required = ["state_bureau"]
+    status_norm = (claim.get("status") or "").strip().lower()
+    if status_norm == "fraud_suspected":
+        return ["state_bureau"]
+    if status_norm == "under_investigation" and _is_fraud_signal(claim):
+        return ["state_bureau"]
     if status_norm == "fraud_confirmed":
-        required.extend(["nicb", "niss"])
-    return required
+        return ["state_bureau", "nicb", "niss"]
+    return []
 
 
 @router.get("/compliance/fraud-reporting", dependencies=[RequireAdjuster])
@@ -48,12 +59,19 @@ def get_fraud_reporting_compliance(
 ):
     """Summary of claims with fraud indicators, SIU status, and filing compliance.
 
-    Returns claims in fraud_suspected, under_investigation, or fraud_confirmed
-    status with their fraud filing status (state bureau, NICB, NISS).
+    Returns claims in fraud_suspected or fraud_confirmed status, plus
+    under_investigation claims that carry a fraud-specific signal
+    (claim_type='fraud' or siu_case_id IS NOT NULL). Coverage-verification
+    claims that are merely under_investigation are excluded so they are not
+    incorrectly reported as non-compliant with fraud filing obligations.
     """
     with get_connection() as conn:
         where_clauses = [
-            "status IN ('fraud_suspected', 'under_investigation', 'fraud_confirmed')",
+            (
+                "(status IN ('fraud_suspected', 'fraud_confirmed')"
+                " OR (status = 'under_investigation'"
+                " AND (claim_type = 'fraud' OR siu_case_id IS NOT NULL)))"
+            ),
         ]
         params: dict[str, Any] = {"limit": limit}
         if state and state.strip():
@@ -115,7 +133,7 @@ def get_fraud_reporting_compliance(
             state_filed = any(f["filing_type"] == "state_bureau" for f in filings)
             nicb_filed = any(f["filing_type"] == "nicb" for f in filings)
             niss_filed = any(f["filing_type"] == "niss" for f in filings)
-            required_filing_types = _required_filing_types_for_claim(c["status"])
+            required_filing_types = _required_filing_types_for_claim(c)
             filed_types = {f["filing_type"] for f in filings}
             missing_required_filings = [
                 filing_type for filing_type in required_filing_types if filing_type not in filed_types
