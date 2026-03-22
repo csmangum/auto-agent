@@ -28,6 +28,7 @@ vi.mock('./api/queries', () => ({
   })),
   useAgentsCatalog: vi.fn(() => ({ data: { crews: [] }, isLoading: false, error: null })),
   usePolicies: vi.fn(() => ({ data: { policies: [] }, isLoading: false, error: null })),
+  useFraudReportingCompliance: vi.fn(() => ({ data: { claims: [], total: 0 }, isLoading: false, error: null })),
 }));
 
 function renderApp(initialPath = '/') {

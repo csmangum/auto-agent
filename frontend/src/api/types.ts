@@ -491,3 +491,38 @@ export interface ComplianceTemplate {
 export interface ComplianceTemplatesResponse {
   templates: ComplianceTemplate[];
 }
+
+// ---------------------------------------------------------------------------
+// Fraud Compliance types
+// ---------------------------------------------------------------------------
+
+export interface FraudFiling {
+  filing_type: 'state_bureau' | 'nicb' | 'niss';
+  report_id: string;
+  state: string | null;
+  filed_at: string | null;
+}
+
+export interface FraudComplianceClaim {
+  claim_id: string;
+  status: string;
+  claim_type: string | null;
+  siu_case_id: string | null;
+  loss_state: string | null;
+  state_report_filed: boolean;
+  nicb_filed: boolean;
+  niss_filed: boolean;
+  required_filing_types: string[];
+  missing_required_filings: string[];
+  compliant: boolean;
+  nicb_required: boolean;
+  nicb_due_at: string | null;
+  nicb_overdue: boolean;
+  nicb_alert: 'overdue' | 'due_soon' | null;
+  filings: FraudFiling[];
+}
+
+export interface FraudReportingComplianceResponse {
+  claims: FraudComplianceClaim[];
+  total: number;
+}
