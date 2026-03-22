@@ -18,7 +18,10 @@ from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from claim_agent.models.claim import Attachment
 
-from claim_agent.compliance.ucspa import payment_due_iso_after_settlement_moment
+from claim_agent.compliance.ucspa import (
+    compute_communication_response_due,
+    payment_due_iso_after_settlement_moment,
+)
 
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
@@ -2545,8 +2548,6 @@ class ClaimRepository:
         Raises:
             ClaimNotFoundError: If the claim does not exist.
         """
-        from claim_agent.compliance.ucspa import compute_communication_response_due
-
         safe_actor = sanitize_actor_id(actor_id)
         now_ts = communication_at or datetime.now(timezone.utc).isoformat()
 

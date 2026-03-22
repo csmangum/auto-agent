@@ -68,7 +68,9 @@ Notes
 *   Columns that exist in PostgreSQL but not in SQLite are left at their default
     values.
 *   The ``claim_audit_log`` and ``reserve_history`` append-only triggers are
-    temporarily disabled during migration and re-enabled afterwards.
+    temporarily disabled during migration using ``ALTER TABLE ... DISABLE TRIGGER USER``
+    (user-defined triggers only; does not require superuser). Triggers are re-enabled
+    before ``COMMIT`` so a failed migration rolls back trigger state with the transaction.
 """
 
 from __future__ import annotations
@@ -76,6 +78,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -157,9 +160,7 @@ def _default_pg_url() -> str:
 _ALLOWED_TABLES: frozenset[str] = frozenset(TABLES_IN_ORDER)
 
 #: Pattern for a valid SQL identifier (letters, digits, underscores only).
-import re as _re  # noqa: E402
-
-_IDENT_RE = _re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _check_table_name(table: str) -> None:
@@ -241,33 +242,54 @@ def _pg_row_count(pg_conn: Any, table: str) -> int:
 
 
 def _pg_reset_sequence(pg_conn: Any, table: str) -> None:
-    """Reset the SERIAL sequence for *table* to max(id) so new rows don't collide."""
+    """Reset the SERIAL/IDENTITY sequence for *table*.id so new rows don't collide."""
     _check_table_name(table)
     cur = pg_conn.cursor()
-    # Sequence name follows the PostgreSQL convention: <table>_id_seq
-    seq_name = f"{table}_id_seq"
+    cur.execute(
+        "SELECT pg_get_serial_sequence(%s, %s)",
+        (f"public.{table}", "id"),
+    )
+    row = cur.fetchone()
+    seq = row[0] if row else None
+    if not seq:
+        logger.warning(
+            "No serial sequence for public.%s.id (pg_get_serial_sequence returned NULL) — "
+            "skipping sequence reset; verify identity columns or non-standard PK names.",
+            table,
+        )
+        return
     cur.execute(
         f"""
-        SELECT setval('{seq_name}', COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)
-        """  # noqa: S608
+        SELECT setval(%s, COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)
+        """,  # noqa: S608
+        (seq,),
     )
-    logger.debug("Reset sequence %s for table %s", seq_name, table)
+    logger.debug("Reset sequence %s for table %s", seq, table)
 
 
 def _pg_disable_append_only_triggers(pg_conn: Any, table: str) -> None:
-    """Temporarily disable the append-only trigger on *table*."""
+    """Temporarily disable user-defined triggers on *table* (append-only guards)."""
     _check_table_name(table)
     cur = pg_conn.cursor()
-    cur.execute(f"ALTER TABLE {table} DISABLE TRIGGER ALL")  # noqa: S608
-    logger.debug("Disabled triggers on %s", table)
+    # USER: user-defined triggers only; table owner can run (no superuser required).
+    cur.execute(f"ALTER TABLE {table} DISABLE TRIGGER USER")  # noqa: S608
+    logger.debug("Disabled user triggers on %s", table)
 
 
 def _pg_enable_append_only_triggers(pg_conn: Any, table: str) -> None:
-    """Re-enable triggers on *table* after bulk insert."""
+    """Re-enable user-defined triggers on *table* after bulk insert."""
     _check_table_name(table)
     cur = pg_conn.cursor()
-    cur.execute(f"ALTER TABLE {table} ENABLE TRIGGER ALL")  # noqa: S608
-    logger.debug("Enabled triggers on %s", table)
+    cur.execute(f"ALTER TABLE {table} ENABLE TRIGGER USER")  # noqa: S608
+    logger.debug("Enabled user triggers on %s", table)
+
+
+def _inserted_rowcount(pg_cur: Any, batch_len: int) -> int:
+    """Return rows inserted in the last batch; fall back to batch_len if rowcount unavailable."""
+    rc = getattr(pg_cur, "rowcount", -1)
+    if isinstance(rc, int) and rc >= 0:
+        return rc
+    return batch_len
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +352,13 @@ def _migrate_table(
 
     logger.info("Migrating table: %s (columns: %s)", table, ", ".join(cols_to_migrate))
 
+    if dry_run:
+        # Count rows without loading the full table into memory.
+        row = sqlite_conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()  # noqa: S608
+        rows_read = int(row[0]) if row else 0
+        logger.info("  [DRY RUN] Would migrate %d rows from %s", rows_read, table)
+        return rows_read, 0
+
     # Read all rows from SQLite
     sqlite_conn.row_factory = sqlite3.Row
     cursor = sqlite_conn.execute(  # noqa: S608
@@ -338,15 +367,7 @@ def _migrate_table(
     sqlite_conn.row_factory = None
 
     rows_read = 0
-    rows_written = 0
-
-    if dry_run:
-        # In dry-run mode, just count rows
-        all_rows = cursor.fetchall()
-        rows_read = len(all_rows)
-        logger.info("  [DRY RUN] Would migrate %d rows from %s", rows_read, table)
-        return rows_read, 0
-
+    rows_inserted = 0
     append_only = table in APPEND_ONLY_TABLES
 
     try:
@@ -372,33 +393,38 @@ def _migrate_table(
             batch.append(tuple(row))
             if len(batch) >= batch_size:
                 psycopg2.extras.execute_batch(pg_cur, insert_sql, batch)
-                rows_written += len(batch)
+                rows_inserted += _inserted_rowcount(pg_cur, len(batch))
                 batch = []
-                logger.debug("  Inserted batch; total so far: %d", rows_written)
+                logger.debug("  Inserted batch; total so far: %d", rows_inserted)
 
         if batch:
             psycopg2.extras.execute_batch(pg_cur, insert_sql, batch)
-            rows_written += len(batch)
+            rows_inserted += _inserted_rowcount(pg_cur, len(batch))
+
+        if rows_inserted < rows_read:
+            logger.warning(
+                "  Table %s: inserted %d row(s), source had %d — possible ON CONFLICT skips "
+                "(duplicate keys in target).",
+                table,
+                rows_inserted,
+                rows_read,
+            )
 
         # Reset sequence for SERIAL PK tables
         if table not in TEXT_PK_TABLES:
             _pg_reset_sequence(pg_conn, table)
 
+        if append_only:
+            _pg_enable_append_only_triggers(pg_conn, table)
+
         pg_conn.commit()
-        logger.info("  Migrated %d rows to %s", rows_written, table)
+        logger.info("  Migrated %d rows to %s", rows_inserted, table)
 
     except Exception:
         pg_conn.rollback()
         raise
-    finally:
-        if append_only:
-            try:
-                _pg_enable_append_only_triggers(pg_conn, table)
-                pg_conn.commit()
-            except Exception:
-                pass
 
-    return rows_read, rows_written
+    return rows_read, rows_inserted
 
 
 # ---------------------------------------------------------------------------

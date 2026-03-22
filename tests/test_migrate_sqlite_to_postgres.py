@@ -125,6 +125,9 @@ def _make_pg_mock(tables_and_cols: dict[str, list[str]] | None = None) -> MagicM
         # Row count query
         elif "COUNT(*)" in sql_stripped:
             cur.fetchone.return_value = (0,)
+        # Sequence lookup (must run before setval in _pg_reset_sequence)
+        elif "pg_get_serial_sequence" in sql_stripped and params:
+            cur.fetchone.return_value = (params[0] + "_id_seq",)
         # setval / sequence reset
         elif "setval" in sql_stripped:
             cur.fetchone.return_value = (1,)
@@ -206,6 +209,23 @@ class TestSqliteHelpers:
 
 
 # ---------------------------------------------------------------------------
+# Insert rowcount helper
+# ---------------------------------------------------------------------------
+
+
+class TestInsertedRowcount:
+    def test_uses_int_rowcount_when_available(self):
+        cur = MagicMock()
+        cur.rowcount = 3
+        assert mig._inserted_rowcount(cur, 5) == 3
+
+    def test_falls_back_to_batch_len_when_rowcount_invalid(self):
+        cur = MagicMock()
+        cur.rowcount = MagicMock()
+        assert mig._inserted_rowcount(cur, 4) == 4
+
+
+# ---------------------------------------------------------------------------
 # PostgreSQL helpers (mocked)
 # ---------------------------------------------------------------------------
 
@@ -228,9 +248,10 @@ class TestPgHelpers:
     def test_pg_reset_sequence_called(self):
         pg = _make_pg_mock({"claim_audit_log": ["id", "claim_id"]})
         mig._pg_reset_sequence(pg, "claim_audit_log")
-        # Verify cursor.execute was called with setval
+        # Verify pg_get_serial_sequence then setval
         pg.cursor().execute.assert_called()
         call_args = pg.cursor().execute.call_args_list
+        assert any("pg_get_serial_sequence" in str(c) for c in call_args)
         assert any("setval" in str(c) for c in call_args)
 
 
@@ -450,10 +471,10 @@ class TestMigrateTableLive:
             )
 
         calls = [str(c) for c in pg.cursor().execute.call_args_list]
-        disable_calls = [c for c in calls if "DISABLE TRIGGER" in c]
-        enable_calls = [c for c in calls if "ENABLE TRIGGER" in c]
-        assert len(disable_calls) >= 1, "Expected DISABLE TRIGGER call"
-        assert len(enable_calls) >= 1, "Expected ENABLE TRIGGER call"
+        disable_calls = [c for c in calls if "DISABLE TRIGGER USER" in c]
+        enable_calls = [c for c in calls if "ENABLE TRIGGER USER" in c]
+        assert len(disable_calls) >= 1, "Expected DISABLE TRIGGER USER call"
+        assert len(enable_calls) >= 1, "Expected ENABLE TRIGGER USER call"
         sqlite_conn.close()
 
     def test_sqlite_only_columns_skipped(self):

@@ -1,5 +1,9 @@
 """State-specific denial letter templates.
 
+Authoritative denial boilerplate for supported states lives in this module (Python).
+Do not maintain a parallel JSON corpus for the same text—use :mod:`claim_agent.rag`
+corpora for retrieval augmentation only, not as a second source of letter language.
+
 Each state template provides:
 - Regulatory references mandated by state law (e.g., California CCR, Texas TIC)
 - State-specific appeal rights language
@@ -53,7 +57,7 @@ _STATE_DENIAL_TEMPLATES: dict[str, StateDenialTemplate] = {
             "  2. Submit a written appeal to this company within 180 days of this notice.\n"
             "  3. File a complaint with the California Department of Insurance (CDI) at:\n"
             "     www.insurance.ca.gov  |  1-800-927-4357\n"
-            "  4. Request an Independent Medical Review (IMR) if the denial involves medical necessity.\n"
+            "  4. Request further written explanation of the factual and policy basis for this denial.\n"
             "This notice is provided pursuant to CCR §2695.7(b)(3) and California Insurance Code §790.03."
         ),
         complaint_procedure_text=(
