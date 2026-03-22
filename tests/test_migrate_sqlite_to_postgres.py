@@ -522,8 +522,6 @@ class TestValidate:
         cur = MagicMock()
         pg.cursor.return_value = cur
 
-        call_counter = {"n": 0}  # noqa: F841
-
         def count_side_effect(sql, params=None):
             sql_stripped = sql.strip()
             if "information_schema.tables" in sql_stripped and params:

@@ -149,12 +149,42 @@ def _default_pg_url() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Identifier validation
+# ---------------------------------------------------------------------------
+
+#: Set of allowed table names – used to guard against SQL injection when table
+#: names are interpolated into SQL strings.
+_ALLOWED_TABLES: frozenset[str] = frozenset(TABLES_IN_ORDER)
+
+#: Pattern for a valid SQL identifier (letters, digits, underscores only).
+import re as _re  # noqa: E402
+
+_IDENT_RE = _re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _check_table_name(table: str) -> None:
+    """Raise ValueError if *table* is not a known, safe table name."""
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(
+            f"Unknown or disallowed table name: {table!r}. "
+            f"Allowed tables: {sorted(_ALLOWED_TABLES)}"
+        )
+
+
+def _check_column_name(col: str) -> None:
+    """Raise ValueError if *col* does not look like a safe SQL identifier."""
+    if not _IDENT_RE.match(col):
+        raise ValueError(f"Unsafe column name: {col!r}")
+
+
+# ---------------------------------------------------------------------------
 # SQLite helpers
 # ---------------------------------------------------------------------------
 
 
 def _sqlite_get_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     """Return column names for *table* in the SQLite database."""
+    _check_table_name(table)
     cursor = conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
     return [row[1] for row in cursor.fetchall()]
 
@@ -167,6 +197,7 @@ def _sqlite_table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 
 def _sqlite_row_count(conn: sqlite3.Connection, table: str) -> int:
+    _check_table_name(table)
     row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()  # noqa: S608
     return row[0] if row else 0
 
@@ -178,6 +209,7 @@ def _sqlite_row_count(conn: sqlite3.Connection, table: str) -> int:
 
 def _pg_get_columns(pg_conn: Any, table: str) -> list[str]:
     """Return column names for *table* in the PostgreSQL database."""
+    _check_table_name(table)
     cur = pg_conn.cursor()
     cur.execute(
         """
@@ -201,6 +233,7 @@ def _pg_table_exists(pg_conn: Any, table: str) -> bool:
 
 
 def _pg_row_count(pg_conn: Any, table: str) -> int:
+    _check_table_name(table)
     cur = pg_conn.cursor()
     cur.execute(f"SELECT COUNT(*) FROM {table}")  # noqa: S608
     row = cur.fetchone()
@@ -209,6 +242,7 @@ def _pg_row_count(pg_conn: Any, table: str) -> int:
 
 def _pg_reset_sequence(pg_conn: Any, table: str) -> None:
     """Reset the SERIAL sequence for *table* to max(id) so new rows don't collide."""
+    _check_table_name(table)
     cur = pg_conn.cursor()
     # Sequence name follows the PostgreSQL convention: <table>_id_seq
     seq_name = f"{table}_id_seq"
@@ -222,6 +256,7 @@ def _pg_reset_sequence(pg_conn: Any, table: str) -> None:
 
 def _pg_disable_append_only_triggers(pg_conn: Any, table: str) -> None:
     """Temporarily disable the append-only trigger on *table*."""
+    _check_table_name(table)
     cur = pg_conn.cursor()
     cur.execute(f"ALTER TABLE {table} DISABLE TRIGGER ALL")  # noqa: S608
     logger.debug("Disabled triggers on %s", table)
@@ -229,6 +264,7 @@ def _pg_disable_append_only_triggers(pg_conn: Any, table: str) -> None:
 
 def _pg_enable_append_only_triggers(pg_conn: Any, table: str) -> None:
     """Re-enable triggers on *table* after bulk insert."""
+    _check_table_name(table)
     cur = pg_conn.cursor()
     cur.execute(f"ALTER TABLE {table} ENABLE TRIGGER ALL")  # noqa: S608
     logger.debug("Enabled triggers on %s", table)
@@ -255,6 +291,9 @@ def _migrate_table(
     """
     import psycopg2.extras  # noqa: PLC0415
 
+    # Validate table name against the whitelist to prevent SQL injection.
+    _check_table_name(table)
+
     if not _sqlite_table_exists(sqlite_conn, table):
         logger.info("Table %s not found in SQLite – skipping", table)
         return 0, 0
@@ -271,8 +310,14 @@ def _migrate_table(
         logger.info("Table %s has no columns in SQLite – skipping", table)
         return 0, 0
 
-    # Only migrate columns that exist in both databases
-    cols_to_migrate = [c for c in sqlite_cols if c in pg_cols_set]
+    # Only migrate columns that exist in both databases.
+    # Column names come from sqlite3 PRAGMA / information_schema (trusted sources), but
+    # validate the pattern as a belt-and-suspenders guard.
+    cols_to_migrate = []
+    for c in sqlite_cols:
+        if c in pg_cols_set:
+            _check_column_name(c)  # guard: raises if column name is not a safe identifier
+            cols_to_migrate.append(c)
     skipped = [c for c in sqlite_cols if c not in pg_cols_set]
     if skipped:
         logger.debug(
