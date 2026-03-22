@@ -78,6 +78,10 @@ class TestClassifyJurisdiction:
     def test_empty_string(self):
         assert classify_jurisdiction("") == JurisdictionZone.OTHER
 
+    def test_data_region_eu_shorthand(self):
+        assert classify_jurisdiction("eu") == JurisdictionZone.EU_EEA
+        assert classify_jurisdiction("EEA") == JurisdictionZone.EU_EEA
+
     def test_case_insensitive(self):
         assert classify_jurisdiction("california") == JurisdictionZone.US
         assert classify_jurisdiction("GERMANY") == JurisdictionZone.EU_EEA

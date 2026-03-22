@@ -13,9 +13,12 @@ from claim_agent.services.dsar_verification import (
     DSAR_AUDIT_OTP_RATE_LIMITED,
     DSAR_AUDIT_OTP_REQUESTED,
     DSAR_AUDIT_OTP_VERIFIED,
+    RateLimitExceeded,
     _generate_otp,
     _hash_otp,
     _make_salt,
+    _otp_rate_limit_time_predicate,
+    claimant_identifiers_match,
     get_verification_token,
     is_verified,
     request_otp,
@@ -40,6 +43,26 @@ def otp_db(tmp_path):
 # ---------------------------------------------------------------------------
 # Unit helpers
 # ---------------------------------------------------------------------------
+
+
+class TestOTPRateLimitSQL:
+    def test_sqlite_predicate_uses_datetime(self):
+        assert "datetime(created_at)" in _otp_rate_limit_time_predicate("sqlite")
+
+    def test_postgresql_predicate_uses_timestamptz(self):
+        pred = _otp_rate_limit_time_predicate("postgresql")
+        assert "created_at >=" in pred
+        assert "TIMESTAMP WITH TIME ZONE" in pred
+
+
+class TestClaimantIdentifiersMatch:
+    def test_email_case_insensitive(self):
+        assert claimant_identifiers_match("A@B.C", "a@b.c", CHANNEL_EMAIL)
+        assert not claimant_identifiers_match("a@b.c", "x@y.z", CHANNEL_EMAIL)
+
+    def test_sms_digits_normalize(self):
+        assert claimant_identifiers_match("+1 (555) 000-1234", "15550001234", CHANNEL_SMS)
+        assert not claimant_identifiers_match("+15550001234", "+15559999999", CHANNEL_SMS)
 
 
 class TestOTPHelpers:
@@ -124,7 +147,7 @@ class TestRequestOTP:
         assert row[1] == "audit@example.com"
 
     def test_request_otp_rate_limit(self, otp_db, monkeypatch):
-        """Exceeding OTP_RATE_LIMIT_MAX_REQUESTS raises ValueError."""
+        """Exceeding OTP_RATE_LIMIT_MAX_REQUESTS raises RateLimitExceeded."""
         monkeypatch.setenv("OTP_RATE_LIMIT_MAX_REQUESTS", "2")
         reload_settings()
         monkeypatch.setattr(
@@ -134,7 +157,7 @@ class TestRequestOTP:
 
         request_otp("rate@example.com", CHANNEL_EMAIL, db_path=otp_db)
         request_otp("rate@example.com", CHANNEL_EMAIL, db_path=otp_db)
-        with pytest.raises(ValueError, match="Rate limit exceeded"):
+        with pytest.raises(RateLimitExceeded, match="Rate limit exceeded"):
             request_otp("rate@example.com", CHANNEL_EMAIL, db_path=otp_db)
 
     def test_request_otp_rate_limit_creates_audit_entry(self, otp_db, monkeypatch):
@@ -146,7 +169,7 @@ class TestRequestOTP:
         )
 
         request_otp("rl2@example.com", CHANNEL_EMAIL, db_path=otp_db)
-        with pytest.raises(ValueError):
+        with pytest.raises(RateLimitExceeded):
             request_otp("rl2@example.com", CHANNEL_EMAIL, db_path=otp_db)
 
         with get_connection(otp_db) as conn:

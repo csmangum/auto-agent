@@ -808,6 +808,7 @@ class PrivacyConfig(BaseSettings):
             "to the LLM provider: 'scc', 'adequacy_decision', 'explicit_consent', "
             "'bcr', 'legitimate_interests', or 'none'."
         ),
+    )
     otp_enabled: bool = Field(
         default=False,
         validation_alias="OTP_ENABLED",

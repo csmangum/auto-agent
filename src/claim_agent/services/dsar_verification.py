@@ -16,8 +16,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import random
-import string
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -26,6 +25,7 @@ from sqlalchemy import text
 
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.notifications.claimant import send_otp_notification
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -41,14 +41,42 @@ DSAR_AUDIT_OTP_FAILED = "otp_failed"
 DSAR_AUDIT_OTP_RATE_LIMITED = "otp_rate_limited"
 
 
+class RateLimitExceeded(Exception):
+    """Raised when OTP request rate limit is exceeded for a claimant identifier."""
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 
+def _otp_rate_limit_time_predicate(dialect_name: str) -> str:
+    """SQL fragment comparing token ``created_at`` to the rate-limit window start."""
+    if dialect_name == "sqlite":
+        return "datetime(created_at) >= datetime(:window_start)"
+    return "created_at >= CAST(:window_start AS TIMESTAMP WITH TIME ZONE)"
+
+
+def _digits_only(value: str | None) -> str:
+    if not value:
+        return ""
+    return "".join(c for c in value if c.isdigit())
+
+
+def claimant_identifiers_match(stored: str, submitted: str, channel: str) -> bool:
+    """Return True when *submitted* matches the OTP token's stored identifier for *channel*."""
+    if channel == CHANNEL_EMAIL:
+        return stored.strip().lower() == submitted.strip().lower()
+    if channel == CHANNEL_SMS:
+        ds, dj = _digits_only(stored), _digits_only(submitted)
+        return bool(ds) and ds == dj
+    return False
+
+
 def _generate_otp(length: int = 6) -> str:
-    """Return a random numeric OTP of *length* digits."""
-    return "".join(random.choices(string.digits, k=length))
+    """Return a cryptographically strong random numeric OTP of *length* digits."""
+    upper = 10**length
+    return str(secrets.randbelow(upper)).zfill(length)
 
 
 def _make_salt() -> str:
@@ -120,7 +148,8 @@ def request_otp(
         A UUID string ``verification_id`` to pass to :func:`verify_otp`.
 
     Raises:
-        ValueError: If *channel* is invalid or the rate limit is exceeded.
+        ValueError: If *channel* is invalid.
+        RateLimitExceeded: If the rate limit is exceeded.
     """
     if channel not in VALID_CHANNELS:
         raise ValueError(f"Invalid channel {channel!r}. Must be 'email' or 'sms'.")
@@ -136,11 +165,12 @@ def request_otp(
     ).isoformat()
     rate_limited = False
     with get_connection(path) as conn:
+        dialect = conn.dialect.name
+        time_pred = _otp_rate_limit_time_predicate(dialect)
         count_row = conn.execute(
             text(
-                "SELECT COUNT(*) FROM dsar_verification_tokens "
-                "WHERE claimant_identifier = :identifier "
-                "AND datetime(created_at) >= datetime(:window_start)"
+                f"SELECT COUNT(*) FROM dsar_verification_tokens "
+                f"WHERE claimant_identifier = :identifier AND {time_pred}"
             ),
             {"identifier": claimant_identifier, "window_start": window_start},
         ).fetchone()
@@ -160,7 +190,7 @@ def request_otp(
 
     # Raise *after* the connection closes so the audit entry is committed.
     if rate_limited:
-        raise ValueError(
+        raise RateLimitExceeded(
             f"Rate limit exceeded: too many OTP requests for this identifier. "
             f"Try again after {privacy.otp_rate_limit_window_minutes} minutes."
         )
@@ -211,8 +241,6 @@ def _deliver_otp(
     verification_id: str,
 ) -> None:
     """Send OTP to the claimant via the configured notification channel."""
-    from claim_agent.notifications.claimant import send_otp_notification
-
     send_otp_notification(claimant_identifier, channel, otp, verification_id)
 
 

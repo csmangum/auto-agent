@@ -5,6 +5,7 @@ import pytest
 from claim_agent.config import reload_settings
 from claim_agent.db.database import init_db
 from claim_agent.services.dsar import (
+    assert_self_service_party_binding,
     fulfill_access_request,
     fulfill_deletion_request,
     get_dsar_request,
@@ -13,6 +14,7 @@ from claim_agent.services.dsar import (
     submit_access_request,
     submit_deletion_request,
 )
+from claim_agent.services.dsar_verification import CHANNEL_EMAIL, CHANNEL_SMS
 
 
 @pytest.fixture
@@ -78,6 +80,70 @@ def dsar_db_with_relationships(tmp_path):
         """)
         )
     return db_path
+
+
+class TestSelfServicePartyBinding:
+    def test_email_on_claim_passes(self, dsar_db):
+        assert_self_service_party_binding(
+            "jane@example.com",
+            CHANNEL_EMAIL,
+            {"claim_id": "CLM-TEST1"},
+            db_path=dsar_db,
+        )
+
+    def test_email_case_insensitive(self, dsar_db):
+        assert_self_service_party_binding(
+            "Jane@Example.COM",
+            CHANNEL_EMAIL,
+            {"claim_id": "CLM-TEST1"},
+            db_path=dsar_db,
+        )
+
+    def test_wrong_email_raises(self, dsar_db):
+        with pytest.raises(ValueError, match="not associated"):
+            assert_self_service_party_binding(
+                "attacker@example.com",
+                CHANNEL_EMAIL,
+                {"claim_id": "CLM-TEST1"},
+                db_path=dsar_db,
+            )
+
+    def test_policy_vin_resolves_claim(self, dsar_db):
+        assert_self_service_party_binding(
+            "jane@example.com",
+            CHANNEL_EMAIL,
+            {"policy_number": "POL-123", "vin": "1HGCM82633A123456"},
+            db_path=dsar_db,
+        )
+
+    def test_sms_matches_party_phone(self, tmp_path):
+        db_path = str(tmp_path / "sms_dsar.db")
+        init_db(db_path)
+        from claim_agent.db.database import get_connection
+        from sqlalchemy import text
+
+        with get_connection(db_path) as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+                    vehicle_model, incident_date, incident_description, damage_description,
+                    status, claim_type)
+                VALUES ('CLM-SMS', 'POL-S', 'VIN12345678901234', 2020, 'Honda', 'Civic',
+                    '2024-01-01', 'x', 'y', 'open', 'partial_loss')
+                """),
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_parties (claim_id, party_type, name, phone, consent_status)
+                VALUES ('CLM-SMS', 'claimant', 'Bob', '+1 (555) 111-2233', 'granted')
+                """),
+            )
+        assert_self_service_party_binding(
+            "15551112233",
+            CHANNEL_SMS,
+            {"claim_id": "CLM-SMS"},
+            db_path=db_path,
+        )
 
 
 class TestDSARAccess:

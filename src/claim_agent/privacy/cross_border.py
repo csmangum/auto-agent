@@ -159,6 +159,10 @@ def classify_jurisdiction(location: str) -> JurisdictionZone:
     upper = raw.upper()
     lower = raw.lower()
 
+    # Deployment region shorthand (matches DATA_REGION=eu in settings)
+    if lower in ("eu", "eea", "europe"):
+        return JurisdictionZone.EU_EEA
+
     # US state code (2-letter)
     if upper in _US_STATE_CODES:
         return JurisdictionZone.US

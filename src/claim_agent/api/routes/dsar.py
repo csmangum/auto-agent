@@ -12,7 +12,9 @@ from claim_agent.compliance.dsar_state_rules import (
     get_dsar_state_rules,
     get_supported_dsar_states,
 )
+from claim_agent.config import get_settings
 from claim_agent.services.dsar import (
+    assert_self_service_party_binding,
     fulfill_access_request,
     fulfill_deletion_request,
     get_dsar_request,
@@ -22,6 +24,8 @@ from claim_agent.services.dsar import (
     submit_deletion_request,
 )
 from claim_agent.services.dsar_verification import (
+    RateLimitExceeded,
+    claimant_identifiers_match,
     get_verification_token,
     is_verified,
     request_otp,
@@ -29,6 +33,38 @@ from claim_agent.services.dsar_verification import (
 )
 
 router = APIRouter(prefix="/dsar", tags=["dsar"])
+
+
+def _enforce_self_service_otp_and_party_binding(
+    verification_id: str,
+    claimant_identifier: str,
+    verification_data: dict[str, Any],
+) -> None:
+    """Raise ``HTTPException`` if OTP session or party binding is invalid."""
+    if not is_verified(verification_id):
+        raise HTTPException(
+            status_code=403,
+            detail="verification_id is not verified or has expired. Complete OTP verification first.",
+        )
+    token = get_verification_token(verification_id)
+    if token is None:
+        raise HTTPException(
+            status_code=403,
+            detail="verification_id is not verified or has expired. Complete OTP verification first.",
+        )
+    if not claimant_identifiers_match(
+        token["claimant_identifier"], claimant_identifier, token["channel"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="claimant_identifier does not match the OTP verification session.",
+        )
+    try:
+        assert_self_service_party_binding(
+            claimant_identifier, token["channel"], verification_data
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
 
 class AccessRequestInput(BaseModel):
@@ -263,10 +299,10 @@ def dsar_otp_request(body: OTPRequestInput = Body(...)) -> dict[str, Any]:
     """
     try:
         verification_id = request_otp(body.claimant_identifier, body.channel)
+    except RateLimitExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e))
     except ValueError as e:
-        raise HTTPException(status_code=429 if "Rate limit" in str(e) else 400, detail=str(e))
-
-    from claim_agent.config import get_settings
+        raise HTTPException(status_code=400, detail=str(e))
 
     ttl = get_settings().privacy.otp_ttl_minutes
     return {
@@ -315,12 +351,6 @@ def dsar_self_service_access(body: SelfServiceAccessInput = Body(...)) -> dict[s
     Provide either ``claim_id`` or both ``policy_number`` and ``vin`` for
     claim-data lookup.
     """
-    if not is_verified(body.verification_id):
-        raise HTTPException(
-            status_code=403,
-            detail="verification_id is not verified or has expired. Complete OTP verification first.",
-        )
-
     has_claim_id = bool(body.claim_id)
     has_policy_and_vin = bool(body.policy_number) and bool(body.vin)
     if not (has_claim_id or has_policy_and_vin):
@@ -336,6 +366,10 @@ def dsar_self_service_access(body: SelfServiceAccessInput = Body(...)) -> dict[s
         verification_data["policy_number"] = body.policy_number
     if body.vin:
         verification_data["vin"] = body.vin
+
+    _enforce_self_service_otp_and_party_binding(
+        body.verification_id, body.claimant_identifier, verification_data
+    )
 
     request_id = submit_access_request(
         claimant_identifier=body.claimant_identifier,
@@ -355,12 +389,6 @@ def dsar_self_service_deletion(body: SelfServiceDeletionInput = Body(...)) -> di
     Provide either ``claim_id`` or both ``policy_number`` and ``vin`` for
     claim-data lookup.
     """
-    if not is_verified(body.verification_id):
-        raise HTTPException(
-            status_code=403,
-            detail="verification_id is not verified or has expired. Complete OTP verification first.",
-        )
-
     has_claim_id = bool(body.claim_id)
     has_policy_and_vin = bool(body.policy_number) and bool(body.vin)
     if not (has_claim_id or has_policy_and_vin):
@@ -377,12 +405,18 @@ def dsar_self_service_deletion(body: SelfServiceDeletionInput = Body(...)) -> di
     if body.vin:
         verification_data["vin"] = body.vin
 
+    _enforce_self_service_otp_and_party_binding(
+        body.verification_id, body.claimant_identifier, verification_data
+    )
+
     request_id = submit_deletion_request(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
         actor_id=f"otp:{body.verification_id}",
     )
     return {"request_id": request_id, "status": "pending"}
+
+
 @router.get("/form-schema")
 def dsar_form_schema(
     state: Optional[str] = Query(None, description="Consumer's state of residence (e.g., 'California')"),
