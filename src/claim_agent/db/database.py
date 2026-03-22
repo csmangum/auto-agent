@@ -456,6 +456,7 @@ CREATE TABLE IF NOT EXISTS dpa_registry (
     supplementary_measures TEXT DEFAULT '[]',
     active INTEGER NOT NULL DEFAULT 1,
     notes TEXT,
+    created_by TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

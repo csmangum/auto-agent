@@ -847,6 +847,15 @@ class PrivacyConfig(BaseSettings):
         validation_alias="OTP_CODE_LENGTH",
         description="Length of the numeric OTP code.",
     )
+    otp_pepper: str = Field(
+        default="",
+        validation_alias="OTP_PEPPER",
+        description=(
+            "Server-side secret (pepper) used as the HMAC key when hashing OTP codes. "
+            "Should be a long random string. If empty, the JWT_SECRET is used as a fallback. "
+            "Set this to a unique secret in production to prevent offline brute-force attacks."
+        ),
+    )
 
     @field_validator(
         "llm_data_minimization",

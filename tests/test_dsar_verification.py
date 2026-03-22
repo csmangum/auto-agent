@@ -33,8 +33,15 @@ from sqlalchemy import text
 
 
 @pytest.fixture()
-def otp_db(tmp_path):
-    """Temporary SQLite DB with all tables including dsar_verification_tokens."""
+def otp_db(tmp_path, monkeypatch):
+    """Temporary SQLite DB with all tables including dsar_verification_tokens.
+
+    Also enables OTP and sets a test pepper so that the service-level
+    otp_enabled gate and server-side secret checks pass without real config.
+    """
+    monkeypatch.setenv("OTP_ENABLED", "true")
+    monkeypatch.setenv("OTP_PEPPER", "test-pepper-key-for-unit-tests")
+    reload_settings()
     db_path = str(tmp_path / "otp_test.db")
     init_db(db_path)
     return db_path

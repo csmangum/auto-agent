@@ -551,8 +551,9 @@ def minimize_claim_data_for_crew(
             result[key] = value
 
     # Cross-border transfer check: evaluate and log the upcoming LLM call.
-    # Runs when minimization is active to surface potential compliance issues.
-    if check_cross_border and enabled:
+    # Runs independently of the minimization flag so that CROSS_BORDER_POLICY=restrict
+    # is always enforced (or audited) even when data minimization is disabled.
+    if check_cross_border:
         try:
             from claim_agent.privacy.cross_border import check_and_log_llm_transfer
 

@@ -1906,6 +1906,7 @@ class TestDSAREndpoints:
         assert "parties_updated" in data
 
     def test_dsar_otp_request_rate_limit_returns_429(self, client, monkeypatch, seeded_temp_db):
+        monkeypatch.setenv("OTP_ENABLED", "true")
         monkeypatch.setenv("OTP_RATE_LIMIT_MAX_REQUESTS", "1")
         reload_settings()
         monkeypatch.setattr(
@@ -1927,6 +1928,7 @@ class TestDSAREndpoints:
                 VALUES ('CLM-TEST001', 'claimant', 'Seed User', 'bound_selfsvc@test.local', 'granted')
                 """),
             )
+        monkeypatch.setenv("OTP_ENABLED", "true")
         monkeypatch.setattr(
             "claim_agent.services.dsar_verification._deliver_otp",
             lambda *a, **kw: None,
@@ -1986,6 +1988,7 @@ class TestDSAREndpoints:
                 VALUES ('CLM-TEST001', 'claimant', 'Del User', 'bound_del@test.local', 'granted')
                 """),
             )
+        monkeypatch.setenv("OTP_ENABLED", "true")
         monkeypatch.setattr(
             "claim_agent.services.dsar_verification._deliver_otp",
             lambda *a, **kw: None,

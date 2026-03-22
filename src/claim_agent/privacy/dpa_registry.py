@@ -97,13 +97,14 @@ def register_dpa(
                     subprocessor_name, service_type, data_categories, purpose,
                     destination_country, destination_zone, mechanism, legal_basis,
                     dpa_signed_date, dpa_expiry_date, dpa_document_ref,
-                    supplementary_measures, active, notes, created_at, updated_at
+                    supplementary_measures, active, notes, created_by, created_at, updated_at
                 ) VALUES (
                     :subprocessor_name, :service_type, :data_categories, :purpose,
                     :destination_country, :destination_zone, :mechanism, :legal_basis,
                     :dpa_signed_date, :dpa_expiry_date, :dpa_document_ref,
-                    :supplementary_measures, 1, :notes, :now, :now
+                    :supplementary_measures, 1, :notes, :created_by, :now, :now
                 )
+                RETURNING id
             """),
             {
                 "subprocessor_name": subprocessor_name,
@@ -119,10 +120,12 @@ def register_dpa(
                 "dpa_document_ref": dpa_document_ref,
                 "supplementary_measures": json.dumps(supplementary_measures or []),
                 "notes": notes,
+                "created_by": actor_id or None,
                 "now": now,
             },
         )
-        return result.lastrowid or -1
+        row = result.fetchone()
+        return int(row[0]) if row else -1
 
 
 def get_dpa(dpa_id: int, *, db_path: str | None = None) -> dict[str, Any] | None:

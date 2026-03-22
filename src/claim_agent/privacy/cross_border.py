@@ -718,6 +718,7 @@ def log_transfer(
                         :destination_zone, :data_categories, :mechanism,
                         :permitted, :policy_decision, :notes
                     )
+                    RETURNING id
                 """),
                 {
                     "claim_id": claim_id,
@@ -732,7 +733,8 @@ def log_transfer(
                     "notes": notes,
                 },
             )
-            return result.lastrowid or -1
+            row = result.fetchone()
+            return int(row[0]) if row else -1
     except Exception as exc:  # pragma: no cover
         logger.warning("cross_border: failed to log transfer: %s", exc)
         return -1
