@@ -32,6 +32,80 @@ CLAIMANT_EVENTS = (
 HTTP_TIMEOUT_SECONDS = 30.0
 
 
+def send_otp_notification(
+    claimant_identifier: str,
+    channel: str,
+    otp: str,
+    verification_id: str,
+) -> None:
+    """Send a DSAR OTP via email or SMS.
+
+    Delivers the OTP code to the claimant using the configured notification
+    provider (SendGrid for email, Twilio for SMS).  When the relevant channel
+    is not enabled or credentials are missing the delivery is skipped and a
+    warning is logged (the token row is still created so the caller can retry).
+
+    Args:
+        claimant_identifier: Email address (``channel='email'``) or phone
+            number (``channel='sms'``).
+        channel: ``'email'`` or ``'sms'``.
+        otp: The plaintext OTP code to deliver.
+        verification_id: Tracking ID included in the message for debugging.
+    """
+    config = get_notification_config()
+    subject = "Your DSAR verification code"
+    message = (
+        f"Your one-time verification code is: {otp}\n\n"
+        f"This code expires in {_otp_ttl_minutes()} minutes. "
+        "Do not share it with anyone.\n\n"
+        f"Reference: {verification_id}"
+    )
+
+    if channel == "email":
+        if not config["email_enabled"]:
+            logger.warning(
+                "OTP email not sent: email notifications are disabled. "
+                "verification_id=%s",
+                verification_id,
+            )
+            return
+        _send_email(
+            api_key=config["sendgrid_api_key"],
+            from_email=config["sendgrid_from_email"],
+            to_email=claimant_identifier,
+            subject=subject,
+            message=message,
+            event="otp_verification",
+            claim_id=verification_id,
+        )
+    elif channel == "sms":
+        if not config["sms_enabled"]:
+            logger.warning(
+                "OTP SMS not sent: SMS notifications are disabled. "
+                "verification_id=%s",
+                verification_id,
+            )
+            return
+        _send_sms(
+            account_sid=config["twilio_account_sid"],
+            auth_token=config["twilio_auth_token"],
+            from_phone=config["twilio_from_phone"],
+            to_phone=claimant_identifier,
+            message=f"Your DSAR verification code: {otp}. Expires in {_otp_ttl_minutes()} min.",
+            event="otp_verification",
+            claim_id=verification_id,
+        )
+    else:
+        logger.warning("send_otp_notification: unknown channel %r", channel)
+
+
+def _otp_ttl_minutes() -> int:
+    """Return the configured OTP TTL in minutes."""
+    from claim_agent.config import get_settings
+
+    return get_settings().privacy.otp_ttl_minutes
+
+
 def notify_claimant(
     event: str,
     claim_id: str,
