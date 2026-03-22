@@ -15,6 +15,7 @@ from claim_agent.adapters.registry import (
     get_policy_adapter,
     get_repair_shop_adapter,
     get_siu_adapter,
+    get_state_bureau_adapter,
     get_valuation_adapter,
     reset_adapters,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "get_policy_adapter",
     "get_repair_shop_adapter",
     "get_siu_adapter",
+    "get_state_bureau_adapter",
     "get_valuation_adapter",
     "reset_adapters",
 ]

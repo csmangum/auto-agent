@@ -14,6 +14,5 @@ __all__ = [
     "RestValuationAdapter",
     "create_rest_fraud_reporting_adapter",
     "RestStateBureauAdapter",
-    "RestValuationAdapter",
     "create_valuation_rest_adapter",
 ]
