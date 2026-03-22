@@ -136,6 +136,22 @@ class SIUAdapter(ABC):
         )
 
 
+class StateBureauAdapter(ABC):
+    """Interface for filing fraud reports with state insurance bureaus."""
+
+    @abstractmethod
+    def submit_fraud_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        state: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        """Submit a state bureau fraud report and return filing metadata."""
+        ...
+
+
 class ClaimSearchAdapter(ABC):
     """Interface for cross-carrier claim search (NICB/ISO-style)."""
 

@@ -1,0 +1,119 @@
+"""REST adapter for state bureau fraud report filing."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+
+from claim_agent.adapters.base import StateBureauAdapter
+from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+
+_STATE_NAME_TO_CODE = {
+    "california": "CA",
+    "texas": "TX",
+    "florida": "FL",
+    "new york": "NY",
+    "georgia": "GA",
+}
+
+
+class RestStateBureauAdapter(StateBureauAdapter):
+    """POST fraud report payloads to per-state bureau endpoints."""
+
+    def __init__(
+        self,
+        *,
+        auth_header: str = "Authorization",
+        auth_value: str = "",
+        timeout: float = 15.0,
+        state_endpoints: dict[str, str] | None = None,
+    ) -> None:
+        self._auth_header = auth_header
+        self._auth_value = auth_value
+        self._timeout = timeout
+        self._state_endpoints = {
+            k.strip().upper(): (v or "").strip()
+            for k, v in (state_endpoints or {}).items()
+            if k and (v or "").strip()
+        }
+        self._clients: dict[str, AdapterHttpClient] = {}
+
+    def _normalize_state(self, state: str) -> tuple[str, str]:
+        state_norm = (state or "California").strip() or "California"
+        state_code = _STATE_NAME_TO_CODE.get(
+            state_norm.lower(),
+            state_norm[:2].upper() if len(state_norm) >= 2 else state_norm.upper(),
+        )
+        return state_norm, state_code
+
+    def _get_client_for_state(self, state_code: str) -> AdapterHttpClient:
+        base_url = self._state_endpoints.get(state_code)
+        if not base_url:
+            raise ValueError(
+                f"No state bureau endpoint configured for {state_code}. "
+                f"Set STATE_BUREAU_{state_code}_ENDPOINT."
+            )
+        client = self._clients.get(state_code)
+        if client is None:
+            client = AdapterHttpClient(
+                base_url=base_url,
+                auth_header=self._auth_header,
+                auth_value=self._auth_value,
+                timeout=self._timeout,
+            )
+            self._clients[state_code] = client
+        return client
+
+    def submit_fraud_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        state: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        state_norm, state_code = self._normalize_state(state)
+        payload = {
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": state_norm,
+            "state_code": state_code,
+            "indicators": indicators,
+        }
+        client = self._get_client_for_state(state_code)
+        try:
+            response = client.post("/fraud-reports", json=payload)
+        except CircuitOpenError as e:
+            raise ConnectionError(str(e)) from e
+        except httpx.HTTPStatusError as e:
+            if e.response is not None and e.response.status_code in {408, 429, 500, 502, 503, 504}:
+                raise ConnectionError(f"state bureau transient HTTP failure: {e}") from e
+            raise
+        except httpx.HTTPError as e:
+            raise ConnectionError(f"state bureau transport failure: {e}") from e
+
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise ValueError("State bureau response was not valid JSON") from e
+        if not isinstance(data, dict):
+            raise ValueError("State bureau response must be a JSON object")
+        report_id_raw = data.get("report_id") or data.get("id")
+        if not isinstance(report_id_raw, str) or not report_id_raw.strip():
+            raise ValueError("State bureau response missing report_id")
+        report_id = report_id_raw.strip()
+        message_raw = data.get("message")
+        message = (
+            message_raw
+            if isinstance(message_raw, str) and message_raw.strip()
+            else f"Fraud report filed with {state_norm} fraud bureau. Report ID: {report_id}"
+        )
+        metadata_raw = data.get("metadata")
+        metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
+        return {
+            "report_id": report_id,
+            "state": state_norm,
+            "message": message,
+            "metadata": metadata,
+        }

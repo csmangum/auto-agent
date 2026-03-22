@@ -7,6 +7,7 @@ from claim_agent.adapters.mock.parts import MockPartsAdapter
 from claim_agent.adapters.mock.policy import MockPolicyAdapter
 from claim_agent.adapters.mock.repair_shop import MockRepairShopAdapter
 from claim_agent.adapters.mock.siu import MockSIUAdapter
+from claim_agent.adapters.mock.state_bureau import MockStateBureauAdapter
 from claim_agent.adapters.mock.valuation import MockValuationAdapter
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "MockPolicyAdapter",
     "MockRepairShopAdapter",
     "MockSIUAdapter",
+    "MockStateBureauAdapter",
     "MockValuationAdapter",
 ]
