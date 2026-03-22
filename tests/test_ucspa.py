@@ -12,7 +12,7 @@ from claim_agent.compliance.ucspa import (
     claims_with_deadlines_approaching,
     payment_due_iso_after_settlement_moment,
 )
-from claim_agent.compliance.state_rules import get_state_rules
+from claim_agent.compliance.state_rules import get_prompt_payment_base_date, get_state_rules
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput
@@ -43,6 +43,12 @@ def test_payment_due_iso_after_settlement_moment():
         == "2026-03-31"
     )
     assert payment_due_iso_after_settlement_moment("", "California") is None
+
+
+def test_prompt_payment_base_date_defaults_to_settlement_agreement():
+    """Unknown states default prompt payment base date to settlement agreement."""
+    assert get_prompt_payment_base_date("California") == "settlement_agreement"
+    assert get_prompt_payment_base_date("UnknownState") == "settlement_agreement"
 
 
 def test_settlement_recomputes_payment_due(temp_db):
