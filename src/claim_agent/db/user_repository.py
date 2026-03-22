@@ -12,7 +12,7 @@ import bcrypt
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from claim_agent.api.auth import KNOWN_ROLES
+from claim_agent.rbac_roles import KNOWN_ROLES
 from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
 
 MIN_PASSWORD_LENGTH = 8

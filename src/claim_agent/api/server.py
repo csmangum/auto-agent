@@ -25,7 +25,7 @@ from claim_agent.api.auth import is_auth_required, verify_token
 from claim_agent.api.idempotency import cleanup_expired
 from claim_agent.observability.health import check_health
 from claim_agent.observability.prometheus import generate_metrics
-from claim_agent.api.rate_limit import get_client_ip, get_rate_limit_backend
+from claim_agent.api.rate_limit import get_client_ip, is_auth_rate_limited, is_rate_limited
 from claim_agent.api.routes.claims import router as claims_router
 from claim_agent.api.routes.compliance import router as compliance_router
 from claim_agent.api.routes.claims import _background_tasks as claim_background_tasks
@@ -211,12 +211,17 @@ def _normalize_path(path: str) -> str:
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Rate limit API routes: 100 req/min per IP."""
+    """Rate limit API routes: 100 req/min per IP; login/refresh use 20 req/min per IP."""
     path = _normalize_path(request.url.path)
     if path.startswith("/api/") and path not in _PUBLIC_PATHS:
         settings = get_settings()
         ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
-        if get_rate_limit_backend().is_rate_limited(ip):
+        limited = (
+            is_auth_rate_limited(ip)
+            if _is_auth_public_path(path)
+            else is_rate_limited(ip)
+        )
+        if limited:
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded. Try again later."},

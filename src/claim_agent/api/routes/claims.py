@@ -12,6 +12,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from claim_agent.api.auth import AuthContext
+from claim_agent.api.claim_access import (
+    adjuster_identity_scopes_assignee,
+    ensure_claim_access_for_adjuster,
+    filter_related_claim_ids_for_adjuster,
+)
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -134,7 +139,7 @@ _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 def _adjuster_scope_params(auth: AuthContext) -> dict[str, Any]:
     """Query params for adjuster-only claim scoping (assignee matches JWT sub / API key identity)."""
-    if auth.role != "adjuster":
+    if not adjuster_identity_scopes_assignee(auth):
         return {}
     return {"_scope_assignee": auth.identity}
 
@@ -142,15 +147,9 @@ def _adjuster_scope_params(auth: AuthContext) -> dict[str, Any]:
 def _apply_adjuster_claim_filter(
     auth: AuthContext, conditions: list[str], params: dict[str, Any]
 ) -> None:
-    if auth.role == "adjuster":
+    if adjuster_identity_scopes_assignee(auth):
         conditions.append("assignee = :_scope_assignee")
         params["_scope_assignee"] = auth.identity
-
-
-def _claim_not_visible_to_adjuster(auth: AuthContext, claim_row: dict[str, Any]) -> bool:
-    if auth.role != "adjuster":
-        return False
-    return (claim_row.get("assignee") or "") != auth.identity
 
 
 # Allowed document upload extensions (security: prevent executable/malicious uploads)
@@ -345,7 +344,7 @@ def _resolve_attachment_urls(
 def get_claims_stats(auth: AuthContext = RequireAdjuster):
     """Aggregate statistics: count by status, count by type, totals."""
     scope = _adjuster_scope_params(auth)
-    adj = auth.role == "adjuster"
+    adj = adjuster_identity_scopes_assignee(auth)
     cwhere = " WHERE assignee = :_scope_assignee" if adj else ""
     sub_claims = (
         "SELECT id FROM claims WHERE assignee = :_scope_assignee" if adj else "SELECT id FROM claims"
@@ -481,9 +480,10 @@ def get_review_queue(
             status_code=400,
             detail=f"Invalid priority: {priority}. Must be one of: {', '.join(PRIORITY_VALUES)}",
         )
-    eff_assignee = assignee
-    if eff_assignee is None and auth.role == "adjuster":
+    if adjuster_identity_scopes_assignee(auth):
         eff_assignee = auth.identity
+    else:
+        eff_assignee = assignee
     claims, total = ctx.repo.list_claims_needing_review(
         assignee=eff_assignee,
         priority=priority,
@@ -590,6 +590,7 @@ def acknowledge_claim(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Record UCSPA claim acknowledgment (receipt acknowledged within state deadline)."""
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.record_acknowledgment(claim_id, actor_id=actor_id)
@@ -670,8 +671,7 @@ def reject_review(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Reject claim with optional reason."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.adjuster_service.reject(claim_id, actor_id=actor_id, reason=body.reason)
@@ -690,8 +690,7 @@ def request_info_review(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Request more information from claimant."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.adjuster_service.request_info(claim_id, actor_id=actor_id, note=body.note)
@@ -706,11 +705,11 @@ def request_info_review(
 def run_follow_up(
     claim_id: str,
     body: FollowUpRunBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Run the follow-up agent to send outreach or process a response."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     try:
         result = run_follow_up_workflow(
             claim_id,
@@ -733,8 +732,7 @@ def record_follow_up_response(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Record a user's response to a follow-up message (webhook or manual entry)."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.record_follow_up_response(
@@ -751,11 +749,11 @@ def record_follow_up_response(
 @router.get("/claims/{claim_id}/follow-up", dependencies=[RequireAdjuster])
 def get_follow_up_messages(
     claim_id: str,
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Get all follow-up messages for a claim."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     return {"claim_id": claim_id, "messages": ctx.repo.get_follow_up_messages(claim_id)}
 
 
@@ -766,8 +764,7 @@ def escalate_to_siu(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Escalate claim to Special Investigations Unit."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.adjuster_service.escalate_to_siu(claim_id, actor_id=actor_id)
@@ -790,9 +787,7 @@ def run_siu_investigation(
     Claim must have status under_investigation or fraud_suspected.
     Creates SIU case if not already present.
     """
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     status = claim.get("status")
     if status not in SIU_INVESTIGATION_STATUSES:
         raise HTTPException(
@@ -809,16 +804,18 @@ def run_siu_investigation(
 
 
 @router.get("/claims/{claim_id}/status", dependencies=[RequireAdjuster])
-def get_claim_status(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+def get_claim_status(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
     """Lightweight status polling endpoint for async claim processing.
 
     Returns claim_id, status, claim_type, progress (completed workflow stages),
     and workflow_run_id. Use for efficient polling when POST returned claim_id
     immediately. For real-time updates, use GET /claims/{claim_id}/stream (SSE).
     """
-    claim_dict = ctx.repo.get_claim(claim_id)
-    if claim_dict is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    claim_dict = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
 
     status = claim_dict.get("status") or ""
     claim_type = claim_dict.get("claim_type") or ""
@@ -868,11 +865,7 @@ def get_claim(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Get a single claim by ID. Includes claim notes and follow-up messages."""
-    row = ctx.repo.get_claim(claim_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    if _claim_not_visible_to_adjuster(auth, row):
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    row = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
 
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     result = _resolve_attachment_urls(
@@ -905,11 +898,11 @@ def update_party_consent(
     claim_id: str,
     party_id: int,
     body: PartyConsentUpdate,
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Update data processing consent for a claim party. Revoked excludes party PII from LLM."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail="Claim not found")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     parties = ctx.repo.get_claim_parties(claim_id)
     if not any(p.get("id") == party_id for p in parties):
         raise HTTPException(status_code=404, detail="Party not found")
@@ -933,11 +926,11 @@ class CreatePartyRelationshipBody(BaseModel):
 def create_party_relationship(
     claim_id: str,
     body: CreatePartyRelationshipBody,
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Create a directed party-to-party link (e.g. claimant represented_by attorney)."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail="Claim not found")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     try:
         rel_id = ctx.repo.add_claim_party_relationship(
             claim_id,
@@ -964,11 +957,11 @@ def create_party_relationship(
 def delete_party_relationship(
     claim_id: str,
     relationship_id: int,
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Remove a party-to-party link for this claim."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail="Claim not found")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     deleted = ctx.repo.delete_claim_party_relationship(claim_id, relationship_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Party relationship not found")
@@ -986,6 +979,7 @@ def create_portal_token(
     request: Request,
     claim_id: str,
     body: CreatePortalTokenBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Create a claim access token for the claimant portal. Returns the raw token (send to claimant once)."""
@@ -994,8 +988,7 @@ def create_portal_token(
         return cached
 
     try:
-        if ctx.repo.get_claim(claim_id) is None:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+        ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
         if not get_settings().portal.enabled:
             raise HTTPException(status_code=503, detail="Claimant portal is disabled")
         email = body.email
@@ -1035,13 +1028,7 @@ def get_claim_attachment(
 
     Appends a ``document_downloaded`` row to ``claim_audit_log`` (chain of custody).
     """
-    with get_connection() as conn:
-        row = conn.execute(
-            text("SELECT id FROM claims WHERE id = :claim_id"),
-            {"claim_id": claim_id},
-        ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
 
     storage = get_storage_adapter()
     if not isinstance(storage, LocalStorageAdapter):
@@ -1119,8 +1106,7 @@ def list_claim_documents(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """List documents for a claim with optional filters."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     gb = (group_by or "").strip().lower()
     if gb and gb != "storage_key":
         raise HTTPException(
@@ -1181,8 +1167,7 @@ async def upload_claim_document(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Upload a document and create a claim_documents record."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename required")
     ext = (file.filename.rsplit(".", 1)[-1] or "").lower()
@@ -1249,11 +1234,11 @@ def update_claim_document(
     claim_id: str,
     doc_id: int,
     body: DocumentUpdateBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Update document metadata (review_status, privileged, etc.)."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     doc_repo = _get_doc_repo()
     doc = doc_repo.get_document(doc_id)
     if doc is None or doc.get("claim_id") != claim_id:
@@ -1288,11 +1273,11 @@ def list_document_requests(
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """List document requests for a claim."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     doc_repo = _get_doc_repo()
     requests, total = doc_repo.list_document_requests(
         claim_id, status=status, limit=limit, offset=offset
@@ -1311,11 +1296,11 @@ class DocumentRequestCreateBody(BaseModel):
 def create_document_request(
     claim_id: str,
     body: DocumentRequestCreateBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Create a document request."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     if body.document_type not in _VALID_DOCUMENT_TYPES:
         raise HTTPException(
             status_code=400,
@@ -1341,11 +1326,11 @@ def update_document_request(
     claim_id: str,
     req_id: int,
     body: DocumentRequestUpdateBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Update document request (e.g. mark received)."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     doc_repo = _get_doc_repo()
     req = doc_repo.get_document_request(req_id)
     if req is None or req.get("claim_id") != claim_id:
@@ -1390,6 +1375,7 @@ def patch_claim_litigation_hold(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Set or clear litigation hold. Claims with hold are excluded from retention and DSAR deletion."""
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.repo.set_litigation_hold(claim_id, body.litigation_hold, actor_id=actor_id)
@@ -1406,6 +1392,7 @@ def patch_claim_reserve(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Set or adjust reserve amount for a claim. Uses adjust_reserve (handles initial set)."""
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     skip = body.skip_authority_check
     if skip and auth.role != "admin":
@@ -1436,11 +1423,11 @@ def patch_claim_reserve(
 def get_claim_reserve_history(
     claim_id: str,
     limit: int = Query(50, ge=1, le=200),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Get reserve history for a claim, most recent first."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     history = ctx.repo.get_reserve_history(claim_id, limit=limit)
     return {"claim_id": claim_id, "history": history, "limit": limit}
 
@@ -1448,12 +1435,14 @@ def get_claim_reserve_history(
 @router.get("/claims/{claim_id}/reserve/adequacy", dependencies=[RequireAdjuster])
 def get_claim_reserve_adequacy(
     claim_id: str,
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Check reserve adequacy vs estimated_damage and payout_amount.
 
     Response includes ``warnings`` (human text) and ``warning_codes`` (stable ``RESERVE_*`` strings).
     """
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     try:
         result = ctx.repo.check_reserve_adequacy(claim_id)
     except ClaimNotFoundError:
@@ -1466,6 +1455,7 @@ def get_claim_history(
     claim_id: str,
     limit: int | None = Query(None, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Get audit log entries for a claim with optional pagination.
@@ -1473,9 +1463,7 @@ def get_claim_history(
     Omit ``limit`` (or pass no query param) to return the full history,
     preserving backwards-compatible behaviour for existing clients.
     """
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     history, total = ctx.repo.get_claim_history(claim_id, limit=limit, offset=offset)
     return {
         "claim_id": claim_id,
@@ -1487,10 +1475,13 @@ def get_claim_history(
 
 
 @router.get("/claims/{claim_id}/fraud-filings", dependencies=[RequireAdjuster])
-def get_claim_fraud_filings(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+def get_claim_fraud_filings(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
     """Get fraud report filings for a claim (state bureau, NICB, NISS) for compliance audit."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     filings = ctx.repo.get_fraud_filings_for_claim(claim_id)
     return {"claim_id": claim_id, "filings": filings}
 
@@ -1514,10 +1505,13 @@ class AddNoteBody(BaseModel):
 
 
 @router.get("/claims/{claim_id}/notes", dependencies=[RequireAdjuster])
-def get_claim_notes(claim_id: str, ctx: ClaimContext = Depends(get_claim_context)):
+def get_claim_notes(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
     """List notes for a claim, ordered by created_at."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     notes = ctx.repo.get_notes(claim_id)
     return {"claim_id": claim_id, "notes": notes}
 
@@ -1526,9 +1520,11 @@ def get_claim_notes(claim_id: str, ctx: ClaimContext = Depends(get_claim_context
 def add_claim_note(
     claim_id: str,
     body: AddNoteBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Add a note to a claim."""
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     try:
         ctx.repo.add_note(claim_id, body.note, body.actor_id)
     except ClaimNotFoundError:
@@ -1537,16 +1533,14 @@ def add_claim_note(
 
 
 @router.get("/claims/{claim_id}/workflows", dependencies=[RequireAdjuster])
-def get_claim_workflows(claim_id: str):
+def get_claim_workflows(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
     """Get workflow runs for a claim."""
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     with get_connection() as conn:
-        claim = conn.execute(
-            text("SELECT id FROM claims WHERE id = :claim_id"),
-            {"claim_id": claim_id},
-        ).fetchone()
-        if claim is None:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-
         rows = conn.execute(
             text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
             {"claim_id": claim_id},
@@ -1556,21 +1550,18 @@ def get_claim_workflows(claim_id: str):
 
 
 @router.get("/claims/{claim_id}/repair-status", dependencies=[RequireAdjuster])
-def get_claim_repair_status(claim_id: str):
+def get_claim_repair_status(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
     """Get repair status and history for a partial loss claim."""
-    with get_connection() as conn:
-        claim = conn.execute(
-            text("SELECT id, claim_type FROM claims WHERE id = :claim_id"),
-            {"claim_id": claim_id},
-        ).fetchone()
-        if claim is None:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-        claim_d = row_to_dict(claim)
-        if claim_d["claim_type"] != "partial_loss":
-            raise HTTPException(
-                status_code=400,
-                detail="Repair status only applies to partial_loss claims",
-            )
+    claim_row = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+    if claim_row.get("claim_type") != "partial_loss":
+        raise HTTPException(
+            status_code=400,
+            detail="Repair status only applies to partial_loss claims",
+        )
     repo = RepairStatusRepository(db_path=get_db_path())
     latest = repo.get_repair_status(claim_id)
     history = repo.get_repair_status_history(claim_id)
@@ -1596,6 +1587,7 @@ class RepairStatusUpdateBody(BaseModel):
 def update_claim_repair_status(
     claim_id: str,
     body: RepairStatusUpdateBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
 ):
     """Update repair status (for simulation/dashboard). Infers shop_id from workflow if omitted."""
     if body.status not in VALID_REPAIR_STATUSES:
@@ -1604,9 +1596,7 @@ def update_claim_repair_status(
             detail=f"Invalid status. Must be one of: {sorted(VALID_REPAIR_STATUSES)}",
         )
     claim_repo = ClaimRepository(db_path=get_db_path())
-    claim = claim_repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    claim = ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     if claim.get("claim_type") != "partial_loss":
         raise HTTPException(
             status_code=400,
@@ -1920,6 +1910,10 @@ async def get_incident(
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     claims = incident_repo.get_claims_by_incident(incident_id)
+    if adjuster_identity_scopes_assignee(auth):
+        claims = [c for c in claims if (c.get("assignee") or "") == auth.identity]
+        if not claims:
+            raise HTTPException(status_code=404, detail="Incident not found")
     return IncidentDetailResponse(
         incident=IncidentRecord.model_validate(incident),
         claims=[ClaimRecord.model_validate(c) for c in claims],
@@ -1944,8 +1938,7 @@ async def create_claim_link(
     try:
         claim_repo = ClaimRepository(db_path=get_db_path())
         for cid in (link_input.claim_id_a, link_input.claim_id_b):
-            if claim_repo.get_claim(cid) is None:
-                raise HTTPException(status_code=404, detail=f"Claim not found: {cid}")
+            ensure_claim_access_for_adjuster(auth, cid, claim_repo.get_claim(cid))
         incident_repo = IncidentRepository(db_path=get_db_path())
         link_id = incident_repo.create_claim_link(
             link_input.claim_id_a,
@@ -1974,8 +1967,12 @@ async def get_related_claims(
     auth: AuthContext = RequireAdjuster,
 ):
     """Get claims related to this claim (same incident, opposing carrier, etc.)."""
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     incident_repo = IncidentRepository(db_path=get_db_path())
     related = incident_repo.get_related_claims(claim_id, link_type=link_type)
+    if adjuster_identity_scopes_assignee(auth):
+        related = filter_related_claim_ids_for_adjuster(auth, claim_repo, related)
     return RelatedClaimsResponse(claim_id=claim_id, related_claim_ids=related)
 
 
@@ -1990,8 +1987,9 @@ async def allocate_bi(
     Methods: proportional (default), severity_weighted, equal.
     """
     claim_repo = ClaimRepository(db_path=get_db_path())
-    if claim_repo.get_claim(allocation_input.claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {allocation_input.claim_id}")
+    ensure_claim_access_for_adjuster(
+        auth, allocation_input.claim_id, claim_repo.get_claim(allocation_input.claim_id)
+    )
     result = allocate_bi_limits(allocation_input)
     return result.model_dump()
 
@@ -2310,8 +2308,7 @@ async def stream_claim_updates(
 ):
     """Server-Sent Events stream of claim status, audit log, and workflow runs.
     Polls every second until claim status is no longer pending/processing."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     return StreamingResponse(
         _stream_claim_updates(claim_id),
         media_type="text/event-stream",
@@ -2385,9 +2382,7 @@ async def file_dispute(
     (valuation, repair estimate, deductible) and escalates complex ones
     (liability) to human adjusters.
     """
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
 
     claim_status = claim.get("status")
     if claim_status not in DISPUTABLE_STATUSES:
@@ -2468,9 +2463,7 @@ async def run_denial_coverage(
     Reviews denial reason, verifies coverage/exclusions, and either generates
     a denial letter (uphold) or routes to appeal.
     """
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
 
     claim_status = claim.get("status")
     if claim_status not in DENIAL_COVERAGE_STATUSES:
@@ -2514,9 +2507,7 @@ async def file_supplemental(
     repair. Validates the report, compares to original estimate, calculates
     supplemental amount, and updates the repair authorization.
     """
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
 
     claim_type = claim.get("claim_type")
     if claim_type != "partial_loss":

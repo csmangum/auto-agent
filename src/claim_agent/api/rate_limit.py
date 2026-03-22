@@ -15,6 +15,7 @@ from claim_agent.config import get_settings
 # (ip -> [timestamps]); OrderedDict for LRU eviction
 _WINDOW = 60  # seconds
 _MAX_REQUESTS = 100  # per window per IP
+_AUTH_MAX_REQUESTS = 20  # stricter limit for /api/auth/login and /api/auth/refresh
 _MAX_BUCKETS = 10_000
 
 _logger = logging.getLogger(__name__)
@@ -51,7 +52,8 @@ def _cleanup(bucket: list[float], now: float) -> list[float]:
 class InMemoryRateLimitBackend:
     """In-memory rate limiting. Not shared across workers/instances."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_requests: int = _MAX_REQUESTS) -> None:
+        self._max_requests = max_requests
         self._buckets: OrderedDict[str, list[float]] = OrderedDict()
 
     def is_rate_limited(self, ip: str) -> bool:
@@ -65,7 +67,7 @@ class InMemoryRateLimitBackend:
             self._buckets[ip] = []
         bucket = self._buckets[ip]
         bucket = _cleanup(bucket, now)
-        if len(bucket) >= _MAX_REQUESTS:
+        if len(bucket) >= self._max_requests:
             return True
         bucket.append(now)
         self._buckets[ip] = bucket
@@ -77,6 +79,7 @@ class InMemoryRateLimitBackend:
 
 
 _in_memory_backend: InMemoryRateLimitBackend | None = None
+_auth_in_memory_backend: InMemoryRateLimitBackend | None = None
 
 
 def _get_in_memory_backend() -> InMemoryRateLimitBackend:
@@ -85,6 +88,14 @@ def _get_in_memory_backend() -> InMemoryRateLimitBackend:
     if _in_memory_backend is None:
         _in_memory_backend = InMemoryRateLimitBackend()
     return _in_memory_backend
+
+
+def _get_auth_in_memory_backend() -> InMemoryRateLimitBackend:
+    """Singleton in-memory backend for auth endpoints (stricter cap)."""
+    global _auth_in_memory_backend
+    if _auth_in_memory_backend is None:
+        _auth_in_memory_backend = InMemoryRateLimitBackend(max_requests=_AUTH_MAX_REQUESTS)
+    return _auth_in_memory_backend
 
 
 class RedisRateLimitBackend:
@@ -122,6 +133,24 @@ class RedisRateLimitBackend:
             _log_redis_rate_limit_error(exc)
             return False  # Fail open on Redis errors
 
+    def is_auth_rate_limited(self, ip: str) -> bool:
+        """Stricter limit for login/refresh (same sliding window, separate Redis key)."""
+        key = f"rate_limit_auth:{ip}"
+        try:
+            now = time.time()
+            cutoff = now - _WINDOW
+            pipe = self._client.pipeline()
+            pipe.zremrangebyscore(key, "-inf", cutoff)
+            pipe.zadd(key, {f"{now}:{uuid.uuid4().hex}": now})
+            pipe.expire(key, _WINDOW)
+            pipe.zcard(key)
+            results = pipe.execute()
+            count = int(results[3])
+            return count > _AUTH_MAX_REQUESTS
+        except Exception as exc:
+            _log_redis_rate_limit_error(exc)
+            return False
+
 
 _backend: RateLimitBackend | None = None
 
@@ -154,11 +183,22 @@ def is_rate_limited(ip: str) -> bool:
     return get_rate_limit_backend().is_rate_limited(ip)
 
 
+def is_auth_rate_limited(ip: str) -> bool:
+    """Return True if the IP has exceeded the stricter auth endpoint rate limit."""
+    backend = get_rate_limit_backend()
+    if isinstance(backend, RedisRateLimitBackend):
+        return backend.is_auth_rate_limited(ip)
+    return _get_auth_in_memory_backend().is_rate_limited(ip)
+
+
 def clear_rate_limit_buckets() -> None:
     """Clear all rate limit buckets. For testing only. In-memory backend only."""
     backend = get_rate_limit_backend()
     if isinstance(backend, InMemoryRateLimitBackend):
         backend.clear()
+    global _auth_in_memory_backend
+    if _auth_in_memory_backend is not None:
+        _auth_in_memory_backend.clear()
 
 
 def _get_buckets_for_testing() -> OrderedDict[str, list[float]]:

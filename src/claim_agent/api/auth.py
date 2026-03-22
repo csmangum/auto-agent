@@ -5,11 +5,9 @@ import logging
 from dataclasses import dataclass
 
 from claim_agent.config.settings import get_api_key_entries, get_jwt_secret
+from claim_agent.rbac_roles import KNOWN_ROLES
 
 logger = logging.getLogger(__name__)
-
-# Roles used by RBAC; JWT role claim must be one of these
-KNOWN_ROLES = frozenset({"adjuster", "supervisor", "admin", "executive"})
 
 
 @dataclass

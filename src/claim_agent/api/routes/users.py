@@ -7,7 +7,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from claim_agent.api.auth import KNOWN_ROLES, AuthContext
+from claim_agent.api.auth import AuthContext
+from claim_agent.rbac_roles import KNOWN_ROLES
 from claim_agent.api.deps import require_role
 from claim_agent.db.user_repository import MIN_PASSWORD_LENGTH, UserRepository
 
