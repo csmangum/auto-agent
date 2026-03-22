@@ -10,8 +10,9 @@ For configuration options, see [Configuration](configuration.md).
 |---------------------|---------|-------------|
 | `CLAIMS_DB_PATH` | `data/claims.db` | Path to SQLite database file (ignored when `DATABASE_URL` is set) |
 | `DATABASE_URL` | (unset) | PostgreSQL connection URL. When set, the app uses PostgreSQL instead of SQLite. Example: `postgresql://user:pass@host:5432/claims` |
-| `DB_POOL_SIZE` | `5` | SQLAlchemy `pool_size` when using PostgreSQL (`ge=1`) |
-| `DB_MAX_OVERFLOW` | `10` | SQLAlchemy `max_overflow` when using PostgreSQL (`ge=0`) |
+| `READ_REPLICA_DATABASE_URL` | (unset) | Optional PostgreSQL read-replica URL. When set alongside `DATABASE_URL`, read-heavy queries are routed to this replica; all writes still go to the primary. Example: `postgresql://user:pass@replica-host:5432/claims` |
+| `DB_POOL_SIZE` | `5` | SQLAlchemy `pool_size` when using PostgreSQL (`ge=1`). Applied to both primary and replica engines. |
+| `DB_MAX_OVERFLOW` | `10` | SQLAlchemy `max_overflow` when using PostgreSQL (`ge=0`). Applied to both primary and replica engines. |
 
 ## PostgreSQL Setup
 
@@ -783,3 +784,277 @@ claims = [dict(row) for row in conn.execute('SELECT * FROM claims').fetchall()]
 with open('claims_export.json', 'w') as f:
     json.dump(claims, f, indent=2)
 ```
+
+## PostgreSQL High Availability
+
+This section covers infrastructure-level patterns for running the PostgreSQL backend in a highly available, production-grade configuration. All patterns below assume `DATABASE_URL` is already set.
+
+### Read Replicas
+
+The application supports an optional read replica via the `READ_REPLICA_DATABASE_URL` environment variable. When set:
+
+- The application creates a separate SQLAlchemy connection pool pointing to the replica.
+- Read-heavy, non-mutating queries (reporting, analytics, audit log access, etc.) should use `get_replica_connection()` instead of `get_connection()`.
+- All writes continue to use the primary connection (`get_connection()` / `DATABASE_URL`).
+- If `READ_REPLICA_DATABASE_URL` is not set, `get_replica_connection()` transparently falls back to the primary.
+
+**Code example:**
+
+```python
+from claim_agent.db.database import get_replica_connection
+from sqlalchemy import text
+
+with get_replica_connection() as conn:
+    rows = conn.execute(
+        text("SELECT id, status, created_at FROM claims ORDER BY created_at DESC LIMIT 100")
+    ).fetchall()
+```
+
+**Health check**: When `READ_REPLICA_DATABASE_URL` is configured, the `/api/health` endpoint includes a `database_replica` key in the `checks` dict (`"ok"`, `"error"`, or `"skipped"`). The overall health status is determined by the primary database only; a degraded replica does not change the top-level `status` field, but the `database_replica` field signals the issue.
+
+**Routing guidance**: Use `get_replica_connection()` for:
+
+- Claim list / search queries
+- Audit log reads
+- Reporting and analytics aggregations
+- Dashboard data that can tolerate slight replication lag
+
+Do **not** use `get_replica_connection()` for:
+
+- Claim status updates or any write operations
+- Immediately-consistent reads after a write (use `get_connection()` there)
+
+**Pool tuning**: `DB_POOL_SIZE` and `DB_MAX_OVERFLOW` apply to both the primary and replica engines. Size your pools based on the total connection budget of each PostgreSQL instance.
+
+---
+
+### Streaming Replication (Built-in PostgreSQL)
+
+PostgreSQL streaming replication is the simplest HA building block. One primary server streams WAL (Write-Ahead Log) records to one or more standbys in near-real time.
+
+**Minimal setup (streaming replication):**
+
+```sql
+-- On the primary: create a replication role
+CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replpass';
+```
+
+```ini
+# postgresql.conf (primary)
+wal_level = replica
+max_wal_senders = 5
+wal_keep_size = 256MB   # keep enough WAL for lagging standbys
+hot_standby = on        # allow read queries on standby
+```
+
+```ini
+# pg_hba.conf (primary) — allow the standby to connect
+host replication replicator <standby-ip>/32 scram-sha-256
+```
+
+```bash
+# On the standby: create base backup from primary
+pg_basebackup -h <primary-host> -U replicator -D /var/lib/postgresql/data -Fp -Xs -P -R
+# -R writes postgresql.auto.conf and standby.signal automatically
+
+# Start the standby
+pg_ctl start -D /var/lib/postgresql/data
+```
+
+Monitor replication lag on the primary:
+
+```sql
+SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,
+       (sent_lsn - replay_lsn) AS replication_lag_bytes
+FROM pg_stat_replication;
+```
+
+Point `READ_REPLICA_DATABASE_URL` at the standby's connection string. The standby is read-only by design.
+
+---
+
+### Patroni (Automated Failover)
+
+[Patroni](https://github.com/zalando/patroni) is the standard open-source solution for automatic PostgreSQL failover. It uses a distributed configuration store (etcd, Consul, or ZooKeeper) to elect a leader and promote a standby when the primary fails.
+
+**Key concepts:**
+
+| Concept | Details |
+|---------|---------|
+| Leader election | Patroni holds a distributed lock (TTL ~30 s by default). The node holding the lock is the primary. |
+| Automatic failover | When the primary fails to renew its lock, a standby is promoted within ~30–60 seconds. |
+| Configuration store | etcd v3 is the most common choice for cloud deployments. |
+| HAProxy / VIP | Route application traffic through a load balancer or virtual IP that is aware of the current primary. |
+
+**Minimal `patroni.yml` (per node):**
+
+```yaml
+scope: claims-cluster
+namespace: /db/
+name: pg-node-1
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: <node-ip>:8008
+
+etcd3:
+  hosts: <etcd-ip>:2379
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 30
+    maximum_lag_on_failover: 1048576   # 1 MB
+
+  pg_hba:
+    - host replication replicator 0.0.0.0/0 scram-sha-256
+    - host all all 0.0.0.0/0 scram-sha-256
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: <node-ip>:5432
+  data_dir: /var/lib/postgresql/data
+  authentication:
+    replication:
+      username: replicator
+      password: replpass
+    superuser:
+      username: postgres
+      password: postgrespass
+  parameters:
+    wal_level: replica
+    hot_standby: "on"
+    max_wal_senders: 5
+```
+
+After Patroni promotes a new primary, update `DATABASE_URL` (or let the VIP/HAProxy handle routing transparently). Tools like **PgBouncer** in front of Patroni provide seamless connection routing without application changes.
+
+---
+
+### Connection Routing with PgBouncer
+
+PgBouncer is a lightweight connection pooler that can sit in front of Patroni and route connections to the current primary automatically (using `pgbouncer-rr` or a Patroni-aware config):
+
+```ini
+# pgbouncer.ini
+[databases]
+claims = host=<vip-or-haproxy> port=5432 dbname=claims
+claims_replica = host=<replica-host> port=5432 dbname=claims
+
+[pgbouncer]
+pool_mode = transaction
+listen_port = 6432
+listen_addr = 0.0.0.0
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+max_client_conn = 200
+default_pool_size = 20
+```
+
+Set `DATABASE_URL=postgresql://user:pass@pgbouncer-host:6432/claims` and `READ_REPLICA_DATABASE_URL=postgresql://user:pass@pgbouncer-host:6432/claims_replica`.
+
+> **Note:** PgBouncer `transaction` pool mode is incompatible with prepared statements. Either use `session` pool mode or disable prepared statements. With psycopg2, set `SQLALCHEMY_ENGINE_OPTIONS` or configure the engine directly:
+>
+> ```python
+> # In database.py engine creation for psycopg2
+> create_engine(url, pool_size=..., max_overflow=..., execution_options={"no_parameters": True})
+> # Or append ?options=-c%20statement_cache_size%3D0 to the DATABASE_URL when using psycopg3
+> ```
+>
+> Alternatively, use PgBouncer's `session` pool mode to avoid this restriction entirely.
+
+---
+
+### Failover Procedures
+
+#### Manual failover (promote a standby)
+
+```bash
+# On the standby — promote to primary
+pg_ctl promote -D /var/lib/postgresql/data
+
+# Verify the new primary
+psql -h <new-primary-host> -U postgres -c "SELECT pg_is_in_recovery();"
+# Should return: f (false) — meaning it is now a primary
+```
+
+Update `DATABASE_URL` to point to the new primary. Old primary should be reconfigured as a standby before rejoining the cluster.
+
+#### Patroni failover / switchover
+
+```bash
+# Controlled switchover (zero-downtime planned maintenance)
+patronictl -c /etc/patroni.yml switchover claims-cluster
+
+# Emergency failover to a specific node
+patronictl -c /etc/patroni.yml failover claims-cluster --master pg-node-1 --candidate pg-node-2
+
+# Cluster status
+patronictl -c /etc/patroni.yml list
+```
+
+#### Health check integration
+
+The `/api/health` endpoint checks both the primary and replica databases. Integrate it with your load balancer or orchestrator:
+
+```bash
+# Example: curl health and check exit code
+curl -sf http://localhost:8000/api/health | python3 -c "
+import sys, json
+r = json.load(sys.stdin)
+sys.exit(0 if r.get('status') == 'ok' else 1)
+"
+```
+
+For Kubernetes, add a liveness/readiness probe:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 15
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+---
+
+### Multi-Region Deployment
+
+For multi-region HA, combine streaming replication with geographic routing:
+
+1. **Primary region**: runs the Patroni cluster (primary + synchronous standby for zero data loss).
+2. **Secondary region**: runs an asynchronous standby used as a read replica.
+3. **DNS / global load balancer**: routes write traffic to the primary region VIP; read traffic can be routed to the nearest region.
+
+Set:
+```bash
+DATABASE_URL=postgresql://user:pass@primary-region-vip:5432/claims
+READ_REPLICA_DATABASE_URL=postgresql://user:pass@secondary-region-replica:5432/claims
+```
+
+Monitor cross-region replication lag carefully — asynchronous replication means the replica may be seconds to minutes behind during network partitions.
+
+---
+
+### Alembic Migrations in HA Environments
+
+Run migrations as a **separate pre-deploy step** before rolling out new application instances:
+
+```bash
+# Disable automatic migrations on startup (recommended for production)
+RUN_MIGRATIONS_ON_STARTUP=false
+
+# Run migrations manually before deploy
+alembic upgrade head
+```
+
+This avoids multiple application replicas racing to run the same migration on startup.
+

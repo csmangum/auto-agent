@@ -485,13 +485,23 @@ class PathsConfig(BaseSettings):
         validation_alias="DATABASE_URL",
         description="PostgreSQL URL. If set, use PostgreSQL; else use SQLite at claims_db_path.",
     )
+    read_replica_database_url: str | None = Field(
+        default=None,
+        validation_alias="READ_REPLICA_DATABASE_URL",
+        description=(
+            "Optional PostgreSQL read-replica URL. When set, read-heavy queries are routed "
+            "to this replica; writes always go to the primary (DATABASE_URL). "
+            "Only used when DATABASE_URL is also set. "
+            "Example: postgresql://user:pass@replica-host:5432/claims"
+        ),
+    )
     redis_url: str | None = Field(
         default=None,
         validation_alias="REDIS_URL",
         description="Redis URL for rate limiting. If set, use Redis backend; else in-memory.",
     )
 
-    @field_validator("database_url", "redis_url", mode="before")
+    @field_validator("database_url", "read_replica_database_url", "redis_url", mode="before")
     @classmethod
     def _normalize_url(cls, v: Any) -> str | None:
         if v is None:
