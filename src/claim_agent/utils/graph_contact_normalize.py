@@ -39,6 +39,7 @@ def sql_expr_phone_normalized_postgres(alias: str = "cp") -> str:
     inner = f"regexp_replace(trim(coalesce({p}, '')), '[^0-9]', '', 'g')"
     return f"""(
   CASE
+    WHEN length({inner}) < {_MIN_PHONE_DIGITS} THEN ''
     WHEN length({inner}) = 11 AND left({inner}, 1) = '1'
     THEN substr({inner}, 2)
     ELSE {inner}
