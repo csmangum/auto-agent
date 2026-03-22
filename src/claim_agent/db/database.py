@@ -438,6 +438,66 @@ CREATE TABLE IF NOT EXISTS claim_access_tokens (
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_claim_id ON claim_access_tokens(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_token_hash ON claim_access_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_expires_at ON claim_access_tokens(expires_at);
+
+-- DPA registry: track Data Processing Agreements with subprocessors (GDPR Art. 28)
+CREATE TABLE IF NOT EXISTS dpa_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subprocessor_name TEXT NOT NULL,
+    service_type TEXT NOT NULL,
+    data_categories TEXT NOT NULL DEFAULT '[]',
+    purpose TEXT NOT NULL,
+    destination_country TEXT NOT NULL,
+    destination_zone TEXT NOT NULL,
+    mechanism TEXT NOT NULL,
+    legal_basis TEXT,
+    dpa_signed_date TEXT,
+    dpa_expiry_date TEXT,
+    dpa_document_ref TEXT,
+    supplementary_measures TEXT DEFAULT '[]',
+    active INTEGER NOT NULL DEFAULT 1,
+    notes TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dpa_registry_subprocessor ON dpa_registry(subprocessor_name);
+CREATE INDEX IF NOT EXISTS idx_dpa_registry_active ON dpa_registry(active);
+CREATE INDEX IF NOT EXISTS idx_dpa_registry_service_type ON dpa_registry(service_type);
+
+-- Cross-border transfer log: audit trail of data flows across jurisdictions
+CREATE TABLE IF NOT EXISTS cross_border_transfer_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT,
+    flow_name TEXT NOT NULL,
+    source_zone TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    destination_zone TEXT NOT NULL,
+    data_categories TEXT NOT NULL DEFAULT '[]',
+    mechanism TEXT NOT NULL,
+    permitted INTEGER NOT NULL DEFAULT 1,
+    policy_decision TEXT NOT NULL DEFAULT 'allow',
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_cbt_log_claim_id ON cross_border_transfer_log(claim_id);
+CREATE INDEX IF NOT EXISTS idx_cbt_log_flow_name ON cross_border_transfer_log(flow_name);
+CREATE INDEX IF NOT EXISTS idx_cbt_log_created_at ON cross_border_transfer_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_cbt_log_policy_decision ON cross_border_transfer_log(policy_decision);
+-- DSAR OTP verification tokens for self-service claimant identity proofing
+CREATE TABLE IF NOT EXISTS dsar_verification_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    verification_id TEXT NOT NULL UNIQUE,
+    claimant_identifier TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    verified_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dsar_verification_tokens_identifier
+    ON dsar_verification_tokens(claimant_identifier, created_at);
 """
 )
 

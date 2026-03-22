@@ -14,9 +14,15 @@ from typing import Any
 
 from sqlalchemy import text
 
+from claim_agent.compliance.dsar_state_rules import get_state_response_metadata
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
+from claim_agent.services.dsar_verification import (
+    CHANNEL_EMAIL,
+    CHANNEL_SMS,
+    claimant_identifiers_match,
+)
 
 
 DSAR_REQUEST_ACCESS = "access"
@@ -27,12 +33,80 @@ DSAR_STATUS_COMPLETED = "completed"
 DSAR_STATUS_REJECTED = "rejected"
 
 
+def claim_ids_from_verification_dict(conn: Any, verification: dict[str, Any]) -> list[str]:
+    """Resolve claim IDs from ``claim_id`` and/or ``policy_number`` + ``vin``."""
+    claim_ids: list[str] = []
+    if verification.get("claim_id"):
+        claim_ids.append(str(verification["claim_id"]))
+    if verification.get("policy_number") and verification.get("vin"):
+        rows = conn.execute(
+            text("SELECT id FROM claims WHERE policy_number = :pn AND vin = :vin"),
+            {
+                "pn": verification["policy_number"],
+                "vin": verification["vin"],
+            },
+        ).fetchall()
+        for r in rows:
+            cid = r[0] if hasattr(r, "__getitem__") else r["id"]
+            if cid not in claim_ids:
+                claim_ids.append(str(cid))
+    return claim_ids
+
+
+def assert_self_service_party_binding(
+    claimant_identifier: str,
+    channel: str,
+    verification_data: dict[str, Any],
+    *,
+    db_path: str | None = None,
+) -> None:
+    """Require that *claimant_identifier* appears on a party row for resolved claims.
+
+    Used after OTP verification so a user cannot request DSAR data for arbitrary
+    ``claim_id`` / policy+VIN pairs.
+
+    Raises:
+        ValueError: If claims cannot be resolved or no party matches the verified channel.
+    """
+    if channel not in (CHANNEL_EMAIL, CHANNEL_SMS):
+        raise ValueError(f"Invalid OTP channel {channel!r}.")
+    path = db_path or get_db_path()
+    with get_connection(path) as conn:
+        claim_ids = claim_ids_from_verification_dict(conn, verification_data)
+        if not claim_ids:
+            raise ValueError(
+                "No claim found for the supplied verification (claim_id or policy_number and vin)."
+            )
+        for claim_id in claim_ids:
+            rows = conn.execute(
+                text("SELECT email, phone FROM claim_parties WHERE claim_id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchall()
+            for row in rows:
+                party = row_to_dict(row)
+                email = party.get("email")
+                phone = party.get("phone")
+                if channel == CHANNEL_EMAIL and email and claimant_identifiers_match(
+                    claimant_identifier, email, CHANNEL_EMAIL
+                ):
+                    return
+                if channel == CHANNEL_SMS and phone and claimant_identifiers_match(
+                    claimant_identifier, phone, CHANNEL_SMS
+                ):
+                    return
+        raise ValueError(
+            "Verified contact is not associated with this claim. "
+            "Use the email or phone on file for the claim, or contact support."
+        )
+
+
 def submit_access_request(
     claimant_identifier: str,
     verification_data: dict[str, Any],
     *,
     db_path: str | None = None,
     actor_id: str = "claimant",
+    state: str | None = None,
 ) -> str:
     """Submit a DSAR access request. Returns request_id.
 
@@ -41,12 +115,17 @@ def submit_access_request(
         verification_data: Dict with claim_id and/or policy_number, vin for verification.
         db_path: Optional DB path. Uses default when None.
         actor_id: Actor submitting the request.
+        state: Consumer's state of residence (e.g., ``"California"``). When provided,
+            state-specific response metadata is embedded in the fulfilled export.
 
     Returns:
         Unique request_id (UUID string) for tracking.
     """
     request_id = str(uuid.uuid4())
     path = db_path or get_db_path()
+    vdata = dict(verification_data) if verification_data else {}
+    if state:
+        vdata["state"] = state
     with get_connection(path) as conn:
         conn.execute(
             text("""
@@ -62,7 +141,7 @@ def submit_access_request(
                 "request_type": DSAR_REQUEST_ACCESS,
                 "status": DSAR_STATUS_PENDING,
                 "actor_id": actor_id,
-                "verification_data": json.dumps(verification_data) if verification_data else None,
+                "verification_data": json.dumps(vdata) if vdata else None,
             },
         )
     return request_id
@@ -120,24 +199,7 @@ def fulfill_access_request(
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        claim_ids: list[str] = []
-        if verification.get("claim_id"):
-            claim_ids.append(str(verification["claim_id"]))
-        if verification.get("policy_number") and verification.get("vin"):
-            # Look up claims by policy_number and vin
-            rows = conn.execute(
-                text(
-                    "SELECT id FROM claims WHERE policy_number = :pn AND vin = :vin"
-                ),
-                {
-                    "pn": verification["policy_number"],
-                    "vin": verification["vin"],
-                },
-            ).fetchall()
-            for r in rows:
-                cid = r[0] if hasattr(r, "__getitem__") else r["id"]
-                if cid not in claim_ids:
-                    claim_ids.append(str(cid))
+        claim_ids = claim_ids_from_verification_dict(conn, verification)
 
         # Also match by claimant_identifier (email) in claim_parties when verification not required
         if not claim_ids and req.get("claimant_identifier"):
@@ -171,9 +233,11 @@ def fulfill_access_request(
             },
         )
 
+        state_from_verification = verification.get("state")
         export: dict[str, Any] = {
             "request_id": request_id,
             "exported_at": datetime.now(timezone.utc).isoformat(),
+            "state_response_info": get_state_response_metadata(state_from_verification),
             "claims": [],
             "parties": [],
             "party_relationships": [],
@@ -328,10 +392,23 @@ def submit_deletion_request(
     *,
     db_path: str | None = None,
     actor_id: str = "claimant",
+    state: str | None = None,
 ) -> str:
-    """Submit a DSAR deletion request. Returns request_id."""
+    """Submit a DSAR deletion request. Returns request_id.
+
+    Args:
+        claimant_identifier: Email or hashed policy+vin identifier.
+        verification_data: Dict with claim_id and/or policy_number, vin for verification.
+        db_path: Optional DB path. Uses default when None.
+        actor_id: Actor submitting the request.
+        state: Consumer's state of residence (e.g., ``"California"``). Stored for
+            audit and state-specific processing.
+    """
     request_id = str(uuid.uuid4())
     path = db_path or get_db_path()
+    vdata = dict(verification_data) if verification_data else {}
+    if state:
+        vdata["state"] = state
     with get_connection(path) as conn:
         conn.execute(
             text("""
@@ -347,7 +424,7 @@ def submit_deletion_request(
                 "request_type": DSAR_REQUEST_DELETION,
                 "status": DSAR_STATUS_PENDING,
                 "actor_id": actor_id,
-                "verification_data": json.dumps(verification_data) if verification_data else None,
+                "verification_data": json.dumps(vdata) if vdata else None,
             },
         )
     return request_id
@@ -382,18 +459,8 @@ def fulfill_deletion_request(
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        claim_ids: list[str] = []
-        if verification.get("claim_id"):
-            claim_ids.append(str(verification["claim_id"]))
-        if verification.get("policy_number") and verification.get("vin"):
-            rows = conn.execute(
-                text("SELECT id FROM claims WHERE policy_number = :pn AND vin = :vin"),
-                {"pn": verification["policy_number"], "vin": verification["vin"]},
-            ).fetchall()
-            for r in rows:
-                cid = r[0] if hasattr(r, "__getitem__") else r["id"]
-                if cid not in claim_ids:
-                    claim_ids.append(str(cid))
+        claim_ids = claim_ids_from_verification_dict(conn, verification)
+
         if not claim_ids and req.get("claimant_identifier"):
             if get_settings().privacy.dsar_verification_required:
                 _reject_dsar_request(conn, request_id, actor_id)

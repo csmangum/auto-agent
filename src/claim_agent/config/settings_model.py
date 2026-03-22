@@ -783,11 +783,85 @@ class PrivacyConfig(BaseSettings):
         validation_alias="LITIGATION_HOLD_BLOCKS_DELETION",
         description="When true, claims with litigation_hold are skipped during DSAR deletion.",
     )
+    data_region: str = Field(
+        default="us",
+        validation_alias="DATA_REGION",
+        description=(
+            "Primary data region for this deployment: 'us', 'eu', or 'other'. "
+            "Controls how cross-border transfer checks classify the data source."
+        ),
+    )
+    cross_border_policy: str = Field(
+        default="audit",
+        validation_alias="CROSS_BORDER_POLICY",
+        description=(
+            "Policy for cross-border data transfers: "
+            "'allow' (permit, log), 'audit' (permit with warning), "
+            "or 'restrict' (block transfers lacking a documented mechanism)."
+        ),
+    )
+    llm_transfer_mechanism: str = Field(
+        default="scc",
+        validation_alias="LLM_TRANSFER_MECHANISM",
+        description=(
+            "Transfer mechanism documenting the legal basis for sending claim data "
+            "to the LLM provider: 'scc', 'adequacy_decision', 'explicit_consent', "
+            "'bcr', 'legitimate_interests', or 'none'."
+        ),
+    )
+    otp_enabled: bool = Field(
+        default=False,
+        validation_alias="OTP_ENABLED",
+        description="When true, OTP verification is available for self-service DSAR submissions.",
+    )
+    otp_ttl_minutes: int = Field(
+        default=15,
+        ge=1,
+        le=1440,
+        validation_alias="OTP_TTL_MINUTES",
+        description="Minutes until a DSAR OTP token expires.",
+    )
+    otp_max_attempts: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        validation_alias="OTP_MAX_ATTEMPTS",
+        description="Maximum failed OTP verification attempts before the token is locked.",
+    )
+    otp_rate_limit_window_minutes: int = Field(
+        default=60,
+        ge=1,
+        validation_alias="OTP_RATE_LIMIT_WINDOW_MINUTES",
+        description="Rolling window (minutes) for OTP request rate limiting per identifier.",
+    )
+    otp_rate_limit_max_requests: int = Field(
+        default=5,
+        ge=1,
+        validation_alias="OTP_RATE_LIMIT_MAX_REQUESTS",
+        description="Maximum OTP requests per identifier within the rate-limit window.",
+    )
+    otp_code_length: int = Field(
+        default=6,
+        ge=4,
+        le=10,
+        validation_alias="OTP_CODE_LENGTH",
+        description="Length of the numeric OTP code.",
+    )
+    otp_pepper: str = Field(
+        default="",
+        validation_alias="OTP_PEPPER",
+        description=(
+            "Server-side secret (pepper) used as the HMAC key when hashing OTP codes. "
+            "Should be a long random string. If empty, the JWT_SECRET is used as a fallback. "
+            "Set this to a unique secret in production to prevent offline brute-force attacks."
+        ),
+    )
 
     @field_validator(
         "llm_data_minimization",
         "dsar_verification_required",
         "litigation_hold_blocks_deletion",
+        "otp_enabled",
         mode="before",
     )
     @classmethod

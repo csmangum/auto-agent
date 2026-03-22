@@ -1905,6 +1905,120 @@ class TestDSAREndpoints:
         assert "email" in data
         assert "parties_updated" in data
 
+    def test_dsar_otp_request_rate_limit_returns_429(self, client, monkeypatch, seeded_temp_db):
+        monkeypatch.setenv("OTP_ENABLED", "true")
+        monkeypatch.setenv("OTP_RATE_LIMIT_MAX_REQUESTS", "1")
+        reload_settings()
+        monkeypatch.setattr(
+            "claim_agent.services.dsar_verification._deliver_otp",
+            lambda *a, **kw: None,
+        )
+        body = {"claimant_identifier": "rl429@example.com", "channel": "email"}
+        assert client.post("/api/dsar/verify/request", json=body).status_code == 200
+        resp2 = client.post("/api/dsar/verify/request", json=body)
+        assert resp2.status_code == 429
+
+    def test_dsar_self_service_access_binds_verified_email_to_claim_party(
+        self, client, monkeypatch, seeded_temp_db
+    ):
+        with get_connection(seeded_temp_db) as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claim_parties (claim_id, party_type, name, email, consent_status)
+                VALUES ('CLM-TEST001', 'claimant', 'Seed User', 'bound_selfsvc@test.local', 'granted')
+                """),
+            )
+        monkeypatch.setenv("OTP_ENABLED", "true")
+        monkeypatch.setattr(
+            "claim_agent.services.dsar_verification._deliver_otp",
+            lambda *a, **kw: None,
+        )
+        monkeypatch.setattr(
+            "claim_agent.services.dsar_verification._generate_otp",
+            lambda length=6: "918273",
+        )
+        reload_settings()
+        r1 = client.post(
+            "/api/dsar/verify/request",
+            json={"claimant_identifier": "bound_selfsvc@test.local", "channel": "email"},
+        )
+        assert r1.status_code == 200
+        vid = r1.json()["verification_id"]
+        r2 = client.post(
+            "/api/dsar/verify/confirm",
+            json={"verification_id": vid, "code": "918273"},
+        )
+        assert r2.status_code == 200
+        wrong_id = client.post(
+            "/api/dsar/self-service/access",
+            json={
+                "claimant_identifier": "other@evil.com",
+                "verification_id": vid,
+                "claim_id": "CLM-TEST001",
+            },
+        )
+        assert wrong_id.status_code == 403
+        wrong_claim = client.post(
+            "/api/dsar/self-service/access",
+            json={
+                "claimant_identifier": "bound_selfsvc@test.local",
+                "verification_id": vid,
+                "claim_id": "CLM-TEST002",
+            },
+        )
+        assert wrong_claim.status_code == 403
+        ok = client.post(
+            "/api/dsar/self-service/access",
+            json={
+                "claimant_identifier": "bound_selfsvc@test.local",
+                "verification_id": vid,
+                "claim_id": "CLM-TEST001",
+            },
+        )
+        assert ok.status_code == 200
+        assert "request_id" in ok.json()
+
+    def test_dsar_self_service_deletion_same_party_binding(
+        self, client, monkeypatch, seeded_temp_db
+    ):
+        with get_connection(seeded_temp_db) as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claim_parties (claim_id, party_type, name, email, consent_status)
+                VALUES ('CLM-TEST001', 'claimant', 'Del User', 'bound_del@test.local', 'granted')
+                """),
+            )
+        monkeypatch.setenv("OTP_ENABLED", "true")
+        monkeypatch.setattr(
+            "claim_agent.services.dsar_verification._deliver_otp",
+            lambda *a, **kw: None,
+        )
+        monkeypatch.setattr(
+            "claim_agent.services.dsar_verification._generate_otp",
+            lambda length=6: "564738",
+        )
+        reload_settings()
+        r1 = client.post(
+            "/api/dsar/verify/request",
+            json={"claimant_identifier": "bound_del@test.local", "channel": "email"},
+        )
+        assert r1.status_code == 200
+        vid = r1.json()["verification_id"]
+        assert client.post(
+            "/api/dsar/verify/confirm",
+            json={"verification_id": vid, "code": "564738"},
+        ).status_code == 200
+        resp = client.post(
+            "/api/dsar/self-service/deletion",
+            json={
+                "claimant_identifier": "bound_del@test.local",
+                "verification_id": vid,
+                "claim_id": "CLM-TEST001",
+            },
+        )
+        assert resp.status_code == 200
+        assert "request_id" in resp.json()
+
 
 class TestPoliciesEndpoint:
     """Test GET /api/system/policies (RequireAdjuster)."""

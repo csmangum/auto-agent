@@ -494,6 +494,7 @@ def minimize_claim_data_for_crew(
     *,
     mask_pii: bool | None = None,
     force_allowlist: bool = False,
+    check_cross_border: bool = True,
 ) -> dict[str, Any]:
     """Return minimized claim data for the given crew.
 
@@ -501,6 +502,8 @@ def minimize_claim_data_for_crew(
     - When mask_pii is True (default from config): masks policy_number and vin
     - Strips attachment descriptions (urls only)
     - For bodily_injury crew only: strips party name/email/phone/address
+    - When check_cross_border is True and privacy minimization is enabled:
+      checks and logs any cross-border transfer to the LLM provider
 
     Args:
         claim_data: Full claim dict
@@ -508,9 +511,16 @@ def minimize_claim_data_for_crew(
         mask_pii: Override config. None = use get_settings().privacy.llm_data_minimization
         force_allowlist: When True, apply the crew allowlist even if
             ``PRIVACY_LLM_DATA_MINIMIZATION`` is false (e.g. router validation LLM calls).
+        check_cross_border: When True (default) and minimization is enabled, run the
+            cross-border transfer check and log the event.  Set False to skip when
+            calling from non-LLM paths (e.g., export utilities).
 
     Returns:
         Minimized dict safe to pass to LLM prompts
+
+    Raises:
+        PermissionError: When CROSS_BORDER_POLICY=restrict and the transfer to
+            the configured LLM provider lacks a documented mechanism.
     """
     settings = get_settings()
     enabled = settings.privacy.llm_data_minimization
@@ -539,5 +549,24 @@ def minimize_claim_data_for_crew(
             result[key] = mask_vin(value) if value else value
         else:
             result[key] = value
+
+    # Cross-border transfer check: evaluate and log the upcoming LLM call.
+    # Runs independently of the minimization flag so that CROSS_BORDER_POLICY=restrict
+    # is always enforced (or audited) even when data minimization is disabled.
+    if check_cross_border:
+        try:
+            from claim_agent.privacy.cross_border import check_and_log_llm_transfer
+
+            check_and_log_llm_transfer(claim_data)
+        except PermissionError:
+            raise
+        except Exception:
+            # Non-blocking: import errors or DB unavailability must not interrupt
+            # claim processing.  Only PermissionError (CROSS_BORDER_POLICY=restrict)
+            # propagates to the caller.
+            import logging as _logging
+            _logging.getLogger(__name__).debug(
+                "cross_border check skipped (DB unavailable or import error)"
+            )
 
     return result
