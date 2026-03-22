@@ -7,7 +7,8 @@ Provides REST API endpoints for:
 - System configuration and health
 
 Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/* endpoints
-require auth. Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
+require auth except /api/health, /api/portal/*, /api/auth/login, and /api/auth/refresh.
+Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
 """
 
 import asyncio
@@ -41,6 +42,8 @@ from claim_agent.api.routes.portal import router as portal_router
 from claim_agent.api.routes.reserve_reports import router as reserve_reports_router
 from claim_agent.api.routes.retention import router as retention_router
 from claim_agent.api.routes.privacy import router as privacy_router
+from claim_agent.api.routes.auth_routes import router as auth_login_router
+from claim_agent.api.routes.users import router as users_admin_router
 from claim_agent.config import get_settings
 from claim_agent.db.database import ensure_fresh_db_on_startup, is_postgres_backend
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
@@ -196,6 +199,11 @@ def _is_portal_path(path: str) -> bool:
     return path.startswith("/api/portal")
 
 
+def _is_auth_public_path(path: str) -> bool:
+    """Login and refresh do not require a bearer token."""
+    return path in ("/api/auth/login", "/api/auth/refresh")
+
+
 def _normalize_path(path: str) -> str:
     """Strip trailing slash for consistent path matching (e.g. /api/health/ -> /api/health)."""
     return path.rstrip("/") or "/"
@@ -220,7 +228,12 @@ async def rate_limit_middleware(request: Request, call_next):
 async def auth_middleware(request: Request, call_next):
     """Verify auth when configured. Set request.state.auth on success."""
     path = _normalize_path(request.url.path)
-    if not path.startswith("/api/") or path in _PUBLIC_PATHS or _is_portal_path(path):
+    if (
+        not path.startswith("/api/")
+        or path in _PUBLIC_PATHS
+        or _is_portal_path(path)
+        or _is_auth_public_path(path)
+    ):
         return await call_next(request)
 
     if not is_auth_required():
@@ -293,6 +306,8 @@ app.include_router(portal_router, prefix="/api")
 app.include_router(reserve_reports_router, prefix="/api")
 app.include_router(retention_router, prefix="/api")
 app.include_router(privacy_router, prefix="/api")
+app.include_router(auth_login_router, prefix="/api")
+app.include_router(users_admin_router, prefix="/api")
 
 
 # Serve frontend static files in production (when built)

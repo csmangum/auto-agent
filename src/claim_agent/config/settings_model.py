@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
@@ -620,6 +621,14 @@ _DEFAULT_CORS_ORIGINS = [
 ]
 
 
+@dataclass(frozen=True)
+class ApiKeyEntry:
+    """Parsed API_KEYS entry: role and optional identity override (claims.assignee / JWT sub)."""
+
+    role: str
+    identity: str | None = None
+
+
 class AuthConfig(BaseSettings):
     model_config = SettingsConfigDict(
         extra="ignore",
@@ -631,6 +640,20 @@ class AuthConfig(BaseSettings):
     api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
     claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
     jwt_secret_raw: str = Field(default="", validation_alias="JWT_SECRET")
+    jwt_access_ttl_seconds: int = Field(
+        default=900,
+        ge=60,
+        le=86400,
+        validation_alias="JWT_ACCESS_TTL_SECONDS",
+        description="Access JWT lifetime in seconds (default 15 minutes).",
+    )
+    jwt_refresh_ttl_seconds: int = Field(
+        default=604800,
+        ge=300,
+        le=31536000,
+        validation_alias="JWT_REFRESH_TTL_SECONDS",
+        description="Opaque refresh token lifetime in seconds (default 7 days).",
+    )
     cors_origins_raw: str = Field(default="", validation_alias="CORS_ORIGINS")
     trust_forwarded_for: bool = Field(default=False, validation_alias="TRUST_FORWARDED_FOR")
 
@@ -647,24 +670,38 @@ class AuthConfig(BaseSettings):
         return v
 
     @property
-    def api_keys(self) -> dict[str, str]:
+    def api_key_entries(self) -> dict[str, ApiKeyEntry]:
+        """API_KEYS / CLAIMS_API_KEY: key -> role and optional identity (``key:role`` or ``key:role:user_id``)."""
         raw = self.api_keys_raw.strip()
         if raw:
-            result: dict[str, str] = {}
+            result: dict[str, ApiKeyEntry] = {}
             for part in raw.split(","):
                 part = part.strip()
                 if not part:
                     continue
                 if ":" in part:
-                    key, role = part.split(":", 1)
-                    result[key.strip()] = role.strip()
+                    segments = part.split(":", 2)
+                    if len(segments) == 3:
+                        key, role, uid = segments
+                        result[key.strip()] = ApiKeyEntry(
+                            role=role.strip(),
+                            identity=uid.strip() or None,
+                        )
+                    else:
+                        key, role = part.split(":", 1)
+                        result[key.strip()] = ApiKeyEntry(role=role.strip(), identity=None)
                 else:
-                    result[part] = "admin"
+                    result[part] = ApiKeyEntry(role="admin", identity=None)
             return result
         key = self.claims_api_key.strip()
         if key:
-            return {key: "admin"}
+            return {key: ApiKeyEntry(role="admin", identity=None)}
         return {}
+
+    @property
+    def api_keys(self) -> dict[str, str]:
+        """Backward-compatible key -> role mapping."""
+        return {k: v.role for k, v in self.api_key_entries.items()}
 
     @property
     def jwt_secret(self) -> str | None:

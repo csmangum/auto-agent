@@ -131,6 +131,28 @@ RequireSupervisor = require_role("supervisor", "admin", "executive")
 
 _MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
+
+def _adjuster_scope_params(auth: AuthContext) -> dict[str, Any]:
+    """Query params for adjuster-only claim scoping (assignee matches JWT sub / API key identity)."""
+    if auth.role != "adjuster":
+        return {}
+    return {"_scope_assignee": auth.identity}
+
+
+def _apply_adjuster_claim_filter(
+    auth: AuthContext, conditions: list[str], params: dict[str, Any]
+) -> None:
+    if auth.role == "adjuster":
+        conditions.append("assignee = :_scope_assignee")
+        params["_scope_assignee"] = auth.identity
+
+
+def _claim_not_visible_to_adjuster(auth: AuthContext, claim_row: dict[str, Any]) -> bool:
+    if auth.role != "adjuster":
+        return False
+    return (claim_row.get("assignee") or "") != auth.identity
+
+
 # Allowed document upload extensions (security: prevent executable/malicious uploads)
 _ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
     {"pdf", "jpg", "jpeg", "png", "gif", "webp", "heic", "doc", "docx", "xls", "xlsx"}
@@ -320,24 +342,56 @@ def _resolve_attachment_urls(
 
 
 @router.get("/claims/stats", dependencies=[RequireAdjuster])
-def get_claims_stats():
+def get_claims_stats(auth: AuthContext = RequireAdjuster):
     """Aggregate statistics: count by status, count by type, totals."""
+    scope = _adjuster_scope_params(auth)
+    adj = auth.role == "adjuster"
+    cwhere = " WHERE assignee = :_scope_assignee" if adj else ""
+    sub_claims = (
+        "SELECT id FROM claims WHERE assignee = :_scope_assignee" if adj else "SELECT id FROM claims"
+    )
     with get_connection() as conn:
-        total = conn.execute(text("SELECT COUNT(*) as cnt FROM claims")).fetchone()[0]
+        total = conn.execute(
+            text(f"SELECT COUNT(*) as cnt FROM claims{cwhere}"),
+            scope,
+        ).fetchone()[0]
         status_rows = conn.execute(
-            text("SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt FROM claims GROUP BY status ORDER BY cnt DESC")
+            text(
+                f"SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt FROM claims{cwhere} "
+                "GROUP BY status ORDER BY cnt DESC"
+            ),
+            scope,
         ).fetchall()
         by_status = {row_to_dict(r)["status"]: row_to_dict(r)["cnt"] for r in status_rows}
         type_rows = conn.execute(
-            text("SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt FROM claims GROUP BY claim_type ORDER BY cnt DESC")
+            text(
+                f"SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt FROM claims{cwhere} "
+                "GROUP BY claim_type ORDER BY cnt DESC"
+            ),
+            scope,
         ).fetchall()
         by_type = {row_to_dict(r)["claim_type"]: row_to_dict(r)["cnt"] for r in type_rows}
         date_row = conn.execute(
-            text("SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM claims")
+            text(f"SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM claims{cwhere}"),
+            scope,
         ).fetchone()
         date_d = row_to_dict(date_row) if date_row else {}
-        audit_count = conn.execute(text("SELECT COUNT(*) as cnt FROM claim_audit_log")).fetchone()[0]
-        workflow_count = conn.execute(text("SELECT COUNT(*) as cnt FROM workflow_runs")).fetchone()[0]
+        if adj:
+            audit_count = conn.execute(
+                text(
+                    f"SELECT COUNT(*) as cnt FROM claim_audit_log WHERE claim_id IN ({sub_claims})"
+                ),
+                scope,
+            ).fetchone()[0]
+            workflow_count = conn.execute(
+                text(
+                    f"SELECT COUNT(*) as cnt FROM workflow_runs WHERE claim_id IN ({sub_claims})"
+                ),
+                scope,
+            ).fetchone()[0]
+        else:
+            audit_count = conn.execute(text("SELECT COUNT(*) as cnt FROM claim_audit_log")).fetchone()[0]
+            workflow_count = conn.execute(text("SELECT COUNT(*) as cnt FROM workflow_runs")).fetchone()[0]
 
     return {
         "total_claims": total,
@@ -378,15 +432,15 @@ def list_claims(
         conditions.append("claim_type = :claim_type")
         params["claim_type"] = claim_type
 
+    _apply_adjuster_claim_filter(auth, conditions, params)
+
     where = ""
     if conditions:
         where = "WHERE " + " AND ".join(conditions)
 
     params["limit"] = limit
     params["offset"] = offset
-    count_params = {
-        k: v for k, v in params.items() if k in ("status", "archived", "claim_type", "purged")
-    }
+    count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
 
     with get_connection() as conn:
         count_row = conn.execute(
@@ -427,8 +481,11 @@ def get_review_queue(
             status_code=400,
             detail=f"Invalid priority: {priority}. Must be one of: {', '.join(PRIORITY_VALUES)}",
         )
+    eff_assignee = assignee
+    if eff_assignee is None and auth.role == "adjuster":
+        eff_assignee = auth.identity
     claims, total = ctx.repo.list_claims_needing_review(
-        assignee=assignee,
+        assignee=eff_assignee,
         priority=priority,
         older_than_hours=older_than_hours,
         limit=limit,
@@ -510,7 +567,7 @@ class ApproveBody(BaseModel):
 def assign_claim(
     claim_id: str,
     body: AssignBody = Body(...),
-    auth: AuthContext = RequireAdjuster,
+    auth: AuthContext = RequireSupervisor,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Assign claim to an adjuster."""
@@ -813,6 +870,8 @@ def get_claim(
     """Get a single claim by ID. Includes claim notes and follow-up messages."""
     row = ctx.repo.get_claim(claim_id)
     if row is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    if _claim_not_visible_to_adjuster(auth, row):
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
