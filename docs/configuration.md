@@ -35,6 +35,11 @@ cp .env.example .env
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
 | `IDEMPOTENCY_TTL_SECONDS` | `86400` | Time-to-live (seconds) for API idempotency keys (default 24h). Expired rows are purged periodically while the API server runs. |
 | `REDIS_URL` | (unset) | Redis URL for **shared API rate limiting** across multiple app instances or workers (e.g. `redis://localhost:6379/0`). Requires `pip install -e '.[redis]'`. When unset, rate limits use an in-process store (not shared). |
+| `SCHEDULER_ENABLED` | `false` | Enable optional in-process scheduler for recurring operational jobs |
+| `SCHEDULER_TIMEZONE` | `UTC` | Timezone for scheduler cron expressions |
+| `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` | `0 9 * * *` | Daily UCSPA deadline alert sweep schedule (cron) |
+| `SCHEDULER_DIARY_ESCALATE_CRON` | `0 * * * *` | Diary overdue/escalation sweep schedule (cron) |
+| `SCHEDULER_UCSPA_DAYS_AHEAD` | `3` | Lookahead window (days) for UCSPA approaching-deadline alerts |
 
 ### Authentication and RBAC
 
@@ -68,6 +73,25 @@ Mutating claim endpoints support an optional **`Idempotency-Key`** request heade
 ### API rate limiting
 
 The HTTP API applies a **per-client-IP sliding window** (100 requests per 60 seconds by default; see [`src/claim_agent/api/rate_limit.py`](../src/claim_agent/api/rate_limit.py) for constants). With **`REDIS_URL`** set and the **`redis`** optional dependency installed, counters live in Redis so limits are **consistent across replicas**. If Redis is unavailable at runtime, checks **fail open** (request allowed) after a warning. Client IP uses `X-Forwarded-For` only when **`TRUST_FORWARDED_FOR=true`** (see table above).
+
+### Scheduler vs. external cron
+
+You can run recurring compliance/operations jobs either with the built-in in-process scheduler **or** external cron.
+
+- **Built-in scheduler (optional):** set `SCHEDULER_ENABLED=true` and run the API (`claim-agent serve`) or foreground scheduler (`claim-agent run-scheduler`).
+  - `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` controls automatic `ucspa-deadlines` behavior (with webhook dispatch).
+  - `SCHEDULER_DIARY_ESCALATE_CRON` controls automatic `diary-escalate` behavior.
+- **External cron (fallback / preferred in some deployments):** leave `SCHEDULER_ENABLED=false` and schedule CLI commands externally.
+
+Example external cron:
+
+```cron
+# Daily UCSPA approaching-deadline alerts at 09:00
+0 9 * * * /path/to/claim-agent ucspa-deadlines --days 3
+
+# Hourly diary escalation sweep
+0 * * * * /path/to/claim-agent diary-escalate
+```
 
 ### Adapter Backends
 

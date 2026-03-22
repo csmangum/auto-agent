@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Optional
@@ -1001,6 +1002,27 @@ def ucspa_deadlines(
     typer.echo(
         json.dumps({"days_ahead": days_ahead, "count": len(claims), "claims": claims}, indent=2)
     )
+
+
+@app.command("run-scheduler")
+def run_scheduler() -> None:
+    """Run in-process scheduler in foreground (for dedicated scheduler process)."""
+    from claim_agent.scheduler import ensure_scheduler_running
+
+    if not get_settings().scheduler.enabled:
+        typer.echo(
+            "SCHEDULER_ENABLED is false. Set SCHEDULER_ENABLED=true to run in-process scheduler.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    ensure_scheduler_running()
+    typer.echo("In-process scheduler started. Press Ctrl+C to stop.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        typer.echo("Scheduler stopped.")
 
 
 @app.command()
