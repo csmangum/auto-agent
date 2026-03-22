@@ -864,6 +864,7 @@ VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy", "state_bureau"})
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
 VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
+STATE_BUREAU_SUPPORTED_CODES: tuple[str, ...] = ("CA", "TX", "FL", "NY", "GA")
 
 
 class PolicyRestConfig(BaseSettings):
@@ -924,6 +925,10 @@ class StateBureauConfig(BaseSettings):
     auth_header: str = Field(default="Authorization", description="Auth header name")
     auth_value: str = Field(default="", description="Bearer token or API key")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    supported_state_codes: tuple[str, ...] = Field(
+        default=STATE_BUREAU_SUPPORTED_CODES,
+        description="Supported state bureau endpoint codes for configuration mapping.",
+    )
     ca_endpoint: str = Field(default="", description="California DOI fraud endpoint base URL")
     tx_endpoint: str = Field(default="", description="Texas DOI fraud endpoint base URL")
     fl_endpoint: str = Field(default="", description="Florida DOI fraud endpoint base URL")
@@ -931,13 +936,12 @@ class StateBureauConfig(BaseSettings):
     ga_endpoint: str = Field(default="", description="Georgia DOI fraud endpoint base URL")
 
     def get_state_endpoints(self) -> dict[str, str]:
-        return {
-            "CA": self.ca_endpoint.strip(),
-            "TX": self.tx_endpoint.strip(),
-            "FL": self.fl_endpoint.strip(),
-            "NY": self.ny_endpoint.strip(),
-            "GA": self.ga_endpoint.strip(),
-        }
+        endpoints: dict[str, str] = {}
+        for code in self.supported_state_codes:
+            attr = f"{code.lower()}_endpoint"
+            value = getattr(self, attr, "")
+            endpoints[code] = (value or "").strip()
+        return endpoints
 
 
 # ---------------------------------------------------------------------------

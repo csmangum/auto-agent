@@ -423,7 +423,13 @@ class TestFileFraudReportStateBureauImpl:
         original = adapter.submit_fraud_report
         call_count = 0
 
-        def patched_submit_fraud_report(*, claim_id, case_id, state, indicators):
+        def patched_submit_fraud_report(
+            *,
+            claim_id: str,
+            case_id: str,
+            state: str,
+            indicators: list[str],
+        ) -> dict[str, object]:
             nonlocal call_count
             call_count += 1
             if call_count < 3:

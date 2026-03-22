@@ -6,14 +6,7 @@ import uuid
 from typing import Any
 
 from claim_agent.adapters.base import StateBureauAdapter
-
-_STATE_NAME_TO_CODE = {
-    "california": "CA",
-    "texas": "TX",
-    "florida": "FL",
-    "new york": "NY",
-    "georgia": "GA",
-}
+from claim_agent.adapters.state_bureau_common import normalize_state_name_and_code
 
 
 class MockStateBureauAdapter(StateBureauAdapter):
@@ -37,8 +30,7 @@ class MockStateBureauAdapter(StateBureauAdapter):
             if n < 2:
                 raise ConnectionError("mock state bureau transient connectivity issue")
 
-        state_norm = (state or "California").strip() or "California"
-        state_code = _STATE_NAME_TO_CODE.get(state_norm.lower(), state_norm[:2].upper() or "CA")
+        state_norm, state_code = normalize_state_name_and_code(state)
         claim_suffix = (claim_id or "")[-6:] or uuid.uuid4().hex[:6].upper()
         report_id = f"FRB-{state_code}-{claim_suffix}-MOCK"
         return {

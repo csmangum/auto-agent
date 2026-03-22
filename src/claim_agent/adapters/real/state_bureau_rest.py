@@ -8,14 +8,9 @@ import httpx
 
 from claim_agent.adapters.base import StateBureauAdapter
 from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+from claim_agent.adapters.state_bureau_common import normalize_state_name_and_code
 
-_STATE_NAME_TO_CODE = {
-    "california": "CA",
-    "texas": "TX",
-    "florida": "FL",
-    "new york": "NY",
-    "georgia": "GA",
-}
+_TRANSIENT_HTTP_STATUS_CODES: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
 
 
 class RestStateBureauAdapter(StateBureauAdapter):
@@ -38,14 +33,6 @@ class RestStateBureauAdapter(StateBureauAdapter):
             if k and (v or "").strip()
         }
         self._clients: dict[str, AdapterHttpClient] = {}
-
-    def _normalize_state(self, state: str) -> tuple[str, str]:
-        state_norm = (state or "California").strip() or "California"
-        state_code = _STATE_NAME_TO_CODE.get(
-            state_norm.lower(),
-            state_norm[:2].upper() if len(state_norm) >= 2 else state_norm.upper(),
-        )
-        return state_norm, state_code
 
     def _get_client_for_state(self, state_code: str) -> AdapterHttpClient:
         base_url = self._state_endpoints.get(state_code)
@@ -73,7 +60,7 @@ class RestStateBureauAdapter(StateBureauAdapter):
         state: str,
         indicators: list[str],
     ) -> dict[str, Any]:
-        state_norm, state_code = self._normalize_state(state)
+        state_norm, state_code = normalize_state_name_and_code(state)
         payload = {
             "claim_id": claim_id,
             "case_id": case_id,
@@ -87,7 +74,7 @@ class RestStateBureauAdapter(StateBureauAdapter):
         except CircuitOpenError as e:
             raise ConnectionError(str(e)) from e
         except httpx.HTTPStatusError as e:
-            if e.response is not None and e.response.status_code in {408, 429, 500, 502, 503, 504}:
+            if e.response is not None and e.response.status_code in _TRANSIENT_HTTP_STATUS_CODES:
                 raise ConnectionError(f"state bureau transient HTTP failure: {e}") from e
             raise
         except httpx.HTTPError as e:
