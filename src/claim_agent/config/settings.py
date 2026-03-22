@@ -5,6 +5,7 @@ backward-compatible access during migration. Prefer get_settings() directly.
 """
 
 from claim_agent.config import get_settings
+from claim_agent.config.settings_model import ApiKeyEntry
 
 
 def get_coverage_config() -> dict:
@@ -104,9 +105,24 @@ def get_api_keys_config() -> dict[str, str]:
     return get_settings().auth.api_keys.copy()
 
 
+def get_api_key_entries() -> dict[str, ApiKeyEntry]:
+    """API_KEYS entries: key -> ApiKeyEntry(role, optional identity)."""
+    return get_settings().auth.api_key_entries.copy()
+
+
 def get_jwt_secret() -> str | None:
     """JWT secret for verifying Bearer tokens. None if not configured."""
     return get_settings().auth.jwt_secret
+
+
+def get_jwt_access_ttl_seconds() -> int:
+    """Access JWT TTL in seconds."""
+    return get_settings().auth.jwt_access_ttl_seconds
+
+
+def get_jwt_refresh_ttl_seconds() -> int:
+    """Refresh token (opaque) TTL in seconds."""
+    return get_settings().auth.jwt_refresh_ttl_seconds
 
 
 def get_mask_pii() -> bool:

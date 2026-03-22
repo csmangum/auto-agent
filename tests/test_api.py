@@ -2692,6 +2692,27 @@ class TestRBAC:
         )
         assert resp.status_code == 403
 
+    def test_adjuster_forbidden_assign(self, client, monkeypatch):
+        """PATCH assign requires supervisor+; adjuster gets 403 when auth is enabled."""
+        self._set_api_keys(monkeypatch, "sk-adj:adjuster")
+        resp = client.patch(
+            "/api/claims/CLM-TEST004/assign",
+            json={"assignee": "adjuster-1"},
+            headers=_auth_headers("sk-adj"),
+        )
+        assert resp.status_code == 403
+
+    def test_supervisor_can_assign_when_auth(self, client, monkeypatch):
+        """Supervisor can assign claims in needs_review when auth is enabled."""
+        self._set_api_keys(monkeypatch, "sk-sup:supervisor")
+        resp = client.patch(
+            "/api/claims/CLM-TEST004/assign",
+            json={"assignee": "adjuster-1"},
+            headers=_auth_headers("sk-sup"),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["assignee"] == "adjuster-1"
+
     def test_supervisor_can_reprocess(self, client, monkeypatch):
         """Supervisor can call reprocess endpoint."""
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")

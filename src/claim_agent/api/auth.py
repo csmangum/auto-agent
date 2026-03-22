@@ -4,12 +4,10 @@ import hashlib
 import logging
 from dataclasses import dataclass
 
-from claim_agent.config.settings import get_api_keys_config, get_jwt_secret
+from claim_agent.config.settings import get_api_key_entries, get_jwt_secret
+from claim_agent.rbac_roles import KNOWN_ROLES
 
 logger = logging.getLogger(__name__)
-
-# Roles used by RBAC; JWT role claim must be one of these
-KNOWN_ROLES = frozenset({"adjuster", "supervisor", "admin", "executive"})
 
 
 @dataclass
@@ -36,9 +34,11 @@ def verify_token(token: str) -> AuthContext | None:
         return None
 
     # API key lookup
-    api_keys = get_api_keys_config()
-    if token in api_keys:
-        return AuthContext(identity=_key_identity(token), role=api_keys[token])
+    api_entries = get_api_key_entries()
+    if token in api_entries:
+        entry = api_entries[token]
+        ident = entry.identity if entry.identity else _key_identity(token)
+        return AuthContext(identity=ident, role=entry.role)
 
     # JWT verification (optional)
     jwt_secret = get_jwt_secret()
@@ -53,6 +53,9 @@ def verify_token(token: str) -> AuthContext | None:
             return None
         try:
             payload = pyjwt.decode(token, jwt_secret, algorithms=["HS256"])
+            token_use = payload.get("token_use")
+            if token_use == "refresh":
+                return None
             sub = payload.get("sub")
             role = str(payload.get("role", "adjuster"))
             if role not in KNOWN_ROLES:
@@ -68,4 +71,4 @@ def verify_token(token: str) -> AuthContext | None:
 
 def is_auth_required() -> bool:
     """True if any auth config is set (API_KEYS, CLAIMS_API_KEY, or JWT_SECRET)."""
-    return bool(get_api_keys_config() or get_jwt_secret())
+    return bool(get_api_key_entries() or get_jwt_secret())

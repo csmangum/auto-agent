@@ -83,6 +83,26 @@ class TestVerifyToken:
         token = pyjwt.encode(payload, "a" * 32, algorithm="HS256")
         assert verify_token(token) is None
 
+    def test_jwt_refresh_token_use_rejected_for_api(self, monkeypatch):
+        try:
+            import jwt as pyjwt
+        except ImportError:
+            pytest.skip("PyJWT not installed")
+        monkeypatch.setenv("JWT_SECRET", "a" * 32)
+        reload_settings()
+        payload = {"sub": "user-123", "role": "adjuster", "token_use": "refresh"}
+        token = pyjwt.encode(payload, "a" * 32, algorithm="HS256")
+        assert verify_token(token) is None
+
+    def test_api_key_three_segment_identity(self, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-a:adjuster:user-42")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+        ctx = verify_token("sk-a")
+        assert ctx is not None
+        assert ctx.identity == "user-42"
+        assert ctx.role == "adjuster"
+
 
 class TestIsAuthRequired:
     def test_false_when_no_config(self, monkeypatch):

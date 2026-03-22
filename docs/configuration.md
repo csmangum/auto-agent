@@ -43,18 +43,22 @@ cp .env.example .env
 
 ### Authentication and RBAC
 
-When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoints (except `/api/health`) require authentication.
+When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoints (except `/api/health`, `/api/auth/login`, and `/api/auth/refresh`) require authentication.
 
 | Variable | Description |
 |---------|-------------|
-| `API_KEYS` | Comma-separated `key:role` pairs, e.g. `sk-adj-xxx:adjuster,sk-sup-yyy:supervisor,sk-exe-zzz:executive,sk-admin-zzz:admin` |
+| `API_KEYS` | Comma-separated entries. Each entry is `key:role` or `key:role:user_id`. The optional third segment sets API identity (`sub`) for RBAC and adjuster-scoped claims (`claims.assignee` must match `user_id`). Example: `sk-adj:adjuster:uuid-of-adjuster` |
 | `CLAIMS_API_KEY` | Single API key (backward compat). When set and `API_KEYS` unset, treated as admin role |
-| `JWT_SECRET` | Secret for verifying JWT Bearer tokens. JWT payload should include `sub` (user id) and `role` |
+| `JWT_SECRET` | Secret for signing/verifying access JWTs from `POST /api/auth/login` and `Authorization: Bearer`. Access token payload: `sub`, `role`, `token_use`=`access`. Refresh tokens issued by login are opaque DB-backed strings, not JWTs. |
+| `JWT_ACCESS_TTL_SECONDS` | Access JWT lifetime in seconds (default 900). |
+| `JWT_REFRESH_TTL_SECONDS` | Opaque refresh token lifetime in seconds (default 604800). |
 | `TRUST_FORWARDED_FOR` | Default `false`. If `true`, trust `X-Forwarded-For` for client IP (API rate limiting and similar). Enable only behind a trusted reverse proxy. |
 
-**Roles**: `adjuster` (submit/view claims, docs), `supervisor` (all adjuster + reprocess, metrics), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system; may set `skip_authority_check` on reserve updates).
+**Roles**: `adjuster` (submit/view claims, docs; when using JWT or `key:role:user_id`, list/get/stats/review-queue are scoped to assigned claims), `supervisor` (all adjuster + reprocess, metrics, assign claims), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system, `/api/users`; may set `skip_authority_check` on reserve updates).
 
 Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
+
+**Email/password login**: `POST /api/auth/login` with JSON `email` and `password` returns `access_token` and `refresh_token`. `POST /api/auth/refresh` with `refresh_token` rotates credentials. Requires `JWT_SECRET` and users in the `users` table (manage via `POST /api/users` as admin).
 
 ### API idempotency (`Idempotency-Key`)
 
@@ -234,7 +238,9 @@ The module `src/claim_agent/config/settings.py` provides backward-compatible fun
 | `get_retention_period_years()` | Retention period from compliance or `RETENTION_PERIOD_YEARS` |
 | `get_retention_by_state()` | State-specific retention periods (years) from `STATE_RETENTION_PATH` |
 | `get_api_keys_config()` | API keys mapping (key -> role) from `API_KEYS` or `CLAIMS_API_KEY` |
+| `get_api_key_entries()` | API keys as `ApiKeyEntry` (role + optional identity) for `key:role:user_id` |
 | `get_jwt_secret()` | JWT secret for Bearer token verification, or None |
+| `get_jwt_access_ttl_seconds()` / `get_jwt_refresh_ttl_seconds()` | JWT and refresh token TTLs |
 | `MAX_TOKENS_PER_CLAIM`, `MAX_LLM_CALLS_PER_CLAIM` | Token and call budgets per claim |
 | `DEFAULT_BASE_VALUE`, `DEPRECIATION_PER_YEAR`, etc. | Valuation and partial-loss defaults |
 | `get_adapter_backend(name)` | Configured adapter backend for a given adapter name |

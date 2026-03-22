@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from claim_agent.api.auth import AuthContext
+from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
 from claim_agent.api.deps import require_role
 from claim_agent.db.database import get_db_path
 from claim_agent.db.payment_repository import PaymentRepository
@@ -47,6 +48,8 @@ def create_payment(
         raise HTTPException(
             status_code=400, detail="claim_id in path and body must match"
         )
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     role = auth.role or "adjuster"
     actor_id = auth.identity or "anonymous"
     repo = _get_payment_repo()
@@ -76,11 +79,11 @@ def list_payments(
     status: Optional[PaymentStatus] = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    auth: AuthContext = RequireAdjuster,
 ) -> ClaimPaymentList:
     """List payments for a claim."""
     claim_repo = ClaimRepository(db_path=get_db_path())
-    if claim_repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     repo = _get_payment_repo()
     payments, total = repo.get_payments_for_claim(
         claim_id, status=status.value if status else None, limit=limit, offset=offset
@@ -101,8 +104,11 @@ def list_payments(
 def get_payment(
     claim_id: str,
     payment_id: int,
+    auth: AuthContext = RequireAdjuster,
 ) -> ClaimPayment:
     """Get a single payment by ID."""
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
     if payment is None:
@@ -125,6 +131,8 @@ def issue_payment(
     body: Optional[IssuePaymentBody] = Body(None),
 ) -> ClaimPayment:
     """Transition payment from authorized to issued. Optionally set check_number."""
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     actor_id = auth.identity or "anonymous"
     check_number = body.check_number if body else None
     repo = _get_payment_repo()
@@ -156,6 +164,8 @@ def clear_payment(
     auth: AuthContext = RequireAdjuster,
 ) -> ClaimPayment:
     """Transition payment from issued to cleared."""
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     actor_id = auth.identity or "anonymous"
     repo = _get_payment_repo()
     payment = repo.get_payment(payment_id)
@@ -185,6 +195,8 @@ def void_payment(
     body: Optional[VoidPaymentBody] = Body(None),
 ) -> ClaimPayment:
     """Void a payment (reversal workflow). Works from authorized or issued."""
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     actor_id = auth.identity or "anonymous"
     reason = body.reason if body else None
     repo = _get_payment_repo()
