@@ -115,6 +115,48 @@ def test_escalation_ambiguous_similarity_triggers():
     assert "ambiguous_similarity" in data["escalation_reasons"]
 
 
+def test_validate_router_classification_uses_minimized_data():
+    """Router validation prompt should use minimized claim data, not full claim payload."""
+    from unittest.mock import patch
+
+    from claim_agent.tools.escalation_logic import validate_router_classification_impl
+
+    claim_data = {
+        "claim_id": "CLM-123",
+        "policy_number": "POL-12345-001",
+        "vin": "1HGCM82633A123456",
+        "incident_description": "Rear-end collision at stoplight",
+        "damage_description": "Rear bumper damage",
+        "claimant_name": "Jane Doe",  # not allowed for router payload
+        "secret_field": "must_not_be_sent",
+    }
+
+    mocked_response = type(
+        "MockResp",
+        (),
+        {
+            "choices": [type("Choice", (), {"message": type("Msg", (), {"content": "{\"claim_type\":\"new\",\"confidence\":0.8,\"reasoning\":\"ok\"}"})()})()],
+            "usage": type("Usage", (), {"prompt_tokens": 10, "completion_tokens": 5})(),
+            "model": "test-model",
+        },
+    )()
+
+    with patch("claim_agent.tools.escalation_logic.litellm") as mock_litellm:
+        mock_litellm.completion.return_value = mocked_response
+
+        result = validate_router_classification_impl(
+            claim_data,
+            "new",
+            0.6,
+            "initial router output",
+        )
+
+    assert '"claim_type": "new"' in result
+    called_prompt = mock_litellm.completion.call_args.kwargs["messages"][0]["content"]
+    assert "secret_field" not in called_prompt
+    assert "claimant_name" not in called_prompt
+
+
 def test_escalation_priority_multiple_reasons():
     """Multiple escalation reasons yield higher priority."""
     from claim_agent.tools.escalation_logic import compute_escalation_priority_impl
