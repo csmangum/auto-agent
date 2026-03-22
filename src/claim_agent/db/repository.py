@@ -3433,7 +3433,6 @@ class ClaimRepository:
             h1_claim = hop1_claims_by_id.get(h1_id)
             if h1_claim is None:
                 continue
-            nodes.append({"id": h1_id, "type": "claim"})
             rtypes = _resolve_edge_relations(
                 root_vins,
                 root_addresses,
@@ -3445,6 +3444,7 @@ class ClaimRepository:
             )
             if not rtypes:
                 continue
+            nodes.append({"id": h1_id, "type": "claim"})
             edges.append({"from": claim_id, "to": h1_id, "relations": sorted(set(rtypes))})
             if _HIGH_RISK_RELATIONS & set(rtypes):
                 high_risk_link_count += 1
@@ -3452,11 +3452,11 @@ class ClaimRepository:
         # Hop-2 edges: hop1 → hop2
         if effective_depth >= 2:
             added_hop2_edges: set[tuple[str, str]] = set()
+            added_hop2_nodes: set[str] = set()
             for h2_id in sorted(hop2_ids):
                 h2_claim = hop2_claims_by_id.get(h2_id)
                 if h2_claim is None:
                     continue
-                nodes.append({"id": h2_id, "type": "claim"})
                 h2_parties = hop2_parties_by_id.get(h2_id, [])
                 for h1_id in sorted(hop1_ids):
                     if (h1_id, h2_id) in added_hop2_edges:
@@ -3480,6 +3480,9 @@ class ClaimRepository:
                     )
                     if not rtypes:
                         continue
+                    if h2_id not in added_hop2_nodes:
+                        nodes.append({"id": h2_id, "type": "claim"})
+                        added_hop2_nodes.add(h2_id)
                     edges.append(
                         {"from": h1_id, "to": h2_id, "relations": sorted(set(rtypes))}
                     )
