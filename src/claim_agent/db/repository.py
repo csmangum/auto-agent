@@ -112,6 +112,28 @@ def _generate_claim_id(prefix: str = "CLM") -> str:
 
 
 _DENIAL_LETTER_DELIVERY_METHODS = {"mail", "email", "certified_mail"}
+# Tracking IDs are external carrier references; cap to a conservative varchar-like size.
+_MAX_DENIAL_LETTER_TRACKING_ID = 255
+
+
+def _normalize_denial_letter_delivery_method(method: str | None) -> str | None:
+    """Normalize optional denial letter delivery method.
+
+    Returns lowercase method for accepted values (mail, email, certified_mail).
+    Returns ``None`` when value is missing or empty after trimming.
+    Raises ``ValueError`` for any non-empty unsupported value.
+    """
+    if not isinstance(method, str):
+        return None
+    normalized = method.strip().lower()
+    # Empty strings are treated as "not provided" for optional metadata.
+    if not normalized:
+        return None
+    if normalized not in _DENIAL_LETTER_DELIVERY_METHODS:
+        raise ValueError(
+            "denial_letter_delivery_method must be one of: mail, email, certified_mail"
+        )
+    return normalized
 
 
 def _claim_row_for_status_validation(row_d: dict[str, Any]) -> dict[str, Any]:
@@ -2495,23 +2517,11 @@ class ClaimRepository:
         """Record UCSPA-compliant denial letter (written, specific, with appeal rights)."""
         safe_reason = sanitize_denial_reason(denial_reason) or "Coverage denied"
         safe_actor = sanitize_actor_id(actor_id)
-        delivery_method = denial_letter_delivery_method.strip().lower() if isinstance(
-            denial_letter_delivery_method, str
-        ) else None
-        if delivery_method and delivery_method not in _DENIAL_LETTER_DELIVERY_METHODS:
-            raise ValueError(
-                "denial_letter_delivery_method must be one of: mail, email, certified_mail"
-            )
-        tracking_id = (
-            denial_letter_tracking_id.strip()[:255]
-            if isinstance(denial_letter_tracking_id, str) and denial_letter_tracking_id.strip()
-            else None
-        )
-        delivered_at = (
-            denial_letter_delivered_at.strip()
-            if isinstance(denial_letter_delivered_at, str) and denial_letter_delivered_at.strip()
-            else None
-        )
+        delivery_method = _normalize_denial_letter_delivery_method(denial_letter_delivery_method)
+        tracking_id_raw = (denial_letter_tracking_id or "").strip()
+        tracking_id = tracking_id_raw[:_MAX_DENIAL_LETTER_TRACKING_ID] if tracking_id_raw else None
+        delivered_at_raw = (denial_letter_delivered_at or "").strip()
+        delivered_at = delivered_at_raw if delivered_at_raw else None
         if delivered_at:
             try:
                 datetime.fromisoformat(delivered_at.replace("Z", "+00:00"))

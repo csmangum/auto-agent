@@ -1,5 +1,6 @@
 """Tests for UCSPA (Unfair Claims Settlement Practices Act) compliance."""
 
+import json
 from datetime import date
 
 import pytest
@@ -213,7 +214,6 @@ def test_record_denial_letter(temp_db):
     assert latest_denial.get("after_state") is not None
     after_state = latest_denial["after_state"]
     if isinstance(after_state, str):
-        import json
         after_state = json.loads(after_state)
     assert after_state.get("denial_letter_delivery_method") == "certified_mail"
     assert after_state.get("denial_letter_tracking_id") == "USPS-9407-1234-5678-9012"
@@ -243,6 +243,32 @@ def test_record_denial_letter_invalid_delivery_method_raises(temp_db):
             "Policy exclusion: pre-existing damage",
             "Denial letter body",
             denial_letter_delivery_method="carrier_pigeon",
+        )
+
+
+def test_record_denial_letter_invalid_delivered_at_raises(temp_db):
+    """record_denial_letter rejects malformed delivery confirmation timestamps."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-001",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2020,
+        vehicle_make="Honda",
+        vehicle_model="Accord",
+        incident_date=date(2026, 3, 1),
+        incident_description="Test",
+        damage_description="Test",
+    )
+    claim_id = repo.create_claim(claim_input)
+    repo.update_claim_status(claim_id, "processing")
+    repo.update_claim_status(claim_id, "denied")
+
+    with pytest.raises(ValueError, match="denial_letter_delivered_at must be a valid ISO-8601 timestamp"):
+        repo.record_denial_letter(
+            claim_id,
+            "Policy exclusion: pre-existing damage",
+            "Denial letter body",
+            denial_letter_delivered_at="2026-99-99",
         )
 
 
