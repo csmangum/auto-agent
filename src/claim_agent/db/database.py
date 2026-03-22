@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
 
@@ -873,3 +873,19 @@ def get_connection(path: str | None = None):
         conn.commit()
     finally:
         conn.close()
+
+
+@event.listens_for(Engine, "connect")
+def _sqlite_register_graph_phone_digits(dbapi_conn, _connection_record):
+    """Register SQLite UDF so relationship snapshot phone matching matches Python normalization."""
+    if not isinstance(dbapi_conn, sqlite3.Connection):
+        return
+    from claim_agent.utils.graph_contact_normalize import normalize_party_phone_for_graph
+
+    def _impl(s: str | bytes | None) -> str:
+        if s is None:
+            return ""
+        text_s = s.decode("utf-8") if isinstance(s, bytes) else str(s)
+        return normalize_party_phone_for_graph(text_s) or ""
+
+    dbapi_conn.create_function("graph_phone_digits", 1, _impl)
