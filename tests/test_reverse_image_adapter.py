@@ -1,5 +1,6 @@
 """Unit tests for the ReverseImageAdapter -- mock and stub implementations."""
 
+import json
 import os
 from pathlib import Path
 
@@ -199,29 +200,44 @@ class TestVisionLogicReverseImageIntegration:
         return img.as_uri()
 
     def test_reverse_image_matches_in_photo_forensics(self, monkeypatch, tmp_path):
-        """When REVERSE_IMAGE_ADAPTER=mock, photo_forensics contains reverse_image_matches."""
-        monkeypatch.setenv("REVERSE_IMAGE_ADAPTER", "mock")
-        monkeypatch.setenv("VISION_ADAPTER", "mock")
-
-        # Override attachment path so vision_logic allows the tmp file
+        """photo_forensics contains reverse_image_matches when the non-mock vision path runs."""
         settings_path = str(tmp_path)
+        # Patch get_settings in vision_logic's namespace so the path access check passes.
         monkeypatch.setattr(
-            "claim_agent.config.get_settings",
+            "claim_agent.tools.vision_logic.get_settings",
             lambda: _FakeSettings(settings_path),
+        )
+        # Force the non-mock (LLM) code path so the reverse-image block actually runs.
+        monkeypatch.setattr("claim_agent.tools.vision_logic._use_mock_vision", lambda: False)
+        # Ensure the reverse-image feature flag reports "mock" (not "stub").
+        monkeypatch.setattr(
+            "claim_agent.tools.vision_logic.get_adapter_backend",
+            lambda name: "mock",
+        )
+        # Stub out the LLM call to avoid needing a real API key.
+
+        class _FakeLLMResp:
+            class _Choice:
+                class _Msg:
+                    content = '{"severity": "low", "parts_affected": [], "notes": "ok"}'
+
+                message = _Msg()
+
+            choices = [_Choice()]
+
+        monkeypatch.setattr(
+            "claim_agent.tools.vision_logic.litellm.completion",
+            lambda *a, **kw: _FakeLLMResp(),
         )
 
         from claim_agent.tools.vision_logic import analyze_damage_photo_impl
 
         url = self._make_minimal_jpeg(tmp_path)
-        analyze_damage_photo_impl(url)
-        # In mock vision mode the call returns early; reverse_image is only wired
-        # for the real (LLM) path.  We validate the adapter directly here.
-        from claim_agent.adapters.mock.reverse_image import MockReverseImageAdapter
-
-        adapter = MockReverseImageAdapter()
-        matches = adapter.match_web_occurrences(b"img")
-        assert isinstance(matches, list)
-        assert all("url" in m and "match_score" in m for m in matches)
+        raw = analyze_damage_photo_impl(url)
+        data = json.loads(raw)
+        assert "reverse_image_matches" in data.get("photo_forensics", {}), (
+            "photo_forensics should contain reverse_image_matches when adapter is mock"
+        )
 
     def test_stub_backend_skips_reverse_image(self, monkeypatch, tmp_path):
         """When REVERSE_IMAGE_ADAPTER=stub, vision_logic does not call match_web_occurrences."""

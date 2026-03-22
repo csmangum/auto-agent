@@ -94,6 +94,8 @@ def analyze_damage_photo_impl(
                         fraud_cfg.get("photo_gps_incident_distance_unit", "miles")
                     ),
                 )
+                with open(path, "rb") as f:
+                    _image_bytes = f.read()
                 # Optional reverse-image / stock-photo check (feature-flagged).
                 # Default is ``mock`` (deterministic, no network). Set
                 # ``REVERSE_IMAGE_ADAPTER=stub`` to skip this block so we never call
@@ -101,8 +103,6 @@ def analyze_damage_photo_impl(
                 if get_adapter_backend("reverse_image") != "stub":
                     try:
                         ri_adapter = get_reverse_image_adapter()
-                        with open(path, "rb") as _f:
-                            _image_bytes = _f.read()
                         web_matches = ri_adapter.match_web_occurrences(_image_bytes)
                         result["photo_forensics"]["reverse_image_matches"] = web_matches
                         if web_matches:
@@ -118,8 +118,7 @@ def analyze_damage_photo_impl(
                             "Reverse-image lookup failed; continuing without it",
                             exc_info=True,
                         )
-                with open(path, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode("ascii")
+                b64 = base64.b64encode(_image_bytes).decode("ascii")
                 ext = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"
                 mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}" if ext in ("png", "gif", "webp") else "image/jpeg"
                 content_for_vision = f"data:{mime};base64,{b64}"

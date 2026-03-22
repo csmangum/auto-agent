@@ -1,32 +1,8 @@
 """Tests for REST ClaimSearch adapter."""
 
+import pytest
+
 from claim_agent.adapters.real.claim_search_rest import RestClaimSearchAdapter
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_http_client(response_json):
-    """Return a fake AdapterHttpClient that always returns *response_json*."""
-
-    class FakeResponse:
-        status_code = 200
-
-        def json(self):
-            return response_json
-
-    class FakeHttpClient:
-        def __init__(self, **kw):
-            self.posted: dict = {}
-
-        def post(self, path, *, params=None, json=None):
-            self.posted["path"] = path
-            self.posted["json"] = json
-            return FakeResponse()
-
-    return FakeHttpClient
 
 
 # ---------------------------------------------------------------------------
@@ -295,11 +271,8 @@ def test_create_rest_claim_search_adapter_raises_without_base_url(monkeypatch):
 
     from claim_agent.adapters.real.claim_search_rest import create_rest_claim_search_adapter
 
-    try:
+    with pytest.raises(ValueError, match="CLAIM_SEARCH_REST_BASE_URL"):
         create_rest_claim_search_adapter()
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "CLAIM_SEARCH_REST_BASE_URL" in str(exc)
 
 
 def test_create_rest_claim_search_adapter_builds_correctly(monkeypatch):
