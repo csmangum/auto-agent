@@ -6,6 +6,7 @@ from claim_agent.config.settings_model import (
     ADAPTER_ENV_KEYS,
     VALID_ADAPTER_BACKENDS,
     Settings,
+    StateBureauConfig,
 )
 from claim_agent.config.settings_model import (
     AuthConfig,
@@ -36,6 +37,7 @@ __all__ = [
     "PartialLossConfig",
     "RouterConfig",
     "Settings",
+    "StateBureauConfig",
     "TracingConfig",
     "VALID_ADAPTER_BACKENDS",
     "ValuationConfig",

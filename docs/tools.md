@@ -575,9 +575,21 @@ File a fraud report with the state insurance fraud bureau.
 | `claim_id` | string | Claim ID |
 | `case_id` | string | SIU case ID |
 | `state` | string (optional) | State jurisdiction (default: California) |
-| `indicators` | string (optional) | JSON array of fraud indicators |
+| `indicators` | string (optional) | JSON array of fraud indicators (JSON string) |
+| `payload_json` | string (optional) | JSON object with state form fields; merged with claim defaults and validated against the state template `required_fields` before filing |
 
-**Returns:** JSON with success, report_id, message
+Adapter behavior:
+- Uses **`FRAUD_REPORTING_ADAPTER`** (`mock`, `stub`, or `rest`) as the unified gateway for state bureau submissions
+- The validated payload (including template-required fields such as `indicators_summary`) is forwarded to the adapter; the REST backend posts it with `claim_id`, `case_id`, `state`, and `indicators`
+- `rest` requires `FRAUD_REPORTING_REST_BASE_URL` and uses configurable paths (see `FRAUD_REPORTING_REST_*` in `.env.example`)
+- Transient adapter failures are retried with exponential backoff
+- Successful filings are persisted to `fraud_report_filings` (including template id and a redacted payload summary for audit)
+
+**Returns:** JSON object:
+- **Success:** `success`, `report_id`, `claim_id`, `case_id`, `state`, `indicators_count`, `message`, `validated_required_fields`
+- **Validation / client error:** `success: false`, `validation_error: true`, `error`, `claim_id`, `case_id`, `state`; when required fields are missing: `missing_required_fields`, `required_fields`, `can_retry`
+- **Invalid `payload_json`:** `success: false`, `validation_error: true`, `error` describing invalid JSON
+- **Adapter failure:** `tool_failure: true`, `error`, optional `retryable`
 
 ---
 

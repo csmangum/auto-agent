@@ -150,6 +150,7 @@ def file_fraud_report_state_bureau(
     case_id: str,
     state: str = "California",
     indicators: str = "[]",
+    payload_json: str = "{}",
 ) -> str:
     """File a fraud report with the state insurance fraud bureau.
 
@@ -161,8 +162,11 @@ def file_fraud_report_state_bureau(
         case_id: The SIU case ID.
         state: State jurisdiction (default: California).
         indicators: JSON array of fraud indicators.
+        payload_json: Optional JSON object with state form fields; validated against
+            state template required_fields before filing.
 
     Returns:
-        JSON with success, report_id, message.
+        JSON with success/report_id on success; structured validation error details
+        on missing required fields.
     """
-    return file_fraud_report_state_bureau_impl(claim_id, case_id, state, indicators)
+    return file_fraud_report_state_bureau_impl(claim_id, case_id, state, indicators, payload_json)

@@ -1,11 +1,13 @@
 """Compliance API routes: fraud reporting, mandatory referrals, filing status."""
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from claim_agent.api.deps import require_role
+from claim_agent.compliance.fraud_report_templates import get_fraud_report_template
 from claim_agent.db.database import get_connection
 from claim_agent.rag.constants import _STATE_ABBREV_TO_CANONICAL, normalize_state
 
@@ -13,9 +15,20 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 router = APIRouter(tags=["compliance"])
 
-_CLAIM_COLS = ("id", "policy_number", "vin", "status", "claim_type", "siu_case_id", "loss_state", "created_at")
+_CLAIM_COLS = (
+    "id",
+    "policy_number",
+    "vin",
+    "status",
+    "claim_type",
+    "siu_case_id",
+    "loss_state",
+    "incident_date",
+    "created_at",
+)
 _FILING_COLS = ("claim_id", "filing_type", "report_id", "state", "filed_at")
 _CANONICAL_TO_ABBREV = {v: k for k, v in _STATE_ABBREV_TO_CANONICAL.items()}
+_NICB_DUE_SOON_THRESHOLD = timedelta(days=2)
 
 
 def _state_filter_values(state: str) -> tuple[str, ...]:
@@ -50,6 +63,70 @@ def _required_filing_types_for_claim(claim: dict[str, Any]) -> list[str]:
     if status_norm == "fraud_confirmed":
         return ["state_bureau", "nicb", "niss"]
     return []
+
+
+def _parse_flexible_iso_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = f"{s[:-1]}+00:00"
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        try:
+            dt = datetime.fromisoformat(f"{s}T00:00:00+00:00")
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _nicb_deadline_days_for_claim(claim: dict[str, Any]) -> int:
+    state = claim.get("loss_state")
+    tpl = get_fraud_report_template(state if isinstance(state, str) else None)
+    days = tpl.get("filing_deadline_days") if isinstance(tpl, dict) else None
+    if days is None:
+        return 30
+    try:
+        n = int(days)
+        return n if n > 0 else 30
+    except (TypeError, ValueError):
+        return 30
+
+
+def _nicb_deadline_summary(
+    claim: dict[str, Any],
+    filings: list[dict[str, Any]],
+    *,
+    now: datetime,
+) -> dict[str, Any]:
+    incident_dt = _parse_flexible_iso_datetime(claim.get("incident_date"))
+    if incident_dt is None:
+        return {
+            "nicb_required": "nicb" in _required_filing_types_for_claim(claim),
+            "nicb_due_at": None,
+            "nicb_overdue": False,
+            "nicb_alert": None,
+        }
+
+    nicb_due_at = incident_dt + timedelta(days=_nicb_deadline_days_for_claim(claim))
+    nicb_due_at_iso = nicb_due_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    nicb_filings = [f for f in filings if f.get("filing_type") == "nicb"]
+    nicb_filed = bool(nicb_filings)
+    nicb_required = "nicb" in _required_filing_types_for_claim(claim)
+    overdue = nicb_required and (not nicb_filed) and now > nicb_due_at
+    due_soon = nicb_required and (not nicb_filed) and (not overdue) and (nicb_due_at - now) <= _NICB_DUE_SOON_THRESHOLD
+    alert = "overdue" if overdue else ("due_soon" if due_soon else None)
+    return {
+        "nicb_required": nicb_required,
+        "nicb_due_at": nicb_due_at_iso,
+        "nicb_overdue": overdue,
+        "nicb_alert": alert,
+    }
 
 
 @router.get("/compliance/fraud-reporting", dependencies=[RequireAdjuster])
@@ -91,7 +168,7 @@ def get_fraud_reporting_compliance(
         claims = conn.execute(
             text(f"""
             SELECT id, policy_number, vin, status, claim_type, siu_case_id,
-                   loss_state, created_at
+                   loss_state, incident_date, created_at
             FROM claims
             WHERE {where_sql}
             ORDER BY created_at DESC
@@ -126,6 +203,7 @@ def get_fraud_reporting_compliance(
                 })
 
         result = []
+        now = datetime.now(timezone.utc)
         for row in claims:
             c = dict(zip(_CLAIM_COLS, row))
             claim_id = c["id"]
@@ -138,6 +216,7 @@ def get_fraud_reporting_compliance(
             missing_required_filings = [
                 filing_type for filing_type in required_filing_types if filing_type not in filed_types
             ]
+            nicb_deadline = _nicb_deadline_summary(c, filings, now=now)
             result.append({
                 "claim_id": claim_id,
                 "status": c["status"],
@@ -150,6 +229,7 @@ def get_fraud_reporting_compliance(
                 "required_filing_types": required_filing_types,
                 "missing_required_filings": missing_required_filings,
                 "compliant": len(missing_required_filings) == 0,
+                **nicb_deadline,
                 "filings": filings,
             })
 
@@ -157,3 +237,28 @@ def get_fraud_reporting_compliance(
             "claims": result,
             "total": len(result),
         }
+
+
+@router.get("/compliance/fraud-reporting/deadlines", dependencies=[RequireAdjuster])
+def get_fraud_reporting_deadline_alerts(
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Return NICB filing deadline tracking and overdue alerts for mandatory filings."""
+    payload = get_fraud_reporting_compliance(state=None, limit=limit)
+    claims = payload.get("claims", [])
+    alerts = [
+        {
+            "claim_id": c["claim_id"],
+            "status": c["status"],
+            "loss_state": c.get("loss_state"),
+            "nicb_due_at": c.get("nicb_due_at"),
+            "nicb_alert": c.get("nicb_alert"),
+            "nicb_overdue": c.get("nicb_overdue"),
+        }
+        for c in claims
+        if c.get("nicb_required") and c.get("nicb_alert") is not None
+    ]
+    return {
+        "alerts": alerts,
+        "total_alerts": len(alerts),
+    }

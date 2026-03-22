@@ -136,6 +136,67 @@ class SIUAdapter(ABC):
         )
 
 
+class FraudReportingAdapter(ABC):
+    """Interface for fraud-reporting filings (state bureau, NICB, NISS)."""
+
+    @abstractmethod
+    def file_state_bureau_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        state: str,
+        indicators: list[str],
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Submit a state insurance fraud bureau report and return filing metadata.
+
+        *payload* is the validated template payload (merged with claim defaults); it is
+        forwarded to the integration backend so required fields can be submitted.
+        """
+        ...
+
+    @abstractmethod
+    def file_nicb_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        report_type: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        """Submit a NICB referral and return filing metadata."""
+        ...
+
+    @abstractmethod
+    def file_niss_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        report_type: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        """Submit a NISS referral and return filing metadata."""
+        ...
+
+
+class StateBureauAdapter(ABC):
+    """Interface for filing fraud reports with state insurance bureaus (per-state endpoints)."""
+
+    @abstractmethod
+    def submit_fraud_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        state: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        """Submit a state insurance fraud bureau report and return filing metadata."""
+        ...
+
+
 class ClaimSearchAdapter(ABC):
     """Interface for cross-carrier claim search (NICB/ISO-style)."""
 
