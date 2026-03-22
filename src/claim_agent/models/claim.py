@@ -117,6 +117,9 @@ class ClaimRecord(BaseModel):
     denial_reason: Optional[str] = Field(default=None)
     denial_letter_sent_at: Optional[str] = Field(default=None)
     denial_letter_body: Optional[str] = Field(default=None)
+    denial_letter_delivery_method: Optional[str] = Field(default=None)
+    denial_letter_tracking_id: Optional[str] = Field(default=None)
+    denial_letter_delivered_at: Optional[str] = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
