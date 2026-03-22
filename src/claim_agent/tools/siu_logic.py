@@ -426,95 +426,39 @@ def file_fraud_report_state_bureau_impl(
             "can_retry": True,
         })
 
-    # Mock: simulate filing. In production this would call state bureau API.
-    # try/except for RETRYABLE_EXCEPTIONS is for future adapter integration.
-    state_code = (state or "California").strip()[:2].upper() or "CA"
-    claim_suffix = (claim_id or "")[-6:] or "MOCK"
-    try:
-        filing = adapter.file_state_bureau_report(
-            claim_id=claim_id,
-            case_id=case_id,
-            state=state or "California",
-            indicators=ind_list,
-        )
-        report_id = str(filing.get("report_id") or "")
-        if not report_id:
-            return _adapter_error_json(
-                "State bureau filing failed: missing report_id",
-                case_id=case_id,
-                claim_id=claim_id,
-            )
-        filing_state = str(filing.get("state") or state or "California")
-        indicators_count = int(filing.get("indicators_count", len(ind_list)))
-        message = str(
-            filing.get("message")
-            or f"Fraud report filed with {filing_state} fraud bureau. Report ID: {report_id}"
-        )
-        result: dict[str, Any] = {
-            "success": True,
-            "report_id": report_id,
-            "claim_id": claim_id,
-            "case_id": case_id,
-            "state": filing_state,
-            "indicators_count": indicators_count,
-            "message": message,
-            "state": state or "California",
-            "indicators_count": len(ind_list),
-            "validated_required_fields": required_fields,
-            "message": f"Fraud report filed with {state or 'California'} fraud bureau (mock). Report ID: {report_id}",
-        }
-        _persist_fraud_filing(
-            ctx, claim_id, "state_bureau", report_id,
-            siu_case_id=case_id, state=filing_state, indicators_count=indicators_count,
-        )
-        return json.dumps(result)
-    except NotImplementedError:
-        return _fraud_reporting_not_implemented_json(
-            "State bureau",
-            claim_id=claim_id,
-            case_id=case_id,
-        )
-    except RETRYABLE_EXCEPTIONS as e:
-        logger.warning("file_fraud_report_state_bureau failed: %s", e)
-        return _adapter_error_json(
-            f"State bureau filing failed: {e!s}",
-            case_id=case_id,
-            claim_id=claim_id,
-            retryable=True,
-        )
-    except Exception as e:
-        logger.warning("file_fraud_report_state_bureau failed: %s", e, exc_info=True)
-        return _adapter_error_json(
-            f"State bureau filing failed: {e!s}",
-            case_id=case_id,
-            claim_id=claim_id,
-        )
-    from claim_agent.adapters.registry import get_state_bureau_adapter
-
-    adapter = ctx.adapters.state_bureau if ctx else get_state_bureau_adapter()
+    # State bureau filings go through FRAUD_REPORTING_ADAPTER (unified gateway or mock).
+    indicators_str = [str(i) for i in ind_list]
+    state_arg = state or "California"
     for attempt in range(_ADAPTER_RETRY_ATTEMPTS):
         try:
-            filing = adapter.submit_fraud_report(
+            filing = adapter.file_state_bureau_report(
                 claim_id=claim_id,
                 case_id=case_id,
-                state=state or "California",
-                indicators=[str(i) for i in ind_list],
+                state=state_arg,
+                indicators=indicators_str,
             )
-            report_id = str(filing.get("report_id") or "").strip()
+            report_id = str(filing.get("report_id") or "")
             if not report_id:
-                raise ValueError("State bureau adapter returned empty report_id")
-            filed_state = str(filing.get("state") or state or "California").strip() or "California"
-            message = str(filing.get("message") or "").strip() or (
-                f"Fraud report filed with {filed_state} fraud bureau. Report ID: {report_id}"
+                return _adapter_error_json(
+                    "State bureau filing failed: missing report_id",
+                    case_id=case_id,
+                    claim_id=claim_id,
+                )
+            filing_state = str(filing.get("state") or state_arg)
+            indicators_count = int(filing.get("indicators_count", len(indicators_str)))
+            message = str(
+                filing.get("message")
+                or f"Fraud report filed with {filing_state} fraud bureau. Report ID: {report_id}"
             )
             result: dict[str, Any] = {
                 "success": True,
                 "report_id": report_id,
                 "claim_id": claim_id,
                 "case_id": case_id,
-                "state": filed_state,
-                "indicators_count": len(ind_list),
+                "state": filing_state,
+                "indicators_count": indicators_count,
                 "message": message,
+                "validated_required_fields": required_fields,
             }
             _persist_fraud_filing(
                 ctx,
@@ -522,15 +466,15 @@ def file_fraud_report_state_bureau_impl(
                 "state_bureau",
                 report_id,
                 siu_case_id=case_id,
-                state=filed_state,
-                indicators_count=len(ind_list),
+                state=filing_state,
+                indicators_count=indicators_count,
             )
             return json.dumps(result)
         except NotImplementedError:
-            return _adapter_error_json(
-                "State bureau filing not implemented",
-                case_id=case_id,
+            return _fraud_reporting_not_implemented_json(
+                "State bureau",
                 claim_id=claim_id,
+                case_id=case_id,
             )
         except RETRYABLE_EXCEPTIONS as e:
             if attempt < _ADAPTER_RETRY_ATTEMPTS - 1:
@@ -544,6 +488,7 @@ def file_fraud_report_state_bureau_impl(
                 )
                 time.sleep(wait)
             else:
+                logger.warning("file_fraud_report_state_bureau failed: %s", e)
                 return _adapter_error_json(
                     f"State bureau filing failed after retries: {e!s}",
                     case_id=case_id,
@@ -557,7 +502,6 @@ def file_fraud_report_state_bureau_impl(
                 case_id=case_id,
                 claim_id=claim_id,
             )
-    # Defensive: unreachable when _ADAPTER_RETRY_ATTEMPTS >= 1
     return _adapter_error_json(
         "State bureau filing failed: no attempts made",
         case_id=case_id,

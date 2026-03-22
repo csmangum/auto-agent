@@ -862,8 +862,9 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 # Adapters that have a REST implementation; "rest" is invalid for all others
-REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy", "fraud_reporting"})
-REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy", "state_bureau"})
+REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset(
+    {"policy", "fraud_reporting", "state_bureau"}
+)
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
 VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
 STATE_BUREAU_SUPPORTED_CODES: tuple[str, ...] = ("CA", "TX", "FL", "NY", "GA")
@@ -919,8 +920,23 @@ class FraudReportingRestConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="FRAUD_REPORTING_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="Fraud filing gateway base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    state_bureau_path: str = Field(default="/fraud/state-bureau")
+    nicb_path: str = Field(default="/fraud/nicb")
+    niss_path: str = Field(default="/fraud/niss")
+    response_key: str = Field(default="", description="Optional envelope JSON key")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
 class StateBureauConfig(BaseSettings):
-    """State bureau fraud filing adapter configuration."""
+    """Per-state bureau REST adapter configuration (STATE_BUREAU_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
         env_prefix="STATE_BUREAU_",
@@ -929,14 +945,6 @@ class StateBureauConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    base_url: str = Field(default="", description="Fraud filing API base URL")
-    auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: str = Field(default="", description="Bearer token or API key")
-    state_bureau_path: str = Field(default="/fraud/state-bureau")
-    nicb_path: str = Field(default="/fraud/nicb")
-    niss_path: str = Field(default="/fraud/niss")
-    response_key: str = Field(default="", description="Optional envelope JSON key")
-    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
     auth_header: str = Field(default="Authorization", description="Auth header name")
     auth_value: str = Field(default="", description="Bearer token or API key")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")

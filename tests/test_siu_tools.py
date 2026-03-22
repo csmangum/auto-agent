@@ -558,14 +558,14 @@ class TestFileFraudReportStateBureauImpl:
         assert "Invalid payload_json" in data["error"]
     def test_retries_on_transient_failure_then_succeeds(self, monkeypatch):
         """file_fraud_report_state_bureau_impl retries transient adapter failures."""
-        from claim_agent.adapters.registry import get_state_bureau_adapter
+        from claim_agent.adapters.registry import get_fraud_reporting_adapter
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
 
-        adapter = get_state_bureau_adapter()
-        original = adapter.submit_fraud_report
+        adapter = get_fraud_reporting_adapter()
+        original = adapter.file_state_bureau_report
         call_count = 0
 
-        def patched_submit_fraud_report(
+        def patched_file_state_bureau_report(
             *,
             claim_id: str,
             case_id: str,
@@ -583,13 +583,37 @@ class TestFileFraudReportStateBureauImpl:
                 indicators=indicators,
             )
 
-        monkeypatch.setattr(adapter, "submit_fraud_report", patched_submit_fraud_report)
-        result = file_fraud_report_state_bureau_impl(
-            "CLM-RETRY-STATE-001",
-            "SIU-001",
-            state="California",
-            indicators='["staged"]',
+        monkeypatch.setattr(adapter, "file_state_bureau_report", patched_file_state_bureau_report)
+
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
+
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-FRAUD-RETRY-ADAPTER",
+                vin="VIN-FRAUD-RETRY",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident",
+                damage_description="Inflated damage",
+                estimated_damage=5000,
+            )
         )
+        case_id = "SIU-RETRY-ADAPTER"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_fraud_report_state_bureau_impl(
+                claim_id,
+                case_id,
+                state="California",
+                indicators='["staged"]',
+                payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged"}',
+            )
         data = json.loads(result)
         assert data["success"] is True
         assert data["report_id"].startswith("FRB-CA-")

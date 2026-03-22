@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from claim_agent.adapters.base import FraudReportingAdapter
+from claim_agent.adapters.state_bureau_common import normalize_state_name_and_code
 
 
 class MockFraudReportingAdapter(FraudReportingAdapter):
@@ -18,7 +19,7 @@ class MockFraudReportingAdapter(FraudReportingAdapter):
         state: str,
         indicators: list[str],
     ) -> dict[str, Any]:
-        state_code = (state or "California").strip()[:2].upper() or "CA"
+        _, state_code = normalize_state_name_and_code(state or "California")
         claim_suffix = (claim_id or "")[-6:] or "MOCK"
         report_id = f"FRB-{state_code}-{claim_suffix}-MOCK"
         return {
