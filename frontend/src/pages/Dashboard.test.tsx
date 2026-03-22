@@ -31,9 +31,10 @@ const mockClaimsData = {
 vi.mock('../api/queries', () => ({
   useClaimsStats: vi.fn(),
   useClaims: vi.fn(),
+  useFraudReportingCompliance: vi.fn(),
 }));
 
-const { useClaimsStats, useClaims } = await import('../api/queries');
+const { useClaimsStats, useClaims, useFraudReportingCompliance } = await import('../api/queries');
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -59,6 +60,11 @@ describe('Dashboard', () => {
     } as never);
     vi.mocked(useClaims).mockReturnValue({
       data: undefined,
+      isLoading: false,
+      error: null,
+    } as never);
+    vi.mocked(useFraudReportingCompliance).mockReturnValue({
+      data: { claims: [], total: 0 },
       isLoading: false,
       error: null,
     } as never);
