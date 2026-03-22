@@ -214,15 +214,22 @@ class TestSqliteHelpers:
 
 
 class TestInsertedRowcount:
-    def test_uses_int_rowcount_when_available(self):
+    def test_always_returns_batch_len(self):
+        """After execute_batch, cursor.rowcount is unreliable (only reflects last page).
+        
+        The helper always returns batch_len because execute_batch internally splits
+        parameters into pages and cursor.rowcount only contains the count from the
+        last page, not the cumulative total.
+        """
         cur = MagicMock()
-        cur.rowcount = 3
-        assert mig._inserted_rowcount(cur, 5) == 3
-
-    def test_falls_back_to_batch_len_when_rowcount_invalid(self):
+        cur.rowcount = 100  # Simulates last page count
+        # Should ignore rowcount and use batch_len
+        assert mig._inserted_rowcount(cur, 500) == 500
+        
+    def test_returns_batch_len_regardless_of_rowcount(self):
         cur = MagicMock()
-        cur.rowcount = MagicMock()
-        assert mig._inserted_rowcount(cur, 4) == 4
+        cur.rowcount = MagicMock()  # Invalid rowcount
+        assert mig._inserted_rowcount(cur, 250) == 250
 
 
 # ---------------------------------------------------------------------------

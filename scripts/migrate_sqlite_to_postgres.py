@@ -285,10 +285,13 @@ def _pg_enable_append_only_triggers(pg_conn: Any, table: str) -> None:
 
 
 def _inserted_rowcount(pg_cur: Any, batch_len: int) -> int:
-    """Return rows inserted in the last batch; fall back to batch_len if rowcount unavailable."""
-    rc = getattr(pg_cur, "rowcount", -1)
-    if isinstance(rc, int) and rc >= 0:
-        return rc
+    """Return rows inserted in the last batch.
+
+    Always returns batch_len because cursor.rowcount after execute_batch is unreliable:
+    psycopg2's execute_batch splits parameters into pages (default 100) and rowcount
+    only reflects the last page, not the cumulative total.
+    See: https://www.psycopg.org/docs/cursor.html and psycopg2 issue #540.
+    """
     return batch_len
 
 
