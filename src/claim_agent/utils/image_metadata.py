@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import date, datetime
 from typing import Any, cast
 
@@ -98,10 +99,44 @@ def extract_exif_metadata(image_path: str) -> dict[str, Any]:
     return result
 
 
+def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two WGS84 points in kilometers."""
+    r = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dl / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+    return r * c
+
+
+_KM_PER_MILE = 1.609344
+
+
+def _coordinate_pair(
+    lat: Any, lon: Any
+) -> tuple[float, float] | None:
+    if lat is None or lon is None:
+        return None
+    try:
+        la = float(lat)
+        lo = float(lon)
+    except (TypeError, ValueError):
+        return None
+    if not (-90.0 <= la <= 90.0 and -180.0 <= lo <= 180.0):
+        return None
+    return (la, lo)
+
+
 def analyze_photo_forensics(
     metadata: dict[str, Any],
     *,
     incident_date: str | date | datetime | None = None,
+    incident_latitude: Any = None,
+    incident_longitude: Any = None,
+    photo_gps_incident_max_distance: float = 50.0,
+    photo_gps_incident_distance_unit: str = "miles",
 ) -> dict[str, Any]:
     """Analyze EXIF metadata for simple fraud-oriented anomalies."""
     anomalies: list[str] = []
@@ -149,6 +184,28 @@ def analyze_photo_forensics(
     gps = metadata.get("gps")
     if gps is None and not extraction_failed:
         anomalies.append("photo_missing_gps")
+
+    incident_ll = _coordinate_pair(incident_latitude, incident_longitude)
+    if (
+        not extraction_failed
+        and isinstance(gps, tuple)
+        and len(gps) == 2
+        and incident_ll is not None
+    ):
+        try:
+            plat = float(gps[0])
+            plon = float(gps[1])
+        except (TypeError, ValueError):
+            plat = plon = float("nan")
+        if not (math.isnan(plat) or math.isnan(plon)):
+            dist_km = haversine_distance_km(plat, plon, incident_ll[0], incident_ll[1])
+            unit = str(photo_gps_incident_distance_unit).strip().lower()
+            if unit in ("km", "kilometer", "kilometers"):
+                threshold_km = float(photo_gps_incident_max_distance)
+            else:
+                threshold_km = float(photo_gps_incident_max_distance) * _KM_PER_MILE
+            if threshold_km > 0 and dist_km > threshold_km:
+                anomalies.append("photo_gps_far_from_incident")
 
     return {
         "anomalies": sorted(set(anomalies)),

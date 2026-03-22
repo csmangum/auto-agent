@@ -386,10 +386,12 @@ class ClaimRepository:
                 INSERT INTO claims (
                     id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
                     incident_date, incident_description, damage_description, estimated_damage,
-                    claim_type, loss_state, status, attachments, incident_id, retention_tier
+                    claim_type, loss_state, status, attachments, incident_id, retention_tier,
+                    incident_latitude, incident_longitude
                 ) VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
                          :incident_date, :incident_description, :damage_description, :estimated_damage,
-                         :claim_type, :loss_state, :status, :attachments, :incident_id, :retention_tier)
+                         :claim_type, :loss_state, :status, :attachments, :incident_id, :retention_tier,
+                         :incident_latitude, :incident_longitude)
                 """),
                 {
                     "id": claim_id,
@@ -408,6 +410,8 @@ class ClaimRepository:
                     "attachments": attachments_json,
                     "incident_id": incident_id_val,
                     "retention_tier": RETENTION_TIER_ACTIVE,
+                    "incident_latitude": claim_input.incident_latitude,
+                    "incident_longitude": claim_input.incident_longitude,
                 },
             )
             after_state = json.dumps(

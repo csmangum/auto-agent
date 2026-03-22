@@ -11,13 +11,24 @@ from urllib.parse import unquote, urlparse
 import litellm
 
 from claim_agent.config import get_settings
-from claim_agent.config.settings import get_adapter_backend, get_mock_crew_config, get_mock_image_config
+from claim_agent.config.settings import (
+    get_adapter_backend,
+    get_fraud_config,
+    get_mock_crew_config,
+    get_mock_image_config,
+)
 from claim_agent.mock_crew.vision_mock import analyze_damage_photo_mock
+from claim_agent.observability.logger import get_current_claim_log_context
 from claim_agent.utils.image_metadata import analyze_photo_forensics, extract_exif_metadata
 
 logger = logging.getLogger(__name__)
 
 MAX_VISION_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
+def _effective_claim_context(claim_context: dict[str, Any] | None) -> dict[str, Any]:
+    """Merge explicit claim_context with thread-local workflow context (explicit wins)."""
+    return {**get_current_claim_log_context(), **(claim_context or {})}
 
 
 def _use_mock_vision() -> bool:
@@ -39,7 +50,9 @@ def analyze_damage_photo_impl(
 ) -> str:
     """Analyze a damage photo using a vision model or mock (claim-context derived)."""
     if _use_mock_vision():
-        return analyze_damage_photo_mock(image_url, damage_description, claim_context)
+        return analyze_damage_photo_mock(
+            image_url, damage_description, _effective_claim_context(claim_context)
+        )
 
     result: dict[str, Any] = {
         "severity": "unknown",
@@ -66,9 +79,19 @@ def analyze_damage_photo_impl(
                     result["error"] = f"File size ({file_size} bytes) exceeds the limit for vision analysis"
                     return json.dumps(result)
                 exif_metadata = extract_exif_metadata(path)
+                eff = _effective_claim_context(claim_context)
+                fraud_cfg = get_fraud_config()
                 result["photo_forensics"] = analyze_photo_forensics(
                     exif_metadata,
-                    incident_date=(claim_context or {}).get("incident_date"),
+                    incident_date=eff.get("incident_date"),
+                    incident_latitude=eff.get("incident_latitude"),
+                    incident_longitude=eff.get("incident_longitude"),
+                    photo_gps_incident_max_distance=float(
+                        fraud_cfg.get("photo_gps_incident_max_distance", 50.0)
+                    ),
+                    photo_gps_incident_distance_unit=str(
+                        fraud_cfg.get("photo_gps_incident_distance_unit", "miles")
+                    ),
                 )
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode("ascii")

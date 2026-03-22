@@ -78,6 +78,12 @@ class ClaimRecord(BaseModel):
     estimated_damage: Optional[float] = Field(default=None, description="Estimated repair cost")
     claim_type: Optional[str] = Field(default=None, description="Workflow classification")
     loss_state: Optional[str] = Field(default=None, description="Loss jurisdiction")
+    incident_latitude: Optional[float] = Field(
+        default=None, description="Optional WGS84 latitude of incident (geocode)"
+    )
+    incident_longitude: Optional[float] = Field(
+        default=None, description="Optional WGS84 longitude of incident (geocode)"
+    )
     status: Optional[str] = Field(default=None, description="Claim status")
     payout_amount: Optional[float] = Field(default=None, description="Payout amount when set")
     reserve_amount: Optional[float] = Field(default=None, description="Reserve amount")
@@ -166,6 +172,28 @@ class ClaimInput(BaseModel):
         default=None,
         description="Location where the incident occurred (e.g., 'California', 'TX', 'Canada'). Used for policy territory verification.",
     )
+    incident_latitude: Optional[float] = Field(
+        default=None,
+        ge=-90.0,
+        le=90.0,
+        description="Optional WGS84 latitude of incident for photo GPS distance checks.",
+    )
+    incident_longitude: Optional[float] = Field(
+        default=None,
+        ge=-180.0,
+        le=180.0,
+        description="Optional WGS84 longitude of incident for photo GPS distance checks.",
+    )
+
+    @model_validator(mode="after")
+    def _incident_coordinates_both_or_neither(self) -> "ClaimInput":
+        has_lat = self.incident_latitude is not None
+        has_lon = self.incident_longitude is not None
+        if has_lat != has_lon:
+            raise ValueError(
+                "incident_latitude and incident_longitude must both be set or both omitted"
+            )
+        return self
 
 
 class LiabilityDeterminationOutput(BaseModel):

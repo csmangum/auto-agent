@@ -30,6 +30,12 @@ def _get_claim_context() -> dict[str, Any]:
     return getattr(_context, "claim_data", {})
 
 
+def get_current_claim_log_context() -> dict[str, Any]:
+    """Return a copy of thread-local claim context (for tools, e.g. vision forensics)."""
+    raw = _get_claim_context()
+    return dict(raw) if raw else {}
+
+
 def _set_claim_context(data: dict[str, Any]) -> None:
     """Set the claim context in thread-local storage."""
     _context.claim_data = data

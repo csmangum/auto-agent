@@ -234,10 +234,21 @@ def run_claim_workflow(
 
     metrics.start_claim(claim_id)
 
+    _incident_date = claim_data.get("incident_date")
+    if _incident_date is not None and hasattr(_incident_date, "isoformat"):
+        _incident_date_str = _incident_date.isoformat()
+    elif isinstance(_incident_date, str):
+        _incident_date_str = _incident_date
+    else:
+        _incident_date_str = None
+
     with claim_context(
         claim_id=claim_id,
         policy_number=claim_data.get("policy_number"),
         vin=claim_data.get("vin"),
+        incident_date=_incident_date_str,
+        incident_latitude=claim_data.get("incident_latitude"),
+        incident_longitude=claim_data.get("incident_longitude"),
     ):
         repo.update_claim_status(claim_id, STATUS_PROCESSING, actor_id=_actor)
         logger.log_event("workflow_started", status=STATUS_PROCESSING)

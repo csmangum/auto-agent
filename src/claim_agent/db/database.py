@@ -555,6 +555,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         ]:
             if col not in columns:
                 conn.execute(f"ALTER TABLE claims ADD COLUMN {col} {col_type}")
+        if "incident_latitude" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN incident_latitude REAL")
+        if "incident_longitude" not in columns:
+            conn.execute("ALTER TABLE claims ADD COLUMN incident_longitude REAL")
         conn.execute(IDX_CLAIMS_INCIDENT_ID)
     except sqlite3.OperationalError:
         pass

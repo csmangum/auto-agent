@@ -385,13 +385,22 @@ def perform_fraud_assessment_impl(
             normalized = []
         if normalized:
             exif_score = int(fraud_cfg.get("photo_exif_anomaly_score", 10))
-            result["fraud_score"] += exif_score * len(normalized)
+            gps_far_score = int(
+                fraud_cfg.get("photo_gps_far_from_incident_score", exif_score)
+            )
+            photo_score_added = 0
+            for anomaly in normalized:
+                if anomaly == "photo_gps_far_from_incident":
+                    photo_score_added += gps_far_score
+                else:
+                    photo_score_added += exif_score
+            result["fraud_score"] += photo_score_added
             for anomaly in normalized:
                 if anomaly not in result["fraud_indicators"]:
                     result["fraud_indicators"].append(anomaly)
             result["assessment_details"]["photo_forensics"] = {
                 "anomalies": normalized,
-                "score_added": exif_score * len(normalized),
+                "score_added": photo_score_added,
             }
 
     total_score = result["fraud_score"]

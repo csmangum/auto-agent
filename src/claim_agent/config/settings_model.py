@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -142,6 +142,29 @@ class FraudConfig(BaseSettings):
     claimsearch_match_threshold: int = 2
     claimsearch_match_score: int = 25
     photo_exif_anomaly_score: int = 10
+    #: Fraud score for ``photo_gps_far_from_incident`` (other EXIF anomalies use ``photo_exif_anomaly_score``).
+    photo_gps_far_from_incident_score: int = 10
+    photo_gps_incident_max_distance: float = 50.0
+    photo_gps_incident_distance_unit: Literal["miles", "km"] = "miles"
+
+    @field_validator("photo_gps_incident_max_distance", mode="before")
+    @classmethod
+    def _coerce_photo_gps_max_distance(cls, v: Any) -> float:
+        try:
+            x = float(v)
+            return x if x > 0 else 50.0
+        except (TypeError, ValueError):
+            return 50.0
+
+    @field_validator("photo_gps_incident_distance_unit", mode="before")
+    @classmethod
+    def _normalize_photo_gps_distance_unit(cls, v: Any) -> str:
+        if v is None:
+            return "miles"
+        s = str(v).strip().lower()
+        if s in ("km", "kilometer", "kilometers", "kms"):
+            return "km"
+        return "miles"
 
     @field_validator("multiple_claims_days", mode="before")
     @classmethod
@@ -167,6 +190,7 @@ class FraudConfig(BaseSettings):
         "claimsearch_match_threshold",
         "claimsearch_match_score",
         "photo_exif_anomaly_score",
+        "photo_gps_far_from_incident_score",
         mode="before",
     )
     @classmethod
@@ -187,6 +211,7 @@ class FraudConfig(BaseSettings):
             "claimsearch_match_threshold": 2,
             "claimsearch_match_score": 25,
             "photo_exif_anomaly_score": 10,
+            "photo_gps_far_from_incident_score": 10,
         }
         fallback = defaults.get(info.field_name or "", 1)
         try:

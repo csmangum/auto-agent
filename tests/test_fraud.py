@@ -391,6 +391,66 @@ class TestFraudAssessment:
         assert "photo_missing_exif" in result["fraud_indicators"]
         assert "photo_forensics" in result["assessment_details"]
 
+    def test_photo_forensics_gps_far_uses_dedicated_score(self):
+        """photo_gps_far_from_incident uses photo_gps_far_from_incident_score, not exif default."""
+        claim_data = {
+            "vin": "PHOTO456",
+            "incident_date": "2026-01-20",
+            "incident_description": "Minor collision",
+            "damage_description": "Rear bumper scratch",
+        }
+        base_cfg = {
+            "multiple_claims_days": 90,
+            "multiple_claims_threshold": 2,
+            "fraud_keyword_score": 20,
+            "multiple_claims_score": 25,
+            "timing_anomaly_score": 15,
+            "damage_mismatch_score": 20,
+            "high_risk_threshold": 50,
+            "medium_risk_threshold": 30,
+            "critical_risk_threshold": 75,
+            "critical_indicator_count": 5,
+            "velocity_window_days": 30,
+            "velocity_claim_threshold": 2,
+            "velocity_score": 20,
+            "geographic_anomaly_score": 15,
+            "provider_ring_threshold": 2,
+            "provider_ring_score": 20,
+            "graph_max_depth": 2,
+            "graph_max_nodes": 100,
+            "graph_cluster_score": 25,
+            "graph_high_risk_link_threshold": 2,
+            "graph_high_risk_score": 20,
+            "staged_pattern_score": 20,
+            "claimsearch_match_threshold": 2,
+            "claimsearch_match_score": 25,
+            "photo_exif_anomaly_score": 10,
+            "photo_gps_far_from_incident_score": 25,
+            "photo_gps_incident_max_distance": 50.0,
+            "photo_gps_incident_distance_unit": "miles",
+        }
+        with patch("claim_agent.tools.fraud_logic.get_fraud_config", return_value=base_cfg):
+            result = json.loads(
+                perform_fraud_assessment_impl(
+                    claim_data,
+                    pattern_analysis={
+                        "pattern_score": 0,
+                        "patterns_detected": [],
+                        "claim_history": [],
+                        "risk_factors": [],
+                    },
+                    cross_reference={
+                        "cross_reference_score": 0,
+                        "database_matches": [],
+                        "fraud_keywords_found": [],
+                        "recommendations": [],
+                    },
+                    photo_forensics={"anomalies": ["photo_gps_far_from_incident"]},
+                )
+            )
+        assert result["fraud_score"] == 25
+        assert result["assessment_details"]["photo_forensics"]["score_added"] == 25
+
 
 class TestFraudConfig:
     """Tests for fraud configuration values."""
