@@ -41,6 +41,9 @@ _engine: Engine | None = None
 _engine_lock = threading.Lock()
 # SQLite engines for override paths (e.g. tests)
 _sqlite_engines: dict[str, Engine] = {}
+# Read-replica engine (PostgreSQL only; None when READ_REPLICA_DATABASE_URL is not set)
+_replica_engine: Engine | None = None
+_replica_engine_lock = threading.Lock()
 
 # Async engine (PostgreSQL only, lazy init). Used by get_connection_async().
 _async_engine: AsyncEngine | None = None
@@ -460,6 +463,42 @@ def is_postgres_backend() -> bool:
     return bool(get_settings().paths.database_url)
 
 
+def has_read_replica() -> bool:
+    """True if a PostgreSQL read-replica is configured (``READ_REPLICA_DATABASE_URL`` is set).
+
+    Returns False when not using PostgreSQL or when no replica URL is provided.
+    """
+    from claim_agent.config import get_settings
+
+    paths = get_settings().paths
+    return bool(is_postgres_backend() and paths.read_replica_database_url)
+
+
+def _get_replica_engine() -> Engine:
+    """Return SQLAlchemy engine for the read replica. Lazy init with connection pooling.
+
+    Falls back to the primary engine when ``READ_REPLICA_DATABASE_URL`` is not set.
+    """
+    global _replica_engine
+    if _replica_engine is not None:
+        return _replica_engine
+    with _replica_engine_lock:
+        if _replica_engine is not None:
+            return _replica_engine
+        from claim_agent.config import get_settings
+
+        paths = get_settings().paths
+        if not paths.read_replica_database_url:
+            # No replica configured — fall back to primary
+            return _get_engine()
+        _replica_engine = create_engine(
+            paths.read_replica_database_url,
+            pool_size=paths.db_pool_size,
+            max_overflow=paths.db_max_overflow,
+        )
+    return _replica_engine
+
+
 def _get_engine() -> Engine:
     """Return SQLAlchemy engine. Lazy init with connection pooling for PostgreSQL."""
     global _engine
@@ -586,6 +625,12 @@ async def get_connection_async():
         except Exception:
             await conn.rollback()
             raise
+    global _engine, _replica_engine
+    with _engine_lock:
+        _engine = None
+        _sqlite_engines.clear()
+    with _replica_engine_lock:
+        _replica_engine = None
 
 
 def get_db_path() -> str:
@@ -964,6 +1009,37 @@ def get_connection(path: str | None = None):
     try:
         yield conn
         conn.commit()
+    finally:
+        conn.close()
+
+
+@contextmanager
+def get_replica_connection():
+    """Context manager yielding a read-only SQLAlchemy Connection to the read replica.
+
+    When ``READ_REPLICA_DATABASE_URL`` is set and ``DATABASE_URL`` is also set, the
+    connection is made to the replica. Otherwise falls back to the primary connection
+    via :func:`get_connection`.
+
+    Use this for read-heavy, non-mutating queries (reporting, analytics, audit log
+    queries, etc.) to offload traffic from the primary database.
+
+    Example::
+
+        with get_replica_connection() as conn:
+            rows = conn.execute(text("SELECT * FROM claims WHERE status = :s"), {"s": "open"}).fetchall()
+
+    Note: Do **not** use this connection for write operations — replicas are read-only.
+    """
+    if not has_read_replica():
+        with get_connection() as conn:
+            yield conn
+        return
+
+    engine = _get_replica_engine()
+    conn = engine.connect()
+    try:
+        yield conn
     finally:
         conn.close()
 
