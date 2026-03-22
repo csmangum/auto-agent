@@ -363,7 +363,7 @@ class TestSiuScopeValidation:
 
 
 class TestFileFraudReportStateBureauImpl:
-    def test_returns_mock_confirmation(self):
+    def test_returns_mock_confirmation(self, temp_db):
         """file_fraud_report_state_bureau_impl returns success and report_id."""
         from datetime import date
 
@@ -444,6 +444,14 @@ class TestFileFraudReportStateBureauImpl:
         assert filings[0]["report_id"] == data["report_id"]
         assert filings[0]["state"] == "California"
         assert filings[0]["indicators_count"] == 2
+        assert filings[0].get("template_version") == "CA-CDI-DFR-1"
+        meta_raw = filings[0].get("metadata")
+        assert meta_raw is not None
+        meta = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
+        assert "submitted_field_keys" in meta
+        assert "redacted_payload" in meta
+        assert "indicators_summary" in meta["redacted_payload"]
+        assert "claimant_name" not in meta["redacted_payload"]
 
     def test_returns_validation_error_for_missing_required_fields(self, temp_db):
         """file_fraud_report_state_bureau_impl validates required template fields."""
@@ -556,6 +564,7 @@ class TestFileFraudReportStateBureauImpl:
         assert data["success"] is False
         assert data["validation_error"] is True
         assert "Invalid payload_json" in data["error"]
+
     def test_retries_on_transient_failure_then_succeeds(self, monkeypatch):
         """file_fraud_report_state_bureau_impl retries transient adapter failures."""
         from claim_agent.adapters.registry import get_fraud_reporting_adapter
@@ -571,6 +580,7 @@ class TestFileFraudReportStateBureauImpl:
             case_id: str,
             state: str,
             indicators: list[str],
+            payload: dict[str, object] | None = None,
         ) -> dict[str, object]:
             nonlocal call_count
             call_count += 1
@@ -581,6 +591,7 @@ class TestFileFraudReportStateBureauImpl:
                 case_id=case_id,
                 state=state,
                 indicators=indicators,
+                payload=payload,
             )
 
         monkeypatch.setattr(adapter, "file_state_bureau_report", patched_file_state_bureau_report)

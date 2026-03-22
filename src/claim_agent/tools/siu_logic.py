@@ -22,6 +22,22 @@ GENERIC_ACCESS_DENIED = json.dumps({"error": "Access denied", "message": "Invali
 # Transient adapter errors (timeout, connection) - tools return error JSON instead of raising
 _ADAPTER_RETRY_ATTEMPTS = 3
 
+# Omit from fraud_report_filings.metadata redacted_payload (PII / sensitive)
+_PII_FILING_METADATA_KEYS = frozenset({
+    "claimant_name",
+    "claimant_email",
+    "claimant_phone",
+    "phone",
+    "email",
+    "address",
+    "ssn",
+    "drivers_license",
+})
+
+
+def _redact_state_bureau_payload_for_audit(payload: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in payload.items() if k not in _PII_FILING_METADATA_KEYS}
+
 
 def _adapter_error_json(
     message: str,
@@ -436,6 +452,7 @@ def file_fraud_report_state_bureau_impl(
                 case_id=case_id,
                 state=state_arg,
                 indicators=indicators_str,
+                payload=payload,
             )
             report_id = str(filing.get("report_id") or "")
             if not report_id:
@@ -468,6 +485,11 @@ def file_fraud_report_state_bureau_impl(
                 siu_case_id=case_id,
                 state=filing_state,
                 indicators_count=indicators_count,
+                template_version=template.get("form_id"),
+                metadata={
+                    "redacted_payload": _redact_state_bureau_payload_for_audit(payload),
+                    "submitted_field_keys": sorted(payload.keys()),
+                },
             )
             return json.dumps(result)
         except NotImplementedError:
@@ -518,6 +540,8 @@ def _persist_fraud_filing(
     siu_case_id: str | None = None,
     state: str | None = None,
     indicators_count: int = 0,
+    template_version: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     """Persist fraud filing to fraud_report_filings for compliance audit."""
     try:
@@ -530,6 +554,8 @@ def _persist_fraud_filing(
             state=state,
             filed_by="siu_crew",
             indicators_count=indicators_count,
+            template_version=template_version,
+            metadata=metadata,
         )
     except Exception as persist_err:
         logger.warning(

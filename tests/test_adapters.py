@@ -600,6 +600,7 @@ class TestRegistry:
         with pytest.raises(ValueError, match="FRAUD_REPORTING_REST_BASE_URL"):
             get_fraud_reporting_adapter()
         reset_adapters()
+
     def test_state_bureau_rest_requires_endpoint(self, monkeypatch):
         reset_adapters()
         monkeypatch.setenv("STATE_BUREAU_ADAPTER", "rest")

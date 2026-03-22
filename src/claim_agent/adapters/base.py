@@ -147,8 +147,13 @@ class FraudReportingAdapter(ABC):
         case_id: str,
         state: str,
         indicators: list[str],
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Submit a state insurance fraud bureau report and return filing metadata."""
+        """Submit a state insurance fraud bureau report and return filing metadata.
+
+        *payload* is the validated template payload (merged with claim defaults); it is
+        forwarded to the integration backend so required fields can be submitted.
+        """
         ...
 
     @abstractmethod

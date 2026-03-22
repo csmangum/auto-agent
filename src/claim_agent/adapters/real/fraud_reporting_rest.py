@@ -16,6 +16,16 @@ def _to_string(value: Any, fallback: str = "") -> str:
     return s if s else fallback
 
 
+def _coerce_indicators_count(raw: Any, fallback: int) -> int:
+    if raw is None:
+        return fallback
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return fallback
+    return n if n >= 0 else fallback
+
+
 class RestFraudReportingAdapter(FraudReportingAdapter):
     """HTTP-backed fraud filing adapter with configurable endpoint paths."""
 
@@ -57,22 +67,24 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
         case_id: str,
         state: str,
         indicators: list[str],
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        resp = self._client.post(
-            self._state_bureau_path,
-            json={
-                "claim_id": claim_id,
-                "case_id": case_id,
-                "state": state,
-                "indicators": indicators,
-            },
-        )
-        payload = self._extract_payload(resp.json())
+        body: dict[str, Any] = {
+            **(payload or {}),
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": state,
+            "indicators": indicators,
+        }
+        resp = self._client.post(self._state_bureau_path, json=body)
+        parsed = self._extract_payload(resp.json())
         return {
-            "report_id": _to_string(payload.get("report_id")),
-            "state": _to_string(payload.get("state"), state or "California"),
-            "indicators_count": int(payload.get("indicators_count", len(indicators))),
-            "message": _to_string(payload.get("message"), "State bureau report filed"),
+            "report_id": _to_string(parsed.get("report_id")),
+            "state": _to_string(parsed.get("state"), state or "California"),
+            "indicators_count": _coerce_indicators_count(
+                parsed.get("indicators_count"), len(indicators)
+            ),
+            "message": _to_string(parsed.get("message"), "State bureau report filed"),
         }
 
     def file_nicb_report(
@@ -96,7 +108,9 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
         return {
             "report_id": _to_string(payload.get("report_id")),
             "report_type": _to_string(payload.get("report_type"), report_type),
-            "indicators_count": int(payload.get("indicators_count", len(indicators))),
+            "indicators_count": _coerce_indicators_count(
+                payload.get("indicators_count"), len(indicators)
+            ),
             "message": _to_string(payload.get("message"), "NICB report filed"),
         }
 
@@ -121,7 +135,9 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
         return {
             "report_id": _to_string(payload.get("report_id")),
             "report_type": _to_string(payload.get("report_type"), report_type),
-            "indicators_count": int(payload.get("indicators_count", len(indicators))),
+            "indicators_count": _coerce_indicators_count(
+                payload.get("indicators_count"), len(indicators)
+            ),
             "message": _to_string(payload.get("message"), "NISS report filed"),
         }
 

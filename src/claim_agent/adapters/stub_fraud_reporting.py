@@ -17,6 +17,7 @@ class StubFraudReportingAdapter(FraudReportingAdapter):
         case_id: str,
         state: str,
         indicators: list[str],
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError(
             "StubFraudReportingAdapter.file_state_bureau_report: connect to a real state bureau filing API."

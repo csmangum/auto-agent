@@ -18,6 +18,7 @@ class MockFraudReportingAdapter(FraudReportingAdapter):
         case_id: str,
         state: str,
         indicators: list[str],
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         _, state_code = normalize_state_name_and_code(state or "California")
         claim_suffix = (claim_id or "")[-6:] or "MOCK"
