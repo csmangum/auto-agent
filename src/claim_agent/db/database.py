@@ -438,6 +438,22 @@ CREATE TABLE IF NOT EXISTS claim_access_tokens (
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_claim_id ON claim_access_tokens(claim_id);
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_token_hash ON claim_access_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_expires_at ON claim_access_tokens(expires_at);
+
+-- DSAR OTP verification tokens for self-service claimant identity proofing
+CREATE TABLE IF NOT EXISTS dsar_verification_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    verification_id TEXT NOT NULL UNIQUE,
+    claimant_identifier TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    verified_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dsar_verification_tokens_identifier
+    ON dsar_verification_tokens(claimant_identifier, created_at);
 """
 )
 
