@@ -93,6 +93,31 @@ def analyze_damage_photo_impl(
                         fraud_cfg.get("photo_gps_incident_distance_unit", "miles")
                     ),
                 )
+                # Optional reverse-image / stock-photo check (feature-flagged).
+                # Only performed when REVERSE_IMAGE_ADAPTER is explicitly set to
+                # something other than "stub" (the default stub raises NotImplementedError
+                # and is not auto-invoked to avoid blocking FNOL on external APIs).
+                if get_adapter_backend("reverse_image") != "stub":
+                    try:
+                        from claim_agent.adapters.registry import get_reverse_image_adapter
+                        ri_adapter = get_reverse_image_adapter()
+                        with open(path, "rb") as _f:
+                            _image_bytes = _f.read()
+                        web_matches = ri_adapter.match_web_occurrences(_image_bytes)
+                        result["photo_forensics"]["reverse_image_matches"] = web_matches
+                        if web_matches:
+                            top_score = max(
+                                (m.get("match_score", 0) for m in web_matches), default=0
+                            )
+                            if top_score >= 0.8:
+                                result["photo_forensics"]["anomalies"] = list(
+                                    result["photo_forensics"].get("anomalies", [])
+                                ) + ["reverse_image_stock_photo_match"]
+                    except Exception:
+                        logger.warning(
+                            "Reverse-image lookup failed; continuing without it",
+                            exc_info=True,
+                        )
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode("ascii")
                 ext = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"

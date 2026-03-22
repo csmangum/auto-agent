@@ -276,6 +276,58 @@ class CMSReportingAdapter(ABC):
         ...
 
 
+class ReverseImageAdapter(ABC):
+    """Interface for reverse-image / stock-photo lookup.
+
+    Used as an **optional** fraud-signal during photo forensics.  Callers
+    should gate the call behind a feature flag (e.g. ``REVERSE_IMAGE_ADAPTER``
+    env var) so FNOL processing is never blocked on an external API.
+
+    Privacy note
+    ------------
+    Images submitted to a production reverse-image provider may contain PII
+    (licence plates, faces, GPS EXIF data).  Ensure that:
+
+    * The provider's DPA covers your jurisdiction's data-transfer requirements.
+    * Images are scrubbed of EXIF metadata before transmission when required.
+    * API keys are stored in secrets management, never in source code.
+    * Usage is disclosed in the applicable privacy notice / DSAR records.
+
+    Set ``REVERSE_IMAGE_ADAPTER=stub`` (or omit the var entirely for ``mock``)
+    in environments where no real key is available.
+    """
+
+    @abstractmethod
+    def match_web_occurrences(
+        self,
+        image: bytes | Path,
+    ) -> list[dict[str, Any]]:
+        """Search for web occurrences of *image* (stock-photo / prior-claim check).
+
+        Parameters
+        ----------
+        image:
+            Raw JPEG/PNG bytes **or** a :class:`pathlib.Path` to a local file.
+
+        Returns
+        -------
+        list[dict]
+            Each entry represents one match and **must** contain:
+
+            * ``url`` (str): where the image was found.
+            * ``match_score`` (float, 0-1): similarity confidence.
+            * ``source_label`` (str): human-readable source, e.g. ``"stock_photo_site"``,
+              ``"social_media"``, ``"prior_claim"``.
+
+            Optional keys: ``title``, ``page_fetched_at`` (ISO-8601 timestamp).
+
+        Implementations **must not** raise on non-critical failures; return an
+        empty list if the lookup produces no results or the provider is
+        unavailable.
+        """
+        ...
+
+
 class GapInsuranceAdapter(ABC):
     """Interface for gap (loan/lease) carrier coordination after auto total loss."""
 

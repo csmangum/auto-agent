@@ -969,6 +969,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "ocr": "OCR_ADAPTER",
     "cms": "CMS_ADAPTER",
     "fraud_reporting": "FRAUD_REPORTING_ADAPTER",
+    "reverse_image": "REVERSE_IMAGE_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
@@ -1182,6 +1183,7 @@ class Settings(BaseSettings):
     ocr_adapter: str = Field(default="mock", validation_alias="OCR_ADAPTER")
     cms_adapter: str = Field(default="mock", validation_alias="CMS_ADAPTER")
     fraud_reporting_adapter: str = Field(default="mock", validation_alias="FRAUD_REPORTING_ADAPTER")
+    reverse_image_adapter: str = Field(default="mock", validation_alias="REVERSE_IMAGE_ADAPTER")
 
     @field_validator("siu_default_state", mode="before")
     @classmethod
