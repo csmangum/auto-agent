@@ -2,6 +2,7 @@
 
 import json
 from datetime import date
+from unittest.mock import patch
 
 import pytest
 
@@ -14,6 +15,7 @@ from claim_agent.compliance.ucspa import (
 from claim_agent.compliance.state_rules import get_state_rules
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
+from claim_agent.models.party import ClaimPartyInput
 
 
 def test_get_ucspa_deadlines_california():
@@ -160,15 +162,32 @@ def test_record_acknowledgment(temp_db):
     )
     claim_id = repo.create_claim(claim_input)
 
+    repo.add_claim_party(
+        claim_id,
+        ClaimPartyInput(
+            party_type="claimant",
+            name="Pat Claimant",
+            email="claimant@example.com",
+            phone="+15551234567",
+        ),
+    )
+
     # First call: acknowledged_at is set and True is returned.
-    result = repo.record_acknowledgment(claim_id)
+    with patch("claim_agent.db.repository.notify_claimant") as mock_notify:
+        result = repo.record_acknowledgment(claim_id)
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][0] == "receipt_acknowledged"
+        assert mock_notify.call_args[0][1] == claim_id
+        assert mock_notify.call_args[1]["email"] == "claimant@example.com"
     assert result is True
     claim = repo.get_claim(claim_id)
     first_ts = claim.get("acknowledged_at")
     assert first_ts is not None
 
     # Second call: acknowledged_at must not be overwritten (returns False).
-    result2 = repo.record_acknowledgment(claim_id)
+    with patch("claim_agent.db.repository.notify_claimant") as mock_notify2:
+        result2 = repo.record_acknowledgment(claim_id)
+        mock_notify2.assert_not_called()
     assert result2 is False
     claim2 = repo.get_claim(claim_id)
     assert claim2.get("acknowledged_at") == first_ts
@@ -188,16 +207,32 @@ def test_record_denial_letter(temp_db):
         damage_description="Test",
     )
     claim_id = repo.create_claim(claim_input)
-    repo.update_claim_status(claim_id, "processing")
-    repo.update_claim_status(claim_id, "denied")
-    repo.record_denial_letter(
+    repo.add_claim_party(
         claim_id,
+        ClaimPartyInput(
+            party_type="claimant",
+            name="Pat Claimant",
+            email="claimant@example.com",
+            phone="+15551234567",
+        ),
         "Policy exclusion: pre-existing damage",
         "Dear Policyholder,\n\nWe deny your claim because...\n\nAPPEAL RIGHTS: You may appeal...",
         denial_letter_delivery_method="certified_mail",
         denial_letter_tracking_id="USPS-9407-1234-5678-9012",
         denial_letter_delivered_at="2026-03-05T10:30:00+00:00",
     )
+    repo.update_claim_status(claim_id, "processing")
+    repo.update_claim_status(claim_id, "denied")
+    with patch("claim_agent.db.repository.notify_claimant") as mock_notify:
+        repo.record_denial_letter(
+            claim_id,
+            "Policy exclusion: pre-existing damage",
+            "Dear Policyholder,\n\nWe deny your claim because...\n\nAPPEAL RIGHTS: You may appeal...",
+        )
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][0] == "denial_letter"
+        assert mock_notify.call_args[0][1] == claim_id
+        assert mock_notify.call_args[1]["email"] == "claimant@example.com"
 
     claim = repo.get_claim(claim_id)
     assert claim.get("denial_reason") == "Policy exclusion: pre-existing damage"

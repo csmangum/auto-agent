@@ -12,7 +12,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger(__name__)
@@ -390,6 +390,17 @@ class NotificationConfig(BaseSettings):
 
     email_enabled: bool = False
     sms_enabled: bool = False
+    sendgrid_api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        validation_alias="SENDGRID_API_KEY",
+    )
+    sendgrid_from_email: str = Field(default="", validation_alias="SENDGRID_FROM_EMAIL")
+    twilio_account_sid: str = Field(default="", validation_alias="TWILIO_ACCOUNT_SID")
+    twilio_auth_token: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        validation_alias="TWILIO_AUTH_TOKEN",
+    )
+    twilio_from_phone: str = Field(default="", validation_alias="TWILIO_FROM_PHONE")
 
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod

@@ -89,6 +89,7 @@ from claim_agent.utils.sanitization import (
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput, PartyRelationshipType
+from claim_agent.notifications.claimant import notify_claimant
 from claim_agent.utils.graph_contact_normalize import (
     normalize_party_email_for_graph,
     normalize_party_phone_for_graph,
@@ -379,6 +380,9 @@ def _sql_in_params(prefix: str, ids: list[str]) -> tuple[str, dict[str, Any]]:
     placeholders = ",".join(f":{k}" for k in keys)
     params = dict(zip(keys, ids, strict=True))
     return placeholders, params
+
+
+logger = logging.getLogger(__name__)
 
 
 class ClaimRepository:
@@ -2501,6 +2505,8 @@ class ClaimRepository:
                         "actor_id": safe_actor,
                     },
                 )
+        if newly_set:
+            self._notify_claimant_best_effort(claim_id=claim_id, event="receipt_acknowledged")
         return newly_set
 
     def record_denial_letter(
@@ -2570,6 +2576,42 @@ class ClaimRepository:
                     "actor_id": safe_actor,
                     "after_state": json.dumps(after_state),
                 },
+            )
+        self._notify_claimant_best_effort(
+            claim_id=claim_id,
+            event="denial_letter",
+            template_data={"denial_reason": safe_reason},
+        )
+
+    def _notify_claimant_best_effort(
+        self,
+        *,
+        claim_id: str,
+        event: str,
+        template_data: dict[str, Any] | None = None,
+    ) -> None:
+        try:
+            contact = self.get_primary_contact_for_user_type(claim_id, "claimant") or {}
+            if not contact:
+                logger.debug(
+                    "No claimant contact found for notification: claim_id=%s event=%s",
+                    claim_id,
+                    event,
+                )
+            notify_claimant(
+                event,
+                claim_id,
+                email=contact.get("email"),
+                phone=contact.get("phone"),
+                template_data=template_data,
+            )
+        except Exception as e:
+            logger.warning(
+                "Claimant notification failed (best-effort): claim_id=%s event=%s error_type=%s error=%s",
+                claim_id,
+                event,
+                type(e).__name__,
+                e,
             )
 
     def record_claimant_communication(
