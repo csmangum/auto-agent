@@ -17,6 +17,7 @@ from claim_agent.adapters.base import (
     PartsAdapter,
     PolicyAdapter,
     RepairShopAdapter,
+    ReverseImageAdapter,
     SIUAdapter,
     StateBureauAdapter,
     ValuationAdapter,
@@ -207,4 +208,24 @@ class StubGapInsuranceAdapter(GapInsuranceAdapter):
             "StubGapInsuranceAdapter: connect to a production gap carrier "
             "(dealer F&I platform, lender, or standalone GAP administrator). "
             "Submit total-loss settlement vs loan balance and return carrier claim id and status."
+        )
+
+
+class StubReverseImageAdapter(ReverseImageAdapter):
+    """Placeholder for a real reverse-image / stock-photo search integration.
+
+    Replace ``match_web_occurrences`` with a call to a production provider
+    (e.g. Google Vision ``SIMILAR_WEB_PAGES``, TinEye, or a proprietary
+    prior-claim image index).
+
+    Privacy reminder: scrub EXIF metadata from images before submission and
+    verify DPA coverage for cross-border transfer (see docs/adapters.md).
+    """
+
+    def match_web_occurrences(self, image: bytes | Path) -> list[dict[str, Any]]:
+        raise NotImplementedError(
+            "StubReverseImageAdapter: connect to a real reverse-image provider "
+            "(e.g. Google Cloud Vision similarWebPages, TinEye, or an internal "
+            "prior-claim image index). "
+            "Return a list of dicts each containing url, match_score, and source_label."
         )
