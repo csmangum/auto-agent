@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from claim_agent.config import get_settings
-from claim_agent.db.database import get_connection, get_db_path, _is_postgres
+from claim_agent.db.database import get_connection, get_db_path, is_postgres_backend
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +332,7 @@ def store_idempotency(
         "expires_at": expires_at.isoformat(),
     }
     with get_connection(path) as conn:
-        if _is_postgres():
+        if is_postgres_backend():
             conn.execute(
                 text("""
                     INSERT INTO idempotency_keys

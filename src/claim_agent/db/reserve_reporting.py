@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from sqlalchemy import text
 
-from claim_agent.db.database import _is_postgres, get_connection, row_to_dict
+from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
 
 Granularity = Literal["month", "quarter"]
 
@@ -23,7 +23,7 @@ def _default_date_range() -> tuple[str, str]:
 
 
 def _period_sql(granularity: Granularity) -> str:
-    if _is_postgres():
+    if is_postgres_backend():
         if granularity == "quarter":
             return (
                 "TO_CHAR(h.created_at, 'YYYY') || '-Q' || "
@@ -43,7 +43,7 @@ def _benchmark_sql(table_alias: str = "") -> str:
     p = f"{table_alias}." if table_alias else ""
     est = f"{p}estimated_damage"
     pay = f"{p}payout_amount"
-    if _is_postgres():
+    if is_postgres_backend():
         # GREATEST ignores NULL in some cases but returns NULL if any arg is NULL in PG;
         # mirror the SQLite branch logic for one-sided positives.
         return f"""
@@ -71,7 +71,7 @@ def _development_sql() -> tuple[str, str]:
     dev_lag_expr: months between incident_date and valuation_at
     accident_year_expr: year extracted from incident_date
     """
-    if _is_postgres():
+    if is_postgres_backend():
         dev_lag = (
             "(EXTRACT(YEAR FROM h.created_at::timestamp)::INT - "
             "EXTRACT(YEAR FROM c.incident_date::timestamp)::INT) * 12 + "
@@ -117,7 +117,7 @@ def _build_date_filters(d0: str, d1: str) -> list[str]:
     Uses ``datetime()`` on the SQLite branch so that ISO strings with a ``T``/``Z``
     separator compare correctly against the TEXT timestamps stored by SQLite.
     """
-    if _is_postgres():
+    if is_postgres_backend():
         return ["h.created_at >= :d0", "h.created_at < :d1"]
     # Normalize parameter side via SQLite's datetime() while keeping h.created_at indexable.
     return ["h.created_at >= datetime(:d0)", "h.created_at < datetime(:d1)"]

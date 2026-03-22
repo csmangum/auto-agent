@@ -440,8 +440,11 @@ def _get_database_url() -> str:
     return f"sqlite:///{path}"
 
 
-def _is_postgres() -> bool:
-    """True if using PostgreSQL (DATABASE_URL set)."""
+def is_postgres_backend() -> bool:
+    """True if using PostgreSQL (``DATABASE_URL`` is set).
+
+    Public API for callers that need to branch on database backend.
+    """
     from claim_agent.config import get_settings
 
     return bool(get_settings().paths.database_url)
@@ -456,7 +459,7 @@ def _get_engine() -> Engine:
         if _engine is not None:
             return _engine
         url = _get_database_url()
-        if _is_postgres():
+        if is_postgres_backend():
             from claim_agent.config import get_settings
 
             paths = get_settings().paths
@@ -472,7 +475,7 @@ def _get_engine() -> Engine:
 
 def _get_engine_for_path(path: str | None) -> Engine:
     """Return engine for the given path. For PostgreSQL, path is ignored."""
-    if _is_postgres():
+    if is_postgres_backend():
         return _get_engine()
     from claim_agent.config import get_settings
 
@@ -499,7 +502,7 @@ def get_db_path() -> str:
     """Return path to SQLite database from settings. For PostgreSQL, returns path from URL or empty."""
     from claim_agent.config import get_settings
 
-    if _is_postgres():
+    if is_postgres_backend():
         return ""  # No file path for PostgreSQL
     return get_settings().paths.claims_db_path
 
@@ -787,7 +790,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
 def _run_schema(db_path: str) -> None:
     """Create tables if they do not exist (SQLite only). Caller must manage _schema_initialized."""
-    if _is_postgres():
+    if is_postgres_backend():
         return  # PostgreSQL uses Alembic only
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -800,7 +803,7 @@ def init_db(path: str | None = None) -> None:
     """Create tables if they do not exist. SQLite only; PostgreSQL uses Alembic."""
     from claim_agent.config import get_settings
 
-    if _is_postgres():
+    if is_postgres_backend():
         return
     db_path = path or get_settings().paths.claims_db_path
     _run_schema(db_path)
@@ -816,7 +819,7 @@ def ensure_fresh_db_on_startup() -> None:
     """
     from claim_agent.config import get_settings
 
-    if _is_postgres():
+    if is_postgres_backend():
         return
     if not get_settings().paths.fresh_claims_db_on_startup:
         return
@@ -860,13 +863,13 @@ def get_connection(path: str | None = None):
     from claim_agent.config import get_settings
 
     db_path = path or get_settings().paths.claims_db_path
-    if not _is_postgres():
+    if not is_postgres_backend():
         p = Path(db_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         _ensure_schema(db_path)
     engine = _get_engine_for_path(path)
     conn = engine.connect()
-    if not _is_postgres():
+    if not is_postgres_backend():
         conn.execute(text("PRAGMA foreign_keys = ON"))
     try:
         yield conn

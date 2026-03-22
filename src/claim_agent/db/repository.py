@@ -69,7 +69,7 @@ from claim_agent.db.constants import (
 from claim_agent.db.reserve_adequacy import compute_reserve_adequacy_details
 from claim_agent.config.settings import get_reserve_config
 from claim_agent.rag.constants import normalize_state
-from claim_agent.db.database import _is_postgres, get_connection, row_to_dict
+from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
@@ -2967,7 +2967,7 @@ class ClaimRepository:
             if phones_unique:
                 phone_expr = (
                     sql_expr_phone_normalized_postgres()
-                    if _is_postgres()
+                    if is_postgres_backend()
                     else "graph_phone_digits(cp.phone)"
                 )
                 params = {
