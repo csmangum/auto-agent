@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from claim_agent.adapters.base import (
     CMSReportingAdapter,
     ClaimSearchAdapter,
+    FraudReportingAdapter,
     GapInsuranceAdapter,
     NMVTISAdapter,
     PartsAdapter,
@@ -39,6 +40,7 @@ class AdapterRegistry:
     siu: SIUAdapter
     state_bureau: StateBureauAdapter
     claim_search: ClaimSearchAdapter
+    fraud_reporting: FraudReportingAdapter
     nmvtis: NMVTISAdapter
     gap_insurance: GapInsuranceAdapter
     cms: CMSReportingAdapter
@@ -50,6 +52,7 @@ class AdapterRegistry:
         from claim_agent.adapters.registry import (
             get_claim_search_adapter,
             get_cms_reporting_adapter,
+            get_fraud_reporting_adapter,
             get_gap_insurance_adapter,
             get_nmvtis_adapter,
             get_parts_adapter,
@@ -68,6 +71,7 @@ class AdapterRegistry:
             siu=get_siu_adapter(),
             state_bureau=get_state_bureau_adapter(),
             claim_search=get_claim_search_adapter(),
+            fraud_reporting=get_fraud_reporting_adapter(),
             nmvtis=get_nmvtis_adapter(),
             gap_insurance=get_gap_insurance_adapter(),
             cms=get_cms_reporting_adapter(),

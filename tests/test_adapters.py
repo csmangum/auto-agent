@@ -5,6 +5,7 @@ import pytest
 
 from claim_agent.adapters.base import (
     ClaimSearchAdapter,
+    FraudReportingAdapter,
     GapInsuranceAdapter,
     NMVTISAdapter,
     OCRAdapter,
@@ -17,6 +18,7 @@ from claim_agent.adapters.base import (
 )
 from claim_agent.adapters.mock import (
     MockClaimSearchAdapter,
+    MockFraudReportingAdapter,
     MockGapInsuranceAdapter,
     MockNMVTISAdapter,
     MockPartsAdapter,
@@ -29,6 +31,7 @@ from claim_agent.adapters.mock import (
 from claim_agent.adapters.mock.ocr import MockOCRAdapter
 from claim_agent.adapters.registry import (
     get_claim_search_adapter,
+    get_fraud_reporting_adapter,
     get_gap_insurance_adapter,
     get_nmvtis_adapter,
     get_ocr_adapter,
@@ -52,6 +55,7 @@ from claim_agent.adapters.stub import (
     StubStateBureauAdapter,
     StubValuationAdapter,
 )
+from claim_agent.adapters.stub_fraud_reporting import StubFraudReportingAdapter
 from claim_agent.config import reload_settings
 
 
@@ -99,6 +103,10 @@ class TestABCEnforcement:
     def test_gap_insurance_adapter_is_abstract(self):
         with pytest.raises(TypeError):
             GapInsuranceAdapter()  # type: ignore[abstract]
+
+    def test_fraud_reporting_adapter_is_abstract(self):
+        with pytest.raises(TypeError):
+            FraudReportingAdapter()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +489,7 @@ class TestRegistry:
         assert isinstance(get_siu_adapter(), MockSIUAdapter)
         assert isinstance(get_state_bureau_adapter(), MockStateBureauAdapter)
         assert isinstance(get_claim_search_adapter(), MockClaimSearchAdapter)
+        assert isinstance(get_fraud_reporting_adapter(), MockFraudReportingAdapter)
         assert isinstance(get_nmvtis_adapter(), MockNMVTISAdapter)
         assert isinstance(get_gap_insurance_adapter(), MockGapInsuranceAdapter)
         assert isinstance(get_ocr_adapter(), MockOCRAdapter)
@@ -494,6 +503,7 @@ class TestRegistry:
         monkeypatch.setenv("SIU_ADAPTER", "stub")
         monkeypatch.setenv("STATE_BUREAU_ADAPTER", "stub")
         monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "stub")
+        monkeypatch.setenv("FRAUD_REPORTING_ADAPTER", "stub")
         monkeypatch.setenv("NMVTIS_ADAPTER", "stub")
         monkeypatch.setenv("GAP_INSURANCE_ADAPTER", "stub")
         monkeypatch.setenv("OCR_ADAPTER", "stub")
@@ -505,6 +515,7 @@ class TestRegistry:
         assert isinstance(get_siu_adapter(), StubSIUAdapter)
         assert isinstance(get_state_bureau_adapter(), StubStateBureauAdapter)
         assert isinstance(get_claim_search_adapter(), StubClaimSearchAdapter)
+        assert isinstance(get_fraud_reporting_adapter(), StubFraudReportingAdapter)
         assert isinstance(get_nmvtis_adapter(), StubNMVTISAdapter)
         assert isinstance(get_gap_insurance_adapter(), StubGapInsuranceAdapter)
         assert isinstance(get_ocr_adapter(), StubOCRAdapter)
@@ -581,6 +592,14 @@ class TestRegistry:
         assert out["value"] == 21000
         reset_adapters()
 
+    def test_fraud_reporting_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("FRAUD_REPORTING_ADAPTER", "rest")
+        monkeypatch.delenv("FRAUD_REPORTING_REST_BASE_URL", raising=False)
+        reload_settings()
+        with pytest.raises(ValueError, match="FRAUD_REPORTING_REST_BASE_URL"):
+            get_fraud_reporting_adapter()
+        reset_adapters()
     def test_state_bureau_rest_requires_endpoint(self, monkeypatch):
         reset_adapters()
         monkeypatch.setenv("STATE_BUREAU_ADAPTER", "rest")

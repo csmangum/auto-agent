@@ -40,6 +40,17 @@ def _adapter_error_json(
     return json.dumps(payload)
 
 
+def _fraud_reporting_not_implemented_json(filing_target: str, *, claim_id: str, case_id: str) -> str:
+    from claim_agent.config.settings import get_adapter_backend
+
+    backend = get_adapter_backend("fraud_reporting")
+    return _adapter_error_json(
+        f"{filing_target} filing not implemented for FRAUD_REPORTING_ADAPTER={backend}",
+        case_id=case_id,
+        claim_id=claim_id,
+    )
+
+
 def _validate_siu_scope(claim_id: str | None = None, case_id: str | None = None) -> str | None:
     """Validate claim_id/case_id against SIU workflow scope. Returns error JSON string or None if valid."""
     scope = None
@@ -325,7 +336,9 @@ def file_fraud_report_state_bureau_impl(
         ind_list = json.loads(indicators) if indicators else []
     except json.JSONDecodeError:
         ind_list = []
+    from claim_agent.adapters.registry import get_fraud_reporting_adapter
 
+    adapter = ctx.adapters.fraud_reporting if ctx else get_fraud_reporting_adapter()
     template = get_fraud_report_template(state or "California")
     if not template:
         return json.dumps({
@@ -418,12 +431,33 @@ def file_fraud_report_state_bureau_impl(
     state_code = (state or "California").strip()[:2].upper() or "CA"
     claim_suffix = (claim_id or "")[-6:] or "MOCK"
     try:
-        report_id = f"FRB-{state_code}-{claim_suffix}-MOCK"
+        filing = adapter.file_state_bureau_report(
+            claim_id=claim_id,
+            case_id=case_id,
+            state=state or "California",
+            indicators=ind_list,
+        )
+        report_id = str(filing.get("report_id") or "")
+        if not report_id:
+            return _adapter_error_json(
+                "State bureau filing failed: missing report_id",
+                case_id=case_id,
+                claim_id=claim_id,
+            )
+        filing_state = str(filing.get("state") or state or "California")
+        indicators_count = int(filing.get("indicators_count", len(ind_list)))
+        message = str(
+            filing.get("message")
+            or f"Fraud report filed with {filing_state} fraud bureau. Report ID: {report_id}"
+        )
         result: dict[str, Any] = {
             "success": True,
             "report_id": report_id,
             "claim_id": claim_id,
             "case_id": case_id,
+            "state": filing_state,
+            "indicators_count": indicators_count,
+            "message": message,
             "state": state or "California",
             "indicators_count": len(ind_list),
             "validated_required_fields": required_fields,
@@ -431,9 +465,15 @@ def file_fraud_report_state_bureau_impl(
         }
         _persist_fraud_filing(
             ctx, claim_id, "state_bureau", report_id,
-            siu_case_id=case_id, state=state or "California", indicators_count=len(ind_list),
+            siu_case_id=case_id, state=filing_state, indicators_count=indicators_count,
         )
         return json.dumps(result)
+    except NotImplementedError:
+        return _fraud_reporting_not_implemented_json(
+            "State bureau",
+            claim_id=claim_id,
+            case_id=case_id,
+        )
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("file_fraud_report_state_bureau failed: %s", e)
         return _adapter_error_json(
@@ -576,23 +616,49 @@ def file_nicb_report_impl(
         ind_list = json.loads(indicators) if indicators else []
     except json.JSONDecodeError:
         ind_list = []
-    claim_suffix = (claim_id or "")[-6:] or "MOCK"
+    from claim_agent.adapters.registry import get_fraud_reporting_adapter
+
+    adapter = ctx.adapters.fraud_reporting if ctx else get_fraud_reporting_adapter()
     try:
-        report_id = f"NICB-{report_type.upper()[:6]}-{claim_suffix}-MOCK"
+        filing = adapter.file_nicb_report(
+            claim_id=claim_id,
+            case_id=case_id,
+            report_type=report_type,
+            indicators=ind_list,
+        )
+        report_id = str(filing.get("report_id") or "")
+        if not report_id:
+            return _adapter_error_json(
+                "NICB filing failed: missing report_id",
+                case_id=case_id,
+                claim_id=claim_id,
+            )
+        filing_report_type = str(filing.get("report_type") or report_type)
+        indicators_count = int(filing.get("indicators_count", len(ind_list)))
+        message = str(
+            filing.get("message")
+            or f"NICB {filing_report_type} report filed. Report ID: {report_id}"
+        )
         result: dict[str, Any] = {
             "success": True,
             "report_id": report_id,
             "claim_id": claim_id,
             "case_id": case_id,
-            "report_type": report_type,
-            "indicators_count": len(ind_list),
-            "message": f"NICB {report_type} report filed (mock). Report ID: {report_id}",
+            "report_type": filing_report_type,
+            "indicators_count": indicators_count,
+            "message": message,
         }
         _persist_fraud_filing(
             ctx, claim_id, "nicb", report_id,
-            siu_case_id=case_id, indicators_count=len(ind_list),
+            siu_case_id=case_id, indicators_count=indicators_count,
         )
         return json.dumps(result)
+    except NotImplementedError:
+        return _fraud_reporting_not_implemented_json(
+            "NICB",
+            claim_id=claim_id,
+            case_id=case_id,
+        )
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("file_nicb_report failed: %s", e)
         return _adapter_error_json(
@@ -625,23 +691,49 @@ def file_niss_report_impl(
         ind_list = json.loads(indicators) if indicators else []
     except json.JSONDecodeError:
         ind_list = []
-    claim_suffix = (claim_id or "")[-6:] or "MOCK"
+    from claim_agent.adapters.registry import get_fraud_reporting_adapter
+
+    adapter = ctx.adapters.fraud_reporting if ctx else get_fraud_reporting_adapter()
     try:
-        report_id = f"NISS-{report_type.upper()[:6]}-{claim_suffix}-MOCK"
+        filing = adapter.file_niss_report(
+            claim_id=claim_id,
+            case_id=case_id,
+            report_type=report_type,
+            indicators=ind_list,
+        )
+        report_id = str(filing.get("report_id") or "")
+        if not report_id:
+            return _adapter_error_json(
+                "NISS filing failed: missing report_id",
+                case_id=case_id,
+                claim_id=claim_id,
+            )
+        filing_report_type = str(filing.get("report_type") or report_type)
+        indicators_count = int(filing.get("indicators_count", len(ind_list)))
+        message = str(
+            filing.get("message")
+            or f"NISS {filing_report_type} report filed. Report ID: {report_id}"
+        )
         result: dict[str, Any] = {
             "success": True,
             "report_id": report_id,
             "claim_id": claim_id,
             "case_id": case_id,
-            "report_type": report_type,
-            "indicators_count": len(ind_list),
-            "message": f"NISS {report_type} report filed (mock). Report ID: {report_id}",
+            "report_type": filing_report_type,
+            "indicators_count": indicators_count,
+            "message": message,
         }
         _persist_fraud_filing(
             ctx, claim_id, "niss", report_id,
-            siu_case_id=case_id, indicators_count=len(ind_list),
+            siu_case_id=case_id, indicators_count=indicators_count,
         )
         return json.dumps(result)
+    except NotImplementedError:
+        return _fraud_reporting_not_implemented_json(
+            "NISS",
+            claim_id=claim_id,
+            case_id=case_id,
+        )
     except RETRYABLE_EXCEPTIONS as e:
         logger.warning("file_niss_report failed: %s", e)
         return _adapter_error_json(

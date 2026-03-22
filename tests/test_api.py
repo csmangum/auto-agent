@@ -2164,6 +2164,79 @@ class TestComplianceFraudReporting:
         assert claim["missing_required_filings"] == ["state_bureau"]
         assert claim["compliant"] is False
 
+    def test_fraud_reporting_includes_nicb_deadline_fields(self, client):
+        """Fraud reporting payload includes NICB deadline tracking fields."""
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        clm003 = next((c for c in data["claims"] if c["claim_id"] == "CLM-TEST003"), None)
+        assert clm003 is not None
+        assert "nicb_required" in clm003
+        assert "nicb_due_at" in clm003
+        assert "nicb_overdue" in clm003
+        assert "nicb_alert" in clm003
+
+    def test_fraud_reporting_deadline_alerts_endpoint(self, client):
+        """NICB deadline alert endpoint returns alert rows for due/overdue claims."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-ALERT001",
+                    "policy_number": "POL-ALERT001",
+                    "vin": "VIN-ALERT001",
+                    "vehicle_year": 2020,
+                    "vehicle_make": "Honda",
+                    "vehicle_model": "Civic",
+                    "incident_date": "2020-01-01",
+                    "incident_description": "Confirmed theft ring event",
+                    "damage_description": "Vehicle theft",
+                    "estimated_damage": 18000.0,
+                    "claim_type": "fraud",
+                    "status": "fraud_confirmed",
+                    "loss_state": "California",
+                },
+            )
+            conn.execute(
+                text("""
+                INSERT INTO fraud_report_filings
+                (claim_id, siu_case_id, filing_type, state, report_id, filed_at, filed_by,
+                 indicators_count, template_version, metadata)
+                VALUES (:claim_id, :siu_case_id, :filing_type, :state, :report_id, :filed_at,
+                        :filed_by, :indicators_count, :template_version, :metadata)
+                """),
+                {
+                    "claim_id": "CLM-ALERT001",
+                    "siu_case_id": "SIU-ALERT001",
+                    "filing_type": "state_bureau",
+                    "state": "California",
+                    "report_id": "FRB-ALERT001",
+                    "filed_at": "2020-01-02T10:00:00Z",
+                    "filed_by": "siu_crew",
+                    "indicators_count": 2,
+                    "template_version": None,
+                    "metadata": None,
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting/deadlines")
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert "alerts" in payload
+        alert_claim_ids = [a["claim_id"] for a in payload["alerts"]]
+        assert "CLM-ALERT001" in alert_claim_ids
+
 
 class TestHealthEndpoint:
     def test_basic_health(self, client):

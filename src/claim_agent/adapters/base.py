@@ -136,6 +136,11 @@ class SIUAdapter(ABC):
         )
 
 
+class FraudReportingAdapter(ABC):
+    """Interface for fraud-reporting filings (state bureau, NICB, NISS)."""
+
+    @abstractmethod
+    def file_state_bureau_report(
 class StateBureauAdapter(ABC):
     """Interface for filing fraud reports with state insurance bureaus."""
 
@@ -148,6 +153,31 @@ class StateBureauAdapter(ABC):
         state: str,
         indicators: list[str],
     ) -> dict[str, Any]:
+        """Submit a state insurance fraud bureau report and return filing metadata."""
+        ...
+
+    @abstractmethod
+    def file_nicb_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        report_type: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        """Submit a NICB referral and return filing metadata."""
+        ...
+
+    @abstractmethod
+    def file_niss_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        report_type: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        """Submit a NISS referral and return filing metadata."""
         """Submit a state bureau fraud report and return filing metadata."""
         ...
 

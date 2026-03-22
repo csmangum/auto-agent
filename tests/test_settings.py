@@ -102,6 +102,13 @@ def test_get_adapter_backend_blank_treated_as_unset():
         assert settings.get_adapter_backend("policy") == "mock"
 
 
+def test_get_adapter_backend_fraud_reporting_respects_env():
+    """fraud_reporting adapter backend reads and normalizes env value."""
+    with patch.dict(os.environ, {"FRAUD_REPORTING_ADAPTER": "  REST  "}):
+        reload_settings()
+        assert settings.get_adapter_backend("fraud_reporting") == "rest"
+
+
 def test_get_crew_verbose_default():
     """get_crew_verbose returns bool."""
     result = settings.get_crew_verbose()
