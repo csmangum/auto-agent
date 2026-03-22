@@ -10,7 +10,7 @@ Loads applicable regulations per state (California, Florida, New York, Texas) fo
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Literal
 
@@ -46,6 +46,8 @@ class StateRules:
     """Fault % (0-100) above which insured cannot recover (e.g. 51 for 51% bar). None for pure comparative."""
     prompt_payment_base_date: Literal["fnol", "settlement_agreement"] = "settlement_agreement"
     """Base date for prompt-payment calculation: FNOL or settlement agreement date."""
+    mandatory_indicators: list[str] = field(default_factory=list)
+    """Fraud indicator codes that trigger mandatory SIU referral regardless of fraud score."""
 
 
 # State-specific rules (California, Florida, New York, Texas)
@@ -64,6 +66,7 @@ _STATE_RULES: dict[str, StateRules] = {
         appraisal_rights=True,
         comparative_fault_type="pure_comparative",
         comparative_fault_bar=None,
+        mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
     ),
     "Florida": StateRules(
         state="Florida",
@@ -78,6 +81,7 @@ _STATE_RULES: dict[str, StateRules] = {
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=51.0,
+        mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
     ),
     "New York": StateRules(
         state="New York",
@@ -92,6 +96,7 @@ _STATE_RULES: dict[str, StateRules] = {
         appraisal_rights=True,
         comparative_fault_type="pure_comparative",
         comparative_fault_bar=None,
+        mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
     ),
     "Georgia": StateRules(
         state="Georgia",
@@ -106,6 +111,7 @@ _STATE_RULES: dict[str, StateRules] = {
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=50.0,
+        mandatory_indicators=["organized_fraud_ring"],
     ),
     "Texas": StateRules(
         state="Texas",
@@ -120,6 +126,7 @@ _STATE_RULES: dict[str, StateRules] = {
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=51.0,
+        mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging"],
     ),
 }
 
@@ -195,6 +202,16 @@ def get_siu_referral_threshold(state: str | None) -> int | None:
     """Return mandatory SIU referral fraud score threshold, or None if no mandatory threshold."""
     rules = get_state_rules(state)
     return rules.siu_referral_threshold if rules else None
+
+
+def get_mandatory_referral_indicators(state: str | None) -> list[str]:
+    """Return indicator codes that trigger mandatory SIU referral regardless of score.
+
+    Returns an empty list if the state has no indicator-based mandatory referral rules
+    or if the state is unknown.
+    """
+    rules = get_state_rules(state)
+    return list(rules.mandatory_indicators) if rules else []
 
 
 def get_comparative_fault_rules(state: str | None) -> dict:
