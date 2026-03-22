@@ -14,6 +14,7 @@ from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimType
 from claim_agent.tools.fraud_detectors import get_description_overlap_evidence, run_fraud_detectors
+from claim_agent.utils.llm_data_minimization import minimize_claim_data_for_crew
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -104,7 +105,8 @@ def validate_router_classification_impl(
             "validation_agrees": True,
         })
 
-    claim_str = json.dumps(claim_data, default=str)[:2000]
+    minimized_claim_data = minimize_claim_data_for_crew(claim_data, "router")
+    claim_str = json.dumps(minimized_claim_data, default=str)[:2000]
     prompt = f"""A claim was classified as "{original_claim_type}" with confidence {original_confidence:.2f}. Reasoning: {original_reasoning}
 
 Claim data (excerpt): {claim_str}
