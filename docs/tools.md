@@ -577,6 +577,12 @@ File a fraud report with the state insurance fraud bureau.
 | `state` | string (optional) | State jurisdiction (default: California) |
 | `indicators` | string (optional) | JSON array of fraud indicators |
 
+Adapter behavior:
+- Uses `STATE_BUREAU_ADAPTER` backend (`mock`, `stub`, or `rest`)
+- `rest` requires one or more configured state endpoints (e.g. `STATE_BUREAU_CA_ENDPOINT`)
+- Transient adapter failures are retried with exponential backoff
+- Successful filings are persisted to `fraud_report_filings` for compliance audit
+
 **Returns:** JSON with success, report_id, message
 
 ---

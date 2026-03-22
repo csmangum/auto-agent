@@ -375,6 +375,7 @@ class TestFileFraudReportStateBureauImpl:
         assert data["claim_id"] == "CLM-001"
         assert data["case_id"] == "SIU-001"
         assert data["state"] == "California"
+        assert data["report_id"].startswith("FRB-CA-")
 
     def test_persists_filing_for_audit(self, temp_db):
         """file_fraud_report_state_bureau_impl persists filing to fraud_report_filings."""
@@ -412,6 +413,45 @@ class TestFileFraudReportStateBureauImpl:
         assert filings[0]["report_id"] == data["report_id"]
         assert filings[0]["state"] == "California"
         assert filings[0]["indicators_count"] == 2
+
+    def test_retries_on_transient_failure_then_succeeds(self, monkeypatch):
+        """file_fraud_report_state_bureau_impl retries transient adapter failures."""
+        from claim_agent.adapters.registry import get_state_bureau_adapter
+        from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
+
+        adapter = get_state_bureau_adapter()
+        original = adapter.submit_fraud_report
+        call_count = 0
+
+        def patched_submit_fraud_report(
+            *,
+            claim_id: str,
+            case_id: str,
+            state: str,
+            indicators: list[str],
+        ) -> dict[str, object]:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ConnectionError("Temporary state bureau outage")
+            return original(
+                claim_id=claim_id,
+                case_id=case_id,
+                state=state,
+                indicators=indicators,
+            )
+
+        monkeypatch.setattr(adapter, "submit_fraud_report", patched_submit_fraud_report)
+        result = file_fraud_report_state_bureau_impl(
+            "CLM-RETRY-STATE-001",
+            "SIU-001",
+            state="California",
+            indicators='["staged"]',
+        )
+        data = json.loads(result)
+        assert data["success"] is True
+        assert data["report_id"].startswith("FRB-CA-")
+        assert call_count == 3
 
     def test_file_nicb_report_persists(self, temp_db):
         """file_nicb_report_impl persists to fraud_report_filings."""

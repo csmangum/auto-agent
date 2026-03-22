@@ -18,6 +18,7 @@ from claim_agent.adapters.base import (
     PolicyAdapter,
     RepairShopAdapter,
     SIUAdapter,
+    StateBureauAdapter,
     ValuationAdapter,
 )
 
@@ -107,6 +108,24 @@ class StubSIUAdapter(SIUAdapter):
         raise NotImplementedError(
             "StubSIUAdapter: connect to a real SIU case-management system. "
             "Expected return: case_id string."
+        )
+
+
+class StubStateBureauAdapter(StateBureauAdapter):
+    """Placeholder for production state DOI fraud bureau integration."""
+
+    def submit_fraud_report(
+        self,
+        *,
+        claim_id: str,
+        case_id: str,
+        state: str,
+        indicators: list[str],
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubStateBureauAdapter: connect to a production state fraud bureau API "
+            "(e.g. CA CDI, TX DFR, FL DIFS, NY FBU, GA DOI). "
+            "Expected return: {report_id, state, message, metadata?}."
         )
 
 
