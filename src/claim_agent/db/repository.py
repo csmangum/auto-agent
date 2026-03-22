@@ -22,6 +22,7 @@ from claim_agent.compliance.ucspa import (
     compute_communication_response_due,
     payment_due_iso_after_settlement_moment,
 )
+from claim_agent.compliance.state_rules import get_prompt_payment_base_date
 
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
@@ -89,6 +90,7 @@ from claim_agent.utils.sanitization import (
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.party import ClaimPartyInput, PartyRelationshipType
+from claim_agent.notifications.claimant import notify_claimant
 from claim_agent.utils.graph_contact_normalize import (
     normalize_party_email_for_graph,
     normalize_party_phone_for_graph,
@@ -109,6 +111,31 @@ _UCSPA_PROMPT_PAYMENT_TASK_MARKER = "ucspa:prompt_payment"
 def _generate_claim_id(prefix: str = "CLM") -> str:
     """Generate a unique claim ID."""
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
+
+
+_DENIAL_LETTER_DELIVERY_METHODS = {"mail", "email", "certified_mail"}
+# Tracking IDs are external carrier references; cap to a conservative varchar-like size.
+_MAX_DENIAL_LETTER_TRACKING_ID = 255
+
+
+def _normalize_denial_letter_delivery_method(method: str | None) -> str | None:
+    """Normalize optional denial letter delivery method.
+
+    Returns lowercase method for accepted values (mail, email, certified_mail).
+    Returns ``None`` when value is missing or empty after trimming.
+    Raises ``ValueError`` for any non-empty unsupported value.
+    """
+    if not isinstance(method, str):
+        return None
+    normalized = method.strip().lower()
+    # Empty strings are treated as "not provided" for optional metadata.
+    if not normalized:
+        return None
+    if normalized not in _DENIAL_LETTER_DELIVERY_METHODS:
+        raise ValueError(
+            "denial_letter_delivery_method must be one of: mail, email, certified_mail"
+        )
+    return normalized
 
 
 def _claim_row_for_status_validation(row_d: dict[str, Any]) -> dict[str, Any]:
@@ -354,6 +381,9 @@ def _sql_in_params(prefix: str, ids: list[str]) -> tuple[str, dict[str, Any]]:
     placeholders = ",".join(f":{k}" for k in keys)
     params = dict(zip(keys, ids, strict=True))
     return placeholders, params
+
+
+logger = logging.getLogger(__name__)
 
 
 class ClaimRepository:
@@ -1009,18 +1039,27 @@ class ClaimRepository:
                 and row_d.get("settlement_agreed_at") is None
             ):
                 loss_state_val = row_d.get("loss_state")
-                new_pd = payment_due_iso_after_settlement_moment(now, loss_state_val)
+                conn.execute(
+                    text("""
+                    UPDATE claims
+                    SET settlement_agreed_at = :sa, updated_at = :now_u
+                    WHERE id = :claim_id
+                    """),
+                    {"sa": now, "now_u": now, "claim_id": claim_id},
+                )
+                final_settlement_agreed_at = now
+                new_pd = None
+                if get_prompt_payment_base_date(loss_state_val) == "settlement_agreement":
+                    new_pd = payment_due_iso_after_settlement_moment(now, loss_state_val)
                 if new_pd:
                     conn.execute(
                         text("""
-                        UPDATE claims SET settlement_agreed_at = :sa,
-                            payment_due = :pd, updated_at = :now_u
+                        UPDATE claims SET payment_due = :pd, updated_at = :now_u
                         WHERE id = :claim_id
                         """),
-                        {"sa": now, "pd": new_pd, "now_u": now, "claim_id": claim_id},
+                        {"pd": new_pd, "now_u": now, "claim_id": claim_id},
                     )
                     final_payment_due = new_pd
-                    final_settlement_agreed_at = now
                     task_rows = conn.execute(
                         text("""
                         SELECT id FROM claim_tasks
@@ -2476,6 +2515,8 @@ class ClaimRepository:
                         "actor_id": safe_actor,
                     },
                 )
+        if newly_set:
+            self._notify_claimant_best_effort(claim_id=claim_id, event="receipt_acknowledged")
         return newly_set
 
     def record_denial_letter(
@@ -2483,28 +2524,56 @@ class ClaimRepository:
         claim_id: str,
         denial_reason: str,
         denial_letter_body: str,
+        denial_letter_delivery_method: str | None = None,
+        denial_letter_tracking_id: str | None = None,
+        denial_letter_delivered_at: str | None = None,
         *,
         actor_id: str = ACTOR_WORKFLOW,
     ) -> None:
         """Record UCSPA-compliant denial letter (written, specific, with appeal rights)."""
         safe_reason = sanitize_denial_reason(denial_reason) or "Coverage denied"
         safe_actor = sanitize_actor_id(actor_id)
+        delivery_method = _normalize_denial_letter_delivery_method(denial_letter_delivery_method)
+        tracking_id_raw = (denial_letter_tracking_id or "").strip()
+        tracking_id = tracking_id_raw[:_MAX_DENIAL_LETTER_TRACKING_ID] if tracking_id_raw else None
+        delivered_at_raw = (denial_letter_delivered_at or "").strip()
+        delivered_at = delivered_at_raw if delivered_at_raw else None
+        if delivered_at:
+            try:
+                datetime.fromisoformat(delivered_at.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("denial_letter_delivered_at must be a valid ISO-8601 timestamp") from exc
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             result = conn.execute(
                 text("""
                 UPDATE claims SET denial_reason = :reason, denial_letter_sent_at = :now,
-                    denial_letter_body = :body, updated_at = :now WHERE id = :claim_id
+                    denial_letter_body = :body, denial_letter_delivery_method = :delivery_method,
+                    denial_letter_tracking_id = :tracking_id, denial_letter_delivered_at = :delivered_at,
+                    updated_at = :now WHERE id = :claim_id
                 """),
                 {
                     "reason": safe_reason,
                     "now": now,
                     "body": denial_letter_body[:65535],
+                    "delivery_method": delivery_method,
+                    "tracking_id": tracking_id,
+                    "delivered_at": delivered_at,
                     "claim_id": claim_id,
                 },
             )
             if result.rowcount == 0:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            after_state = {
+                "denial_reason": safe_reason,
+                "denial_letter_sent_at": now,
+            }
+            if delivery_method:
+                after_state["denial_letter_delivery_method"] = delivery_method
+            if tracking_id:
+                after_state["denial_letter_tracking_id"] = tracking_id
+            if delivered_at:
+                after_state["denial_letter_delivered_at"] = delivered_at
             conn.execute(
                 text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
@@ -2515,10 +2584,45 @@ class ClaimRepository:
                     "action": AUDIT_EVENT_DENIAL_LETTER,
                     "details": f"Denial letter sent: {safe_reason[:200]}",
                     "actor_id": safe_actor,
-                    "after_state": json.dumps(
-                        {"denial_reason": safe_reason, "denial_letter_sent_at": now}
-                    ),
+                    "after_state": json.dumps(after_state),
                 },
+            )
+        self._notify_claimant_best_effort(
+            claim_id=claim_id,
+            event="denial_letter",
+            template_data={"denial_reason": safe_reason},
+        )
+
+    def _notify_claimant_best_effort(
+        self,
+        *,
+        claim_id: str,
+        event: str,
+        template_data: dict[str, Any] | None = None,
+    ) -> None:
+        try:
+            contact = self.get_primary_contact_for_user_type(claim_id, "claimant") or {}
+            if not contact:
+                logger.debug(
+                    "No claimant contact found for notification: claim_id=%s event=%s",
+                    claim_id,
+                    event,
+                )
+                return
+            notify_claimant(
+                event,
+                claim_id,
+                email=contact.get("email"),
+                phone=contact.get("phone"),
+                template_data=template_data,
+            )
+        except Exception as e:
+            logger.warning(
+                "Claimant notification failed (best-effort): claim_id=%s event=%s error_type=%s error=%s",
+                claim_id,
+                event,
+                type(e).__name__,
+                e,
             )
 
     def record_claimant_communication(

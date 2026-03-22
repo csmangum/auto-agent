@@ -12,7 +12,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger(__name__)
@@ -390,6 +390,17 @@ class NotificationConfig(BaseSettings):
 
     email_enabled: bool = False
     sms_enabled: bool = False
+    sendgrid_api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        validation_alias="SENDGRID_API_KEY",
+    )
+    sendgrid_from_email: str = Field(default="", validation_alias="SENDGRID_FROM_EMAIL")
+    twilio_account_sid: str = Field(default="", validation_alias="TWILIO_ACCOUNT_SID")
+    twilio_auth_token: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        validation_alias="TWILIO_AUTH_TOKEN",
+    )
+    twilio_from_phone: str = Field(default="", validation_alias="TWILIO_FROM_PHONE")
 
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod
@@ -414,6 +425,27 @@ class DiaryConfig(BaseSettings):
         default=24,
         ge=0,
         description="Hours after overdue notification before escalating to supervisor",
+    )
+
+
+class SchedulerConfig(BaseSettings):
+    """Optional in-process scheduler for periodic operational jobs."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="SCHEDULER_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = False
+    timezone: str = "UTC"
+    ucspa_deadline_check_cron: str = "0 9 * * *"
+    diary_escalate_cron: str = "0 * * * *"
+    ucspa_days_ahead: int = Field(
+        default=3,
+        ge=1,
+        description="Days ahead for UCSPA deadline approaching alerts",
     )
 
 
@@ -902,6 +934,7 @@ class Settings(BaseSettings):
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
     diary: DiaryConfig = Field(default_factory=DiaryConfig)
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     tracing: TracingConfig = Field(default_factory=TracingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)

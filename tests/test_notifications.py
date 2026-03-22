@@ -22,6 +22,11 @@ from claim_agent.notifications.webhook import (
 )
 
 
+def _claimant_executor_submit_inline(fn, *args, **kwargs):
+    """Run claimant notification work inline so tests do not race ThreadPoolExecutor."""
+    fn(*args, **kwargs)
+
+
 class TestWebhookConfig:
     """Tests for get_webhook_config."""
 
@@ -323,6 +328,13 @@ class TestNotificationConfig:
         assert isinstance(config, dict)
         assert "email_enabled" in config
         assert "sms_enabled" in config
+        assert "sendgrid_api_key" in config
+        assert "sendgrid_from_email" in config
+        assert "twilio_account_sid" in config
+        assert "twilio_auth_token" in config
+        assert "twilio_from_phone" in config
+        assert isinstance(config["sendgrid_api_key"], str)
+        assert isinstance(config["twilio_auth_token"], str)
 
     def test_default_disabled(self):
         with patch.dict(os.environ, {}, clear=False):
@@ -332,7 +344,7 @@ class TestNotificationConfig:
 
 
 class TestNotifyClaimant:
-    """Tests for claimant notification stub."""
+    """Tests for claimant notifications."""
 
     def test_opt_out_skips(self, caplog):
         with patch.dict(os.environ, {"NOTIFICATION_EMAIL_ENABLED": "true"}):
@@ -344,34 +356,81 @@ class TestNotifyClaimant:
             notify_claimant("receipt_acknowledged", "CLM-123")
         assert "Would send" not in caplog.text
 
-    def test_logs_when_email_enabled_and_contact_present(self):
+    def test_sends_email_when_enabled_and_contact_present(self):
         claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
         cap = LogCaptureHandler()
         claimant_logger.addHandler(cap)
         claimant_logger.setLevel(logging.INFO)
         try:
-            with patch.dict(os.environ, {"NOTIFICATION_EMAIL_ENABLED": "true"}):
-                reload_settings()
-                notify_claimant("receipt_acknowledged", "CLM-123", email="a@b.com")
+            with patch("claim_agent.notifications.claimant._EXECUTOR") as mock_exec:
+                mock_exec.submit.side_effect = _claimant_executor_submit_inline
+                with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                    mock_client = mock_client_cls.return_value.__enter__.return_value
+                    mock_client.post.return_value.status_code = 202
+                    with patch.dict(
+                        os.environ,
+                        {
+                            "NOTIFICATION_EMAIL_ENABLED": "true",
+                            "SENDGRID_API_KEY": "sg-key",
+                            "SENDGRID_FROM_EMAIL": "noreply@example.com",
+                        },
+                    ):
+                        reload_settings()
+                        notify_claimant("receipt_acknowledged", "CLM-123", email="a@b.com")
+                    mock_client.post.assert_called_once()
+                    assert mock_client.post.call_args[0][0] == "https://api.sendgrid.com/v3/mail/send"
         finally:
             claimant_logger.removeHandler(cap)
-        assert any("Would send claimant email" in m for m in cap.messages)
+        assert any("Sent claimant email" in m for m in cap.messages)
         assert any("receipt_acknowledged" in m for m in cap.messages)
         assert any("CLM-123" in m for m in cap.messages)
 
-    def test_logs_when_sms_enabled_and_phone_present(self):
+    def test_sends_sms_when_enabled_and_phone_present(self):
         claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
         cap = LogCaptureHandler()
         claimant_logger.addHandler(cap)
         claimant_logger.setLevel(logging.INFO)
         try:
-            with patch.dict(os.environ, {"NOTIFICATION_SMS_ENABLED": "true"}):
-                reload_settings()
-                notify_claimant("claim_closed", "CLM-456", phone="+15551234567")
+            with patch("claim_agent.notifications.claimant._EXECUTOR") as mock_exec:
+                mock_exec.submit.side_effect = _claimant_executor_submit_inline
+                with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                    mock_client = mock_client_cls.return_value.__enter__.return_value
+                    mock_client.post.return_value.status_code = 201
+                    with patch.dict(
+                        os.environ,
+                        {
+                            "NOTIFICATION_SMS_ENABLED": "true",
+                            "TWILIO_ACCOUNT_SID": "sid",
+                            "TWILIO_AUTH_TOKEN": "token",
+                            "TWILIO_FROM_PHONE": "+15550000000",
+                        },
+                    ):
+                        reload_settings()
+                        notify_claimant("claim_closed", "CLM-456", phone="+15551234567")
+                    mock_client.post.assert_called_once()
+                    assert (
+                        mock_client.post.call_args[0][0]
+                        == "https://api.twilio.com/2010-04-01/Accounts/sid/Messages.json"
+                    )
         finally:
             claimant_logger.removeHandler(cap)
-        assert any("Would send claimant SMS" in m for m in cap.messages)
+        assert any("Sent claimant SMS" in m for m in cap.messages)
         assert any("claim_closed" in m for m in cap.messages)
+
+    def test_warns_when_email_enabled_but_provider_credentials_missing(self):
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.WARNING)
+        try:
+            with patch("claim_agent.notifications.claimant._EXECUTOR") as mock_exec:
+                mock_exec.submit.side_effect = _claimant_executor_submit_inline
+                with patch.dict(os.environ, {"NOTIFICATION_EMAIL_ENABLED": "true"}):
+                    reload_settings()
+                    notify_claimant("receipt_acknowledged", "CLM-123", email="a@b.com")
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("provider credentials missing" in m for m in cap.messages)
 
 
 class TestRepositoryWebhookIntegration:

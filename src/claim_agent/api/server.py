@@ -45,6 +45,7 @@ from claim_agent.db.database import ensure_fresh_db_on_startup, is_postgres_back
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
 from claim_agent.exceptions import InvalidClaimTransitionError
+from claim_agent.scheduler import ensure_scheduler_running, stop_scheduler
 
 import logging
 
@@ -63,6 +64,7 @@ async def lifespan(_app: FastAPI):
         ensure_fresh_db_on_startup()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
+    ensure_scheduler_running()
 
     if not get_settings().paths.redis_url:
         _server_logger.warning(
@@ -111,6 +113,8 @@ async def lifespan(_app: FastAPI):
 
     if claim_background_tasks:
         await asyncio.gather(*claim_background_tasks)
+
+    await stop_scheduler()
 
     if _otel_enabled:
         try:
