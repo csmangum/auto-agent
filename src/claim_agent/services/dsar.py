@@ -504,12 +504,15 @@ def fulfill_deletion_request(
                 claim_id,
                 now_iso=now_iso,
                 notes_redaction_text="[REDACTED - DSAR deletion]",
+                redact_audit_log=get_settings().privacy.audit_log_state_redaction_enabled,
             )
             anonymized_claims += 1
             anonymized_parties += n_parties
 
-        # Note: claim_audit_log (details, before_state, after_state) is preserved for
-        # legal/regulatory requirements; audit trail is typically retained per compliance practice.
+        # Note: claim_audit_log non-PII columns (action, statuses, details, actor_id,
+        # created_at) are preserved for legal/regulatory requirements.  When
+        # AUDIT_LOG_STATE_REDACTION_ENABLED=true, before_state / after_state JSON is
+        # also redacted in place (migration 049).
         conn.execute(
             text("""
                 UPDATE dsar_requests SET status = :status, completed_at = :completed_at

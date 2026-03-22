@@ -163,15 +163,78 @@ AUDIT_LOG_PURGE_ENABLED=true claim-agent audit-log-purge --ack-exported --dry-ru
 AUDIT_LOG_PURGE_ENABLED=true claim-agent audit-log-purge --ack-exported
 ```
 
+### Audit log PII redaction (in-place, before_state / after_state)
+
+`claim_audit_log` stores `before_state` and `after_state` as JSON snapshots
+that can contain PII (policy number, VIN, narrative descriptions, party
+details).  Migration `039` removed the DELETE block; migration `049` relaxes
+the UPDATE block so that **only the two JSON state columns** can be updated —
+all other columns (`claim_id`, `action`, `old_status`, `new_status`, `details`,
+`actor_id`, `created_at`) remain immutable, preserving tamper-evidence for
+audit event metadata.
+
+#### Threat model: tamper-evidence vs erasure
+
+| Property | Impact after enabling redaction |
+|----------|---------------------------------|
+| **Who did what and when** | Unchanged — `action`, `actor_id`, `created_at`, status transitions remain immutable |
+| **Before/after PII values** | Replaced with `[REDACTED]` — pre-redaction PII is erased from the audit trail |
+| **Compliance record** | Audit row is retained; only the PII payload is scrubbed |
+
+This satisfies GDPR/CCPA right-to-erasure while keeping audit-event metadata
+(the *what happened* record) intact.  If your threat model requires full
+immutability of all audit columns (e.g. regulatory frameworks that treat audit
+logs as evidence that must never be altered), **leave this feature disabled**
+and rely on export-then-purge instead.
+
+#### Settings gate
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUDIT_LOG_STATE_REDACTION_ENABLED` | `false` | When `true`, before_state / after_state JSON is redacted in place during DSAR deletion and retention purge.  Requires migration 049. |
+
+The default is `false`; existing deployments are unaffected until you opt in.
+
+#### What gets redacted
+
+The following keys are replaced with `[REDACTED]` wherever they appear in the
+JSON (at the top level or inside nested objects):
+
+| Key | Reason |
+|-----|--------|
+| `policy_number` | Direct PII |
+| `vin` | Direct PII |
+| `incident_description` | Narrative – may contain names/locations |
+| `damage_description` | Narrative – may contain names/locations |
+| `name` | Party PII |
+| `email` | Party PII |
+| `phone` | Party PII |
+| `address` | Party PII |
+| `attachments` | Replaced with `[]` (may reference external PII) |
+
+Status, claim type, amounts, timestamps, and other non-PII fields are kept.
+
+#### Enabling redaction
+
+```bash
+# .env or environment
+AUDIT_LOG_STATE_REDACTION_ENABLED=true
+```
+
+Once set, every subsequent DSAR deletion or retention purge will also sanitize
+the audit log rows for the affected claim(s).  Rows created *before* enabling
+the setting are not retroactively redacted; to backfill older rows call the
+`redact_audit_log_pii()` helper directly (see `src/claim_agent/db/pii_redaction.py`).
+
 ### Tiered retention (cold → archived → purged)
 
-Claims carry a `retention_tier` (`active`, `cold`, `archived`, `purged`). On closure, tier moves to **cold** (closed claims within the legal retention window). `retention-enforce` still archives by age using `created_at` and per-state rules. After archive, **`RETENTION_PURGE_AFTER_ARCHIVE_YEARS`** (default 2) defines how long the row stays in `status=archived` before **`claim-agent retention-purge`** may run. The purge horizon uses **calendar years** from `archived_at` (same month/day anniversary, with day clamped for short months). Purge **anonymizes** the claim row (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), **claim_parties**, and **claim_notes** (same pattern as DSAR deletion), sets `status=purged`, `retention_tier=purged`, and `purged_at`; **claim_audit_log** rows are not deleted (historical JSON in audit entries may still contain pre-redaction values).
+Claims carry a `retention_tier` (`active`, `cold`, `archived`, `purged`). On closure, tier moves to **cold** (closed claims within the legal retention window). `retention-enforce` still archives by age using `created_at` and per-state rules. After archive, **`RETENTION_PURGE_AFTER_ARCHIVE_YEARS`** (default 2) defines how long the row stays in `status=archived` before **`claim-agent retention-purge`** may run. The purge horizon uses **calendar years** from `archived_at` (same month/day anniversary, with day clamped for short months). Purge **anonymizes** the claim row (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), **claim_parties**, and **claim_notes** (same pattern as DSAR deletion), sets `status=purged`, `retention_tier=purged`, and `purged_at`; **claim_audit_log** rows are not deleted (when `AUDIT_LOG_STATE_REDACTION_ENABLED=true`, before_state / after_state JSON is also redacted in place).
 
 ### Archive Behavior
 
 - **Soft delete**: Claims are marked with `status=archived` and `archived_at=datetime('now')`
 - **Audit log**: Each archived claim gets an audit entry: `action=retention_archived`, `actor_id=retention`
-- **Audit trail preserved**: The audit log is append-only; archived claims remain in the database for audit history
+- **Audit trail preserved**: The audit log is append-only for non-PII columns; archived claims remain in the database for audit history
 
 ### Retention Actions Logged
 
@@ -233,6 +296,6 @@ Set `LLM_DATA_MINIMIZATION=false` for debugging.
 
 ## Related
 
-- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE, AUDIT_LOG_PURGE_ENABLED, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
+- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE, AUDIT_LOG_PURGE_ENABLED, AUDIT_LOG_STATE_REDACTION_ENABLED, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
 - [Observability](observability.md) – Structured logging, claim context
 - [Database](database.md) – Schema, audit log
