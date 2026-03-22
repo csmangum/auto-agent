@@ -3,7 +3,7 @@
 Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
-Supported values: ``mock``, ``stub``, ``rest`` (policy, fraud_reporting, state_bureau). Valuation also supports
+Supported values: ``mock``, ``stub``, ``rest`` (policy, fraud_reporting, state_bureau, claim_search). Valuation also supports
 ``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings.
 ``nmvtis``, ``gap_insurance``, and ``cms`` support ``mock`` and ``stub`` only. Unknown values raise ValueError.
 """

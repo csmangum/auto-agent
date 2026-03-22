@@ -7,17 +7,19 @@ from claim_agent.adapters.base import ReverseImageAdapter
 
 # Deterministic match set returned for every query in mock mode.
 # Using a stable fixture avoids network calls and keeps tests reproducible.
+# Scores are kept below the vision_logic fraud threshold (0.8) so mock mode does
+# not always append ``reverse_image_stock_photo_match`` to anomalies.
 _MOCK_MATCHES: list[dict[str, Any]] = [
     {
         "url": "https://stock.example.com/images/car-damage-123.jpg",
-        "match_score": 0.91,
+        "match_score": 0.72,
         "source_label": "stock_photo_site",
         "title": "Generic car damage stock photo",
         "page_fetched_at": "2024-01-15T00:00:00Z",
     },
     {
         "url": "https://social.example.com/posts/99887766",
-        "match_score": 0.74,
+        "match_score": 0.65,
         "source_label": "social_media",
         "title": "Post from prior incident",
         "page_fetched_at": "2024-01-15T00:00:00Z",

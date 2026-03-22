@@ -120,12 +120,14 @@ def _resolve_edge_relations(
 ) -> list[str]:
     """Compute shared link-key relation types between a source and a target claim.
 
-    Returns a sorted list of ``RELATION_SHARED_*`` constants that explain how the
-    source and target are connected. An empty list means no shared link keys.
+    Returns a list of ``RELATION_SHARED_*`` constants (insertion order) that
+    explain how the source and target are connected. Edges in
+    ``build_relationship_snapshot`` sort and de-duplicate these for output. An
+    empty list means no shared link keys.
     """
     rtypes: list[str] = []
     tgt_vin = str(tgt_claim.get("vin") or "").strip()
-    if tgt_vin and tgt_vin in set(src_vins):
+    if tgt_vin and src_vins and tgt_vin in src_vins:
         rtypes.append(RELATION_SHARED_VIN)
     tgt_addresses = {
         str(p.get("address")).strip().lower()

@@ -214,6 +214,9 @@ class StubGapInsuranceAdapter(GapInsuranceAdapter):
 class StubReverseImageAdapter(ReverseImageAdapter):
     """Placeholder for a real reverse-image / stock-photo search integration.
 
+    Raises ``NotImplementedError`` by design (stub contract), unlike production
+    adapters that should return an empty list on soft failures.
+
     Replace ``match_web_occurrences`` with a call to a production provider
     (e.g. Google Vision ``SIMILAR_WEB_PAGES``, TinEye, or a proprietary
     prior-claim image index).

@@ -321,9 +321,10 @@ class ReverseImageAdapter(ABC):
 
             Optional keys: ``title``, ``page_fetched_at`` (ISO-8601 timestamp).
 
-        Implementations **must not** raise on non-critical failures; return an
-        empty list if the lookup produces no results or the provider is
-        unavailable.
+        **Production** implementations should not raise on non-critical failures;
+        return an empty list if the lookup produces no results or the provider is
+        unavailable. **Stub** adapters (e.g. ``StubReverseImageAdapter``) may raise
+        ``NotImplementedError`` to signal a missing integration.
         """
         ...
 

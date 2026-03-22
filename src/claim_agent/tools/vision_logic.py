@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 
 import litellm
 
+from claim_agent.adapters.registry import get_reverse_image_adapter
 from claim_agent.config import get_settings
 from claim_agent.config.settings import (
     get_adapter_backend,
@@ -94,12 +95,11 @@ def analyze_damage_photo_impl(
                     ),
                 )
                 # Optional reverse-image / stock-photo check (feature-flagged).
-                # Only performed when REVERSE_IMAGE_ADAPTER is explicitly set to
-                # something other than "stub" (the default stub raises NotImplementedError
-                # and is not auto-invoked to avoid blocking FNOL on external APIs).
+                # Default is ``mock`` (deterministic, no network). Set
+                # ``REVERSE_IMAGE_ADAPTER=stub`` to skip this block so we never call
+                # the stub (which raises NotImplementedError) and FNOL stays unblocked.
                 if get_adapter_backend("reverse_image") != "stub":
                     try:
-                        from claim_agent.adapters.registry import get_reverse_image_adapter
                         ri_adapter = get_reverse_image_adapter()
                         with open(path, "rb") as _f:
                             _image_bytes = _f.read()
