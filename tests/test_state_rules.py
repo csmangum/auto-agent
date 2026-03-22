@@ -7,6 +7,7 @@ from claim_agent.compliance.state_rules import (
     get_compliance_due_date,
     get_siu_referral_threshold,
     get_comparative_fault_rules,
+    get_nicb_deadline_days,
     is_recovery_eligible,
 )
 from datetime import date
@@ -53,6 +54,23 @@ class TestGetStateRules:
         assert rules is not None
         assert rules.diminished_value_required is True
         assert rules.diminished_value_formula == "ga_17c"
+
+    def test_california_nicb_theft_deadline(self):
+        """CA has a strict 5-working-day (≈7 calendar day) NICB theft deadline."""
+        rules = get_state_rules("California")
+        assert rules is not None
+        assert rules.nicb_deadline_days_theft == 7
+
+    def test_california_nicb_salvage_deadline(self):
+        rules = get_state_rules("California")
+        assert rules is not None
+        assert rules.nicb_deadline_days_salvage == 30
+
+    def test_new_jersey_nicb_theft_deadline(self):
+        """NJ has a strict 2-working-day (≈3 calendar day) NICB theft deadline."""
+        rules = get_state_rules("New Jersey")
+        assert rules is not None
+        assert rules.nicb_deadline_days_theft == 3
 
 
 class TestGetTotalLossThreshold:
@@ -159,3 +177,38 @@ class TestIsRecoveryEligible:
         assert is_recovery_eligible(49.0, "Georgia") is True
         assert is_recovery_eligible(50.0, "Georgia") is False
         assert is_recovery_eligible(51.0, "Georgia") is False
+
+
+class TestGetNicbDeadlineDays:
+    def test_california_theft_is_7_days(self):
+        """CA vehicle theft must be filed with NICB within 5 working days (≈7 calendar days)."""
+        assert get_nicb_deadline_days("California", "theft") == 7
+
+    def test_california_salvage_is_30_days(self):
+        assert get_nicb_deadline_days("California", "salvage") == 30
+
+    def test_new_jersey_theft_is_3_days(self):
+        """NJ vehicle theft must be filed with NICB within 2 working days (≈3 calendar days)."""
+        assert get_nicb_deadline_days("New Jersey", "theft") == 3
+
+    def test_new_jersey_abbreviation(self):
+        assert get_nicb_deadline_days("NJ", "theft") == 3
+
+    def test_florida_theft_defaults_30(self):
+        assert get_nicb_deadline_days("Florida", "theft") == 30
+
+    def test_texas_theft_defaults_30(self):
+        assert get_nicb_deadline_days("Texas", "theft") == 30
+
+    def test_unknown_state_defaults_30(self):
+        assert get_nicb_deadline_days(None, "theft") == 30
+        assert get_nicb_deadline_days("InvalidState", "theft") == 30
+
+    def test_default_report_type_is_theft(self):
+        """Omitting report_type should behave as theft."""
+        assert get_nicb_deadline_days("California") == get_nicb_deadline_days("California", "theft")
+
+    def test_salvage_type_falls_back_to_30_when_not_set(self):
+        """States without explicit salvage rules fall back to 30 days."""
+        for state in ("Florida", "Texas", "New York", "Georgia"):
+            assert get_nicb_deadline_days(state, "salvage") == 30
