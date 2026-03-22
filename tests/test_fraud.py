@@ -226,6 +226,170 @@ class TestFraudAssessment:
         assert "mandatory_referral_reason" in result["assessment_details"]
         assert "California" in result["assessment_details"]["mandatory_referral_reason"]
 
+    def test_mandatory_referral_trigger_score_when_score_based(self, temp_db):
+        """Score-based mandatory referral sets mandatory_referral_trigger='score'."""
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-SCORE-TRIGGER",
+                vin="SCORE123",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident. Multiple occupants all injured. Witnesses left.",
+                damage_description="Inflated pre-existing fabricated damage. Complete destruction.",
+                estimated_damage=50000,
+            )
+        )
+        # Use pre-computed analysis so only score triggers (no mandatory indicator codes present)
+        claim_data = {"claim_id": claim_id, "state": "California"}
+        pattern_analysis = {"pattern_score": 80, "patterns_detected": ["staged_accident_indicators"], "claim_history": [], "risk_factors": []}
+        cross_reference = {"cross_reference_score": 0, "database_matches": [], "fraud_keywords_found": [], "recommendations": []}
+        result = json.loads(perform_fraud_assessment_impl(claim_data, pattern_analysis, cross_reference))
+        assert result["siu_referral"] is True
+        assert result["mandatory_referral_applied"] is True
+        assert result["mandatory_referral_trigger"] == "score"
+
+    def test_mandatory_referral_trigger_indicator_when_indicator_present(self, temp_db):
+        """When a mandatory indicator is present, siu_referral is forced and trigger='indicator'."""
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-IND-TRIGGER",
+                vin="IND123",
+                vehicle_year=2020,
+                vehicle_make="Ford",
+                vehicle_model="F-150",
+                incident_date=date(2026, 1, 20),
+                incident_description="Minor fender bender.",
+                damage_description="Small scratch on bumper.",
+                estimated_damage=800,
+            )
+        )
+        # Low score, but mandatory indicator 'organized_fraud_ring' is present
+        claim_data = {"claim_id": claim_id, "state": "California"}
+        pattern_analysis = {
+            "pattern_score": 10,
+            "patterns_detected": ["organized_fraud_ring"],
+            "claim_history": [],
+            "risk_factors": [],
+        }
+        cross_reference = {
+            "cross_reference_score": 0,
+            "database_matches": [],
+            "fraud_keywords_found": [],
+            "recommendations": [],
+        }
+        result = json.loads(perform_fraud_assessment_impl(claim_data, pattern_analysis, cross_reference))
+        assert result["siu_referral"] is True
+        assert result["mandatory_referral_applied"] is True
+        assert result["mandatory_referral_trigger"] == "indicator"
+        assert "organized_fraud_ring" in result["assessment_details"]["mandatory_referral_indicators"]
+        assert "California" in result["assessment_details"]["mandatory_referral_reason"]
+        assert "organized_fraud_ring" in result["assessment_details"]["mandatory_referral_reason"]
+
+    def test_mandatory_referral_indicator_overrides_low_score(self):
+        """Mandatory indicator triggers referral even when score is below all thresholds."""
+        # Score is 5 - below all thresholds; no state score threshold met
+        claim_data = {"state": "Texas"}
+        pattern_analysis = {
+            "pattern_score": 5,
+            "patterns_detected": ["bodily_injury_staging"],
+            "claim_history": [],
+            "risk_factors": [],
+        }
+        cross_reference = {
+            "cross_reference_score": 0,
+            "database_matches": [],
+            "fraud_keywords_found": [],
+            "recommendations": [],
+        }
+        result = json.loads(perform_fraud_assessment_impl(claim_data, pattern_analysis, cross_reference))
+        assert result["siu_referral"] is True
+        assert result["mandatory_referral_applied"] is True
+        assert result["mandatory_referral_trigger"] == "indicator"
+        assert "bodily_injury_staging" in result["assessment_details"]["mandatory_referral_indicators"]
+
+    def test_mandatory_referral_indicator_not_triggered_when_not_in_state_list(self):
+        """Indicator present but not in state's mandatory list does not force referral."""
+        # Georgia only has 'organized_fraud_ring' as mandatory indicator
+        # 'bodily_injury_staging' is not mandatory for Georgia
+        claim_data = {"state": "Georgia"}
+        pattern_analysis = {
+            "pattern_score": 5,
+            "patterns_detected": ["bodily_injury_staging"],
+            "claim_history": [],
+            "risk_factors": [],
+        }
+        cross_reference = {
+            "cross_reference_score": 0,
+            "database_matches": [],
+            "fraud_keywords_found": [],
+            "recommendations": [],
+        }
+        result = json.loads(perform_fraud_assessment_impl(claim_data, pattern_analysis, cross_reference))
+        # Score 5 is below Georgia's threshold of 75; indicator is not mandatory for Georgia
+        assert result["mandatory_referral_applied"] is False
+        assert result["mandatory_referral_trigger"] is None
+
+    def test_mandatory_referral_both_triggers_sets_trigger_to_indicator(self, temp_db):
+        """When both score and indicator fire, mandatory_referral_trigger is 'indicator'."""
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-BOTH-TRIGGERS",
+                vin="BOTH123",
+                vehicle_year=2020,
+                vehicle_make="Toyota",
+                vehicle_model="Camry",
+                incident_date=date(2026, 1, 15),
+                incident_description="Organized fraud ring.",
+                damage_description="Total destruction.",
+                estimated_damage=50000,
+            )
+        )
+        claim_data = {"claim_id": claim_id, "state": "California"}
+        # Score 80 >= California threshold 75; 'organized_fraud_ring' is also mandatory
+        pattern_analysis = {
+            "pattern_score": 80,
+            "patterns_detected": ["organized_fraud_ring"],
+            "claim_history": [],
+            "risk_factors": [],
+        }
+        cross_reference = {
+            "cross_reference_score": 0,
+            "database_matches": [],
+            "fraud_keywords_found": [],
+            "recommendations": [],
+        }
+        result = json.loads(perform_fraud_assessment_impl(claim_data, pattern_analysis, cross_reference))
+        assert result["siu_referral"] is True
+        assert result["mandatory_referral_applied"] is True
+        assert result["mandatory_referral_trigger"] == "indicator"
+        assert result["state_referral_threshold"] == 75
+        # Both triggers should be mentioned in the reason
+        assert "also meets threshold" in result["assessment_details"]["mandatory_referral_reason"]
+
+    def test_mandatory_referral_trigger_none_when_no_state_rules(self):
+        """When state has no rules, mandatory_referral_trigger remains None."""
+        claim_data = {"state": "Wyoming"}  # No rules for Wyoming
+        pattern_analysis = {
+            "pattern_score": 10,
+            "patterns_detected": ["organized_fraud_ring"],
+            "claim_history": [],
+            "risk_factors": [],
+        }
+        cross_reference = {
+            "cross_reference_score": 0,
+            "database_matches": [],
+            "fraud_keywords_found": [],
+            "recommendations": [],
+        }
+        result = json.loads(perform_fraud_assessment_impl(claim_data, pattern_analysis, cross_reference))
+        assert result["mandatory_referral_applied"] is False
+        assert result["mandatory_referral_trigger"] is None
+
     def test_critical_risk_triggers_block(self, temp_db):
         """Critical risk claims should be blocked; input is designed to exceed critical_risk_threshold and critical_indicator_count."""
         repo = ClaimRepository()
