@@ -3453,3 +3453,207 @@ class TestInvalidClaimTransitionErrorHandler:
         assert "CLM-T" in data["detail"]
         assert "open" in data["detail"]
         assert "closed" in data["detail"]
+
+
+# -------------------------------------------------------------------
+# Retention endpoints
+# -------------------------------------------------------------------
+
+_ADJ_HEADERS = {"X-API-Key": "sk-adj"}
+
+
+def _set_adjuster_auth(monkeypatch):
+    """Set up adjuster auth for retention endpoint tests."""
+    monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+    monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+    reload_settings()
+
+
+class TestRetentionReport:
+    """GET /api/retention/report – returns audit report dict."""
+
+    def test_report_returns_expected_shape(self, client):
+        """Response contains all required top-level keys."""
+        resp = client.get("/api/retention/report")
+        assert resp.status_code == 200
+        data = resp.json()
+        required_keys = {
+            "retention_period_years",
+            "purge_after_archive_years",
+            "retention_by_state",
+            "purge_by_state",
+            "claims_by_status",
+            "claims_by_retention_tier",
+            "active_count",
+            "closed_count",
+            "archived_count",
+            "purged_count",
+            "litigation_hold_count",
+            "closed_with_litigation_hold",
+            "pending_archive_count",
+            "pending_purge_count",
+            "audit_log_rows",
+            "audit_log_rows_for_purged_claims",
+            "audit_log_rows_for_non_purged_claims",
+            "audit_log_retention_years_after_purge",
+            "audit_log_rows_eligible_for_retention",
+        }
+        assert required_keys.issubset(data.keys()), (
+            f"Missing keys: {required_keys - data.keys()}"
+        )
+
+    def test_report_counts_match_seeded_data(self, client):
+        """Counts for archived, purged, and litigation hold reflect seeded data."""
+        resp = client.get("/api/retention/report")
+        assert resp.status_code == 200
+        data = resp.json()
+        # seeded data has 1 archived and 1 purged claim
+        assert data["archived_count"] == 1
+        assert data["purged_count"] == 1
+        # no litigation holds in seeded data
+        assert data["litigation_hold_count"] == 0
+        assert data["closed_with_litigation_hold"] == 0
+
+    def test_report_tier_counts(self, client):
+        """claims_by_retention_tier reflects seeded tier distribution."""
+        resp = client.get("/api/retention/report")
+        assert resp.status_code == 200
+        tiers = resp.json()["claims_by_retention_tier"]
+        assert tiers.get("archived", 0) == 1
+        assert tiers.get("purged", 0) == 1
+        # cold tier = closed claims
+        assert tiers.get("cold", 0) == 1
+
+    def test_report_includes_state_maps(self, client):
+        """retention_by_state and purge_by_state dicts are non-empty (from JSON config)."""
+        resp = client.get("/api/retention/report")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["retention_by_state"], dict)
+        assert len(data["retention_by_state"]) >= 20
+        assert isinstance(data["purge_by_state"], dict)
+        assert len(data["purge_by_state"]) >= 10
+
+    def test_report_pending_archive_is_zero_for_recent_claims(self, client):
+        """Seeded closed claim was created recently, so 0 pending archive."""
+        resp = client.get("/api/retention/report")
+        assert resp.status_code == 200
+        assert resp.json()["pending_archive_count"] == 0
+
+    def test_report_role_enforcement(self, client, monkeypatch):
+        """RequireAdjuster: 401 without key, 403 with wrong role, 200 with adjuster."""
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-claimant:claimant")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/retention/report")
+        assert resp.status_code == 401
+
+        resp = client.get("/api/retention/report", headers={"X-API-Key": "sk-claimant"})
+        assert resp.status_code == 403
+
+        resp = client.get("/api/retention/report", headers={"X-API-Key": "sk-adj"})
+        assert resp.status_code == 200
+
+
+class TestRetentionEligibleForArchive:
+    """GET /api/retention/eligible-for-archive – list claims eligible to archive."""
+
+    def test_returns_expected_shape(self, client):
+        """Response has total and claims list."""
+        resp = client.get("/api/retention/eligible-for-archive")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "total" in data
+        assert "claims" in data
+        assert isinstance(data["claims"], list)
+
+    def test_no_claims_eligible_for_recent_data(self, client):
+        """Seeded claims were created recently and are not past the retention horizon."""
+        resp = client.get("/api/retention/eligible-for-archive")
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+
+    def test_claim_fields_returned(self, client, seeded_temp_db):
+        """Each claim in results contains safe retention fields."""
+        resp = client.get("/api/retention/eligible-for-archive")
+        assert resp.status_code == 200
+        for claim in resp.json()["claims"]:
+            assert "id" in claim
+            assert "policy_number" in claim
+            assert "status" in claim
+            assert "retention_tier" in claim
+
+    def test_role_enforcement(self, client, monkeypatch):
+        """RequireAdjuster: 401 without key, 403 with wrong role, 200 with adjuster."""
+        _set_adjuster_auth(monkeypatch)
+        resp = client.get("/api/retention/eligible-for-archive")
+        assert resp.status_code == 401
+
+        resp = client.get(
+            "/api/retention/eligible-for-archive", headers={"X-API-Key": "sk-adj"}
+        )
+        assert resp.status_code == 200
+
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-claimant:claimant")
+        reload_settings()
+        resp = client.get(
+            "/api/retention/eligible-for-archive", headers={"X-API-Key": "sk-claimant"}
+        )
+        assert resp.status_code == 403
+
+    def test_include_litigation_hold_param_accepted(self, client):
+        """include_litigation_hold=true is accepted without error."""
+        resp = client.get("/api/retention/eligible-for-archive?include_litigation_hold=true")
+        assert resp.status_code == 200
+
+
+class TestRetentionEligibleForPurge:
+    """GET /api/retention/eligible-for-purge – list archived claims eligible to purge."""
+
+    def test_returns_expected_shape(self, client):
+        """Response has total and claims list."""
+        resp = client.get("/api/retention/eligible-for-purge")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "total" in data
+        assert "claims" in data
+        assert isinstance(data["claims"], list)
+
+    def test_no_claims_eligible_for_fresh_archived(self, client):
+        """CLM-ARCHIVED has no archived_at set, so 0 claims are eligible for purge."""
+        resp = client.get("/api/retention/eligible-for-purge")
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+
+    def test_claim_fields_returned(self, client, seeded_temp_db):
+        """Each claim in results contains safe retention fields."""
+        resp = client.get("/api/retention/eligible-for-purge")
+        assert resp.status_code == 200
+        for claim in resp.json()["claims"]:
+            assert "id" in claim
+            assert "status" in claim
+            assert "archived_at" in claim
+
+    def test_role_enforcement(self, client, monkeypatch):
+        """RequireAdjuster: 401 without key, 403 with wrong role, 200 with adjuster."""
+        _set_adjuster_auth(monkeypatch)
+        resp = client.get("/api/retention/eligible-for-purge")
+        assert resp.status_code == 401
+
+        resp = client.get(
+            "/api/retention/eligible-for-purge", headers={"X-API-Key": "sk-adj"}
+        )
+        assert resp.status_code == 200
+
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-claimant:claimant")
+        reload_settings()
+        resp = client.get(
+            "/api/retention/eligible-for-purge", headers={"X-API-Key": "sk-claimant"}
+        )
+        assert resp.status_code == 403
+
+    def test_include_litigation_hold_param_accepted(self, client):
+        """include_litigation_hold=true is accepted without error."""
+        resp = client.get("/api/retention/eligible-for-purge?include_litigation_hold=true")
+        assert resp.status_code == 200
