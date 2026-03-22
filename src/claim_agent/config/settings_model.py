@@ -856,11 +856,12 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "vision": "VISION_ADAPTER",
     "ocr": "OCR_ADAPTER",
     "cms": "CMS_ADAPTER",
+    "fraud_reporting": "FRAUD_REPORTING_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 # Adapters that have a REST implementation; "rest" is invalid for all others
-REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy"})
+REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset({"policy", "fraud_reporting"})
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
 VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
 
@@ -910,6 +911,26 @@ class ValuationRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
+class FraudReportingRestConfig(BaseSettings):
+    """REST fraud reporting adapter configuration (FRAUD_REPORTING_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="FRAUD_REPORTING_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="Fraud filing API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    state_bureau_path: str = Field(default="/fraud/state-bureau")
+    nicb_path: str = Field(default="/fraud/nicb")
+    niss_path: str = Field(default="/fraud/niss")
+    response_key: str = Field(default="", description="Optional envelope JSON key")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
 # ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
@@ -945,6 +966,7 @@ class Settings(BaseSettings):
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
     valuation_rest: ValuationRestConfig = Field(default_factory=ValuationRestConfig)
+    fraud_reporting_rest: FraudReportingRestConfig = Field(default_factory=FraudReportingRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
 
@@ -1010,6 +1032,7 @@ class Settings(BaseSettings):
     vision_adapter: str = Field(default="real", validation_alias="VISION_ADAPTER")
     ocr_adapter: str = Field(default="mock", validation_alias="OCR_ADAPTER")
     cms_adapter: str = Field(default="mock", validation_alias="CMS_ADAPTER")
+    fraud_reporting_adapter: str = Field(default="mock", validation_alias="FRAUD_REPORTING_ADAPTER")
 
     @field_validator("siu_default_state", mode="before")
     @classmethod

@@ -8,6 +8,7 @@ variables (default: ``mock``).
 from claim_agent.adapters.registry import (
     get_claim_search_adapter,
     get_gap_insurance_adapter,
+    get_fraud_reporting_adapter,
     get_nmvtis_adapter,
     get_ocr_adapter,
     get_parts_adapter,
@@ -20,6 +21,7 @@ from claim_agent.adapters.registry import (
 
 __all__ = [
     "get_claim_search_adapter",
+    "get_fraud_reporting_adapter",
     "get_gap_insurance_adapter",
     "get_nmvtis_adapter",
     "get_ocr_adapter",

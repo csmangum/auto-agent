@@ -46,6 +46,10 @@ Each element of `claims` includes:
 | `required_filing_types` | Mandatory filing types for this claim given status and fraud signal (e.g. `["state_bureau"]`, or `["state_bureau","nicb","niss"]` for `fraud_confirmed`) |
 | `missing_required_filings` | Subset of `required_filing_types` with no matching row in `fraud_report_filings` |
 | `compliant` | `true` if `missing_required_filings` is empty |
+| `nicb_required` | Whether NICB filing is mandatory for this claim |
+| `nicb_due_at` | Computed NICB due timestamp (ISO-8601 UTC) from incident date + state template deadline |
+| `nicb_overdue` | `true` when NICB is required, missing, and due date has passed |
+| `nicb_alert` | `overdue`, `due_soon`, or `null` |
 | `filings` | List of filing records (type, report id, state, filed time) |
 
 **Rules for `required_filing_types`**
@@ -55,5 +59,18 @@ Each element of `claims` includes:
 - `fraud_confirmed`: `state_bureau`, `nicb`, and `niss`
 
 Other statuses are not returned by this endpoint’s claim filter.
+
+## Fraud reporting deadline alerts
+
+**`GET /api/compliance/fraud-reporting/deadlines`**
+
+**Roles:** `adjuster`, `supervisor`, `admin`, or `executive`.
+
+Returns NICB filing deadline alerts derived from `/api/compliance/fraud-reporting`:
+
+- `alerts`: array of claim alerts where NICB is required and alert state is `due_soon` or `overdue`
+- `total_alerts`: number of alerts
+
+Each alert includes: `claim_id`, `status`, `loss_state`, `nicb_due_at`, `nicb_alert`, and `nicb_overdue`.
 
 For OpenAPI details and interactive testing, run the API server and open `/api/openapi/docs` (see [Getting Started](getting-started.md)).

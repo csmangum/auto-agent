@@ -3,7 +3,7 @@
 Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
-Supported values: ``mock``, ``stub``, ``rest`` (policy only). Valuation also supports
+Supported values: ``mock``, ``stub``, ``rest`` (policy and fraud_reporting). Valuation also supports
 ``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings.
 ``nmvtis``, ``gap_insurance``, and ``cms`` support ``mock`` and ``stub`` only. Unknown values raise ValueError.
 """
@@ -14,6 +14,7 @@ from typing import Any, Callable, TypeVar, cast
 from claim_agent.adapters.base import (
     CMSReportingAdapter,
     ClaimSearchAdapter,
+    FraudReportingAdapter,
     GapInsuranceAdapter,
     NMVTISAdapter,
     OCRAdapter,
@@ -194,6 +195,22 @@ def get_cms_reporting_adapter() -> CMSReportingAdapter:
         "cms",
         StubCMSReportingAdapter,
         MockCMSReportingAdapter,
+    )
+
+
+def _fraud_reporting_rest_factory() -> FraudReportingAdapter:
+    from claim_agent.adapters.real.fraud_reporting_rest import create_rest_fraud_reporting_adapter
+    return create_rest_fraud_reporting_adapter()
+
+
+def get_fraud_reporting_adapter() -> FraudReportingAdapter:
+    from claim_agent.adapters.mock.fraud_reporting import MockFraudReportingAdapter
+    from claim_agent.adapters.stub_fraud_reporting import StubFraudReportingAdapter
+    return _get_or_create_adapter(
+        "fraud_reporting",
+        StubFraudReportingAdapter,
+        MockFraudReportingAdapter,
+        rest_factory=_fraud_reporting_rest_factory,
     )
 
 
