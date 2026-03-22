@@ -541,10 +541,14 @@ def _get_engine_for_path(path: str | None) -> Engine:
 
 def reset_engine_cache() -> None:
     """Clear cached engines. Use when config (e.g. DATABASE_URL) changes (e.g. tests)."""
-    global _engine, _async_engine
+    global _engine, _async_engine, _replica_engine
     with _engine_lock:
         _engine = None
         _sqlite_engines.clear()
+    with _replica_engine_lock:
+        if _replica_engine is not None:
+            _replica_engine.dispose()
+        _replica_engine = None
     with _async_engine_lock:
         if _async_engine is not None:
             # Dispose underlying sync engine to close pooled connections immediately.
@@ -625,12 +629,6 @@ async def get_connection_async():
         except Exception:
             await conn.rollback()
             raise
-    global _engine, _replica_engine
-    with _engine_lock:
-        _engine = None
-        _sqlite_engines.clear()
-    with _replica_engine_lock:
-        _replica_engine = None
 
 
 def get_db_path() -> str:

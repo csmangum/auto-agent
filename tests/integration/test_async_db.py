@@ -224,3 +224,34 @@ class TestGetConnectionAsyncPostgres:
             asyncio.run(_run())
 
         reset_engine_cache()
+
+    def test_async_exit_preserves_sync_and_replica_engine_cache(self, postgres_url):
+        """Regression: exiting get_connection_async must not clear global sync/replica engines."""
+        from sqlalchemy import text
+
+        from claim_agent.config import reload_settings
+
+        import claim_agent.db.database as db_mod
+
+        db_mod.reset_engine_cache()
+        os.environ["DATABASE_URL"] = postgres_url
+        os.environ["READ_REPLICA_DATABASE_URL"] = postgres_url
+        reload_settings()
+
+        sync_before = db_mod._get_engine()
+        replica_before = db_mod._get_replica_engine()
+        assert sync_before is not None
+        assert replica_before is not None
+        assert sync_before is not replica_before
+
+        async def _run():
+            async with db_mod.get_connection_async() as conn:
+                await conn.execute(text("SELECT 1"))
+
+        asyncio.run(_run())
+
+        assert db_mod._engine is sync_before
+        assert db_mod._replica_engine is replica_before
+
+        os.environ.pop("READ_REPLICA_DATABASE_URL", None)
+        db_mod.reset_engine_cache()
