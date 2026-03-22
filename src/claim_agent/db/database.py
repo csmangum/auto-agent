@@ -2,17 +2,23 @@
 
 Supports SQLite (default) and PostgreSQL. When DATABASE_URL is set, uses
 PostgreSQL with connection pooling. Otherwise uses SQLite at claims_db_path.
+
+Async support (PostgreSQL only):
+    Use ``get_connection_async()`` in async FastAPI route handlers for
+    non-blocking database I/O via the asyncpg driver.  The sync
+    ``get_connection()`` remains available for CLI, scripts, and sync callers.
 """
 
 import logging
 import sqlite3
 import threading
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from claim_agent.db.schema_incidents_sqlite import (
@@ -38,6 +44,10 @@ _sqlite_engines: dict[str, Engine] = {}
 # Read-replica engine (PostgreSQL only; None when READ_REPLICA_DATABASE_URL is not set)
 _replica_engine: Engine | None = None
 _replica_engine_lock = threading.Lock()
+
+# Async engine (PostgreSQL only, lazy init). Used by get_connection_async().
+_async_engine: AsyncEngine | None = None
+_async_engine_lock = threading.Lock()
 
 SCHEMA_SQL = (
     """
@@ -531,6 +541,90 @@ def _get_engine_for_path(path: str | None) -> Engine:
 
 def reset_engine_cache() -> None:
     """Clear cached engines. Use when config (e.g. DATABASE_URL) changes (e.g. tests)."""
+    global _engine, _async_engine
+    with _engine_lock:
+        _engine = None
+        _sqlite_engines.clear()
+    with _async_engine_lock:
+        if _async_engine is not None:
+            # Dispose underlying sync engine to close pooled connections immediately.
+            # AsyncEngine.sync_engine.dispose() is safe to call from sync context.
+            _async_engine.sync_engine.dispose()
+        _async_engine = None
+
+
+def _get_async_database_url() -> str:
+    """Return async-compatible database URL for SQLAlchemy.
+
+    Converts ``postgresql://`` / ``postgres://`` to ``postgresql+asyncpg://``
+    so SQLAlchemy uses the asyncpg driver.  Only valid when
+    ``is_postgres_backend()`` is True; raises ``RuntimeError`` otherwise.
+    """
+    if not is_postgres_backend():
+        raise RuntimeError(
+            "Async database connections require PostgreSQL (DATABASE_URL must be set). "
+            "SQLite does not support the asyncpg driver."
+        )
+    from claim_agent.config import get_settings
+
+    database_url: str | None = get_settings().paths.database_url
+    if not database_url:
+        raise RuntimeError(
+            "Async database connections require PostgreSQL (DATABASE_URL must be set)."
+        )
+    # Replace the scheme so SQLAlchemy uses asyncpg.
+    if database_url.startswith("postgresql+asyncpg://"):
+        return database_url
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return database_url
+
+
+def _get_async_engine() -> AsyncEngine:
+    """Return async SQLAlchemy engine (PostgreSQL only). Lazy init with connection pooling."""
+    global _async_engine
+    if _async_engine is not None:
+        return _async_engine
+    with _async_engine_lock:
+        if _async_engine is not None:
+            return _async_engine
+        from claim_agent.config import get_settings
+
+        paths = get_settings().paths
+        _async_engine = create_async_engine(
+            _get_async_database_url(),
+            pool_size=paths.db_pool_size,
+            max_overflow=paths.db_max_overflow,
+        )
+    return _async_engine
+
+
+@asynccontextmanager
+async def get_connection_async():
+    """Async context manager yielding a SQLAlchemy ``AsyncConnection`` (PostgreSQL only).
+
+    Use this in async FastAPI route handlers to avoid blocking the event loop.
+    The sync ``get_connection()`` remains available for CLI, scripts, and other
+    sync callers and continues to work for both SQLite and PostgreSQL.
+
+    Example::
+
+        async with get_connection_async() as conn:
+            result = await conn.execute(text("SELECT 1"))
+
+    Raises:
+        RuntimeError: If called when the backend is SQLite (DATABASE_URL not set).
+    """
+    engine = _get_async_engine()
+    async with engine.connect() as conn:
+        try:
+            yield conn
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
     global _engine, _replica_engine
     with _engine_lock:
         _engine = None
