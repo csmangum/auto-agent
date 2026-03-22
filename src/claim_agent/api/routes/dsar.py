@@ -297,6 +297,13 @@ def dsar_otp_request(body: OTPRequestInput = Body(...)) -> dict[str, Any]:
 
     Rate-limited per claimant identifier to prevent abuse.
     """
+    settings = get_settings()
+    if not settings.privacy.otp_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="OTP verification is disabled. Contact the administrator for assistance.",
+        )
+
     try:
         verification_id = request_otp(body.claimant_identifier, body.channel)
     except RateLimitExceeded as e:
@@ -304,7 +311,7 @@ def dsar_otp_request(body: OTPRequestInput = Body(...)) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    ttl = get_settings().privacy.otp_ttl_minutes
+    ttl = settings.privacy.otp_ttl_minutes
     return {
         "verification_id": verification_id,
         "channel": body.channel,
@@ -323,6 +330,12 @@ def dsar_otp_confirm(body: OTPConfirmInput = Body(...)) -> dict[str, Any]:
 
     Records all verification attempts in the audit log.
     """
+    if not get_settings().privacy.otp_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="OTP verification is disabled. Contact the administrator for assistance.",
+        )
+
     try:
         result = verify_otp(body.verification_id, body.code)
     except ValueError as e:
@@ -351,6 +364,12 @@ def dsar_self_service_access(body: SelfServiceAccessInput = Body(...)) -> dict[s
     Provide either ``claim_id`` or both ``policy_number`` and ``vin`` for
     claim-data lookup.
     """
+    if not get_settings().privacy.otp_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="OTP verification is disabled. Contact the administrator for assistance.",
+        )
+
     has_claim_id = bool(body.claim_id)
     has_policy_and_vin = bool(body.policy_number) and bool(body.vin)
     if not (has_claim_id or has_policy_and_vin):
@@ -389,6 +408,12 @@ def dsar_self_service_deletion(body: SelfServiceDeletionInput = Body(...)) -> di
     Provide either ``claim_id`` or both ``policy_number`` and ``vin`` for
     claim-data lookup.
     """
+    if not get_settings().privacy.otp_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="OTP verification is disabled. Contact the administrator for assistance.",
+        )
+
     has_claim_id = bool(body.claim_id)
     has_policy_and_vin = bool(body.policy_number) and bool(body.vin)
     if not (has_claim_id or has_policy_and_vin):

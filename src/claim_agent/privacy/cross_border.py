@@ -206,7 +206,7 @@ class TransferMechanism(str, Enum):
     EXPLICIT_CONSENT = "explicit_consent"
     """Claimant's explicit consent to the specific transfer – GDPR Art. 49(1)(a)."""
 
-    BCR = "binding_corporate_rules"
+    BCR = "bcr"
     """Binding Corporate Rules approved by a supervisory authority – GDPR Art. 47."""
 
     LEGITIMATE = "legitimate_interests"
