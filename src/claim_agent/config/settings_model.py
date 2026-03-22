@@ -902,6 +902,16 @@ class PrivacyConfig(BaseSettings):
             "and retention purge.  Requires migration 049 (the trigger is relaxed to allow "
             "updates only to those two columns; all other audit columns remain immutable). "
             "Default false – existing deployments are unaffected until opted in."
+    dsar_audit_log_policy: str = Field(
+        default="preserve",
+        validation_alias="DSAR_AUDIT_LOG_POLICY",
+        description=(
+            "Policy for claim_audit_log entries during DSAR deletion. "
+            "'preserve' (default): keep audit rows unchanged for legal/regulatory compliance. "
+            "'redact': scrub PII values from details/before_state/after_state JSON fields "
+            "while retaining action metadata and timestamps. "
+            "'delete': remove all audit rows for the claim (irreversible; requires "
+            "compliance sign-off and should be used only in jurisdictions that mandate it)."
         ),
     )
 
@@ -918,6 +928,14 @@ class PrivacyConfig(BaseSettings):
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("dsar_audit_log_policy", mode="before")
+    @classmethod
+    def _normalize_audit_log_policy(cls, v: Any) -> str:
+        s = str(v or "preserve").strip().lower()
+        if s in ("preserve", "redact", "delete"):
+            return s
+        return "preserve"
 
 
 class ChatConfig(BaseSettings):
@@ -1120,6 +1138,80 @@ class ClaimSearchRestConfig(BaseSettings):
 # ---------------------------------------------------------------------------
 
 
+class RetentionExportConfig(BaseSettings):
+    """S3/Glacier cold-storage export configuration for retention pipeline."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(
+        default=False,
+        validation_alias="RETENTION_EXPORT_ENABLED",
+        description="Enable cold-storage export pipeline (requires S3 bucket).",
+    )
+    s3_bucket: str = Field(
+        default="",
+        validation_alias="RETENTION_EXPORT_S3_BUCKET",
+        description="S3 bucket for cold-storage exports.",
+    )
+    s3_prefix: str = Field(
+        default="retention-exports",
+        validation_alias="RETENTION_EXPORT_S3_PREFIX",
+        description="Key prefix inside the export bucket.",
+    )
+    s3_endpoint: str | None = Field(
+        default=None,
+        validation_alias="RETENTION_EXPORT_S3_ENDPOINT",
+        description="Optional endpoint URL (MinIO or S3-compatible).",
+    )
+    s3_storage_class: str = Field(
+        default="GLACIER_IR",
+        validation_alias="RETENTION_EXPORT_S3_STORAGE_CLASS",
+        description=(
+            "S3 storage class applied to uploaded objects "
+            "(e.g. GLACIER_IR, GLACIER, STANDARD_IA)."
+        ),
+    )
+    encryption: str = Field(
+        default="AES256",
+        validation_alias="RETENTION_EXPORT_ENCRYPTION",
+        description="Server-side encryption: AES256 or aws:kms.",
+    )
+    kms_key_id: str | None = Field(
+        default=None,
+        validation_alias="RETENTION_EXPORT_KMS_KEY_ID",
+        description="KMS key ARN/ID when encryption=aws:kms.",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("s3_endpoint", "kms_key_id", mode="before")
+    @classmethod
+    def _empty_to_none(cls, v: Any) -> str | None:
+        if v is None or str(v).strip() == "":
+            return None
+        return str(v).strip()
+
+    @field_validator("encryption", mode="before")
+    @classmethod
+    def _normalize_encryption(cls, v: Any) -> str:
+        s = str(v or "AES256").strip()
+        return s if s else "AES256"
+
+
+# ---------------------------------------------------------------------------
+# Root Settings
+# ---------------------------------------------------------------------------
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -1155,6 +1247,7 @@ class Settings(BaseSettings):
     claim_search_rest: ClaimSearchRestConfig = Field(default_factory=ClaimSearchRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
+    retention_export: RetentionExportConfig = Field(default_factory=RetentionExportConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40

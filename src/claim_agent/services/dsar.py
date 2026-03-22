@@ -17,7 +17,7 @@ from sqlalchemy import text
 from claim_agent.compliance.dsar_state_rules import get_state_response_metadata
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
-from claim_agent.db.pii_redaction import anonymize_claim_pii
+from claim_agent.db.pii_redaction import anonymize_claim_pii, delete_audit_log_entries, redact_audit_log_pii
 from claim_agent.services.dsar_verification import (
     CHANNEL_EMAIL,
     CHANNEL_SMS,
@@ -436,9 +436,19 @@ def fulfill_deletion_request(
     db_path: str | None = None,
     actor_id: str = "dsar",
 ) -> dict[str, Any]:
-    """Fulfill a deletion request: anonymize claim and party PII, preserve audit trail.
+    """Fulfill a deletion request: anonymize claim and party PII; apply audit log policy.
 
-    Skips claims with litigation_hold=1. Returns summary of anonymized records.
+    Skips claims with litigation_hold=1 when ``LITIGATION_HOLD_BLOCKS_DELETION=true``
+    (default). The behavior for ``claim_audit_log`` rows is controlled by the
+    ``DSAR_AUDIT_LOG_POLICY`` setting:
+
+    - ``preserve`` (default): audit rows are kept unchanged (legal/regulatory compliance).
+    - ``redact``: PII values in ``details``, ``before_state``, and ``after_state`` JSON
+      fields are replaced with ``[REDACTED]``; action metadata and timestamps are kept.
+    - ``delete``: all audit rows for the claim are removed (irreversible; requires
+      compliance sign-off).
+
+    Returns summary of anonymized records and audit log rows affected.
     """
     path = db_path or get_db_path()
     with get_connection(path) as conn:
@@ -484,9 +494,11 @@ def fulfill_deletion_request(
         )
 
         blocks_deletion = get_settings().privacy.litigation_hold_blocks_deletion
+        audit_policy = get_settings().privacy.dsar_audit_log_policy
         anonymized_claims = 0
         anonymized_parties = 0
         skipped_litigation = 0
+        audit_rows_affected = 0
 
         for claim_id in claim_ids:
             if blocks_deletion:
@@ -513,6 +525,11 @@ def fulfill_deletion_request(
         # created_at) are preserved for legal/regulatory requirements.  When
         # AUDIT_LOG_STATE_REDACTION_ENABLED=true, before_state / after_state JSON is
         # also redacted in place (migration 049).
+            if audit_policy == "redact":
+                audit_rows_affected += redact_audit_log_pii(conn, claim_id)
+            elif audit_policy == "delete":
+                audit_rows_affected += delete_audit_log_entries(conn, claim_id)
+            # "preserve" (default): audit log untouched
         conn.execute(
             text("""
                 UPDATE dsar_requests SET status = :status, completed_at = :completed_at
@@ -534,6 +551,8 @@ def fulfill_deletion_request(
                 "anonymized_claims": anonymized_claims,
                 "anonymized_parties": anonymized_parties,
                 "skipped_litigation_hold": skipped_litigation,
+                "audit_log_policy": audit_policy,
+                "audit_rows_affected": audit_rows_affected,
             },
         )
 
@@ -542,6 +561,8 @@ def fulfill_deletion_request(
         "anonymized_claims": anonymized_claims,
         "anonymized_parties": anonymized_parties,
         "skipped_litigation_hold": skipped_litigation,
+        "audit_log_policy": audit_policy,
+        "audit_rows_affected": audit_rows_affected,
     }
 
 

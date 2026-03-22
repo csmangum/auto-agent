@@ -150,6 +150,20 @@ def is_audit_log_purge_enabled() -> bool:
     return get_settings().audit_log_purge_enabled
 
 
+def get_retention_export_config() -> dict:
+    """Cold-storage export settings (S3/Glacier pipeline)."""
+    s = get_settings().retention_export
+    return {
+        "enabled": s.enabled,
+        "s3_bucket": s.s3_bucket,
+        "s3_prefix": s.s3_prefix,
+        "s3_endpoint": s.s3_endpoint,
+        "s3_storage_class": s.s3_storage_class,
+        "encryption": s.encryption,
+        "kms_key_id": s.kms_key_id,
+    }
+
+
 def get_retention_by_state() -> dict[str, int]:
     """State-specific retention periods (years). Empty = use default only."""
     return get_settings().get_retention_by_state()

@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS claims (
     total_loss_settlement_authorized INTEGER,
     retention_tier TEXT NOT NULL DEFAULT 'active',
     purged_at TEXT,
+    cold_storage_exported_at TEXT,
+    cold_storage_export_key TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
