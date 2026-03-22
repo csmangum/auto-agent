@@ -417,6 +417,27 @@ class DiaryConfig(BaseSettings):
     )
 
 
+class SchedulerConfig(BaseSettings):
+    """Optional in-process scheduler for periodic operational jobs."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="SCHEDULER_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = False
+    timezone: str = "UTC"
+    ucspa_deadline_check_cron: str = "0 9 * * *"
+    diary_escalate_cron: str = "0 * * * *"
+    ucspa_days_ahead: int = Field(
+        default=3,
+        ge=1,
+        description="Days ahead for UCSPA deadline approaching alerts",
+    )
+
+
 class TracingConfig(BaseSettings):
     model_config = SettingsConfigDict(
         extra="ignore",
@@ -902,6 +923,7 @@ class Settings(BaseSettings):
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
     diary: DiaryConfig = Field(default_factory=DiaryConfig)
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     tracing: TracingConfig = Field(default_factory=TracingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)

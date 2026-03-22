@@ -7,9 +7,9 @@ Provides:
 - State-specific compliance deadline templates
 
 Note: Recurrence (recurrence_rule, recurrence_interval, parent_task_id) is stored
-on tasks but not yet executed by a scheduler. No job creates follow-up instances
-when a recurring task is completed. Use compute_next_due_date for planning; a
-future diary-recur CLI or cron job will create next instances.
+on tasks but not yet executed by a follow-up instance scheduler. This package
+provides overdue/supervisor escalation jobs only; recurring task instance
+generation should be run by a separate cron or scheduler job.
 """
 
 from claim_agent.diary.templates import (
