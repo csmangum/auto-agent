@@ -348,6 +348,207 @@ class TestDSARDeletion:
         assert export["parties"][0]["name"] == "[REDACTED]"
 
 
+class TestDSARAuditLogPolicy:
+    """Tests for DSAR_AUDIT_LOG_POLICY: preserve / redact / delete."""
+
+    @pytest.fixture
+    def dsar_db_with_audit(self, tmp_path):
+        """DB with a claim, party, and a claim_audit_log row containing PII-like JSON."""
+        db_path = str(tmp_path / "dsar_audit_policy_test.db")
+        from claim_agent.db.database import get_connection, init_db
+        from sqlalchemy import text
+
+        init_db(db_path)
+        with get_connection(db_path) as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,
+                    vehicle_model, incident_date, incident_description, damage_description,
+                    status, claim_type)
+                VALUES ('CLM-AUDIT', 'POL-AUDIT', 'VIN-AUDIT-0000001234', 2022, 'Ford', 'Focus',
+                    '2024-06-01', 'Highway collision', 'Rear bumper', 'closed', 'partial_loss')
+                """)
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_parties (claim_id, party_type, name, email, consent_status)
+                VALUES ('CLM-AUDIT', 'claimant', 'Pat Smith', 'pat@example.com', 'granted')
+                """)
+            )
+            # Insert an audit row with PII embedded in JSON fields
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log
+                    (claim_id, action, old_status, new_status, details, actor_id,
+                     before_state, after_state)
+                VALUES
+                    ('CLM-AUDIT', 'status_change', 'open', 'closed',
+                     '{"reason": "settled", "policy_number": "POL-AUDIT"}',
+                     'adjuster1',
+                     '{"policy_number": "POL-AUDIT", "name": "Pat Smith", "status": "open"}',
+                     '{"policy_number": "POL-AUDIT", "name": "Pat Smith", "status": "closed"}')
+                """)
+            )
+        return db_path
+
+    def test_preserve_policy_keeps_audit_rows(self, dsar_db_with_audit, monkeypatch):
+        """DSAR_AUDIT_LOG_POLICY=preserve (default) keeps audit rows unchanged."""
+        monkeypatch.setenv("DSAR_AUDIT_LOG_POLICY", "preserve")
+        reload_settings()
+
+        import json
+
+        from claim_agent.db.database import get_connection
+        from sqlalchemy import text
+
+        request_id = submit_deletion_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        result = fulfill_deletion_request(request_id, db_path=dsar_db_with_audit)
+        assert result["audit_log_policy"] == "preserve"
+        assert result["audit_rows_affected"] == 0
+
+        with get_connection(dsar_db_with_audit) as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT details, before_state, after_state FROM claim_audit_log "
+                    "WHERE claim_id = 'CLM-AUDIT'"
+                )
+            ).fetchall()
+        # Audit row preserved with original PII content
+        assert len(rows) == 1
+        details = json.loads(rows[0][0])
+        assert details["policy_number"] == "POL-AUDIT"
+
+    def test_redact_policy_scrubs_pii_from_audit_json(self, dsar_db_with_audit, monkeypatch):
+        """DSAR_AUDIT_LOG_POLICY=redact replaces PII keys in JSON fields."""
+        monkeypatch.setenv("DSAR_AUDIT_LOG_POLICY", "redact")
+        reload_settings()
+
+        import json
+
+        from claim_agent.db.database import get_connection
+        from sqlalchemy import text
+
+        request_id = submit_deletion_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        result = fulfill_deletion_request(request_id, db_path=dsar_db_with_audit)
+        assert result["audit_log_policy"] == "redact"
+        assert result["audit_rows_affected"] == 1
+
+        with get_connection(dsar_db_with_audit) as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT details, before_state, after_state FROM claim_audit_log "
+                    "WHERE claim_id = 'CLM-AUDIT'"
+                )
+            ).fetchall()
+
+        # One row preserved (action metadata intact) with PII replaced
+        assert len(rows) == 1
+        details = json.loads(rows[0][0])
+        assert details["policy_number"] == "[REDACTED]"
+        assert details["reason"] == "settled"  # non-PII key preserved
+
+        before = json.loads(rows[0][1])
+        assert before["policy_number"] == "[REDACTED]"
+        assert before["name"] == "[REDACTED]"
+        assert before["status"] == "open"  # non-PII key preserved
+
+        after = json.loads(rows[0][2])
+        assert after["policy_number"] == "[REDACTED]"
+        assert after["name"] == "[REDACTED]"
+        assert after["status"] == "closed"  # non-PII key preserved
+
+    def test_delete_policy_removes_audit_rows(self, dsar_db_with_audit, monkeypatch):
+        """DSAR_AUDIT_LOG_POLICY=delete removes all audit rows for the claim."""
+        monkeypatch.setenv("DSAR_AUDIT_LOG_POLICY", "delete")
+        reload_settings()
+
+        from claim_agent.db.database import get_connection
+        from sqlalchemy import text
+
+        request_id = submit_deletion_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        result = fulfill_deletion_request(request_id, db_path=dsar_db_with_audit)
+        assert result["audit_log_policy"] == "delete"
+        assert result["audit_rows_affected"] == 1
+
+        with get_connection(dsar_db_with_audit) as conn:
+            rows = conn.execute(
+                text("SELECT id FROM claim_audit_log WHERE claim_id = 'CLM-AUDIT'")
+            ).fetchall()
+        assert rows == []
+
+    def test_preserve_is_default(self, dsar_db_with_audit, monkeypatch):
+        """Default audit log policy is 'preserve' when DSAR_AUDIT_LOG_POLICY is not set."""
+        monkeypatch.delenv("DSAR_AUDIT_LOG_POLICY", raising=False)
+        reload_settings()
+
+        request_id = submit_deletion_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        result = fulfill_deletion_request(request_id, db_path=dsar_db_with_audit)
+        assert result["audit_log_policy"] == "preserve"
+        assert result["audit_rows_affected"] == 0
+
+    def test_redact_access_export_still_returns_redacted_audit_entries(
+        self, dsar_db_with_audit, monkeypatch
+    ):
+        """After redact policy, access export returns the redacted audit entries."""
+        monkeypatch.setenv("DSAR_AUDIT_LOG_POLICY", "redact")
+        reload_settings()
+
+        del_id = submit_deletion_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        fulfill_deletion_request(del_id, db_path=dsar_db_with_audit)
+
+        acc_id = submit_access_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        export = fulfill_access_request(acc_id, db_path=dsar_db_with_audit)
+        # Audit entries are present (action row preserved)
+        assert len(export["audit_entries"]) == 1
+        assert export["audit_entries"][0]["action"] == "status_change"
+
+    def test_delete_access_export_returns_empty_audit_entries(
+        self, dsar_db_with_audit, monkeypatch
+    ):
+        """After delete policy, access export returns no audit entries for the claim."""
+        monkeypatch.setenv("DSAR_AUDIT_LOG_POLICY", "delete")
+        reload_settings()
+
+        del_id = submit_deletion_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        fulfill_deletion_request(del_id, db_path=dsar_db_with_audit)
+
+        acc_id = submit_access_request(
+            claimant_identifier="pat@example.com",
+            verification_data={"claim_id": "CLM-AUDIT"},
+            db_path=dsar_db_with_audit,
+        )
+        export = fulfill_access_request(acc_id, db_path=dsar_db_with_audit)
+        assert export["audit_entries"] == []
+
+
 class TestConsentRevoke:
     def test_revoke_consent_by_email(self, dsar_db):
         count = revoke_consent_by_email("jane@example.com", db_path=dsar_db)

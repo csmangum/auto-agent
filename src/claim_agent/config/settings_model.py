@@ -893,6 +893,18 @@ class PrivacyConfig(BaseSettings):
             "Set this to a unique secret in production to prevent offline brute-force attacks."
         ),
     )
+    dsar_audit_log_policy: str = Field(
+        default="preserve",
+        validation_alias="DSAR_AUDIT_LOG_POLICY",
+        description=(
+            "Policy for claim_audit_log entries during DSAR deletion. "
+            "'preserve' (default): keep audit rows unchanged for legal/regulatory compliance. "
+            "'redact': scrub PII values from details/before_state/after_state JSON fields "
+            "while retaining action metadata and timestamps. "
+            "'delete': remove all audit rows for the claim (irreversible; requires "
+            "compliance sign-off and should be used only in jurisdictions that mandate it)."
+        ),
+    )
 
     @field_validator(
         "llm_data_minimization",
@@ -906,6 +918,14 @@ class PrivacyConfig(BaseSettings):
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("dsar_audit_log_policy", mode="before")
+    @classmethod
+    def _normalize_audit_log_policy(cls, v: Any) -> str:
+        s = str(v or "preserve").strip().lower()
+        if s in ("preserve", "redact", "delete"):
+            return s
+        return "preserve"
 
 
 class ChatConfig(BaseSettings):
