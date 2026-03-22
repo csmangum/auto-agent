@@ -22,6 +22,7 @@ from claim_agent.compliance.ucspa import (
     compute_communication_response_due,
     payment_due_iso_after_settlement_moment,
 )
+from claim_agent.compliance.state_rules import get_prompt_payment_base_date
 
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
@@ -1009,18 +1010,27 @@ class ClaimRepository:
                 and row_d.get("settlement_agreed_at") is None
             ):
                 loss_state_val = row_d.get("loss_state")
-                new_pd = payment_due_iso_after_settlement_moment(now, loss_state_val)
+                conn.execute(
+                    text("""
+                    UPDATE claims
+                    SET settlement_agreed_at = :sa, updated_at = :now_u
+                    WHERE id = :claim_id
+                    """),
+                    {"sa": now, "now_u": now, "claim_id": claim_id},
+                )
+                final_settlement_agreed_at = now
+                new_pd = None
+                if get_prompt_payment_base_date(loss_state_val) == "settlement_agreement":
+                    new_pd = payment_due_iso_after_settlement_moment(now, loss_state_val)
                 if new_pd:
                     conn.execute(
                         text("""
-                        UPDATE claims SET settlement_agreed_at = :sa,
-                            payment_due = :pd, updated_at = :now_u
+                        UPDATE claims SET payment_due = :pd, updated_at = :now_u
                         WHERE id = :claim_id
                         """),
-                        {"sa": now, "pd": new_pd, "now_u": now, "claim_id": claim_id},
+                        {"pd": new_pd, "now_u": now, "claim_id": claim_id},
                     )
                     final_payment_due = new_pd
-                    final_settlement_agreed_at = now
                     task_rows = conn.execute(
                         text("""
                         SELECT id FROM claim_tasks

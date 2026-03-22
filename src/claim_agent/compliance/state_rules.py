@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Literal
 
 from claim_agent.rag.constants import normalize_state
 
@@ -43,6 +44,8 @@ class StateRules:
     """pure_comparative | modified_comparative_51 | contributory."""
     comparative_fault_bar: float | None
     """Fault % (0-100) above which insured cannot recover (e.g. 51 for 51% bar). None for pure comparative."""
+    prompt_payment_base_date: Literal["fnol", "settlement_agreement"] = "settlement_agreement"
+    """Base date for prompt-payment calculation: FNOL or settlement agreement date."""
 
 
 # State-specific rules (California, Florida, New York, Texas)
@@ -145,6 +148,17 @@ def get_prompt_payment_days(state: str | None) -> int:
     """Return prompt payment deadline in days for the state. Default 30 if unknown."""
     rules = get_state_rules(state)
     return rules.prompt_payment_days if rules else 30
+
+
+def get_prompt_payment_base_date(state: str | None) -> Literal["fnol", "settlement_agreement"]:
+    """Return prompt-payment base date rule for the state.
+
+    Most jurisdictions measure prompt-payment from settlement agreement/acceptance.
+    Unknown states default to settlement_agreement while FNOL is still used as an
+    initial estimate at claim intake.
+    """
+    rules = get_state_rules(state)
+    return rules.prompt_payment_base_date if rules else "settlement_agreement"
 
 
 def get_compliance_due_date(

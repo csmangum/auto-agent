@@ -23,7 +23,10 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from claim_agent.compliance.state_rules import get_compliance_due_date
+from claim_agent.compliance.state_rules import (
+    get_compliance_due_date,
+    get_prompt_payment_base_date,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +117,8 @@ def payment_due_iso_after_settlement_moment(
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     base_date = dt.astimezone(timezone.utc).date()
+    if get_prompt_payment_base_date(loss_state) != "settlement_agreement":
+        return None
     due = get_compliance_due_date(base_date, "prompt_payment", loss_state)
     return due.isoformat() if due else None
 
