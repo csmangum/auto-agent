@@ -289,7 +289,10 @@ def get_fraud_detection_guidance(state: str = "California") -> str:
         retriever = _get_retriever()
         
         results = retriever.search(
-            query="fraud detection SIU reporting staged accident indicators investigation",
+            query=(
+                "fraud detection SIU reporting NICB NISS theft salvage "
+                "staged accident indicators investigation"
+            ),
             top_k=6,
             state=state,
             data_type="compliance",
