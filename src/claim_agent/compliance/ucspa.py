@@ -71,7 +71,11 @@ def compute_communication_response_due(
     Uses the UTC calendar date of ``communication_timestamp_iso`` as day zero,
     then adds state-specific ``communication_response_days`` (see
     :func:`get_compliance_due_date`). Returns ``None`` if the timestamp is
-    empty/invalid or the state has no explicit response requirement.
+    empty/invalid, or if state rules explicitly indicate there is no
+    communication-response requirement for the given state (i.e.,
+    :func:`get_compliance_due_date` returns ``None`` for
+    ``"communication_response"``). Note: unknown states fall back to the default
+    of 15 days rather than returning ``None``.
     """
     raw = (communication_timestamp_iso or "").strip()
     if not raw:

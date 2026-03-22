@@ -549,9 +549,21 @@ def run(argv: list[str] | None = None) -> int:
     pg_url = args.pg_url or _default_pg_url()
 
     # Resolve which tables to migrate
-    tables = args.tables or TABLES_IN_ORDER
-    # Preserve dependency order even when --table selects a subset
-    tables = [t for t in TABLES_IN_ORDER if t in tables]
+    user_tables = args.tables
+    if user_tables:
+        # Validate that all requested tables are known
+        invalid_tables = sorted({t for t in user_tables if t not in TABLES_IN_ORDER})
+        if invalid_tables:
+            logger.error(
+                "Unknown table(s) requested via --table: %s. Allowed tables are: %s",
+                ", ".join(invalid_tables),
+                ", ".join(TABLES_IN_ORDER),
+            )
+            return 1
+        # Preserve dependency order even when --table selects a valid subset
+        tables = [t for t in TABLES_IN_ORDER if t in user_tables]
+    else:
+        tables = list(TABLES_IN_ORDER)
 
     # Validate inputs
     if not Path(sqlite_path).exists():
