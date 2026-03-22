@@ -62,6 +62,17 @@ VALID_SIU_NOTE_CATEGORIES = frozenset(
 )
 
 
+def _is_empty_required_field_value(value: Any) -> bool:
+    """Return True when a template-required field value should be treated as missing/empty."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, dict)):
+        return len(value) == 0
+    return False
+
+
 def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) -> str:
     """Retrieve SIU case details by case_id. Retries on transient failures (timeout, connection)."""
     err = _validate_siu_scope(case_id=case_id)
@@ -386,14 +397,7 @@ def file_fraud_report_state_bureau_impl(
     required_fields = template.get("required_fields", [])
     missing_fields: list[str] = []
     for field in required_fields:
-        value = payload.get(field)
-        if value is None:
-            missing_fields.append(field)
-            continue
-        if isinstance(value, str) and not value.strip():
-            missing_fields.append(field)
-            continue
-        if isinstance(value, (list, dict)) and len(value) == 0:
+        if _is_empty_required_field_value(payload.get(field)):
             missing_fields.append(field)
 
     if missing_fields:
