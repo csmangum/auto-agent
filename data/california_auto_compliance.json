@@ -115,7 +115,11 @@
         "section": "CIC 11580.26",
         "title": "Sales Tax Reimbursement",
         "requirement": "Total loss settlements must include applicable sales tax, transfer fees, and registration fees that the claimant would incur to replace the vehicle.",
-        "includes": ["Sales tax", "DMV transfer fees", "Registration fees"]
+        "includes": [
+          "Sales tax",
+          "DMV transfer fees",
+          "Registration fees"
+        ]
       },
       {
         "id": "TL-006",
@@ -290,8 +294,8 @@
     ]
   },
   "anti_fraud_provisions": {
-    "regulation_reference": "CIC Sections 1871-1879.8",
-    "description": "California insurance fraud detection and reporting requirements.",
+    "regulation_reference": "CIC Sections 1871-1879.8; NICB participation guidance; California DOI Fraud Division referral practices",
+    "description": "California insurance fraud detection, SIU reporting, and NICB/NISS referral guidance.",
     "provisions": [
       {
         "id": "AF-001",
@@ -323,6 +327,18 @@
         "title": "Material Misrepresentation",
         "requirement": "Material misrepresentation on an application or claim may void coverage. Insurer must prove misrepresentation was material and made with intent to deceive.",
         "reference": "CIC 331, 359"
+      },
+      {
+        "id": "AF-006",
+        "title": "NICB Theft and Salvage Referral",
+        "requirement": "When organized theft patterns, VIN cloning, cargo theft, or salvage title laundering indicators are present, SIU should submit a NICB referral and attach supporting records (claim chronology, VIN photos, repair/salvage invoices, and police report identifiers).",
+        "reference": "NICB Auto Theft/Vehicle Fraud Referral Best Practices"
+      },
+      {
+        "id": "AF-007",
+        "title": "NISS Cross-Carrier Referral",
+        "requirement": "For suspected multi-claim or multi-carrier schemes, submit a National Insurance Crime Bureau NISS referral so participating carriers can identify linked entities and duplicate loss activity.",
+        "reference": "NICB NISS Referral Guidance"
       }
     ]
   },
