@@ -89,6 +89,8 @@ def _nicb_deadline_days_for_claim(claim: dict[str, Any]) -> int:
     state = claim.get("loss_state")
     tpl = get_fraud_report_template(state if isinstance(state, str) else None)
     days = tpl.get("filing_deadline_days") if isinstance(tpl, dict) else None
+    if days is None:
+        return 30
     try:
         n = int(days)
         return n if n > 0 else 30
