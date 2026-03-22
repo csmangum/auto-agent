@@ -10,7 +10,9 @@ Implements NAIC Model Unfair Claims Settlement Practices Act requirements:
   :func:`payment_due_iso_after_settlement_moment` (state prompt-payment days
   from the settlement instant's UTC calendar date).
 - Denial explanation requirements (written, specific, with appeal rights)
-- Communication response deadlines
+- Communication response deadlines: tracked via ``last_claimant_communication_at``
+  and ``communication_response_due``; refreshed on each claimant communication via
+  :func:`ClaimRepository.record_claimant_communication`.
 
 State-specific deadlines are sourced from state_rules.
 """
@@ -38,6 +40,11 @@ def get_ucspa_deadlines(
     ``settlement_agreed_at`` and recomputes ``payment_due`` using
     ``payment_due_iso_after_settlement_moment``.
 
+    ``communication_response_due`` is not set at FNOL (there is no initial
+    claimant communication yet). It is computed and stored by
+    ``ClaimRepository.record_claimant_communication`` each time the claimant
+    sends a message.
+
     Args:
         base_date: Reference date (claim receipt / FNOL date).
         state: Loss state/jurisdiction.
@@ -53,6 +60,37 @@ def get_ucspa_deadlines(
         "investigation_due": inv.isoformat() if inv else None,
         "payment_due": pay.isoformat() if pay else None,
     }
+
+
+def compute_communication_response_due(
+    communication_timestamp_iso: str,
+    loss_state: str | None,
+) -> str | None:
+    """ISO date (YYYY-MM-DD) for communication response deadline from claimant message time.
+
+    Uses the UTC calendar date of ``communication_timestamp_iso`` as day zero,
+    then adds state-specific ``communication_response_days`` (see
+    :func:`get_compliance_due_date`). Returns ``None`` if the timestamp is
+    empty/invalid, or if state rules explicitly indicate there is no
+    communication-response requirement for the given state (i.e.,
+    :func:`get_compliance_due_date` returns ``None`` for
+    ``"communication_response"``). Note: unknown states fall back to the default
+    of 15 days rather than returning ``None``.
+    """
+    raw = (communication_timestamp_iso or "").strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    base_date = dt.astimezone(timezone.utc).date()
+    due = get_compliance_due_date(base_date, "communication_response", loss_state)
+    return due.isoformat() if due else None
 
 
 def payment_due_iso_after_settlement_moment(
@@ -103,7 +141,14 @@ def create_ucspa_compliance_tasks(
     from claim_agent.diary.templates import get_compliance_deadline_templates
 
     base = base_date or date.today()
-    templates = get_compliance_deadline_templates(loss_state)
+    # communication_response is not an FNOL deadline; it is computed per-communication
+    # via ClaimRepository.record_claimant_communication.
+    fnol_template_types = {"acknowledgment", "investigation", "prompt_payment"}
+    templates = [
+        t
+        for t in get_compliance_deadline_templates(loss_state)
+        if t.deadline_type in fnol_template_types
+    ]
     created = 0
 
     for t in templates:
@@ -170,6 +215,7 @@ def claims_with_deadlines_approaching(
             ("acknowledgment_due", "acknowledgment"),
             ("investigation_due", "investigation"),
             ("payment_due", "prompt_payment"),
+            ("communication_response_due", "communication_response"),
         ]:
             try:
                 cursor = conn.execute(

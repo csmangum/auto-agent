@@ -702,6 +702,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             ("denial_letter_sent_at", "TEXT"),
             ("denial_letter_body", "TEXT"),
             ("settlement_agreed_at", "TEXT"),
+            ("last_claimant_communication_at", "TEXT"),
+            ("communication_response_due", "TEXT"),
         ]:
             if col not in columns:
                 conn.execute(f"ALTER TABLE claims ADD COLUMN {col} {col_type}")

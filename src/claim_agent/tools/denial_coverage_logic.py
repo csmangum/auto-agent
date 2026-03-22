@@ -11,44 +11,26 @@ def generate_denial_letter_impl(
     exclusion_citation: str | None = None,
     appeal_deadline: str | None = None,
     required_disclosures: str | None = None,
+    state: str | None = None,
 ) -> str:
-    """Generate a formatted denial letter."""
-    lines = [
-        "=" * 60,
-        "CLAIM DENIAL NOTICE",
-        "=" * 60,
-        "",
-        f"Claim ID: {claim_id}",
-        f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
-        "",
-        "Dear Policyholder,",
-        "",
-        "We have completed our review of your claim. After careful consideration of the policy "
-        "terms and the circumstances of your claim, we must deny coverage for the following reason:",
-        "",
-        f"DENIAL REASON: {denial_reason}",
-        "",
-        f"APPLICABLE POLICY PROVISION: {policy_provision}",
-    ]
-    if exclusion_citation:
-        lines.extend(["", f"EXCLUSION: {exclusion_citation}", ""])
-    if appeal_deadline:
-        lines.extend([
-            "",
-            "APPEAL RIGHTS:",
-            f"You have the right to appeal this decision. Your appeal must be received by {appeal_deadline}.",
-            "",
-        ])
-    if required_disclosures:
-        lines.extend(["", "REQUIRED NOTICES:", required_disclosures, ""])
-    lines.extend([
-        "If you have questions or wish to provide additional information, please contact us.",
-        "",
-        "Sincerely,",
-        "Claims Department",
-        "=" * 60,
-    ])
-    return "\n".join(lines)
+    """Generate a formatted denial letter.
+
+    When *state* is provided and a matching template exists the letter uses
+    state-specific wording, regulatory references, and mandated disclosures
+    (e.g. California CCR §2695.7(g), Texas TIC §542.056).  Falls back to the
+    generic format when no template is available for the given state.
+    """
+    from claim_agent.compliance.denial_templates import render_denial_letter
+
+    return render_denial_letter(
+        claim_id=claim_id,
+        denial_reason=denial_reason,
+        policy_provision=policy_provision,
+        state=state,
+        exclusion_citation=exclusion_citation,
+        appeal_deadline=appeal_deadline,
+        required_disclosures=required_disclosures,
+    )
 
 
 def route_to_appeal_impl(

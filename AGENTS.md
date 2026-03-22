@@ -132,3 +132,35 @@ Files in `tests/sample_claims/` include:
 | `multi_vehicle_incident.json` | Multi-vehicle / incident grouping |
 
 See `README.md` for a shorter curated table.
+
+## Cursor Cloud specific instructions
+
+### Services
+
+| Service | How to start | Port |
+|---------|-------------|------|
+| FastAPI backend | `MOCK_DB_PATH=data/mock_db.json MOCK_CREW_ENABLED=true .venv/bin/claim-agent serve --reload` | 8000 |
+| React dashboard | `cd frontend && npm run dev` | 5173 (proxies `/api` to backend) |
+
+The backend uses SQLite by default (`data/claims.db`, auto-created). No external databases required for dev/test.
+
+### Running tests
+
+- Always use `.venv/bin/pytest` (not system pytest).
+- Set `MOCK_DB_PATH=data/mock_db.json` before running tests.
+- The full unit test suite (103 files) takes **15+ minutes** due to sentence-transformers model loading (~88 MB download on first run) and heavy computation. For faster feedback, run targeted tests: `.venv/bin/pytest tests/test_<specific>.py -v`.
+- Frontend tests: `cd frontend && npm run test` (vitest, ~13 s).
+- See the Testing section above for the full pytest commands with markers.
+
+### Lint / type-check
+
+- Python lint: `.venv/bin/ruff check src/ tests/`
+- Python types: `.venv/bin/mypy src/claim_agent/ --ignore-missing-imports`
+- Frontend lint: `cd frontend && npm run lint`
+
+### Non-obvious caveats
+
+- `MOCK_CREW_ENABLED=true` is required to process claims without a real LLM API key. This enables the mock crew that simulates LLM responses.
+- The `.env` file must exist (copy from `.env.example`) even for testing; Pydantic settings reads it at import time.
+- CrewAI prompts for tracing preferences interactively on first run; the CLI auto-times-out after 20 s. This is harmless but may cause a `Fatal Python error` message at process exit — it is cosmetic and does not affect results.
+- `mypy` takes ~60 s on the full `src/claim_agent/` tree.

@@ -20,8 +20,14 @@ def generate_denial_letter(
     exclusion_citation: str = "",
     appeal_deadline: str = "",
     required_disclosures: str = "",
+    state: str = "",
 ) -> str:
     """Generate a compliant denial letter for a denied claim.
+
+    When *state* is provided and a matching template exists the letter uses
+    state-specific wording, regulatory references, and mandated disclosures
+    (e.g. California CCR, Texas TIC, New York Insurance Law).  Falls back to
+    the generic format when no state-specific template is available.
 
     Args:
         claim_id: The claim ID.
@@ -29,7 +35,8 @@ def generate_denial_letter(
         policy_provision: Policy provision or exclusion that applies.
         exclusion_citation: Optional specific exclusion language.
         appeal_deadline: Deadline for policyholder to appeal.
-        required_disclosures: State-mandated disclosures to include.
+        required_disclosures: Additional adjuster-supplied disclosures to include.
+        state: Loss state name or two-letter abbreviation (e.g. "California" or "CA").
 
     Returns:
         Formatted denial letter text.
@@ -41,6 +48,7 @@ def generate_denial_letter(
         exclusion_citation=exclusion_citation or None,
         appeal_deadline=appeal_deadline or None,
         required_disclosures=required_disclosures or None,
+        state=state or None,
     )
 
 

@@ -61,6 +61,17 @@ def get_compliance_deadline_templates(
                 state=rules.state,
             ),
         ])
+        if rules.communication_response_days is not None:
+            templates.append(
+                ComplianceDeadlineTemplate(
+                    deadline_type="communication_response",
+                    title=f"Respond to claimant communication ({rules.state})",
+                    task_type="follow_up_claimant",
+                    description=f"State requires response to claimant communications within {rules.communication_response_days} days.",
+                    days=rules.communication_response_days,
+                    state=rules.state,
+                )
+            )
     else:
         templates.extend([
             ComplianceDeadlineTemplate(
@@ -85,6 +96,14 @@ def get_compliance_deadline_templates(
                 task_type="other",
                 description="Pay within 30 days of acceptance (default).",
                 days=30,
+                state="",
+            ),
+            ComplianceDeadlineTemplate(
+                deadline_type="communication_response",
+                title="Respond to claimant communication",
+                task_type="follow_up_claimant",
+                description="Respond to claimant communications within 15 days (default).",
+                days=15,
                 state="",
             ),
         ])

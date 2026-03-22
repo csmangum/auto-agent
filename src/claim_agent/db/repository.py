@@ -18,7 +18,10 @@ from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from claim_agent.models.claim import Attachment
 
-from claim_agent.compliance.ucspa import payment_due_iso_after_settlement_moment
+from claim_agent.compliance.ucspa import (
+    compute_communication_response_due,
+    payment_due_iso_after_settlement_moment,
+)
 
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
@@ -29,6 +32,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_ASSIGN,
     AUDIT_EVENT_ATTACHMENTS_UPDATED,
     AUDIT_EVENT_CLAIM_REVIEW,
+    AUDIT_EVENT_CLAIMANT_COMMUNICATION,
     AUDIT_EVENT_COVERAGE_VERIFICATION,
     AUDIT_EVENT_CREATED,
     AUDIT_EVENT_DOCUMENT_ACCESSED,
@@ -2516,6 +2520,105 @@ class ClaimRepository:
                     ),
                 },
             )
+
+    def record_claimant_communication(
+        self,
+        claim_id: str,
+        *,
+        description: str = "Claimant communication received",
+        actor_id: str = ACTOR_WORKFLOW,
+        communication_at: str | None = None,
+    ) -> str | None:
+        """Record a claimant inbound communication and refresh the response deadline.
+
+        Sets ``last_claimant_communication_at`` to ``communication_at`` (or UTC now)
+        and recomputes ``communication_response_due`` from the state-specific
+        ``communication_response_days``. A compliance task is created for the
+        response deadline.
+
+        Args:
+            claim_id: Claim identifier.
+            description: Short description of the communication (for audit trail).
+            actor_id: Actor recording the communication (default: workflow).
+            communication_at: ISO timestamp of the communication. Defaults to UTC now.
+
+        Returns:
+            ``communication_response_due`` ISO date string (YYYY-MM-DD), or ``None``
+            if no deadline could be computed (e.g. invalid timestamp or state rules
+            explicitly set no requirement).
+
+        Raises:
+            ClaimNotFoundError: If the claim does not exist.
+        """
+        safe_actor = sanitize_actor_id(actor_id)
+        now_ts = communication_at or datetime.now(timezone.utc).isoformat()
+
+        with get_connection(self._db_path) as conn:
+            # Fetch loss_state to compute state-specific response deadline.
+            row = conn.execute(
+                text("SELECT loss_state FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            loss_state = row_to_dict(row).get("loss_state")
+
+            response_due = compute_communication_response_due(now_ts, loss_state)
+
+            conn.execute(
+                text("""
+                UPDATE claims
+                SET last_claimant_communication_at = :comm_at,
+                    communication_response_due = :due,
+                    updated_at = :now_u
+                WHERE id = :claim_id
+                """),
+                {
+                    "comm_at": now_ts,
+                    "due": response_due,
+                    "now_u": datetime.now(timezone.utc).isoformat(),
+                    "claim_id": claim_id,
+                },
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
+                VALUES (:claim_id, :action, :details, :actor_id, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_CLAIMANT_COMMUNICATION,
+                    "details": description[:500],
+                    "actor_id": safe_actor,
+                    "after_state": json.dumps({
+                        "last_claimant_communication_at": now_ts,
+                        "communication_response_due": response_due,
+                    }),
+                },
+            )
+
+        # Create a compliance task for the response deadline.
+        if response_due:
+            try:
+                state_label = f" ({loss_state})" if loss_state else ""
+                self.create_task(
+                    claim_id,
+                    f"Respond to claimant communication{state_label}",
+                    "follow_up_claimant",
+                    description=description[:500],
+                    priority="high",
+                    created_by="ucspa_system",
+                    due_date=response_due,
+                    auto_created_from="ucspa:communication_response",
+                )
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    "ucspa_comm_response_task_failed claim_id=%s: %s",
+                    claim_id,
+                    e,
+                )
+
+        return response_due
 
     def insert_coverage_verification_audit(
         self,

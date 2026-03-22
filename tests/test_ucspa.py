@@ -3,10 +3,12 @@
 from datetime import date
 
 from claim_agent.compliance.ucspa import (
+    compute_communication_response_due,
     get_ucspa_deadlines,
     claims_with_deadlines_approaching,
     payment_due_iso_after_settlement_moment,
 )
+from claim_agent.compliance.state_rules import get_state_rules
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 
@@ -204,3 +206,199 @@ def test_claims_with_deadlines_approaching_empty():
     repo = ClaimRepository(db_path=get_db_path())
     results = claims_with_deadlines_approaching(repo, days_ahead=30)
     assert isinstance(results, list)
+
+
+# ---------------------------------------------------------------------------
+# Communication response deadline tests
+# ---------------------------------------------------------------------------
+
+
+def test_state_rules_communication_response_days():
+    """StateRules includes communication_response_days for all configured states."""
+    for state_name in ("California", "Florida", "New York", "Georgia", "Texas"):
+        rules = get_state_rules(state_name)
+        assert rules is not None
+        assert rules.communication_response_days is not None
+        assert rules.communication_response_days > 0
+
+
+def test_compute_communication_response_due_california():
+    """California: 15 communication_response days from message timestamp."""
+    result = compute_communication_response_due("2026-03-01T12:00:00+00:00", "California")
+    assert result == "2026-03-16"
+
+
+def test_compute_communication_response_due_florida():
+    """Florida: 14 communication_response days."""
+    result = compute_communication_response_due("2026-03-01T00:00:00+00:00", "Florida")
+    assert result == "2026-03-15"
+
+
+def test_compute_communication_response_due_empty_timestamp():
+    """Empty timestamp returns None."""
+    assert compute_communication_response_due("", "California") is None
+
+
+def test_compute_communication_response_due_z_suffix():
+    """Timestamp with Z suffix is handled correctly."""
+    result = compute_communication_response_due("2026-03-01T12:00:00Z", "Texas")
+    assert result == "2026-03-16"
+
+
+def test_compute_communication_response_due_unknown_state_uses_default():
+    """Unknown state uses default 15 days."""
+    result = compute_communication_response_due("2026-03-01T00:00:00+00:00", "UnknownState")
+    assert result == "2026-03-16"
+
+
+def test_record_claimant_communication_sets_deadline(temp_db):
+    """record_claimant_communication sets last_claimant_communication_at and communication_response_due."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-COMM-001",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2021,
+        vehicle_make="Honda",
+        vehicle_model="Accord",
+        incident_date=date(2026, 3, 1),
+        incident_description="Collision at intersection",
+        damage_description="Front bumper damage",
+        loss_state="California",
+    )
+    claim_id = repo.create_claim(claim_input)
+
+    comm_ts = "2026-03-10T14:00:00+00:00"
+    due = repo.record_claimant_communication(
+        claim_id,
+        description="Claimant sent document request",
+        communication_at=comm_ts,
+    )
+
+    assert due == "2026-03-25"  # 2026-03-10 + 15 days = 2026-03-25
+
+    claim = repo.get_claim(claim_id)
+    assert claim.get("last_claimant_communication_at") == comm_ts
+    assert claim.get("communication_response_due") == "2026-03-25"
+
+
+def test_record_claimant_communication_creates_task(temp_db):
+    """record_claimant_communication auto-creates a compliance task."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-COMM-002",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2020,
+        vehicle_make="Toyota",
+        vehicle_model="Camry",
+        incident_date=date(2026, 3, 1),
+        incident_description="Parking lot collision",
+        damage_description="Door damage",
+        loss_state="Texas",
+    )
+    claim_id = repo.create_claim(claim_input)
+
+    comm_ts = "2026-03-05T09:00:00+00:00"
+    repo.record_claimant_communication(
+        claim_id,
+        description="Claimant requested repair status",
+        communication_at=comm_ts,
+    )
+
+    tasks, _ = repo.get_tasks_for_claim(claim_id)
+    comm_tasks = [
+        t for t in tasks if t.get("auto_created_from") == "ucspa:communication_response"
+    ]
+    assert len(comm_tasks) >= 1
+    # record_claimant_communication creates high-priority tasks; get_tasks_for_claim orders
+    # high before medium, so the first comm_tasks entry is from record_claimant_communication.
+    task = comm_tasks[0]
+    assert task.get("due_date") == "2026-03-20"  # 2026-03-05 + 15 days
+    assert task.get("created_by") == "ucspa_system"
+    assert task.get("task_type") == "follow_up_claimant"
+
+
+def test_record_claimant_communication_refreshes_deadline(temp_db):
+    """Subsequent calls to record_claimant_communication update the deadline."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-COMM-003",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2022,
+        vehicle_make="Ford",
+        vehicle_model="Explorer",
+        incident_date=date(2026, 3, 1),
+        incident_description="Rear-end collision",
+        damage_description="Rear bumper and trunk damage",
+        loss_state="Georgia",
+    )
+    claim_id = repo.create_claim(claim_input)
+
+    # First communication
+    repo.record_claimant_communication(
+        claim_id,
+        description="Initial inquiry",
+        communication_at="2026-03-01T10:00:00+00:00",
+    )
+    claim_first = repo.get_claim(claim_id)
+    assert claim_first.get("communication_response_due") == "2026-03-16"
+
+    # Second communication (later)
+    repo.record_claimant_communication(
+        claim_id,
+        description="Follow-up on repair estimate",
+        communication_at="2026-03-10T10:00:00+00:00",
+    )
+    claim_second = repo.get_claim(claim_id)
+    assert claim_second.get("last_claimant_communication_at") == "2026-03-10T10:00:00+00:00"
+    assert claim_second.get("communication_response_due") == "2026-03-25"  # 2026-03-10 + 15
+
+
+def test_claims_with_deadlines_approaching_includes_communication_response(temp_db):
+    """claims_with_deadlines_approaching checks communication_response_due."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-COMM-DL",
+        vin="1HGBH41JXMN109186",
+        vehicle_year=2022,
+        vehicle_make="Honda",
+        vehicle_model="Pilot",
+        incident_date=date(2026, 3, 1),
+        incident_description="Hail damage",
+        damage_description="Hood and roof dents",
+        loss_state="California",
+    )
+    claim_id = repo.create_claim(claim_input)
+
+    # record_claimant_communication sets communication_response_due based on state rules
+    # (California: +15 days). With days_ahead=30, today+15 falls within the window.
+    comm_ts = date.today().isoformat() + "T00:00:00+00:00"
+    repo.record_claimant_communication(
+        claim_id,
+        description="Test communication",
+        communication_at=comm_ts,
+    )
+
+    results = claims_with_deadlines_approaching(repo, days_ahead=30)
+    comm_results = [r for r in results if r["deadline_type"] == "communication_response"]
+    assert any(r["claim_id"] == claim_id for r in comm_results)
+
+
+def test_compliance_deadline_templates_include_communication_response():
+    """get_compliance_deadline_templates returns a communication_response template."""
+    from claim_agent.diary.templates import get_compliance_deadline_templates
+
+    # With a known state
+    templates = get_compliance_deadline_templates("California")
+    types = [t.deadline_type for t in templates]
+    assert "communication_response" in types
+
+    comm_template = next(t for t in templates if t.deadline_type == "communication_response")
+    assert comm_template.task_type == "follow_up_claimant"
+    assert comm_template.days == 15
+    assert "California" in comm_template.title
+
+    # Without a state (default templates)
+    default_templates = get_compliance_deadline_templates(None)
+    default_types = [t.deadline_type for t in default_templates]
+    assert "communication_response" in default_types
+
