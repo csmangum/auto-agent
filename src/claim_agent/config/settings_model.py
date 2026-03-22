@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
@@ -1084,6 +1085,11 @@ class Settings(BaseSettings):
             return None
         return data if isinstance(data, dict) else None
 
+    @cached_property
+    def _cached_state_retention_json_root(self) -> dict[str, Any] | None:
+        """Parse ``state_retention_path`` once per Settings instance (see ``reload_settings()``)."""
+        return self._read_state_retention_json_root()
+
     @staticmethod
     def _parse_state_int_map(raw: dict[str, Any]) -> dict[str, int]:
         """Parse state code -> years entries; only integers >= 1 are kept."""
@@ -1108,7 +1114,7 @@ class Settings(BaseSettings):
 
     def get_retention_by_state(self) -> dict[str, int]:
         """Return state-specific retention periods (years). Empty dict = use default only."""
-        data = self._read_state_retention_json_root()
+        data = self._cached_state_retention_json_root
         if data is None:
             return {}
         raw = data.get("retention_by_state", data)
@@ -1121,7 +1127,7 @@ class Settings(BaseSettings):
 
         Values may be ``0`` (purge eligible immediately after archive, same calendar-day cutoff).
         """
-        data = self._read_state_retention_json_root()
+        data = self._cached_state_retention_json_root
         if data is None:
             return {}
         raw = data.get("purge_after_archive_by_state", {})

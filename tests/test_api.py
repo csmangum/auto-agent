@@ -3552,7 +3552,7 @@ class TestRetentionReport:
         resp = client.get("/api/retention/report", headers={"X-API-Key": "sk-claimant"})
         assert resp.status_code == 403
 
-        resp = client.get("/api/retention/report", headers={"X-API-Key": "sk-adj"})
+        resp = client.get("/api/retention/report", headers=_ADJ_HEADERS)
         assert resp.status_code == 200
 
 
@@ -3590,9 +3590,7 @@ class TestRetentionEligibleForArchive:
         resp = client.get("/api/retention/eligible-for-archive")
         assert resp.status_code == 401
 
-        resp = client.get(
-            "/api/retention/eligible-for-archive", headers={"X-API-Key": "sk-adj"}
-        )
+        resp = client.get("/api/retention/eligible-for-archive", headers=_ADJ_HEADERS)
         assert resp.status_code == 200
 
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-claimant:claimant")
@@ -3641,9 +3639,7 @@ class TestRetentionEligibleForPurge:
         resp = client.get("/api/retention/eligible-for-purge")
         assert resp.status_code == 401
 
-        resp = client.get(
-            "/api/retention/eligible-for-purge", headers={"X-API-Key": "sk-adj"}
-        )
+        resp = client.get("/api/retention/eligible-for-purge", headers=_ADJ_HEADERS)
         assert resp.status_code == 200
 
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster,sk-claimant:claimant")

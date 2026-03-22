@@ -954,13 +954,24 @@ default_pool_size = 20
 
 Set `DATABASE_URL=postgresql://user:pass@pgbouncer-host:6432/claims` and `READ_REPLICA_DATABASE_URL=postgresql://user:pass@pgbouncer-host:6432/claims_replica`.
 
-> **Note:** PgBouncer `transaction` pool mode is incompatible with prepared statements. Either use `session` pool mode or disable prepared statements. With psycopg2, set `SQLALCHEMY_ENGINE_OPTIONS` or configure the engine directly:
+> **Note:** PgBouncer `transaction` pool mode is incompatible with *long-lived* prepared statements (statements that outlive a single transaction). Either use `session` pool mode or disable client-side prepared-statement caching where your driver uses it.
+>
+> With **psycopg2** (the synchronous driver used by this project via SQLAlchemy), no client-side prepared-statement cache is enabled by default, and SQLAlchemy does not create long-lived server-side prepared statements in the default configuration. Typically, no extra configuration is needed for PgBouncer `transaction` mode with psycopg2.
+>
+> When using async PostgreSQL via **asyncpg** (for example `postgresql+asyncpg` with `get_connection_async()`), disable asyncpg's prepared-statement cache behind PgBouncer in `transaction` mode:
 >
 > ```python
-> # In database.py engine creation for psycopg2
-> create_engine(url, pool_size=..., max_overflow=..., execution_options={"no_parameters": True})
-> # Or append ?options=-c%20statement_cache_size%3D0 to the DATABASE_URL when using psycopg3
+> from sqlalchemy.ext.asyncio import create_async_engine
+>
+> engine = create_async_engine(
+>     url,  # e.g. "postgresql+asyncpg://user:pass@pgbouncer-host:6432/claims"
+>     pool_size=...,
+>     max_overflow=...,
+>     connect_args={"statement_cache_size": 0},
+> )
 > ```
+>
+> Or append a query parameter to the URL: `postgresql+asyncpg://user:pass@host:6432/claims?statement_cache_size=0`.
 >
 > Alternatively, use PgBouncer's `session` pool mode to avoid this restriction entirely.
 

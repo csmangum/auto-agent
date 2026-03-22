@@ -3,7 +3,7 @@
 These tests verify:
 - ``get_connection_async()`` raises RuntimeError for SQLite (not supported).
 - ``_get_async_database_url()`` correctly converts PostgreSQL URLs to asyncpg scheme.
-- ``reset_engine_cache()`` disposes the async engine alongside the sync engine.
+- ``reset_engine_cache()`` clears sync, read-replica, and async engines (disposing pools where needed).
 - The ``get_async_db`` FastAPI dependency is importable and structurally correct.
 
 Full end-to-end async PostgreSQL tests are in ``test_postgres.py`` and only run
@@ -30,6 +30,7 @@ def _reset():
 
     reset_engine_cache()
     os.environ.pop("DATABASE_URL", None)
+    os.environ.pop("READ_REPLICA_DATABASE_URL", None)
     reload_settings()
 
 
@@ -86,6 +87,17 @@ class TestGetAsyncDatabaseUrl:
         from claim_agent.db.database import _get_async_database_url
 
         assert _get_async_database_url() == raw
+
+    def test_raises_for_non_asyncpg_driver_prefix(self):
+        """postgresql+psycopg2:// must not pass through unchanged (async dialect required)."""
+        os.environ["DATABASE_URL"] = "postgresql+psycopg2://user:pw@localhost/db"
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+        from claim_agent.db.database import _get_async_database_url
+
+        with pytest.raises(RuntimeError, match="asyncpg"):
+            _get_async_database_url()
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +186,7 @@ class TestGetAsyncDbDependency:
 def postgres_url():
     """DATABASE_URL from environment. Skip if not pointing at PostgreSQL."""
     url = os.environ.get("DATABASE_URL", "")
-    if not url or "postgresql" not in url:
+    if not url or not (url.startswith("postgres://") or url.startswith("postgresql://")):
         pytest.skip("DATABASE_URL (PostgreSQL) not configured")
     return url
 

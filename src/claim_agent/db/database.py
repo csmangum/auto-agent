@@ -543,7 +543,11 @@ def reset_engine_cache() -> None:
     """Clear cached engines. Use when config (e.g. DATABASE_URL) changes (e.g. tests)."""
     global _engine, _async_engine, _replica_engine
     with _engine_lock:
+        if _engine is not None:
+            _engine.dispose()
         _engine = None
+        for eng in _sqlite_engines.values():
+            eng.dispose()
         _sqlite_engines.clear()
     with _replica_engine_lock:
         if _replica_engine is not None:
@@ -583,7 +587,17 @@ def _get_async_database_url() -> str:
         return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     if database_url.startswith("postgres://"):
         return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    return database_url
+    if database_url.startswith("postgresql+"):
+        raise RuntimeError(
+            "Async database connections require the asyncpg driver. "
+            f"Got DATABASE_URL={database_url!r}. Use 'postgresql://', 'postgres://', "
+            "or 'postgresql+asyncpg://'."
+        )
+    raise RuntimeError(
+        "Async database connections require a PostgreSQL DATABASE_URL starting with "
+        "'postgresql://', 'postgres://', or 'postgresql+asyncpg://'. "
+        f"Got DATABASE_URL={database_url!r}."
+    )
 
 
 def _get_async_engine() -> AsyncEngine:
