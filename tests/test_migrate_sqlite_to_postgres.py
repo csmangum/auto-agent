@@ -13,12 +13,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Make the scripts directory importable
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-
 import migrate_sqlite_to_postgres as mig
 
 
@@ -672,3 +666,28 @@ class TestRunFunction:
             "--dry-run",
         ])
         assert args.tables == ["claims", "incidents"]
+
+    def test_unknown_table_returns_error(self, tmp_path):
+        """--table with an unknown table name should return exit code 1."""
+        db = tmp_path / "test.db"
+        sqlite3.connect(str(db)).close()
+
+        code = mig.run([
+            "--sqlite-path", str(db),
+            "--dry-run",
+            "--table", "nonexistent_table",
+        ])
+        assert code == 1
+
+    def test_unknown_table_mixed_with_valid_returns_error(self, tmp_path):
+        """--table with a mix of valid and unknown tables should return exit code 1."""
+        db = tmp_path / "test.db"
+        sqlite3.connect(str(db)).close()
+
+        code = mig.run([
+            "--sqlite-path", str(db),
+            "--dry-run",
+            "--table", "claims",
+            "--table", "bogus_table",
+        ])
+        assert code == 1

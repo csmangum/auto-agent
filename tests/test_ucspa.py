@@ -355,8 +355,6 @@ def test_record_claimant_communication_refreshes_deadline(temp_db):
 
 def test_claims_with_deadlines_approaching_includes_communication_response(temp_db):
     """claims_with_deadlines_approaching checks communication_response_due."""
-    from datetime import timedelta
-
     repo = ClaimRepository(db_path=temp_db)
     claim_input = ClaimInput(
         policy_number="POL-COMM-DL",
@@ -371,7 +369,8 @@ def test_claims_with_deadlines_approaching_includes_communication_response(temp_
     )
     claim_id = repo.create_claim(claim_input)
 
-    # Set communication_response_due to tomorrow so it appears in 3-day window.
+    # record_claimant_communication sets communication_response_due based on state rules
+    # (California: +15 days). With days_ahead=30, today+15 falls within the window.
     comm_ts = date.today().isoformat() + "T00:00:00+00:00"
     repo.record_claimant_communication(
         claim_id,

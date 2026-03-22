@@ -2528,7 +2528,7 @@ class ClaimRepository:
         description: str = "Claimant communication received",
         actor_id: str = ACTOR_WORKFLOW,
         communication_at: str | None = None,
-    ) -> str:
+    ) -> str | None:
         """Record a claimant inbound communication and refresh the response deadline.
 
         Sets ``last_claimant_communication_at`` to ``communication_at`` (or UTC now)
@@ -2543,7 +2543,9 @@ class ClaimRepository:
             communication_at: ISO timestamp of the communication. Defaults to UTC now.
 
         Returns:
-            ``communication_response_due`` ISO date string (YYYY-MM-DD).
+            ``communication_response_due`` ISO date string (YYYY-MM-DD), or ``None``
+            if no deadline could be computed (e.g. invalid timestamp or state rules
+            explicitly set no requirement).
 
         Raises:
             ClaimNotFoundError: If the claim does not exist.
@@ -2616,7 +2618,7 @@ class ClaimRepository:
                     e,
                 )
 
-        return response_due or ""
+        return response_due
 
     def insert_coverage_verification_audit(
         self,
