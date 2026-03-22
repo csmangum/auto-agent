@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
+from claim_agent.compliance.dsar_state_rules import (
+    get_dsar_form_schema,
+    get_dsar_state_rules,
+    get_supported_dsar_states,
+)
 from claim_agent.services.dsar import (
     fulfill_access_request,
     fulfill_deletion_request,
@@ -15,6 +20,12 @@ from claim_agent.services.dsar import (
     revoke_consent_by_email,
     submit_access_request,
     submit_deletion_request,
+)
+from claim_agent.services.dsar_verification import (
+    get_verification_token,
+    is_verified,
+    request_otp,
+    verify_otp,
 )
 
 router = APIRouter(prefix="/dsar", tags=["dsar"])
@@ -27,6 +38,13 @@ class AccessRequestInput(BaseModel):
     claim_id: Optional[str] = Field(None, description="Claim ID for verification")
     policy_number: Optional[str] = Field(None, description="Policy number for verification")
     vin: Optional[str] = Field(None, description="VIN for verification")
+    state: Optional[str] = Field(
+        None,
+        description=(
+            "Consumer's state of residence (e.g., 'California'). When provided, "
+            "state-specific response metadata and timelines are included in the export."
+        ),
+    )
 
 
 @router.post("/access")
@@ -59,6 +77,7 @@ def dsar_submit_access(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
         actor_id=_auth.identity or "api",
+        state=body.state,
     )
     return {"request_id": request_id, "status": "pending"}
 
@@ -103,6 +122,10 @@ class DeletionRequestInput(BaseModel):
     claim_id: Optional[str] = Field(None, description="Claim ID for verification")
     policy_number: Optional[str] = Field(None, description="Policy number for verification")
     vin: Optional[str] = Field(None, description="VIN for verification")
+    state: Optional[str] = Field(
+        None,
+        description="Consumer's state of residence (e.g., 'California'). Stored for audit.",
+    )
 
 
 @router.post("/deletion")
@@ -132,6 +155,7 @@ def dsar_submit_deletion(
         claimant_identifier=body.claimant_identifier,
         verification_data=verification_data,
         actor_id=_auth.identity or "api",
+        state=body.state,
     )
     return {"request_id": request_id, "status": "pending"}
 
@@ -185,3 +209,221 @@ def dsar_fulfill_access(
         return export
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Self-service OTP verification endpoints (no admin role required)
+# ---------------------------------------------------------------------------
+
+
+class OTPRequestInput(BaseModel):
+    """Request body for POST /dsar/verify/request."""
+
+    claimant_identifier: str = Field(
+        ..., description="Email address (channel='email') or phone number (channel='sms')"
+    )
+    channel: str = Field(..., description="Delivery channel: 'email' or 'sms'")
+
+
+class OTPConfirmInput(BaseModel):
+    """Request body for POST /dsar/verify/confirm."""
+
+    verification_id: str = Field(..., description="verification_id returned by /dsar/verify/request")
+    code: str = Field(..., description="Numeric OTP code delivered to the claimant")
+
+
+class SelfServiceAccessInput(BaseModel):
+    """Request body for POST /dsar/self-service/access."""
+
+    claimant_identifier: str = Field(..., description="Email or identifier for the claimant")
+    verification_id: str = Field(..., description="Verified OTP verification_id")
+    claim_id: Optional[str] = Field(None, description="Claim ID for data lookup")
+    policy_number: Optional[str] = Field(None, description="Policy number for data lookup")
+    vin: Optional[str] = Field(None, description="VIN for data lookup")
+
+
+class SelfServiceDeletionInput(BaseModel):
+    """Request body for POST /dsar/self-service/deletion."""
+
+    claimant_identifier: str = Field(..., description="Email or identifier for the claimant")
+    verification_id: str = Field(..., description="Verified OTP verification_id")
+    claim_id: Optional[str] = Field(None, description="Claim ID for data lookup")
+    policy_number: Optional[str] = Field(None, description="Policy number for data lookup")
+    vin: Optional[str] = Field(None, description="VIN for data lookup")
+
+
+@router.post("/verify/request")
+def dsar_otp_request(body: OTPRequestInput = Body(...)) -> dict[str, Any]:
+    """Request a DSAR OTP (one-time password) for self-service identity verification.
+
+    Delivers a numeric OTP to the claimant via email or SMS.  Returns a
+    ``verification_id`` to use in ``POST /dsar/verify/confirm``.
+
+    Rate-limited per claimant identifier to prevent abuse.
+    """
+    try:
+        verification_id = request_otp(body.claimant_identifier, body.channel)
+    except ValueError as e:
+        raise HTTPException(status_code=429 if "Rate limit" in str(e) else 400, detail=str(e))
+
+    from claim_agent.config import get_settings
+
+    ttl = get_settings().privacy.otp_ttl_minutes
+    return {
+        "verification_id": verification_id,
+        "channel": body.channel,
+        "expires_in_minutes": ttl,
+        "message": f"OTP sent via {body.channel}. Use verification_id to confirm.",
+    }
+
+
+@router.post("/verify/confirm")
+def dsar_otp_confirm(body: OTPConfirmInput = Body(...)) -> dict[str, Any]:
+    """Confirm a DSAR OTP code.
+
+    Validates the code submitted by the claimant.  On success the
+    ``verification_id`` can be used in ``POST /dsar/self-service/access`` or
+    ``POST /dsar/self-service/deletion``.
+
+    Records all verification attempts in the audit log.
+    """
+    try:
+        result = verify_otp(body.verification_id, body.code)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    status_code = 200 if result["verified"] else 400
+    if status_code == 400:
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    token = get_verification_token(body.verification_id)
+    return {
+        "verified": True,
+        "verification_id": body.verification_id,
+        "claimant_identifier": token["claimant_identifier"] if token else None,
+        "message": result["message"],
+    }
+
+
+@router.post("/self-service/access")
+def dsar_self_service_access(body: SelfServiceAccessInput = Body(...)) -> dict[str, Any]:
+    """Submit a self-service DSAR access request authenticated by OTP.
+
+    Requires a ``verification_id`` that has been successfully confirmed via
+    ``POST /dsar/verify/confirm``.  The token must still be within its TTL.
+
+    Provide either ``claim_id`` or both ``policy_number`` and ``vin`` for
+    claim-data lookup.
+    """
+    if not is_verified(body.verification_id):
+        raise HTTPException(
+            status_code=403,
+            detail="verification_id is not verified or has expired. Complete OTP verification first.",
+        )
+
+    has_claim_id = bool(body.claim_id)
+    has_policy_and_vin = bool(body.policy_number) and bool(body.vin)
+    if not (has_claim_id or has_policy_and_vin):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either claim_id or (policy_number and vin) for verification",
+        )
+
+    verification_data: dict[str, Any] = {}
+    if body.claim_id:
+        verification_data["claim_id"] = body.claim_id
+    if body.policy_number:
+        verification_data["policy_number"] = body.policy_number
+    if body.vin:
+        verification_data["vin"] = body.vin
+
+    request_id = submit_access_request(
+        claimant_identifier=body.claimant_identifier,
+        verification_data=verification_data,
+        actor_id=f"otp:{body.verification_id}",
+    )
+    return {"request_id": request_id, "status": "pending"}
+
+
+@router.post("/self-service/deletion")
+def dsar_self_service_deletion(body: SelfServiceDeletionInput = Body(...)) -> dict[str, Any]:
+    """Submit a self-service DSAR deletion request authenticated by OTP.
+
+    Requires a ``verification_id`` that has been successfully confirmed via
+    ``POST /dsar/verify/confirm``.  The token must still be within its TTL.
+
+    Provide either ``claim_id`` or both ``policy_number`` and ``vin`` for
+    claim-data lookup.
+    """
+    if not is_verified(body.verification_id):
+        raise HTTPException(
+            status_code=403,
+            detail="verification_id is not verified or has expired. Complete OTP verification first.",
+        )
+
+    has_claim_id = bool(body.claim_id)
+    has_policy_and_vin = bool(body.policy_number) and bool(body.vin)
+    if not (has_claim_id or has_policy_and_vin):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either claim_id or (policy_number and vin) for verification",
+        )
+
+    verification_data: dict[str, Any] = {}
+    if body.claim_id:
+        verification_data["claim_id"] = body.claim_id
+    if body.policy_number:
+        verification_data["policy_number"] = body.policy_number
+    if body.vin:
+        verification_data["vin"] = body.vin
+
+    request_id = submit_deletion_request(
+        claimant_identifier=body.claimant_identifier,
+        verification_data=verification_data,
+        actor_id=f"otp:{body.verification_id}",
+    )
+    return {"request_id": request_id, "status": "pending"}
+@router.get("/form-schema")
+def dsar_form_schema(
+    state: Optional[str] = Query(None, description="Consumer's state of residence (e.g., 'California')"),
+    request_type: str = Query("access", description="Request type: 'access' or 'deletion'"),
+    _auth: AuthContext = require_role("admin"),
+) -> dict[str, Any]:
+    """Return the DSAR form schema for the given state and request type.
+
+    Describes the required fields, consumer rights, data categories, response
+    timelines, and applicable privacy law for the state. Use this to render a
+    guided intake form or validate submission data on the client.
+
+    When ``state`` is omitted or unsupported, a generic fallback schema is returned.
+    """
+    if request_type not in ("access", "deletion"):
+        raise HTTPException(status_code=400, detail="request_type must be 'access' or 'deletion'")
+    return get_dsar_form_schema(state, request_type=request_type)
+
+
+@router.get("/state-requirements")
+def dsar_state_requirements(
+    _auth: AuthContext = require_role("admin"),
+) -> dict[str, Any]:
+    """List all states with defined DSAR requirements.
+
+    Returns a summary of each supported state's applicable privacy law, response
+    deadline, extension allowance, and consumer rights.
+    """
+    supported = get_supported_dsar_states()
+    summaries = []
+    for state_name in supported:
+        rules = get_dsar_state_rules(state_name)
+        if rules:
+            summaries.append(
+                {
+                    "state": rules.state,
+                    "law_name": rules.law_name,
+                    "response_days": rules.response_days,
+                    "extension_days": rules.extension_days,
+                    "consumer_rights": rules.consumer_rights,
+                    "annual_request_limit": rules.annual_request_limit,
+                }
+            )
+    return {"supported_states": summaries, "total": len(summaries)}

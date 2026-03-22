@@ -159,6 +159,7 @@ _STATE_RULES: dict[str, StateRules] = {
         appraisal_rights=True,
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=51.0,
+        mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
         # NJSA 17:33A-15: vehicle theft must be reported to NICB within 2 working days
         nicb_deadline_days_theft=3,   # 2 working days ≈ 3 calendar days
         nicb_deadline_days_salvage=30,
