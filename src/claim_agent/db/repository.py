@@ -111,6 +111,9 @@ def _generate_claim_id(prefix: str = "CLM") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
+_DENIAL_LETTER_DELIVERY_METHODS = {"mail", "email", "certified_mail"}
+
+
 def _claim_row_for_status_validation(row_d: dict[str, Any]) -> dict[str, Any]:
     """Subset of claim row for validate_transition; normalizes 0/1 DB flags to bool."""
     out = dict(row_d)
@@ -2483,28 +2486,68 @@ class ClaimRepository:
         claim_id: str,
         denial_reason: str,
         denial_letter_body: str,
+        denial_letter_delivery_method: str | None = None,
+        denial_letter_tracking_id: str | None = None,
+        denial_letter_delivered_at: str | None = None,
         *,
         actor_id: str = ACTOR_WORKFLOW,
     ) -> None:
         """Record UCSPA-compliant denial letter (written, specific, with appeal rights)."""
         safe_reason = sanitize_denial_reason(denial_reason) or "Coverage denied"
         safe_actor = sanitize_actor_id(actor_id)
+        delivery_method = denial_letter_delivery_method.strip().lower() if isinstance(
+            denial_letter_delivery_method, str
+        ) else None
+        if delivery_method and delivery_method not in _DENIAL_LETTER_DELIVERY_METHODS:
+            raise ValueError(
+                "denial_letter_delivery_method must be one of: mail, email, certified_mail"
+            )
+        tracking_id = (
+            denial_letter_tracking_id.strip()[:255]
+            if isinstance(denial_letter_tracking_id, str) and denial_letter_tracking_id.strip()
+            else None
+        )
+        delivered_at = (
+            denial_letter_delivered_at.strip()
+            if isinstance(denial_letter_delivered_at, str) and denial_letter_delivered_at.strip()
+            else None
+        )
+        if delivered_at:
+            try:
+                datetime.fromisoformat(delivered_at.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("denial_letter_delivered_at must be a valid ISO-8601 timestamp") from exc
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             result = conn.execute(
                 text("""
                 UPDATE claims SET denial_reason = :reason, denial_letter_sent_at = :now,
-                    denial_letter_body = :body, updated_at = :now WHERE id = :claim_id
+                    denial_letter_body = :body, denial_letter_delivery_method = :delivery_method,
+                    denial_letter_tracking_id = :tracking_id, denial_letter_delivered_at = :delivered_at,
+                    updated_at = :now WHERE id = :claim_id
                 """),
                 {
                     "reason": safe_reason,
                     "now": now,
                     "body": denial_letter_body[:65535],
+                    "delivery_method": delivery_method,
+                    "tracking_id": tracking_id,
+                    "delivered_at": delivered_at,
                     "claim_id": claim_id,
                 },
             )
             if result.rowcount == 0:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            after_state = {
+                "denial_reason": safe_reason,
+                "denial_letter_sent_at": now,
+            }
+            if delivery_method:
+                after_state["denial_letter_delivery_method"] = delivery_method
+            if tracking_id:
+                after_state["denial_letter_tracking_id"] = tracking_id
+            if delivered_at:
+                after_state["denial_letter_delivered_at"] = delivered_at
             conn.execute(
                 text("""
                 INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
@@ -2515,9 +2558,7 @@ class ClaimRepository:
                     "action": AUDIT_EVENT_DENIAL_LETTER,
                     "details": f"Denial letter sent: {safe_reason[:200]}",
                     "actor_id": safe_actor,
-                    "after_state": json.dumps(
-                        {"denial_reason": safe_reason, "denial_letter_sent_at": now}
-                    ),
+                    "after_state": json.dumps(after_state),
                 },
             )
 

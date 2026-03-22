@@ -99,6 +99,9 @@ export interface Claim {
   settlement_agreed_at?: string;
   denial_reason?: string;
   denial_letter_sent_at?: string;
+  denial_letter_delivery_method?: string;
+  denial_letter_tracking_id?: string;
+  denial_letter_delivered_at?: string;
 }
 
 export interface SubrogationCase {
