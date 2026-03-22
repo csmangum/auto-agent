@@ -48,6 +48,13 @@ class StateRules:
     """Base date for prompt-payment calculation: FNOL or settlement agreement date."""
     mandatory_indicators: list[str] = field(default_factory=list)
     """Fraud indicator codes that trigger mandatory SIU referral regardless of fraud score."""
+    nicb_deadline_days_theft: int | None = None
+    """Calendar days after incident to file NICB report for vehicle theft.
+    Approximated from state working-day requirements (e.g. CA 5 working days ≈ 7 calendar days;
+    NJ 2 working days ≈ 3 calendar days). None = no state-specific requirement; falls back to 30."""
+    nicb_deadline_days_salvage: int | None = None
+    """Calendar days after incident to file NICB report for salvage / total-loss transfers.
+    None = no state-specific requirement; falls back to 30."""
 
 
 # State-specific rules (California, Florida, New York, Texas)
@@ -67,6 +74,9 @@ _STATE_RULES: dict[str, StateRules] = {
         comparative_fault_type="pure_comparative",
         comparative_fault_bar=None,
         mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
+        # Cal. Ins. Code §1875.20: vehicle theft ≥$2k must be reported to NICB within 5 working days
+        nicb_deadline_days_theft=7,   # 5 working days ≈ 7 calendar days
+        nicb_deadline_days_salvage=30,
     ),
     "Florida": StateRules(
         state="Florida",
@@ -82,6 +92,8 @@ _STATE_RULES: dict[str, StateRules] = {
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=51.0,
         mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
+        nicb_deadline_days_theft=30,
+        nicb_deadline_days_salvage=30,
     ),
     "New York": StateRules(
         state="New York",
@@ -97,6 +109,8 @@ _STATE_RULES: dict[str, StateRules] = {
         comparative_fault_type="pure_comparative",
         comparative_fault_bar=None,
         mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
+        nicb_deadline_days_theft=30,
+        nicb_deadline_days_salvage=30,
     ),
     "Georgia": StateRules(
         state="Georgia",
@@ -112,6 +126,8 @@ _STATE_RULES: dict[str, StateRules] = {
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=50.0,
         mandatory_indicators=["organized_fraud_ring"],
+        nicb_deadline_days_theft=30,
+        nicb_deadline_days_salvage=30,
     ),
     "Texas": StateRules(
         state="Texas",
@@ -127,6 +143,25 @@ _STATE_RULES: dict[str, StateRules] = {
         comparative_fault_type="modified_comparative_51",
         comparative_fault_bar=51.0,
         mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging"],
+        nicb_deadline_days_theft=30,
+        nicb_deadline_days_salvage=30,
+    ),
+    "New Jersey": StateRules(
+        state="New Jersey",
+        prompt_payment_days=30,
+        total_loss_threshold=0.80,
+        diminished_value_required=False,
+        diminished_value_formula=None,
+        siu_referral_threshold=75,
+        acknowledgment_days=15,
+        investigation_days=30,
+        communication_response_days=15,
+        appraisal_rights=True,
+        comparative_fault_type="modified_comparative_51",
+        comparative_fault_bar=51.0,
+        # NJSA 17:33A-15: vehicle theft must be reported to NICB within 2 working days
+        nicb_deadline_days_theft=3,   # 2 working days ≈ 3 calendar days
+        nicb_deadline_days_salvage=30,
     ),
 }
 
@@ -212,6 +247,28 @@ def get_mandatory_referral_indicators(state: str | None) -> list[str]:
     """
     rules = get_state_rules(state)
     return list(rules.mandatory_indicators) if rules else []
+def get_nicb_deadline_days(state: str | None, report_type: str = "theft") -> int:
+    """Return the NICB filing deadline in calendar days for a given state and report type.
+
+    Uses state-specific rules when available (e.g. CA vehicle theft: 5 working days ≈ 7 calendar
+    days; NJ vehicle theft: 2 working days ≈ 3 calendar days). Falls back to 30 calendar days for
+    states without a specific requirement or when ``state`` is unknown.
+
+    Args:
+        state: Loss state/jurisdiction (e.g. ``"California"`` or ``"CA"``).
+        report_type: NICB report category – ``"theft"`` (default) or ``"salvage"``.
+
+    Returns:
+        Deadline expressed in calendar days from the incident date.
+    """
+    rules = get_state_rules(state)
+    if rules is None:
+        return 30
+    if report_type == "salvage":
+        days = rules.nicb_deadline_days_salvage
+    else:
+        days = rules.nicb_deadline_days_theft
+    return days if days is not None else 30
 
 
 def get_comparative_fault_rules(state: str | None) -> dict:

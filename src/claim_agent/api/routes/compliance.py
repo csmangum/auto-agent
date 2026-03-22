@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from claim_agent.api.deps import require_role
-from claim_agent.compliance.fraud_report_templates import get_fraud_report_template
+from claim_agent.compliance.state_rules import get_nicb_deadline_days
 from claim_agent.db.database import get_connection
 from claim_agent.rag.constants import _STATE_ABBREV_TO_CANONICAL, normalize_state
 
@@ -86,16 +86,22 @@ def _parse_flexible_iso_datetime(value: Any) -> datetime | None:
 
 
 def _nicb_deadline_days_for_claim(claim: dict[str, Any]) -> int:
+    """Return the NICB filing deadline in calendar days for the given claim.
+
+    Derives the NICB report type from the claim's claim_type field:
+    - salvage / total_loss → salvage deadline
+    - all other types (theft, fraud, etc.) → theft deadline (stricter by default)
+
+    Uses state-specific deadlines from :func:`~claim_agent.compliance.state_rules.get_nicb_deadline_days`.
+    Falls back to 30 days when the state has no specific requirement.
+    """
     state = claim.get("loss_state")
-    tpl = get_fraud_report_template(state if isinstance(state, str) else None)
-    days = tpl.get("filing_deadline_days") if isinstance(tpl, dict) else None
-    if days is None:
-        return 30
-    try:
-        n = int(days)
-        return n if n > 0 else 30
-    except (TypeError, ValueError):
-        return 30
+    claim_type = (claim.get("claim_type") or "").lower()
+    if "salvage" in claim_type or "total_loss" in claim_type:
+        report_type = "salvage"
+    else:
+        report_type = "theft"
+    return get_nicb_deadline_days(state if isinstance(state, str) else None, report_type)
 
 
 def _nicb_deadline_summary(
@@ -109,6 +115,7 @@ def _nicb_deadline_summary(
         return {
             "nicb_required": "nicb" in _required_filing_types_for_claim(claim),
             "nicb_due_at": None,
+            "nicb_deadline_days": _nicb_deadline_days_for_claim(claim),
             "nicb_overdue": False,
             "nicb_alert": None,
         }
@@ -124,6 +131,7 @@ def _nicb_deadline_summary(
     return {
         "nicb_required": nicb_required,
         "nicb_due_at": nicb_due_at_iso,
+        "nicb_deadline_days": _nicb_deadline_days_for_claim(claim),
         "nicb_overdue": overdue,
         "nicb_alert": alert,
     }
