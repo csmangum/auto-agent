@@ -74,6 +74,12 @@ class TestStatusTransitionTemplates:
         templates = get_status_transition_templates("archived", "purged")
         assert len(templates) == 0
 
+    def test_get_templates_for_processing_to_under_investigation(self):
+        templates = get_status_transition_templates("processing", "under_investigation")
+        assert len(templates) == 1
+        assert templates[0].title == "Start investigation workflow"
+        assert templates[0].due_days == 1
+
 
 class TestAutoCreateDiaryListener:
     """Tests for auto-create diary entries at claim status transitions."""
@@ -132,6 +138,27 @@ class TestAutoCreateDiaryListener:
         assert follow_up["auto_created_from"] == "status_transition:pending->processing"
         assert follow_up["recurrence_rule"] == "interval_days"
         assert follow_up["recurrence_interval"] == 3
+
+    def test_status_transition_settled_to_closed_creates_diary_task(self, seeded_temp_db):
+        """settled->closed transition creates closure verification diary task."""
+        ensure_diary_listener_registered()
+        repo = ClaimRepository()
+
+        # CLM-TEST001 starts open with payout; settle then close.
+        repo.update_claim_status("CLM-TEST001", "settled", details="Settlement complete")
+        repo.update_claim_status("CLM-TEST001", "closed", details="Closure complete")
+
+        tasks, _ = repo.get_tasks_for_claim("CLM-TEST001")
+        diary_tasks = [t for t in tasks if t.get("auto_created_from", "").startswith("status_transition:")]
+        closure_task = next(
+            (t for t in diary_tasks if t.get("auto_created_from") == "status_transition:settled->closed"),
+            None,
+        )
+        assert closure_task is not None
+        assert closure_task["title"] == "Finalize claim closure"
+        assert closure_task["created_by"] == "diary_system"
+        expected_due = (date.today() + timedelta(days=1)).isoformat()
+        assert closure_task["due_date"] == expected_due
 
 
 class TestCreateTaskWithRecurrence:
