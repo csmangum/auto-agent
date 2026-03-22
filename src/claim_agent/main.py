@@ -6,6 +6,7 @@ This module provides the command-line interface with full observability:
 - LangSmith tracing integration
 """
 
+import asyncio
 import json
 import logging
 import math
@@ -1007,7 +1008,7 @@ def ucspa_deadlines(
 @app.command("run-scheduler")
 def run_scheduler() -> None:
     """Run in-process scheduler in foreground (for dedicated scheduler process)."""
-    from claim_agent.scheduler import ensure_scheduler_running
+    from claim_agent.scheduler import ensure_scheduler_running, stop_scheduler
 
     if not get_settings().scheduler.enabled:
         typer.echo(
@@ -1022,6 +1023,9 @@ def run_scheduler() -> None:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
+        pass
+    finally:
+        asyncio.run(stop_scheduler())
         typer.echo("Scheduler stopped.")
 
 

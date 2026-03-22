@@ -30,8 +30,8 @@ def _run_diary_escalation_job() -> None:
             result.get("notified_count", 0),
             result.get("escalated_count", 0),
         )
-    except Exception as e:
-        logger.warning("Scheduler diary escalation failed: %s", e)
+    except Exception:
+        logger.exception("Scheduler diary escalation failed")
 
 
 def _run_ucspa_deadline_job() -> None:
@@ -49,12 +49,11 @@ def _run_ucspa_deadline_job() -> None:
                 claim["due_date"],
                 claim.get("loss_state"),
             )
-        except Exception as e:
-            logger.warning(
-                "Scheduler UCSPA deadline dispatch failed: claim_id=%s deadline_type=%s error=%s",
+        except Exception:
+            logger.exception(
+                "Scheduler UCSPA deadline dispatch failed: claim_id=%s deadline_type=%s",
                 claim.get("claim_id"),
                 claim.get("deadline_type"),
-                e,
             )
     logger.info("Scheduler UCSPA deadline sweep complete: alerts=%d", len(claims))
 
@@ -102,8 +101,8 @@ def ensure_scheduler_running() -> None:
                 config.ucspa_deadline_check_cron,
                 config.timezone,
             )
-        except Exception as e:
-            logger.warning("Failed to start in-process scheduler: %s", e)
+        except Exception:
+            logger.exception("Failed to start in-process scheduler")
 
 
 async def stop_scheduler() -> None:

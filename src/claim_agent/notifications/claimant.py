@@ -1,6 +1,8 @@
 """Claimant notifications (email/SMS)."""
 
+import atexit
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import httpx
@@ -8,6 +10,16 @@ import httpx
 from claim_agent.config.settings import get_notification_config
 
 logger = logging.getLogger(__name__)
+
+_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="claimant_notify")
+
+
+def _shutdown_executor() -> None:
+    """Shut down the notification executor for clean process exit."""
+    _EXECUTOR.shutdown(wait=False)
+
+
+atexit.register(_shutdown_executor)
 
 CLAIMANT_EVENTS = (
     "receipt_acknowledged",
@@ -56,7 +68,7 @@ def notify_claimant(
     subject, message = _build_notification_message(event, claim_id, template_data)
 
     if email and config["email_enabled"]:
-        _send_email(
+        _email_kwargs = dict(
             api_key=config["sendgrid_api_key"],
             from_email=config["sendgrid_from_email"],
             to_email=email,
@@ -65,8 +77,9 @@ def notify_claimant(
             event=event,
             claim_id=claim_id,
         )
+        _EXECUTOR.submit(_send_email, **_email_kwargs)
     if phone and config["sms_enabled"]:
-        _send_sms(
+        _sms_kwargs = dict(
             account_sid=config["twilio_account_sid"],
             auth_token=config["twilio_auth_token"],
             from_phone=config["twilio_from_phone"],
@@ -75,6 +88,7 @@ def notify_claimant(
             event=event,
             claim_id=claim_id,
         )
+        _EXECUTOR.submit(_send_sms, **_sms_kwargs)
 
 
 def _build_notification_message(
