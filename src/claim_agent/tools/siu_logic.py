@@ -8,6 +8,7 @@ import sqlite3
 import time
 from typing import TYPE_CHECKING, Any
 
+from claim_agent.compliance.fraud_report_templates import get_fraud_report_template
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.utils.retry import RETRYABLE_EXCEPTIONS
 
@@ -59,6 +60,17 @@ VALID_SIU_CASE_STATUSES = frozenset({"open", "investigating", "referred", "close
 VALID_SIU_NOTE_CATEGORIES = frozenset(
     {"general", "document_review", "claimant_interview", "records_check", "findings"}
 )
+
+
+def _is_empty_required_field_value(value: Any) -> bool:
+    """Return True when a template-required field value should be treated as missing/empty."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, dict)):
+        return len(value) == 0
+    return False
 
 
 def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) -> str:
@@ -297,6 +309,7 @@ def file_fraud_report_state_bureau_impl(
     case_id: str,
     state: str = "California",
     indicators: str = "[]",
+    payload_json: str = "{}",
     *,
     ctx: ClaimContext | None = None,
 ) -> str:
@@ -313,6 +326,129 @@ def file_fraud_report_state_bureau_impl(
     except json.JSONDecodeError:
         ind_list = []
 
+    template = get_fraud_report_template(state or "California")
+    if not template:
+        return json.dumps({
+            "success": False,
+            "error": f"Unsupported fraud report template state: {state or 'California'}",
+            "validation_error": True,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": state or "California",
+        })
+
+    try:
+        payload = json.loads(payload_json) if payload_json else {}
+    except json.JSONDecodeError:
+        return json.dumps({
+            "success": False,
+            "error": "Invalid payload_json: expected JSON object",
+            "validation_error": True,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": state or "California",
+        })
+    if not isinstance(payload, dict):
+        return json.dumps({
+            "success": False,
+            "error": "Invalid payload_json: expected JSON object",
+            "validation_error": True,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": state or "California",
+        })
+
+    if "claim_id" not in payload:
+        payload["claim_id"] = claim_id
+    repo = ctx.repo if ctx else ClaimRepository()
+    try:
+        claim = repo.get_claim(claim_id)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("file_fraud_report_state_bureau: get_claim failed: %s", e)
+        return _adapter_error_json(
+            f"State bureau payload validation failed: {e!s}",
+            case_id=case_id,
+            claim_id=claim_id,
+            retryable=True,
+        )
+    except Exception as e:
+        logger.warning("file_fraud_report_state_bureau: get_claim failed: %s", e, exc_info=True)
+        return _adapter_error_json(
+            f"State bureau payload validation failed: {e!s}",
+            case_id=case_id,
+            claim_id=claim_id,
+        )
+
+    if claim:
+        defaults = {
+            "policy_number": claim.get("policy_number"),
+            "vin": claim.get("vin"),
+            "incident_date": claim.get("incident_date"),
+            "estimated_loss": claim.get("estimated_damage"),
+        }
+        for key, value in defaults.items():
+            if key not in payload and value not in (None, ""):
+                payload[key] = value
+        if "claimant_name" not in payload:
+            claimant = repo.get_claim_party_by_type(claim_id, "claimant")
+            if claimant and claimant.get("name"):
+                payload["claimant_name"] = claimant.get("name")
+
+    required_fields = template.get("required_fields", [])
+    missing_fields: list[str] = []
+    for field in required_fields:
+        if _is_empty_required_field_value(payload.get(field)):
+            missing_fields.append(field)
+
+    if missing_fields:
+        return json.dumps({
+            "success": False,
+            "error": "Fraud report payload validation failed",
+            "validation_error": True,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": template.get("state", state or "California"),
+            "missing_required_fields": missing_fields,
+            "required_fields": required_fields,
+            "can_retry": True,
+        })
+
+    # Mock: simulate filing. In production this would call state bureau API.
+    # try/except for RETRYABLE_EXCEPTIONS is for future adapter integration.
+    state_code = (state or "California").strip()[:2].upper() or "CA"
+    claim_suffix = (claim_id or "")[-6:] or "MOCK"
+    try:
+        report_id = f"FRB-{state_code}-{claim_suffix}-MOCK"
+        result: dict[str, Any] = {
+            "success": True,
+            "report_id": report_id,
+            "claim_id": claim_id,
+            "case_id": case_id,
+            "state": state or "California",
+            "indicators_count": len(ind_list),
+            "validated_required_fields": required_fields,
+            "message": f"Fraud report filed with {state or 'California'} fraud bureau (mock). Report ID: {report_id}",
+        }
+        _persist_fraud_filing(
+            ctx, claim_id, "state_bureau", report_id,
+            siu_case_id=case_id, state=state or "California", indicators_count=len(ind_list),
+        )
+        return json.dumps(result)
+    except RETRYABLE_EXCEPTIONS as e:
+        logger.warning("file_fraud_report_state_bureau failed: %s", e)
+        return _adapter_error_json(
+            f"State bureau filing failed: {e!s}",
+            case_id=case_id,
+            claim_id=claim_id,
+            retryable=True,
+        )
+    except Exception as e:
+        logger.warning("file_fraud_report_state_bureau failed: %s", e, exc_info=True)
+        return _adapter_error_json(
+            f"State bureau filing failed: {e!s}",
+            case_id=case_id,
+            claim_id=claim_id,
+        )
     from claim_agent.adapters.registry import get_state_bureau_adapter
 
     adapter = ctx.adapters.state_bureau if ctx else get_state_bureau_adapter()

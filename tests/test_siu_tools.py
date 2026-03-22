@@ -365,15 +365,42 @@ class TestSiuScopeValidation:
 class TestFileFraudReportStateBureauImpl:
     def test_returns_mock_confirmation(self):
         """file_fraud_report_state_bureau_impl returns success and report_id."""
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
 
-        result = file_fraud_report_state_bureau_impl("CLM-001", "SIU-001", state="California", indicators='["staged"]')
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-FRAUD-CONFIRM",
+                vin="VIN-FRAUD-CONFIRM",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident",
+                damage_description="Inflated damage",
+                estimated_damage=5000,
+            )
+        )
+        case_id = "SIU-001"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_fraud_report_state_bureau_impl(
+                claim_id,
+                case_id,
+                state="California",
+                indicators='["staged"]',
+                payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged"}',
+            )
         data = json.loads(result)
         assert data["success"] is True
         assert "report_id" in data
         assert "FRB-" in data["report_id"]
-        assert data["claim_id"] == "CLM-001"
-        assert data["case_id"] == "SIU-001"
+        assert data["claim_id"] == claim_id
+        assert data["case_id"] == case_id
         assert data["state"] == "California"
         assert data["report_id"].startswith("FRB-CA-")
 
@@ -403,7 +430,11 @@ class TestFileFraudReportStateBureauImpl:
         case_id = "SIU-MOCK-FILING"
         with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
             result = file_fraud_report_state_bureau_impl(
-                claim_id, case_id, state="California", indicators='["staged", "inflated"]'
+                claim_id,
+                case_id,
+                state="California",
+                indicators='["staged", "inflated"]',
+                payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged, inflated"}',
             )
         data = json.loads(result)
         assert data["success"] is True
@@ -414,6 +445,117 @@ class TestFileFraudReportStateBureauImpl:
         assert filings[0]["state"] == "California"
         assert filings[0]["indicators_count"] == 2
 
+    def test_returns_validation_error_for_missing_required_fields(self, temp_db):
+        """file_fraud_report_state_bureau_impl validates required template fields."""
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
+
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-FRAUD-MISSING",
+                vin="VIN-FRAUD-MISSING",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident",
+                damage_description="Inflated damage",
+                estimated_damage=5000,
+            )
+        )
+        case_id = "SIU-MOCK-FILING-MISSING"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_fraud_report_state_bureau_impl(
+                claim_id,
+                case_id,
+                state="California",
+                indicators='["staged"]',
+                payload_json='{"claimant_name": "Jane Doe"}',
+            )
+        data = json.loads(result)
+        assert data["success"] is False
+        assert data["validation_error"] is True
+        assert data["can_retry"] is True
+        assert "missing_required_fields" in data
+        assert "indicators_summary" in data["missing_required_fields"]
+
+    def test_succeeds_when_payload_supplies_missing_required_fields(self, temp_db):
+        """Agent can retry filing with corrected payload and succeed."""
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
+
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-FRAUD-RETRY",
+                vin="VIN-FRAUD-RETRY",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident",
+                damage_description="Inflated damage",
+                estimated_damage=5000,
+            )
+        )
+        case_id = "SIU-MOCK-FILING-RETRY"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_fraud_report_state_bureau_impl(
+                claim_id,
+                case_id,
+                state="California",
+                indicators='["staged"]',
+                payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged claim indicators"}',
+            )
+        data = json.loads(result)
+        assert data["success"] is True
+        assert "report_id" in data
+
+    def test_returns_validation_error_for_invalid_payload_json(self, temp_db):
+        """file_fraud_report_state_bureau_impl returns clear error for invalid JSON payload."""
+        from datetime import date
+
+        from claim_agent.db.repository import ClaimRepository
+        from claim_agent.models.claim import ClaimInput
+        from claim_agent.observability import siu_workflow_scope
+        from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
+
+        repo = ClaimRepository()
+        claim_id = repo.create_claim(
+            ClaimInput(
+                policy_number="POL-FRAUD-BADJSON",
+                vin="VIN-FRAUD-BADJSON",
+                vehicle_year=2020,
+                vehicle_make="Honda",
+                vehicle_model="Civic",
+                incident_date=date(2026, 1, 15),
+                incident_description="Staged accident",
+                damage_description="Inflated damage",
+                estimated_damage=5000,
+            )
+        )
+        case_id = "SIU-MOCK-FILING-BADJSON"
+        with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
+            result = file_fraud_report_state_bureau_impl(
+                claim_id,
+                case_id,
+                state="California",
+                indicators='["staged"]',
+                payload_json="{not-json}",
+            )
+        data = json.loads(result)
+        assert data["success"] is False
+        assert data["validation_error"] is True
+        assert "Invalid payload_json" in data["error"]
     def test_retries_on_transient_failure_then_succeeds(self, monkeypatch):
         """file_fraud_report_state_bureau_impl retries transient adapter failures."""
         from claim_agent.adapters.registry import get_state_bureau_adapter
