@@ -29,6 +29,11 @@ Outbound webhooks notify external systems when claim status changes or when repa
 | `claim.under_investigation` | Escalated to SIU |
 | `claim.archived` | Archived for retention (older than retention period) |
 | `repair.authorized` | Repair authorization generated for partial loss |
+| `ucspa.deadline_approaching` | UCSPA compliance deadline is within the configured lookahead window (from `ucspa-deadlines` CLI or the in-process scheduler) |
+
+### UCSPA deadline approaching (no server-side deduplication)
+
+The server may send **`ucspa.deadline_approaching`** more than once for the same claim: while a deadline remains in the lookahead window (see `SCHEDULER_UCSPA_DAYS_AHEAD` or `ucspa-deadlines --days`), each daily (or manual) run can dispatch again. This matches a **daily reminder** model. Integrators that need at-most-once alerts should dedupe on a stable key such as `(claim_id, deadline_type, due_date)` (or track the last handled delivery in their system).
 
 ## Payload Schema
 
@@ -70,6 +75,21 @@ Outbound webhooks notify external systems when claim status changes or when repa
   "timestamp": "2026-03-07T12:00:00.000000+00:00"
 }
 ```
+
+### UCSPA deadline approaching
+
+```json
+{
+  "event": "ucspa.deadline_approaching",
+  "claim_id": "CLM-ABC12345",
+  "deadline_type": "acknowledgment",
+  "due_date": "2026-03-25",
+  "loss_state": "California",
+  "timestamp": "2026-03-07T12:00:00.000000+00:00"
+}
+```
+
+`loss_state` is omitted when unknown.
 
 ## HMAC Signature Verification
 

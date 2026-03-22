@@ -2608,6 +2608,7 @@ class ClaimRepository:
                     claim_id,
                     event,
                 )
+                return
             notify_claimant(
                 event,
                 claim_id,
