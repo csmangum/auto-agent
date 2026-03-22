@@ -168,6 +168,11 @@ def get_notification_config() -> dict:
     return {
         "email_enabled": s.email_enabled,
         "sms_enabled": s.sms_enabled,
+        "sendgrid_api_key": s.sendgrid_api_key,
+        "sendgrid_from_email": s.sendgrid_from_email,
+        "twilio_account_sid": s.twilio_account_sid,
+        "twilio_auth_token": s.twilio_auth_token,
+        "twilio_from_phone": s.twilio_from_phone,
     }
 
 

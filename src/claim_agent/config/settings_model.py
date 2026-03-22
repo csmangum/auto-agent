@@ -390,6 +390,11 @@ class NotificationConfig(BaseSettings):
 
     email_enabled: bool = False
     sms_enabled: bool = False
+    sendgrid_api_key: str = Field(default="", validation_alias="SENDGRID_API_KEY")
+    sendgrid_from_email: str = Field(default="", validation_alias="SENDGRID_FROM_EMAIL")
+    twilio_account_sid: str = Field(default="", validation_alias="TWILIO_ACCOUNT_SID")
+    twilio_auth_token: str = Field(default="", validation_alias="TWILIO_AUTH_TOKEN")
+    twilio_from_phone: str = Field(default="", validation_alias="TWILIO_FROM_PHONE")
 
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod
