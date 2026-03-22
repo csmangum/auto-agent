@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -26,6 +27,8 @@ from sqlalchemy import text
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.notifications.claimant import send_otp_notification
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -85,8 +88,28 @@ def _make_salt() -> str:
 
 
 def _hash_otp(otp: str, salt: str) -> str:
-    """Return HMAC-SHA256 of *otp* keyed with *salt* (hex digest)."""
-    return hmac.new(salt.encode(), otp.encode(), hashlib.sha256).hexdigest()
+    """Return HMAC-SHA256 of *salt*:*otp* keyed with a server-side pepper (hex digest).
+
+    The pepper is read from ``PrivacyConfig.otp_pepper`` (env: ``OTP_PEPPER``), falling
+    back to ``AuthConfig.jwt_secret_raw`` when the dedicated pepper is not set.  Using a
+    server-side secret means that even if the database is fully compromised an attacker
+    cannot brute-force 6-digit OTPs offline without also knowing the pepper.
+    """
+    settings = get_settings()
+    pepper = settings.privacy.otp_pepper.strip()
+    if not pepper:
+        # Fallback to JWT secret so existing deployments without OTP_PEPPER still work.
+        pepper = settings.auth.jwt_secret_raw.strip()
+    if not pepper:
+        # Last-resort: use the salt itself (no server secret available).  Log a warning
+        # so operators notice and configure OTP_PEPPER.
+        logger.warning(
+            "OTP_PEPPER is not set; OTP hashes are not protected by a server-side secret. "
+            "Set OTP_PEPPER in your environment for production deployments."
+        )
+        pepper = salt
+    msg = f"{salt}:{otp}".encode()
+    return hmac.new(pepper.encode(), msg, hashlib.sha256).hexdigest()
 
 
 def _parse_expires_at(expires_at_str: str) -> datetime:
@@ -156,6 +179,11 @@ def request_otp(
 
     settings = get_settings()
     privacy = settings.privacy
+
+    # Fail closed when self-service OTP is disabled in configuration.
+    if not privacy.otp_enabled:
+        raise PermissionError("DSAR self-service OTP flow is disabled by configuration.")
+
     path = db_path or get_db_path()
     now = datetime.now(timezone.utc)
 
