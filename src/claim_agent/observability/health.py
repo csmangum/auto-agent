@@ -12,7 +12,7 @@ from claim_agent.config.settings_model import (
     VALID_ADAPTER_BACKENDS,
     VALUATION_PROVIDER_BACKENDS,
 )
-from claim_agent.db.database import get_connection
+from claim_agent.db.database import get_connection, get_replica_connection, has_read_replica
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +79,19 @@ def check_health() -> dict:
     Returns:
         Dict with keys:
         - status: "ok" | "degraded"
-        - checks: {"database": "ok"|"error", "llm": "ok"|"degraded"|"skipped",
+        - checks: {"database": "ok"|"error", "database_replica": "ok"|"error"|"skipped",
+                   "llm": "ok"|"degraded"|"skipped",
                    "adapter_*": "ok"|"degraded:msg"|"skipped"}
     """
     checks: dict[str, str] = {}
     db_ok = _check_database()
     checks["database"] = "ok" if db_ok else "error"
+
+    if has_read_replica():
+        replica_ok = _check_replica_database()
+        checks["database_replica"] = "ok" if replica_ok else "error"
+    else:
+        checks["database_replica"] = "skipped"
 
     if os.environ.get("HEALTH_CHECK_LLM", "").strip().lower() in ("true", "1", "yes"):
         checks["llm"] = "ok" if _check_llm() else "degraded"
@@ -108,6 +115,16 @@ def _check_database() -> bool:
     """Verify database connectivity. Returns True if ok."""
     try:
         with get_connection() as conn:
+            conn.execute(text("SELECT 1")).fetchone()
+        return True
+    except Exception:
+        return False
+
+
+def _check_replica_database() -> bool:
+    """Verify read-replica connectivity. Returns True if ok."""
+    try:
+        with get_replica_connection() as conn:
             conn.execute(text("SELECT 1")).fetchone()
         return True
     except Exception:
