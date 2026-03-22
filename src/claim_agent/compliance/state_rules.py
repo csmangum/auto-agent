@@ -247,6 +247,8 @@ def get_mandatory_referral_indicators(state: str | None) -> list[str]:
     """
     rules = get_state_rules(state)
     return list(rules.mandatory_indicators) if rules else []
+
+
 def get_nicb_deadline_days(state: str | None, report_type: str = "theft") -> int:
     """Return the NICB filing deadline in calendar days for a given state and report type.
 

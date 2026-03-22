@@ -110,17 +110,18 @@ def _nicb_deadline_summary(
     *,
     now: datetime,
 ) -> dict[str, Any]:
+    deadline_days = _nicb_deadline_days_for_claim(claim)
     incident_dt = _parse_flexible_iso_datetime(claim.get("incident_date"))
     if incident_dt is None:
         return {
             "nicb_required": "nicb" in _required_filing_types_for_claim(claim),
             "nicb_due_at": None,
-            "nicb_deadline_days": _nicb_deadline_days_for_claim(claim),
+            "nicb_deadline_days": deadline_days,
             "nicb_overdue": False,
             "nicb_alert": None,
         }
 
-    nicb_due_at = incident_dt + timedelta(days=_nicb_deadline_days_for_claim(claim))
+    nicb_due_at = incident_dt + timedelta(days=deadline_days)
     nicb_due_at_iso = nicb_due_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     nicb_filings = [f for f in filings if f.get("filing_type") == "nicb"]
     nicb_filed = bool(nicb_filings)
@@ -131,7 +132,7 @@ def _nicb_deadline_summary(
     return {
         "nicb_required": nicb_required,
         "nicb_due_at": nicb_due_at_iso,
-        "nicb_deadline_days": _nicb_deadline_days_for_claim(claim),
+        "nicb_deadline_days": deadline_days,
         "nicb_overdue": overdue,
         "nicb_alert": alert,
     }

@@ -517,6 +517,7 @@ export interface FraudComplianceClaim {
   compliant: boolean;
   nicb_required: boolean;
   nicb_due_at: string | null;
+  nicb_deadline_days: number;
   nicb_overdue: boolean;
   nicb_alert: 'overdue' | 'due_soon' | null;
   filings: FraudFiling[];
