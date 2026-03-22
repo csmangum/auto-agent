@@ -2080,6 +2080,90 @@ class TestComplianceFraudReporting:
         assert claim["missing_required_filings"] == ["nicb", "niss"]
         assert claim["compliant"] is False
 
+    def test_coverage_under_investigation_excluded(self, client):
+        """Coverage-verification claims in under_investigation are NOT returned."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-COVTEST001",
+                    "policy_number": "POL-COVTEST001",
+                    "vin": "VIN-COVTEST001",
+                    "vehicle_year": 2021,
+                    "vehicle_make": "Ford",
+                    "vehicle_model": "F-150",
+                    "incident_date": "2025-03-01",
+                    "incident_description": "Coverage question on flood claim",
+                    "damage_description": "Water damage",
+                    "estimated_damage": 8000.0,
+                    "claim_type": "partial_loss",
+                    "status": "under_investigation",
+                    "loss_state": "Texas",
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim_ids = [c["claim_id"] for c in data["claims"]]
+        assert "CLM-COVTEST001" not in claim_ids, (
+            "Coverage-verification under_investigation claims must not appear in fraud reporting"
+        )
+
+    def test_fraud_under_investigation_with_siu_case_included(self, client):
+        """under_investigation claims with an SIU case ID are included in fraud reporting."""
+        with get_connection() as conn:
+            conn.execute(
+                text("""
+                INSERT INTO claims (
+                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                    incident_date, incident_description, damage_description,
+                    estimated_damage, claim_type, status, siu_case_id, loss_state
+                )
+                VALUES (
+                    :id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                    :incident_date, :incident_description, :damage_description,
+                    :estimated_damage, :claim_type, :status, :siu_case_id, :loss_state
+                )
+                """),
+                {
+                    "id": "CLM-SIUTEST001",
+                    "policy_number": "POL-SIUTEST001",
+                    "vin": "VIN-SIUTEST001",
+                    "vehicle_year": 2022,
+                    "vehicle_make": "Chevrolet",
+                    "vehicle_model": "Malibu",
+                    "incident_date": "2025-03-05",
+                    "incident_description": "Possible staged theft",
+                    "damage_description": "Vehicle reported stolen",
+                    "estimated_damage": 22000.0,
+                    "claim_type": "new",
+                    "status": "under_investigation",
+                    "siu_case_id": "SIU-TESTCASE-001",
+                    "loss_state": "Nevada",
+                },
+            )
+
+        resp = client.get("/api/compliance/fraud-reporting")
+        assert resp.status_code == 200
+        data = resp.json()
+        claim = next((c for c in data["claims"] if c["claim_id"] == "CLM-SIUTEST001"), None)
+        assert claim is not None, "under_investigation claim with siu_case_id must appear in fraud reporting"
+        assert claim["required_filing_types"] == ["state_bureau"]
+        assert claim["missing_required_filings"] == ["state_bureau"]
+        assert claim["compliant"] is False
+
 
 class TestHealthEndpoint:
     def test_basic_health(self, client):
