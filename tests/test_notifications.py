@@ -328,6 +328,8 @@ class TestNotificationConfig:
         assert "twilio_account_sid" in config
         assert "twilio_auth_token" in config
         assert "twilio_from_phone" in config
+        assert isinstance(config["sendgrid_api_key"], str)
+        assert isinstance(config["twilio_auth_token"], str)
 
     def test_default_disabled(self):
         with patch.dict(os.environ, {}, clear=False):
@@ -397,7 +399,10 @@ class TestNotifyClaimant:
                     reload_settings()
                     notify_claimant("claim_closed", "CLM-456", phone="+15551234567")
                 mock_client.post.assert_called_once()
-                assert "api.twilio.com" in mock_client.post.call_args[0][0]
+                assert (
+                    mock_client.post.call_args[0][0]
+                    == "https://api.twilio.com/2010-04-01/Accounts/sid/Messages.json"
+                )
         finally:
             claimant_logger.removeHandler(cap)
         assert any("Sent claimant SMS" in m for m in cap.messages)

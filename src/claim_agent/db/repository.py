@@ -2541,6 +2541,12 @@ class ClaimRepository:
     ) -> None:
         try:
             contact = self.get_primary_contact_for_user_type(claim_id, "claimant") or {}
+            if not contact:
+                logger.debug(
+                    "No claimant contact found for notification: claim_id=%s event=%s",
+                    claim_id,
+                    event,
+                )
             notify_claimant(
                 event,
                 claim_id,
@@ -2550,9 +2556,10 @@ class ClaimRepository:
             )
         except Exception as e:
             logger.warning(
-                "Claimant notification failed (best-effort): claim_id=%s event=%s error=%s",
+                "Claimant notification failed (best-effort): claim_id=%s event=%s error_type=%s error=%s",
                 claim_id,
                 event,
+                type(e).__name__,
                 e,
             )
 

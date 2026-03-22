@@ -17,6 +17,7 @@ CLAIMANT_EVENTS = (
     "claim_closed",
     "follow_up_request",
 )
+HTTP_TIMEOUT_SECONDS = 30.0
 
 
 def notify_claimant(
@@ -91,8 +92,10 @@ def _build_notification_message(
         )
     if event == "follow_up_request":
         message = ""
-        if template_data and template_data.get("message"):
-            message = str(template_data["message"]).strip()
+        if template_data:
+            raw_message = template_data.get("message")
+            if raw_message is not None:
+                message = str(raw_message).strip()
         if message:
             return (f"Claim {claim_id} follow-up", message)
         return (f"Claim {claim_id} follow-up", f"An update is available for your claim {claim_id}.")
@@ -123,7 +126,7 @@ def _send_email(
         "content": [{"type": "text/plain", "value": message}],
     }
     try:
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS) as client:
             response = client.post(
                 "https://api.sendgrid.com/v3/mail/send",
                 json=payload,
@@ -138,7 +141,7 @@ def _send_email(
                 claim_id,
                 response.status_code,
             )
-    except Exception as e:
+    except httpx.HTTPError as e:
         logger.warning(
             "Error sending claimant email: event=%s claim_id=%s error=%s",
             event,
@@ -165,7 +168,7 @@ def _send_sms(
         )
         return
     try:
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS) as client:
             response = client.post(
                 f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json",
                 data={
@@ -184,7 +187,7 @@ def _send_sms(
                 claim_id,
                 response.status_code,
             )
-    except Exception as e:
+    except httpx.HTTPError as e:
         logger.warning(
             "Error sending claimant SMS: event=%s claim_id=%s error=%s",
             event,
