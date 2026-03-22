@@ -73,6 +73,7 @@ from claim_agent.db.constants import (
 )
 from claim_agent.db.reserve_adequacy import compute_reserve_adequacy_details
 from claim_agent.config.settings import get_reserve_config
+from claim_agent.config import get_settings
 from claim_agent.rag.constants import normalize_state
 from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
@@ -3930,6 +3931,7 @@ class ClaimRepository:
                 claim_id,
                 now_iso=now_iso,
                 notes_redaction_text="[REDACTED - retention purge]",
+                redact_audit_log=get_settings().privacy.audit_log_state_redaction_enabled,
             )
             conn.execute(
                 text("""

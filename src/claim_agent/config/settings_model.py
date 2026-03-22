@@ -893,6 +893,15 @@ class PrivacyConfig(BaseSettings):
             "Set this to a unique secret in production to prevent offline brute-force attacks."
         ),
     )
+    audit_log_state_redaction_enabled: bool = Field(
+        default=False,
+        validation_alias="AUDIT_LOG_STATE_REDACTION_ENABLED",
+        description=(
+            "When true, before_state / after_state JSON fields in claim_audit_log are "
+            "redacted in place (PII keys replaced with [REDACTED]) during DSAR deletion "
+            "and retention purge.  Requires migration 049 (the trigger is relaxed to allow "
+            "updates only to those two columns; all other audit columns remain immutable). "
+            "Default false – existing deployments are unaffected until opted in."
     dsar_audit_log_policy: str = Field(
         default="preserve",
         validation_alias="DSAR_AUDIT_LOG_POLICY",
@@ -911,6 +920,7 @@ class PrivacyConfig(BaseSettings):
         "dsar_verification_required",
         "litigation_hold_blocks_deletion",
         "otp_enabled",
+        "audit_log_state_redaction_enabled",
         mode="before",
     )
     @classmethod
