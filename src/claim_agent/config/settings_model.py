@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
@@ -485,13 +486,23 @@ class PathsConfig(BaseSettings):
         validation_alias="DATABASE_URL",
         description="PostgreSQL URL. If set, use PostgreSQL; else use SQLite at claims_db_path.",
     )
+    read_replica_database_url: str | None = Field(
+        default=None,
+        validation_alias="READ_REPLICA_DATABASE_URL",
+        description=(
+            "Optional PostgreSQL read-replica URL. When set, read-heavy queries are routed "
+            "to this replica; writes always go to the primary (DATABASE_URL). "
+            "Only used when DATABASE_URL is also set. "
+            "Example: postgresql://user:pass@replica-host:5432/claims"
+        ),
+    )
     redis_url: str | None = Field(
         default=None,
         validation_alias="REDIS_URL",
         description="Redis URL for rate limiting. If set, use Redis backend; else in-memory.",
     )
 
-    @field_validator("database_url", "redis_url", mode="before")
+    @field_validator("database_url", "read_replica_database_url", "redis_url", mode="before")
     @classmethod
     def _normalize_url(cls, v: Any) -> str | None:
         if v is None:
@@ -1074,6 +1085,11 @@ class Settings(BaseSettings):
             return None
         return data if isinstance(data, dict) else None
 
+    @cached_property
+    def _cached_state_retention_json_root(self) -> dict[str, Any] | None:
+        """Parse ``state_retention_path`` once per Settings instance (see ``reload_settings()``)."""
+        return self._read_state_retention_json_root()
+
     @staticmethod
     def _parse_state_int_map(raw: dict[str, Any]) -> dict[str, int]:
         """Parse state code -> years entries; only integers >= 1 are kept."""
@@ -1098,7 +1114,7 @@ class Settings(BaseSettings):
 
     def get_retention_by_state(self) -> dict[str, int]:
         """Return state-specific retention periods (years). Empty dict = use default only."""
-        data = self._read_state_retention_json_root()
+        data = self._cached_state_retention_json_root
         if data is None:
             return {}
         raw = data.get("retention_by_state", data)
@@ -1111,7 +1127,7 @@ class Settings(BaseSettings):
 
         Values may be ``0`` (purge eligible immediately after archive, same calendar-day cutoff).
         """
-        data = self._read_state_retention_json_root()
+        data = self._cached_state_retention_json_root
         if data is None:
             return {}
         raw = data.get("purge_after_archive_by_state", {})
