@@ -14,6 +14,7 @@ class TestAdapterRegistry:
         assert reg.repair_shop is not None
         assert reg.parts is not None
         assert reg.siu is not None
+        assert reg.state_bureau is not None
         assert reg.claim_search is not None
         assert reg.fraud_reporting is not None
         assert reg.nmvtis is not None

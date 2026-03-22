@@ -13,57 +13,57 @@
     ]
   },
   "fair_claims_settlement_practices": {
-    "regulation_reference": "TIC Chapter 542, Subchapter B — Prompt Payment of Claims (§542.051–542.061)",
+    "regulation_reference": "TIC Chapter 542, Subchapter B \u2014 Prompt Payment of Claims (\u00a7542.051\u2013542.061)",
     "description": "Texas Fair Claims Settlement Practices govern prompt payment and handling of insurance claims.",
     "provisions": [
       {
         "id": "FCSP-001",
-        "section": "TIC §542.055",
+        "section": "TIC \u00a7542.055",
         "title": "15-Day Acknowledgment",
         "requirement": "Insurer shall acknowledge receipt of claim within 15 days.",
         "time_limit_days": 15,
-        "reference": "TIC §542.055"
+        "reference": "TIC \u00a7542.055"
       },
       {
         "id": "FCSP-002",
-        "section": "TIC §542.056",
+        "section": "TIC \u00a7542.056",
         "title": "Acceptance or Denial",
         "requirement": "Insurer shall accept or deny the claim within a reasonable time after receiving required information.",
-        "reference": "TIC §542.056"
+        "reference": "TIC \u00a7542.056"
       },
       {
         "id": "FCSP-003",
-        "section": "TIC §542.057–058",
+        "section": "TIC \u00a7542.057\u2013058",
         "title": "Payment and 18% Penalty",
         "requirement": "Upon acceptance, payment shall be made promptly. Delayed payment beyond statutory period may trigger 18% penalty.",
         "penalty": "18% penalty for delayed payment",
-        "reference": "TIC §542.057–058"
+        "reference": "TIC \u00a7542.057\u2013058"
       }
     ]
   },
   "total_loss_regulations": {
-    "regulation_reference": "TIC §2301.009; 28 TAC §5.4104",
+    "regulation_reference": "TIC \u00a72301.009; 28 TAC \u00a75.4104",
     "description": "Texas total loss threshold and ACV valuation requirements.",
     "provisions": [
       {
         "id": "TL-001",
-        "section": "TIC §2301.009",
+        "section": "TIC \u00a72301.009",
         "title": "Total Loss Threshold",
         "requirement": "Total loss threshold varies by insurer; typically when repair cost exceeds a percentage of ACV.",
-        "reference": "TIC §2301.009"
+        "reference": "TIC \u00a72301.009"
       },
       {
         "id": "TL-002",
-        "section": "28 TAC §5.4104",
+        "section": "28 TAC \u00a75.4104",
         "title": "ACV and Comparables",
         "requirement": "ACV determination must use comparable vehicles; salvage deductions must be disclosed.",
-        "reference": "28 TAC §5.4104"
+        "reference": "28 TAC \u00a75.4104"
       },
       {
         "id": "TL-003",
         "title": "Owner Retention",
         "requirement": "If policyholder retains salvage, insurer must disclose deduction and salvage title implications.",
-        "reference": "28 TAC §5.4104"
+        "reference": "28 TAC \u00a75.4104"
       }
     ]
   },
@@ -75,169 +75,181 @@
         "action": "Acknowledge claim receipt",
         "time_limit": "15 days",
         "days": 15,
-        "reference": "TIC §542.055"
+        "reference": "TIC \u00a7542.055"
       },
       {
         "id": "CLM-DEC-001",
         "action": "Accept or deny claim",
         "time_limit": "Reasonable time after receiving required information",
-        "reference": "TIC §542.056"
+        "reference": "TIC \u00a7542.056"
       },
       {
         "id": "CLM-PAY-001",
         "action": "Issue payment after acceptance",
         "time_limit": "Promptly; 18% penalty for delay",
-        "reference": "TIC §542.057–058"
+        "reference": "TIC \u00a7542.057\u2013058"
       },
       {
         "id": "CLM-SOL-001",
         "action": "Statute of limitations for filing lawsuit",
         "time_limit": "2 years personal injury; 2 years property damage; 4 years breach of contract",
-        "reference": "CPRC §16.003, §16.004"
+        "reference": "CPRC \u00a716.003, \u00a716.004"
       }
     ]
   },
   "required_disclosures": {
-    "regulation_reference": "28 TAC §5.4001–5.4005; TIC §1952.301",
+    "regulation_reference": "28 TAC \u00a75.4001\u20135.4005; TIC \u00a71952.301",
     "description": "Mandatory disclosures for Texas auto claims.",
     "disclosures": [
       {
         "id": "DISC-001",
         "title": "Repair Shop Choice",
         "requirement": "Insurer must disclose claimant's right to choose repair shop.",
-        "reference": "28 TAC §5.4001"
+        "reference": "28 TAC \u00a75.4001"
       },
       {
         "id": "DISC-002",
         "title": "Parts Disclosure",
         "requirement": "Disclosure of OEM vs aftermarket parts.",
-        "reference": "28 TAC §5.4001–5.4005"
+        "reference": "28 TAC \u00a75.4001\u20135.4005"
       },
       {
         "id": "DISC-003",
         "title": "Appraisal Rights",
         "requirement": "Disclosure of appraisal rights for amount disputes.",
-        "reference": "28 TAC §5.4001–5.4005"
+        "reference": "28 TAC \u00a75.4001\u20135.4005"
       },
       {
         "id": "DISC-004",
         "title": "Rental / Loss of Use",
         "requirement": "Disclosure of rental reimbursement terms.",
-        "reference": "TIC §1952.301; 28 TAC §5.4001(b)"
+        "reference": "TIC \u00a71952.301; 28 TAC \u00a75.4001(b)"
       }
     ]
   },
   "uninsured_underinsured_motorist": {
-    "regulation_reference": "TIC §1952.101–.106, §1952.110",
+    "regulation_reference": "TIC \u00a71952.101\u2013.106, \u00a71952.110",
     "description": "Texas UM/UIM mandatory offer and stacking rules.",
     "provisions": [
       {
         "id": "UM-001",
         "title": "Mandatory Offer",
         "requirement": "UM/UIM coverage must be offered. Rejection requires signed form.",
-        "reference": "TIC §1952.101–.106"
+        "reference": "TIC \u00a71952.101\u2013.106"
       },
       {
         "id": "UM-002",
         "title": "Stacking",
-        "requirement": "UM setoff rules; stacking governed by TIC §1952.110.",
-        "reference": "TIC §1952.110"
+        "requirement": "UM setoff rules; stacking governed by TIC \u00a71952.110.",
+        "reference": "TIC \u00a71952.110"
       }
     ]
   },
   "anti_fraud_provisions": {
-    "regulation_reference": "TIC Chapter 701; Texas Penal Code §35.02; TIC §701.051",
-    "description": "Texas insurance fraud and SIU reporting requirements.",
+    "regulation_reference": "TIC Chapter 701; Texas Penal Code \u00a735.02; TIC \u00a7701.051; NICB referral best practices",
+    "description": "Texas insurance fraud, SIU reporting, and NICB/NISS referral guidance.",
     "provisions": [
       {
         "id": "AF-001",
         "title": "Insurance Fraud",
-        "requirement": "Insurance fraud is a criminal offense under Texas Penal Code §35.02.",
-        "reference": "Texas Penal Code §35.02"
+        "requirement": "Insurance fraud is a criminal offense under Texas Penal Code \u00a735.02.",
+        "reference": "Texas Penal Code \u00a735.02"
       },
       {
         "id": "AF-002",
         "title": "SIU Reporting",
-        "requirement": "Insurers must report suspected fraud; SIU requirements under TIC §701.051.",
-        "reference": "TIC §701.051"
+        "requirement": "Insurers must report suspected fraud; SIU requirements under TIC \u00a7701.051.",
+        "reference": "TIC \u00a7701.051"
+      },
+      {
+        "id": "AF-003",
+        "title": "NICB Theft and Salvage Referral",
+        "requirement": "Escalate theft-ring indicators, altered VIN records, or salvage disposition irregularities to NICB with supporting evidence, including title history, salvage auction records, and law-enforcement case details.",
+        "reference": "NICB Auto Theft/Salvage Fraud Referral Guidance"
+      },
+      {
+        "id": "AF-004",
+        "title": "NISS Cross-Carrier Referral",
+        "requirement": "When claimants, providers, or vehicles appear in suspicious activity across carriers, file a NISS referral to support coordinated cross-carrier fraud detection and deconfliction.",
+        "reference": "NICB NISS Cross-Carrier Referral Guidance"
       }
     ]
   },
   "repair_standards": {
-    "regulation_reference": "TIC §1952.301–.304; 28 TAC §5.4070; TIC §1952.303",
+    "regulation_reference": "TIC \u00a71952.301\u2013.304; 28 TAC \u00a75.4070; TIC \u00a71952.303",
     "description": "Texas repair shop choice, parts, and DRP disclosure requirements.",
     "provisions": [
       {
         "id": "REP-001",
         "title": "Shop Choice",
-        "requirement": "Claimant has right to choose repair shop. TIC §1952.301–.304.",
-        "reference": "TIC §1952.301–.304"
+        "requirement": "Claimant has right to choose repair shop. TIC \u00a71952.301\u2013.304.",
+        "reference": "TIC \u00a71952.301\u2013.304"
       },
       {
         "id": "REP-002",
         "title": "Parts and Labor Rates",
-        "requirement": "28 TAC §5.4070 governs parts and labor rate surveys.",
-        "reference": "28 TAC §5.4070"
+        "requirement": "28 TAC \u00a75.4070 governs parts and labor rate surveys.",
+        "reference": "28 TAC \u00a75.4070"
       },
       {
         "id": "REP-003",
         "title": "DRP Disclosure",
         "requirement": "Financial arrangements with DRP shops must be disclosed.",
-        "reference": "TIC §1952.303"
+        "reference": "TIC \u00a71952.303"
       }
     ]
   },
   "good_faith_requirements": {
-    "regulation_reference": "TIC §541.060, §542.014",
+    "regulation_reference": "TIC \u00a7541.060, \u00a7542.014",
     "description": "Texas unfair claims settlement and bad faith liability.",
     "prohibited_practices": [
       {
         "id": "GF-001",
         "title": "Unfair Claims Settlement",
-        "description": "Prohibited unfair claims settlement practices under TIC §541.060.",
-        "reference": "TIC §541.060"
+        "description": "Prohibited unfair claims settlement practices under TIC \u00a7541.060.",
+        "reference": "TIC \u00a7541.060"
       },
       {
         "id": "GF-002",
         "title": "Bad Faith Liability",
-        "description": "Bad faith liability exposure under TIC §542.014.",
-        "reference": "TIC §542.014"
+        "description": "Bad faith liability exposure under TIC \u00a7542.014.",
+        "reference": "TIC \u00a7542.014"
       }
     ]
   },
   "rental_car_coverage": {
-    "regulation_reference": "TIC §1952.301; 28 TAC §5.4001(b)",
+    "regulation_reference": "TIC \u00a71952.301; 28 TAC \u00a75.4001(b)",
     "description": "Texas loss-of-use and rental reimbursement.",
     "provisions": [
       {
         "id": "RCC-001",
         "title": "Loss of Use",
-        "requirement": "TIC §1952.301 governs loss-of-use coverage.",
-        "reference": "TIC §1952.301"
+        "requirement": "TIC \u00a71952.301 governs loss-of-use coverage.",
+        "reference": "TIC \u00a71952.301"
       },
       {
         "id": "RCC-002",
         "title": "Rental Terms",
-        "requirement": "28 TAC §5.4001(b) addresses rental disclosure.",
-        "reference": "28 TAC §5.4001(b)"
+        "requirement": "28 TAC \u00a75.4001(b) addresses rental disclosure.",
+        "reference": "28 TAC \u00a75.4001(b)"
       }
     ]
   },
   "pip_medpay": {
-    "regulation_reference": "TIC §1952.151–.159",
-    "description": "Texas PIP — mandatory offer of $2,500 minimum; rejection requires signed form.",
+    "regulation_reference": "TIC \u00a71952.151\u2013.159",
+    "description": "Texas PIP \u2014 mandatory offer of $2,500 minimum; rejection requires signed form.",
     "provisions": [
       {
         "id": "PIP-001",
         "title": "Mandatory Offer",
         "requirement": "PIP must be offered with minimum $2,500. Rejection requires signed form.",
         "minimum_limit": 2500,
-        "reference": "TIC §1952.151–.159"
+        "reference": "TIC \u00a71952.151\u2013.159"
       }
     ]
   },
   "subrogation_rules": {
-    "description": "Texas common law: made-whole doctrine not followed — contractual subrogation prevails. TIC §1952.110 (UM setoff).",
+    "description": "Texas common law: made-whole doctrine not followed \u2014 contractual subrogation prevails. TIC \u00a71952.110 (UM setoff).",
     "provisions": [
       {
         "id": "SUB-001",
@@ -248,20 +260,20 @@
       {
         "id": "SUB-002",
         "title": "UM Setoff",
-        "requirement": "TIC §1952.110 governs UM setoff.",
-        "reference": "TIC §1952.110"
+        "requirement": "TIC \u00a71952.110 governs UM setoff.",
+        "reference": "TIC \u00a71952.110"
       }
     ]
   },
   "comparative_fault": {
-    "regulation_reference": "CPRC §33.001–.017",
-    "description": "Texas modified comparative fault — 51% bar.",
+    "regulation_reference": "CPRC \u00a733.001\u2013.017",
+    "description": "Texas modified comparative fault \u2014 51% bar.",
     "provisions": [
       {
         "id": "CF-001",
         "title": "Modified Comparative Fault",
         "requirement": "Claimant barred from recovery if 51% or more at fault.",
-        "reference": "CPRC §33.001–.017"
+        "reference": "CPRC \u00a733.001\u2013.017"
       }
     ]
   },
@@ -271,17 +283,17 @@
       {
         "action": "Personal injury lawsuit",
         "time_limit": "2 years from date of injury",
-        "reference": "CPRC §16.003"
+        "reference": "CPRC \u00a716.003"
       },
       {
         "action": "Property damage lawsuit",
         "time_limit": "2 years from date of damage",
-        "reference": "CPRC §16.003"
+        "reference": "CPRC \u00a716.003"
       },
       {
         "action": "Breach of contract",
         "time_limit": "4 years from breach",
-        "reference": "CPRC §16.004"
+        "reference": "CPRC \u00a716.004"
       }
     ]
   }

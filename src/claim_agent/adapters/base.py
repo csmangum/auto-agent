@@ -141,6 +141,11 @@ class FraudReportingAdapter(ABC):
 
     @abstractmethod
     def file_state_bureau_report(
+class StateBureauAdapter(ABC):
+    """Interface for filing fraud reports with state insurance bureaus."""
+
+    @abstractmethod
+    def submit_fraud_report(
         self,
         *,
         claim_id: str,
@@ -173,6 +178,7 @@ class FraudReportingAdapter(ABC):
         indicators: list[str],
     ) -> dict[str, Any]:
         """Submit a NISS referral and return filing metadata."""
+        """Submit a state bureau fraud report and return filing metadata."""
         ...
 
 

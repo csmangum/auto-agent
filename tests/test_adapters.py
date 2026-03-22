@@ -13,6 +13,7 @@ from claim_agent.adapters.base import (
     PolicyAdapter,
     RepairShopAdapter,
     SIUAdapter,
+    StateBureauAdapter,
     ValuationAdapter,
 )
 from claim_agent.adapters.mock import (
@@ -24,6 +25,7 @@ from claim_agent.adapters.mock import (
     MockPolicyAdapter,
     MockRepairShopAdapter,
     MockSIUAdapter,
+    MockStateBureauAdapter,
     MockValuationAdapter,
 )
 from claim_agent.adapters.mock.ocr import MockOCRAdapter
@@ -37,6 +39,7 @@ from claim_agent.adapters.registry import (
     get_policy_adapter,
     get_repair_shop_adapter,
     get_siu_adapter,
+    get_state_bureau_adapter,
     get_valuation_adapter,
     reset_adapters,
 )
@@ -49,6 +52,7 @@ from claim_agent.adapters.stub import (
     StubPolicyAdapter,
     StubRepairShopAdapter,
     StubSIUAdapter,
+    StubStateBureauAdapter,
     StubValuationAdapter,
 )
 from claim_agent.adapters.stub_fraud_reporting import StubFraudReportingAdapter
@@ -79,6 +83,10 @@ class TestABCEnforcement:
     def test_siu_adapter_is_abstract(self):
         with pytest.raises(TypeError):
             SIUAdapter()  # type: ignore[abstract]
+
+    def test_state_bureau_adapter_is_abstract(self):
+        with pytest.raises(TypeError):
+            StateBureauAdapter()  # type: ignore[abstract]
 
     def test_claim_search_adapter_is_abstract(self):
         with pytest.raises(TypeError):
@@ -308,6 +316,33 @@ class TestMockSIUAdapter:
         assert isinstance(MockSIUAdapter(), SIUAdapter)
 
 
+class TestMockStateBureauAdapter:
+    def test_submit_fraud_report_returns_report_id(self):
+        adapter = MockStateBureauAdapter()
+        out = adapter.submit_fraud_report(
+            claim_id="CLM-1",
+            case_id="SIU-1",
+            state="California",
+            indicators=["staged"],
+        )
+        assert out["report_id"].startswith("FRB-CA-")
+        assert out["state"] == "California"
+        assert "message" in out
+
+    def test_implements_interface(self):
+        assert isinstance(MockStateBureauAdapter(), StateBureauAdapter)
+
+    def test_state_name_maps_to_two_letter_code(self):
+        adapter = MockStateBureauAdapter()
+        out = adapter.submit_fraud_report(
+            claim_id="CLM-2",
+            case_id="SIU-2",
+            state="Texas",
+            indicators=[],
+        )
+        assert out["report_id"].startswith("FRB-TX-")
+
+
 class TestMockClaimSearchAdapter:
     def test_search_returns_list(self):
         adapter = MockClaimSearchAdapter()
@@ -404,6 +439,15 @@ class TestStubAdapters:
         with pytest.raises(NotImplementedError, match="StubSIUAdapter"):
             StubSIUAdapter().create_case("CLM-001", ["staged"])
 
+    def test_stub_state_bureau_raises(self):
+        with pytest.raises(NotImplementedError, match="StubStateBureauAdapter"):
+            StubStateBureauAdapter().submit_fraud_report(
+                claim_id="CLM-001",
+                case_id="SIU-001",
+                state="California",
+                indicators=["staged"],
+            )
+
     def test_stub_claim_search_raises(self):
         with pytest.raises(NotImplementedError, match="StubClaimSearchAdapter"):
             StubClaimSearchAdapter().search_claims(vin="VIN123")
@@ -443,6 +487,7 @@ class TestRegistry:
         assert isinstance(get_repair_shop_adapter(), MockRepairShopAdapter)
         assert isinstance(get_parts_adapter(), MockPartsAdapter)
         assert isinstance(get_siu_adapter(), MockSIUAdapter)
+        assert isinstance(get_state_bureau_adapter(), MockStateBureauAdapter)
         assert isinstance(get_claim_search_adapter(), MockClaimSearchAdapter)
         assert isinstance(get_fraud_reporting_adapter(), MockFraudReportingAdapter)
         assert isinstance(get_nmvtis_adapter(), MockNMVTISAdapter)
@@ -456,6 +501,7 @@ class TestRegistry:
         monkeypatch.setenv("REPAIR_SHOP_ADAPTER", "stub")
         monkeypatch.setenv("PARTS_ADAPTER", "stub")
         monkeypatch.setenv("SIU_ADAPTER", "stub")
+        monkeypatch.setenv("STATE_BUREAU_ADAPTER", "stub")
         monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "stub")
         monkeypatch.setenv("FRAUD_REPORTING_ADAPTER", "stub")
         monkeypatch.setenv("NMVTIS_ADAPTER", "stub")
@@ -467,6 +513,7 @@ class TestRegistry:
         assert isinstance(get_repair_shop_adapter(), StubRepairShopAdapter)
         assert isinstance(get_parts_adapter(), StubPartsAdapter)
         assert isinstance(get_siu_adapter(), StubSIUAdapter)
+        assert isinstance(get_state_bureau_adapter(), StubStateBureauAdapter)
         assert isinstance(get_claim_search_adapter(), StubClaimSearchAdapter)
         assert isinstance(get_fraud_reporting_adapter(), StubFraudReportingAdapter)
         assert isinstance(get_nmvtis_adapter(), StubNMVTISAdapter)
@@ -553,6 +600,17 @@ class TestRegistry:
         with pytest.raises(ValueError, match="FRAUD_REPORTING_REST_BASE_URL"):
             get_fraud_reporting_adapter()
         reset_adapters()
+    def test_state_bureau_rest_requires_endpoint(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("STATE_BUREAU_ADAPTER", "rest")
+        monkeypatch.delenv("STATE_BUREAU_CA_ENDPOINT", raising=False)
+        monkeypatch.delenv("STATE_BUREAU_TX_ENDPOINT", raising=False)
+        monkeypatch.delenv("STATE_BUREAU_FL_ENDPOINT", raising=False)
+        monkeypatch.delenv("STATE_BUREAU_NY_ENDPOINT", raising=False)
+        monkeypatch.delenv("STATE_BUREAU_GA_ENDPOINT", raising=False)
+        reload_settings()
+        with pytest.raises(ValueError, match="STATE_BUREAU_<STATE>_ENDPOINT"):
+            get_state_bureau_adapter()
 
 
 # ---------------------------------------------------------------------------

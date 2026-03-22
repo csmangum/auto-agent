@@ -83,6 +83,11 @@ You can run recurring compliance/operations jobs either with the built-in in-pro
   - `SCHEDULER_DIARY_ESCALATE_CRON` controls automatic `diary-escalate` behavior.
 - **External cron (fallback / preferred in some deployments):** leave `SCHEDULER_ENABLED=false` and schedule CLI commands externally.
 
+**Multi-worker and multi-replica deployments:** The scheduler is **in-process**. Each API process (each Uvicorn/Gunicorn **worker**, or each replica pod) that starts with `SCHEDULER_ENABLED=true` runs its **own** copy of the same cron jobs. That duplicates diary escalations, UCSPA sweeps, and webhook volume. Recommended patterns:
+
+- Run the HTTP API with **`SCHEDULER_ENABLED=false`** and use **external cron** or a **single dedicated** `claim-agent run-scheduler` process (with `SCHEDULER_ENABLED=true`) for scheduled work; or
+- Use **a single API worker** only if you enable the scheduler on the API process.
+
 Example external cron:
 
 ```cron
