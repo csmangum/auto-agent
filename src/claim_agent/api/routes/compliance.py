@@ -25,6 +25,22 @@ def _state_filter_values(state: str) -> tuple[str, ...]:
     return (canonical, abbrev) if abbrev else (canonical,)
 
 
+def _required_filing_types_for_claim(status: str) -> list[str]:
+    """Return mandatory filing types for a fraud claim status.
+
+    Rules engine:
+    - fraud_suspected/under_investigation/fraud_confirmed: state bureau filing required
+    - fraud_confirmed: cross-carrier reporting required (NICB + NISS)
+    """
+    status_norm = (status or "").strip().lower()
+    if status_norm not in {"fraud_suspected", "under_investigation", "fraud_confirmed"}:
+        return []
+    required = ["state_bureau"]
+    if status_norm == "fraud_confirmed":
+        required.extend(["nicb", "niss"])
+    return required
+
+
 @router.get("/compliance/fraud-reporting", dependencies=[RequireAdjuster])
 def get_fraud_reporting_compliance(
     state: str | None = Query(None, description="Filter by loss state (e.g. California or CA)"),
@@ -99,6 +115,11 @@ def get_fraud_reporting_compliance(
             state_filed = any(f["filing_type"] == "state_bureau" for f in filings)
             nicb_filed = any(f["filing_type"] == "nicb" for f in filings)
             niss_filed = any(f["filing_type"] == "niss" for f in filings)
+            required_filing_types = _required_filing_types_for_claim(c["status"])
+            filed_types = {f["filing_type"] for f in filings}
+            missing_required_filings = [
+                filing_type for filing_type in required_filing_types if filing_type not in filed_types
+            ]
             result.append({
                 "claim_id": claim_id,
                 "status": c["status"],
@@ -108,6 +129,9 @@ def get_fraud_reporting_compliance(
                 "state_report_filed": state_filed,
                 "nicb_filed": nicb_filed,
                 "niss_filed": niss_filed,
+                "required_filing_types": required_filing_types,
+                "missing_required_filings": missing_required_filings,
+                "compliant": len(missing_required_filings) == 0,
                 "filings": filings,
             })
 
