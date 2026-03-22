@@ -3968,6 +3968,126 @@ class ClaimRepository:
             )
         )
 
+    # ------------------------------------------------------------------
+    # Cold-storage export helpers
+    # ------------------------------------------------------------------
+
+    def get_cold_storage_export_key(self, claim_id: str) -> str | None:
+        """Return the S3 key if this claim has already been exported, else None."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text(
+                    "SELECT cold_storage_export_key FROM claims WHERE id = :claim_id"
+                    " AND cold_storage_exported_at IS NOT NULL"
+                ),
+                {"claim_id": claim_id},
+            ).fetchone()
+        if row is None:
+            return None
+        return row_to_dict(row).get("cold_storage_export_key")
+
+    def list_claims_for_export(
+        self,
+        purge_after_archive_years: int,
+        *,
+        purge_by_state: dict[str, int] | None = None,
+        exclude_litigation_hold: bool = True,
+    ) -> list[dict[str, Any]]:
+        """List archived claims eligible for cold-storage export.
+
+        Eligible claims are those that:
+        - have ``status = 'archived'`` and ``archived_at`` set,
+        - are past the purge horizon (same logic as :meth:`list_claims_for_purge`), and
+        - have **not** yet been exported (``cold_storage_exported_at IS NULL``).
+
+        Args:
+            purge_after_archive_years: Years after ``archived_at`` before export is due.
+            purge_by_state: Optional per-state override map (state name → years).
+            exclude_litigation_hold: When True (default), claims with a litigation hold
+                are excluded.
+
+        Returns:
+            List of claim dicts eligible for export.
+        """
+        if purge_after_archive_years < 0:
+            raise ValueError("purge_after_archive_years must be non-negative")
+        now = datetime.now(timezone.utc)
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                text("""
+                SELECT * FROM claims
+                WHERE status = :st
+                  AND archived_at IS NOT NULL
+                  AND cold_storage_exported_at IS NULL
+                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
+                ORDER BY archived_at ASC
+                """),
+                {
+                    "st": STATUS_ARCHIVED,
+                    "include_hold": 1 if not exclude_litigation_hold else 0,
+                },
+            ).fetchall()
+        result = []
+        for r in rows:
+            row_d = row_to_dict(r)
+            if _is_archived_past_purge_period(
+                row_d, now, purge_after_archive_years, purge_by_state
+            ):
+                result.append(row_d)
+        return result
+
+    def mark_claim_exported(
+        self,
+        claim_id: str,
+        export_key: str,
+        actor_id: str = ACTOR_RETENTION,
+    ) -> None:
+        """Record that a claim has been exported to cold storage.
+
+        Sets ``cold_storage_exported_at`` and ``cold_storage_export_key`` on the
+        claim row and appends a ``cold_storage_exported`` audit log entry.
+
+        Args:
+            claim_id: Claim to mark as exported.
+            export_key: S3 object key of the uploaded manifest.
+            actor_id: Actor identifier for the audit log.
+
+        Raises:
+            ClaimNotFoundError: If the claim does not exist.
+        """
+        from claim_agent.db.audit_events import AUDIT_EVENT_COLD_STORAGE_EXPORTED
+
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text("SELECT status FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+            conn.execute(
+                text("""
+                UPDATE claims
+                SET cold_storage_exported_at = CURRENT_TIMESTAMP,
+                    cold_storage_export_key = :export_key,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :claim_id
+                """),
+                {"export_key": export_key, "claim_id": claim_id},
+            )
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log
+                    (claim_id, action, details, actor_id)
+                VALUES (:claim_id, :action, :details, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_COLD_STORAGE_EXPORTED,
+                    "details": f"Exported to cold storage: {export_key}",
+                    "actor_id": actor_id,
+                },
+            )
+
     def list_claim_ids_eligible_for_audit_log_retention(
         self,
         audit_retention_years_after_purge: int,

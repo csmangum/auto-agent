@@ -124,9 +124,45 @@ claim-agent retention-purge --dry-run
 claim-agent retention-purge
 claim-agent retention-purge --years 3
 claim-agent retention-purge --include-litigation-hold
+# Export to cold storage before anonymising (requires RETENTION_EXPORT_ENABLED=true):
+claim-agent retention-purge --export-before-purge
 ```
 
-Dry-run and post-purge JSON output may include `purge_by_state` when the per-state map is loaded from config (omitted when you pass `--years`, which disables the map).
+Dry-run and post-purge JSON output may include `purge_by_state` when the per-state map is loaded from config (omitted when you pass `--years`, which disables the map). When `--export-before-purge` is used, the output also includes `exported_count`, `exported_claim_ids`, `export_failed_count`, and `export_failed_claim_ids`.
+
+### Cold-storage export pipeline (S3 / Glacier)
+
+Before or instead of in-place anonymisation, the `retention-export` command writes a **JSON manifest** (full claim data + audit log summary) to S3, allowing the bucket lifecycle policy to transition objects to Glacier or Glacier Instant Retrieval automatically.  Records are idempotent (`cold_storage_exported_at` column) — re-running the command skips already-exported claims.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RETENTION_EXPORT_ENABLED` | `false` | Must be `true` to allow exports. |
+| `RETENTION_EXPORT_S3_BUCKET` | (required) | Destination bucket. |
+| `RETENTION_EXPORT_S3_PREFIX` | `retention-exports` | Key prefix inside the bucket. |
+| `RETENTION_EXPORT_S3_ENDPOINT` | (unset) | Optional S3-compatible endpoint (MinIO, etc.). |
+| `RETENTION_EXPORT_S3_STORAGE_CLASS` | `GLACIER_IR` | Storage class (e.g. `GLACIER_IR`, `GLACIER`, `STANDARD_IA`). |
+| `RETENTION_EXPORT_ENCRYPTION` | `AES256` | Server-side encryption: `AES256` or `aws:kms`. |
+| `RETENTION_EXPORT_KMS_KEY_ID` | (unset) | KMS key ARN/alias when `encryption=aws:kms`. |
+
+The exported key is stored in `cold_storage_export_key` on the claim row and a `cold_storage_exported` audit event is appended.
+
+**Recommended operational flow:**
+
+```bash
+# 1. Preview what would be exported
+claim-agent retention-export --dry-run
+
+# 2. Export to cold storage (requires RETENTION_EXPORT_ENABLED + bucket configured)
+RETENTION_EXPORT_ENABLED=true RETENTION_EXPORT_S3_BUCKET=my-archive-bucket \
+  claim-agent retention-export
+
+# 3. Then purge (anonymise) separately
+claim-agent retention-purge
+
+# Or combine steps 2 & 3 in one call
+RETENTION_EXPORT_ENABLED=true RETENTION_EXPORT_S3_BUCKET=my-archive-bucket \
+  claim-agent retention-purge --export-before-purge
+```
 
 ### Retention Audit Report
 
