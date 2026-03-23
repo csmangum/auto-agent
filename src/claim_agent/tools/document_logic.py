@@ -13,20 +13,12 @@ from claim_agent.config.settings import get_adapter_backend, get_mock_crew_confi
 from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
+from claim_agent.models.document import DocumentType
 from claim_agent.utils.attachments import attachment_type_to_document_type, infer_attachment_type
 
 logger = logging.getLogger(__name__)
 
-DOCUMENT_TYPE_OPTIONS = [
-    "police_report",
-    "estimate",
-    "medical_record",
-    "photo",
-    "pdf",
-    "rental_receipt",
-    "rental_agreement",
-    "other",
-]
+DOCUMENT_TYPE_OPTIONS = [e.value for e in DocumentType]
 
 MAX_VISION_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
 

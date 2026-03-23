@@ -389,6 +389,7 @@ export interface ClaimPayment {
   void_reason?: string;
   payee_secondary?: string;
   payee_secondary_type?: PayeeType;
+  external_ref?: string | null;
   created_at: string;
   updated_at: string;
 }
