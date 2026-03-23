@@ -398,13 +398,16 @@ class TestMetrics:
             reload_settings()
             metrics = ClaimMetrics()
             metrics.start_claim("CLM-123")
-            metrics.record_llm_call(
-                claim_id="CLM-123",
-                model="gpt-4o",
-                input_tokens=100_000,
-                output_tokens=100_000,
-            )
+
             with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o",
+                    input_tokens=100_000,
+                    output_tokens=100_000,
+                )
+                metrics._wait_for_webhooks()
+
                 breakdown = metrics.get_cost_breakdown()
                 assert breakdown["total_cost_usd"] > 0
                 httpx_client.assert_not_called()
@@ -425,12 +428,6 @@ class TestMetrics:
             reload_settings()
             metrics = ClaimMetrics()
             metrics.start_claim("CLM-123")
-            metrics.record_llm_call(
-                claim_id="CLM-123",
-                model="gpt-4o",
-                input_tokens=1_000,
-                output_tokens=1_000,
-            )
 
             with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
                 response = mock.Mock()
@@ -438,17 +435,45 @@ class TestMetrics:
                 client_instance = httpx_client.return_value.__enter__.return_value
                 client_instance.post.return_value = response
 
-                first = metrics.get_cost_breakdown()
-                second = metrics.get_cost_breakdown()
+                # Alert triggers proactively during record_llm_call
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o",
+                    input_tokens=1_000,
+                    output_tokens=1_000,
+                )
 
-                assert first["total_cost_usd"] > 0.01
-                assert second["total_cost_usd"] > 0.01
-                client_instance.post.assert_called_once()
+                # Wait for background webhook thread to complete
+                metrics._wait_for_webhooks()
+
+                # Verify webhook was sent
+                assert client_instance.post.call_count == 1
                 call_kwargs = client_instance.post.call_args.kwargs
                 assert call_kwargs["json"]["event"] == "llm.cost_threshold_crossed"
                 assert call_kwargs["json"]["process_local"] is True
                 assert "by_crew" in call_kwargs["json"]
                 assert "daily" in call_kwargs["json"]
+
+                # Second call should not trigger another webhook (one per process)
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o",
+                    input_tokens=1_000,
+                    output_tokens=1_000,
+                )
+                metrics._wait_for_webhooks()
+
+                # Still only one call
+                assert client_instance.post.call_count == 1
+
+                # get_cost_breakdown should not trigger additional webhooks
+                first = metrics.get_cost_breakdown()
+                second = metrics.get_cost_breakdown()
+
+                assert first["total_cost_usd"] > 0.01
+                assert second["total_cost_usd"] > 0.01
+                # Still only one webhook call
+                client_instance.post.assert_called_once()
 
     def test_cost_alert_not_triggered_when_under_threshold(self):
         """Webhook should not be called while cost remains below threshold."""
@@ -466,13 +491,16 @@ class TestMetrics:
             reload_settings()
             metrics = ClaimMetrics()
             metrics.start_claim("CLM-123")
-            metrics.record_llm_call(
-                claim_id="CLM-123",
-                model="gpt-4o-mini",
-                input_tokens=100,
-                output_tokens=100,
-            )
+
             with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o-mini",
+                    input_tokens=100,
+                    output_tokens=100,
+                )
+                metrics._wait_for_webhooks()
+
                 breakdown = metrics.get_cost_breakdown()
                 assert breakdown["total_cost_usd"] < 1000
                 httpx_client.assert_not_called()

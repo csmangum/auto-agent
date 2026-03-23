@@ -10,6 +10,7 @@ This module provides:
 import json
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -178,6 +179,8 @@ class ClaimMetrics:
         self._last_llm_usage: dict[str, tuple[int, int]] = {}
         # One-shot process-local cost alert state
         self._llm_cost_alert_sent = False
+        # Thread pool for non-blocking webhook dispatch
+        self._webhook_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="webhook")
 
     def start_claim(self, claim_id: str) -> None:
         """Mark the start of claim processing."""
@@ -309,6 +312,9 @@ class ClaimMetrics:
             latency_ms,
             status,
         )
+
+        # Check cost threshold after each LLM call for proactive alerting
+        self._check_cost_threshold()
 
     def get_claim_summary(self, claim_id: str) -> ClaimMetricsSummary | None:
         """Get summary metrics for a specific claim."""
@@ -479,12 +485,6 @@ class ClaimMetrics:
 
         total_cost = sum(s.total_cost_usd for s in summaries)
         total_tokens = sum(s.total_tokens for s in summaries)
-        self._maybe_send_llm_cost_alert(
-            total_cost_usd=total_cost,
-            by_crew=by_crew,
-            by_claim_type=by_claim_type,
-            daily=daily,
-        )
 
         return {
             "global_stats": {
@@ -510,20 +510,21 @@ class ClaimMetrics:
             "total_tokens": total_tokens,
         }
 
-    def _maybe_send_llm_cost_alert(
-        self,
-        *,
-        total_cost_usd: float,
-        by_crew: dict[str, dict[str, Any]],
-        by_claim_type: dict[str, dict[str, Any]],
-        daily: dict[str, dict[str, float | int]],
-    ) -> None:
-        """Best-effort one-time process-local cost threshold alert."""
+    def _check_cost_threshold(self) -> None:
+        """Check if cost threshold crossed and dispatch webhook asynchronously."""
         config = get_llm_cost_alert_config()
         threshold = config.get("threshold_usd")
-        if threshold is None or total_cost_usd <= float(threshold):
+        if threshold is None:
             return
 
+        # Calculate total cost across all claims
+        summaries = self.get_all_summaries()
+        total_cost_usd = sum(s.total_cost_usd for s in summaries)
+
+        if total_cost_usd <= float(threshold):
+            return
+
+        # Check if alert already sent (atomic check-and-set)
         with self._lock:
             if self._llm_cost_alert_sent:
                 return
@@ -539,6 +540,24 @@ class ClaimMetrics:
         if not webhook_url:
             return
 
+        # Gather breakdown data for the alert payload
+        by_crew = self.get_cost_by_crew()
+        by_claim_type = self.get_cost_by_claim_type()
+
+        # Build daily aggregation
+        daily: dict[str, dict[str, float | int]] = {}
+        with self._lock:
+            for claim_id, claim_data in self._claims.items():
+                start = claim_data.get("start_time")
+                if start:
+                    day = start.strftime("%Y-%m-%d")
+                    if day not in daily:
+                        daily[day] = {"total_cost_usd": 0.0, "total_tokens": 0, "claims": 0}
+                    for m in claim_data.get("llm_calls", []):
+                        daily[day]["total_cost_usd"] += m.cost_usd
+                        daily[day]["total_tokens"] += m.input_tokens + m.output_tokens
+                    daily[day]["claims"] += 1
+
         payload: dict[str, Any] = {
             "event": "llm.cost_threshold_crossed",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -549,12 +568,24 @@ class ClaimMetrics:
             "by_claim_type": by_claim_type,
             "daily": daily,
         }
+
+        # Dispatch webhook asynchronously in background thread to avoid blocking
+        self._webhook_executor.submit(self._send_webhook, webhook_url, payload)
+
+    def _send_webhook(self, webhook_url: str, payload: dict[str, Any]) -> None:
+        """Send webhook notification (runs in background thread)."""
         try:
             with httpx.Client(timeout=10.0) as client:
                 response = client.post(webhook_url, json=payload)
                 response.raise_for_status()
         except Exception as exc:
             logger.warning("Failed to dispatch LLM cost alert webhook to %s: %s", webhook_url, exc)
+
+    def _wait_for_webhooks(self, timeout: float = 5.0) -> None:
+        """Wait for pending webhook tasks to complete (primarily for testing)."""
+        self._webhook_executor.shutdown(wait=True, cancel_futures=False)
+        # Recreate executor for future webhooks
+        self._webhook_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="webhook")
 
     def export_json(self, claim_id: str | None = None) -> str:
         """Export metrics as JSON.
