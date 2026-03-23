@@ -27,8 +27,10 @@ Args:
     payee_secondary_type: Payee type for secondary when applicable.
     external_ref: Optional idempotency key per claim (duplicate ref returns existing row).
         For loss-of-use reimbursement paid to the claimant (not the rental company),
-        use a ref starting with {_P!r} (e.g. {_P}{{claim_id}})
-        so the portal Rental tab can surface the payment.
+        use a ref that starts with {_P!r} and includes a unique suffix
+        (e.g. {_P}{{claim_id}}:{{run_id}}) so the portal Rental tab can surface the payment
+        while avoiding idempotency collisions when multiple claimant rental reimbursements
+        are recorded for the same claim.
 
 Returns:
     JSON with success, payment_id, and payment record (or error).
