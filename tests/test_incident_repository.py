@@ -7,6 +7,7 @@ import pytest
 
 from sqlalchemy import text
 
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_connection
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
@@ -95,7 +96,7 @@ def test_create_incident_rollback_on_failure(incident_repo):
     original_create_in_tx = ClaimRepository.create_claim_in_transaction
     call_count = 0
 
-    def mock_create_in_tx(self, conn, claim_input, *, actor_id="system", policy=None):
+    def mock_create_in_tx(self, conn, claim_input, *, actor_id=ACTOR_WORKFLOW, policy=None):
         nonlocal call_count
         call_count += 1
         if call_count == 1:

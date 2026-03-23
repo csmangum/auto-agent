@@ -456,6 +456,13 @@ class ClaimRepository:
         """SQLite path override from construction, or None for configured default."""
         return self._db_path
 
+    @staticmethod
+    def _normalize_loss_state(loss_state: str | None) -> str | None:
+        """Normalize a loss_state value: strip whitespace and coerce empty strings to ``None``."""
+        if loss_state is None:
+            return None
+        return str(loss_state).strip() or None
+
     def _resolve_policy_for_fnol(
         self,
         claim_input: ClaimInput,
@@ -516,9 +523,7 @@ class ClaimRepository:
             [a.model_dump(mode="json") for a in claim_input.attachments],
             default=str,
         )
-        loss_state_val = claim_input.loss_state
-        if loss_state_val is not None:
-            loss_state_val = str(loss_state_val).strip() or None
+        loss_state_val = self._normalize_loss_state(claim_input.loss_state)
         incident_id_val = claim_input.incident_id
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -668,9 +673,7 @@ class ClaimRepository:
         # Resolve policy before opening the connection (external I/O must not run
         # inside the transaction).
         policy_for_fnol = self._resolve_policy_for_fnol(claim_input, policy)
-        loss_state_val = claim_input.loss_state
-        if loss_state_val is not None:
-            loss_state_val = str(loss_state_val).strip() or None
+        loss_state_val = self._normalize_loss_state(claim_input.loss_state)
 
         with get_connection(self._db_path) as conn:
             claim_id = self.create_claim_in_transaction(
