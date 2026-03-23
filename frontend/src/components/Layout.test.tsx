@@ -30,7 +30,7 @@ describe('Layout', () => {
   it('renders brand and navigation', () => {
     renderLayout();
     expect(screen.getAllByText('Claims System').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Observability Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Claims Management Platform')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /claims/i })).toBeInTheDocument();
   });
