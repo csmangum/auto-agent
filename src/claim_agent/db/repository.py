@@ -3381,10 +3381,10 @@ class ClaimRepository:
                                 if a not in seen_a:
                                     agg_addresses.append(a)
                                     seen_a.add(a)
-                            for p in h_provs:
-                                if p not in seen_p:
-                                    agg_providers.append(p)
-                                    seen_p.add(p)
+                            for prov in h_provs:
+                                if prov not in seen_p:
+                                    agg_providers.append(prov)
+                                    seen_p.add(prov)
                             for ph in h_phones:
                                 if ph not in seen_ph:
                                     agg_phones.append(ph)

@@ -8,8 +8,6 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from claim_agent.db.database import row_to_dict
-
 PII_REDACTED_PLACEHOLDER = "[REDACTED]"
 
 # Top-level scalar keys that carry PII and should be replaced in audit-log JSON.
@@ -102,6 +100,10 @@ def redact_audit_log_pii(
             "SELECT id, action, old_status, new_status, details, actor_id, "
             "before_state, after_state, created_at "
             "FROM claim_audit_log WHERE claim_id = :claim_id"
+    rows = conn.execute(
+        text(
+            "SELECT id, before_state, after_state FROM claim_audit_log "
+            "WHERE claim_id = :claim_id"
         ),
         {"claim_id": claim_id},
     ).fetchall()
@@ -158,6 +160,48 @@ def redact_audit_log_pii(
         )
 
     return changed
+    updated = 0
+    for row in rows:
+        row_id: int = row[0]
+        raw_before: str | None = row[1]
+        raw_after: str | None = row[2]
+
+        if raw_before is None and raw_after is None:
+            continue
+
+        new_before: str | None = raw_before
+        new_after: str | None = raw_after
+
+        if raw_before:
+            try:
+                parsed = json.loads(raw_before)
+                new_before = json.dumps(_redact_json_pii(parsed, placeholder))
+            except (json.JSONDecodeError, TypeError):
+                new_before = raw_before
+
+        if raw_after:
+            try:
+                parsed = json.loads(raw_after)
+                new_after = json.dumps(_redact_json_pii(parsed, placeholder))
+            except (json.JSONDecodeError, TypeError):
+                new_after = raw_after
+
+        if new_before != raw_before or new_after != raw_after:
+            conn.execute(
+                text(
+                    "UPDATE claim_audit_log "
+                    "SET before_state = :before_state, after_state = :after_state "
+                    "WHERE id = :row_id"
+                ),
+                {
+                    "before_state": new_before,
+                    "after_state": new_after,
+                    "row_id": row_id,
+                },
+            )
+            updated += 1
+
+    return updated
 
 
 def delete_audit_log_entries(conn: Connection, claim_id: str) -> int:

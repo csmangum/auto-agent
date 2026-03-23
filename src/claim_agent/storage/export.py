@@ -137,6 +137,8 @@ def export_claim_to_cold_storage(
 
     # --- Fetch claim + audit data --------------------------------------------
     claim_data = repo.get_claim(claim_id)
+    if claim_data is None:
+        raise ValueError(f"Cannot export: claim {claim_id} not found")
     audit_rows, _ = repo.get_claim_history(claim_id)
 
     manifest = build_claim_manifest(claim_data, audit_rows)

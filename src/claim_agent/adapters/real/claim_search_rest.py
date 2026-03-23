@@ -55,8 +55,10 @@ class RestClaimSearchAdapter(ClaimSearchAdapter):
             return nested if isinstance(nested, list) else []
         # Try common envelope keys before returning empty
         for key in ("results", "matches", "claims", "data"):
-            if key in raw and isinstance(raw[key], list):
-                return raw[key]
+            if key in raw:
+                val = raw[key]
+                if isinstance(val, list):
+                    return val
         return []
 
     def _normalize_match(
