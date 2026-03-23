@@ -77,17 +77,15 @@ def _mock_embedding_provider_for_unit_tests(
     rag_cache.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("CLAIM_AGENT_CACHE_DIR", str(rag_cache))
 
-    with retriever_mod._retriever_lock:
-        retriever_mod._global_retriever = None
+    monkeypatch.setattr(retriever_mod, "_global_retriever", None)
 
     import claim_agent.tools.rag_tools as rag_tools_mod
 
-    rag_tools_mod._retriever = None
+    monkeypatch.setattr(rag_tools_mod, "_retriever", None)
 
     import claim_agent.skills as skills_mod
 
-    with skills_mod._rag_provider_lock:
-        skills_mod._rag_provider = None
+    monkeypatch.setattr(skills_mod, "_rag_provider", None)
 
     import claim_agent.tools.claims_logic as claims_logic_mod
 
