@@ -11,6 +11,12 @@ from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.claim import ClaimInput
 
 
+@pytest.fixture(autouse=True)
+def _zero_siu_adapter_retry_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Avoid 1s+2s real sleeps in SIU adapter retry tests."""
+    monkeypatch.setenv("CLAIM_AGENT_SIU_ADAPTER_RETRY_SLEEP_SEC", "0")
+
+
 @pytest.fixture
 def temp_db():
     """Temp DB with CLAIMS_DB_PATH set."""
@@ -367,12 +373,14 @@ class TestFileFraudReportStateBureauImpl:
         """file_fraud_report_state_bureau_impl returns success and report_id."""
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-FRAUD-CONFIRM",
@@ -394,6 +402,7 @@ class TestFileFraudReportStateBureauImpl:
                 state="California",
                 indicators='["staged"]',
                 payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged"}',
+                ctx=ctx,
             )
         data = json.loads(result)
         assert data["success"] is True
@@ -408,12 +417,14 @@ class TestFileFraudReportStateBureauImpl:
         """file_fraud_report_state_bureau_impl persists filing to fraud_report_filings."""
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-FRAUD",
@@ -435,6 +446,7 @@ class TestFileFraudReportStateBureauImpl:
                 state="California",
                 indicators='["staged", "inflated"]',
                 payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged, inflated"}',
+                ctx=ctx,
             )
         data = json.loads(result)
         assert data["success"] is True
@@ -457,12 +469,14 @@ class TestFileFraudReportStateBureauImpl:
         """file_fraud_report_state_bureau_impl validates required template fields."""
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-FRAUD-MISSING",
@@ -484,6 +498,7 @@ class TestFileFraudReportStateBureauImpl:
                 state="California",
                 indicators='["staged"]',
                 payload_json='{"claimant_name": "Jane Doe"}',
+                ctx=ctx,
             )
         data = json.loads(result)
         assert data["success"] is False
@@ -496,12 +511,14 @@ class TestFileFraudReportStateBureauImpl:
         """Agent can retry filing with corrected payload and succeed."""
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-FRAUD-RETRY",
@@ -523,6 +540,7 @@ class TestFileFraudReportStateBureauImpl:
                 state="California",
                 indicators='["staged"]',
                 payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged claim indicators"}',
+                ctx=ctx,
             )
         data = json.loads(result)
         assert data["success"] is True
@@ -532,12 +550,14 @@ class TestFileFraudReportStateBureauImpl:
         """file_fraud_report_state_bureau_impl returns clear error for invalid JSON payload."""
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-FRAUD-BADJSON",
@@ -559,13 +579,14 @@ class TestFileFraudReportStateBureauImpl:
                 state="California",
                 indicators='["staged"]',
                 payload_json="{not-json}",
+                ctx=ctx,
             )
         data = json.loads(result)
         assert data["success"] is False
         assert data["validation_error"] is True
         assert "Invalid payload_json" in data["error"]
 
-    def test_retries_on_transient_failure_then_succeeds(self, monkeypatch):
+    def test_retries_on_transient_failure_then_succeeds(self, monkeypatch, temp_db):
         """file_fraud_report_state_bureau_impl retries transient adapter failures."""
         from claim_agent.adapters.registry import get_fraud_reporting_adapter
         from claim_agent.tools.siu_logic import file_fraud_report_state_bureau_impl
@@ -598,11 +619,12 @@ class TestFileFraudReportStateBureauImpl:
 
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-FRAUD-RETRY-ADAPTER",
@@ -617,6 +639,7 @@ class TestFileFraudReportStateBureauImpl:
             )
         )
         case_id = "SIU-RETRY-ADAPTER"
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
             result = file_fraud_report_state_bureau_impl(
                 claim_id,
@@ -624,6 +647,7 @@ class TestFileFraudReportStateBureauImpl:
                 state="California",
                 indicators='["staged"]',
                 payload_json='{"claimant_name":"Jane Doe","indicators_summary":"staged"}',
+                ctx=ctx,
             )
         data = json.loads(result)
         assert data["success"] is True
@@ -634,12 +658,14 @@ class TestFileFraudReportStateBureauImpl:
         """file_nicb_report_impl persists to fraud_report_filings."""
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_nicb_report_impl
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-NICB",
@@ -655,7 +681,7 @@ class TestFileFraudReportStateBureauImpl:
         )
         case_id = "SIU-MOCK-NICB"
         with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
-            result = file_nicb_report_impl(claim_id, case_id, "theft", '["theft"]')
+            result = file_nicb_report_impl(claim_id, case_id, "theft", '["theft"]', ctx=ctx)
         data = json.loads(result)
         assert data["success"] is True
         assert "NICB-" in data["report_id"]
@@ -668,12 +694,14 @@ class TestFileFraudReportStateBureauImpl:
         """file_niss_report_impl persists to fraud_report_filings."""
         from datetime import date
 
+        from claim_agent.context import ClaimContext
         from claim_agent.db.repository import ClaimRepository
         from claim_agent.models.claim import ClaimInput
         from claim_agent.observability import siu_workflow_scope
         from claim_agent.tools.siu_logic import file_niss_report_impl
 
-        repo = ClaimRepository()
+        repo = ClaimRepository(db_path=temp_db)
+        ctx = ClaimContext.from_defaults(db_path=temp_db)
         claim_id = repo.create_claim(
             ClaimInput(
                 policy_number="POL-NISS",
@@ -689,7 +717,7 @@ class TestFileFraudReportStateBureauImpl:
         )
         case_id = "SIU-MOCK-NISS"
         with siu_workflow_scope(claim_id=claim_id, case_id=case_id):
-            result = file_niss_report_impl(claim_id, case_id, "fraud", '["staged"]')
+            result = file_niss_report_impl(claim_id, case_id, "fraud", '["staged"]', ctx=ctx)
         data = json.loads(result)
         assert data["success"] is True
         assert "NISS-" in data["report_id"]
