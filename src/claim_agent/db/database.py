@@ -520,7 +520,7 @@ CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_expires_at ON claim_access_to
     + IDX_REFRESH_TOKENS_TOKEN_HASH
     + ";\n"
     + IDX_REFRESH_TOKENS_EXPIRES_AT
-    + "\n"
+    + ";\n"
 )
 
 
