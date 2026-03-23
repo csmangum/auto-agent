@@ -1,5 +1,6 @@
 """Token and LLM-call budget enforcement."""
 
+import threading
 from typing import Any
 
 from claim_agent.config.llm_protocol import LLMProtocol
@@ -9,6 +10,70 @@ from claim_agent.exceptions import TokenBudgetExceeded
 from claim_agent.observability import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_litellm_custom_logger_base() -> type:
+    """Return CustomLogger base class for LiteLLM callback; optional to avoid hard dependency."""
+    try:
+        from litellm.integrations.custom_logger import CustomLogger
+
+        return CustomLogger  # type: ignore[return-value]
+    except ImportError:
+        return object
+
+
+class BudgetEnforcingCallback(_get_litellm_custom_logger_base()):  # type: ignore[misc]
+    """LiteLLM callback that enforces the token/call budget after each LLM call within a crew.
+
+    Install this callback on ``litellm.callbacks`` for the duration of a crew ``kickoff``.
+    After each successful LLM call the callback calls ``_check_token_budget``; when the budget
+    is exceeded it stores the resulting ``TokenBudgetExceeded`` on ``stored_exception`` so that
+    the kickoff wrapper can re-raise it after the call returns.
+
+    LiteLLM swallows exceptions raised inside callbacks, so the two-step approach
+    (store + re-raise by the caller) is necessary to propagate the budget error.
+    """
+
+    def __init__(self, claim_id: str, metrics: Any) -> None:
+        base = _get_litellm_custom_logger_base()
+        if base is not object:
+            super().__init__()
+        self.claim_id = claim_id
+        self.metrics = metrics
+        self.stored_exception: TokenBudgetExceeded | None = None
+        self._lock = threading.Lock()
+
+    def log_success_event(
+        self,
+        kwargs: dict[str, Any],
+        response_obj: Any,
+        start_time: float,
+        end_time: float,
+    ) -> None:
+        """Called after each successful LLM API call; check budget and store any violation."""
+        try:
+            _check_token_budget(self.claim_id, self.metrics)
+        except TokenBudgetExceeded as exc:
+            with self._lock:
+                if self.stored_exception is None:
+                    self.stored_exception = exc
+                    do_log = True
+                else:
+                    do_log = False
+            if do_log:
+                logger.warning(
+                    "Intra-crew budget exceeded for claim %s: %s",
+                    self.claim_id,
+                    exc,
+                    extra={"claim_id": self.claim_id},
+                )
+
+    def raise_if_exceeded(self) -> None:
+        """Re-raise a stored ``TokenBudgetExceeded`` (call this after kickoff returns)."""
+        with self._lock:
+            exc = self.stored_exception
+        if exc is not None:
+            raise exc
 
 
 def _get_llm_usage_snapshot(llm: LLMProtocol) -> tuple[int, int, int] | None:
@@ -64,6 +129,43 @@ def _check_token_budget(claim_id: str, metrics: Any, llm: LLMProtocol | None = N
             total_calls,
             f"LLM call budget exceeded: {total_calls} > {MAX_LLM_CALLS_PER_CLAIM}",
         )
+
+
+def _is_budget_approaching(
+    claim_id: str,
+    metrics: Any,
+    llm: LLMProtocol | None = None,
+    threshold: float | None = None,
+) -> bool:
+    """Return True when the claim is approaching the configured token or call budget.
+
+    Uses the same usage-snapshot logic as ``_check_token_budget``.  When *threshold*
+    is ``None`` the value is read from ``LLMConfig.budget_fallback_threshold``
+    (env: ``LLM_BUDGET_FALLBACK_THRESHOLD``, default 0.9).
+
+    This function is intentionally non-raising: callers use the return value to
+    decide whether to proactively switch to a cheaper fallback model before the
+    hard ``TokenBudgetExceeded`` exception fires.
+    """
+    from claim_agent.config.settings import get_settings  # avoid circular import at module level
+
+    if threshold is None:
+        threshold = get_settings().llm.budget_fallback_threshold
+
+    summary = metrics.get_claim_summary(claim_id)
+    total_tokens = summary.total_tokens if summary is not None else 0
+    total_calls = summary.total_llm_calls if summary is not None else 0
+
+    if total_tokens == 0 and total_calls == 0 and llm is not None:
+        usage = _get_llm_usage_snapshot(llm)
+        if usage is not None:
+            prompt_tokens, completion_tokens, successful_requests = usage
+            total_tokens = prompt_tokens + completion_tokens
+            total_calls = successful_requests or (1 if total_tokens > 0 else 0)
+
+    token_ratio = total_tokens / MAX_TOKENS_PER_CLAIM if MAX_TOKENS_PER_CLAIM > 0 else 0.0
+    call_ratio = total_calls / MAX_LLM_CALLS_PER_CLAIM if MAX_LLM_CALLS_PER_CLAIM > 0 else 0.0
+    return token_ratio >= threshold or call_ratio >= threshold
 
 
 def _record_crew_usage_delta(

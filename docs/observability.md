@@ -158,7 +158,22 @@ When the provider does not return cost, the metrics module estimates it using a 
 - **`get_metrics().get_global_stats()`** – Dict of global aggregates.
 - **`track_llm_call(claim_id, model, input_tokens, output_tokens, ...)`** – Convenience wrapper that records on the global metrics instance.
 
-Metrics are in-memory only (per process). They are cleared when the process exits; tests use **`reset_metrics()`** to clear the singleton between tests.
+Metrics are in-memory only (per process). They are cleared when the process exits; tests use **`reset_metrics()`** to clear the singleton between tests. `GET /api/metrics/cost` and `get_cost_breakdown()` therefore reflect spend for the current process unless you export/aggregate metrics in an external system (for example Prometheus, LangSmith, or your own telemetry backend).
+
+### LLM cost threshold alert (optional)
+
+You can configure a process-local LLM spend alert that triggers when `total_cost_usd` first crosses a threshold after server start:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_COST_ALERT_THRESHOLD_USD` | unset | When set to a positive float, enables threshold checks. |
+| `LLM_COST_ALERT_WEBHOOK_URL` | unset | Optional URL to receive a JSON POST when threshold is crossed. |
+
+Behavior:
+
+- Alerting is **process-local** and fires at most once per process lifetime.
+- If no webhook URL is configured, the threshold crossing is still logged.
+- Webhook payload includes `threshold_usd`, `total_cost_usd`, and a debugging snapshot (`by_crew`, `by_claim_type`, `daily`).
 
 ## Configuration
 

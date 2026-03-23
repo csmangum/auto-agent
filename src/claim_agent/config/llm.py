@@ -4,12 +4,30 @@ This module configures the LLM with:
 - LangSmith tracing (if enabled)
 - LiteLLM callbacks for token/cost tracking
 - Model fallback chain (OPENAI_FALLBACK_MODELS) via thread-local override
+- Optional provider-level prompt caching (LLM_CACHE_ENABLED, LLM_CACHE_SEED,
+  LLM_ANTHROPIC_PROMPT_CACHE)
 
 Note on fallback scope: The model override used by the fallback chain is stored
 in thread-local storage. Fallback retries work within a single request/thread.
 If claim processing is offloaded to worker processes or different threads, the
 override does not propagate. For multi-worker deployments, fallback applies only
 to the thread that runs _kickoff_with_retry.
+
+Prompt caching notes
+--------------------
+LLM_CACHE_ENABLED enables LiteLLM's in-process cache so identical prompts are
+served from memory without a round-trip to the provider.  Best used when the
+same system prompt or RAG snippet is repeated across many agent calls.  The
+cache is per-process: it is **not** shared across workers or replicas.  Avoid
+caching calls whose prompts contain claimant-specific PII.
+
+LLM_ANTHROPIC_PROMPT_CACHE enables the Anthropic server-side prompt-caching
+beta (header ``anthropic-beta: prompt-caching-2024-07-31``).  This only takes
+effect with Anthropic models (direct or via OpenRouter).  The provider caches
+the longest matching prompt prefix up to ~5 minutes; cached tokens are billed
+at a reduced rate and reduce round-trip latency for repeated identical system
+prompts or large RAG context blocks (≥ 1 024 tokens).  Do not include
+claimant-specific PII in sections meant to be cached.
 """
 
 import logging
@@ -126,6 +144,18 @@ def get_llm(model_name: str | None = None):
 
     model = (model_name or _get_model_override() or llm_cfg.model_name or "gpt-4o-mini").strip()
 
+    # Build optional kwargs for prompt caching
+    extra_kwargs: dict = {}
+    if llm_cfg.cache_enabled:
+        extra_kwargs["caching"] = True
+        if llm_cfg.cache_seed is not None:
+            extra_kwargs["cache_seed"] = llm_cfg.cache_seed
+        logger.debug("LiteLLM prompt cache enabled (seed=%s)", llm_cfg.cache_seed)
+    if llm_cfg.anthropic_prompt_cache:
+        extra_kwargs.setdefault("extra_headers", {})
+        extra_kwargs["extra_headers"]["anthropic-beta"] = "prompt-caching-2024-07-31"
+        logger.debug("Anthropic prompt-caching beta header enabled")
+
     # Log LLM configuration
     logger.debug(
         "Configuring LLM: model=%s, base_url=%s",
@@ -135,8 +165,8 @@ def get_llm(model_name: str | None = None):
 
     if base and "openrouter" in base.lower():
         ensure_openrouter_api_key()
-        return LLM(model=model, base_url=base, api_key=api_key)
-    return LLM(model=model, api_key=api_key)
+        return LLM(model=model, base_url=base, api_key=api_key, **extra_kwargs)
+    return LLM(model=model, api_key=api_key, **extra_kwargs)
 
 
 def get_llm_fallback_chain() -> list[str]:

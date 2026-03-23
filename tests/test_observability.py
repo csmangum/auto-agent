@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime
 from unittest import mock
 
 import pytest
@@ -325,6 +326,185 @@ class TestMetrics:
         parsed_all = json.loads(output_all)
         assert "global_stats" in parsed_all
         assert "claims" in parsed_all
+
+    def test_cost_breakdown_includes_monthly(self):
+        """get_cost_breakdown should include a 'monthly' rollup keyed by YYYY-MM."""
+        from datetime import timezone
+        from claim_agent.observability.metrics import ClaimMetrics, LLMCallMetric
+
+        metrics = ClaimMetrics()
+
+        jan = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        feb = datetime(2026, 2, 10, 8, 0, 0, tzinfo=timezone.utc)
+
+        jan_call = LLMCallMetric(
+            timestamp=jan,
+            model="gpt-4o-mini",
+            input_tokens=200,
+            output_tokens=100,
+            cost_usd=0.002,
+            latency_ms=100.0,
+            status="success",
+        )
+        feb_call = LLMCallMetric(
+            timestamp=feb,
+            model="gpt-4o-mini",
+            input_tokens=400,
+            output_tokens=200,
+            cost_usd=0.004,
+            latency_ms=80.0,
+            status="success",
+        )
+
+        with metrics._lock:
+            metrics._claims["CLM-JAN"] = {
+                "start_time": jan,
+                "end_time": None,
+                "llm_calls": [jan_call],
+                "status": "completed",
+            }
+            metrics._claims["CLM-FEB"] = {
+                "start_time": feb,
+                "end_time": None,
+                "llm_calls": [feb_call],
+                "status": "completed",
+            }
+
+        breakdown = metrics.get_cost_breakdown()
+        assert "monthly" in breakdown, "'monthly' key missing from get_cost_breakdown() output"
+        monthly = breakdown["monthly"]
+        assert "2026-01" in monthly, "Expected '2026-01' in monthly rollup"
+        assert "2026-02" in monthly, "Expected '2026-02' in monthly rollup"
+        assert monthly["2026-01"]["claims"] == 1
+        assert monthly["2026-02"]["claims"] == 1
+        assert monthly["2026-01"]["total_cost_usd"] == pytest.approx(0.002)
+        assert monthly["2026-02"]["total_cost_usd"] == pytest.approx(0.004)
+        assert monthly["2026-01"]["total_tokens"] == 300  # 200 + 100
+        assert monthly["2026-02"]["total_tokens"] == 600  # 400 + 200
+
+        # daily should still be present and consistent
+        assert "2026-01-15" in breakdown["daily"]
+        assert "2026-02-10" in breakdown["daily"]
+
+    def test_cost_alert_disabled_when_threshold_unset(self):
+        """No alert should be sent when threshold env var is unset."""
+        from claim_agent.config import reload_settings
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        with mock.patch.dict(
+            os.environ,
+            {"LLM_COST_ALERT_THRESHOLD_USD": "", "LLM_COST_ALERT_WEBHOOK_URL": ""},
+            clear=False,
+        ):
+            reload_settings()
+            metrics = ClaimMetrics()
+            metrics.start_claim("CLM-123")
+
+            with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o",
+                    input_tokens=100_000,
+                    output_tokens=100_000,
+                )
+                metrics._wait_for_webhooks()
+
+                breakdown = metrics.get_cost_breakdown()
+                assert breakdown["total_cost_usd"] > 0
+                httpx_client.assert_not_called()
+
+    def test_cost_alert_crossing_sends_webhook_once_per_process(self):
+        """Threshold crossing should trigger one webhook per metrics process instance."""
+        from claim_agent.config import reload_settings
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LLM_COST_ALERT_THRESHOLD_USD": "0.01",
+                "LLM_COST_ALERT_WEBHOOK_URL": "https://alerts.example.com/llm",
+            },
+            clear=False,
+        ):
+            reload_settings()
+            metrics = ClaimMetrics()
+            metrics.start_claim("CLM-123")
+
+            with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                response = mock.Mock()
+                response.raise_for_status.return_value = None
+                client_instance = httpx_client.return_value.__enter__.return_value
+                client_instance.post.return_value = response
+
+                # Alert triggers proactively during record_llm_call
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o",
+                    input_tokens=1_000,
+                    output_tokens=1_000,
+                )
+
+                # Wait for background webhook thread to complete
+                metrics._wait_for_webhooks()
+
+                # Verify webhook was sent
+                assert client_instance.post.call_count == 1
+                call_kwargs = client_instance.post.call_args.kwargs
+                assert call_kwargs["json"]["event"] == "llm.cost_threshold_crossed"
+                assert call_kwargs["json"]["process_local"] is True
+                assert "by_crew" in call_kwargs["json"]
+                assert "daily" in call_kwargs["json"]
+
+                # Second call should not trigger another webhook (one per process)
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o",
+                    input_tokens=1_000,
+                    output_tokens=1_000,
+                )
+                metrics._wait_for_webhooks()
+
+                # Still only one call
+                assert client_instance.post.call_count == 1
+
+                # get_cost_breakdown should not trigger additional webhooks
+                first = metrics.get_cost_breakdown()
+                second = metrics.get_cost_breakdown()
+
+                assert first["total_cost_usd"] > 0.01
+                assert second["total_cost_usd"] > 0.01
+                # Still only one webhook call
+                client_instance.post.assert_called_once()
+
+    def test_cost_alert_not_triggered_when_under_threshold(self):
+        """Webhook should not be called while cost remains below threshold."""
+        from claim_agent.config import reload_settings
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LLM_COST_ALERT_THRESHOLD_USD": "1000",
+                "LLM_COST_ALERT_WEBHOOK_URL": "https://alerts.example.com/llm",
+            },
+            clear=False,
+        ):
+            reload_settings()
+            metrics = ClaimMetrics()
+            metrics.start_claim("CLM-123")
+
+            with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                metrics.record_llm_call(
+                    claim_id="CLM-123",
+                    model="gpt-4o-mini",
+                    input_tokens=100,
+                    output_tokens=100,
+                )
+                metrics._wait_for_webhooks()
+
+                breakdown = metrics.get_cost_breakdown()
+                assert breakdown["total_cost_usd"] < 1000
+                httpx_client.assert_not_called()
 
 
 class TestGlobalHelpers:

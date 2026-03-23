@@ -62,19 +62,19 @@ def test_init_db_creates_claim_audit_log_action_index(temp_db):
     assert "idx_claim_audit_log_claim_id_action" in names
 
 
-def test_init_db_creates_append_only_triggers(temp_db):
-    """init_db creates trigger that prevents UPDATE on claim_audit_log (DELETE allowed for retention)."""
+def test_init_db_creates_claim_audit_log_update_guard(temp_db):
+    """init_db creates trigger that blocks UPDATE of non-PII columns on claim_audit_log."""
     with get_connection(temp_db) as conn:
         cur = conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
         )
         triggers = [row[0] for row in cur.fetchall()]
-    assert "claim_audit_log_prevent_update" in triggers
+    assert "claim_audit_log_protect_non_pii_columns" in triggers
     assert "claim_audit_log_prevent_delete" not in triggers
 
 
 def test_audit_log_prevents_update(temp_db):
-    """Updating a claim_audit_log row raises an error (append-only enforcement)."""
+    """Updating immutable claim_audit_log columns (e.g. details) raises an error."""
     repo = ClaimRepository(db_path=temp_db)
     claim_input = ClaimInput(
         policy_number="POL-TRIGGER",
@@ -87,7 +87,7 @@ def test_audit_log_prevents_update(temp_db):
         damage_description="Roof dents.",
     )
     claim_id = repo.create_claim(claim_input)
-    with pytest.raises(IntegrityError, match="append-only"):
+    with pytest.raises(IntegrityError, match="before_state and after_state"):
         with get_connection(temp_db) as conn:
             conn.execute(
                 text("UPDATE claim_audit_log SET details = 'tampered' WHERE claim_id = :claim_id"),
