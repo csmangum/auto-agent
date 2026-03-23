@@ -214,6 +214,60 @@ OPENAI_API_BASE=https://your-provider.com/v1
 OPENAI_MODEL_NAME=your-model-name
 ```
 
+### Prompt Caching
+
+The system supports two complementary prompt-caching mechanisms controlled by `LLMConfig` fields (via environment variables). Both are **disabled by default** and should be evaluated against your latency, cost, and privacy requirements before enabling.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_CACHE_ENABLED` | `false` | Enable LiteLLM in-process prompt cache. Serves repeated identical prompts from memory without a provider round-trip. |
+| `LLM_CACHE_SEED` | (unset) | Optional integer seed for deterministic LiteLLM cache keys. Leave blank for provider-assigned keys. |
+| `LLM_ANTHROPIC_PROMPT_CACHE` | `false` | Send the Anthropic prompt-caching beta header (`anthropic-beta: prompt-caching-2024-07-31`). Effective only with Anthropic models (direct or via OpenRouter). |
+
+#### LiteLLM in-process cache (`LLM_CACHE_ENABLED`)
+
+LiteLLM's cache stores LLM responses in memory so identical prompts bypass a provider round-trip entirely. Enable when:
+
+- The same system prompt is reused across many agent calls in a single worker process (e.g. bulk claim processing batches).
+- Large identical RAG snippets are prepended to multiple consecutive LLM calls.
+
+**Caveats:**
+
+- The cache is **per-process** and is not shared across workers or replicas. In multi-worker or multi-replica deployments the cache provides no cross-instance benefit.
+- Cached responses can become **stale** if model weights, temperature, or tool definitions change between calls. Restart the process to clear the in-process cache.
+- **Do not enable** when prompts contain claimant-specific PII (e.g. names, policy numbers, VINs injected per-claim); caching those calls risks serving a previous claimant's data in a later response.
+
+```bash
+# .env – enable LiteLLM in-process cache with a fixed seed
+LLM_CACHE_ENABLED=true
+LLM_CACHE_SEED=42
+```
+
+#### Anthropic server-side prompt caching (`LLM_ANTHROPIC_PROMPT_CACHE`)
+
+When enabled, `get_llm()` adds the `anthropic-beta: prompt-caching-2024-07-31` request header. Anthropic caches the longest matching prompt *prefix* server-side for approximately five minutes and bills cached input tokens at a significantly reduced rate (≈ 10 % of normal input-token cost).
+
+Enable when:
+
+- You use an Anthropic model directly (`OPENAI_API_KEY` pointing to Anthropic) or via **OpenRouter** with an `anthropic/*` model.
+- Your system prompt or prepended RAG context exceeds **1 024 tokens** and is identical across several consecutive calls.
+
+**Caveats:**
+
+- Has **no effect** with non-Anthropic models (OpenAI, Llama, etc.) — the header is silently ignored or may cause a `400` error on some providers.
+- Cache TTL is ~5 minutes on the Anthropic side; the cache is automatically invalidated when the prefix changes.
+- **Do not include claimant-specific PII** in the portions of the prompt you intend to be cached (e.g., the system prompt or prepended policy text). Rotate or vary the prompt for per-claimant content.
+- Cached token counts still appear in the response `usage` field; monitor billing dashboards to confirm cache hits.
+
+```bash
+# .env – enable Anthropic prompt-caching beta
+OPENAI_API_BASE=https://openrouter.ai/api/v1
+OPENAI_MODEL_NAME=anthropic/claude-3-sonnet
+LLM_ANTHROPIC_PROMPT_CACHE=true
+```
+
+Both options can be combined: `LLM_CACHE_ENABLED=true` + `LLM_ANTHROPIC_PROMPT_CACHE=true` provides in-process de-duplication (saves the network call entirely) as the primary layer, and Anthropic server-side caching as a secondary layer for cache misses.
+
 ## Centralized Settings
 
 Configuration is loaded via a Pydantic Settings model at startup. All environment variables are validated and typed. Use `get_settings()` for direct access:

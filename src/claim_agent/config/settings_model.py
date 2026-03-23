@@ -635,6 +635,39 @@ class LLMConfig(BaseSettings):
         validation_alias="OPENAI_FALLBACK_MODELS",
         description="Comma-separated fallback models when primary is down or over budget",
     )
+    # Prompt cache settings
+    cache_enabled: bool = Field(
+        default=False,
+        validation_alias="LLM_CACHE_ENABLED",
+        description=(
+            "Enable LiteLLM in-memory prompt cache. Useful when the same system prompt or "
+            "RAG context is reused across multiple LLM calls. Disabled by default. "
+            "Caveat: responses are cached in-process only (no cross-worker sharing); "
+            "do not cache calls whose prompts contain user-specific PII."
+        ),
+    )
+    cache_seed: int | None = Field(
+        default=None,
+        validation_alias="LLM_CACHE_SEED",
+        description=(
+            "Optional integer seed for deterministic LiteLLM cache keys. "
+            "When set, identical prompts with the same seed always hit the same cache entry. "
+            "Leave unset (default) for provider-assigned cache keys."
+        ),
+    )
+    anthropic_prompt_cache: bool = Field(
+        default=False,
+        validation_alias="LLM_ANTHROPIC_PROMPT_CACHE",
+        description=(
+            "Enable the Anthropic server-side prompt-caching beta "
+            "(anthropic-beta: prompt-caching-2024-07-31). "
+            "Only effective when using an Anthropic model directly or via OpenRouter. "
+            "Reduces cost and latency on repeated identical system prompts (≥1 024 tokens) "
+            "and large RAG context blocks. Cached prefixes count toward output token usage. "
+            "Caveat: cache TTL is ~5 minutes; do not include user-specific PII in "
+            "cached prompt sections."
+        ),
+    )
 
     def get_fallback_chain(self) -> list[str]:
         """Return [primary, fallback1, fallback2, ...] for model fallback strategy."""
