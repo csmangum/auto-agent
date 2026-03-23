@@ -42,11 +42,12 @@ SQLite also supports **non-Alembic** bootstrap and legacy repair paths in the sa
 
 To eliminate copy-paste between `SCHEMA_SQL` and Alembic revisions, the codebase uses **shared DDL fragment modules** under `src/claim_agent/db/`.  Each module owns the canonical SQLite `CREATE TABLE` and `CREATE INDEX` statements for one logical domain as named Python string constants.  Both `SCHEMA_SQL` and the corresponding Alembic migration import and compose from these constants — so a single edit propagates everywhere.
 
-| Module | Tables covered | Alembic revision |
-|--------|---------------|-----------------|
-| `schema_incidents_sqlite.py` | `incidents`, `claim_links`, `claims.incident_id` | 022 |
-| `schema_auth_sqlite.py` | `users`, `refresh_tokens` | 048 |
-| `schema_privacy_sqlite.py` | `dsar_verification_tokens`, `dpa_registry`, `cross_border_transfer_log` | 046, 047 |
+| Module | Tables covered | Alembic revision / parity test |
+|--------|---------------|--------------------------------|
+| `schema_core_sqlite.py` | `claims`, `claim_audit_log` | 023 + ADD COLUMN migrations (029, 033, 034, 050); `test_schema_core_parity.py` |
+| `schema_incidents_sqlite.py` | `incidents`, `claim_links`, `claims.incident_id` | 022; `test_schema_incidents_parity.py` |
+| `schema_auth_sqlite.py` | `users`, `refresh_tokens` | 048; `test_schema_sqlite_parity.py` |
+| `schema_privacy_sqlite.py` | `dsar_verification_tokens`, `dpa_registry`, `cross_border_transfer_log` | 046, 047; `test_schema_sqlite_parity.py` |
 
 #### Policy for new migrations
 
@@ -57,7 +58,9 @@ Every migration that **creates a new SQLite table** (or that changes a table who
 3. Import the same constants in the Alembic migration and use them for the SQLite code path.
 4. Keep the PostgreSQL DDL inline in the migration (types differ: `SERIAL` vs `INTEGER AUTOINCREMENT`, `TIMESTAMP WITH TIME ZONE` vs `TEXT`), but ensure column names and nullability match.
 
-CI enforces this alignment via **`tests/test_schema_sqlite_parity.py`** (and `tests/test_schema_incidents_parity.py`), which compare column names between shared SQLite constants and the PostgreSQL equivalents in each migration.
+CI enforces this alignment via **`tests/test_schema_core_parity.py`**, **`tests/test_schema_sqlite_parity.py`**, and **`tests/test_schema_incidents_parity.py`**, which compare column names between shared SQLite constants and the PostgreSQL equivalents in each migration.
+
+For **`schema_core_sqlite.py`** (`claims`, `claim_audit_log`), `test_schema_core_parity.py` builds the expected PostgreSQL `claims` column set from revision **023** plus PostgreSQL `ALTER TABLE claims ADD COLUMN` statements in **029, 033, 034, and 050** only. Later migrations that add `claims` columns without changing the bootstrap `CREATE TABLE` are intentionally excluded (those columns are often applied on SQLite via `_run_migrations()` instead). If you add a column to **`CLAIMS_TABLE_SQLITE`** to mirror a **new** PostgreSQL `ALTER TABLE claims` migration, append that revision file to the tuple in `_postgres_claims_columns()` in **`tests/test_schema_core_parity.py`** so the parity test keeps enforcing alignment.
 
 **When changing the schema:**
 
