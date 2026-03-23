@@ -447,6 +447,7 @@ export interface DocumentRequest {
   document_type: string;
   requested_from?: string;
   status: string;
+  requested_at?: string;
   received_at?: string;
   created_at?: string;
 }

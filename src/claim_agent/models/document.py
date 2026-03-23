@@ -14,6 +14,8 @@ class DocumentType(str, Enum):
     MEDICAL_RECORD = "medical_record"
     PHOTO = "photo"
     PDF = "pdf"
+    RENTAL_RECEIPT = "rental_receipt"
+    RENTAL_AGREEMENT = "rental_agreement"
     OTHER = "other"
 
 

@@ -33,7 +33,10 @@ def record_claim_payment(
         check_number: Optional; usually set at issue time via API.
         payee_secondary: Optional second payee for two-party checks.
         payee_secondary_type: Payee type for secondary when applicable.
-        external_ref: Optional idempotency key for this claim (duplicate ref returns existing row).
+        external_ref: Optional idempotency key per claim (duplicate ref returns existing row).
+            For loss-of-use reimbursement paid to the claimant (not the rental company),
+            use a ref starting with "workflow_rental:" (e.g. workflow_rental:{claim_id})
+            so the portal Rental tab can surface the payment.
 
     Returns:
         JSON with success, payment_id, and payment record (or error).

@@ -290,13 +290,20 @@ _CREWS_CATALOG = [
             {
                 "name": "Rental Coordinator",
                 "skill": "rental_coordinator",
-                "tools": ["get_rental_limits"],
+                "tools": ["get_rental_limits", "create_document_request", "add_claim_note", "get_claim_notes", "escalate_claim"],
                 "description": "Arranges and approves rental within policy limits",
             },
             {
                 "name": "Reimbursement Processor",
                 "skill": "rental_reimbursement_processor",
-                "tools": ["process_rental_reimbursement", "get_rental_limits"],
+                "tools": [
+                    "process_rental_reimbursement",
+                    "record_claim_payment",
+                    "get_rental_limits",
+                    "add_claim_note",
+                    "get_claim_notes",
+                    "escalate_claim",
+                ],
                 "description": "Processes rental reimbursement for approved rentals",
             },
         ],

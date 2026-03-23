@@ -34,6 +34,30 @@ const REPAIR_STATUS_ORDER = [
   'ready',
 ] as const;
 
+/** Matches portal filter for loss-of-use / rental document requests (see DocumentType on backend). */
+const RENTAL_DOCUMENT_TYPES = new Set(['rental_receipt', 'rental_agreement']);
+
+function isRentalDocumentType(documentType: string | undefined): boolean {
+  if (!documentType) return false;
+  const t = documentType.toLowerCase();
+  if (RENTAL_DOCUMENT_TYPES.has(t)) return true;
+  return t.includes('rental');
+}
+
+function isRentalCoordinationPayment(p: {
+  payee_type: string;
+  external_ref?: string | null;
+}): boolean {
+  if (p.payee_type === 'rental_company') return true;
+  const ref = (p.external_ref ?? '').toLowerCase();
+  return ref.length > 0 && ref.includes('rental');
+}
+
+function isOpenDocumentRequestStatus(status: string | undefined): boolean {
+  if (!status) return false;
+  return ['requested', 'partial', 'overdue'].includes(status.toLowerCase());
+}
+
 export default function PortalClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
   const navigate = useNavigate();
@@ -47,7 +71,7 @@ export default function PortalClaimDetail() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const { data: claimData, isLoading, error } = useQuery({
+  const { data: claimData, isLoading, error, isSuccess: claimQuerySuccess } = useQuery({
     queryKey: ['portal', 'claim', claimId],
     queryFn: () => portalApi.getClaim(claimId!),
     enabled: !!claimId,
@@ -65,16 +89,29 @@ export default function PortalClaimDetail() {
     enabled: !!claimId && activeTab === 'documents',
   });
 
+  const claimTypeForQueries = (claimData as Record<string, unknown> | undefined)
+    ?.claim_type as string | undefined;
+
   const { data: repairData } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'repair-status'],
     queryFn: () => portalApi.getRepairStatus(claimId!),
-    enabled: !!claimId && activeTab === 'repair',
+    enabled:
+      !!claimId &&
+      claimQuerySuccess &&
+      claimTypeForQueries === 'partial_loss' &&
+      (activeTab === 'repair' || activeTab === 'rental'),
   });
 
   const { data: paymentsData } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'payments'],
     queryFn: () => portalApi.getPayments(claimId!),
-    enabled: !!claimId && (activeTab === 'payments' || activeTab === 'rental'),
+    enabled: !!claimId && claimQuerySuccess,
+  });
+
+  const { data: docRequestsData } = useQuery({
+    queryKey: ['portal', 'claim', claimId, 'document-requests'],
+    queryFn: () => portalApi.getDocumentRequests(claimId!),
+    enabled: !!claimId && claimQuerySuccess,
   });
 
   const claim = claimData as Record<string, unknown> | undefined;
@@ -108,10 +145,25 @@ export default function PortalClaimDetail() {
     payee_type: string;
     status: string;
     issued_at?: string;
+    payment_method?: string;
+    external_ref?: string | null;
   }>;
-  const rentalPayments = payments.filter(
-    (p: { payee_type: string }) => p.payee_type === 'rental_company'
+  const rentalCoordinationPayments = payments.filter(isRentalCoordinationPayment);
+  const allDocRequests = (docRequestsData?.document_requests ?? []) as Array<{
+    id: number;
+    document_type?: string;
+    status?: string;
+    requested_at?: string;
+    requested_from?: string;
+  }>;
+  const rentalDocRequests = allDocRequests.filter((r) =>
+    isRentalDocumentType(r.document_type)
   );
+  const openRentalDocRequests = rentalDocRequests.filter((r) =>
+    isOpenDocumentRequestStatus(r.status)
+  );
+  const rentalTabBadgeCount =
+    openRentalDocRequests.length + rentalCoordinationPayments.length;
 
   const invalidateClaim = () => {
     const keys = [
@@ -179,7 +231,11 @@ export default function PortalClaimDetail() {
     },
     { key: 'repair' as const, label: 'Repair Status', count: null },
     { key: 'payments' as const, label: 'Payments', count: null },
-    { key: 'rental' as const, label: 'Rental', count: rentalPayments.length },
+    {
+      key: 'rental' as const,
+      label: 'Rental',
+      count: rentalTabBadgeCount > 0 ? rentalTabBadgeCount : null,
+    },
     { key: 'dispute' as const, label: 'Dispute', count: null },
   ];
 
@@ -296,7 +352,14 @@ export default function PortalClaimDetail() {
           )}
           {activeTab === 'payments' && <PaymentsTab payments={payments} />}
           {activeTab === 'rental' && (
-            <RentalTab rentalPayments={rentalPayments} />
+            <RentalTab
+              claimType={claim.claim_type as string}
+              rentalPayments={rentalCoordinationPayments}
+              rentalDocRequests={rentalDocRequests}
+              repairLatest={
+                (repairData?.latest ?? null) as Record<string, unknown> | null
+              }
+            />
           )}
           {activeTab === 'dispute' && (
             <DisputeTab
@@ -590,47 +653,169 @@ function PaymentsTab({
 }
 
 function RentalTab({
+  claimType,
   rentalPayments,
+  rentalDocRequests,
+  repairLatest,
 }: {
+  claimType: string;
   rentalPayments: Array<{
     id: number;
     amount: number;
     payee: string;
+    payee_type: string;
     status: string;
+    issued_at?: string;
+    payment_method?: string;
+    external_ref?: string | null;
   }>;
+  rentalDocRequests: Array<{
+    id: number;
+    document_type?: string;
+    status?: string;
+    requested_at?: string;
+    requested_from?: string;
+  }>;
+  repairLatest: Record<string, unknown> | null;
 }) {
+  const latestStatus =
+    repairLatest && typeof repairLatest.status === 'string'
+      ? repairLatest.status
+      : null;
+  const authId =
+    repairLatest && typeof repairLatest.authorization_id === 'string'
+      ? repairLatest.authorization_id
+      : null;
+
   return (
     <div className="space-y-6">
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-2">
-          Rental Car Coverage
+          Loss of use and rental
         </h3>
-        <p className="text-sm text-gray-400 mb-4">
-          Rental coverage varies by policy. Contact your adjuster to arrange
-          rental car reimbursement or direct billing.
-        </p>
-        {rentalPayments.length > 0 ? (
-          <div className="space-y-2">
-            <p className="text-xs text-gray-500 uppercase tracking-wider">
-              Rental Payments
+        <div className="text-sm text-gray-400 space-y-3">
+          <p>
+            Your policy may cover a replacement vehicle through{' '}
+            <span className="text-gray-300">direct billing</span> (we pay the
+            rental company) or{' '}
+            <span className="text-gray-300">reimbursement</span> (you pay, then
+            we reimburse you). What applies depends on your coverage and what
+            your adjuster arranges.
+          </p>
+          <p>
+            Reimbursements paid to you as the claimant appear under the{' '}
+            <span className="text-gray-300">Payments</span> tab as well; this
+            tab highlights rental coordination and any rental-related requests.
+          </p>
+          <p className="text-gray-500 text-xs">
+            This view is read-only. Contact your adjuster to arrange or change
+            rental details.
+          </p>
+        </div>
+      </div>
+
+      {claimType === 'partial_loss' && latestStatus && (
+        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+          <h3 className="text-sm font-semibold text-gray-300 mb-2">
+            Repair timeline
+          </h3>
+          <p className="text-sm text-gray-400 mb-3">
+            Rental duration is often tied to how long your vehicle is in repair.
+            Current shop phase:{' '}
+            <span className="text-gray-300 capitalize">
+              {latestStatus.replace(/_/g, ' ')}
+            </span>
+            .
+          </p>
+          {authId && (
+            <p className="text-xs text-gray-500">
+              Repair authorization reference:{' '}
+              <span className="text-gray-400 font-mono">{authId}</span>
             </p>
+          )}
+        </div>
+      )}
+
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-2">
+          Requests from your adjuster
+        </h3>
+        {rentalDocRequests.length > 0 ? (
+          <ul className="space-y-3">
+            {rentalDocRequests.map((r) => (
+              <li
+                key={r.id}
+                className="flex flex-col gap-1 py-2 border-b border-gray-700/50 last:border-0"
+              >
+                <div className="flex justify-between gap-2">
+                  <span className="text-sm text-gray-300">
+                    {(r.document_type ?? 'Document').replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-xs text-gray-500 capitalize shrink-0">
+                    {(r.status ?? '').replace(/_/g, ' ')}
+                  </span>
+                </div>
+                {r.requested_at && (
+                  <span className="text-xs text-gray-500">
+                    Requested: {formatDateTime(r.requested_at) ?? r.requested_at}
+                  </span>
+                )}
+                {r.requested_from && (
+                  <span className="text-xs text-gray-500">
+                    From: {r.requested_from.replace(/_/g, ' ')}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">
+            No rental-related document requests right now.
+          </p>
+        )}
+      </div>
+
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-2">
+          Rental-related payments
+        </h3>
+        {rentalPayments.length > 0 ? (
+          <div className="space-y-3">
             {rentalPayments.map((p) => (
               <div
                 key={p.id}
-                className="flex justify-between py-2 border-b border-gray-700/50 last:border-0"
+                className="flex flex-col gap-1 py-2 border-b border-gray-700/50 last:border-0"
               >
-                <span className="text-sm text-gray-300">
-                  ${Number(p.amount).toLocaleString()}
-                </span>
-                <span className="text-xs text-gray-500 capitalize">
-                  {p.status.replace(/_/g, ' ')}
-                </span>
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-200">
+                      ${Number(p.amount).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {p.payee} — {p.payee_type.replace(/_/g, ' ')}
+                    </p>
+                  </div>
+                  <span className="text-xs text-gray-400 capitalize shrink-0">
+                    {p.status.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                {p.payment_method && (
+                  <p className="text-xs text-gray-500 capitalize">
+                    Method: {p.payment_method.replace(/_/g, ' ')}
+                  </p>
+                )}
+                {p.issued_at && (
+                  <p className="text-xs text-gray-500">
+                    Issued: {formatDateTime(p.issued_at)}
+                  </p>
+                )}
               </div>
             ))}
           </div>
         ) : (
           <p className="text-sm text-gray-500">
-            No rental payments issued yet for this claim.
+            No rental-related payments recorded yet (including direct-bill to a
+            rental company or tagged reimbursement).
           </p>
         )}
       </div>

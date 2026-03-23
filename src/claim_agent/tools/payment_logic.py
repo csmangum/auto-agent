@@ -9,6 +9,10 @@ from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 from claim_agent.utils.sanitization import sanitize_payee
 
+# Prefix for external_ref on claimant rental reimbursements so the claimant portal
+# Rental tab can include them alongside rental_company direct-bill rows.
+WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX = "workflow_rental:"
+
 
 def record_claim_payment_impl(
     claim_id: str,
@@ -48,7 +52,7 @@ def record_claim_payment_impl(
         return json.dumps({"success": False, "error": "payee is required"})
 
     payee_secondary_clean = payee_secondary or None
-    
+
     sec_type = None
     if payee_secondary_type:
         try:
