@@ -681,6 +681,64 @@ def search_claims(
 - Used for duplicate detection
 - Returns matching claims
 
+### create_incident
+
+```python
+def create_incident(
+    self,
+    incident_input: IncidentInput,
+    *,
+    actor_id: str = ACTOR_SYSTEM,
+) -> tuple[str, list[str]]:
+    """Create incident and one claim per vehicle. Returns (incident_id, claim_ids)."""
+```
+
+Lives in `IncidentRepository` (`src/claim_agent/db/incident_repository.py`).
+
+#### Transaction semantics
+
+All **database writes** — the `incidents` row, every `claims` row (including its
+`claim_audit_log` entry, initial reserve, and `claim_parties` rows), and all
+`claim_links` — execute inside a **single SQLAlchemy connection context**.  If
+any write raises an exception the connection's transaction is rolled back
+automatically, leaving no partial rows in the database.
+
+#### Pre-transaction I/O
+
+Policy-adapter lookups (external network calls) are performed **before** the
+transaction opens.  This avoids holding the database lock during potentially
+slow HTTP calls.  If a lookup fails the corresponding policy data is omitted and
+creation continues; no exception is raised for individual lookup failures.
+
+#### Post-transaction best-effort steps
+
+Two operations run **after** the transaction has committed, each in its own
+short-lived transaction:
+
+| Step | Failure behaviour |
+|------|-------------------|
+| Apply UCSPA deadline (`_apply_ucspa_at_fnol`) | `OperationalError` / `ProgrammingError` (e.g. missing UCSPA columns): logged as a warning; processing continues for the remaining claims. Run `alembic upgrade head` to apply the schema. Any **other** exception is logged and **re-raised** (same as `ClaimRepository.create_claim`); the incident and claims are already committed. |
+| Emit `claim-submitted` event | Listener failures are logged as a warning; processing continues. If UCSPA raised before emit for a claim, that claim’s event is not sent. |
+
+A process crash or unhandled exception **between the main commit and these
+post-transaction steps** will leave the incident and claims persisted but
+without UCSPA deadlines set or `claim-submitted` events emitted.  Operators
+can recover by re-applying UCSPA deadlines manually or re-emitting events.
+
+#### Deprecated compensating rollback
+
+An older multi-commit code path used `_rollback_incident` as a compensating
+"best-effort" cleanup when partial state was left in the database.  That method
+is **deprecated** and is no longer called by `create_incident` itself.  It is
+retained for any external callers that may reference it directly, but will be
+removed in a future release.
+
+#### Future work
+
+The post-transaction steps (UCSPA, events) are candidates for a transactional
+outbox or saga pattern so that they are durably committed together with the main
+incident/claim data and retried automatically on failure.
+
 ## Initialization
 
 Database is automatically initialized on first use. The schema is applied **once per database path** per process; repeated `get_connection()` calls do not re-run the schema script.

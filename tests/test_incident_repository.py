@@ -7,6 +7,7 @@ import pytest
 
 from sqlalchemy import text
 
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_connection
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
@@ -77,7 +78,12 @@ def test_create_incident_multiple_vehicles(incident_repo):
 
 
 def test_create_incident_rollback_on_failure(incident_repo):
-    """Partial failure triggers rollback: incident and claims cleaned up."""
+    """Partial failure rolls back entire transaction: no incident or claims remain.
+
+    ``create_incident`` now uses a single transaction, so a failure on any
+    step causes an automatic rollback of all writes without needing compensating
+    cleanup steps.
+    """
     incident_input = IncidentInput(
         incident_date=date(2025, 1, 15),
         incident_description="Rollback test",
@@ -87,27 +93,26 @@ def test_create_incident_rollback_on_failure(incident_repo):
         ],
     )
 
-    original_create = ClaimRepository.create_claim
+    original_create_in_tx = ClaimRepository.create_claim_in_transaction
     call_count = 0
 
-    def mock_create_impl(self, claim_input, *, actor_id="system"):
+    def mock_create_in_tx(self, conn, claim_input, *, actor_id=ACTOR_WORKFLOW, policy=None):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            return original_create(self, claim_input, actor_id=actor_id)
+            return original_create_in_tx(self, conn, claim_input, actor_id=actor_id, policy=policy)
         raise ValueError("Simulated failure")
 
-    with patch.object(ClaimRepository, "create_claim", mock_create_impl):
+    with patch.object(ClaimRepository, "create_claim_in_transaction", mock_create_in_tx):
         with pytest.raises(ValueError, match="Simulated failure"):
             incident_repo.create_incident(incident_input)
 
+    # The entire transaction was rolled back: no incidents and no claims should exist.
     with get_connection(incident_repo._db_path) as conn:
         incidents = conn.execute(text("SELECT id FROM incidents")).fetchall()
         assert len(incidents) == 0
-        claims_with_incident = conn.execute(
-            text("SELECT id FROM claims WHERE incident_id IS NOT NULL")
-        ).fetchall()
-        assert len(claims_with_incident) == 0
+        all_claims = conn.execute(text("SELECT id FROM claims")).fetchall()
+        assert len(all_claims) == 0
 
 
 def test_rollback_clears_incident_id_before_delete(incident_repo):
@@ -225,3 +230,56 @@ def test_create_claim_link_duplicate_returns_none(incident_repo):
 def test_get_incident_not_found(incident_repo):
     """get_incident returns None for non-existent incident."""
     assert incident_repo.get_incident("INC-NOTFOUND") is None
+
+
+def test_create_incident_atomic_no_partial_on_link_failure(incident_repo):
+    """Failure while creating a claim link leaves no partial incident or claims.
+
+    This validates the single-transaction guarantee: even a failure during
+    the link-creation phase (after the first claim is already inserted into
+    the transaction's write-set) results in a full rollback.
+    """
+    incident_input = IncidentInput(
+        incident_date=date(2025, 1, 15),
+        incident_description="Link failure rollback test",
+        vehicles=[
+            _make_vehicle("POL-001", "VIN001"),
+            _make_vehicle("POL-002", "VIN002"),
+        ],
+    )
+
+    def mock_link_in_conn(self, conn, claim_id_a, claim_id_b, link_type, opposing_carrier, notes):
+        raise RuntimeError("Simulated link failure")
+
+    with patch.object(IncidentRepository, "_create_link_in_conn", mock_link_in_conn):
+        with pytest.raises(RuntimeError, match="Simulated link failure"):
+            incident_repo.create_incident(incident_input)
+
+    # Transaction rolled back: database must be empty.
+    with get_connection(incident_repo._db_path) as conn:
+        assert len(conn.execute(text("SELECT id FROM incidents")).fetchall()) == 0
+        assert len(conn.execute(text("SELECT id FROM claims")).fetchall()) == 0
+        assert len(conn.execute(text("SELECT * FROM claim_links")).fetchall()) == 0
+
+
+def test_create_incident_ucspa_unexpected_error_propagates(incident_repo):
+    """Non-schema UCSPA failures re-raise like create_claim; main tx already committed."""
+    incident_input = IncidentInput(
+        incident_date=date(2025, 1, 15),
+        incident_description="UCSPA error test",
+        vehicles=[
+            _make_vehicle("POL-001", "VIN001"),
+            _make_vehicle("POL-002", "VIN002"),
+        ],
+    )
+
+    with patch(
+        "claim_agent.db.incident_repository._apply_ucspa_at_fnol",
+        side_effect=RuntimeError("simulated ucspa failure"),
+    ):
+        with pytest.raises(RuntimeError, match="simulated ucspa failure"):
+            incident_repo.create_incident(incident_input)
+
+    with get_connection(incident_repo._db_path) as conn:
+        assert len(conn.execute(text("SELECT id FROM incidents")).fetchall()) == 1
+        assert len(conn.execute(text("SELECT id FROM claims")).fetchall()) == 2

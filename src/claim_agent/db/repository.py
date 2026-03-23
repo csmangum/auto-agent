@@ -456,6 +456,206 @@ class ClaimRepository:
         """SQLite path override from construction, or None for configured default."""
         return self._db_path
 
+    @staticmethod
+    def _normalize_loss_state(loss_state: str | None) -> str | None:
+        """Normalize a loss_state value: strip whitespace and coerce empty strings to ``None``."""
+        if loss_state is None:
+            return None
+        return str(loss_state).strip() or None
+
+    def _resolve_policy_for_fnol(
+        self,
+        claim_input: ClaimInput,
+        policy: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Return the policy dict to use for the FNOL policyholder merge.
+
+        Returns *policy* unchanged when it is already provided or when the
+        intake already contains a policyholder party.  Otherwise queries the
+        configured policy adapter (external I/O).
+        """
+        intake_has_policyholder = any(
+            getattr(p, "party_type", None) == "policyholder" for p in (claim_input.parties or [])
+        )
+        if intake_has_policyholder or policy is not None:
+            return policy
+        try:
+            from claim_agent.adapters.registry import get_policy_adapter
+
+            return get_policy_adapter().get_policy(claim_input.policy_number)
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "fnol_policy_lookup_failed policy_number=%s",
+                claim_input.policy_number,
+                exc_info=True,
+            )
+            return None
+
+    def create_claim_in_transaction(
+        self,
+        conn: Any,
+        claim_input: ClaimInput,
+        *,
+        actor_id: str = ACTOR_WORKFLOW,
+        policy: dict[str, Any] | None = None,
+    ) -> str:
+        """Insert a new claim within an existing connection/transaction.
+
+        Unlike :meth:`create_claim`, this method reuses *conn* for all database
+        operations instead of opening a new connection.  The caller is
+        responsible for committing or rolling back *conn*.
+
+        *policy* should be pre-fetched **before** opening the enclosing
+        transaction so that external I/O (the policy adapter) is not performed
+        while the transaction is open.  Use :meth:`_resolve_policy_for_fnol`
+        for that lookup.  When *policy* is ``None`` and the intake parties
+        contain no policyholder, the named-insured merge step is skipped.
+
+        UCSPA deadline setting and :func:`emit_claim_event` are **not**
+        performed by this method; the caller must invoke them after the
+        enclosing transaction commits.
+
+        Returns:
+            The new claim's ID (e.g. ``"CLM-XXXXXXXX"``).
+        """
+        claim_id = _generate_claim_id()
+        attachments_json = json.dumps(
+            [a.model_dump(mode="json") for a in claim_input.attachments],
+            default=str,
+        )
+        loss_state_val = self._normalize_loss_state(claim_input.loss_state)
+        incident_id_val = claim_input.incident_id
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            text("""
+            INSERT INTO claims (
+                id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
+                incident_date, incident_description, damage_description, estimated_damage,
+                claim_type, loss_state, status, attachments, incident_id, retention_tier,
+                incident_latitude, incident_longitude
+            ) VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
+                     :incident_date, :incident_description, :damage_description, :estimated_damage,
+                     :claim_type, :loss_state, :status, :attachments, :incident_id, :retention_tier,
+                     :incident_latitude, :incident_longitude)
+            """),
+            {
+                "id": claim_id,
+                "policy_number": claim_input.policy_number,
+                "vin": claim_input.vin,
+                "vehicle_year": claim_input.vehicle_year,
+                "vehicle_make": claim_input.vehicle_make,
+                "vehicle_model": claim_input.vehicle_model,
+                "incident_date": claim_input.incident_date.isoformat(),
+                "incident_description": claim_input.incident_description,
+                "damage_description": claim_input.damage_description,
+                "estimated_damage": claim_input.estimated_damage,
+                "claim_type": None,
+                "loss_state": loss_state_val,
+                "status": STATUS_PENDING,
+                "attachments": attachments_json,
+                "incident_id": incident_id_val,
+                "retention_tier": RETENTION_TIER_ACTIVE,
+                "incident_latitude": claim_input.incident_latitude,
+                "incident_longitude": claim_input.incident_longitude,
+            },
+        )
+        after_state = json.dumps(
+            {"status": STATUS_PENDING, "claim_type": None, "payout_amount": None}
+        )
+        conn.execute(
+            text("""
+            INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
+            VALUES (:claim_id, :action, :new_status, :details, :actor_id, :after_state)
+            """),
+            {
+                "claim_id": claim_id,
+                "action": AUDIT_EVENT_CREATED,
+                "new_status": STATUS_PENDING,
+                "details": "Claim record created",
+                "actor_id": actor_id,
+                "after_state": after_state,
+            },
+        )
+        # Set initial reserve from estimated_damage at FNOL if configured.
+        cfg = get_reserve_config()
+        est = claim_input.estimated_damage
+        if (
+            cfg.get("initial_reserve_from_estimated_damage", True)
+            and est is not None
+            and est > 0
+        ):
+            conn.execute(
+                text(
+                    "UPDATE claims SET reserve_amount = :est, updated_at = :now WHERE id = :id"
+                ),
+                {"est": est, "now": now, "id": claim_id},
+            )
+            conn.execute(
+                text("""
+                INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
+                VALUES (:claim_id, :old_amount, :new_amount, :reason, :actor_id)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "old_amount": None,
+                    "new_amount": est,
+                    "reason": "Initial reserve from estimated_damage at FNOL",
+                    "actor_id": ACTOR_SYSTEM,
+                },
+            )
+            reserve_state = json.dumps({"reserve_amount": est})
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
+                VALUES (:claim_id, :action, :details, :actor_id, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_RESERVE_SET,
+                    "details": "Initial reserve set from estimated_damage",
+                    "actor_id": ACTOR_SYSTEM,
+                    "after_state": reserve_state,
+                },
+            )
+        # Merge policyholder from pre-fetched policy (no external I/O inside transaction).
+        from claim_agent.services.fnol_policyholder import (
+            merge_fnol_parties_with_named_insured_policyholder,
+        )
+
+        effective_parties = merge_fnol_parties_with_named_insured_policyholder(
+            claim_input.parties, policy
+        )
+        for p in effective_parties:
+            self._add_claim_party_core(conn, claim_id, p)
+
+        return claim_id
+
+    def _add_claim_party_core(self, conn: Any, claim_id: str, party: ClaimPartyInput) -> int:
+        """Insert a claim party using an existing connection. Does not commit."""
+        result = conn.execute(
+            text("""
+            INSERT INTO claim_parties (
+                claim_id, party_type, name, email, phone, address, role,
+                consent_status, authorization_status
+            ) VALUES (:claim_id, :party_type, :name, :email, :phone, :address, :role,
+                     :consent_status, :authorization_status)
+            RETURNING id
+            """),
+            {
+                "claim_id": claim_id,
+                "party_type": party.party_type,
+                "name": party.name,
+                "email": party.email,
+                "phone": party.phone,
+                "address": party.address,
+                "role": party.role,
+                "consent_status": party.consent_status or "pending",
+                "authorization_status": party.authorization_status or "pending",
+            },
+        )
+        rid = result.fetchone()
+        return int(rid[0]) if rid else 0
+
     def create_claim(
         self,
         claim_input: ClaimInput,
@@ -470,134 +670,15 @@ class ClaimRepository:
         ``named_insured`` (see ``merge_fnol_parties_with_named_insured_policyholder``).
         Pass a pre-fetched policy dict to avoid a duplicate lookup or to override.
         """
-        claim_id = _generate_claim_id()
-        attachments_json = json.dumps(
-            [a.model_dump(mode="json") for a in claim_input.attachments],
-            default=str,
-        )
-        loss_state_val = claim_input.loss_state
-        if loss_state_val is not None:
-            loss_state_val = str(loss_state_val).strip() or None
-        incident_id_val = claim_input.incident_id
-        now = datetime.now(timezone.utc).isoformat()
+        # Resolve policy before opening the connection (external I/O must not run
+        # inside the transaction).
+        policy_for_fnol = self._resolve_policy_for_fnol(claim_input, policy)
+        loss_state_val = self._normalize_loss_state(claim_input.loss_state)
+
         with get_connection(self._db_path) as conn:
-            conn.execute(
-                text("""
-                INSERT INTO claims (
-                    id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
-                    incident_date, incident_description, damage_description, estimated_damage,
-                    claim_type, loss_state, status, attachments, incident_id, retention_tier,
-                    incident_latitude, incident_longitude
-                ) VALUES (:id, :policy_number, :vin, :vehicle_year, :vehicle_make, :vehicle_model,
-                         :incident_date, :incident_description, :damage_description, :estimated_damage,
-                         :claim_type, :loss_state, :status, :attachments, :incident_id, :retention_tier,
-                         :incident_latitude, :incident_longitude)
-                """),
-                {
-                    "id": claim_id,
-                    "policy_number": claim_input.policy_number,
-                    "vin": claim_input.vin,
-                    "vehicle_year": claim_input.vehicle_year,
-                    "vehicle_make": claim_input.vehicle_make,
-                    "vehicle_model": claim_input.vehicle_model,
-                    "incident_date": claim_input.incident_date.isoformat(),
-                    "incident_description": claim_input.incident_description,
-                    "damage_description": claim_input.damage_description,
-                    "estimated_damage": claim_input.estimated_damage,
-                    "claim_type": None,
-                    "loss_state": loss_state_val,
-                    "status": STATUS_PENDING,
-                    "attachments": attachments_json,
-                    "incident_id": incident_id_val,
-                    "retention_tier": RETENTION_TIER_ACTIVE,
-                    "incident_latitude": claim_input.incident_latitude,
-                    "incident_longitude": claim_input.incident_longitude,
-                },
+            claim_id = self.create_claim_in_transaction(
+                conn, claim_input, actor_id=actor_id, policy=policy_for_fnol
             )
-            after_state = json.dumps(
-                {"status": STATUS_PENDING, "claim_type": None, "payout_amount": None}
-            )
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, new_status, details, actor_id, after_state)
-                VALUES (:claim_id, :action, :new_status, :details, :actor_id, :after_state)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_CREATED,
-                    "new_status": STATUS_PENDING,
-                    "details": "Claim record created",
-                    "actor_id": actor_id,
-                    "after_state": after_state,
-                },
-            )
-            # Set initial reserve from estimated_damage at FNOL if configured.
-            cfg = get_reserve_config()
-            est = claim_input.estimated_damage
-            if (
-                cfg.get("initial_reserve_from_estimated_damage", True)
-                and est is not None
-                and est > 0
-            ):
-                conn.execute(
-                    text(
-                        "UPDATE claims SET reserve_amount = :est, updated_at = :now WHERE id = :id"
-                    ),
-                    {"est": est, "now": now, "id": claim_id},
-                )
-                conn.execute(
-                    text("""
-                    INSERT INTO reserve_history (claim_id, old_amount, new_amount, reason, actor_id)
-                    VALUES (:claim_id, :old_amount, :new_amount, :reason, :actor_id)
-                    """),
-                    {
-                        "claim_id": claim_id,
-                        "old_amount": None,
-                        "new_amount": est,
-                        "reason": "Initial reserve from estimated_damage at FNOL",
-                        "actor_id": ACTOR_SYSTEM,
-                    },
-                )
-                reserve_state = json.dumps({"reserve_amount": est})
-                conn.execute(
-                    text("""
-                    INSERT INTO claim_audit_log (claim_id, action, details, actor_id, after_state)
-                    VALUES (:claim_id, :action, :details, :actor_id, :after_state)
-                    """),
-                    {
-                        "claim_id": claim_id,
-                        "action": AUDIT_EVENT_RESERVE_SET,
-                        "details": "Initial reserve set from estimated_damage",
-                        "actor_id": ACTOR_SYSTEM,
-                        "after_state": reserve_state,
-                    },
-                )
-        intake_has_policyholder = any(
-            getattr(p, "party_type", None) == "policyholder" for p in (claim_input.parties or [])
-        )
-        policy_for_fnol = policy
-        if not intake_has_policyholder and policy_for_fnol is None:
-            try:
-                from claim_agent.adapters.registry import get_policy_adapter
-
-                policy_for_fnol = get_policy_adapter().get_policy(claim_input.policy_number)
-            except Exception:
-                logging.getLogger(__name__).debug(
-                    "fnol_policy_lookup_failed policy_number=%s",
-                    claim_input.policy_number,
-                    exc_info=True,
-                )
-                policy_for_fnol = None
-
-        from claim_agent.services.fnol_policyholder import (
-            merge_fnol_parties_with_named_insured_policyholder,
-        )
-
-        effective_parties = merge_fnol_parties_with_named_insured_policyholder(
-            claim_input.parties, policy_for_fnol
-        )
-        for p in effective_parties:
-            self.add_claim_party(claim_id, p)
 
         # UCSPA: set state-specific deadlines and create compliance tasks at FNOL
         try:
@@ -623,29 +704,7 @@ class ClaimRepository:
     def add_claim_party(self, claim_id: str, party: ClaimPartyInput) -> int:
         """Insert a claim party. Returns party id."""
         with get_connection(self._db_path) as conn:
-            result = conn.execute(
-                text("""
-                INSERT INTO claim_parties (
-                    claim_id, party_type, name, email, phone, address, role,
-                    consent_status, authorization_status
-                ) VALUES (:claim_id, :party_type, :name, :email, :phone, :address, :role,
-                         :consent_status, :authorization_status)
-                RETURNING id
-                """),
-                {
-                    "claim_id": claim_id,
-                    "party_type": party.party_type,
-                    "name": party.name,
-                    "email": party.email,
-                    "phone": party.phone,
-                    "address": party.address,
-                    "role": party.role,
-                    "consent_status": party.consent_status or "pending",
-                    "authorization_status": party.authorization_status or "pending",
-                },
-            )
-            rid = result.fetchone()
-            return int(rid[0]) if rid else 0
+            return self._add_claim_party_core(conn, claim_id, party)
 
     def add_claim_party_relationship(
         self,

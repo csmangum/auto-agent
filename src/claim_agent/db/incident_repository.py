@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from claim_agent.db.audit_events import ACTOR_SYSTEM
+from claim_agent.db.constants import STATUS_PENDING
 from claim_agent.db.database import get_connection, row_to_dict
-from claim_agent.db.repository import ClaimRepository
+from claim_agent.db.repository import ClaimRepository, _apply_ucspa_at_fnol
+from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
 from claim_agent.models.incident import IncidentInput, VehicleClaimInput
 
@@ -51,17 +53,16 @@ class IncidentRepository:
     ) -> tuple[str, list[str]]:
         """Create incident and one claim per vehicle. Returns (incident_id, claim_ids).
 
-        This is not a single atomic transaction: the incident insert, each
-        ``ClaimRepository.create_claim`` (which itself uses multiple commits), and each
-        claim link each run in separate connections that commit on success.
+        All database writes (incident insert, claim inserts including audit log,
+        initial reserve, and party inserts, and claim links) execute inside a
+        **single transaction**.  If any step raises an exception the entire
+        transaction is rolled back automatically, leaving no partial state.
 
-        On in-process exceptions, best-effort compensating cleanup runs via
-        ``_rollback_incident``; that cleanup can still fail, leaving inconsistent rows.
-        Process crash or abrupt termination after any commit can leave partial incidents,
-        claims, or links with no cleanup.
-
-        For stronger cross-step consistency, consider a saga, transactional outbox, or a
-        deliberately scoped single-transaction design if the call stack allows it.
+        External I/O (policy adapter look-ups) is performed **before** the
+        transaction opens so it does not hold the database lock during network
+        calls.  UCSPA deadline setting and claim-submitted events run **after**
+        the transaction commits.  Missing UCSPA schema columns are tolerated
+        (warning only); other UCSPA failures propagate like :meth:`ClaimRepository.create_claim`.
         """
         incident_id = _generate_incident_id()
         incident_date_str = incident_input.incident_date.isoformat()
@@ -69,7 +70,15 @@ class IncidentRepository:
         if loss_state is not None:
             loss_state = str(loss_state).strip() or None
 
+        # Pre-fetch policies before opening the transaction (external I/O).
+        vehicle_policies = self._prefetch_vehicle_policies(incident_input.vehicles)
+
+        # Accumulate (claim_id, effective_loss_state) for post-transaction work.
+        claim_details: list[tuple[str, str | None]] = []
+        claim_ids: list[str] = []
+
         with get_connection(self._db_path) as conn:
+            # 1. Insert the incident row.
             conn.execute(
                 text("""
                 INSERT INTO incidents (id, incident_date, incident_description, loss_state)
@@ -83,9 +92,8 @@ class IncidentRepository:
                 },
             )
 
-        claim_ids: list[str] = []
-        try:
-            for vehicle in incident_input.vehicles:
+            # 2. Create one claim per vehicle, then link to all previous claims.
+            for vehicle, policy in zip(incident_input.vehicles, vehicle_policies):
                 claim_input = self._vehicle_to_claim_input(
                     vehicle,
                     incident_input.incident_date,
@@ -93,27 +101,82 @@ class IncidentRepository:
                     incident_input.loss_state,
                     incident_id,
                 )
-                claim_id = self._claim_repo.create_claim(claim_input, actor_id=actor_id)
+                claim_id = self._claim_repo.create_claim_in_transaction(
+                    conn, claim_input, actor_id=actor_id, policy=policy
+                )
+                # Link this claim to every previously created claim in the same incident.
+                for other_id in claim_ids:
+                    self._create_link_in_conn(conn, claim_id, other_id, "same_incident", None, None)
                 claim_ids.append(claim_id)
 
-                # Link claims within same incident
-                for other_id in claim_ids:
-                    if other_id != claim_id:
-                        self._create_link_internal(
-                            claim_id, other_id, "same_incident", None, None
-                        )
-        except Exception:
-            # Compensating cleanup: remove any created claims and the incident row
-            self._rollback_incident(incident_id, claim_ids)
-            raise
+                effective_loss = ClaimRepository._normalize_loss_state(claim_input.loss_state)
+                claim_details.append((claim_id, effective_loss))
+
+            # All writes committed atomically on successful context exit.
+
+        # Post-transaction: apply UCSPA deadlines and emit events (best-effort).
+        for claim_id, effective_loss in claim_details:
+            try:
+                _apply_ucspa_at_fnol(self._claim_repo, claim_id, effective_loss)
+            except (OperationalError, ProgrammingError) as e:
+                logger.warning(
+                    "ucspa_at_fnol_failed claim_id=%s: %s (run alembic upgrade head if UCSPA columns missing)",
+                    claim_id,
+                    e,
+                )
+            except Exception:
+                logger.exception("ucspa_at_fnol_unexpected_error claim_id=%s", claim_id)
+                raise
+            emit_claim_event(
+                ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
+            )
 
         return incident_id, claim_ids
 
+    def _prefetch_vehicle_policies(
+        self, vehicles: list[VehicleClaimInput]
+    ) -> list[dict[str, Any] | None]:
+        """Pre-fetch policy data for each vehicle before opening a transaction.
+
+        This performs external I/O (policy adapter) outside the transaction so
+        the database lock is not held during network calls.  Returns a list
+        parallel to *vehicles* where each element is the fetched policy dict or
+        ``None`` when the intake already includes a policyholder party or when
+        the adapter call fails.
+        """
+        from claim_agent.adapters.registry import get_policy_adapter
+
+        results: list[dict[str, Any] | None] = []
+        for vehicle in vehicles:
+            intake_has_policyholder = any(
+                getattr(p, "party_type", None) == "policyholder"
+                for p in (vehicle.parties or [])
+            )
+            if intake_has_policyholder:
+                results.append(None)
+                continue
+            try:
+                results.append(get_policy_adapter().get_policy(vehicle.policy_number))
+            except Exception:
+                logger.debug(
+                    "fnol_policy_lookup_failed policy_number=%s",
+                    vehicle.policy_number,
+                    exc_info=True,
+                )
+                results.append(None)
+        return results
+
     def _rollback_incident(self, incident_id: str, claim_ids: list[str]) -> None:
         """Remove incident and associated claims on partial failure (compensating cleanup).
-        
-        Note: Cannot delete claims with audit log entries due to foreign key constraints
-        and append-only triggers. Instead, we mark them as failed and archived.
+
+        .. deprecated::
+            :meth:`create_incident` now uses a single database transaction, so
+            this method is no longer called for incident creation failures.
+            It is retained for callers that may have used it directly.
+
+        Note: Cannot delete claims with audit log entries due to foreign key
+        constraints and append-only triggers.  Instead, marks them as failed
+        and archived.
         """
         try:
             with get_connection(self._db_path) as conn:
@@ -203,9 +266,28 @@ class IncidentRepository:
 
         Returns the new link's ID, or None if the link already exists.
         """
+        with get_connection(self._db_path) as conn:
+            return self._create_link_in_conn(
+                conn, claim_id_a, claim_id_b, link_type, opposing_carrier, notes
+            )
+
+    def _create_link_in_conn(
+        self,
+        conn: Any,
+        claim_id_a: str,
+        claim_id_b: str,
+        link_type: str,
+        opposing_carrier: str | None,
+        notes: str | None,
+    ) -> int | None:
+        """Create claim link using an existing connection. Does not commit.
+
+        Ensures canonical order (a < b) for uniqueness.  Returns the new
+        link's ID, or ``None`` if the link already exists.
+        """
         a, b = (claim_id_a, claim_id_b) if claim_id_a <= claim_id_b else (claim_id_b, claim_id_a)
         try:
-            with get_connection(self._db_path) as conn:
+            with conn.begin_nested():
                 result = conn.execute(
                     text("""
                     INSERT INTO claim_links
