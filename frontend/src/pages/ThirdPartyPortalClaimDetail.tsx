@@ -10,7 +10,7 @@ import { ThirdPartyPortalLiabilityPanel } from '../components/thirdPartyPortal/T
 import { ThirdPartyPortalDocumentUpload } from '../components/thirdPartyPortal/ThirdPartyPortalDocumentUpload';
 import type { Claim, AuditEvent, FollowUpMessage } from '../api/types';
 
-/** Must match ``DISPUTABLE_STATUSES`` in ``src/claim_agent/db/constants.py`` (single source of truth). */
+/** Must be kept in sync with ``DISPUTABLE_STATUSES`` in ``src/claim_agent/db/constants.py``. */
 const THIRD_PARTY_DISPUTABLE_STATUSES: readonly string[] = ['settled', 'open'];
 
 const qk = {
