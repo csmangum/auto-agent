@@ -502,6 +502,12 @@ def _run_crew_stage_body(
     budget_cb = BudgetEnforcingCallback(ctx.claim_id, ctx.context.metrics)
     try:
         result = _kickoff_with_retry(
+            crew,
+            inputs,
+            create_crew_no_args=lambda: create_crew(ctx),
+            claim_id=ctx.claim_id,
+            metrics=ctx.context.metrics,
+            llm=ctx.context.llm,
             crew, inputs, create_crew_no_args=lambda: create_crew(ctx), budget_callback=budget_cb
         )
     except MidWorkflowEscalation as e:

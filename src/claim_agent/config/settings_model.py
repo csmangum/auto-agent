@@ -635,6 +635,23 @@ class LLMConfig(BaseSettings):
         validation_alias="OPENAI_FALLBACK_MODELS",
         description="Comma-separated fallback models when primary is down or over budget",
     )
+    budget_fallback_enabled: bool = Field(
+        default=False,
+        validation_alias="LLM_BUDGET_FALLBACK_ENABLED",
+        description=(
+            "When true, proactively switch to the next cheaper model in OPENAI_FALLBACK_MODELS "
+            "before hitting a hard TokenBudgetExceeded error, once token or call usage reaches "
+            "LLM_BUDGET_FALLBACK_THRESHOLD of the cap. Requires OPENAI_FALLBACK_MODELS to be set."
+        ),
+    )
+    budget_fallback_threshold: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        validation_alias="LLM_BUDGET_FALLBACK_THRESHOLD",
+        description=(
+            "Fraction of MAX_TOKENS_PER_CLAIM or MAX_LLM_CALLS_PER_CLAIM at which "
+            "budget-driven fallback engages (0.0–1.0). Requires LLM_BUDGET_FALLBACK_ENABLED=true."
     # Prompt cache settings
     cache_enabled: bool = Field(
         default=False,
