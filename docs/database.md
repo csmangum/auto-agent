@@ -38,11 +38,33 @@ SQLite also supports **non-Alembic** bootstrap and legacy repair paths in the sa
 
 **PostgreSQL:** schema comes from Alembic only (`init_db()` does not apply DDL). New Postgres databases use the combined migration **`023_postgres_full_schema.py`**, which duplicates the logical shape of SQLite with dialect-specific types (`SERIAL`, `TIMESTAMP`, etc.). When you change **`incidents`**, **`claim_links`**, or **`claims.incident_id`**, update both **`src/claim_agent/db/schema_incidents_sqlite.py`** (shared SQLite DDL used by `database.py` and revision **022**) and the matching sections in **`023_postgres_full_schema.py`**.
 
+### Shared DDL Approach (unifying SCHEMA_SQL and Alembic history)
+
+To eliminate copy-paste between `SCHEMA_SQL` and Alembic revisions, the codebase uses **shared DDL fragment modules** under `src/claim_agent/db/`.  Each module owns the canonical SQLite `CREATE TABLE` and `CREATE INDEX` statements for one logical domain as named Python string constants.  Both `SCHEMA_SQL` and the corresponding Alembic migration import and compose from these constants — so a single edit propagates everywhere.
+
+| Module | Tables covered | Alembic revision |
+|--------|---------------|-----------------|
+| `schema_incidents_sqlite.py` | `incidents`, `claim_links`, `claims.incident_id` | 022 |
+| `schema_auth_sqlite.py` | `users`, `refresh_tokens` | 048 |
+| `schema_privacy_sqlite.py` | `dsar_verification_tokens`, `dpa_registry`, `cross_border_transfer_log` | 046, 047 |
+
+#### Policy for new migrations
+
+Every migration that **creates a new SQLite table** (or that changes a table whose DDL is already covered by a shared module) **must** follow this process:
+
+1. Create (or update) a `schema_<domain>_sqlite.py` module containing the canonical `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` statements as named string constants.
+2. Import those constants in `SCHEMA_SQL` inside `database.py` instead of writing the DDL inline.
+3. Import the same constants in the Alembic migration and use them for the SQLite code path.
+4. Keep the PostgreSQL DDL inline in the migration (types differ: `SERIAL` vs `INTEGER AUTOINCREMENT`, `TIMESTAMP WITH TIME ZONE` vs `TEXT`), but ensure column names and nullability match.
+
+CI enforces this alignment via **`tests/test_schema_sqlite_parity.py`** (and `tests/test_schema_incidents_parity.py`), which compare column names between shared SQLite constants and the PostgreSQL equivalents in each migration.
+
 **When changing the schema:**
 
 - Add an Alembic migration for the change.
-- Update `SCHEMA_SQL` (and any shared module it uses, e.g. `schema_incidents_sqlite.py`) so new SQLite installs match.
-- For Postgres-only DDL in `023`, update in parallel when the same tables/columns are touched.
+- If the migration adds a new table: create or update a `schema_<domain>_sqlite.py` shared module and import from it in both `SCHEMA_SQL` and the migration.
+- If the migration adds a column to an existing table already in a shared module: update the shared module constant, then add the corresponding `ALTER TABLE` step in the migration.
+- For Postgres-only DDL, update in parallel and add a parity test.
 - Run migrations on existing DBs; `init_db` will not modify existing table columns in all cases, although `SCHEMA_SQL` may still create new indexes or triggers defined there. All schema changes for existing databases that use Alembic must go through Alembic.
 
 ## Schema Overview
