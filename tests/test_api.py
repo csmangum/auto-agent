@@ -1642,7 +1642,7 @@ class TestMetrics:
         resp = client.get("/api/metrics/cost", headers=_auth_headers("sk-sup"))
         assert resp.status_code == 200
         data = resp.json()
-        for key in ("global_stats", "by_crew", "by_claim_type", "daily"):
+        for key in ("global_stats", "by_crew", "by_claim_type", "daily", "monthly"):
             assert key in data, f"Expected key '{key}' missing from /metrics/cost response"
 
     def test_cost_breakdown_admin_ok(self, client, monkeypatch):

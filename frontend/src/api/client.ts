@@ -224,6 +224,7 @@ export interface CostBreakdown {
   by_crew: Record<string, { total_cost_usd: number; total_tokens: number; total_calls: number }>;
   by_claim_type: Record<string, { total_cost_usd: number; total_tokens: number; total_claims: number; total_calls: number }>;
   daily: Record<string, { total_cost_usd: number; total_tokens: number; claims: number }>;
+  monthly: Record<string, { total_cost_usd: number; total_tokens: number; claims: number }>;
   total_cost_usd: number;
   total_tokens: number;
 }
