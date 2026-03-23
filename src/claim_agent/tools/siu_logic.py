@@ -27,19 +27,39 @@ _ADAPTER_RETRY_ATTEMPTS = 3
 # Tests set CLAIM_AGENT_SIU_ADAPTER_RETRY_SLEEP_SEC=0 for fast runs.
 _SIU_RETRY_SLEEP_ENV = "CLAIM_AGENT_SIU_ADAPTER_RETRY_SLEEP_SEC"
 
+# Cached adapter retry sleep override so we only parse/log once per process.
+_ADAPTER_RETRY_SLEEP_OVERRIDE: float | None = None
+_ADAPTER_RETRY_SLEEP_OVERRIDE_INITIALIZED = False
+
+
+def _init_adapter_retry_sleep_override() -> None:
+    """Parse the retry-sleep env var once and cache the result (warns at most once)."""
+    global _ADAPTER_RETRY_SLEEP_OVERRIDE, _ADAPTER_RETRY_SLEEP_OVERRIDE_INITIALIZED
+    if _ADAPTER_RETRY_SLEEP_OVERRIDE_INITIALIZED:
+        return
+    _ADAPTER_RETRY_SLEEP_OVERRIDE_INITIALIZED = True
+
+    raw = os.getenv(_SIU_RETRY_SLEEP_ENV)
+    if raw is None or raw.strip() == "":
+        return
+
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
+        return
+
+    if value < 0:
+        logger.warning("Negative %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
+        return
+
+    _ADAPTER_RETRY_SLEEP_OVERRIDE = value
+
 
 def _adapter_retry_sleep_seconds(attempt: int) -> float:
-    raw = os.getenv(_SIU_RETRY_SLEEP_ENV)
-    if raw is not None and raw.strip() != "":
-        try:
-            value = float(raw)
-        except ValueError:
-            logger.warning("Invalid %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
-        else:
-            if value < 0:
-                logger.warning("Negative %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
-            else:
-                return value
+    _init_adapter_retry_sleep_override()
+    if _ADAPTER_RETRY_SLEEP_OVERRIDE is not None:
+        return _ADAPTER_RETRY_SLEEP_OVERRIDE
     return float(2**attempt)
 
 # Omit from fraud_report_filings.metadata redacted_payload (PII / sensitive)

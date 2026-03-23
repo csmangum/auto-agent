@@ -219,8 +219,8 @@ class TestEmbeddings:
         assert embeddings.shape[0] == 3
         assert embeddings.shape[1] == embedder.dimension
     
-    def test_get_embedding_provider(self):
-        """Test the factory function (unit tests use LexicalHashEmbedding via conftest)."""
+    def test_get_embedding_provider_unit_test_fixture(self):
+        """Verify that unit tests receive the LexicalHashEmbedding mock via conftest."""
         from claim_agent.rag.embeddings import get_embedding_provider
 
         from tests.conftest_embedding_mocks import LexicalHashEmbedding

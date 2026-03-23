@@ -62,7 +62,6 @@ def _is_integration_e2e_or_load(request: pytest.FixtureRequest) -> bool:
 def _mock_embedding_provider_for_unit_tests(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
-    tmp_path: Path,
 ) -> None:
     """Use fast lexical fake for all tests except integration / e2e / load."""
     if _is_integration_e2e_or_load(request):
@@ -80,6 +79,8 @@ def _mock_embedding_provider_for_unit_tests(
 
     # Isolate on-disk RAG cache: ~/.cache may hold vectors from a real model; fake query
     # embeddings must match indexed vectors or semantic search returns nothing.
+    # Request tmp_path lazily so pytest only creates a temp dir for unit tests.
+    tmp_path: Path = request.getfixturevalue("tmp_path")
     rag_cache = tmp_path / "rag_cache"
     rag_cache.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("CLAIM_AGENT_CACHE_DIR", str(rag_cache))
