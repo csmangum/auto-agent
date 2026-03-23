@@ -500,7 +500,14 @@ def _run_crew_stage_body(
     crew = create_crew(ctx)
     inputs = get_inputs(ctx)
     try:
-        result = _kickoff_with_retry(crew, inputs, create_crew_no_args=lambda: create_crew(ctx))
+        result = _kickoff_with_retry(
+            crew,
+            inputs,
+            create_crew_no_args=lambda: create_crew(ctx),
+            claim_id=ctx.claim_id,
+            metrics=ctx.context.metrics,
+            llm=ctx.context.llm,
+        )
     except MidWorkflowEscalation as e:
         return _handle_mid_workflow_escalation(
             e,

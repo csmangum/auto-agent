@@ -11,7 +11,10 @@ from claim_agent.db.constants import (
     STATUS_SETTLED,
 )
 from claim_agent.models.claim import ClaimType
+from claim_agent.observability import get_logger
 from claim_agent.utils.retry import with_llm_retry
+
+logger = get_logger(__name__)
 
 
 WORKFLOW_STAGES = (
@@ -109,6 +112,9 @@ def _kickoff_with_retry(
     crew: Any,
     inputs: dict[str, Any],
     create_crew_no_args: Callable[[], Any] | None = None,
+    claim_id: str | None = None,
+    metrics: Any | None = None,
+    llm: Any | None = None,
 ) -> Any:
     """Run crew.kickoff with retry on transient failures.
 
@@ -116,13 +122,44 @@ def _kickoff_with_retry(
     fallback model from OPENAI_FALLBACK_MODELS by setting a thread-local model
     override before recreating the crew via the factory.  Callers that don't
     need model fallback can omit the factory entirely.
+
+    Budget-driven fallback (LLM_BUDGET_FALLBACK_ENABLED):
+        When enabled and *claim_id* + *metrics* are provided, the function checks
+        whether the claim has already consumed ≥ LLM_BUDGET_FALLBACK_THRESHOLD of
+        MAX_TOKENS_PER_CLAIM or MAX_LLM_CALLS_PER_CLAIM before the first attempt.
+        If the threshold is breached and a cheaper fallback model exists in the
+        chain, the crew is recreated with that model instead of waiting for a hard
+        TokenBudgetExceeded exception.  This works the same as the exception-driven
+        path but is triggered by budget proximity rather than a runtime error.
+
+        Thread-local note: model override is scoped to the current thread only and
+        does not propagate to worker processes or async tasks in other threads.
     """
     models = get_llm_fallback_chain()
     last_exc: BaseException | None = None
     use_fallback = create_crew_no_args is not None and len(models) > 1
 
-    for i, model_name in enumerate(models):
-        if use_fallback and i > 0:
+    # Budget-driven fallback: proactively advance the model chain when approaching cap.
+    start_index = 0
+    if use_fallback and claim_id is not None and metrics is not None:
+        from claim_agent.config.settings import get_settings
+        from claim_agent.workflow.budget import _is_budget_approaching
+
+        llm_cfg = get_settings().llm
+        if llm_cfg.budget_fallback_enabled and _is_budget_approaching(
+            claim_id, metrics, llm=llm, threshold=llm_cfg.budget_fallback_threshold
+        ):
+            start_index = 1
+            logger.info(
+                "budget_driven_fallback claim_id=%s from_model=%s to_model=%s threshold=%.2f",
+                claim_id,
+                models[0],
+                models[start_index],
+                llm_cfg.budget_fallback_threshold,
+            )
+
+    for i, model_name in enumerate(models[start_index:]):
+        if use_fallback and (i + start_index) > 0:
             _set_model_override(model_name)
             try:
                 assert create_crew_no_args is not None

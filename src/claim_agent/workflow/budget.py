@@ -66,6 +66,43 @@ def _check_token_budget(claim_id: str, metrics: Any, llm: LLMProtocol | None = N
         )
 
 
+def _is_budget_approaching(
+    claim_id: str,
+    metrics: Any,
+    llm: LLMProtocol | None = None,
+    threshold: float | None = None,
+) -> bool:
+    """Return True when the claim is approaching the configured token or call budget.
+
+    Uses the same usage-snapshot logic as ``_check_token_budget``.  When *threshold*
+    is ``None`` the value is read from ``LLMConfig.budget_fallback_threshold``
+    (env: ``LLM_BUDGET_FALLBACK_THRESHOLD``, default 0.9).
+
+    This function is intentionally non-raising: callers use the return value to
+    decide whether to proactively switch to a cheaper fallback model before the
+    hard ``TokenBudgetExceeded`` exception fires.
+    """
+    from claim_agent.config.settings import get_settings  # avoid circular import at module level
+
+    if threshold is None:
+        threshold = get_settings().llm.budget_fallback_threshold
+
+    summary = metrics.get_claim_summary(claim_id)
+    total_tokens = summary.total_tokens if summary is not None else 0
+    total_calls = summary.total_llm_calls if summary is not None else 0
+
+    if total_tokens == 0 and total_calls == 0 and llm is not None:
+        usage = _get_llm_usage_snapshot(llm)
+        if usage is not None:
+            prompt_tokens, completion_tokens, successful_requests = usage
+            total_tokens = prompt_tokens + completion_tokens
+            total_calls = successful_requests or (1 if total_tokens > 0 else 0)
+
+    token_ratio = total_tokens / MAX_TOKENS_PER_CLAIM if MAX_TOKENS_PER_CLAIM > 0 else 0.0
+    call_ratio = total_calls / MAX_LLM_CALLS_PER_CLAIM if MAX_LLM_CALLS_PER_CLAIM > 0 else 0.0
+    return token_ratio >= threshold or call_ratio >= threshold
+
+
 def _record_crew_usage_delta(
     claim_id: str,
     llm: LLMProtocol | None,
