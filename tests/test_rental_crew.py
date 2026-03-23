@@ -67,9 +67,11 @@ def test_rental_crew_agent_tools():
 
     coordinator_tools = [getattr(t, "name", str(t)) for t in (coordinator_agent.tools or [])]
     assert any("get_rental" in n or "Get Rental" in n for n in coordinator_tools)
+    assert any("document" in n.lower() for n in coordinator_tools)
 
     processor_tools = [getattr(t, "name", str(t)) for t in (processor_agent.tools or [])]
     assert any("process_rental" in n or "Process Rental" in n for n in processor_tools)
+    assert any("payment" in n.lower() for n in processor_tools)
 
 
 def test_rental_crew_kickoff_inputs():

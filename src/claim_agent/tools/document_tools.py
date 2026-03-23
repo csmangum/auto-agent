@@ -70,7 +70,8 @@ def extract_document_data(claim_id: str, document_id: int) -> str:
 
 @tool("Classify Document")
 def classify_document(claim_id: str, document_id: int) -> str:
-    """Classify a claim document by type (police_report, estimate, medical_record, photo, pdf, other).
+    """Classify a claim document by type (police_report, estimate, medical_record, photo, pdf,
+    rental_receipt, rental_agreement, other).
 
     Uses vision model for images; filename heuristics for other files. Updates the document record.
     Args:

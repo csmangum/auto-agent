@@ -23,6 +23,8 @@ DOCUMENT_TYPE_OPTIONS = [
     "medical_record",
     "photo",
     "pdf",
+    "rental_receipt",
+    "rental_agreement",
     "other",
 ]
 
@@ -150,7 +152,7 @@ def _classify_document_vision(file_path: Path, storage_key: str) -> tuple[str, s
     content = f"data:{mime};base64,{b64}"
     model = get_settings().llm.vision_model.strip() or "gpt-4o"
     prompt = """Classify this insurance claim document image. Return a JSON object with:
-- document_type: one of police_report, estimate, medical_record, photo, pdf, other
+- document_type: one of police_report, estimate, medical_record, photo, pdf, rental_receipt, rental_agreement, other
 - received_from: optional source (claimant, police, repair_shop, provider, etc.) or null if unclear"""
     try:
         messages = [

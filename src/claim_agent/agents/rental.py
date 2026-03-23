@@ -6,11 +6,13 @@ from claim_agent.config.llm_protocol import LLMProtocol
 from claim_agent.tools import (
     add_claim_note,
     check_rental_coverage,
+    create_document_request,
     escalate_claim,
     get_claim_notes,
     get_rental_limits,
     process_rental_reimbursement,
     query_policy_db,
+    record_claim_payment,
     search_state_compliance,
 )
 from claim_agent.skills import (
@@ -51,6 +53,7 @@ def create_rental_coordinator_agent(llm: LLMProtocol | None = None):
         backstory=skill["backstory"],
         tools=[
             get_rental_limits,
+            create_document_request,
             add_claim_note,
             get_claim_notes,
             escalate_claim,
@@ -69,6 +72,7 @@ def create_rental_reimbursement_processor_agent(llm: LLMProtocol | None = None):
         backstory=skill["backstory"],
         tools=[
             process_rental_reimbursement,
+            record_claim_payment,
             get_rental_limits,
             add_claim_note,
             get_claim_notes,

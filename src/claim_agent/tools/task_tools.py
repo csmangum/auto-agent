@@ -282,12 +282,13 @@ def create_document_request(
 ) -> str:
     """Create a document request to track requested -> received documents.
 
-    Use when you need to formally request a document (police report, medical records,
-    estimate) and track when it is received.
+    Use when you need to formally request a document (police_report, estimate,
+    rental_receipt, rental_agreement, medical_record, etc.) and track when it is received.
 
     Args:
         claim_id: The claim ID.
-        document_type: Type of document (police_report, estimate, medical_records, etc.).
+        document_type: Type of document (police_report, estimate, rental_receipt,
+            rental_agreement, medical_record, etc.).
         requested_from: Party to request from (claimant, police, provider, repair_shop).
 
     Returns:

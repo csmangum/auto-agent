@@ -358,14 +358,27 @@ function NotesTab({ notes, followUps, addNoteMutation }: NotesTabProps) {
 // ---------------------------------------------------------------------------
 
 const DOCUMENT_TYPES = [
-  'police_report', 'estimate', 'medical_record', 'photo', 'pdf', 'other',
+  'police_report',
+  'estimate',
+  'medical_record',
+  'photo',
+  'pdf',
+  'rental_receipt',
+  'rental_agreement',
+  'other',
 ];
 
 const REVIEW_STATUSES = ['pending', 'in_review', 'reviewed', 'rejected'];
 
 const DOC_TYPE_ICONS: Record<string, string> = {
-  police_report: '🚔', estimate: '📋', photo: '🖼️',
-  medical_record: '🏥', pdf: '📄', other: '📎',
+  police_report: '🚔',
+  estimate: '📋',
+  photo: '🖼️',
+  medical_record: '🏥',
+  pdf: '📄',
+  rental_receipt: '🧾',
+  rental_agreement: '🚗',
+  other: '📎',
 };
 
 interface DocumentsTabProps {

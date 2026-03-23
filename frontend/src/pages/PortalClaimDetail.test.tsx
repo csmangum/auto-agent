@@ -10,6 +10,7 @@ const mockGetClaimHistory = vi.fn();
 const mockGetDocuments = vi.fn();
 const mockGetRepairStatus = vi.fn();
 const mockGetPayments = vi.fn();
+const mockGetDocumentRequests = vi.fn();
 
 vi.mock('../api/portalClient', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/portalClient')>();
@@ -22,6 +23,7 @@ vi.mock('../api/portalClient', async (importOriginal) => {
       getDocuments: (...args: unknown[]) => mockGetDocuments(...args),
       getRepairStatus: (...args: unknown[]) => mockGetRepairStatus(...args),
       getPayments: (...args: unknown[]) => mockGetPayments(...args),
+      getDocumentRequests: (...args: unknown[]) => mockGetDocumentRequests(...args),
     },
   };
 });
@@ -76,6 +78,7 @@ describe('PortalClaimDetail', () => {
       cycle_time_days: null,
     });
     mockGetPayments.mockResolvedValue({ payments: [], total: 0 });
+    mockGetDocumentRequests.mockResolvedValue({ document_requests: [], total: 0 });
   });
 
   it('shows loading state', () => {
@@ -106,6 +109,9 @@ describe('PortalClaimDetail', () => {
       </Wrapper>
     );
     await screen.findByText('Claim CLM-001...');
+    expect(mockGetDocumentRequests).toHaveBeenCalledWith('CLM-001');
+    expect(mockGetPayments).not.toHaveBeenCalled();
+
     expect(screen.getByText('Status')).toBeInTheDocument();
     expect(screen.getByText('Documents')).toBeInTheDocument();
     expect(screen.getByText('Messages')).toBeInTheDocument();
@@ -122,6 +128,10 @@ describe('PortalClaimDetail', () => {
 
     fireEvent.click(screen.getByText('Payments'));
     expect(mockGetPayments).toHaveBeenCalledWith('CLM-001');
+
+    fireEvent.click(screen.getByText('Rental'));
+    await screen.findByText('Loss of use and rental');
+    expect(mockGetRepairStatus).toHaveBeenCalledWith('CLM-001');
   });
 
   it('shows status tab content', async () => {
@@ -201,6 +211,62 @@ describe('PortalClaimDetail', () => {
     await screen.findByText('Claim CLM-001...');
     fireEvent.click(screen.getByText('Messages'));
     await screen.findByText(/When will I get my check/i);
+  });
+
+  it('shows rental tab with requests, repair context, and coordination payments', async () => {
+    mockGetDocumentRequests.mockResolvedValue({
+      document_requests: [
+        {
+          id: 1,
+          document_type: 'rental_receipt',
+          status: 'requested',
+          requested_at: '2025-01-18T10:00:00Z',
+          requested_from: 'claimant',
+        },
+      ],
+      total: 1,
+    });
+    mockGetRepairStatus.mockResolvedValue({
+      history: [],
+      latest: { status: 'paint', authorization_id: 'AUTH-99' },
+      cycle_time_days: 3,
+    });
+    mockGetPayments.mockResolvedValue({
+      payments: [
+        {
+          id: 1,
+          amount: 120,
+          payee: 'Hertz',
+          payee_type: 'rental_company',
+          status: 'issued',
+          issued_at: '2025-01-19T10:00:00Z',
+          payment_method: 'ach',
+        },
+        {
+          id: 2,
+          amount: 200,
+          payee: 'Jane',
+          payee_type: 'claimant',
+          status: 'issued',
+          external_ref: 'workflow_rental:run1',
+          payment_method: 'check',
+        },
+      ],
+      total: 2,
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Rental'));
+    await screen.findByText('Loss of use and rental');
+    await screen.findByText(/Repair timeline/i);
+    expect(screen.getByText('AUTH-99')).toBeInTheDocument();
+    expect(screen.getByText(/rental receipt/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$120/)).toBeInTheDocument();
+    expect(screen.getByText(/\$200/)).toBeInTheDocument();
   });
 
   it('shows payments tab with payments', async () => {
