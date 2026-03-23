@@ -351,8 +351,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref ON claim
     + IDX_CLAIMS_INCIDENT_DATE
     + ";\n"
     + IDX_CLAIMS_INCIDENT_ID
-    + """;
-
+    + ";\n"
+    + """
 -- Subrogation cases: recovery tracking and inter-company arbitration
 CREATE TABLE IF NOT EXISTS subrogation_cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

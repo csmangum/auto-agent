@@ -97,6 +97,27 @@ _ADD_COLUMN_RE = re.compile(
 )
 
 
+def _postgres_branch(source: str) -> str:
+    """Return only the ``else:`` (postgres) branch of ``upgrade()`` in *source*.
+
+    Slices from the first ``else:`` that appears inside ``upgrade()`` up to
+    (but not including) ``def downgrade``, so that :data:`_ADD_COLUMN_RE`
+    matches are constrained to the postgres path and cannot accidentally pick
+    up SQLite-only ``ALTER TABLE … ADD COLUMN`` statements.
+
+    Returns an empty string when no ``else:`` block is found.
+    """
+    upgrade_pos = source.find("def upgrade(")
+    if upgrade_pos == -1:
+        return ""
+    else_pos = source.find("\n    else:", upgrade_pos)
+    if else_pos == -1:
+        return ""
+    downgrade_pos = source.find("\ndef downgrade", else_pos)
+    end = downgrade_pos if downgrade_pos != -1 else len(source)
+    return source[else_pos:end]
+
+
 def _postgres_claims_columns() -> set[str]:
     """Build the full postgres ``claims`` column set.
 
@@ -116,7 +137,8 @@ def _postgres_claims_columns() -> set[str]:
         "034_retention_tier_and_purge.py",
         "050_cold_storage_export.py",
     ):
-        normalized = _normalize_source(_migration_text(filename))
+        raw = _migration_text(filename)
+        normalized = _normalize_source(_postgres_branch(raw))
         for m in _ADD_COLUMN_RE.finditer(normalized):
             cols.add(m.group(1).lower())
 
