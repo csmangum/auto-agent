@@ -24,7 +24,7 @@ export function ThirdPartyPortalDocumentUpload({
       setFile(null);
       onUploaded();
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Upload failed');
+      setMsg(`Error: ${err instanceof Error ? err.message : 'Upload failed'}`);
     } finally {
       setBusy(false);
     }
@@ -51,7 +51,7 @@ export function ThirdPartyPortalDocumentUpload({
         </button>
         {msg && (
           <p
-            className={`text-sm ${msg.includes('failed') || msg.includes('Error') ? 'text-red-400' : 'text-purple-400'}`}
+            className={`text-sm ${msg.startsWith('Error') ? 'text-red-400' : 'text-purple-400'}`}
           >
             {msg}
           </p>
