@@ -1,13 +1,12 @@
 import { useState, useRef } from 'react';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
-import { getPortalSession } from '../api/portalClient';
+import { getPortalSession, portalApi } from '../api/portalClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import MessagesTab from '../components/MessagesTab';
 import { formatDateTime } from '../utils/date';
 import { usePortal } from '../context/usePortal';
-import { portalApi } from '../api/portalClient';
 import type { FollowUpMessage } from '../api/types';
 
 const CUSTOMER_VISIBLE_ACTIONS = new Set([
@@ -103,7 +102,7 @@ export default function PortalClaimDetail() {
       (activeTab === 'repair' || activeTab === 'rental'),
   });
 
-  const { data: paymentsData } = useQuery({
+  const { data: paymentsData, isError: paymentsError, isLoading: paymentsLoading } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'payments'],
     queryFn: () => portalApi.getPayments(claimId!),
     enabled:
@@ -112,10 +111,11 @@ export default function PortalClaimDetail() {
       (activeTab === 'payments' || activeTab === 'rental'),
   });
 
-  const { data: docRequestsData } = useQuery({
+  const { data: docRequestsData, isError: docRequestsError, isLoading: docRequestsLoading } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'document-requests'],
     queryFn: () => portalApi.getDocumentRequests(claimId!),
     enabled: !!claimId && claimQuerySuccess,
+    staleTime: 30_000,
   });
 
   const claim = claimData as Record<string, unknown> | undefined;
@@ -364,6 +364,10 @@ export default function PortalClaimDetail() {
               repairLatest={
                 (repairData?.latest ?? null) as Record<string, unknown> | null
               }
+              docRequestsError={docRequestsError}
+              docRequestsLoading={docRequestsLoading}
+              paymentsError={paymentsError}
+              paymentsLoading={paymentsLoading}
             />
           )}
           {activeTab === 'dispute' && (
@@ -662,6 +666,10 @@ function RentalTab({
   rentalPayments,
   rentalDocRequests,
   repairLatest,
+  docRequestsError,
+  docRequestsLoading,
+  paymentsError,
+  paymentsLoading,
 }: {
   claimType: string;
   rentalPayments: Array<{
@@ -682,6 +690,10 @@ function RentalTab({
     requested_from?: string;
   }>;
   repairLatest: Record<string, unknown> | null;
+  docRequestsError?: boolean;
+  docRequestsLoading?: boolean;
+  paymentsError?: boolean;
+  paymentsLoading?: boolean;
 }) {
   const latestStatus =
     repairLatest && typeof repairLatest.status === 'string'
@@ -745,7 +757,16 @@ function RentalTab({
         <h3 className="text-sm font-semibold text-gray-300 mb-2">
           Requests from your adjuster
         </h3>
-        {rentalDocRequests.length > 0 ? (
+        {docRequestsError && (
+          <p className="text-sm text-amber-400 mb-3">
+            Could not load document requests. Please try again later.
+          </p>
+        )}
+        {docRequestsLoading && !docRequestsError ? (
+          <p className="text-sm text-gray-500 animate-pulse">
+            Loading document requests&hellip;
+          </p>
+        ) : !docRequestsError && rentalDocRequests.length > 0 ? (
           <ul className="space-y-3">
             {rentalDocRequests.map((r) => (
               <li
@@ -773,18 +794,27 @@ function RentalTab({
               </li>
             ))}
           </ul>
-        ) : (
+        ) : !docRequestsError && !docRequestsLoading ? (
           <p className="text-sm text-gray-500">
             No rental-related document requests right now.
           </p>
-        )}
+        ) : null}
       </div>
 
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-2">
           Rental-related payments
         </h3>
-        {rentalPayments.length > 0 ? (
+        {paymentsError && (
+          <p className="text-sm text-amber-400 mb-3">
+            Could not load payment data. Please try again later.
+          </p>
+        )}
+        {paymentsLoading && !paymentsError ? (
+          <p className="text-sm text-gray-500 animate-pulse">
+            Loading payment data&hellip;
+          </p>
+        ) : !paymentsError && rentalPayments.length > 0 ? (
           <div className="space-y-3">
             {rentalPayments.map((p) => (
               <div
@@ -817,12 +847,12 @@ function RentalTab({
               </div>
             ))}
           </div>
-        ) : (
+        ) : !paymentsError && !paymentsLoading ? (
           <p className="text-sm text-gray-500">
             No rental-related payments recorded yet (including direct-bill to a
             rental company or tagged reimbursement).
           </p>
-        )}
+        ) : null}
       </div>
     </div>
   );

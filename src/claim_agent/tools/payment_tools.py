@@ -9,6 +9,9 @@ from claim_agent.tools.payment_logic import (
 
 _P = WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX
 
+# Docstring is built as an f-string so the external_ref convention can reference
+# the canonical prefix constant. This means we can't use @tool as a decorator
+# (decorators run before __doc__ can be reassigned), so we apply tool() manually.
 _RECORD_CLAIM_PAYMENT_DOC = f"""Create an authorized claim_payments row (disbursement ledger).
 
 Recorded under the workflow actor with payment authority limits bypassed for automation.

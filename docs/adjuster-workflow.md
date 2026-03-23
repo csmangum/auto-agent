@@ -85,6 +85,23 @@ Each adjuster action writes to `claim_audit_log`:
 
 The `actor_id` column stores the authenticated adjuster identity (from API key or JWT).
 
+## Workbench UI Routes
+
+The frontend adjuster workbench maps to the following routes and API endpoints (see [#309](https://github.com/csmangum/auto-agent/issues/309) for the full feature checklist).
+
+| Capability | Frontend Route | API Endpoints |
+|------------|---------------|---------------|
+| **Workbench dashboard** | `/workbench` | — |
+| **Assignment / review queue** | `/workbench/queue` | `GET /api/claims/review-queue`, `PATCH /api/claims/{id}/assign` |
+| **Diary / calendar** | `/workbench/diary` | `GET /api/tasks`, `GET /api/tasks/overdue`, `GET /api/diary/compliance-templates` |
+| **Per-claim detail** | `/claims/:claimId` | `GET /api/claims/{id}` |
+| — Notes | `/claims/:claimId` (Notes tab) | `GET/POST /api/claims/{id}/notes` |
+| — Documents | `/claims/:claimId` (Documents tab) | `GET/POST /api/claims/{id}/documents`, `GET/POST /api/claims/{id}/document-requests` |
+| — Reserves | `/claims/:claimId` (Reserves tab) | `PATCH /api/claims/{id}/reserve`, `GET /api/claims/{id}/reserve-history`, `GET /api/claims/{id}/reserve/adequacy` |
+| — Payments | `/claims/:claimId` (Payments tab) | `GET/POST /api/claims/{id}/payments`, `POST .../payments/{pid}/issue` |
+| — Communications / follow-up | `/claims/:claimId` (Comms tab) | `GET/POST /api/claims/{id}/follow-up`, `POST /api/claims/{id}/follow-up/record-response` |
+| — Coverage / denial | `/claims/:claimId` (Coverage tab) | `POST /api/claims/{id}/denial-coverage` |
+
 ## Related
 
 - [Database Schema](database.md) – claims table, audit log, status constants

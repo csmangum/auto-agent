@@ -150,6 +150,6 @@ describe('Dashboard', () => {
     );
     expect(screen.getByRole('link', { name: /new claim/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /review queue/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /view agents/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /system health/i })).toBeInTheDocument();
   });
 });

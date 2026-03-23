@@ -100,7 +100,7 @@ export default function Layout() {
             </div>
             <div className="min-w-0">
               <h1 className="text-sm font-bold text-gray-100 truncate">Claims System</h1>
-              <p className="text-[11px] text-gray-500 truncate">Observability Dashboard</p>
+              <p className="text-[11px] text-gray-500 truncate">Claims Management Platform</p>
             </div>
           </div>
         </div>

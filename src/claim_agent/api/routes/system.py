@@ -284,7 +284,15 @@ _CREWS_CATALOG = [
             {
                 "name": "Rental Eligibility Specialist",
                 "skill": "rental_eligibility_specialist",
-                "tools": ["check_rental_coverage", "get_rental_limits", "search_state_compliance"],
+                "tools": [
+                    "query_policy_db",
+                    "check_rental_coverage",
+                    "get_rental_limits",
+                    "search_state_compliance",
+                    "add_claim_note",
+                    "get_claim_notes",
+                    "escalate_claim",
+                ],
                 "description": "Checks policy for rental coverage and limits",
             },
             {

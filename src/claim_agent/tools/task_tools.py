@@ -12,6 +12,7 @@ from crewai.tools import tool
 
 from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.tools.document_logic import DOCUMENT_TYPE_OPTIONS
 from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
@@ -301,6 +302,15 @@ def create_document_request(
         return json.dumps({"success": False, "request_id": None, "error": "claim_id is required"})
     if not document_type:
         return json.dumps({"success": False, "request_id": None, "error": "document_type is required"})
+    if document_type not in DOCUMENT_TYPE_OPTIONS:
+        return json.dumps({
+            "success": False,
+            "request_id": None,
+            "error": (
+                f"Unknown document_type {document_type!r}. "
+                f"Valid types: {', '.join(sorted(DOCUMENT_TYPE_OPTIONS))}"
+            ),
+        })
     try:
         doc_repo = DocumentRepository()
         req_id = doc_repo.create_document_request(
