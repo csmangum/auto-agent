@@ -14,6 +14,7 @@ const REPAIR_STATUS_ORDER = [
   'disassembly',
   'parts_ordered',
   'repair',
+  'paused_supplement',
   'paint',
   'reassembly',
   'qa',
@@ -187,6 +188,10 @@ function RepairPortalClaimBody({
               senderLabel="From: Insurance Carrier"
               emptyTitle="No messages"
               emptyDescription="No messages addressed to your shop for this repair."
+              onRespond={async (messageId, content) => {
+                await repairPortalApi.recordFollowUpResponse(claim.id, messageId, content);
+                void queryClient.invalidateQueries({ queryKey: qk.claim(claim.id) });
+              }}
             />
           )}
         </div>
@@ -295,8 +300,8 @@ function RepairProgressTab({
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-4">Repair Progress</h3>
         <p className="text-xs text-gray-500 mb-4">
-          Stages: received → disassembly → parts ordered → repair → paint → reassembly → QA →
-          ready.
+          Stages: received → disassembly → parts ordered → repair → paused (supplement) → paint →
+          reassembly → QA → ready.
         </p>
         <div className="flex flex-wrap gap-2 mb-4">
           {REPAIR_STATUS_ORDER.map((status, idx) => {
@@ -387,7 +392,6 @@ function SupplementalTab({
     try {
       const data = await repairPortalApi.postSupplemental(claimId, {
         supplemental_damage_description: description.trim(),
-        reported_by: 'shop',
       });
       setResult(
         `Supplemental filed. Amount: $${data.supplemental_amount?.toLocaleString() ?? 'TBD'} — ${data.summary ?? ''}`

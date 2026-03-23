@@ -245,7 +245,7 @@ The SPA exposes **two different experiences**; do not confuse them:
 | **Claimant self-service** | `/portal/login`, `/portal/claims`, … | Token / policy+VIN / email verification; status, documents, messages, repair status, payments, rental slice, disputes (as implemented) | `/api/portal/*` |
 | **Role simulation** | `/simulate` | Demo/testing: pick customer, repair shop, or third party and browse claims **without** claimant verification | Same internal hooks as the dashboard (e.g. `useClaims`), **not** `/api/portal/*` |
 
-Portal API behavior is covered by [`tests/test_portal_api.py`](tests/test_portal_api.py). Enable the backend routes with `CLAIMANT_PORTAL_ENABLED` (see `.env.example`).
+Portal API behavior is covered by [`tests/test_portal_api.py`](tests/test_portal_api.py). Repair shop portal routes are covered by [`tests/test_repair_portal_api.py`](tests/test_repair_portal_api.py). Enable claimant routes with `CLAIMANT_PORTAL_ENABLED` and repair shop routes with `REPAIR_SHOP_PORTAL_ENABLED` (see `.env.example`).
 
 **REST API**: The backend exposes a REST API for programmatic access. OpenAPI spec: http://localhost:8000/api/openapi.json. Interactive docs: http://localhost:8000/api/openapi/docs. When auth is enabled (CLAIMS_API_KEY or API_KEYS), an API key is required to access OpenAPI docs.
 

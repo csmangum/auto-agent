@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useRepairPortal } from '../context/useRepairPortal';
 import {
   repairPortalApi,
@@ -8,21 +8,42 @@ import {
   type RepairPortalSession,
 } from '../api/repairPortalClient';
 
+function parseHashParams(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const raw = window.location.hash.replace(/^#/, '');
+  if (!raw) return {};
+  return Object.fromEntries(new URLSearchParams(raw).entries());
+}
+
 export default function RepairPortalLogin() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { login } = useRepairPortal();
-  const [claimId, setClaimId] = useState(searchParams.get('claim_id') ?? '');
-  const [token, setToken] = useState(searchParams.get('token') ?? '');
+  const [claimId, setClaimId] = useState('');
+  const [token, setToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const cid = searchParams.get('claim_id');
-    const t = searchParams.get('token');
-    if (cid) setClaimId(cid);
-    if (t) setToken(t);
-  }, [searchParams]);
+    const fromHash = parseHashParams();
+    const sp = new URLSearchParams(window.location.search);
+    const qClaim = sp.get('claim_id');
+    const qToken = sp.get('token');
+
+    if (fromHash.claim_id) setClaimId(fromHash.claim_id);
+    else if (qClaim) setClaimId(qClaim);
+
+    if (fromHash.token) setToken(fromHash.token);
+    else if (qToken) setToken(qToken);
+
+    const spClean = new URLSearchParams(window.location.search);
+    const hadQueryToken = spClean.has('token');
+    if (hadQueryToken) spClean.delete('token');
+    const nextSearch = spClean.toString();
+    const pathBase = window.location.pathname + (nextSearch ? `?${nextSearch}` : '');
+    if (window.location.hash.length > 1 || hadQueryToken) {
+      window.history.replaceState(null, '', pathBase);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,9 +116,13 @@ export default function RepairPortalLogin() {
           </button>
         </form>
 
-        <p className="mt-6 text-xs text-gray-500 text-center">
-          Deep link: add <span className="font-mono text-gray-400">?claim_id=...&token=...</span> to
-          this URL to prefill the form.
+        <p className="mt-6 text-xs text-gray-500 text-center leading-relaxed">
+          Deep link (recommended): append{' '}
+          <span className="font-mono text-gray-400">#claim_id=CLM-...&token=...</span> so the token
+          stays in the fragment (not sent to the server or typical referrers). You may use{' '}
+          <span className="font-mono text-gray-400">?claim_id=...</span> alone in the query string;
+          a legacy <span className="font-mono text-gray-400">?token=...</span> is read once then
+          stripped from the address bar.
         </p>
       </div>
     </div>

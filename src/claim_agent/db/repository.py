@@ -1948,6 +1948,19 @@ class ClaimRepository:
             ).fetchall()
         return [row_to_dict(r) for r in rows]
 
+    def get_follow_up_message_by_id(self, message_id: int) -> dict[str, Any] | None:
+        """Return a single follow-up message row by id, or None if missing."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text("""
+                SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
+                FROM follow_up_messages
+                WHERE id = :message_id
+                """),
+                {"message_id": message_id},
+            ).fetchone()
+        return row_to_dict(row) if row else None
+
     def insert_audit_entry(
         self,
         claim_id: str,

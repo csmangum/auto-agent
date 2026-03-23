@@ -101,10 +101,7 @@ export const repairPortalApi = {
 
   postSupplemental: (
     claimId: string,
-    body: {
-      supplemental_damage_description: string;
-      reported_by?: 'shop' | 'adjuster' | 'policyholder' | null;
-    }
+    body: { supplemental_damage_description: string }
   ) =>
     postRepairPortalJSON<{
       claim_id: string;
@@ -112,4 +109,14 @@ export const repairPortalApi = {
       supplemental_amount?: number | null;
       summary: string;
     }>(`/claims/${claimId}/supplemental`, body),
+
+  recordFollowUpResponse: (
+    claimId: string,
+    messageId: number,
+    responseContent: string
+  ) =>
+    postRepairPortalJSON<{ success: boolean; message?: string }>(
+      `/claims/${claimId}/follow-up/record-response`,
+      { message_id: messageId, response_content: responseContent }
+    ),
 };

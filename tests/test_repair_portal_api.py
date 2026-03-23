@@ -110,3 +110,47 @@ class TestRepairShopPortal:
             headers={"X-Repair-Shop-Access-Token": token},
         )
         assert resp.status_code == 503
+
+    def test_portal_record_follow_up_response_success(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        msg_id = repo.create_follow_up_message(
+            "CLM-TEST005",
+            user_type="repair_shop",
+            message_content="Please confirm vehicle drop-off.",
+            actor_id="workflow",
+        )
+        repo.mark_follow_up_sent(msg_id)
+        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={"shop_id": "S1"})
+        tok = mint.json()["token"]
+        h = {"X-Repair-Shop-Access-Token": tok}
+        resp = client.post(
+            "/api/repair-portal/claims/CLM-TEST005/follow-up/record-response",
+            headers=h,
+            json={"message_id": msg_id, "response_content": "Dropped off this morning."},
+        )
+        assert resp.status_code == 200
+        assert resp.json().get("success") is True
+
+    def test_portal_record_follow_up_rejects_non_shop_message(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        msg_id = repo.create_follow_up_message(
+            "CLM-TEST005",
+            user_type="claimant",
+            message_content="Claimant-only message.",
+            actor_id="workflow",
+        )
+        repo.mark_follow_up_sent(msg_id)
+        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        tok = mint.json()["token"]
+        h = {"X-Repair-Shop-Access-Token": tok}
+        resp = client.post(
+            "/api/repair-portal/claims/CLM-TEST005/follow-up/record-response",
+            headers=h,
+            json={"message_id": msg_id, "response_content": "Trying to reply as shop."},
+        )
+        assert resp.status_code == 400
+        assert "repair shop" in resp.json()["detail"].lower()

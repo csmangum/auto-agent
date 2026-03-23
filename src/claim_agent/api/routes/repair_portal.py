@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -16,7 +16,11 @@ from claim_agent.api.routes.claims import (
     _get_doc_repo,
     _maybe_update_document_request_on_receipt,
 )
-from claim_agent.api.routes.portal import PORTAL_CLAIM_FIELDS, _resolve_portal_attachment_urls
+from claim_agent.api.routes.portal import (
+    PORTAL_CLAIM_FIELDS,
+    RecordFollowUpResponseBody,
+    _resolve_portal_attachment_urls,
+)
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from claim_agent.db.database import get_db_path
@@ -57,9 +61,6 @@ class RepairStatusUpdateBody(BaseModel):
 
 class SupplementalBody(BaseModel):
     supplemental_damage_description: str = Field(..., max_length=2000)
-    reported_by: Optional[Literal["shop", "adjuster", "policyholder"]] = Field(
-        default="shop",
-    )
 
 
 def _infer_shop_and_auth(claim_id: str, claim_repo: ClaimRepository) -> tuple[str, str | None]:
@@ -108,6 +109,41 @@ def get_repair_portal_claim_history(
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     history = repo.get_claim_history(claim_id)
     return {"claim_id": claim_id, "history": history}
+
+
+@router.post("/claims/{claim_id}/follow-up/record-response")
+def record_repair_portal_follow_up_response(
+    claim_id: str,
+    body: RecordFollowUpResponseBody = Body(...),
+    ctx: RepairShopPortalContext = Depends(_repair_shop_ctx_dep),
+):
+    """Record the repair shop's response to a follow-up addressed to user_type=repair_shop."""
+    repo = _get_claim_repo()
+    if repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    msg = repo.get_follow_up_message_by_id(body.message_id)
+    if msg is None:
+        raise HTTPException(status_code=400, detail=f"Follow-up message not found: {body.message_id}")
+    if msg.get("claim_id") != claim_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Follow-up message {body.message_id} does not belong to claim {claim_id}",
+        )
+    if msg.get("user_type") != "repair_shop":
+        raise HTTPException(
+            status_code=400,
+            detail="This message is not addressed to the repair shop portal",
+        )
+    try:
+        repo.record_follow_up_response(
+            body.message_id,
+            body.response_content,
+            actor_id=ctx.identity,
+            expected_claim_id=claim_id,
+        )
+        return {"success": True, "message": "Response recorded"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/claims/{claim_id}/repair-status")
@@ -313,7 +349,7 @@ async def file_repair_portal_supplemental(
         return await execute_supplemental_request(
             claim_id=claim_id,
             supplemental_damage_description=body.supplemental_damage_description,
-            reported_by=body.reported_by,
+            reported_by="shop",
             ctx=ctx,
         )
     except ClaimNotFoundError as e:
