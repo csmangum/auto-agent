@@ -660,6 +660,16 @@ def retention_purge(
         bool,
         typer.Option("--include-litigation-hold", help="Purge claims with litigation hold"),
     ] = False,
+    export_before_purge: Annotated[
+        bool,
+        typer.Option(
+            "--export-before-purge",
+            help=(
+                "Export each claim to S3/Glacier cold storage before anonymising. "
+                "Requires RETENTION_EXPORT_ENABLED=true and RETENTION_EXPORT_S3_BUCKET."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Purge archived claims past purge horizon (anonymize PII, status purged)."""
     purge_years = years if years is not None else get_retention_purge_after_archive_years()
@@ -691,10 +701,40 @@ def retention_purge(
         )
         return
 
+    export_cfg = None
+    if export_before_purge:
+        export_cfg = get_settings().retention_export
+        if not export_cfg.enabled:
+            typer.echo(
+                "Error: --export-before-purge requires RETENTION_EXPORT_ENABLED=true", err=True
+            )
+            raise typer.Exit(1)
+        if not export_cfg.s3_bucket:
+            typer.echo(
+                "Error: --export-before-purge requires RETENTION_EXPORT_S3_BUCKET to be set",
+                err=True,
+            )
+            raise typer.Exit(1)
+
     purged: list[str] = []
     failed: list[str] = []
+    exported: list[str] = []
+    export_failed: list[str] = []
     for claim in claims:
         claim_id = claim["id"]
+        if export_cfg is not None:
+            from claim_agent.storage.export import export_claim_to_cold_storage
+
+            try:
+                export_claim_to_cold_storage(claim_id, repo, export_cfg)
+                exported.append(claim_id)
+            except Exception as e:
+                typer.echo(
+                    f"Warning: Could not export {claim_id} before purge: {e}", err=True
+                )
+                export_failed.append(claim_id)
+                failed.append(claim_id)
+                continue
         try:
             repo.purge_claim(claim_id)
             purged.append(claim_id)
@@ -702,13 +742,114 @@ def retention_purge(
             typer.echo(f"Warning: Could not purge {claim_id}: {e}", err=True)
             failed.append(claim_id)
 
+    result: dict[str, Any] = {
+        "purge_after_archive_years": purge_years,
+        **purge_state_info,
+        "purged_count": len(purged),
+        "purged_claim_ids": purged,
+        "failed_count": len(failed),
+        "failed_claim_ids": failed,
+    }
+    if export_before_purge:
+        result["exported_count"] = len(exported)
+        result["exported_claim_ids"] = exported
+        result["export_failed_count"] = len(export_failed)
+        result["export_failed_claim_ids"] = export_failed
+
+    typer.echo(json.dumps(result, indent=2))
+
+    if failed:
+        sys.exit(1)
+
+
+@app.command("retention-export")
+def retention_export(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show what would be exported without uploading"),
+    ] = False,
+    years: Annotated[
+        Optional[int],
+        typer.Option(
+            "--years",
+            "-y",
+            help="Override years after archive before export (default from settings)",
+        ),
+    ] = None,
+    include_litigation_hold: Annotated[
+        bool,
+        typer.Option("--include-litigation-hold", help="Export claims with litigation hold"),
+    ] = False,
+) -> None:
+    """Export archived claims to S3/Glacier cold storage before purge.
+
+    Eligible claims are those past the purge horizon that have not yet been
+    exported (idempotent: already-exported claims are skipped).
+
+    Requires ``RETENTION_EXPORT_ENABLED=true`` and ``RETENTION_EXPORT_S3_BUCKET``
+    to be configured (unless ``--dry-run``).
+    """
+    purge_years = years if years is not None else get_retention_purge_after_archive_years()
+    purge_by_state = get_purge_after_archive_by_state() if years is None else None
+    ctx = _get_cli_ctx()
+    repo = ctx.repo
+    claims = repo.list_claims_for_export(
+        purge_years,
+        purge_by_state=purge_by_state,
+        exclude_litigation_hold=not include_litigation_hold,
+    )
+
+    purge_state_info: dict[str, Any] = {}
+    if purge_by_state:
+        purge_state_info["purge_by_state"] = purge_by_state
+
+    if dry_run:
+        typer.echo(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "purge_after_archive_years": purge_years,
+                    **purge_state_info,
+                    "claims_to_export": len(claims),
+                    "claim_ids": [c["id"] for c in claims],
+                },
+                indent=2,
+            )
+        )
+        return
+
+    export_cfg = get_settings().retention_export
+    if not export_cfg.enabled:
+        typer.echo(
+            "Error: RETENTION_EXPORT_ENABLED must be true to run retention-export", err=True
+        )
+        raise typer.Exit(1)
+    if not export_cfg.s3_bucket:
+        typer.echo(
+            "Error: RETENTION_EXPORT_S3_BUCKET must be set to run retention-export", err=True
+        )
+        raise typer.Exit(1)
+
+    from claim_agent.storage.export import export_claim_to_cold_storage
+
+    exported: list[str] = []
+    failed: list[str] = []
+    for claim in claims:
+        claim_id = claim["id"]
+        try:
+            export_claim_to_cold_storage(claim_id, repo, export_cfg)
+            exported.append(claim_id)
+        except Exception as e:
+            typer.echo(f"Warning: Could not export {claim_id}: {e}", err=True)
+            failed.append(claim_id)
+
     typer.echo(
         json.dumps(
             {
                 "purge_after_archive_years": purge_years,
                 **purge_state_info,
-                "purged_count": len(purged),
-                "purged_claim_ids": purged,
+                "exported_count": len(exported),
+                "exported_claim_ids": exported,
                 "failed_count": len(failed),
                 "failed_claim_ids": failed,
             },

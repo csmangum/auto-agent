@@ -2,12 +2,202 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from claim_agent.db.database import row_to_dict
+
+_log = logging.getLogger(__name__)
+
 PII_REDACTED_PLACEHOLDER = "[REDACTED]"
+
+# Top-level scalar keys that carry PII and should be replaced in audit-log JSON.
+_AUDIT_PII_SCALAR_KEYS: frozenset[str] = frozenset(
+    {
+        "policy_number",
+        "vin",
+        "incident_description",
+        "damage_description",
+    }
+)
+
+# Keys inside nested objects (e.g. party dicts) that also carry PII.
+_AUDIT_PII_NESTED_KEYS: frozenset[str] = frozenset(
+    {"name", "email", "phone", "address", "claimant_name"}
+)
+
+
+def _redact_json_pii(value: Any, placeholder: str = PII_REDACTED_PLACEHOLDER) -> Any:
+    """Recursively redact PII keys from a decoded JSON value.
+
+    - Dict: replace scalar values whose key is in the PII key sets with
+      *placeholder*; replace list values for "attachments" with ``[]``; recurse
+      into nested dicts/lists for all other keys.
+    - List: recurse into each element.
+    - Scalar: returned unchanged (callers handle key-based dispatch).
+    """
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for k, v in value.items():
+            k_lower = k.lower()
+            if k_lower == "attachments":
+                result[k] = []
+            elif k_lower in _AUDIT_PII_SCALAR_KEYS or k_lower in _AUDIT_PII_NESTED_KEYS:
+                result[k] = placeholder if v is not None else None
+            elif isinstance(v, (dict, list)):
+                result[k] = _redact_json_pii(v, placeholder)
+            else:
+                result[k] = v
+        return result
+    if isinstance(value, list):
+        return [_redact_json_pii(item, placeholder) for item in value]
+    return value
+
+
+def _redact_json_field(
+    raw: str | None,
+    placeholder: str = PII_REDACTED_PLACEHOLDER,
+) -> str | None:
+    """Parse a JSON string, redact PII keys, and return the updated JSON string.
+
+    Non-JSON or unparseable values are left unchanged (avoids wiping non-JSON audit text).
+    Returns ``None`` / empty string unchanged.
+    """
+    if not raw:
+        return raw
+    try:
+        parsed = json.loads(raw)
+        redacted = _redact_json_pii(parsed, placeholder)
+        return json.dumps(redacted)
+    except (json.JSONDecodeError, TypeError):
+        _log.debug("audit log JSON field not parseable; leaving unchanged (chars=%s)", len(raw))
+        return raw
+
+
+def redact_audit_log_pii(
+    conn: Connection,
+    claim_id: str,
+    *,
+    placeholder: str = PII_REDACTED_PLACEHOLDER,
+) -> int:
+    """Scrub PII from ``details``, ``before_state``, and ``after_state`` JSON columns.
+
+    Uses a delete-then-reinsert strategy so that the ``details`` column (which is
+    protected by the append-only trigger against in-place UPDATE) can also be
+    sanitised.  DELETE has been permitted since migration 039.  Primary keys and
+    other non-JSON columns (``action``, statuses, ``actor_id``, ``created_at``) are
+    preserved verbatim on reinsert.
+
+    Returns immediately without writing when no JSON field would change.
+
+    Args:
+        conn: Active SQLAlchemy connection (within an open transaction).
+        claim_id: The claim whose audit rows should be redacted.
+        placeholder: String to substitute for PII values (default ``[REDACTED]``).
+
+    Returns:
+        Number of audit rows processed (rows with at least one JSON field changed).
+    """
+    rows = conn.execute(
+        text(
+            "SELECT id, action, old_status, new_status, details, actor_id, "
+            "before_state, after_state, created_at "
+            "FROM claim_audit_log WHERE claim_id = :claim_id"
+        ),
+        {"claim_id": claim_id},
+    ).fetchall()
+
+    if not rows:
+        return 0
+
+    redacted_rows: list[dict[str, Any]] = []
+    changed = 0
+    for row in rows:
+        r = row_to_dict(row)
+        raw_details: str | None = r.get("details")
+        raw_before: str | None = r.get("before_state")
+        raw_after: str | None = r.get("after_state")
+
+        new_details = _redact_json_field(raw_details, placeholder)
+        new_before = _redact_json_field(raw_before, placeholder)
+        new_after = _redact_json_field(raw_after, placeholder)
+
+        if new_details != raw_details or new_before != raw_before or new_after != raw_after:
+            changed += 1
+
+        redacted_rows.append(
+            {
+                "id": int(r["id"]),
+                "claim_id": claim_id,
+                "action": r.get("action"),
+                "old_status": r.get("old_status"),
+                "new_status": r.get("new_status"),
+                "details": new_details,
+                "actor_id": r.get("actor_id"),
+                "before_state": new_before,
+                "after_state": new_after,
+                "created_at": r.get("created_at"),
+            }
+        )
+
+    if changed == 0:
+        return 0
+
+    # DELETE original rows (permitted since migration 039), then reinsert with
+    # redacted JSON and the same primary key so audit row identity stays stable.
+    conn.execute(
+        text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),
+        {"claim_id": claim_id},
+    )
+    for params in redacted_rows:
+        conn.execute(
+            text("""
+                INSERT INTO claim_audit_log
+                    (id, claim_id, action, old_status, new_status, details,
+                     actor_id, before_state, after_state, created_at)
+                VALUES
+                    (:id, :claim_id, :action, :old_status, :new_status, :details,
+                     :actor_id, :before_state, :after_state, :created_at)
+            """),
+            params,
+        )
+
+    if conn.engine.dialect.name == "postgresql":
+        conn.execute(
+            text(
+                "SELECT setval(pg_get_serial_sequence('claim_audit_log', 'id'), "
+                "COALESCE((SELECT MAX(id) FROM claim_audit_log), 1))"
+            )
+        )
+
+    return changed
+
+
+def delete_audit_log_entries(conn: Connection, claim_id: str) -> int:
+    """Delete all claim_audit_log rows for a claim.
+
+    DELETE is permitted since migration 039, which dropped the append-only
+    delete trigger. This operation is irreversible and should only be used
+    after compliance sign-off as part of a DSAR deletion where the
+    ``DSAR_AUDIT_LOG_POLICY=delete`` policy has been explicitly configured.
+
+    Args:
+        conn: Active SQLAlchemy connection.
+        claim_id: Claim ID whose audit rows should be removed.
+
+    Returns:
+        Number of rows deleted.
+    """
+    result = conn.execute(
+        text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),
+        {"claim_id": claim_id},
+    )
+    rowcount: Any = result.rowcount
+    return int(rowcount) if rowcount is not None else 0
 
 
 def anonymize_claim_pii(
@@ -16,10 +206,17 @@ def anonymize_claim_pii(
     *,
     now_iso: str,
     notes_redaction_text: str,
+    redact_audit_log: bool = False,
 ) -> tuple[int, int]:
     """Redact claim identifiers, narrative fields, attachments, parties, and notes.
 
-    Preserves audit log. Narrative columns may contain embedded PII (names, locations).
+    When *redact_audit_log* is ``True`` the function also calls
+    :func:`redact_audit_log_pii` to sanitize PII inside the JSON fields
+    stored in ``claim_audit_log`` rows (``details``, ``before_state``,
+    ``after_state``).  Retention purge passes ``True`` when
+    ``AUDIT_LOG_STATE_REDACTION_ENABLED`` is on.  DSAR deletion should not use
+    this flag; it applies ``DSAR_AUDIT_LOG_POLICY`` separately in
+    :mod:`claim_agent.services.dsar`.
 
     Returns:
         Tuple of (1 if claim row updated, number of party rows for the claim).
@@ -55,5 +252,8 @@ def anonymize_claim_pii(
         text("UPDATE claim_notes SET note = :redacted WHERE claim_id = :claim_id"),
         {"redacted": notes_redaction_text, "claim_id": claim_id},
     )
+
+    if redact_audit_log:
+        redact_audit_log_pii(conn, claim_id, placeholder=PII_REDACTED_PLACEHOLDER)
 
     return (1, n_parties)

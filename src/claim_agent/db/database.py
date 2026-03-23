@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS claims (
     total_loss_settlement_authorized INTEGER,
     retention_tier TEXT NOT NULL DEFAULT 'active',
     purged_at TEXT,
+    cold_storage_exported_at TEXT,
+    cold_storage_export_key TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -104,7 +106,7 @@ CREATE TABLE IF NOT EXISTS claims (
     + ";\n"
     + """
 
--- Audit log (state changes). Append-only: no UPDATE or DELETE.
+-- Audit log (state changes). UPDATE limited by trigger; DELETE allowed for gated tooling.
 CREATE TABLE IF NOT EXISTS claim_audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id TEXT NOT NULL,
@@ -119,11 +121,22 @@ CREATE TABLE IF NOT EXISTS claim_audit_log (
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 
--- Enforce append-only behavior: reject UPDATE/DELETE on claim_audit_log
-CREATE TRIGGER IF NOT EXISTS claim_audit_log_prevent_update
+-- Enforce append-only behavior: allow only PII-field updates (before_state / after_state).
+-- Non-PII columns (claim_id, action, statuses, details, actor_id, created_at) are immutable.
+-- Note: SQLite's "IS NOT" is the null-safe inequality operator (equivalent to PostgreSQL's
+-- "IS DISTINCT FROM"): it treats NULL=NULL as equal, so nullable columns that are NULL in
+-- both OLD and NEW will NOT fire the trigger.
+CREATE TRIGGER IF NOT EXISTS claim_audit_log_protect_non_pii_columns
 BEFORE UPDATE ON claim_audit_log
 BEGIN
-    SELECT RAISE(ABORT, 'claim_audit_log is append-only: updates are not allowed');
+    SELECT RAISE(ABORT, 'claim_audit_log: only before_state and after_state may be updated')
+    WHERE (NEW.claim_id IS NOT OLD.claim_id)
+       OR (NEW.action IS NOT OLD.action)
+       OR (NEW.old_status IS NOT OLD.old_status)
+       OR (NEW.new_status IS NOT OLD.new_status)
+       OR (NEW.details IS NOT OLD.details)
+       OR (NEW.actor_id IS NOT OLD.actor_id)
+       OR (NEW.created_at IS NOT OLD.created_at);
 END;
 
 -- DELETE is allowed for gated retention tooling (see migration 039, audit-log-purge CLI).
@@ -1022,6 +1035,33 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     # GitHub #350: drop legacy delete trigger so audit-log-purge works (schema no longer creates it).
     try:
         conn.execute("DROP TRIGGER IF EXISTS claim_audit_log_prevent_delete")
+    except sqlite3.OperationalError:
+        pass
+    # Migration 049: replace the broad "block all updates" trigger with one that only
+    # blocks changes to non-PII columns, allowing before_state / after_state to be
+    # updated for in-place PII redaction (AUDIT_LOG_STATE_REDACTION_ENABLED).
+    try:
+        trigger_rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' "
+            "AND name='claim_audit_log_prevent_update'"
+        ).fetchall()
+        if trigger_rows:
+            conn.execute("DROP TRIGGER IF EXISTS claim_audit_log_prevent_update")
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS claim_audit_log_protect_non_pii_columns
+                BEFORE UPDATE ON claim_audit_log
+                BEGIN
+                    SELECT RAISE(ABORT,
+                        'claim_audit_log: only before_state and after_state may be updated')
+                    WHERE (NEW.claim_id IS NOT OLD.claim_id)
+                       OR (NEW.action IS NOT OLD.action)
+                       OR (NEW.old_status IS NOT OLD.old_status)
+                       OR (NEW.new_status IS NOT OLD.new_status)
+                       OR (NEW.details IS NOT OLD.details)
+                       OR (NEW.actor_id IS NOT OLD.actor_id)
+                       OR (NEW.created_at IS NOT OLD.created_at);
+                END
+            """)
     except sqlite3.OperationalError:
         pass
 

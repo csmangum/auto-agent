@@ -2,9 +2,12 @@
 
 import json
 import os
+import types
 from pathlib import Path
 
 import pytest
+
+from claim_agent.config.settings import get_adapter_backend as real_get_adapter_backend
 
 # Minimal JPEG: SOI marker (FF D8) + JFIF APP0 segment + EOI marker (FF D9).
 # Used to write temporary image files in tests without requiring real image data.
@@ -209,14 +212,14 @@ class TestVisionLogicReverseImageIntegration:
         )
         # Force the non-mock (LLM) code path so the reverse-image block actually runs.
         monkeypatch.setattr("claim_agent.tools.vision_logic._use_mock_vision", lambda: False)
-        # Ensure the reverse-image feature flag reports "mock" (not "stub").
+        # Reverse-image backend only: delegate other adapter names to real settings.
         monkeypatch.setattr(
             "claim_agent.tools.vision_logic.get_adapter_backend",
-            lambda name: "mock",
+            lambda name: (
+                "mock" if name == "reverse_image" else real_get_adapter_backend(name)
+            ),
         )
         # Stub out the LLM call to avoid needing a real API key.
-        import types
-
         _fake_resp = types.SimpleNamespace(
             choices=[
                 types.SimpleNamespace(
@@ -245,12 +248,51 @@ class TestVisionLogicReverseImageIntegration:
         """When REVERSE_IMAGE_ADAPTER=stub, vision_logic does not call match_web_occurrences."""
         monkeypatch.setenv("REVERSE_IMAGE_ADAPTER", "stub")
         from claim_agent.config import reload_settings
+
         reload_settings()
 
         from claim_agent.config.settings import get_adapter_backend
 
-        # Confirm the feature-flag check skips stub backends
         assert get_adapter_backend("reverse_image") == "stub"
+
+        settings_path = str(tmp_path)
+        monkeypatch.setattr(
+            "claim_agent.tools.vision_logic.get_settings",
+            lambda: _FakeSettings(settings_path),
+        )
+        monkeypatch.setattr("claim_agent.tools.vision_logic._use_mock_vision", lambda: False)
+
+        def _reverse_image_adapter_must_not_resolve(*_a, **_kw):
+            raise AssertionError(
+                "get_reverse_image_adapter must not be called when backend is stub"
+            )
+
+        monkeypatch.setattr(
+            "claim_agent.tools.vision_logic.get_reverse_image_adapter",
+            _reverse_image_adapter_must_not_resolve,
+        )
+
+        _fake_resp = types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(
+                        content='{"severity": "low", "parts_affected": [], "notes": "ok"}'
+                    )
+                )
+            ]
+        )
+        monkeypatch.setattr(
+            "claim_agent.tools.vision_logic.litellm.completion",
+            lambda *a, **kw: _fake_resp,
+        )
+
+        from claim_agent.tools.vision_logic import analyze_damage_photo_impl
+
+        url = self._make_minimal_jpeg(tmp_path)
+        raw = analyze_damage_photo_impl(url)
+        data = json.loads(raw)
+        assert data.get("error") is None
+        assert "reverse_image_matches" not in data.get("photo_forensics", {})
 
 
 class _FakeSettings:

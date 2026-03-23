@@ -309,14 +309,14 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id_action ON claim_audit_lo
 
 #### Retention
 
-`claim_audit_log` is **append-only for updates** (no `UPDATE`). **Deletes** are blocked at the database layer until migration `039` (see [GitHub issue #350](https://github.com/csmangum/auto-agent/issues/350)): after that migration, rows may be removed only through the gated CLI `claim-agent audit-log-purge` (never ad hoc SQL in production).
+After migration `049`, `UPDATE` may change only `before_state` and `after_state`; other columns stay immutable via trigger. **Deletes** are blocked until migration `039` (see [GitHub issue #350](https://github.com/csmangum/auto-agent/issues/350)): after that migration, rows may be removed only through the gated CLI `claim-agent audit-log-purge` (never ad hoc SQL in production). Application code may also replace rows when scrubbing JSON (e.g. `details`) while preserving ids.
 
 **Policy template (carrier-defined):**
 
 - **Default:** retain all audit rows indefinitely after claim purge; no automated audit deletion.
 - **Optional:** retain audit rows for **M** calendar years after the parent claim reaches `status=purged` and `purged_at` is set, then **export** (cold storage) and optionally **purge** database rows. Configure `AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE`; purge additionally requires `AUDIT_LOG_PURGE_ENABLED=true` and compliance sign-off.
 
-DSAR deletion and claim retention **purge** anonymize the claim but **preserve** `claim_audit_log` today unless audit purge has been run. `before_state` / `after_state` JSON may still contain historical values—another reason some carriers export then purge audit rows after the legal window.
+DSAR deletion anonymizes the claim; `claim_audit_log` is controlled by `DSAR_AUDIT_LOG_POLICY` (`preserve` / `redact` / `delete`). Retention purge may scrub audit JSON when `AUDIT_LOG_STATE_REDACTION_ENABLED=true`. Otherwise historical JSON may remain until audit purge or export—another reason some carriers export then purge audit rows after the legal window.
 
 See [PII and retention](pii-and-retention.md#audit-log-retention-issue-350) and migration `002_audit_trail_enhancements` (append-only triggers), `039_allow_claim_audit_log_delete_for_retention` (removes delete trigger).
 
