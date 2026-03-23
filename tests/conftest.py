@@ -169,6 +169,13 @@ def _seed_test_data(db_path: str) -> None:
                 "status": "processing",
             },
         )
+        # Eligible third-party portal party for CLM-TEST005 (id 1 — first row in claim_parties)
+        conn.execute(
+            text("""
+            INSERT INTO claim_parties (claim_id, party_type, name, email)
+            VALUES ('CLM-TEST005', 'witness', 'Seed Third-Party Portal Witness', 'tp-witness-seed@example.com')
+            """),
+        )
         conn.execute(
             text("""
             INSERT INTO claims (id, policy_number, vin, vehicle_year, vehicle_make,

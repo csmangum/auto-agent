@@ -39,6 +39,11 @@ RETENTION_TIERS = (
 # Statuses that allow filing a policyholder dispute (must have completed workflow)
 DISPUTABLE_STATUSES = (STATUS_SETTLED, STATUS_OPEN)
 
+# Party types eligible for third-party portal tokens (not claimant/policyholder)
+THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES = frozenset(
+    {"witness", "attorney", "provider", "lienholder"}
+)
+
 # Statuses that allow supplemental damage reports (partial loss during or after repair)
 SUPPLEMENTABLE_STATUSES = (STATUS_PROCESSING, STATUS_SETTLED)
 

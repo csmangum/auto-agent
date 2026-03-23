@@ -123,7 +123,9 @@ describe('App', () => {
     localStorage.setItem('simulation_role', 'third_party');
     renderApp('/simulate');
     expect(screen.getByRole('heading', { name: 'Cross-Carrier Claims' })).toBeInTheDocument();
-    expect(screen.getByText('Claims involving your policyholders or subrogation demands')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Claims involving your policyholders or subrogation demands/)
+    ).toBeInTheDocument();
   });
 
   it('renders Claimant Portal login at /portal/login', () => {
@@ -146,5 +148,15 @@ describe('App', () => {
   it('redirects unauthenticated users from /repair-portal/claims/CLM-X to login', () => {
     renderApp('/repair-portal/claims/CLM-TEST005');
     expect(screen.getByRole('heading', { name: 'Repair Shop Portal' })).toBeInTheDocument();
+  });
+
+  it('renders Third-Party Portal login at /third-party-portal/login', () => {
+    renderApp('/third-party-portal/login');
+    expect(screen.getByRole('heading', { name: 'Third-Party Portal' })).toBeInTheDocument();
+  });
+
+  it('redirects unauthenticated users from /third-party-portal/claims/CLM-X to login', () => {
+    renderApp('/third-party-portal/claims/CLM-TEST005');
+    expect(screen.getByRole('heading', { name: 'Third-Party Portal' })).toBeInTheDocument();
   });
 });
