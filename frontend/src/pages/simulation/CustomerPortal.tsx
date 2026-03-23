@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useClaims, useClaim, useClaimHistory } from '../../api/queries';
+import ClaimantPortalSignpost from '../../components/ClaimantPortalSignpost';
 import PageHeader from '../../components/PageHeader';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
@@ -27,6 +28,8 @@ export default function CustomerPortal() {
         title="My Claims"
         subtitle="Track the status of your insurance claims"
       />
+
+      <ClaimantPortalSignpost />
 
       {/* Quick stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

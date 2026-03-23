@@ -7,7 +7,8 @@ Provides REST API endpoints for:
 - System configuration and health
 
 Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/* endpoints
-require auth except /api/health, /api/portal/*, /api/auth/login, and /api/auth/refresh.
+require auth except /api/health, /api/portal/*, /api/repair-portal/*, /api/auth/login,
+and /api/auth/refresh.
 Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
 """
 
@@ -39,6 +40,7 @@ from claim_agent.api.routes.payments import router as payments_router
 from claim_agent.api.routes.webhooks import router as webhooks_router
 from claim_agent.api.routes.dsar import router as dsar_router
 from claim_agent.api.routes.portal import router as portal_router
+from claim_agent.api.routes.repair_portal import router as repair_portal_router
 from claim_agent.api.routes.reserve_reports import router as reserve_reports_router
 from claim_agent.api.routes.retention import router as retention_router
 from claim_agent.api.routes.privacy import router as privacy_router
@@ -199,6 +201,11 @@ def _is_portal_path(path: str) -> bool:
     return path.startswith("/api/portal")
 
 
+def _is_repair_portal_path(path: str) -> bool:
+    """True if path is under /api/repair-portal (repair shop token, not bearer auth)."""
+    return path.startswith("/api/repair-portal")
+
+
 def _is_auth_public_path(path: str) -> bool:
     """Login and refresh do not require a bearer token."""
     return path in ("/api/auth/login", "/api/auth/refresh")
@@ -237,6 +244,7 @@ async def auth_middleware(request: Request, call_next):
         not path.startswith("/api/")
         or path in _PUBLIC_PATHS
         or _is_portal_path(path)
+        or _is_repair_portal_path(path)
         or _is_auth_public_path(path)
     ):
         return await call_next(request)
@@ -308,6 +316,7 @@ app.include_router(payments_router, prefix="/api")
 app.include_router(webhooks_router, prefix="/api")
 app.include_router(dsar_router, prefix="/api")
 app.include_router(portal_router, prefix="/api")
+app.include_router(repair_portal_router, prefix="/api")
 app.include_router(reserve_reports_router, prefix="/api")
 app.include_router(retention_router, prefix="/api")
 app.include_router(privacy_router, prefix="/api")

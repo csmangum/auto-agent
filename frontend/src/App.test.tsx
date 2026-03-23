@@ -137,4 +137,14 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Claimant Portal' })).toBeInTheDocument();
     expect(screen.getByText(/Sign in to view your claims/)).toBeInTheDocument();
   });
+
+  it('renders Repair Shop Portal login at /repair-portal/login', () => {
+    renderApp('/repair-portal/login');
+    expect(screen.getByRole('heading', { name: 'Repair Shop Portal' })).toBeInTheDocument();
+  });
+
+  it('redirects unauthenticated users from /repair-portal/claims/CLM-X to login', () => {
+    renderApp('/repair-portal/claims/CLM-TEST005');
+    expect(screen.getByRole('heading', { name: 'Repair Shop Portal' })).toBeInTheDocument();
+  });
 });

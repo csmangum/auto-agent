@@ -235,7 +235,7 @@ src/claim_agent/
 │   ├── stub.py          # Stub adapters (NotImplementedError placeholders)
 │   └── mock/            # Mock adapters backed by mock_db.json
 ├── agents/              # Agent factory functions
-├── chat/                # Chat agent for claimant portal / conversational UI
+├── chat/                # Chat agent for conversational claimant UX (distinct from the `/portal` self-service SPA)
 ├── compliance/          # UCSPA and regulatory compliance (deadlines, etc.)
 ├── crews/               # Crew definitions
 ├── data/                # Data loaders
@@ -268,6 +268,16 @@ src/claim_agent/
 └── mcp_server/          # Optional MCP server
 ```
 
+## Observability UI and portals
+
+The React + Vite app under `frontend/` is not a single product surface:
+
+- **Adjuster / operator UI** — Routes under the main layout (`/`, `/claims`, workbench, docs, skills, etc.) use authenticated internal APIs (`/api/claims` and related), same pattern as the observability dashboard.
+- **Claimant self-service** — Routes `/portal/login`, `/portal/claims`, and `/portal/claims/:claimId` (`frontend/src/pages/Portal*.tsx`) talk to **`/api/portal/*`**, implemented in `src/claim_agent/api/routes/portal.py`, with claimant verification (access token, policy+VIN, or email depending on configuration). This is the real policyholder-facing flow.
+- **Role simulation** — `/simulate` (`frontend/src/pages/Simulation.tsx`) switches among `frontend/src/pages/simulation/*` (customer, repair shop, third party). Those views reuse dashboard-style data hooks (e.g. `useClaims`); they are **simulation-only** and do **not** use portal verification or `/api/portal/*`.
+
+For API contract coverage of the portal, see [`tests/test_portal_api.py`](../tests/test_portal_api.py). A concise route table lives in the [README](../README.md#portal-vs-simulation).
+
 ## Technology Stack
 
 | Component | Technology | Documentation |
@@ -281,6 +291,7 @@ src/claim_agent/
 | CLI | Typer | `main.py` |
 | MCP Server | FastMCP | [MCP Server](mcp-server.md) |
 | External Integrations | Adapter Pattern | [Adapters](adapters.md) |
+| Observability & portals UI | React + Vite | This section; [README](../README.md#observability-ui-dashboard) |
 
 ## Key Design Decisions
 

@@ -141,6 +141,7 @@ See `README.md` for a shorter curated table.
 |---------|-------------|------|
 | FastAPI backend | `MOCK_DB_PATH=data/mock_db.json MOCK_CREW_ENABLED=true .venv/bin/claim-agent serve --reload` | 8000 |
 | React dashboard | `cd frontend && npm run dev` | 5173 (proxies `/api` to backend) |
+| Claimant portal (self-service) | Same Vite dev server; open `http://localhost:5173/portal/login` (`CLAIMANT_PORTAL_ENABLED=true` on backend) | 5173 |
 
 The backend uses SQLite by default (`data/claims.db`, auto-created). No external databases required for dev/test.
 
