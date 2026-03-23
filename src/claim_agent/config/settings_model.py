@@ -429,6 +429,38 @@ class DiaryConfig(BaseSettings):
     )
 
 
+class LlmCostAlertConfig(BaseSettings):
+    """Optional process-local LLM cost alerting configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="LLM_COST_ALERT_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    threshold_usd: float | None = None
+    webhook_url: str | None = None
+
+    @field_validator("threshold_usd", mode="before")
+    @classmethod
+    def _coerce_threshold_usd(cls, v: Any) -> float | None:
+        if v is None or str(v).strip() == "":
+            return None
+        try:
+            parsed = float(v)
+        except (ValueError, TypeError):
+            return None
+        return parsed if parsed > 0 else None
+
+    @field_validator("webhook_url", mode="before")
+    @classmethod
+    def _empty_url_to_none(cls, v: Any) -> str | None:
+        if v is None or str(v).strip() == "":
+            return None
+        return str(v).strip()
+
+
 class SchedulerConfig(BaseSettings):
     """Optional in-process scheduler for periodic operational jobs."""
 
@@ -1229,6 +1261,7 @@ class Settings(BaseSettings):
     payment: PaymentConfig = Field(default_factory=PaymentConfig)
     partial_loss: PartialLossConfig = Field(default_factory=PartialLossConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
+    llm_cost_alert: LlmCostAlertConfig = Field(default_factory=LlmCostAlertConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
     diary: DiaryConfig = Field(default_factory=DiaryConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)

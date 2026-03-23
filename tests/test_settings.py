@@ -135,6 +135,35 @@ def test_get_webhook_config_returns_dict():
     assert "enabled" in config
 
 
+def test_get_llm_cost_alert_config_defaults_disabled():
+    """LLM cost alert defaults should be disabled when unset."""
+    with patch.dict(
+        os.environ,
+        {"LLM_COST_ALERT_THRESHOLD_USD": "", "LLM_COST_ALERT_WEBHOOK_URL": ""},
+        clear=False,
+    ):
+        reload_settings()
+        config = settings.get_llm_cost_alert_config()
+        assert config["threshold_usd"] is None
+        assert config["webhook_url"] is None
+
+
+def test_get_llm_cost_alert_config_respects_env():
+    """LLM cost alert config should parse threshold and webhook URL."""
+    with patch.dict(
+        os.environ,
+        {
+            "LLM_COST_ALERT_THRESHOLD_USD": "12.5",
+            "LLM_COST_ALERT_WEBHOOK_URL": "https://alerts.example.com/llm",
+        },
+        clear=False,
+    ):
+        reload_settings()
+        config = settings.get_llm_cost_alert_config()
+        assert config["threshold_usd"] == 12.5
+        assert config["webhook_url"] == "https://alerts.example.com/llm"
+
+
 def test_get_notification_config_returns_dict():
     """get_notification_config returns dict with email_enabled, sms_enabled."""
     config = settings.get_notification_config()
