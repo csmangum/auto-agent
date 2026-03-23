@@ -347,7 +347,7 @@ class TestExportClaimToColdStorage:
             cfg = self._make_config()
 
             mock_s3 = mock.MagicMock()
-            with mock.patch("boto3.client", return_value=mock_s3):
+            with mock.patch("claim_agent.storage.export._make_s3_client", return_value=mock_s3):
                 key = export_claim_to_cold_storage(claim_id, repo, cfg)
 
             mock_s3.put_object.assert_called_once()
@@ -374,7 +374,7 @@ class TestExportClaimToColdStorage:
             )
 
             mock_s3 = mock.MagicMock()
-            with mock.patch("boto3.client", return_value=mock_s3):
+            with mock.patch("claim_agent.storage.export._make_s3_client", return_value=mock_s3):
                 export_claim_to_cold_storage(claim_id, repo, cfg)
 
             call_kwargs = mock_s3.put_object.call_args.kwargs
@@ -393,7 +393,7 @@ class TestExportClaimToColdStorage:
             cfg = self._make_config()
 
             mock_s3 = mock.MagicMock()
-            with mock.patch("boto3.client", return_value=mock_s3):
+            with mock.patch("claim_agent.storage.export._make_s3_client", return_value=mock_s3):
                 key1 = export_claim_to_cold_storage(claim_id, repo, cfg)
                 key2 = export_claim_to_cold_storage(claim_id, repo, cfg)
 
@@ -413,7 +413,7 @@ class TestExportClaimToColdStorage:
             cfg = self._make_config()
 
             mock_s3 = mock.MagicMock()
-            with mock.patch("boto3.client", return_value=mock_s3):
+            with mock.patch("claim_agent.storage.export._make_s3_client", return_value=mock_s3):
                 export_claim_to_cold_storage(claim_id, repo, cfg)
 
             history, _ = repo.get_claim_history(claim_id)
@@ -433,7 +433,7 @@ class TestExportClaimToColdStorage:
 
             mock_s3 = mock.MagicMock()
             mock_s3.put_object.side_effect = Exception("connection refused")
-            with mock.patch("boto3.client", return_value=mock_s3):
+            with mock.patch("claim_agent.storage.export._make_s3_client", return_value=mock_s3):
                 with pytest.raises(RuntimeError, match="S3 upload failed"):
                     export_claim_to_cold_storage(claim_id, repo, cfg)
 
@@ -513,7 +513,7 @@ class TestRetentionExportCLI:
 
             runner = CliRunner()
             mock_s3 = mock.MagicMock()
-            with mock.patch("boto3.client", return_value=mock_s3):
+            with mock.patch("claim_agent.storage.export._make_s3_client", return_value=mock_s3):
                 with mock.patch("claim_agent.main.get_db_path", return_value=db_path):
                     with mock.patch.dict(
                         os.environ,
@@ -568,7 +568,7 @@ class TestRetentionPurgeExportBeforePurge:
 
             runner = CliRunner()
             mock_s3 = mock.MagicMock()
-            with mock.patch("boto3.client", return_value=mock_s3):
+            with mock.patch("claim_agent.storage.export._make_s3_client", return_value=mock_s3):
                 with mock.patch("claim_agent.main.get_db_path", return_value=db_path):
                     with mock.patch.dict(
                         os.environ,

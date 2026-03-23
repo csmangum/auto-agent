@@ -834,12 +834,8 @@ def retention_export(
 
     exported: list[str] = []
     failed: list[str] = []
-    skipped: list[str] = []
     for claim in claims:
         claim_id = claim["id"]
-        if claim.get("cold_storage_exported_at"):
-            skipped.append(claim_id)
-            continue
         try:
             export_claim_to_cold_storage(claim_id, repo, export_cfg)
             exported.append(claim_id)
@@ -854,7 +850,6 @@ def retention_export(
                 **purge_state_info,
                 "exported_count": len(exported),
                 "exported_claim_ids": exported,
-                "skipped_already_exported": len(skipped),
                 "failed_count": len(failed),
                 "failed_claim_ids": failed,
             },

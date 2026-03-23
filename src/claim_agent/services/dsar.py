@@ -521,12 +521,16 @@ def fulfill_deletion_request(
             anonymized_claims += 1
             anonymized_parties += n_parties
 
+            # Apply DSAR audit log policy for this claim.
+            # Non-PII columns (action, statuses, actor_id, created_at) are always
+            # preserved for legal/regulatory requirements.
             # Non-PII audit columns stay immutable except where migration 049 allows
             # before_state / after_state updates (see AUDIT_LOG_STATE_REDACTION_ENABLED).
             if audit_policy == "redact":
                 audit_rows_affected += redact_audit_log_pii(conn, claim_id)
             elif audit_policy == "delete":
                 audit_rows_affected += delete_audit_log_entries(conn, claim_id)
+            # "preserve" (default): audit log untouched
             # "preserve" (default): audit log untouched for this policy path
 
         conn.execute(
