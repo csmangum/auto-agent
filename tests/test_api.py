@@ -604,7 +604,13 @@ class TestClaimFraudFilings:
 class TestAuthMe:
     """Test GET /api/auth/me identity introspection."""
 
-    def test_me_returns_anonymous_when_no_auth(self, client):
+    def test_me_returns_anonymous_when_no_auth(self, client, monkeypatch):
+        """No-auth mode: anonymous/admin context. Env must be cleared — .env may set API_KEYS/JWT."""
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
         resp = client.get("/api/auth/me")
         assert resp.status_code == 200
         data = resp.json()

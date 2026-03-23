@@ -74,7 +74,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'My Workbench' })).toBeInTheDocument();
   });
 
-  it('renders Dashboard at / for non-adjuster role', () => {
+  it('redirects non-adjuster from / to /dashboard', () => {
     localStorage.setItem('simulation_role', 'customer');
     renderApp('/');
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();

@@ -95,5 +95,10 @@ def refresh(body: RefreshBody):
 
 @router.get("/me")
 def get_current_user(auth: AuthContext = RequireAnyRole):
-    """Return the authenticated user's identity and role."""
+    """Return the current auth context's identity and role.
+
+    When authentication is not required, ``require_role`` synthesizes an
+    anonymous/admin context (e.g. identity="anonymous", role="admin"). Callers
+    must not treat this response as proof of authentication.
+    """
     return {"identity": auth.identity, "role": auth.role}
