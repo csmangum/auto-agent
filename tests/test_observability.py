@@ -385,6 +385,97 @@ class TestMetrics:
         # daily should still be present and consistent
         assert "2026-01-15" in breakdown["daily"]
         assert "2026-02-10" in breakdown["daily"]
+    def test_cost_alert_disabled_when_threshold_unset(self):
+        """No alert should be sent when threshold env var is unset."""
+        from claim_agent.config import reload_settings
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        with mock.patch.dict(
+            os.environ,
+            {"LLM_COST_ALERT_THRESHOLD_USD": "", "LLM_COST_ALERT_WEBHOOK_URL": ""},
+            clear=False,
+        ):
+            reload_settings()
+            metrics = ClaimMetrics()
+            metrics.start_claim("CLM-123")
+            metrics.record_llm_call(
+                claim_id="CLM-123",
+                model="gpt-4o",
+                input_tokens=100_000,
+                output_tokens=100_000,
+            )
+            with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                breakdown = metrics.get_cost_breakdown()
+                assert breakdown["total_cost_usd"] > 0
+                httpx_client.assert_not_called()
+
+    def test_cost_alert_crossing_sends_webhook_once_per_process(self):
+        """Threshold crossing should trigger one webhook per metrics process instance."""
+        from claim_agent.config import reload_settings
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LLM_COST_ALERT_THRESHOLD_USD": "0.01",
+                "LLM_COST_ALERT_WEBHOOK_URL": "https://alerts.example.com/llm",
+            },
+            clear=False,
+        ):
+            reload_settings()
+            metrics = ClaimMetrics()
+            metrics.start_claim("CLM-123")
+            metrics.record_llm_call(
+                claim_id="CLM-123",
+                model="gpt-4o",
+                input_tokens=1_000,
+                output_tokens=1_000,
+            )
+
+            with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                response = mock.Mock()
+                response.raise_for_status.return_value = None
+                client_instance = httpx_client.return_value.__enter__.return_value
+                client_instance.post.return_value = response
+
+                first = metrics.get_cost_breakdown()
+                second = metrics.get_cost_breakdown()
+
+                assert first["total_cost_usd"] > 0.01
+                assert second["total_cost_usd"] > 0.01
+                client_instance.post.assert_called_once()
+                call_kwargs = client_instance.post.call_args.kwargs
+                assert call_kwargs["json"]["event"] == "llm.cost_threshold_crossed"
+                assert call_kwargs["json"]["process_local"] is True
+                assert "by_crew" in call_kwargs["json"]
+                assert "daily" in call_kwargs["json"]
+
+    def test_cost_alert_not_triggered_when_under_threshold(self):
+        """Webhook should not be called while cost remains below threshold."""
+        from claim_agent.config import reload_settings
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LLM_COST_ALERT_THRESHOLD_USD": "1000",
+                "LLM_COST_ALERT_WEBHOOK_URL": "https://alerts.example.com/llm",
+            },
+            clear=False,
+        ):
+            reload_settings()
+            metrics = ClaimMetrics()
+            metrics.start_claim("CLM-123")
+            metrics.record_llm_call(
+                claim_id="CLM-123",
+                model="gpt-4o-mini",
+                input_tokens=100,
+                output_tokens=100,
+            )
+            with mock.patch("claim_agent.observability.metrics.httpx.Client") as httpx_client:
+                breakdown = metrics.get_cost_breakdown()
+                assert breakdown["total_cost_usd"] < 1000
+                httpx_client.assert_not_called()
 
 
 class TestGlobalHelpers:
