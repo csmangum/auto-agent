@@ -28,6 +28,7 @@ import RepairPortalLogin from './pages/RepairPortalLogin';
 import RepairPortalClaimDetail from './pages/RepairPortalClaimDetail';
 import ThirdPartyPortalLogin from './pages/ThirdPartyPortalLogin';
 import ThirdPartyPortalClaimDetail from './pages/ThirdPartyPortalClaimDetail';
+import NoteTemplatesAdmin from './pages/NoteTemplatesAdmin';
 import NotFound from './pages/NotFound';
 import { useRoleSimulation } from './context/RoleSimulationContext';
 
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="/agents" element={<Agents />} />
             <Route path="/cost" element={<CostDashboard />} />
             <Route path="/system" element={<SystemConfig />} />
+            <Route path="/system/templates" element={<NoteTemplatesAdmin />} />
             <Route path="*" element={<NotFound />} />
           </Route>
           <Route path="/portal">

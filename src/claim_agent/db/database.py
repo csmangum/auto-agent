@@ -37,6 +37,10 @@ from claim_agent.db.schema_auth_sqlite import (
     REFRESH_TOKENS_TABLE_SQLITE,
     USERS_TABLE_SQLITE,
 )
+from claim_agent.db.schema_note_templates_sqlite import (
+    IDX_NOTE_TEMPLATES_ACTIVE,
+    NOTE_TEMPLATES_TABLE_SQLITE,
+)
 from claim_agent.db.schema_incidents_sqlite import (
     CLAIM_LINKS_TABLE_SQLITE,
     INCIDENTS_TABLE_SQLITE,
@@ -519,6 +523,13 @@ CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_acce
     + IDX_REFRESH_TOKENS_TOKEN_HASH
     + ";\n"
     + IDX_REFRESH_TOKENS_EXPIRES_AT
+    + ";\n"
+    + """
+-- Note templates: server-driven adjuster quick-insert snippets
+"""
+    + NOTE_TEMPLATES_TABLE_SQLITE
+    + ";\n"
+    + IDX_NOTE_TEMPLATES_ACTIVE
     + ";\n"
 )
 

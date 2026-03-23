@@ -37,6 +37,7 @@ export const NAV_ICONS = {
   workbench: WorkbenchIcon,
   queue: QueueIcon,
   diary: DiaryIcon,
+  noteTemplates: DocsIcon,
 } as const;
 
 export const SKILL_GROUP_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {

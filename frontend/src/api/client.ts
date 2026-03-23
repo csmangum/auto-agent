@@ -37,6 +37,8 @@ import type {
   OverdueTasksResponse,
   ComplianceTemplatesResponse,
   FraudReportingComplianceResponse,
+  NoteTemplate,
+  NoteTemplatesResponse,
 } from './types';
 
 const BASE = '/api';
@@ -914,3 +916,39 @@ export interface CurrentUser {
 
 export const getCurrentUser = (): Promise<CurrentUser> =>
   fetchJSON<CurrentUser>('/auth/me');
+
+// ---------------------------------------------------------------------------
+// Note Templates
+// ---------------------------------------------------------------------------
+
+export const getNoteTemplates = (): Promise<NoteTemplatesResponse> =>
+  fetchJSON<NoteTemplatesResponse>('/note-templates');
+
+export interface NoteTemplateCreatePayload {
+  label: string;
+  body: string;
+  category?: string | null;
+  sort_order?: number;
+}
+
+export const createNoteTemplate = (
+  payload: NoteTemplateCreatePayload,
+): Promise<NoteTemplate> =>
+  postJSON<NoteTemplate>('/note-templates', payload);
+
+export interface NoteTemplateUpdatePayload {
+  label?: string;
+  body?: string;
+  category?: string | null;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export const updateNoteTemplate = (
+  id: number,
+  payload: NoteTemplateUpdatePayload,
+): Promise<NoteTemplate> =>
+  patchJSON<NoteTemplate>(`/note-templates/${id}`, payload);
+
+export const deleteNoteTemplate = (id: number): Promise<void> =>
+  deleteJSON(`/note-templates/${id}`);
