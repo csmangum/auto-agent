@@ -11,6 +11,15 @@ PostgreSQL: creates both tables with indexes.
 from alembic import op
 from sqlalchemy import text
 
+from claim_agent.db.schema_auth_sqlite import (
+    IDX_REFRESH_TOKENS_EXPIRES_AT,
+    IDX_REFRESH_TOKENS_TOKEN_HASH,
+    IDX_REFRESH_TOKENS_USER_ID,
+    IDX_USERS_EMAIL,
+    REFRESH_TOKENS_TABLE_SQLITE,
+    USERS_TABLE_SQLITE,
+)
+
 revision = "048"
 down_revision = "047"
 branch_labels = None
@@ -32,52 +41,13 @@ def upgrade() -> None:
             ).fetchall()
         }
         if "users" not in existing:
-            op.execute(
-                text("""
-                    CREATE TABLE users (
-                        id TEXT PRIMARY KEY,
-                        email TEXT NOT NULL UNIQUE,
-                        password_hash TEXT NOT NULL,
-                        role TEXT NOT NULL,
-                        is_active INTEGER NOT NULL DEFAULT 1,
-                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-                    )
-                """)
-            )
-            op.execute(text("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"))
+            op.execute(text(USERS_TABLE_SQLITE))
+            op.execute(text(IDX_USERS_EMAIL))
         if "refresh_tokens" not in existing:
-            op.execute(
-                text("""
-                    CREATE TABLE refresh_tokens (
-                        id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        token_hash TEXT NOT NULL,
-                        expires_at TEXT NOT NULL,
-                        revoked_at TEXT,
-                        replaced_by TEXT,
-                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                    )
-                """)
-            )
-            op.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id "
-                    "ON refresh_tokens(user_id)"
-                )
-            )
-            op.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash "
-                    "ON refresh_tokens(token_hash)"
-                )
-            )
-            op.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at "
-                    "ON refresh_tokens(expires_at)"
-                )
-            )
+            op.execute(text(REFRESH_TOKENS_TABLE_SQLITE))
+            op.execute(text(IDX_REFRESH_TOKENS_USER_ID))
+            op.execute(text(IDX_REFRESH_TOKENS_TOKEN_HASH))
+            op.execute(text(IDX_REFRESH_TOKENS_EXPIRES_AT))
         return
 
     op.execute(

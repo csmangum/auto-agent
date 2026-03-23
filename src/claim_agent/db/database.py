@@ -21,6 +21,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from claim_agent.db.schema_auth_sqlite import (
+    IDX_REFRESH_TOKENS_EXPIRES_AT,
+    IDX_REFRESH_TOKENS_TOKEN_HASH,
+    IDX_REFRESH_TOKENS_USER_ID,
+    IDX_USERS_EMAIL,
+    REFRESH_TOKENS_TABLE_SQLITE,
+    USERS_TABLE_SQLITE,
+)
 from claim_agent.db.schema_incidents_sqlite import (
     CLAIM_LINKS_TABLE_SQLITE,
     INCIDENTS_TABLE_SQLITE,
@@ -28,6 +36,19 @@ from claim_agent.db.schema_incidents_sqlite import (
     IDX_CLAIM_LINKS_CLAIM_B,
     IDX_CLAIMS_INCIDENT_ID,
     IDX_INCIDENTS_INCIDENT_DATE,
+)
+from claim_agent.db.schema_privacy_sqlite import (
+    CROSS_BORDER_TRANSFER_LOG_TABLE_SQLITE,
+    DSAR_VERIFICATION_TOKENS_TABLE_SQLITE,
+    DPA_REGISTRY_TABLE_SQLITE,
+    IDX_CBT_LOG_CLAIM_ID,
+    IDX_CBT_LOG_CREATED_AT,
+    IDX_CBT_LOG_FLOW_NAME,
+    IDX_CBT_LOG_POLICY_DECISION,
+    IDX_DPA_REGISTRY_ACTIVE,
+    IDX_DPA_REGISTRY_SERVICE_TYPE,
+    IDX_DPA_REGISTRY_SUBPROCESSOR,
+    IDX_DSAR_VERIFICATION_TOKENS_IDENTIFIER,
 )
 
 logger = logging.getLogger(__name__)
@@ -453,91 +474,53 @@ CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_token_hash ON claim_access_to
 CREATE INDEX IF NOT EXISTS idx_claim_access_tokens_expires_at ON claim_access_tokens(expires_at);
 
 -- DPA registry: track Data Processing Agreements with subprocessors (GDPR Art. 28)
-CREATE TABLE IF NOT EXISTS dpa_registry (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    subprocessor_name TEXT NOT NULL,
-    service_type TEXT NOT NULL,
-    data_categories TEXT NOT NULL DEFAULT '[]',
-    purpose TEXT NOT NULL,
-    destination_country TEXT NOT NULL,
-    destination_zone TEXT NOT NULL,
-    mechanism TEXT NOT NULL,
-    legal_basis TEXT,
-    dpa_signed_date TEXT,
-    dpa_expiry_date TEXT,
-    dpa_document_ref TEXT,
-    supplementary_measures TEXT DEFAULT '[]',
-    active INTEGER NOT NULL DEFAULT 1,
-    notes TEXT,
-    created_by TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_dpa_registry_subprocessor ON dpa_registry(subprocessor_name);
-CREATE INDEX IF NOT EXISTS idx_dpa_registry_active ON dpa_registry(active);
-CREATE INDEX IF NOT EXISTS idx_dpa_registry_service_type ON dpa_registry(service_type);
-
--- Cross-border transfer log: audit trail of data flows across jurisdictions
-CREATE TABLE IF NOT EXISTS cross_border_transfer_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT,
-    flow_name TEXT NOT NULL,
-    source_zone TEXT NOT NULL,
-    destination TEXT NOT NULL,
-    destination_zone TEXT NOT NULL,
-    data_categories TEXT NOT NULL DEFAULT '[]',
-    mechanism TEXT NOT NULL,
-    permitted INTEGER NOT NULL DEFAULT 1,
-    policy_decision TEXT NOT NULL DEFAULT 'allow',
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_cbt_log_claim_id ON cross_border_transfer_log(claim_id);
-CREATE INDEX IF NOT EXISTS idx_cbt_log_flow_name ON cross_border_transfer_log(flow_name);
-CREATE INDEX IF NOT EXISTS idx_cbt_log_created_at ON cross_border_transfer_log(created_at);
-CREATE INDEX IF NOT EXISTS idx_cbt_log_policy_decision ON cross_border_transfer_log(policy_decision);
--- DSAR OTP verification tokens for self-service claimant identity proofing
-CREATE TABLE IF NOT EXISTS dsar_verification_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    verification_id TEXT NOT NULL UNIQUE,
-    claimant_identifier TEXT NOT NULL,
-    channel TEXT NOT NULL,
-    token_hash TEXT NOT NULL,
-    salt TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    verified_at TEXT,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-);
-CREATE INDEX IF NOT EXISTS idx_dsar_verification_tokens_identifier
-    ON dsar_verification_tokens(claimant_identifier, created_at);
-
--- Users (Auth Phase 2): password login and RBAC identity (id aligns with claims.assignee)
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-
--- Refresh tokens: store hashes only; opaque bearer rotated on /api/auth/refresh
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    revoked_at TEXT,
-    replaced_by TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 """
+    + DPA_REGISTRY_TABLE_SQLITE
+    + ";\n"
+    + IDX_DPA_REGISTRY_SUBPROCESSOR
+    + ";\n"
+    + IDX_DPA_REGISTRY_ACTIVE
+    + ";\n"
+    + IDX_DPA_REGISTRY_SERVICE_TYPE
+    + ";\n"
+    + """
+-- Cross-border transfer log: audit trail of data flows across jurisdictions
+"""
+    + CROSS_BORDER_TRANSFER_LOG_TABLE_SQLITE
+    + ";\n"
+    + IDX_CBT_LOG_CLAIM_ID
+    + ";\n"
+    + IDX_CBT_LOG_FLOW_NAME
+    + ";\n"
+    + IDX_CBT_LOG_CREATED_AT
+    + ";\n"
+    + IDX_CBT_LOG_POLICY_DECISION
+    + ";\n"
+    + """
+-- DSAR OTP verification tokens for self-service claimant identity proofing
+"""
+    + DSAR_VERIFICATION_TOKENS_TABLE_SQLITE
+    + ";\n"
+    + IDX_DSAR_VERIFICATION_TOKENS_IDENTIFIER
+    + ";\n"
+    + """
+-- Users (Auth Phase 2): password login and RBAC identity (id aligns with claims.assignee)
+"""
+    + USERS_TABLE_SQLITE
+    + ";\n"
+    + IDX_USERS_EMAIL
+    + ";\n"
+    + """
+-- Refresh tokens: store hashes only; opaque bearer rotated on /api/auth/refresh
+"""
+    + REFRESH_TOKENS_TABLE_SQLITE
+    + ";\n"
+    + IDX_REFRESH_TOKENS_USER_ID
+    + ";\n"
+    + IDX_REFRESH_TOKENS_TOKEN_HASH
+    + ";\n"
+    + IDX_REFRESH_TOKENS_EXPIRES_AT
+    + ";\n"
 )
 
 
