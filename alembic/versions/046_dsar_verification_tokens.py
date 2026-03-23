@@ -19,6 +19,11 @@ Stores one-time password tokens used for self-service DSAR claimant verification
 from alembic import op
 from sqlalchemy import text
 
+from claim_agent.db.schema_privacy_sqlite import (
+    DSAR_VERIFICATION_TOKENS_TABLE_SQLITE,
+    IDX_DSAR_VERIFICATION_TOKENS_IDENTIFIER,
+)
+
 
 revision = "046"
 down_revision = "045"
@@ -31,28 +36,8 @@ def upgrade() -> None:
     dialect = conn.dialect.name
 
     if dialect == "sqlite":
-        op.execute(
-            text("""
-                CREATE TABLE IF NOT EXISTS dsar_verification_tokens (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    verification_id TEXT NOT NULL UNIQUE,
-                    claimant_identifier TEXT NOT NULL,
-                    channel TEXT NOT NULL,
-                    token_hash TEXT NOT NULL,
-                    salt TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    verified_at TEXT,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-                )
-            """)
-        )
-        op.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_dsar_verification_tokens_identifier "
-                "ON dsar_verification_tokens(claimant_identifier, created_at)"
-            )
-        )
+        op.execute(text(DSAR_VERIFICATION_TOKENS_TABLE_SQLITE))
+        op.execute(text(IDX_DSAR_VERIFICATION_TOKENS_IDENTIFIER))
     else:
         op.execute(
             text("""
