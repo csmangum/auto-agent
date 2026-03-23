@@ -385,6 +385,7 @@ class TestMetrics:
         # daily should still be present and consistent
         assert "2026-01-15" in breakdown["daily"]
         assert "2026-02-10" in breakdown["daily"]
+
     def test_cost_alert_disabled_when_threshold_unset(self):
         """No alert should be sent when threshold env var is unset."""
         from claim_agent.config import reload_settings

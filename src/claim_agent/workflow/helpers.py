@@ -1,7 +1,8 @@
 """Small stateless helpers shared across workflow modules."""
 
 import threading
-from typing import TYPE_CHECKING, Any, Callable
+import types
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import litellm
 
@@ -22,8 +23,47 @@ logger = get_logger(__name__)
 if TYPE_CHECKING:
     from claim_agent.workflow.budget import BudgetEnforcingCallback
 
-# Protects litellm.callbacks list replacement during kickoff budget-callback install/uninstall.
-_budget_callbacks_lock = threading.Lock()
+# Use the same global callbacks lock as workflow.orchestrator to protect
+# litellm.callbacks modifications during kickoff budget-callback install/uninstall.
+
+
+class _CallbacksLockProxy:
+    """Context-manager proxy that delegates to orchestrator's shared callbacks lock.
+
+    The lock reference is resolved lazily on first use to avoid a circular import
+    (orchestrator imports helpers at module level).  It is cached as a class attribute
+    so all proxy instances share the single ``orchestrator._callbacks_lock`` object;
+    this prevents the per-instance ``self._lock`` assignment race that would occur if
+    two threads entered the same proxy instance concurrently.
+    """
+
+    _lock: Optional[threading.Lock] = None
+
+    @classmethod
+    def _get_lock(cls) -> threading.Lock:
+        if cls._lock is None:
+            # Local import to avoid circular dependencies at module import time.
+            from claim_agent.workflow import orchestrator  # type: ignore[import]
+
+            cls._lock = orchestrator._callbacks_lock  # type: ignore[attr-defined]
+        return cls._lock
+
+    def __enter__(self) -> threading.Lock:
+        lock = self._get_lock()
+        lock.acquire()
+        return lock
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        # Always release; standard Lock semantics handle re-entrancy errors.
+        self._get_lock().release()
+
+
+_budget_callbacks_lock = _CallbacksLockProxy()
 
 
 WORKFLOW_STAGES = (
