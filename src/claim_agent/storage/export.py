@@ -44,6 +44,23 @@ _log = logging.getLogger(__name__)
 AUDIT_LOG_MAX_ROWS = 1_000
 
 
+def _make_s3_client(endpoint_url: str | None) -> Any:
+    """Create and return a boto3 S3 client.
+
+    Isolated into its own function so tests can patch
+    ``claim_agent.storage.export._make_s3_client`` without requiring
+    boto3 to be installed in the test environment.
+    """
+    import boto3  # noqa: PLC0415  (lazy import – boto3 is an optional dependency)
+    from botocore.config import Config as BotocoreConfig  # noqa: PLC0415
+
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        config=BotocoreConfig(signature_version="s3v4"),
+    )
+
+
 def build_claim_manifest(
     claim_data: dict[str, Any],
     audit_rows: list[dict[str, Any]],
@@ -146,14 +163,7 @@ def export_claim_to_cold_storage(
         put_kwargs["ServerSideEncryption"] = "AES256"
 
     try:
-        import boto3
-        from botocore.config import Config as BotocoreConfig
-
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=config.s3_endpoint,
-            config=BotocoreConfig(signature_version="s3v4"),
-        )
+        s3 = _make_s3_client(config.s3_endpoint)
         s3.put_object(**put_kwargs)
     except Exception as exc:
         raise RuntimeError(

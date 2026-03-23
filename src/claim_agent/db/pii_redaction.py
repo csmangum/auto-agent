@@ -12,13 +12,8 @@ from claim_agent.db.database import row_to_dict
 
 PII_REDACTED_PLACEHOLDER = "[REDACTED]"
 
-# Top-level scalar keys in before_state / after_state JSON that contain PII
-# and should be replaced with the placeholder on audit-log redaction.
+# Top-level scalar keys that carry PII and should be replaced in audit-log JSON.
 _AUDIT_PII_SCALAR_KEYS: frozenset[str] = frozenset(
-# Known PII key names that may appear in claim_audit_log JSON fields
-# (details, before_state, after_state). Values under these keys are replaced
-# with PII_REDACTED_PLACEHOLDER when the 'redact' audit log policy is used.
-_AUDIT_LOG_PII_KEYS: frozenset[str] = frozenset(
     {
         "policy_number",
         "vin",
@@ -27,9 +22,9 @@ _AUDIT_LOG_PII_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# Keys inside nested objects (e.g. party dicts) that carry PII.
+# Keys inside nested objects (e.g. party dicts) that also carry PII.
 _AUDIT_PII_NESTED_KEYS: frozenset[str] = frozenset(
-    {"name", "email", "phone", "address"}
+    {"name", "email", "phone", "address", "claimant_name"}
 )
 
 
@@ -60,22 +55,39 @@ def _redact_json_pii(value: Any, placeholder: str = PII_REDACTED_PLACEHOLDER) ->
     return value
 
 
+def _redact_json_field(
+    raw: str | None,
+    placeholder: str = PII_REDACTED_PLACEHOLDER,
+) -> str | None:
+    """Parse a JSON string, redact PII keys, and return the updated JSON string.
+
+    Non-JSON or unparseable values are replaced with *placeholder* in full.
+    Returns ``None`` / empty string unchanged.
+    """
+    if not raw:
+        return raw
+    try:
+        parsed = json.loads(raw)
+        redacted = _redact_json_pii(parsed, placeholder)
+        return json.dumps(redacted)
+    except (json.JSONDecodeError, TypeError):
+        return placeholder
+
+
 def redact_audit_log_pii(
     conn: Connection,
     claim_id: str,
     *,
     placeholder: str = PII_REDACTED_PLACEHOLDER,
 ) -> int:
-    """Redact PII from before_state / after_state JSON in claim_audit_log rows.
+    """Scrub PII from ``details``, ``before_state``, and ``after_state`` JSON columns.
 
-    This function performs in-place UPDATE of the two JSON columns.  It is
-    permitted by the ``claim_audit_log_protect_non_pii_columns`` trigger
-    installed by migration 049, which still blocks changes to all other
-    columns (claim_id, action, statuses, details, actor_id, created_at).
+    Uses a delete-then-reinsert strategy so that the ``details`` column (which is
+    protected by the append-only trigger against in-place UPDATE) can also be
+    sanitised.  DELETE has been permitted since migration 039.  Non-JSON columns
+    (``action``, statuses, ``actor_id``, ``created_at``) are preserved verbatim.
 
-    This function is a no-op when ``AUDIT_LOG_STATE_REDACTION_ENABLED=false``
-    (the default); callers are responsible for checking that gate before
-    invoking it.
+    This function is a no-op when no PII keys are found in any row.
 
     Args:
         conn: Active SQLAlchemy connection (within an open transaction).
@@ -83,63 +95,7 @@ def redact_audit_log_pii(
         placeholder: String to substitute for PII values (default ``[REDACTED]``).
 
     Returns:
-        Number of audit rows that were updated.
-    """
-    rows = conn.execute(
-        text(
-            "SELECT id, before_state, after_state FROM claim_audit_log "
-            "WHERE claim_id = :claim_id"
-        "name",
-        "email",
-        "phone",
-        "address",
-        "claimant_name",
-    }
-)
-
-
-def _redact_json_value(obj: Any) -> Any:
-    """Recursively replace known PII key values in a parsed JSON object."""
-    if isinstance(obj, dict):
-        return {
-            k: (PII_REDACTED_PLACEHOLDER if k in _AUDIT_LOG_PII_KEYS else _redact_json_value(v))
-            for k, v in obj.items()
-        }
-    if isinstance(obj, list):
-        return [_redact_json_value(item) for item in obj]
-    return obj
-
-
-def _redact_json_field(raw: str | None) -> str | None:
-    """Parse a JSON string, redact PII keys, and return the updated JSON string."""
-    if not raw:
-        return raw
-    try:
-        parsed = json.loads(raw)
-        redacted = _redact_json_value(parsed)
-        return json.dumps(redacted)
-    except (json.JSONDecodeError, TypeError):
-        return PII_REDACTED_PLACEHOLDER
-
-
-def redact_audit_log_pii(conn: Connection, claim_id: str) -> int:
-    """Scrub PII from claim_audit_log JSON fields for a claim.
-
-    Uses delete-then-reinsert (preserving created_at and action metadata) to work
-    around the append-only UPDATE trigger while staying within the DB schema.
-    DELETE is permitted since migration 039.
-
-    The ``details``, ``before_state``, and ``after_state`` JSON columns are
-    parsed and any values whose key matches a known PII field name are replaced
-    with ``PII_REDACTED_PLACEHOLDER``. Non-JSON or unparseable fields are replaced
-    with the placeholder string in full.
-
-    Args:
-        conn: Active SQLAlchemy connection.
-        claim_id: Claim ID whose audit rows should be redacted.
-
-    Returns:
-        Number of audit rows processed.
+        Number of audit rows processed (rows with at least one JSON field changed).
     """
     rows = conn.execute(
         text(
@@ -150,74 +106,45 @@ def redact_audit_log_pii(conn: Connection, claim_id: str) -> int:
         {"claim_id": claim_id},
     ).fetchall()
 
-    updated = 0
-    for row in rows:
-        # SQLAlchemy text() rows always support subscript access.
-        row_id: int = row[0]
-        raw_before: str | None = row[1]
-        raw_after: str | None = row[2]
-
-        new_before: str | None = None
-        if raw_before:
-            try:
-                parsed = json.loads(raw_before)
-                redacted = _redact_json_pii(parsed, placeholder)
-                new_before = json.dumps(redacted)
-            except (json.JSONDecodeError, TypeError):
-                new_before = raw_before  # leave unparseable values as-is
-
-        new_after: str | None = None
-        if raw_after:
-            try:
-                parsed = json.loads(raw_after)
-                redacted = _redact_json_pii(parsed, placeholder)
-                new_after = json.dumps(redacted)
-            except (json.JSONDecodeError, TypeError):
-                new_after = raw_after
-
-        if new_before != raw_before or new_after != raw_after:
-            conn.execute(
-                text(
-                    "UPDATE claim_audit_log "
-                    "SET before_state = :before_state, after_state = :after_state "
-                    "WHERE id = :row_id"
-                ),
-                {
-                    "before_state": new_before,
-                    "after_state": new_after,
-                    "row_id": row_id,
-                },
-            )
-            updated += 1
-
-    return updated
     if not rows:
         return 0
 
-    redacted: list[dict[str, Any]] = []
+    redacted_rows: list[dict[str, Any]] = []
+    changed = 0
     for row in rows:
         r = row_to_dict(row)
-        redacted.append(
+        raw_details: str | None = r.get("details")
+        raw_before: str | None = r.get("before_state")
+        raw_after: str | None = r.get("after_state")
+
+        new_details = _redact_json_field(raw_details, placeholder)
+        new_before = _redact_json_field(raw_before, placeholder)
+        new_after = _redact_json_field(raw_after, placeholder)
+
+        if new_details != raw_details or new_before != raw_before or new_after != raw_after:
+            changed += 1
+
+        redacted_rows.append(
             {
                 "claim_id": claim_id,
                 "action": r.get("action"),
                 "old_status": r.get("old_status"),
                 "new_status": r.get("new_status"),
-                "details": _redact_json_field(r.get("details")),
+                "details": new_details,
                 "actor_id": r.get("actor_id"),
-                "before_state": _redact_json_field(r.get("before_state")),
-                "after_state": _redact_json_field(r.get("after_state")),
+                "before_state": new_before,
+                "after_state": new_after,
                 "created_at": r.get("created_at"),
             }
         )
 
-    # Delete all original rows in one statement (DELETE is permitted since migration 039)
+    # DELETE original rows (permitted since migration 039), then reinsert with
+    # redacted JSON so that the immutable non-JSON columns are preserved exactly.
     conn.execute(
         text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),
         {"claim_id": claim_id},
     )
-    # Reinsert redacted copies preserving created_at and action metadata
-    for params in redacted:
+    for params in redacted_rows:
         conn.execute(
             text("""
                 INSERT INTO claim_audit_log
@@ -229,7 +156,8 @@ def redact_audit_log_pii(conn: Connection, claim_id: str) -> int:
             """),
             params,
         )
-    return len(redacted)
+
+    return changed
 
 
 def delete_audit_log_entries(conn: Connection, claim_id: str) -> int:
@@ -266,10 +194,9 @@ def anonymize_claim_pii(
     """Redact claim identifiers, narrative fields, attachments, parties, and notes.
 
     When *redact_audit_log* is ``True`` the function also calls
-    :func:`redact_audit_log_pii` to sanitize PII inside the JSON state
-    snapshots stored in ``claim_audit_log.before_state`` / ``after_state``.
-    This requires migration 049 to be applied (the trigger must allow updates
-    to those two columns).  The flag should only be set when the
+    :func:`redact_audit_log_pii` to sanitize PII inside the JSON fields
+    stored in ``claim_audit_log`` rows (``details``, ``before_state``,
+    ``after_state``).  The flag should only be set when the
     ``AUDIT_LOG_STATE_REDACTION_ENABLED`` setting is enabled.
 
     Returns:
