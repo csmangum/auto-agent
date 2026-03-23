@@ -988,10 +988,10 @@ class CreateRepairShopPortalTokenBody(BaseModel):
 
 
 class CreateThirdPartyPortalTokenBody(BaseModel):
-    """Optional claim party to associate with the token (audit)."""
+    """Claim party to associate with the token (required for audit and eligibility)."""
 
-    party_id: Optional[int] = Field(
-        default=None,
+    party_id: int = Field(
+        ...,
         description=(
             "Claim party ID on this claim; must be witness, attorney, provider, or lienholder"
         ),
@@ -1091,23 +1091,22 @@ def create_third_party_portal_token(
         if not get_settings().third_party_portal.enabled:
             raise HTTPException(status_code=503, detail="Third-party portal is disabled")
         party_id = body.party_id
-        if party_id is not None:
-            parties = ctx.repo.get_claim_parties(claim_id)
-            match = next((p for p in parties if p.get("id") == party_id), None)
-            if match is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"party_id {party_id} is not a party on this claim",
-                )
-            ptype = str(match.get("party_type") or "").strip().lower()
-            if ptype not in THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "Third-party portal tokens may only be issued for parties of type: "
-                        f"{', '.join(sorted(THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES))}"
-                    ),
-                )
+        parties = ctx.repo.get_claim_parties(claim_id)
+        match = next((p for p in parties if p.get("id") == party_id), None)
+        if match is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"party_id {party_id} is not a party on this claim",
+            )
+        ptype = str(match.get("party_type") or "").strip().lower()
+        if ptype not in THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Third-party portal tokens may only be issued for parties of type: "
+                    f"{', '.join(sorted(THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES))}"
+                ),
+            )
         token = create_third_party_access_token(claim_id, party_id=party_id)
         result = {"claim_id": claim_id, "token": token}
         store_response_if_idempotent(idem_key, 200, result)

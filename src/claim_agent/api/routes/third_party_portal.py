@@ -45,8 +45,9 @@ router = APIRouter(prefix="/third-party-portal", tags=["third-party-portal"])
 _ATTACH_BASE = "/api/third-party-portal"
 
 # Subset of claimant portal fields: no policy_number or vin (minimal PII).
-# payout_amount may represent demand/settlement figures shared with counterparties for
-# subrogation / inter-carrier context — omit from UI if your compliance posture differs.
+# Includes payout_amount and liability_percentage for subrogation / demand context; deployers
+# with stricter data minimization may fork or gate these fields. Policyholder direct contact
+# is not exposed here (use follow-up messages / adjuster channels).
 THIRD_PARTY_PORTAL_CLAIM_FIELDS = [
     "id",
     "vehicle_year",
@@ -107,20 +108,6 @@ def get_third_party_portal_claim(
     result["follow_up_messages"] = [
         msg for msg in all_follow_ups if (msg.get("user_type") or "") == "other"
     ]
-    # Adjuster / primary carrier contact: first party with email on claim (non-third-party portal)
-    parties = repo.get_claim_parties(claim_id)
-    contact = None
-    for p in parties:
-        if (p.get("party_type") or "") in ("claimant", "policyholder"):
-            if p.get("email") or p.get("phone"):
-                contact = {
-                    "party_type": p.get("party_type"),
-                    "name": p.get("name"),
-                    "email": p.get("email"),
-                    "phone": p.get("phone"),
-                }
-                break
-    result["primary_carrier_contact"] = contact
     result["parties"] = []
     result["tasks"] = []
     result["tasks_total"] = 0

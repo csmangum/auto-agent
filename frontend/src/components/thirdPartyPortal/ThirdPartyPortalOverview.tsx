@@ -5,12 +5,10 @@ export function ThirdPartyPortalOverview({
   claim,
   history,
   demandLabel = 'Demand Amount',
-  carrierContact,
 }: {
   claim: Claim;
   history: AuditEvent[];
   demandLabel?: string;
-  carrierContact?: Claim['primary_carrier_contact'];
 }) {
   const relevantHistory = history.filter(
     (e) =>
@@ -21,23 +19,6 @@ export function ThirdPartyPortalOverview({
 
   return (
     <div className="space-y-6">
-      {carrierContact && (carrierContact.email || carrierContact.phone || carrierContact.name) && (
-        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 border-l-[3px] border-l-purple-500/50">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">Primary carrier contact</h3>
-          <div className="text-sm text-gray-400 space-y-1">
-            {carrierContact.name && <p>{carrierContact.name}</p>}
-            {carrierContact.email && (
-              <p>
-                <a href={`mailto:${carrierContact.email}`} className="text-purple-400 hover:underline">
-                  {carrierContact.email}
-                </a>
-              </p>
-            )}
-            {carrierContact.phone && <p>{carrierContact.phone}</p>}
-          </div>
-        </div>
-      )}
-
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-4">Claim Summary</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

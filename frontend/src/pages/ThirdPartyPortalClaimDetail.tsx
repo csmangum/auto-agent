@@ -10,8 +10,8 @@ import { ThirdPartyPortalLiabilityPanel } from '../components/thirdPartyPortal/T
 import { ThirdPartyPortalDocumentUpload } from '../components/thirdPartyPortal/ThirdPartyPortalDocumentUpload';
 import type { Claim, AuditEvent, FollowUpMessage } from '../api/types';
 
-/** Matches backend DISPUTABLE_STATUSES for third-party portal dispute filing */
-const THIRD_PARTY_DISPUTABLE_STATUSES = ['settled', 'open'];
+/** Must match ``DISPUTABLE_STATUSES`` in ``src/claim_agent/db/constants.py`` (single source of truth). */
+const THIRD_PARTY_DISPUTABLE_STATUSES: readonly string[] = ['settled', 'open'];
 
 const qk = {
   claim: (id: string) => ['third-party-portal', 'claim', id] as const,
@@ -146,11 +146,7 @@ function ThirdPartyPortalClaimBody({
         <div className="animate-fade-in" key={activeTab}>
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              <ThirdPartyPortalOverview
-                claim={claim}
-                history={history}
-                carrierContact={claim.primary_carrier_contact ?? undefined}
-              />
+              <ThirdPartyPortalOverview claim={claim} history={history} />
               <ThirdPartyPortalDocumentUpload
                 claimId={claimId}
                 uploadFn={(id, f) => thirdPartyPortalApi.uploadDocument(id, f)}
