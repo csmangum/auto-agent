@@ -303,10 +303,14 @@ def create_document_request(
     if not document_type:
         return json.dumps({"success": False, "request_id": None, "error": "document_type is required"})
     if document_type not in DOCUMENT_TYPE_OPTIONS:
-        logger.warning(
-            "Unknown document_type %r for claim %s (known: %s)",
-            document_type, claim_id, ", ".join(DOCUMENT_TYPE_OPTIONS),
-        )
+        return json.dumps({
+            "success": False,
+            "request_id": None,
+            "error": (
+                f"Unknown document_type {document_type!r}. "
+                f"Valid types: {', '.join(sorted(DOCUMENT_TYPE_OPTIONS))}"
+            ),
+        })
     try:
         doc_repo = DocumentRepository()
         req_id = doc_repo.create_document_request(

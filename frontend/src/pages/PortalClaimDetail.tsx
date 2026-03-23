@@ -102,7 +102,7 @@ export default function PortalClaimDetail() {
       (activeTab === 'repair' || activeTab === 'rental'),
   });
 
-  const { data: paymentsData, isError: paymentsError } = useQuery({
+  const { data: paymentsData, isError: paymentsError, isLoading: paymentsLoading } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'payments'],
     queryFn: () => portalApi.getPayments(claimId!),
     enabled:
@@ -111,7 +111,7 @@ export default function PortalClaimDetail() {
       (activeTab === 'payments' || activeTab === 'rental'),
   });
 
-  const { data: docRequestsData, isError: docRequestsError } = useQuery({
+  const { data: docRequestsData, isError: docRequestsError, isLoading: docRequestsLoading } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'document-requests'],
     queryFn: () => portalApi.getDocumentRequests(claimId!),
     enabled: !!claimId && claimQuerySuccess,
@@ -365,7 +365,9 @@ export default function PortalClaimDetail() {
                 (repairData?.latest ?? null) as Record<string, unknown> | null
               }
               docRequestsError={docRequestsError}
+              docRequestsLoading={docRequestsLoading}
               paymentsError={paymentsError}
+              paymentsLoading={paymentsLoading}
             />
           )}
           {activeTab === 'dispute' && (
@@ -665,7 +667,9 @@ function RentalTab({
   rentalDocRequests,
   repairLatest,
   docRequestsError,
+  docRequestsLoading,
   paymentsError,
+  paymentsLoading,
 }: {
   claimType: string;
   rentalPayments: Array<{
@@ -687,7 +691,9 @@ function RentalTab({
   }>;
   repairLatest: Record<string, unknown> | null;
   docRequestsError?: boolean;
+  docRequestsLoading?: boolean;
   paymentsError?: boolean;
+  paymentsLoading?: boolean;
 }) {
   const latestStatus =
     repairLatest && typeof repairLatest.status === 'string'
@@ -756,7 +762,11 @@ function RentalTab({
             Could not load document requests. Please try again later.
           </p>
         )}
-        {!docRequestsError && rentalDocRequests.length > 0 ? (
+        {docRequestsLoading && !docRequestsError ? (
+          <p className="text-sm text-gray-500 animate-pulse">
+            Loading document requests&hellip;
+          </p>
+        ) : !docRequestsError && rentalDocRequests.length > 0 ? (
           <ul className="space-y-3">
             {rentalDocRequests.map((r) => (
               <li
@@ -784,7 +794,7 @@ function RentalTab({
               </li>
             ))}
           </ul>
-        ) : !docRequestsError ? (
+        ) : !docRequestsError && !docRequestsLoading ? (
           <p className="text-sm text-gray-500">
             No rental-related document requests right now.
           </p>
@@ -800,7 +810,11 @@ function RentalTab({
             Could not load payment data. Please try again later.
           </p>
         )}
-        {!paymentsError && rentalPayments.length > 0 ? (
+        {paymentsLoading && !paymentsError ? (
+          <p className="text-sm text-gray-500 animate-pulse">
+            Loading payment data&hellip;
+          </p>
+        ) : !paymentsError && rentalPayments.length > 0 ? (
           <div className="space-y-3">
             {rentalPayments.map((p) => (
               <div
@@ -833,7 +847,7 @@ function RentalTab({
               </div>
             ))}
           </div>
-        ) : !paymentsError ? (
+        ) : !paymentsError && !paymentsLoading ? (
           <p className="text-sm text-gray-500">
             No rental-related payments recorded yet (including direct-bill to a
             rental company or tagged reimbursement).
