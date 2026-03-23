@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
 from typing import TYPE_CHECKING, Any
@@ -21,6 +22,25 @@ GENERIC_ACCESS_DENIED = json.dumps({"error": "Access denied", "message": "Invali
 
 # Transient adapter errors (timeout, connection) - tools return error JSON instead of raising
 _ADAPTER_RETRY_ATTEMPTS = 3
+
+# Optional override for backoff between retries (seconds). When unset, uses 2**attempt (1s, 2s, ...).
+# Tests set CLAIM_AGENT_SIU_ADAPTER_RETRY_SLEEP_SEC=0 for fast runs.
+_SIU_RETRY_SLEEP_ENV = "CLAIM_AGENT_SIU_ADAPTER_RETRY_SLEEP_SEC"
+
+
+def _adapter_retry_sleep_seconds(attempt: int) -> float:
+    raw = os.getenv(_SIU_RETRY_SLEEP_ENV)
+    if raw is not None and raw.strip() != "":
+        try:
+            value = float(raw)
+        except ValueError:
+            logger.warning("Invalid %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
+        else:
+            if value < 0:
+                logger.warning("Negative %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
+            else:
+                return value
+    return float(2**attempt)
 
 # Omit from fraud_report_filings.metadata redacted_payload (PII / sensitive)
 _PII_FILING_METADATA_KEYS = frozenset({
@@ -118,9 +138,9 @@ def get_siu_case_details_impl(case_id: str, *, ctx: ClaimContext | None = None) 
             return _adapter_error_json("SIU case lookup not implemented", case_id=case_id)
         except RETRYABLE_EXCEPTIONS as e:
             if attempt < _ADAPTER_RETRY_ATTEMPTS - 1:
-                wait = 2**attempt  # 1s, 2s
+                wait = _adapter_retry_sleep_seconds(attempt)
                 logger.warning(
-                    "get_siu_case_details retry %d/%d: %s (wait %.0fs)",
+                    "get_siu_case_details retry %d/%d: %s (wait %ss)",
                     attempt + 1,
                     _ADAPTER_RETRY_ATTEMPTS,
                     e,
@@ -500,9 +520,9 @@ def file_fraud_report_state_bureau_impl(
             )
         except RETRYABLE_EXCEPTIONS as e:
             if attempt < _ADAPTER_RETRY_ATTEMPTS - 1:
-                wait = 2**attempt
+                wait = _adapter_retry_sleep_seconds(attempt)
                 logger.warning(
-                    "file_fraud_report_state_bureau retry %d/%d: %s (wait %.0fs)",
+                    "file_fraud_report_state_bureau retry %d/%d: %s (wait %ss)",
                     attempt + 1,
                     _ADAPTER_RETRY_ATTEMPTS,
                     e,

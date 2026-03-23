@@ -6,8 +6,6 @@ from pathlib import Path
 import pytest
 import numpy as np
 
-pytestmark = pytest.mark.usefixtures("_preload_embedding_model")
-
 # Test data directory
 DATA_DIR = Path(__file__).parent.parent / "data"
 
@@ -222,11 +220,14 @@ class TestEmbeddings:
         assert embeddings.shape[1] == embedder.dimension
     
     def test_get_embedding_provider(self):
-        """Test the factory function."""
+        """Test the factory function (unit tests use LexicalHashEmbedding via conftest)."""
         from claim_agent.rag.embeddings import get_embedding_provider
-        
+
+        from tests.conftest_embedding_mocks import LexicalHashEmbedding
+
         provider = get_embedding_provider("sentence-transformers")
-        assert provider.model_name == "all-MiniLM-L6-v2"
+        assert isinstance(provider, LexicalHashEmbedding)
+        assert provider.dimension == 384
 
 
 class TestVectorStore:

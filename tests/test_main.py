@@ -30,6 +30,7 @@ def _run_cli(args, env=None):
     return result.returncode, result.stdout, result.stderr
 
 
+@pytest.mark.slow
 def test_process_invalid_claim_exits_nonzero_no_claim_created():
     """Process with invalid claim JSON (missing required field) exits non-zero and creates no claim."""
     fd, db_path = tempfile.mkstemp(suffix=".db")

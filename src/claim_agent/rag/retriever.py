@@ -50,9 +50,6 @@ def _get_default_cache_dir() -> Path:
 # Default data directory
 DEFAULT_DATA_DIR = Path(__file__).parent.parent.parent.parent / "data"
 
-# Default cache directory for persisted vector store
-DEFAULT_CACHE_DIR = _get_default_cache_dir()
-
 
 class PolicyRetriever:
     """Retriever for policy and compliance documents.
@@ -79,7 +76,7 @@ class PolicyRetriever:
             auto_load: Whether to automatically load documents on init
         """
         self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-        self.cache_dir = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+        self.cache_dir = Path(cache_dir) if cache_dir else _get_default_cache_dir()
         
         self.embedding_provider = embedding_provider or get_embedding_provider()
         self.vector_store = VectorStore(embedding_provider=self.embedding_provider)
