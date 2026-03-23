@@ -66,6 +66,7 @@ PORTAL_CLAIM_FIELDS = [
     "incident_id",
     "created_at",
     "updated_at",
+    "attachments",
 ]
 
 

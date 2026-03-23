@@ -3,6 +3,8 @@
  * Sends X-Repair-Shop-Access-Token on each request; claim id is in the URL path.
  */
 
+import { parseApiError } from './apiUtils';
+
 const BASE = '/api/repair-portal';
 
 export interface RepairPortalSession {
@@ -37,23 +39,6 @@ function getRepairPortalHeaders(): HeadersInit {
     headers['X-Repair-Shop-Access-Token'] = session.token;
   }
   return headers;
-}
-
-function parseApiError(status: number, text: string): string {
-  let msg = `API error ${status}: ${text.slice(0, 200)}`;
-  try {
-    const body = JSON.parse(text) as { detail?: string | Array<{ msg?: string }> };
-    if (typeof body?.detail === 'string') msg = body.detail;
-    else if (Array.isArray(body?.detail)) {
-      const parts = body.detail
-        .map((d) => (typeof d === 'object' && d?.msg ? d.msg : null))
-        .filter(Boolean);
-      if (parts.length > 0) msg = (parts as string[]).join('; ');
-    }
-  } catch {
-    /* keep msg */
-  }
-  return msg;
 }
 
 async function fetchRepairPortal<T>(url: string, init?: RequestInit): Promise<T> {

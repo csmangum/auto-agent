@@ -1041,10 +1041,7 @@ def create_repair_shop_portal_token(
     if cached is not None:
         return cached
     try:
-        ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-        claim_row = ctx.repo.get_claim(claim_id)
-        if claim_row is None:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+        claim_row = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
         if claim_row.get("claim_type") != "partial_loss":
             raise HTTPException(
                 status_code=400,
