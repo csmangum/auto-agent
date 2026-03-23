@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
@@ -25,10 +26,11 @@ class NoteTemplateRepository:
         created_by: str | None = None,
     ) -> dict[str, Any]:
         with get_connection(self._db_path) as conn:
-            conn.execute(
+            row = conn.execute(
                 text(
                     "INSERT INTO note_templates (label, body, category, sort_order, created_by) "
-                    "VALUES (:label, :body, :category, :sort_order, :created_by)"
+                    "VALUES (:label, :body, :category, :sort_order, :created_by) "
+                    "RETURNING *"
                 ),
                 {
                     "label": label.strip(),
@@ -37,13 +39,9 @@ class NoteTemplateRepository:
                     "sort_order": sort_order,
                     "created_by": created_by,
                 },
-            )
-            row = conn.execute(
-                text(
-                    "SELECT * FROM note_templates WHERE id = (SELECT MAX(id) FROM note_templates)"
-                )
             ).fetchone()
-        assert row is not None
+        if row is None:
+            raise RuntimeError("INSERT INTO note_templates did not return a row")
         return row_to_dict(row)
 
     def list(self, *, active_only: bool = False) -> list[dict[str, Any]]:
@@ -93,7 +91,9 @@ class NoteTemplateRepository:
             params["sort_order"] = sort_order
         if not fields:
             return self.get(template_id)
-        fields.append("updated_at = datetime('now')")
+        now = datetime.now(timezone.utc).isoformat()
+        fields.append("updated_at = :updated_at")
+        params["updated_at"] = now
         with get_connection(self._db_path) as conn:
             conn.execute(
                 text(f"UPDATE note_templates SET {', '.join(fields)} WHERE id = :id"),

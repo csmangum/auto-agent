@@ -549,7 +549,16 @@ export function useCurrentUser() {
 export function useNoteTemplates() {
   return useQuery({
     queryKey: queryKeys.noteTemplates,
-    queryFn: getNoteTemplates,
+    queryFn: () => getNoteTemplates(),
+    staleTime: 60 * 1000,
+    select: (data) => data.templates,
+  });
+}
+
+export function useActiveNoteTemplates() {
+  return useQuery({
+    queryKey: [...queryKeys.noteTemplates, 'active'],
+    queryFn: () => getNoteTemplates({ activeOnly: true }),
     staleTime: 60 * 1000,
     select: (data) => data.templates,
   });

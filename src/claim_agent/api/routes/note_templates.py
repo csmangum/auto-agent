@@ -38,11 +38,14 @@ class NoteTemplateUpdateBody(BaseModel):
 
 
 @router.get("")
-def list_note_templates(auth: AuthContext = RequireAdjuster):
-    """List note templates. Adjusters see active only; supervisors/admins see all."""
+def list_note_templates(
+    active_only: bool = False,
+    auth: AuthContext = RequireAdjuster,
+):
+    """List note templates. Adjusters always see active only; others may request all."""
     repo = NoteTemplateRepository()
-    active_only = auth.role == "adjuster"
-    templates = repo.list(active_only=active_only)
+    filter_active = active_only or auth.role == "adjuster"
+    templates = repo.list(active_only=filter_active)
     return {"templates": templates}
 
 
@@ -74,21 +77,15 @@ def update_note_template(
     if repo.get(template_id) is None:
         raise HTTPException(status_code=404, detail="Note template not found")
 
-    kwargs: dict = {}
-    if body.label is not None:
-        kwargs["label"] = body.label
-    if body.body is not None:
-        kwargs["body"] = body.body
-    if body.is_active is not None:
-        kwargs["is_active"] = body.is_active
-    if body.sort_order is not None:
-        kwargs["sort_order"] = body.sort_order
     raw = body.model_dump(exclude_unset=True)
-    if "category" in raw:
-        kwargs["category"] = body.category
+    kwargs: dict = {}
+    for field in ("label", "body", "is_active", "sort_order", "category"):
+        if field in raw:
+            kwargs[field] = raw[field]
 
     t = repo.update(template_id, **kwargs)
-    assert t is not None
+    if t is None:
+        raise HTTPException(status_code=404, detail="Note template not found")
     return t
 
 

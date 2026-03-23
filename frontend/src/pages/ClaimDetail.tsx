@@ -27,7 +27,7 @@ import {
   useCreateDocumentRequest,
   useCreatePartyRelationship,
   useDeletePartyRelationship,
-  useNoteTemplates,
+  useActiveNoteTemplates,
 } from '../api/queries';
 import { formatDateTime, formatDate } from '../utils/date';
 import type {
@@ -192,7 +192,7 @@ function ReserveTab({
 }
 
 interface NotesTabProps {
-  noteTemplates: Array<{ label: string; body: string }>;
+  noteTemplates: Array<{ id: number; label: string; body: string }>;
   notes: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
   followUps: Array<{
     id: number;
@@ -233,7 +233,7 @@ function NotesTab({ noteTemplates, notes, followUps, addNoteMutation }: NotesTab
             <div className="flex flex-wrap gap-1.5">
               {noteTemplates.map((t) => (
                 <button
-                  key={t.label}
+                  key={t.id}
                   type="button"
                   onClick={() => setNoteText(t.body)}
                   className="px-2 py-1 text-xs bg-gray-900/50 text-gray-400 rounded ring-1 ring-gray-700/50 hover:bg-gray-800 hover:text-gray-200 transition-colors"
@@ -841,7 +841,7 @@ export default function ClaimDetail() {
   const createDocRequestMutation = useCreateDocumentRequest(claimId);
   const createRelMutation = useCreatePartyRelationship(claimId);
   const deleteRelMutation = useDeletePartyRelationship(claimId);
-  const { data: noteTemplates = [] } = useNoteTemplates();
+  const { data: noteTemplates = [] } = useActiveNoteTemplates();
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];

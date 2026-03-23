@@ -187,10 +187,16 @@ export default function NoteTemplatesAdmin() {
   };
 
   const handleDelete = (id: number) => {
+    if (!window.confirm('Permanently delete this template? Consider deactivating instead.')) {
+      return;
+    }
     deleteMutation.mutate(id);
   };
 
   const saving = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+
+  const mutationError =
+    createMutation.error ?? updateMutation.error ?? deleteMutation.error;
 
   if (isLoading) {
     return (
@@ -220,6 +226,14 @@ export default function NoteTemplatesAdmin() {
         title="Note Templates"
         subtitle="Manage adjuster quick-insert templates for claim notes"
       />
+
+      {mutationError && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+          <p className="text-sm text-red-400">
+            {mutationError instanceof Error ? mutationError.message : 'Operation failed'}
+          </p>
+        </div>
+      )}
 
       {/* Create form */}
       <section className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">

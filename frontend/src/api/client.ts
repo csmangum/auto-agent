@@ -921,8 +921,12 @@ export const getCurrentUser = (): Promise<CurrentUser> =>
 // Note Templates
 // ---------------------------------------------------------------------------
 
-export const getNoteTemplates = (): Promise<NoteTemplatesResponse> =>
-  fetchJSON<NoteTemplatesResponse>('/note-templates');
+export const getNoteTemplates = (
+  opts?: { activeOnly?: boolean },
+): Promise<NoteTemplatesResponse> => {
+  const params = opts?.activeOnly ? '?active_only=true' : '';
+  return fetchJSON<NoteTemplatesResponse>(`/note-templates${params}`);
+};
 
 export interface NoteTemplateCreatePayload {
   label: string;

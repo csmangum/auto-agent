@@ -25,7 +25,7 @@ vi.mock('../api/queries', () => ({
   usePolicies: vi.fn(),
   useCreatePartyRelationship: vi.fn(),
   useDeletePartyRelationship: vi.fn(),
-  useNoteTemplates: vi.fn(),
+  useActiveNoteTemplates: vi.fn(),
 }));
 
 const {
@@ -49,7 +49,7 @@ const {
   usePolicies,
   useCreatePartyRelationship,
   useDeletePartyRelationship,
-  useNoteTemplates,
+  useActiveNoteTemplates,
 } = await import('../api/queries');
 
 const mockClaim = {
@@ -191,7 +191,7 @@ describe('ClaimDetail', () => {
       isError: false,
       error: null,
     } as never);
-    vi.mocked(useNoteTemplates).mockReturnValue({
+    vi.mocked(useActiveNoteTemplates).mockReturnValue({
       data: [
         { id: 1, label: 'Initial Contact', body: 'Contacted claimant.', category: null, is_active: 1, sort_order: 0, created_by: null, created_at: '', updated_at: '' },
       ],
