@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import ClaimantPortalSignpost from '../../components/ClaimantPortalSignpost';
 import PageHeader from '../../components/PageHeader';
 import {
   useRoleSimulation,
@@ -51,6 +52,8 @@ export default function RoleSelectLanding() {
         title="Role Simulation"
         subtitle="Experience the claims system from different perspectives. Select a role to begin."
       />
+
+      <ClaimantPortalSignpost />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {SIMULATABLE_ROLES.map((r) => {

@@ -37,12 +37,16 @@ describe('Simulation', () => {
     renderSimulation();
     expect(screen.getByRole('heading', { name: 'Role Simulation' })).toBeInTheDocument();
     expect(screen.getByText(/Experience the claims system from different perspectives/)).toBeInTheDocument();
+    const portalLink = screen.getByRole('link', { name: 'Sign in to the Claimant Portal' });
+    expect(portalLink).toHaveAttribute('href', '/portal/login');
   });
 
   it('renders CustomerPortal when role is customer', () => {
     localStorage.setItem('simulation_role', 'customer');
     renderSimulation();
     expect(screen.getByRole('heading', { name: 'My Claims' })).toBeInTheDocument();
+    const portalLink = screen.getByRole('link', { name: 'Sign in to the Claimant Portal' });
+    expect(portalLink).toHaveAttribute('href', '/portal/login');
   });
 
   it('renders RepairShopPortal when role is repair_shop', () => {
