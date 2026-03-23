@@ -6,10 +6,10 @@ import { formatDateTime } from '../utils/date';
 import { CLAIM_PRIORITY_ORDER, CLAIM_PRIORITY_STYLES } from '../constants/priority';
 
 const QUICK_ACTIONS = [
+  { to: '/workbench/queue?assignee=me', label: 'My Assignments', icon: '👤', description: 'Claims assigned to you' },
   { to: '/workbench/queue', label: 'Assignment Queue', icon: '📥', description: 'Review and assign claims' },
   { to: '/workbench/diary', label: 'Diary / Calendar', icon: '📅', description: 'Tasks and deadlines' },
   { to: '/claims/new', label: 'New Claim', icon: '➕', description: 'Submit a new claim' },
-  { to: '/claims', label: 'All Claims', icon: '📋', description: 'Browse all claims' },
 ];
 
 export default function WorkbenchDashboard() {

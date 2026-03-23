@@ -29,6 +29,17 @@ import RepairPortalClaimDetail from './pages/RepairPortalClaimDetail';
 import ThirdPartyPortalLogin from './pages/ThirdPartyPortalLogin';
 import ThirdPartyPortalClaimDetail from './pages/ThirdPartyPortalClaimDetail';
 import NotFound from './pages/NotFound';
+import { useRoleSimulation } from './context/RoleSimulationContext';
+
+// Uses the client-side simulation role (UI persona) — not the backend identity
+// from /auth/me — to decide the landing page per simulated persona.
+function HomeLanding() {
+  const { role } = useRoleSimulation();
+  if (role === 'adjuster') {
+    return <Navigate to="/workbench" replace />;
+  }
+  return <Navigate to="/dashboard" replace />;
+}
 
 export default function App() {
   return (
@@ -38,7 +49,8 @@ export default function App() {
         <ThirdPartyPortalProvider>
         <Routes>
           <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<HomeLanding />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/claims" element={<ClaimsList />} />
             <Route path="/claims/new" element={<NewClaimForm />} />
             <Route path="/claims/:claimId" element={<ClaimDetail />} />

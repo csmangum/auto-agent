@@ -601,6 +601,69 @@ class TestClaimFraudFilings:
         assert resp.status_code == 200
 
 
+class TestAuthMe:
+    """Test GET /api/auth/me identity introspection."""
+
+    def test_me_returns_anonymous_when_no_auth(self, client, monkeypatch):
+        """No-auth mode: anonymous/admin context. Env must be cleared — .env may set API_KEYS/JWT."""
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/auth/me")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["identity"] == "anonymous"
+        assert data["role"] == "admin"
+
+    def test_me_returns_identity_for_api_key(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster:jane")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/auth/me", headers={"X-API-Key": "sk-adj"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["identity"] == "jane"
+        assert data["role"] == "adjuster"
+
+    def test_me_401_when_auth_required_and_no_key(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/auth/me")
+        assert resp.status_code == 401
+
+    def test_me_403_for_disallowed_role(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-claimant:claimant")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/auth/me", headers={"X-API-Key": "sk-claimant"})
+        assert resp.status_code == 403
+
+    def test_me_returns_identity_for_jwt(self, client, monkeypatch):
+        jwt = pytest.importorskip("jwt")
+        secret = "test-jwt-secret-long-enough-for-hs256"
+        monkeypatch.setenv("JWT_SECRET", secret)
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        token = jwt.encode(
+            {"sub": "adj-42", "role": "adjuster"},
+            secret,
+            algorithm="HS256",
+        )
+        resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["identity"] == "adj-42"
+        assert data["role"] == "adjuster"
+
+
 class TestReviewQueue:
     """Test review queue and adjuster action endpoints."""
 

@@ -8,31 +8,38 @@ import { DocumentIcon } from './icons';
 import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
 import { useRoleSimulation } from '../context/RoleSimulationContext';
 
-const MAIN_NAV = [
-  { to: '/', label: 'Dashboard', icon: 'dashboard' as NavIconKey },
-  { to: '/claims', label: 'Claims', icon: 'claims' as NavIconKey },
-  { to: '/claims/new', label: 'New Claim', icon: 'newClaim' as NavIconKey },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: NavIconKey;
+  end?: boolean;
+}
+
+const MAIN_NAV: NavItem[] = [
+  { to: '/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/claims', label: 'Claims', icon: 'claims' },
+  { to: '/claims/new', label: 'New Claim', icon: 'newClaim' },
 ];
 
-const REFERENCE_NAV = [
-  { to: '/docs', label: 'Documentation', icon: 'docs' as NavIconKey },
-  { to: '/skills', label: 'Skills', icon: 'skills' as NavIconKey },
-  { to: '/agents', label: 'Agents & Crews', icon: 'agents' as NavIconKey },
-  { to: '/cost', label: 'LLM Cost', icon: 'cost' as NavIconKey },
-  { to: '/system', label: 'System Config', icon: 'system' as NavIconKey },
+const REFERENCE_NAV: NavItem[] = [
+  { to: '/docs', label: 'Documentation', icon: 'docs' },
+  { to: '/skills', label: 'Skills', icon: 'skills' },
+  { to: '/agents', label: 'Agents & Crews', icon: 'agents' },
+  { to: '/cost', label: 'LLM Cost', icon: 'cost' },
+  { to: '/system', label: 'System Config', icon: 'system' },
 ];
 
-const WORKBENCH_NAV = [
-  { to: '/workbench', label: 'My Workbench', icon: 'workbench' as NavIconKey },
-  { to: '/workbench/queue', label: 'Assignment Queue', icon: 'queue' as NavIconKey },
-  { to: '/workbench/diary', label: 'Diary / Calendar', icon: 'diary' as NavIconKey },
+const WORKBENCH_NAV: NavItem[] = [
+  { to: '/workbench', label: 'My Workbench', icon: 'workbench' },
+  { to: '/workbench/queue', label: 'Assignment Queue', icon: 'queue' },
+  { to: '/workbench/diary', label: 'Diary / Calendar', icon: 'diary' },
 ];
 
-const SIMULATION_NAV = [
-  { to: '/simulate', label: 'Role Simulation', icon: 'simulate' as NavIconKey },
+const SIMULATION_NAV: NavItem[] = [
+  { to: '/simulate', label: 'Role Simulation', icon: 'simulate' },
 ];
 
-function NavSection({ label, items, onLinkClick }: { label: string; items: typeof MAIN_NAV; onLinkClick: () => void }) {
+function NavSection({ label, items, onLinkClick }: { label: string; items: NavItem[]; onLinkClick: () => void }) {
   return (
     <div>
       <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
@@ -45,7 +52,7 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: typeo
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/'}
+            end={item.end}
             onClick={onLinkClick}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
