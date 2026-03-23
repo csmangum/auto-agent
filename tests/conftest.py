@@ -1,6 +1,6 @@
 """Shared pytest fixtures for all test files."""
 
-pytest_plugins = ["tests.conftest_shared"]
+pytest_plugins = ["tests.conftest_shared", "tests.conftest_embedding_mocks"]
 
 import json
 import logging
@@ -473,15 +473,4 @@ def mock_crew(monkeypatch):
     from claim_agent.config import reload_settings
 
     reload_settings()  # vision_logic reads adapter via get_settings()
-    yield
-
-
-@pytest.fixture(scope="session")
-def _preload_embedding_model():
-    """Pre-load sentence-transformers so RAG tests share cached model."""
-    pytest.importorskip("sentence_transformers")
-    from claim_agent.rag.embeddings import get_embedding_provider
-
-    p = get_embedding_provider()
-    _ = p.embed("warmup")  # trigger load
     yield
