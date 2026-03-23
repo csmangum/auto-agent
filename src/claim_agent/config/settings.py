@@ -192,6 +192,15 @@ def get_webhook_config() -> dict:
     }
 
 
+def get_llm_cost_alert_config() -> dict:
+    """LLM cost alert configuration."""
+    s = get_settings().llm_cost_alert
+    return {
+        "threshold_usd": s.threshold_usd,
+        "webhook_url": s.webhook_url,
+    }
+
+
 def get_notification_config() -> dict:
     """Claimant notification configuration (email/SMS)."""
     s = get_settings().notification

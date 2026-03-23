@@ -429,6 +429,38 @@ class DiaryConfig(BaseSettings):
     )
 
 
+class LlmCostAlertConfig(BaseSettings):
+    """Optional process-local LLM cost alerting configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="LLM_COST_ALERT_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    threshold_usd: float | None = None
+    webhook_url: str | None = None
+
+    @field_validator("threshold_usd", mode="before")
+    @classmethod
+    def _coerce_threshold_usd(cls, v: Any) -> float | None:
+        if v is None or str(v).strip() == "":
+            return None
+        try:
+            parsed = float(v)
+        except (ValueError, TypeError):
+            return None
+        return parsed if parsed > 0 else None
+
+    @field_validator("webhook_url", mode="before")
+    @classmethod
+    def _empty_url_to_none(cls, v: Any) -> str | None:
+        if v is None or str(v).strip() == "":
+            return None
+        return str(v).strip()
+
+
 class SchedulerConfig(BaseSettings):
     """Optional in-process scheduler for periodic operational jobs."""
 
@@ -620,6 +652,37 @@ class LLMConfig(BaseSettings):
         description=(
             "Fraction of MAX_TOKENS_PER_CLAIM or MAX_LLM_CALLS_PER_CLAIM at which "
             "budget-driven fallback engages (0.0–1.0). Requires LLM_BUDGET_FALLBACK_ENABLED=true."
+    # Prompt cache settings
+    cache_enabled: bool = Field(
+        default=False,
+        validation_alias="LLM_CACHE_ENABLED",
+        description=(
+            "Enable LiteLLM in-memory prompt cache. Useful when the same system prompt or "
+            "RAG context is reused across multiple LLM calls. Disabled by default. "
+            "Caveat: responses are cached in-process only (no cross-worker sharing); "
+            "do not cache calls whose prompts contain user-specific PII."
+        ),
+    )
+    cache_seed: int | None = Field(
+        default=None,
+        validation_alias="LLM_CACHE_SEED",
+        description=(
+            "Optional integer seed for deterministic LiteLLM cache keys. "
+            "When set, identical prompts with the same seed always hit the same cache entry. "
+            "Leave unset (default) for provider-assigned cache keys."
+        ),
+    )
+    anthropic_prompt_cache: bool = Field(
+        default=False,
+        validation_alias="LLM_ANTHROPIC_PROMPT_CACHE",
+        description=(
+            "Enable the Anthropic server-side prompt-caching beta "
+            "(anthropic-beta: prompt-caching-2024-07-31). "
+            "Only effective when using an Anthropic model directly or via OpenRouter. "
+            "Reduces cost and latency on repeated identical system prompts (≥1 024 tokens) "
+            "and large RAG context blocks. Cached prefixes count toward output token usage. "
+            "Caveat: cache TTL is ~5 minutes; do not include user-specific PII in "
+            "cached prompt sections."
         ),
     )
 
@@ -1248,6 +1311,7 @@ class Settings(BaseSettings):
     payment: PaymentConfig = Field(default_factory=PaymentConfig)
     partial_loss: PartialLossConfig = Field(default_factory=PartialLossConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
+    llm_cost_alert: LlmCostAlertConfig = Field(default_factory=LlmCostAlertConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
     diary: DiaryConfig = Field(default_factory=DiaryConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)

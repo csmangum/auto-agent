@@ -1,6 +1,9 @@
 """Small stateless helpers shared across workflow modules."""
 
-from typing import Any, Callable
+import threading
+from typing import TYPE_CHECKING, Any, Callable
+
+import litellm
 
 from claim_agent.config.llm import _set_model_override, get_llm_fallback_chain
 from claim_agent.db.constants import (
@@ -10,11 +13,17 @@ from claim_agent.db.constants import (
     STATUS_OPEN,
     STATUS_SETTLED,
 )
+from claim_agent.exceptions import TokenBudgetExceeded
 from claim_agent.models.claim import ClaimType
 from claim_agent.observability import get_logger
 from claim_agent.utils.retry import with_llm_retry
 
 logger = get_logger(__name__)
+if TYPE_CHECKING:
+    from claim_agent.workflow.budget import BudgetEnforcingCallback
+
+# Protects litellm.callbacks list replacement during kickoff budget-callback install/uninstall.
+_budget_callbacks_lock = threading.Lock()
 
 
 WORKFLOW_STAGES = (
@@ -115,6 +124,8 @@ def _kickoff_with_retry(
     claim_id: str | None = None,
     metrics: Any | None = None,
     llm: Any | None = None,
+    *,
+    budget_callback: "BudgetEnforcingCallback | None" = None,
 ) -> Any:
     """Run crew.kickoff with retry on transient failures.
 
@@ -134,10 +145,37 @@ def _kickoff_with_retry(
 
         Thread-local note: model override is scoped to the current thread only and
         does not propagate to worker processes or async tasks in other threads.
+    When budget_callback is provided it is installed on ``litellm.callbacks`` for
+    the duration of the kickoff so that ``_check_token_budget`` fires after every
+    successful intra-crew LLM call.  ``TokenBudgetExceeded`` is never retried
+    with a fallback model; it propagates immediately.
     """
     models = get_llm_fallback_chain()
     last_exc: BaseException | None = None
     use_fallback = create_crew_no_args is not None and len(models) > 1
+    installed_budget_callback = False
+
+    try:
+        if budget_callback is not None:
+            with _budget_callbacks_lock:
+                prev_cbs = list(getattr(litellm, "callbacks", None) or [])
+                litellm.callbacks = prev_cbs + [budget_callback]
+            installed_budget_callback = True
+
+        for i, model_name in enumerate(models):
+            if use_fallback and i > 0:
+                _set_model_override(model_name)
+                try:
+                    assert create_crew_no_args is not None
+                    current_crew = create_crew_no_args()
+                finally:
+                    _set_model_override(None)
+            else:
+                current_crew = crew
+
+            @with_llm_retry()
+            def _call(c: Any = current_crew) -> Any:
+                return c.kickoff(inputs=inputs)
 
     # Budget-driven fallback: proactively advance the model chain when approaching cap.
     start_index = 0
@@ -162,24 +200,22 @@ def _kickoff_with_retry(
         if use_fallback and (i + start_index) > 0:
             _set_model_override(model_name)
             try:
-                assert create_crew_no_args is not None
-                current_crew = create_crew_no_args()
-            finally:
-                _set_model_override(None)
-        else:
-            current_crew = crew
-
-        @with_llm_retry()
-        def _call(c: Any = current_crew) -> Any:
-            return c.kickoff(inputs=inputs)
-
-        try:
-            return _call()
-        except Exception as e:
-            last_exc = e
-            if not use_fallback or model_name == models[-1]:
-                raise
-            continue
+                result = _call()
+                if budget_callback is not None:
+                    budget_callback.raise_if_exceeded()
+                return result
+            except TokenBudgetExceeded:
+                raise  # never retry on budget exceeded
+            except Exception as e:
+                last_exc = e
+                if not use_fallback or model_name == models[-1]:
+                    raise
+                continue
+    finally:
+        if installed_budget_callback and budget_callback is not None:
+            with _budget_callbacks_lock:
+                curr_cbs = list(getattr(litellm, "callbacks", None) or [])
+                litellm.callbacks = [cb for cb in curr_cbs if cb is not budget_callback]
 
     if last_exc:
         raise last_exc

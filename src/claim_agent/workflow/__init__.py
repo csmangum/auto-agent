@@ -6,6 +6,7 @@ New code should import from this package rather than from
 
 from claim_agent.exceptions import TokenBudgetExceeded
 from claim_agent.workflow.budget import (
+    BudgetEnforcingCallback,
     _check_token_budget,
     _get_llm_usage_snapshot,
 )
@@ -67,6 +68,7 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
+    "BudgetEnforcingCallback",
     "WORKFLOW_STAGES",
     "TokenBudgetExceeded",
     "_WorkflowCtx",

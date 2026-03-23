@@ -73,7 +73,7 @@ from claim_agent.workflow.duplicate_detection import (
     _damage_tags_overlap,
     _extract_damage_tags,
 )
-from claim_agent.workflow.budget import _check_token_budget, _record_crew_usage_delta
+from claim_agent.workflow.budget import BudgetEnforcingCallback, _check_token_budget, _record_crew_usage_delta
 from claim_agent.workflow.escalation import (
     _escalate_low_router_confidence,
     _escalate_low_router_confidence_response,
@@ -499,6 +499,7 @@ def _run_crew_stage_body(
     start = time.time()
     crew = create_crew(ctx)
     inputs = get_inputs(ctx)
+    budget_cb = BudgetEnforcingCallback(ctx.claim_id, ctx.context.metrics)
     try:
         result = _kickoff_with_retry(
             crew,
@@ -507,6 +508,7 @@ def _run_crew_stage_body(
             claim_id=ctx.claim_id,
             metrics=ctx.context.metrics,
             llm=ctx.context.llm,
+            crew, inputs, create_crew_no_args=lambda: create_crew(ctx), budget_callback=budget_cb
         )
     except MidWorkflowEscalation as e:
         return _handle_mid_workflow_escalation(
@@ -648,7 +650,11 @@ def _stage_router(ctx: _WorkflowCtx) -> dict | None:
     router_start = time.time()
 
     router_crew = create_router_crew(ctx.context.llm)
-    result = _kickoff_with_retry(router_crew, ctx.inputs)
+    result = _kickoff_with_retry(
+        router_crew,
+        ctx.inputs,
+        budget_callback=BudgetEnforcingCallback(ctx.claim_id, ctx.context.metrics),
+    )
 
     router_latency = (time.time() - router_start) * 1000
     ctx.raw_output = str(
@@ -855,6 +861,7 @@ def _stage_escalation_check(ctx: _WorkflowCtx) -> dict | None:
                         "payout_amount": "",
                         "router_confidence": conf_str,
                     },
+                    budget_callback=BudgetEnforcingCallback(ctx.claim_id, ctx.context.metrics),
                 )
                 escalation_crew_ran = True
                 decision = _parse_escalation_crew_result(crew_result)
@@ -1048,7 +1055,11 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
         if c.claim_type == ClaimType.REOPENED.value:
             reopened_crew = create_reopened_crew(c.context.llm)
             try:
-                reopened_result = _kickoff_with_retry(reopened_crew, crew_inputs)
+                reopened_result = _kickoff_with_retry(
+                    reopened_crew,
+                    crew_inputs,
+                    budget_callback=BudgetEnforcingCallback(c.claim_id, c.context.metrics),
+                )
             except MidWorkflowEscalation as e:
                 return _handle_mid_workflow_escalation(
                     e,
@@ -1097,7 +1108,11 @@ def _stage_workflow_crew(ctx: _WorkflowCtx) -> dict | None:
             crew = create_total_loss_crew(c.context.llm, state=loss_state, use_rag=True)
 
         try:
-            workflow_result = _kickoff_with_retry(crew, crew_inputs)
+            workflow_result = _kickoff_with_retry(
+                crew,
+                crew_inputs,
+                budget_callback=BudgetEnforcingCallback(c.claim_id, c.context.metrics),
+            )
         except MidWorkflowEscalation as e:
             return _handle_mid_workflow_escalation(
                 e,
@@ -1250,7 +1265,11 @@ def _stage_liability_determination(ctx: _WorkflowCtx) -> dict | None:
             "workflow_output": c.workflow_output,
         }
         try:
-            result = _kickoff_with_retry(crew, inputs)
+            result = _kickoff_with_retry(
+                crew,
+                inputs,
+                budget_callback=BudgetEnforcingCallback(c.claim_id, c.context.metrics),
+            )
         except MidWorkflowEscalation as e:
             return _handle_mid_workflow_escalation(
                 e,
