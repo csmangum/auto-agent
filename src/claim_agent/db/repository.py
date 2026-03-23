@@ -704,29 +704,7 @@ class ClaimRepository:
     def add_claim_party(self, claim_id: str, party: ClaimPartyInput) -> int:
         """Insert a claim party. Returns party id."""
         with get_connection(self._db_path) as conn:
-            result = conn.execute(
-                text("""
-                INSERT INTO claim_parties (
-                    claim_id, party_type, name, email, phone, address, role,
-                    consent_status, authorization_status
-                ) VALUES (:claim_id, :party_type, :name, :email, :phone, :address, :role,
-                         :consent_status, :authorization_status)
-                RETURNING id
-                """),
-                {
-                    "claim_id": claim_id,
-                    "party_type": party.party_type,
-                    "name": party.name,
-                    "email": party.email,
-                    "phone": party.phone,
-                    "address": party.address,
-                    "role": party.role,
-                    "consent_status": party.consent_status or "pending",
-                    "authorization_status": party.authorization_status or "pending",
-                },
-            )
-            rid = result.fetchone()
-            return int(rid[0]) if rid else 0
+            return self._add_claim_party_core(conn, claim_id, party)
 
     def add_claim_party_relationship(
         self,

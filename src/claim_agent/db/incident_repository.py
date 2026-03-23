@@ -266,24 +266,10 @@ class IncidentRepository:
 
         Returns the new link's ID, or None if the link already exists.
         """
-        a, b = (claim_id_a, claim_id_b) if claim_id_a <= claim_id_b else (claim_id_b, claim_id_a)
-        try:
-            with get_connection(self._db_path) as conn:
-                result = conn.execute(
-                    text("""
-                    INSERT INTO claim_links
-                        (claim_id_a, claim_id_b, link_type, opposing_carrier, notes)
-                    VALUES (:a, :b, :link_type, :opposing_carrier, :notes)
-                    RETURNING id
-                    """),
-                    {"a": a, "b": b, "link_type": link_type, "opposing_carrier": opposing_carrier, "notes": notes},
-                )
-                row = result.fetchone()
-                return int(row[0]) if row else None
-        except IntegrityError as e:
-            if _is_unique_constraint_violation(e):
-                return None  # Duplicate link
-            raise
+        with get_connection(self._db_path) as conn:
+            return self._create_link_in_conn(
+                conn, claim_id_a, claim_id_b, link_type, opposing_carrier, notes
+            )
 
     def _create_link_in_conn(
         self,
@@ -301,17 +287,18 @@ class IncidentRepository:
         """
         a, b = (claim_id_a, claim_id_b) if claim_id_a <= claim_id_b else (claim_id_b, claim_id_a)
         try:
-            result = conn.execute(
-                text("""
-                INSERT INTO claim_links
-                    (claim_id_a, claim_id_b, link_type, opposing_carrier, notes)
-                VALUES (:a, :b, :link_type, :opposing_carrier, :notes)
-                RETURNING id
-                """),
-                {"a": a, "b": b, "link_type": link_type, "opposing_carrier": opposing_carrier, "notes": notes},
-            )
-            row = result.fetchone()
-            return int(row[0]) if row else None
+            with conn.begin_nested():
+                result = conn.execute(
+                    text("""
+                    INSERT INTO claim_links
+                        (claim_id_a, claim_id_b, link_type, opposing_carrier, notes)
+                    VALUES (:a, :b, :link_type, :opposing_carrier, :notes)
+                    RETURNING id
+                    """),
+                    {"a": a, "b": b, "link_type": link_type, "opposing_carrier": opposing_carrier, "notes": notes},
+                )
+                row = result.fetchone()
+                return int(row[0]) if row else None
         except IntegrityError as e:
             if _is_unique_constraint_violation(e):
                 return None  # Duplicate link
