@@ -21,6 +21,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from claim_agent.db.schema_core_sqlite import (
+    CLAIM_AUDIT_LOG_TABLE_SQLITE,
+    CLAIMS_TABLE_SQLITE,
+    IDX_CLAIM_AUDIT_LOG_CLAIM_ID,
+    IDX_CLAIM_AUDIT_LOG_CLAIM_ID_ACTION,
+    IDX_CLAIMS_INCIDENT_DATE,
+    IDX_CLAIMS_VIN,
+)
 from claim_agent.db.schema_auth_sqlite import (
     IDX_REFRESH_TOKENS_EXPIRES_AT,
     IDX_REFRESH_TOKENS_TOKEN_HASH,
@@ -81,42 +89,10 @@ SCHEMA_SQL = (
     + """
 
 -- Claims table (main record)
-CREATE TABLE IF NOT EXISTS claims (
-    id TEXT PRIMARY KEY,
-    policy_number TEXT NOT NULL,
-    vin TEXT NOT NULL,
-    vehicle_year INTEGER,
-    vehicle_make TEXT,
-    vehicle_model TEXT,
-    incident_date TEXT,
-    incident_description TEXT,
-    damage_description TEXT,
-    estimated_damage REAL,
-    claim_type TEXT,
-    loss_state TEXT,
-    status TEXT DEFAULT 'pending',
-    payout_amount REAL,
-    reserve_amount REAL,
-    attachments TEXT DEFAULT '[]',
-    assignee TEXT,
-    review_started_at TEXT,
-    review_notes TEXT,
-    due_at TEXT,
-    priority TEXT,
-    siu_case_id TEXT,
-    archived_at TEXT,
-    incident_id TEXT REFERENCES incidents(id),
-    litigation_hold INTEGER DEFAULT 0,
-    repair_ready_for_settlement INTEGER,
-    total_loss_settlement_authorized INTEGER,
-    retention_tier TEXT NOT NULL DEFAULT 'active',
-    purged_at TEXT,
-    cold_storage_exported_at TEXT,
-    cold_storage_export_key TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
+"""
+    + CLAIMS_TABLE_SQLITE
+    + ";\n"
+    + """
 -- Claim links: typed relationships between claims (same_incident, opposing_carrier, etc.)
 """
     + CLAIM_LINKS_TABLE_SQLITE
@@ -128,20 +104,10 @@ CREATE TABLE IF NOT EXISTS claims (
     + """
 
 -- Audit log (state changes). UPDATE limited by trigger; DELETE allowed for gated tooling.
-CREATE TABLE IF NOT EXISTS claim_audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT NOT NULL,
-    action TEXT NOT NULL,
-    old_status TEXT,
-    new_status TEXT,
-    details TEXT,
-    actor_id TEXT DEFAULT 'system',
-    before_state TEXT,
-    after_state TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id) REFERENCES claims(id)
-);
-
+"""
+    + CLAIM_AUDIT_LOG_TABLE_SQLITE
+    + ";\n"
+    + """
 -- Enforce append-only behavior: allow only PII-field updates (before_state / after_state).
 -- Non-PII columns (claim_id, action, statuses, details, actor_id, created_at) are immutable.
 -- Note: SQLite's "IS NOT" is the null-safe inequality operator (equivalent to PostgreSQL's
@@ -162,10 +128,12 @@ END;
 
 -- DELETE is allowed for gated retention tooling (see migration 039, audit-log-purge CLI).
 
-CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id ON claim_audit_log(claim_id);
-CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id_action ON claim_audit_log(claim_id, action);
-
--- Workflow results (preserves each processing run)
+"""
+    + IDX_CLAIM_AUDIT_LOG_CLAIM_ID
+    + ";\n"
+    + IDX_CLAIM_AUDIT_LOG_CLAIM_ID_ACTION
+    + ";\n"
+    + """
 CREATE TABLE IF NOT EXISTS workflow_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id TEXT NOT NULL,
@@ -377,9 +345,11 @@ CREATE INDEX IF NOT EXISTS idx_claim_payments_claim_id ON claim_payments(claim_i
 CREATE INDEX IF NOT EXISTS idx_claim_payments_status ON claim_payments(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_claims_vin ON claims(vin);
-CREATE INDEX IF NOT EXISTS idx_claims_incident_date ON claims(incident_date);
 """
+    + IDX_CLAIMS_VIN
+    + ";\n"
+    + IDX_CLAIMS_INCIDENT_DATE
+    + ";\n"
     + IDX_CLAIMS_INCIDENT_ID
     + """;
 
