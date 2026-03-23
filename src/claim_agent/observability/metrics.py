@@ -446,24 +446,31 @@ class ClaimMetrics:
             return result
 
     def get_cost_breakdown(self) -> dict[str, Any]:
-        """Full cost breakdown for dashboard: by crew, by claim type, daily totals."""
+        """Full cost breakdown for dashboard: by crew, by claim type, daily and monthly totals."""
         summaries = self.get_all_summaries()
         by_crew = self.get_cost_by_crew()
         by_claim_type = self.get_cost_by_claim_type()
 
-        # Daily aggregation (by claim start_time date)
+        # Daily and monthly aggregation (by claim start_time)
         daily: dict[str, dict[str, float | int]] = {}
+        monthly: dict[str, dict[str, float | int]] = {}
         with self._lock:
             for claim_id, claim_data in self._claims.items():
                 start = claim_data.get("start_time")
                 if start:
                     day = start.strftime("%Y-%m-%d")
+                    month = start.strftime("%Y-%m")
                     if day not in daily:
                         daily[day] = {"total_cost_usd": 0.0, "total_tokens": 0, "claims": 0}
+                    if month not in monthly:
+                        monthly[month] = {"total_cost_usd": 0.0, "total_tokens": 0, "claims": 0}
                     for m in claim_data.get("llm_calls", []):
                         daily[day]["total_cost_usd"] += m.cost_usd
                         daily[day]["total_tokens"] += m.input_tokens + m.output_tokens
+                        monthly[month]["total_cost_usd"] += m.cost_usd
+                        monthly[month]["total_tokens"] += m.input_tokens + m.output_tokens
                     daily[day]["claims"] += 1
+                    monthly[month]["claims"] += 1
 
         total_cost = sum(s.total_cost_usd for s in summaries)
         total_tokens = sum(s.total_tokens for s in summaries)
@@ -487,6 +494,7 @@ class ClaimMetrics:
             "by_crew": by_crew,
             "by_claim_type": by_claim_type,
             "daily": daily,
+            "monthly": monthly,
             "total_cost_usd": total_cost,
             "total_tokens": total_tokens,
         }

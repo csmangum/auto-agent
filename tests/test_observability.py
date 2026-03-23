@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime
 from unittest import mock
 
 import pytest
@@ -325,6 +326,65 @@ class TestMetrics:
         parsed_all = json.loads(output_all)
         assert "global_stats" in parsed_all
         assert "claims" in parsed_all
+
+    def test_cost_breakdown_includes_monthly(self):
+        """get_cost_breakdown should include a 'monthly' rollup keyed by YYYY-MM."""
+        from datetime import timezone
+        from claim_agent.observability.metrics import ClaimMetrics, LLMCallMetric
+
+        metrics = ClaimMetrics()
+
+        jan = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        feb = datetime(2026, 2, 10, 8, 0, 0, tzinfo=timezone.utc)
+
+        jan_call = LLMCallMetric(
+            timestamp=jan,
+            model="gpt-4o-mini",
+            input_tokens=200,
+            output_tokens=100,
+            cost_usd=0.002,
+            latency_ms=100.0,
+            status="success",
+        )
+        feb_call = LLMCallMetric(
+            timestamp=feb,
+            model="gpt-4o-mini",
+            input_tokens=400,
+            output_tokens=200,
+            cost_usd=0.004,
+            latency_ms=80.0,
+            status="success",
+        )
+
+        with metrics._lock:
+            metrics._claims["CLM-JAN"] = {
+                "start_time": jan,
+                "end_time": None,
+                "llm_calls": [jan_call],
+                "status": "completed",
+            }
+            metrics._claims["CLM-FEB"] = {
+                "start_time": feb,
+                "end_time": None,
+                "llm_calls": [feb_call],
+                "status": "completed",
+            }
+
+        breakdown = metrics.get_cost_breakdown()
+        assert "monthly" in breakdown, "'monthly' key missing from get_cost_breakdown() output"
+        monthly = breakdown["monthly"]
+        assert "2026-01" in monthly, "Expected '2026-01' in monthly rollup"
+        assert "2026-02" in monthly, "Expected '2026-02' in monthly rollup"
+        assert monthly["2026-01"]["claims"] == 1
+        assert monthly["2026-02"]["claims"] == 1
+        assert monthly["2026-01"]["total_cost_usd"] == pytest.approx(0.002)
+        assert monthly["2026-02"]["total_cost_usd"] == pytest.approx(0.004)
+        assert monthly["2026-01"]["total_tokens"] == 300  # 200 + 100
+        assert monthly["2026-02"]["total_tokens"] == 600  # 400 + 200
+
+        # daily should still be present and consistent
+        assert "2026-01-15" in breakdown["daily"]
+        assert "2026-02-10" in breakdown["daily"]
 
 
 class TestGlobalHelpers:

@@ -114,6 +114,39 @@ function ClaimTypeTable({ byClaimType }: { byClaimType: Record<string, { total_c
   );
 }
 
+function MonthlyTable({ monthly }: { monthly: Record<string, { total_cost_usd: number; total_tokens: number; claims: number }> }) {
+  const entries = Object.entries(monthly ?? {}).sort((a, b) => b[0].localeCompare(a[0]));
+  if (entries.length === 0) {
+    return (
+      <p className="text-sm text-gray-500 py-4">No monthly data yet.</p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-700/50 text-left text-xs uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-2 font-medium">Month</th>
+            <th className="px-4 py-2 font-medium text-right">Cost</th>
+            <th className="px-4 py-2 font-medium text-right">Tokens</th>
+            <th className="px-4 py-2 font-medium text-right">Claims</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-700/30">
+          {entries.map(([month, data]) => (
+            <tr key={month} className="hover:bg-gray-800/80 transition-colors">
+              <td className="px-4 py-2.5 font-mono text-gray-400">{month}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-blue-400">{formatCost(data.total_cost_usd)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-gray-400">{formatTokens(data.total_tokens)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-gray-400">{data.claims}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DailyTable({ daily }: { daily: Record<string, { total_cost_usd: number; total_tokens: number; claims: number }> }) {
   const entries = Object.entries(daily ?? {}).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14);
   if (entries.length === 0) {
@@ -186,6 +219,7 @@ export default function CostDashboard() {
   const byCrew = cost?.by_crew ?? {};
   const byClaimType = cost?.by_claim_type ?? {};
   const daily = cost?.daily ?? {};
+  const monthly = cost?.monthly ?? {};
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -234,6 +268,11 @@ export default function CostDashboard() {
           <h3 className="text-sm font-semibold text-gray-300 mb-4">Cost by Claim Type</h3>
           <ClaimTypeTable byClaimType={byClaimType} />
         </div>
+      </div>
+
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4">Monthly Spend</h3>
+        <MonthlyTable monthly={monthly} />
       </div>
 
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
