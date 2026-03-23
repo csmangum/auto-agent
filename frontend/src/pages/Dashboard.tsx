@@ -37,8 +37,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const QUICK_ACTIONS = [
   { to: '/claims/new', label: 'New Claim', icon: '➕' },
-  { to: '/claims', label: 'Review Queue', icon: '👁️' },
-  { to: '/agents', label: 'View Agents', icon: '🤖' },
+  { to: '/workbench', label: 'My Workbench', icon: '🗂️' },
+  { to: '/workbench/queue', label: 'Review Queue', icon: '👁️' },
   { to: '/system', label: 'System Health', icon: '⚙️' },
 ];
 
@@ -51,7 +51,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="space-y-6 animate-fade-in">
-        <PageHeader title="Dashboard" subtitle="Claims system observability overview" />
+        <PageHeader title="Dashboard" subtitle="Claims system overview" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-5">
@@ -67,7 +67,7 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="space-y-6 animate-fade-in">
-        <PageHeader title="Dashboard" subtitle="Claims system observability overview" />
+        <PageHeader title="Dashboard" subtitle="Claims system overview" />
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
           <span className="text-lg">⚠️</span>
           <div>
@@ -111,7 +111,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Dashboard" subtitle="Claims system observability overview" />
+      <PageHeader title="Dashboard" subtitle="Claims system overview" />
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger">

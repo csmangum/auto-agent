@@ -220,9 +220,9 @@ To enable duplicate detection with historical claims:
 python scripts/seed_claims_from_mock_db.py
 ```
 
-## Observability UI (Dashboard)
+## Frontend (Dashboard & Adjuster Workbench)
 
-A React + Vite frontend provides a dashboard for claims, docs, skills, and system config.
+A React + Vite frontend provides a claims management dashboard, an adjuster workbench (assignment queue, diary/calendar, per-claim notes/reserves/payments/documents), and reference pages for docs, skills, and system config.
 
 ```bash
 # Terminal 1: Start backend (use --reload for dev auto-reload)
@@ -241,7 +241,7 @@ The SPA exposes **two different experiences**; do not confuse them:
 
 | Surface | Route(s) | Purpose | API |
 |---------|----------|---------|-----|
-| Adjuster / operator UI | `/`, `/claims`, … (nav in main layout) | Observability, claim operations | Authenticated `/api/claims` (and related) |
+| Adjuster / operator UI | `/`, `/claims`, `/workbench`, `/workbench/queue`, `/workbench/diary` | Dashboard, workbench, claim operations | Authenticated `/api/claims` (and related) |
 | **Claimant self-service** | `/portal/login`, `/portal/claims`, … | Token / policy+VIN / email verification; status, documents, messages, repair status, payments, rental slice, disputes (as implemented) | `/api/portal/*` |
 | **Role simulation** | `/simulate` | Demo/testing: pick customer, repair shop, or third party and browse claims **without** claimant verification | Same internal hooks as the dashboard (e.g. `useClaims`), **not** `/api/portal/*` |
 
