@@ -32,5 +32,5 @@ def require_repair_shop_access(request: Request, claim_id: str) -> RepairShopPor
             status_code=401,
             detail="Invalid or expired access. Provide X-Repair-Shop-Access-Token.",
         )
-    ident = rec.shop_id or "repair-shop-token"
+    ident = rec.shop_id or f"repair-portal-token:{rec.token_id}"
     return RepairShopPortalContext(claim_id=rec.claim_id, shop_id=rec.shop_id, identity=ident)

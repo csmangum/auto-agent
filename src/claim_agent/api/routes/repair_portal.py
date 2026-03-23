@@ -53,6 +53,17 @@ def _shape_repair_portal_claim(row: dict[str, Any]) -> dict[str, Any]:
     return _resolve_portal_attachment_urls(base, attachments_api_base=_ATTACH_BASE)
 
 
+def _shape_repair_portal_audit_entry(row: dict[str, Any]) -> dict[str, Any]:
+    """External repair shops: status timeline only (no audit blobs, actor ids, or free-text details)."""
+    return {
+        "id": row.get("id"),
+        "action": row.get("action"),
+        "old_status": row.get("old_status"),
+        "new_status": row.get("new_status"),
+        "created_at": row.get("created_at"),
+    }
+
+
 class RepairStatusUpdateBody(BaseModel):
     status: str = Field(..., min_length=1, max_length=64)
     authorization_id: str | None = Field(default=None, max_length=64)
@@ -88,8 +99,10 @@ def get_repair_portal_claim(
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     result = _shape_repair_portal_claim(row)
     result["notes"] = []
-    result["follow_up_messages"] = repo.get_follow_up_messages(claim_id)
-    result["parties"] = repo.get_claim_parties(claim_id)
+    all_follow_ups = repo.get_follow_up_messages(claim_id)
+    result["follow_up_messages"] = [
+        msg for msg in all_follow_ups if (msg.get("user_type") or "") == "repair_shop"
+    ]
     doc_repo = _get_doc_repo()
     requests, _total = doc_repo.list_document_requests(claim_id, limit=200, offset=0)
     result["document_requests"] = requests
@@ -107,8 +120,9 @@ def get_repair_portal_claim_history(
     repo = _get_claim_repo()
     if repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    history = repo.get_claim_history(claim_id)
-    return {"claim_id": claim_id, "history": history}
+    history_rows, history_total = repo.get_claim_history(claim_id)
+    shaped = [_shape_repair_portal_audit_entry(r) for r in history_rows]
+    return {"claim_id": claim_id, "history": shaped, "history_total": history_total}
 
 
 @router.post("/claims/{claim_id}/follow-up/record-response")

@@ -24,6 +24,7 @@ def _hash_token(token: str) -> str:
 class RepairShopTokenRecord:
     """Verified token row for a claim."""
 
+    token_id: int
     claim_id: str
     shop_id: str | None
 
@@ -75,7 +76,7 @@ def verify_repair_shop_token(
     with get_connection(path) as conn:
         row = conn.execute(
             text("""
-                SELECT claim_id, shop_id FROM repair_shop_access_tokens
+                SELECT id, claim_id, shop_id FROM repair_shop_access_tokens
                 WHERE claim_id = :claim_id AND token_hash = :token_hash
                 AND expires_at > :now
             """),
@@ -85,6 +86,7 @@ def verify_repair_shop_token(
         return None
     rec = row_to_dict(row)
     return RepairShopTokenRecord(
+        token_id=int(rec["id"]),
         claim_id=str(rec["claim_id"]),
         shop_id=rec.get("shop_id"),
     )

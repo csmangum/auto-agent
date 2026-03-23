@@ -20,6 +20,7 @@ export default function RepairPortalLogin() {
   const { login } = useRepairPortal();
   const [claimId, setClaimId] = useState('');
   const [token, setToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -96,9 +97,18 @@ export default function RepairPortalLogin() {
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Access Token</label>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label className="block text-xs text-gray-400">Access Token</label>
+              <button
+                type="button"
+                onClick={() => setShowToken((v) => !v)}
+                className="text-[10px] uppercase tracking-wide text-amber-500/90 hover:text-amber-400"
+              >
+                {showToken ? 'Hide' : 'Show'}
+              </button>
+            </div>
             <input
-              type="text"
+              type={showToken ? 'text' : 'password'}
               value={token}
               onChange={(e) => setToken(e.target.value)}
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-amber-500/40 font-mono text-sm"

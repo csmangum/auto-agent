@@ -84,6 +84,58 @@ class TestRepairShopPortal:
         assert body["id"] == "CLM-TEST005"
         assert "follow_up_messages" in body
         assert "document_requests" in body
+        assert "parties" not in body
+
+    def test_portal_get_claim_follow_ups_only_repair_shop(self, client):
+        from claim_agent.db.repository import ClaimRepository
+
+        repo = ClaimRepository()
+        repo.create_follow_up_message(
+            "CLM-TEST005",
+            user_type="claimant",
+            message_content="Claimant thread",
+            actor_id="workflow",
+        )
+        shop_msg_id = repo.create_follow_up_message(
+            "CLM-TEST005",
+            user_type="repair_shop",
+            message_content="Shop thread",
+            actor_id="workflow",
+        )
+        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        token = mint.json()["token"]
+        resp = client.get(
+            "/api/repair-portal/claims/CLM-TEST005",
+            headers={"X-Repair-Shop-Access-Token": token},
+        )
+        assert resp.status_code == 200
+        msgs = resp.json()["follow_up_messages"]
+        assert all((m.get("user_type") or "") == "repair_shop" for m in msgs)
+        ids = {m["id"] for m in msgs}
+        assert shop_msg_id in ids
+        claimant_ids = {
+            m["id"]
+            for m in repo.get_follow_up_messages("CLM-TEST005")
+            if (m.get("user_type") or "") == "claimant"
+        }
+        assert not ids.intersection(claimant_ids)
+
+    def test_portal_claim_history_shape_and_redaction(self, client):
+        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        token = mint.json()["token"]
+        h = {"X-Repair-Shop-Access-Token": token}
+        resp = client.get("/api/repair-portal/claims/CLM-TEST005/history", headers=h)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["claim_id"] == "CLM-TEST005"
+        assert isinstance(data["history"], list)
+        assert "history_total" in data
+        assert not isinstance(data["history"], tuple)
+        for row in data["history"]:
+            assert "details" not in row
+            assert "before_state" not in row
+            assert "after_state" not in row
+            assert "actor_id" not in row
 
     def test_portal_repair_status_post_and_get(self, client):
         mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={"shop_id": "S1"})

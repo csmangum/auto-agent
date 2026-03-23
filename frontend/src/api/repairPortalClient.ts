@@ -66,7 +66,9 @@ export const repairPortalApi = {
     fetchRepairPortal<Record<string, unknown>>(`/claims/${claimId}`),
 
   getClaimHistory: (claimId: string) =>
-    fetchRepairPortal<{ history: unknown[] }>(`/claims/${claimId}/history`),
+    fetchRepairPortal<{ claim_id: string; history: unknown[]; history_total: number }>(
+      `/claims/${claimId}/history`
+    ),
 
   getRepairStatus: (claimId: string) =>
     fetchRepairPortal<{
