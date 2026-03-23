@@ -235,6 +235,18 @@ cd frontend && npm run dev
 
 Visit http://localhost:5173. The Vite dev server proxies `/api` to the backend.
 
+### Portal vs simulation
+
+The SPA exposes **two different experiences**; do not confuse them:
+
+| Surface | Route(s) | Purpose | API |
+|---------|----------|---------|-----|
+| Adjuster / operator UI | `/`, `/claims`, … (nav in main layout) | Observability, claim operations | Authenticated `/api/claims` (and related) |
+| **Claimant self-service** | `/portal/login`, `/portal/claims`, … | Token / policy+VIN / email verification; status, documents, messages, repair status, payments, rental slice, disputes (as implemented) | `/api/portal/*` |
+| **Role simulation** | `/simulate` | Demo/testing: pick customer, repair shop, or third party and browse claims **without** claimant verification | Same internal hooks as the dashboard (e.g. `useClaims`), **not** `/api/portal/*` |
+
+Portal API behavior is covered by [`tests/test_portal_api.py`](tests/test_portal_api.py). Enable the backend routes with `CLAIMANT_PORTAL_ENABLED` (see `.env.example`).
+
 **REST API**: The backend exposes a REST API for programmatic access. OpenAPI spec: http://localhost:8000/api/openapi.json. Interactive docs: http://localhost:8000/api/openapi/docs. When auth is enabled (CLAIMS_API_KEY or API_KEYS), an API key is required to access OpenAPI docs.
 
 **Production**: Build with `cd frontend && npm run build`. The backend serves `frontend/dist` when present.
