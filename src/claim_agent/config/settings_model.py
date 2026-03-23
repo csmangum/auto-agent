@@ -897,11 +897,9 @@ class PrivacyConfig(BaseSettings):
         default=False,
         validation_alias="AUDIT_LOG_STATE_REDACTION_ENABLED",
         description=(
-            "When true, before_state / after_state JSON fields in claim_audit_log are "
-            "redacted in place (PII keys replaced with [REDACTED]) during DSAR deletion "
-            "and retention purge.  Requires migration 049 (the trigger is relaxed to allow "
-            "updates only to those two columns; all other audit columns remain immutable). "
-            "Default false – existing deployments are unaffected until opted in."
+            "When true, claim_audit_log JSON fields (details, before_state, after_state) "
+            "are scrubbed during retention purge (via anonymize_claim_pii). DSAR deletion "
+            "uses DSAR_AUDIT_LOG_POLICY instead. Requires migration 049. Default false."
         ),
     )
     dsar_audit_log_policy: str = Field(

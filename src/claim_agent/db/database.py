@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS claims (
     + ";\n"
     + """
 
--- Audit log (state changes). Append-only: no UPDATE or DELETE.
+-- Audit log (state changes). UPDATE limited by trigger; DELETE allowed for gated tooling.
 CREATE TABLE IF NOT EXISTS claim_audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id TEXT NOT NULL,

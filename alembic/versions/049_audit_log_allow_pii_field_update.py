@@ -11,12 +11,11 @@ Decision (tamper-evidence vs erasure):
     actor_id, created_at) remain immutable via trigger – the audit trail
     is still tamper-evident for event metadata.
   - before_state / after_state carry snapshot JSON that may contain PII
-    (policy_number, vin, party names, etc.).  After DSAR deletion or
-    retention purge those fields may be updated *only* to replace PII
-    keys with [REDACTED] placeholders; the trigger enforces that all
-    other columns are unchanged.
-  - This is gated by AUDIT_LOG_STATE_REDACTION_ENABLED=true (default off)
-    so existing deployments are unaffected until explicitly opted in.
+    (policy_number, vin, party names, etc.).  Application code may rewrite
+    those JSON columns (or replace rows) when scrubbing; the trigger blocks
+    changes to all other columns.  The database does not enforce the
+    AUDIT_LOG_STATE_REDACTION_ENABLED / DSAR_AUDIT_LOG_POLICY env flags —
+    those gate product behaviour only.
 """
 
 from alembic import op

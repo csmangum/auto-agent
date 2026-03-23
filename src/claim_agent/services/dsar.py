@@ -511,27 +511,24 @@ def fulfill_deletion_request(
                     continue
 
             now_iso = datetime.now(timezone.utc).isoformat()
+            # claim_audit_log is handled only via DSAR_AUDIT_LOG_POLICY below — not
+            # AUDIT_LOG_STATE_REDACTION_ENABLED (retention purge uses that flag).
             _, n_parties = anonymize_claim_pii(
                 conn,
                 claim_id,
                 now_iso=now_iso,
                 notes_redaction_text="[REDACTED - DSAR deletion]",
-                redact_audit_log=get_settings().privacy.audit_log_state_redaction_enabled,
+                redact_audit_log=False,
             )
             anonymized_claims += 1
             anonymized_parties += n_parties
 
             # Apply DSAR audit log policy for this claim.
-            # Non-PII columns (action, statuses, actor_id, created_at) are always
-            # preserved for legal/regulatory requirements.
-            # Non-PII audit columns stay immutable except where migration 049 allows
-            # before_state / after_state updates (see AUDIT_LOG_STATE_REDACTION_ENABLED).
             if audit_policy == "redact":
                 audit_rows_affected += redact_audit_log_pii(conn, claim_id)
             elif audit_policy == "delete":
                 audit_rows_affected += delete_audit_log_entries(conn, claim_id)
-            # "preserve" (default): audit log untouched
-            # "preserve" (default): audit log untouched for this policy path
+            # "preserve" (default): claim_audit_log rows unchanged
 
         conn.execute(
             text("""

@@ -227,7 +227,7 @@ and rely on export-then-purge instead.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AUDIT_LOG_STATE_REDACTION_ENABLED` | `false` | When `true`, before_state / after_state JSON is redacted in place during DSAR deletion and retention purge.  Requires migration 049. |
+| `AUDIT_LOG_STATE_REDACTION_ENABLED` | `false` | When `true`, JSON fields on `claim_audit_log` are scrubbed during **retention purge** only. DSAR deletion uses `DSAR_AUDIT_LOG_POLICY` instead. Requires migration 049. |
 
 The default is `false`; existing deployments are unaffected until you opt in.
 
@@ -257,14 +257,15 @@ Status, claim type, amounts, timestamps, and other non-PII fields are kept.
 AUDIT_LOG_STATE_REDACTION_ENABLED=true
 ```
 
-Once set, every subsequent DSAR deletion or retention purge will also sanitize
-the audit log rows for the affected claim(s).  Rows created *before* enabling
-the setting are not retroactively redacted; to backfill older rows call the
-`redact_audit_log_pii()` helper directly (see `src/claim_agent/db/pii_redaction.py`).
+Once set, every subsequent **retention purge** will also sanitize audit log JSON
+for affected claims. DSAR deletion does not use this flag — configure
+`DSAR_AUDIT_LOG_POLICY` for erasure requests. Rows created *before* enabling the
+setting are not retroactively redacted; to backfill older rows call
+`redact_audit_log_pii()` directly (see `src/claim_agent/db/pii_redaction.py`).
 
 ### Tiered retention (cold → archived → purged)
 
-Claims carry a `retention_tier` (`active`, `cold`, `archived`, `purged`). On closure, tier moves to **cold** (closed claims within the legal retention window). `retention-enforce` still archives by age using `created_at` and per-state rules. After archive, **`RETENTION_PURGE_AFTER_ARCHIVE_YEARS`** (default 2) defines how long the row stays in `status=archived` before **`claim-agent retention-purge`** may run. The purge horizon uses **calendar years** from `archived_at` (same month/day anniversary, with day clamped for short months). Purge **anonymizes** the claim row (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), **claim_parties**, and **claim_notes** (same pattern as DSAR deletion), sets `status=purged`, `retention_tier=purged`, and `purged_at`; **claim_audit_log** rows are not deleted (when `AUDIT_LOG_STATE_REDACTION_ENABLED=true`, before_state / after_state JSON is also redacted in place).
+Claims carry a `retention_tier` (`active`, `cold`, `archived`, `purged`). On closure, tier moves to **cold** (closed claims within the legal retention window). `retention-enforce` still archives by age using `created_at` and per-state rules. After archive, **`RETENTION_PURGE_AFTER_ARCHIVE_YEARS`** (default 2) defines how long the row stays in `status=archived` before **`claim-agent retention-purge`** may run. The purge horizon uses **calendar years** from `archived_at` (same month/day anniversary, with day clamped for short months). Purge **anonymizes** the claim row (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), **claim_parties**, and **claim_notes** (same pattern as DSAR deletion), sets `status=purged`, `retention_tier=purged`, and `purged_at`; **claim_audit_log** rows are not deleted (when `AUDIT_LOG_STATE_REDACTION_ENABLED=true`, JSON columns are scrubbed via controlled rewrite that preserves row ids and metadata columns).
 
 ### Archive Behavior
 
@@ -347,7 +348,6 @@ The `audit_log_policy` and `audit_rows_affected` fields are included in the dele
 
 ## Related
 
-- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE, AUDIT_LOG_PURGE_ENABLED, AUDIT_LOG_STATE_REDACTION_ENABLED, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
-- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE, AUDIT_LOG_PURGE_ENABLED, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION, DSAR_AUDIT_LOG_POLICY
+- [Configuration](configuration.md) – CLAIM_AGENT_MASK_PII, RETENTION_PERIOD_YEARS, STATE_RETENTION_PATH, AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE, AUDIT_LOG_PURGE_ENABLED, AUDIT_LOG_STATE_REDACTION_ENABLED, DSAR_AUDIT_LOG_POLICY, LLM_DATA_MINIMIZATION, DSAR_VERIFICATION_REQUIRED, LITIGATION_HOLD_BLOCKS_DELETION
 - [Observability](observability.md) – Structured logging, claim context
 - [Database](database.md) – Schema, audit log

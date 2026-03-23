@@ -12,6 +12,7 @@ from sqlalchemy import text
 from claim_agent.db.database import get_connection, init_db
 from claim_agent.db.pii_redaction import (
     PII_REDACTED_PLACEHOLDER,
+    _redact_json_field,
     _redact_json_pii,
     redact_audit_log_pii,
     anonymize_claim_pii,
@@ -104,6 +105,10 @@ class TestRedactJsonPii:
         result = _redact_json_pii(data)
         assert result[0]["vin"] == PII_REDACTED_PLACEHOLDER
         assert result[1]["status"] == "closed"
+
+    def test_redact_json_field_preserves_invalid_json(self):
+        raw = "{not valid json"
+        assert _redact_json_field(raw) == raw
 
 
 # ---------------------------------------------------------------------------

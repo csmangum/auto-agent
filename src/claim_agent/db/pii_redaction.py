@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+
+from claim_agent.db.database import row_to_dict
+
+_log = logging.getLogger(__name__)
 
 PII_REDACTED_PLACEHOLDER = "[REDACTED]"
 
@@ -59,7 +64,7 @@ def _redact_json_field(
 ) -> str | None:
     """Parse a JSON string, redact PII keys, and return the updated JSON string.
 
-    Non-JSON or unparseable values are replaced with *placeholder* in full.
+    Non-JSON or unparseable values are left unchanged (avoids wiping non-JSON audit text).
     Returns ``None`` / empty string unchanged.
     """
     if not raw:
@@ -69,7 +74,8 @@ def _redact_json_field(
         redacted = _redact_json_pii(parsed, placeholder)
         return json.dumps(redacted)
     except (json.JSONDecodeError, TypeError):
-        return placeholder
+        _log.debug("audit log JSON field not parseable; leaving unchanged (chars=%s)", len(raw))
+        return raw
 
 
 def redact_audit_log_pii(
@@ -82,10 +88,11 @@ def redact_audit_log_pii(
 
     Uses a delete-then-reinsert strategy so that the ``details`` column (which is
     protected by the append-only trigger against in-place UPDATE) can also be
-    sanitised.  DELETE has been permitted since migration 039.  Non-JSON columns
-    (``action``, statuses, ``actor_id``, ``created_at``) are preserved verbatim.
+    sanitised.  DELETE has been permitted since migration 039.  Primary keys and
+    other non-JSON columns (``action``, statuses, ``actor_id``, ``created_at``) are
+    preserved verbatim on reinsert.
 
-    This function is a no-op when no PII keys are found in any row.
+    Returns immediately without writing when no JSON field would change.
 
     Args:
         conn: Active SQLAlchemy connection (within an open transaction).
@@ -100,10 +107,6 @@ def redact_audit_log_pii(
             "SELECT id, action, old_status, new_status, details, actor_id, "
             "before_state, after_state, created_at "
             "FROM claim_audit_log WHERE claim_id = :claim_id"
-    rows = conn.execute(
-        text(
-            "SELECT id, before_state, after_state FROM claim_audit_log "
-            "WHERE claim_id = :claim_id"
         ),
         {"claim_id": claim_id},
     ).fetchall()
@@ -128,6 +131,7 @@ def redact_audit_log_pii(
 
         redacted_rows.append(
             {
+                "id": int(r["id"]),
                 "claim_id": claim_id,
                 "action": r.get("action"),
                 "old_status": r.get("old_status"),
@@ -140,8 +144,11 @@ def redact_audit_log_pii(
             }
         )
 
+    if changed == 0:
+        return 0
+
     # DELETE original rows (permitted since migration 039), then reinsert with
-    # redacted JSON so that the immutable non-JSON columns are preserved exactly.
+    # redacted JSON and the same primary key so audit row identity stays stable.
     conn.execute(
         text("DELETE FROM claim_audit_log WHERE claim_id = :claim_id"),
         {"claim_id": claim_id},
@@ -150,58 +157,24 @@ def redact_audit_log_pii(
         conn.execute(
             text("""
                 INSERT INTO claim_audit_log
-                    (claim_id, action, old_status, new_status, details,
+                    (id, claim_id, action, old_status, new_status, details,
                      actor_id, before_state, after_state, created_at)
                 VALUES
-                    (:claim_id, :action, :old_status, :new_status, :details,
+                    (:id, :claim_id, :action, :old_status, :new_status, :details,
                      :actor_id, :before_state, :after_state, :created_at)
             """),
             params,
         )
 
-    return changed
-    updated = 0
-    for row in rows:
-        row_id: int = row[0]
-        raw_before: str | None = row[1]
-        raw_after: str | None = row[2]
-
-        if raw_before is None and raw_after is None:
-            continue
-
-        new_before: str | None = raw_before
-        new_after: str | None = raw_after
-
-        if raw_before:
-            try:
-                parsed = json.loads(raw_before)
-                new_before = json.dumps(_redact_json_pii(parsed, placeholder))
-            except (json.JSONDecodeError, TypeError):
-                new_before = raw_before
-
-        if raw_after:
-            try:
-                parsed = json.loads(raw_after)
-                new_after = json.dumps(_redact_json_pii(parsed, placeholder))
-            except (json.JSONDecodeError, TypeError):
-                new_after = raw_after
-
-        if new_before != raw_before or new_after != raw_after:
-            conn.execute(
-                text(
-                    "UPDATE claim_audit_log "
-                    "SET before_state = :before_state, after_state = :after_state "
-                    "WHERE id = :row_id"
-                ),
-                {
-                    "before_state": new_before,
-                    "after_state": new_after,
-                    "row_id": row_id,
-                },
+    if conn.engine.dialect.name == "postgresql":
+        conn.execute(
+            text(
+                "SELECT setval(pg_get_serial_sequence('claim_audit_log', 'id'), "
+                "COALESCE((SELECT MAX(id) FROM claim_audit_log), 1))"
             )
-            updated += 1
+        )
 
-    return updated
+    return changed
 
 
 def delete_audit_log_entries(conn: Connection, claim_id: str) -> int:
@@ -240,8 +213,10 @@ def anonymize_claim_pii(
     When *redact_audit_log* is ``True`` the function also calls
     :func:`redact_audit_log_pii` to sanitize PII inside the JSON fields
     stored in ``claim_audit_log`` rows (``details``, ``before_state``,
-    ``after_state``).  The flag should only be set when the
-    ``AUDIT_LOG_STATE_REDACTION_ENABLED`` setting is enabled.
+    ``after_state``).  Retention purge passes ``True`` when
+    ``AUDIT_LOG_STATE_REDACTION_ENABLED`` is on.  DSAR deletion should not use
+    this flag; it applies ``DSAR_AUDIT_LOG_POLICY`` separately in
+    :mod:`claim_agent.services.dsar`.
 
     Returns:
         Tuple of (1 if claim row updated, number of party rows for the claim).

@@ -157,7 +157,8 @@ def export_claim_to_cold_storage(
         "ContentType": "application/json",
         "StorageClass": config.s3_storage_class,
     }
-    if config.encryption == "aws:kms":
+    enc = (config.encryption or "AES256").strip().lower()
+    if enc == "aws:kms":
         put_kwargs["ServerSideEncryption"] = "aws:kms"
         if config.kms_key_id:
             put_kwargs["SSEKMSKeyId"] = config.kms_key_id
