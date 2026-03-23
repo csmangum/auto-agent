@@ -7,9 +7,10 @@ import AssignmentQueue from './AssignmentQueue';
 vi.mock('../api/queries', () => ({
   useReviewQueue: vi.fn(),
   useAssignClaim: vi.fn(),
+  useCurrentUser: vi.fn(),
 }));
 
-const { useReviewQueue, useAssignClaim } = await import('../api/queries');
+const { useReviewQueue, useAssignClaim, useCurrentUser } = await import('../api/queries');
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -44,6 +45,12 @@ describe('AssignmentQueue', () => {
       isError: false,
       error: null,
     } as unknown as ReturnType<typeof useAssignClaim>);
+
+    vi.mocked(useCurrentUser).mockReturnValue({
+      data: { identity: 'adj-jane', role: 'adjuster' },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useCurrentUser>);
   });
 
   it('renders queue header', () => {
@@ -114,5 +121,29 @@ describe('AssignmentQueue', () => {
     render(<AssignmentQueue />, { wrapper: createWrapper() });
     expect(screen.getByText('All Priorities')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Filter by assignee...')).toBeInTheDocument();
+  });
+
+  it('shows My Assignments button when user is authenticated', () => {
+    render(<AssignmentQueue />, { wrapper: createWrapper() });
+    expect(screen.getByText('My Assignments')).toBeInTheDocument();
+  });
+
+  it('hides My Assignments button for anonymous users', () => {
+    vi.mocked(useCurrentUser).mockReturnValue({
+      data: { identity: 'anonymous', role: 'admin' },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useCurrentUser>);
+
+    render(<AssignmentQueue />, { wrapper: createWrapper() });
+    expect(screen.queryByText('My Assignments')).not.toBeInTheDocument();
+  });
+
+  it('toggles My Assignments filter on click', () => {
+    render(<AssignmentQueue />, { wrapper: createWrapper() });
+    const btn = screen.getByText('My Assignments');
+    fireEvent.click(btn);
+    const assigneeInput = screen.getByPlaceholderText('Filter by assignee...') as HTMLInputElement;
+    expect(assigneeInput.value).toBe('adj-jane');
   });
 });

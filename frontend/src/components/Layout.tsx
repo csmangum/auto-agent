@@ -9,7 +9,7 @@ import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
 import { useRoleSimulation } from '../context/RoleSimulationContext';
 
 const MAIN_NAV = [
-  { to: '/', label: 'Dashboard', icon: 'dashboard' as NavIconKey },
+  { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' as NavIconKey },
   { to: '/claims', label: 'Claims', icon: 'claims' as NavIconKey },
   { to: '/claims/new', label: 'New Claim', icon: 'newClaim' as NavIconKey },
 ];
@@ -45,7 +45,7 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: typeo
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/'}
+            end={item.to === '/' || item.to === '/dashboard'}
             onClick={onLinkClick}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${

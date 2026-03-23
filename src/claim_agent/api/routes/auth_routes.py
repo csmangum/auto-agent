@@ -1,4 +1,4 @@
-"""Email/password login and refresh token exchange."""
+"""Email/password login, refresh token exchange, and identity introspection."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import jwt as pyjwt
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
+from claim_agent.api.auth import AuthContext
+from claim_agent.api.deps import require_role
 from claim_agent.config.settings import (
     get_jwt_access_ttl_seconds,
     get_jwt_refresh_ttl_seconds,
@@ -16,6 +18,8 @@ from claim_agent.config.settings import (
 from claim_agent.db.user_repository import UserRepository, hash_refresh_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+RequireAnyRole = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 class LoginBody(BaseModel):
@@ -87,3 +91,9 @@ def refresh(body: RefreshBody):
         "token_type": "bearer",
         "expires_in": get_jwt_access_ttl_seconds(),
     }
+
+
+@router.get("/me")
+def get_current_user(auth: AuthContext = RequireAnyRole):
+    """Return the authenticated user's identity and role."""
+    return {"identity": auth.identity, "role": auth.role}

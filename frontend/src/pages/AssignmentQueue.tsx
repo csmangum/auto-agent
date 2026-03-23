@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import StatusBadge from '../components/StatusBadge';
 import TypeBadge from '../components/TypeBadge';
 import EmptyState from '../components/EmptyState';
-import { useReviewQueue, useAssignClaim } from '../api/queries';
+import { useReviewQueue, useAssignClaim, useCurrentUser } from '../api/queries';
 import { formatDateTime } from '../utils/date';
 import { CLAIM_PRIORITY_ORDER, CLAIM_PRIORITY_RANK, CLAIM_PRIORITY_STYLES } from '../constants/priority';
 
@@ -25,6 +25,10 @@ function timeInQueue(reviewStartedAt?: string): string {
 }
 
 export default function AssignmentQueue() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { data: currentUser } = useCurrentUser();
+  const showMyAssignments = !!currentUser && currentUser.identity !== 'anonymous';
+
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [olderThanHours, setOlderThanHours] = useState('');
@@ -32,6 +36,28 @@ export default function AssignmentQueue() {
   const [pageSize, setPageSize] = useState(25);
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [assigneeInput, setAssigneeInput] = useState('');
+
+  useEffect(() => {
+    if (searchParams.get('assignee') === 'me' && currentUser && currentUser.identity !== 'anonymous') {
+      setAssigneeFilter(currentUser.identity);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('assignee');
+        return next;
+      }, { replace: true });
+    }
+  }, [searchParams, currentUser, setSearchParams]);
+
+  const myAssignmentsActive = showMyAssignments && assigneeFilter === currentUser?.identity;
+
+  const toggleMyAssignments = useCallback(() => {
+    if (myAssignmentsActive) {
+      setAssigneeFilter('');
+    } else if (currentUser) {
+      setAssigneeFilter(currentUser.identity);
+    }
+    setPage(1);
+  }, [myAssignmentsActive, currentUser]);
 
   const offset = (page - 1) * pageSize;
   const params = {
@@ -115,6 +141,20 @@ export default function AssignmentQueue() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
+        {showMyAssignments && (
+          <button
+            type="button"
+            onClick={toggleMyAssignments}
+            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+              myAssignmentsActive
+                ? 'bg-blue-600/20 text-blue-400 border-blue-500/40 ring-1 ring-blue-500/20'
+                : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-gray-200'
+            }`}
+          >
+            My Assignments
+          </button>
+        )}
+
         <select
           value={priorityFilter}
           onChange={(e) => { setPriorityFilter(e.target.value); setPage(1); }}

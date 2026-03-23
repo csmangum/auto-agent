@@ -601,6 +601,44 @@ class TestClaimFraudFilings:
         assert resp.status_code == 200
 
 
+class TestAuthMe:
+    """Test GET /api/auth/me identity introspection."""
+
+    def test_me_returns_anonymous_when_no_auth(self, client):
+        resp = client.get("/api/auth/me")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["identity"] == "anonymous"
+        assert data["role"] == "admin"
+
+    def test_me_returns_identity_for_api_key(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster:jane")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/auth/me", headers={"X-API-Key": "sk-adj"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["identity"] == "jane"
+        assert data["role"] == "adjuster"
+
+    def test_me_401_when_auth_required_and_no_key(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/auth/me")
+        assert resp.status_code == 401
+
+    def test_me_403_for_disallowed_role(self, client, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-claimant:claimant")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        resp = client.get("/api/auth/me", headers={"X-API-Key": "sk-claimant"})
+        assert resp.status_code == 403
+
+
 class TestReviewQueue:
     """Test review queue and adjuster action endpoints."""
 

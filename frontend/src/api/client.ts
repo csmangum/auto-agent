@@ -902,3 +902,15 @@ export const getFraudReportingCompliance = (
   const q = qs.toString();
   return fetchJSON<FraudReportingComplianceResponse>(`/compliance/fraud-reporting${q ? '?' + q : ''}`);
 };
+
+// ---------------------------------------------------------------------------
+// Current User (identity introspection)
+// ---------------------------------------------------------------------------
+
+export interface CurrentUser {
+  identity: string;
+  role: string;
+}
+
+export const getCurrentUser = (): Promise<CurrentUser> =>
+  fetchJSON<CurrentUser>('/auth/me');

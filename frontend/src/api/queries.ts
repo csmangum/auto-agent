@@ -44,9 +44,11 @@ import {
   createPartyRelationship,
   deletePartyRelationship,
   getFraudReportingCompliance,
+  getCurrentUser,
 } from './client';
 import type {
   CostBreakdown,
+  CurrentUser,
   GetClaimsParams,
   GetReviewQueueParams,
   CreatePaymentPayload,
@@ -89,6 +91,7 @@ export const queryKeys = {
   complianceTemplates: (state?: string) => ['diary', 'templates', state ?? ''] as const,
   fraudReportingCompliance: (params: GetFraudReportingComplianceParams) =>
     ['compliance', 'fraud-reporting', params] as const,
+  currentUser: ['auth', 'me'] as const,
 };
 
 export function useClaimsStats() {
@@ -516,5 +519,18 @@ export function useFraudReportingCompliance(params: GetFraudReportingComplianceP
   return useQuery({
     queryKey: queryKeys.fraudReportingCompliance(params),
     queryFn: () => getFraudReportingCompliance(params),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Current User
+// ---------------------------------------------------------------------------
+
+export function useCurrentUser() {
+  return useQuery<CurrentUser>({
+    queryKey: queryKeys.currentUser,
+    queryFn: getCurrentUser,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }

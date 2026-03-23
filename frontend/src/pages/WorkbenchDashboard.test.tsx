@@ -91,6 +91,7 @@ describe('WorkbenchDashboard', () => {
 
   it('shows quick action links', () => {
     render(<WorkbenchDashboard />, { wrapper: createWrapper() });
+    expect(screen.getByText('My Assignments')).toBeInTheDocument();
     expect(screen.getByText('Assignment Queue')).toBeInTheDocument();
     expect(screen.getByText('Diary / Calendar')).toBeInTheDocument();
     expect(screen.getByText('New Claim')).toBeInTheDocument();
