@@ -26,8 +26,9 @@ function timeInQueue(reviewStartedAt?: string): string {
 
 export default function AssignmentQueue() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: currentUser } = useCurrentUser();
-  const showMyAssignments = !!currentUser && currentUser.identity !== 'anonymous';
+  // Backend identity (GET /auth/me) — distinct from the client-side simulation role.
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const showMyAssignments = !userLoading && !!currentUser && currentUser.identity !== 'anonymous';
 
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
@@ -57,7 +58,7 @@ export default function AssignmentQueue() {
       setAssigneeFilter(currentUser.identity);
     }
     setPage(1);
-  }, [myAssignmentsActive, currentUser]);
+  }, [myAssignmentsActive, currentUser, setPage]);
 
   const offset = (page - 1) * pageSize;
   const params = {

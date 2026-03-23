@@ -29,6 +29,9 @@ vi.mock('./api/queries', () => ({
   useAgentsCatalog: vi.fn(() => ({ data: { crews: [] }, isLoading: false, error: null })),
   usePolicies: vi.fn(() => ({ data: { policies: [] }, isLoading: false, error: null })),
   useFraudReportingCompliance: vi.fn(() => ({ data: { claims: [], total: 0 }, isLoading: false, error: null })),
+  useReviewQueue: vi.fn(() => ({ data: { claims: [], total: 0, limit: 200, offset: 0 }, isLoading: false, error: null })),
+  useOverdueTasks: vi.fn(() => ({ data: { tasks: [], total: 0 }, isLoading: false, error: null })),
+  useTaskStats: vi.fn(() => ({ data: { total: 0, by_status: {}, by_type: {}, by_priority: {}, overdue: 0 }, isLoading: false, error: null })),
 }));
 
 function renderApp(initialPath = '/') {
@@ -51,6 +54,7 @@ function renderApp(initialPath = '/') {
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem('simulation_role');
   });
 
   it('renders layout with navigation', () => {
@@ -64,8 +68,20 @@ describe('App', () => {
     expect(screen.getByText('Page not found')).toBeInTheDocument();
   });
 
-  it('renders Dashboard at /', () => {
+  it('redirects adjuster to workbench at /', () => {
+    localStorage.setItem('simulation_role', 'adjuster');
     renderApp('/');
+    expect(screen.getByRole('heading', { name: 'My Workbench' })).toBeInTheDocument();
+  });
+
+  it('renders Dashboard at / for non-adjuster role', () => {
+    localStorage.setItem('simulation_role', 'customer');
+    renderApp('/');
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+  });
+
+  it('renders Dashboard at /dashboard', () => {
+    renderApp('/dashboard');
     expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
   });
 

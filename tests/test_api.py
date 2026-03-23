@@ -638,6 +638,25 @@ class TestAuthMe:
         resp = client.get("/api/auth/me", headers={"X-API-Key": "sk-claimant"})
         assert resp.status_code == 403
 
+    def test_me_returns_identity_for_jwt(self, client, monkeypatch):
+        jwt = pytest.importorskip("jwt")
+        secret = "test-jwt-secret-long-enough-for-hs256"
+        monkeypatch.setenv("JWT_SECRET", secret)
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        reload_settings()
+
+        token = jwt.encode(
+            {"sub": "adj-42", "role": "adjuster"},
+            secret,
+            algorithm="HS256",
+        )
+        resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["identity"] == "adj-42"
+        assert data["role"] == "adjuster"
+
 
 class TestReviewQueue:
     """Test review queue and adjuster action endpoints."""

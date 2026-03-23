@@ -12,14 +12,14 @@ vi.mock('../api/queries', () => ({
 
 const { useReviewQueue, useAssignClaim, useCurrentUser } = await import('../api/queries');
 
-function createWrapper() {
+function createWrapper(initialEntries = ['/workbench/queue']) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>{children}</MemoryRouter>
+        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
       </QueryClientProvider>
     );
   };
@@ -145,5 +145,33 @@ describe('AssignmentQueue', () => {
     fireEvent.click(btn);
     const assigneeInput = screen.getByPlaceholderText('Filter by assignee...') as HTMLInputElement;
     expect(assigneeInput.value).toBe('adj-jane');
+  });
+
+  it('clears assignee filter when toggling My Assignments off', () => {
+    render(<AssignmentQueue />, { wrapper: createWrapper() });
+    const btn = screen.getByText('My Assignments');
+    fireEvent.click(btn);
+    const assigneeInput = screen.getByPlaceholderText('Filter by assignee...') as HTMLInputElement;
+    expect(assigneeInput.value).toBe('adj-jane');
+    fireEvent.click(btn);
+    expect(assigneeInput.value).toBe('');
+  });
+
+  it('resolves ?assignee=me to current user identity', () => {
+    render(<AssignmentQueue />, { wrapper: createWrapper(['/workbench/queue?assignee=me']) });
+    const assigneeInput = screen.getByPlaceholderText('Filter by assignee...') as HTMLInputElement;
+    expect(assigneeInput.value).toBe('adj-jane');
+  });
+
+  it('ignores ?assignee=me for anonymous users', () => {
+    vi.mocked(useCurrentUser).mockReturnValue({
+      data: { identity: 'anonymous', role: 'admin' },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useCurrentUser>);
+
+    render(<AssignmentQueue />, { wrapper: createWrapper(['/workbench/queue?assignee=me']) });
+    const assigneeInput = screen.getByPlaceholderText('Filter by assignee...') as HTMLInputElement;
+    expect(assigneeInput.value).toBe('');
   });
 });

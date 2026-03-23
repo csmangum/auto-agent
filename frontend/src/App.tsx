@@ -31,6 +31,8 @@ import ThirdPartyPortalClaimDetail from './pages/ThirdPartyPortalClaimDetail';
 import NotFound from './pages/NotFound';
 import { useRoleSimulation } from './context/RoleSimulationContext';
 
+// Uses the client-side simulation role (UI persona) — not the backend identity
+// from /auth/me — to decide the landing page per simulated persona.
 function HomeLanding() {
   const { role } = useRoleSimulation();
   if (role === 'adjuster') {
