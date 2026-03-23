@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,9 @@ class LexicalHashEmbedding(EmbeddingProvider):
 
     Cosine similarity correlates with lexical overlap, so RAG search and
     similarity tests stay meaningful without loading torch/transformers.
+
+    Uses MD5 (via hashlib) instead of Python's built-in hash() so the bucket
+    index is stable across interpreter runs regardless of PYTHONHASHSEED.
     """
 
     model_name = "test-lexical-hash"
@@ -35,7 +39,7 @@ class LexicalHashEmbedding(EmbeddingProvider):
         words = [w for w in normalized.split() if w]
         v = np.zeros(self._dim, dtype=np.float64)
         for w in words:
-            h = hash(w) % self._dim
+            h = int(hashlib.md5(w.encode()).hexdigest(), 16) % self._dim
             v[h] += 1.0
         n = np.linalg.norm(v)
         if n >= 1e-9:
@@ -47,8 +51,11 @@ def _is_integration_e2e_or_load(request: pytest.FixtureRequest) -> bool:
     for m in request.node.iter_markers():
         if m.name in ("integration", "e2e", "load"):
             return True
-    path_s = str(request.node.path)
-    return "/integration/" in path_s or "/e2e/" in path_s or "/load/" in path_s
+    node_path = getattr(request.node, "path", None)
+    if node_path is None:
+        return False
+    parts = set(Path(node_path).parts)
+    return any(name in parts for name in ("integration", "e2e", "load"))
 
 
 @pytest.fixture(autouse=True)

@@ -32,9 +32,14 @@ def _adapter_retry_sleep_seconds(attempt: int) -> float:
     raw = os.getenv(_SIU_RETRY_SLEEP_ENV)
     if raw is not None and raw.strip() != "":
         try:
-            return float(raw)
+            value = float(raw)
         except ValueError:
             logger.warning("Invalid %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
+        else:
+            if value < 0:
+                logger.warning("Negative %s=%r; using default backoff", _SIU_RETRY_SLEEP_ENV, raw)
+            else:
+                return value
     return float(2**attempt)
 
 # Omit from fraud_report_filings.metadata redacted_payload (PII / sensitive)
