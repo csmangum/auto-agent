@@ -38,7 +38,7 @@ function HomeLanding() {
   if (role === 'adjuster') {
     return <Navigate to="/workbench" replace />;
   }
-  return <Dashboard />;
+  return <Navigate to="/dashboard" replace />;
 }
 
 export default function App() {
