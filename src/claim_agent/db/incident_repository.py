@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from claim_agent.db.audit_events import ACTOR_SYSTEM
+from claim_agent.db.constants import STATUS_PENDING
 from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.repository import ClaimRepository, _apply_ucspa_at_fnol
 from claim_agent.events import ClaimEvent, emit_claim_event
@@ -108,9 +109,7 @@ class IncidentRepository:
                     self._create_link_in_conn(conn, claim_id, other_id, "same_incident", None, None)
                 claim_ids.append(claim_id)
 
-                effective_loss = claim_input.loss_state
-                if effective_loss is not None:
-                    effective_loss = str(effective_loss).strip() or None
+                effective_loss = ClaimRepository._normalize_loss_state(claim_input.loss_state)
                 claim_details.append((claim_id, effective_loss))
 
             # All writes committed atomically on successful context exit.
@@ -128,7 +127,7 @@ class IncidentRepository:
             except Exception:
                 logger.exception("ucspa_at_fnol_unexpected_error claim_id=%s", claim_id)
             emit_claim_event(
-                ClaimEvent(claim_id=claim_id, status="pending", summary="Claim submitted")
+                ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
             )
 
         return incident_id, claim_ids
