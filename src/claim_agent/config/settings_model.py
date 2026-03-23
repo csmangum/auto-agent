@@ -902,6 +902,8 @@ class PrivacyConfig(BaseSettings):
             "and retention purge.  Requires migration 049 (the trigger is relaxed to allow "
             "updates only to those two columns; all other audit columns remain immutable). "
             "Default false – existing deployments are unaffected until opted in."
+        ),
+    )
     dsar_audit_log_policy: str = Field(
         default="preserve",
         validation_alias="DSAR_AUDIT_LOG_POLICY",
