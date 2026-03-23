@@ -43,11 +43,11 @@ from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/portal", tags=["portal"])
 
-# Fields from the claims table that are safe to expose to claimants.
+# Fields from the claims table that are safe to expose to claimants (and repair portal).
 # Internal/admin fields (reserve_amount, review_notes, siu_case_id,
 # litigation_hold, assignee, priority, due_at, review_started_at, etc.)
 # are intentionally excluded.
-_PORTAL_CLAIM_FIELDS = [
+PORTAL_CLAIM_FIELDS = [
     "id",
     "policy_number",
     "vin",
@@ -69,11 +69,15 @@ _PORTAL_CLAIM_FIELDS = [
 ]
 
 
-def _resolve_portal_attachment_urls(claim: dict[str, Any]) -> dict[str, Any]:
+def _resolve_portal_attachment_urls(
+    claim: dict[str, Any],
+    *,
+    attachments_api_base: str = "/api/portal",
+) -> dict[str, Any]:
     """Rewrite attachment paths to portal-accessible download URLs.
 
     Unlike the adjuster resolver, this generates URLs under
-    /api/portal/claims/{id}/attachments/... which portal users can access.
+    ``{attachments_api_base}/claims/{id}/attachments/...``.
     """
     import json
 
@@ -97,7 +101,7 @@ def _resolve_portal_attachment_urls(claim: dict[str, Any]) -> dict[str, Any]:
             if key:
                 att = {
                     **att,
-                    "url": f"/api/portal/claims/{claim_id}/attachments/{key}",
+                    "url": f"{attachments_api_base}/claims/{claim_id}/attachments/{key}",
                 }
         updated.append(att)
 
@@ -148,7 +152,7 @@ def list_portal_claims(
 
     placeholders = ",".join([f":cid{i}" for i in range(len(session.claim_ids))])
     id_params: dict[str, str] = {f"cid{i}": cid for i, cid in enumerate(session.claim_ids)}
-    safe_fields = ", ".join(_PORTAL_CLAIM_FIELDS)
+    safe_fields = ", ".join(PORTAL_CLAIM_FIELDS)
     list_params: dict[str, Any] = {**id_params, "limit": limit, "offset": offset}
 
     with get_connection() as conn:

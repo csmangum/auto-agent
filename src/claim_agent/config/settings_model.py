@@ -879,6 +879,35 @@ class PortalConfig(BaseSettings):
         return "token"
 
 
+class RepairShopPortalConfig(BaseSettings):
+    """Repair shop self-service portal (per-claim magic tokens)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="REPAIR_SHOP_PORTAL_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable /api/repair-portal routes and token minting.",
+    )
+    token_expiry_days: int = Field(
+        default=90,
+        ge=1,
+        le=365,
+        description="Repair shop access token validity in days.",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_enabled(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
 class PrivacyConfig(BaseSettings):
     """Privacy and data protection configuration."""
 
@@ -1331,6 +1360,7 @@ class Settings(BaseSettings):
     state_bureau: StateBureauConfig = Field(default_factory=StateBureauConfig)
     claim_search_rest: ClaimSearchRestConfig = Field(default_factory=ClaimSearchRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
+    repair_shop_portal: RepairShopPortalConfig = Field(default_factory=RepairShopPortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     retention_export: RetentionExportConfig = Field(default_factory=RetentionExportConfig)
 

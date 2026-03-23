@@ -984,7 +984,7 @@ class TestSupplemental:
         assert resp.status_code == 422
 
     def test_file_supplemental_success_returns_response_model(self, client, monkeypatch):
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.services.supplemental_request as supplemental_request_mod
 
         mock_result = {
             "claim_id": "CLM-TEST005",
@@ -994,7 +994,11 @@ class TestSupplemental:
             "workflow_output": "Supplemental processed.",
             "summary": "Supplemental processed.",
         }
-        monkeypatch.setattr(claims_mod, "run_supplemental_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(
+            supplemental_request_mod,
+            "run_supplemental_workflow",
+            lambda *a, **kw: mock_result,
+        )
         resp = client.post(
             "/api/claims/CLM-TEST005/supplemental",
             json={

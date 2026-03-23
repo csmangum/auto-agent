@@ -45,7 +45,6 @@ from claim_agent.db.constants import (
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
     STATUS_PROCESSING,
-    SUPPLEMENTABLE_STATUSES,
     VALID_REPAIR_STATUSES,
 )
 from sqlalchemy import text
@@ -74,6 +73,8 @@ from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.storage.s3 import S3StorageAdapter
 from claim_agent.services.bi_allocation import allocate_bi_limits
 from claim_agent.services.portal_verification import create_claim_access_token
+from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_access_token
+from claim_agent.services.supplemental_request import execute_supplemental_request
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.rag.constants import normalize_state
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
@@ -89,7 +90,6 @@ from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverag
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
 from claim_agent.workflow.siu_orchestrator import run_siu_investigation as run_siu_investigation_workflow
-from claim_agent.workflow.supplemental_orchestrator import run_supplemental_workflow
 from claim_agent.mock_crew.claim_generator import (
     generate_claim_from_prompt,
     generate_incident_damage_from_vehicle,
@@ -975,6 +975,16 @@ class CreatePortalTokenBody(BaseModel):
     email: Optional[str] = Field(None, description="Email to associate with token")
 
 
+class CreateRepairShopPortalTokenBody(BaseModel):
+    """Optional shop identifier stored with the token (audit / repair_status.shop_id)."""
+
+    shop_id: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description="Repair shop id or code; used when posting repair status if set",
+    )
+
+
 @router.post("/claims/{claim_id}/portal-token", dependencies=[RequireAdjuster])
 def create_portal_token(
     request: Request,
@@ -1009,6 +1019,42 @@ def create_portal_token(
                     break
         token = create_claim_access_token(
             claim_id, party_id=party_id, email=email
+        )
+        result = {"claim_id": claim_id, "token": token}
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
+
+
+@router.post("/claims/{claim_id}/repair-shop-portal-token", dependencies=[RequireAdjuster])
+def create_repair_shop_portal_token(
+    request: Request,
+    claim_id: str,
+    body: CreateRepairShopPortalTokenBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Create a repair shop access token for this claim. Returns the raw token once."""
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
+    try:
+        ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+        claim_row = ctx.repo.get_claim(claim_id)
+        if claim_row is None:
+            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+        if claim_row.get("claim_type") != "partial_loss":
+            raise HTTPException(
+                status_code=400,
+                detail="Repair shop portal tokens are only issued for partial_loss claims",
+            )
+        if not get_settings().repair_shop_portal.enabled:
+            raise HTTPException(status_code=503, detail="Repair shop portal is disabled")
+        token = create_repair_shop_access_token(
+            claim_id,
+            shop_id=body.shop_id,
         )
         result = {"claim_id": claim_id, "token": token}
         store_response_if_idempotent(idem_key, 200, result)
@@ -2508,42 +2554,21 @@ async def file_supplemental(
     repair. Validates the report, compares to original estimate, calculates
     supplemental amount, and updates the repair authorization.
     """
-    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-
-    claim_type = claim.get("claim_type")
-    if claim_type != "partial_loss":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Supplemental only applies to partial_loss claims. Claim has claim_type={claim_type!r}.",
-        )
-
-    claim_status = claim.get("status")
-    if claim_status not in SUPPLEMENTABLE_STATUSES:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Claim cannot receive supplemental in status {claim_status!r}. "
-                f"Allowed statuses: {', '.join(SUPPLEMENTABLE_STATUSES)}."
-            ),
-        )
-
-    supplemental_data = {
-        "claim_id": claim_id,
-        "supplemental_damage_description": body.supplemental_damage_description,
-        "reported_by": body.reported_by,
-    }
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
 
     try:
-        result = await asyncio.to_thread(
-            run_supplemental_workflow,
-            supplemental_data,
+        return await execute_supplemental_request(
+            claim_id=claim_id,
+            supplemental_damage_description=body.supplemental_damage_description,
+            reported_by=body.reported_by,
             ctx=ctx,
         )
-        return result
     except ClaimNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        msg = str(e)
+        code = 409 if "cannot receive supplemental" in msg else 400
+        raise HTTPException(status_code=code, detail=msg) from e
 
 
 @router.post("/claims/{claim_id}/reprocess")
