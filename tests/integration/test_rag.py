@@ -503,3 +503,28 @@ class TestSkillsRAGIntegration:
         # Both should have valid structure
         assert skill_total_loss["role"] is not None
         assert skill_partial_loss["role"] is not None
+
+
+# ============================================================================
+# Embedding Provider Factory Integration Tests
+# ============================================================================
+
+
+class TestEmbeddingProviderFactoryIntegration:
+    """Integration tests for the real get_embedding_provider factory (no unit-test monkeypatch)."""
+
+    @pytest.mark.integration
+    def test_get_embedding_provider_returns_sentence_transformer(self):
+        """get_embedding_provider('sentence-transformers') returns a real SentenceTransformerEmbedding."""
+        from claim_agent.rag.embeddings import SentenceTransformerEmbedding, get_embedding_provider
+
+        provider = get_embedding_provider("sentence-transformers")
+        assert isinstance(provider, SentenceTransformerEmbedding)
+
+    @pytest.mark.integration
+    def test_get_embedding_provider_unknown_raises(self):
+        """get_embedding_provider raises ValueError for unknown provider names."""
+        from claim_agent.rag.embeddings import get_embedding_provider
+
+        with pytest.raises(ValueError, match="Unknown embedding provider"):
+            get_embedding_provider("unknown-provider")

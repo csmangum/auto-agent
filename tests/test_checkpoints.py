@@ -633,6 +633,7 @@ class TestWorkflowCheckpoints:
         )
         assert cps == {}, "Checkpoints should be cleared after mid-workflow escalation"
 
+    @pytest.mark.slow
     @patch("claim_agent.workflow.stages.verify_coverage_impl")
     @patch("claim_agent.workflow.stages.evaluate_escalation_impl")
     @patch("claim_agent.workflow.stages.create_task_planner_crew")

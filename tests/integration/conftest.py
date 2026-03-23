@@ -121,3 +121,12 @@ def rag_cache_dir() -> Generator[Path, None, None]:
         yield Path(tmpdir)
 
 
+@pytest.fixture(scope="session")
+def _preload_embedding_model():
+    """Pre-load sentence-transformers once for integration RAG tests."""
+    pytest.importorskip("sentence_transformers")
+    from claim_agent.rag.embeddings import get_embedding_provider
+
+    p = get_embedding_provider()
+    _ = p.embed("warmup")
+    yield
