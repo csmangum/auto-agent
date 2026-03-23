@@ -115,6 +115,16 @@ def test_is_budget_approaching_returns_true_at_threshold():
         model="gpt-4o-mini",
         input_tokens=4600,
         output_tokens=500,
+        cost_usd=0.001,
+        latency_ms=100,
+        status="success",
+    )
+    # 5100 tokens out of 5000 cap → ratio > 1.0 ≥ 0.9
+    with patch("claim_agent.workflow.budget.MAX_TOKENS_PER_CLAIM", 5_000):
+        with patch("claim_agent.workflow.budget.MAX_LLM_CALLS_PER_CLAIM", 50):
+            assert _is_budget_approaching("CLM-APPROACH-HIT", metrics, threshold=0.9)
+
+
 # ---------------------------------------------------------------------------
 # Tests for BudgetEnforcingCallback (intra-crew budget checks)
 # ---------------------------------------------------------------------------
@@ -133,10 +143,7 @@ def _make_metrics_with_tokens(claim_id: str, input_tokens: int, output_tokens: i
         latency_ms=100,
         status="success",
     )
-    # 5100 tokens out of 5000 cap → ratio > 1.0 ≥ 0.9
-    with patch("claim_agent.workflow.budget.MAX_TOKENS_PER_CLAIM", 5_000):
-        with patch("claim_agent.workflow.budget.MAX_LLM_CALLS_PER_CLAIM", 50):
-            assert _is_budget_approaching("CLM-APPROACH-HIT", metrics, threshold=0.9)
+    return metrics
 
 
 def test_is_budget_approaching_returns_true_on_call_ratio():
@@ -280,7 +287,6 @@ def test_kickoff_with_retry_no_budget_params_uses_primary():
 
     assert result == "primary-result"
     primary_crew.kickoff.assert_called_once()
-    return metrics
 
 
 def test_budget_enforcing_callback_no_exception_when_under_limit():

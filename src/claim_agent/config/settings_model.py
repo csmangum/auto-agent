@@ -652,6 +652,8 @@ class LLMConfig(BaseSettings):
         description=(
             "Fraction of MAX_TOKENS_PER_CLAIM or MAX_LLM_CALLS_PER_CLAIM at which "
             "budget-driven fallback engages (0.0–1.0). Requires LLM_BUDGET_FALLBACK_ENABLED=true."
+        ),
+    )
     # Prompt cache settings
     cache_enabled: bool = Field(
         default=False,

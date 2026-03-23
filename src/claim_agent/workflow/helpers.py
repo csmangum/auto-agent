@@ -155,29 +155,6 @@ def _kickoff_with_retry(
     use_fallback = create_crew_no_args is not None and len(models) > 1
     installed_budget_callback = False
 
-    try:
-        if budget_callback is not None:
-            with _budget_callbacks_lock:
-                prev_cbs = list(getattr(litellm, "callbacks", None) or [])
-                litellm.callbacks = prev_cbs + [budget_callback]
-            installed_budget_callback = True
-
-        for i, model_name in enumerate(models):
-            if use_fallback and i > 0:
-                _set_model_override(model_name)
-                try:
-                    assert create_crew_no_args is not None
-                    current_crew = create_crew_no_args()
-                finally:
-                    _set_model_override(None)
-            else:
-                current_crew = crew
-
-            @with_llm_retry()
-            def _call(c: Any = current_crew) -> Any:
-                return c.kickoff(inputs=inputs)
-
-    # Budget-driven fallback: proactively advance the model chain when approaching cap.
     start_index = 0
     if use_fallback and claim_id is not None and metrics is not None:
         from claim_agent.config.settings import get_settings
@@ -196,9 +173,33 @@ def _kickoff_with_retry(
                 llm_cfg.budget_fallback_threshold,
             )
 
-    for i, model_name in enumerate(models[start_index:]):
-        if use_fallback and (i + start_index) > 0:
-            _set_model_override(model_name)
+    if use_fallback:
+        indices_and_names = list(enumerate(models[start_index:], start=start_index))
+    else:
+        indices_and_names = [(0, models[0])] if models else []
+
+    try:
+        if budget_callback is not None:
+            with _budget_callbacks_lock:
+                prev_cbs = list(getattr(litellm, "callbacks", None) or [])
+                litellm.callbacks = prev_cbs + [budget_callback]
+            installed_budget_callback = True
+
+        for global_idx, model_name in indices_and_names:
+            if use_fallback and global_idx > 0:
+                _set_model_override(model_name)
+                try:
+                    assert create_crew_no_args is not None
+                    current_crew = create_crew_no_args()
+                finally:
+                    _set_model_override(None)
+            else:
+                current_crew = crew
+
+            @with_llm_retry()
+            def _call(c: Any = current_crew) -> Any:
+                return c.kickoff(inputs=inputs)
+
             try:
                 result = _call()
                 if budget_callback is not None:
@@ -211,15 +212,15 @@ def _kickoff_with_retry(
                 if not use_fallback or model_name == models[-1]:
                     raise
                 continue
+
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("kickoff failed with no exception")
     finally:
         if installed_budget_callback and budget_callback is not None:
             with _budget_callbacks_lock:
                 curr_cbs = list(getattr(litellm, "callbacks", None) or [])
                 litellm.callbacks = [cb for cb in curr_cbs if cb is not budget_callback]
-
-    if last_exc:
-        raise last_exc
-    raise RuntimeError("kickoff failed with no exception")
 
 
 def _checkpoint_keys_to_invalidate(from_stage: str, checkpoints: dict[str, str]) -> list[str]:

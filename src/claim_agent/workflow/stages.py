@@ -508,7 +508,7 @@ def _run_crew_stage_body(
             claim_id=ctx.claim_id,
             metrics=ctx.context.metrics,
             llm=ctx.context.llm,
-            crew, inputs, create_crew_no_args=lambda: create_crew(ctx), budget_callback=budget_cb
+            budget_callback=budget_cb,
         )
     except MidWorkflowEscalation as e:
         return _handle_mid_workflow_escalation(
