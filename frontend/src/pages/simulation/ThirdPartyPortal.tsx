@@ -14,7 +14,7 @@ import { postClaimDispute } from '../../api/client';
 import type { Claim, AuditEvent, FollowUpMessage } from '../../api/types';
 
 /** Simulation uses adjuster dispute API; eligibility may differ from production third-party portal */
-const SIMULATION_THIRD_PARTY_DISPUTABLE = ['settled', 'dispute_resolved', 'closed'];
+const SIMULATION_THIRD_PARTY_DISPUTABLE = ['open', 'settled'];
 
 export default function ThirdPartyPortal() {
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
