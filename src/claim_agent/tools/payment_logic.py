@@ -14,6 +14,15 @@ from claim_agent.utils.sanitization import sanitize_payee
 WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX = "workflow_rental:"
 
 
+def is_workflow_rental_external_ref(external_ref: str | None) -> bool:
+    """True when ``external_ref`` is tagged for the portal Rental tab (claimant reimbursement)."""
+    if not external_ref:
+        return False
+    return external_ref.strip().lower().startswith(
+        WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX.lower()
+    )
+
+
 def record_claim_payment_impl(
     claim_id: str,
     amount: float,

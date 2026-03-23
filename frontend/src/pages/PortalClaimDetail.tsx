@@ -34,14 +34,15 @@ const REPAIR_STATUS_ORDER = [
   'ready',
 ] as const;
 
-/** Matches portal filter for loss-of-use / rental document requests (see DocumentType on backend). */
+/** Matches DocumentType on backend (loss-of-use / rental document requests). */
 const RENTAL_DOCUMENT_TYPES = new Set(['rental_receipt', 'rental_agreement']);
+
+/** Keep in sync with claim_agent.tools.payment_logic.WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX */
+const WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX = 'workflow_rental:';
 
 function isRentalDocumentType(documentType: string | undefined): boolean {
   if (!documentType) return false;
-  const t = documentType.toLowerCase();
-  if (RENTAL_DOCUMENT_TYPES.has(t)) return true;
-  return t.includes('rental');
+  return RENTAL_DOCUMENT_TYPES.has(documentType.toLowerCase());
 }
 
 function isRentalCoordinationPayment(p: {
@@ -49,8 +50,8 @@ function isRentalCoordinationPayment(p: {
   external_ref?: string | null;
 }): boolean {
   if (p.payee_type === 'rental_company') return true;
-  const ref = (p.external_ref ?? '').toLowerCase();
-  return ref.length > 0 && ref.includes('rental');
+  const ref = (p.external_ref ?? '').trim().toLowerCase();
+  return ref.startsWith(WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX.toLowerCase());
 }
 
 function isOpenDocumentRequestStatus(status: string | undefined): boolean {
@@ -105,7 +106,10 @@ export default function PortalClaimDetail() {
   const { data: paymentsData } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'payments'],
     queryFn: () => portalApi.getPayments(claimId!),
-    enabled: !!claimId && claimQuerySuccess,
+    enabled:
+      !!claimId &&
+      claimQuerySuccess &&
+      (activeTab === 'payments' || activeTab === 'rental'),
   });
 
   const { data: docRequestsData } = useQuery({
@@ -162,13 +166,14 @@ export default function PortalClaimDetail() {
   const openRentalDocRequests = rentalDocRequests.filter((r) =>
     isOpenDocumentRequestStatus(r.status)
   );
-  const rentalTabBadgeCount =
-    openRentalDocRequests.length + rentalCoordinationPayments.length;
+  const rentalTabBadgeCount = openRentalDocRequests.length;
 
   const invalidateClaim = () => {
     const keys = [
       ['portal', 'claim', claimId],
       ['portal', 'claim', claimId, 'documents'],
+      ['portal', 'claim', claimId, 'payments'],
+      ['portal', 'claim', claimId, 'document-requests'],
     ];
     keys.forEach((k) => queryClient.invalidateQueries({ queryKey: k }));
   };

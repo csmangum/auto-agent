@@ -241,6 +241,20 @@ def test_create_payment_external_ref_idempotent(seeded_db):
     assert row["external_ref"] == "idem-1"
 
 
+def test_is_workflow_rental_external_ref():
+    from claim_agent.tools.payment_logic import (
+        WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX,
+        is_workflow_rental_external_ref,
+    )
+
+    assert WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX == "workflow_rental:"
+    assert is_workflow_rental_external_ref("workflow_rental:CLM-1")
+    assert is_workflow_rental_external_ref("  WORKFLOW_RENTAL:run1  ")
+    assert not is_workflow_rental_external_ref(None)
+    assert not is_workflow_rental_external_ref("")
+    assert not is_workflow_rental_external_ref("other_prefix:rental")
+
+
 def test_record_claim_payment_impl(monkeypatch, seeded_db):
     from claim_agent.tools.payment_logic import record_claim_payment_impl
 

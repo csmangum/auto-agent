@@ -109,8 +109,8 @@ describe('PortalClaimDetail', () => {
       </Wrapper>
     );
     await screen.findByText('Claim CLM-001...');
-    expect(mockGetPayments).toHaveBeenCalledWith('CLM-001');
     expect(mockGetDocumentRequests).toHaveBeenCalledWith('CLM-001');
+    expect(mockGetPayments).not.toHaveBeenCalled();
 
     expect(screen.getByText('Status')).toBeInTheDocument();
     expect(screen.getByText('Documents')).toBeInTheDocument();
