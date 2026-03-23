@@ -60,6 +60,8 @@ Every migration that **creates a new SQLite table** (or that changes a table who
 
 CI enforces this alignment via **`tests/test_schema_core_parity.py`**, **`tests/test_schema_sqlite_parity.py`**, and **`tests/test_schema_incidents_parity.py`**, which compare column names between shared SQLite constants and the PostgreSQL equivalents in each migration.
 
+For **`schema_core_sqlite.py`** (`claims`, `claim_audit_log`), `test_schema_core_parity.py` builds the expected PostgreSQL `claims` column set from revision **023** plus PostgreSQL `ALTER TABLE claims ADD COLUMN` statements in **029, 033, 034, and 050** only. Later migrations that add `claims` columns without changing the bootstrap `CREATE TABLE` are intentionally excluded (those columns are often applied on SQLite via `_run_migrations()` instead). If you add a column to **`CLAIMS_TABLE_SQLITE`** to mirror a **new** PostgreSQL `ALTER TABLE claims` migration, append that revision file to the tuple in `_postgres_claims_columns()` in **`tests/test_schema_core_parity.py`** so the parity test keeps enforcing alignment.
+
 **When changing the schema:**
 
 - Add an Alembic migration for the change.
