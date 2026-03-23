@@ -60,9 +60,9 @@ class IncidentRepository:
 
         External I/O (policy adapter look-ups) is performed **before** the
         transaction opens so it does not hold the database lock during network
-        calls.  UCSPA deadline setting and claim-submitted events are applied
-        **after** the transaction commits (best-effort, each in its own
-        short-lived transaction).
+        calls.  UCSPA deadline setting and claim-submitted events run **after**
+        the transaction commits.  Missing UCSPA schema columns are tolerated
+        (warning only); other UCSPA failures propagate like :meth:`ClaimRepository.create_claim`.
         """
         incident_id = _generate_incident_id()
         incident_date_str = incident_input.incident_date.isoformat()
@@ -126,6 +126,7 @@ class IncidentRepository:
                 )
             except Exception:
                 logger.exception("ucspa_at_fnol_unexpected_error claim_id=%s", claim_id)
+                raise
             emit_claim_event(
                 ClaimEvent(claim_id=claim_id, status=STATUS_PENDING, summary="Claim submitted")
             )

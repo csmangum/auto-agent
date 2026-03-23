@@ -717,8 +717,8 @@ short-lived transaction:
 
 | Step | Failure behaviour |
 |------|-------------------|
-| Apply UCSPA deadline (`_apply_ucspa_at_fnol`) | Logged as a warning; creation still succeeds. UCSPA columns can be populated later once the schema migration has been applied (`alembic upgrade head`). |
-| Emit `claim-submitted` event | Logged as a warning; creation still succeeds, but downstream systems do not receive the event for that claim. |
+| Apply UCSPA deadline (`_apply_ucspa_at_fnol`) | `OperationalError` / `ProgrammingError` (e.g. missing UCSPA columns): logged as a warning; processing continues for the remaining claims. Run `alembic upgrade head` to apply the schema. Any **other** exception is logged and **re-raised** (same as `ClaimRepository.create_claim`); the incident and claims are already committed. |
+| Emit `claim-submitted` event | Listener failures are logged as a warning; processing continues. If UCSPA raised before emit for a claim, that claim’s event is not sent. |
 
 A process crash or unhandled exception **between the main commit and these
 post-transaction steps** will leave the incident and claims persisted but

@@ -260,3 +260,26 @@ def test_create_incident_atomic_no_partial_on_link_failure(incident_repo):
         assert len(conn.execute(text("SELECT id FROM incidents")).fetchall()) == 0
         assert len(conn.execute(text("SELECT id FROM claims")).fetchall()) == 0
         assert len(conn.execute(text("SELECT * FROM claim_links")).fetchall()) == 0
+
+
+def test_create_incident_ucspa_unexpected_error_propagates(incident_repo):
+    """Non-schema UCSPA failures re-raise like create_claim; main tx already committed."""
+    incident_input = IncidentInput(
+        incident_date=date(2025, 1, 15),
+        incident_description="UCSPA error test",
+        vehicles=[
+            _make_vehicle("POL-001", "VIN001"),
+            _make_vehicle("POL-002", "VIN002"),
+        ],
+    )
+
+    with patch(
+        "claim_agent.db.incident_repository._apply_ucspa_at_fnol",
+        side_effect=RuntimeError("simulated ucspa failure"),
+    ):
+        with pytest.raises(RuntimeError, match="simulated ucspa failure"):
+            incident_repo.create_incident(incident_input)
+
+    with get_connection(incident_repo._db_path) as conn:
+        assert len(conn.execute(text("SELECT id FROM incidents")).fetchall()) == 1
+        assert len(conn.execute(text("SELECT id FROM claims")).fetchall()) == 2
