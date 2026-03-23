@@ -457,6 +457,21 @@ CREATE INDEX IF NOT EXISTS idx_repair_shop_tokens_claim_id ON repair_shop_access
 CREATE INDEX IF NOT EXISTS idx_repair_shop_tokens_token_hash ON repair_shop_access_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_repair_shop_tokens_expires_at ON repair_shop_access_tokens(expires_at);
 
+-- Third-party portal: per-claim magic-link tokens (hashed) for counterparties
+CREATE TABLE IF NOT EXISTS third_party_access_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    party_id INTEGER,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    FOREIGN KEY (party_id) REFERENCES claim_parties(id)
+);
+CREATE INDEX IF NOT EXISTS idx_third_party_tokens_claim_id ON third_party_access_tokens(claim_id);
+CREATE INDEX IF NOT EXISTS idx_third_party_tokens_token_hash ON third_party_access_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_access_tokens(expires_at);
+
 -- DPA registry: track Data Processing Agreements with subprocessors (GDPR Art. 28)
 """
     + DPA_REGISTRY_TABLE_SQLITE

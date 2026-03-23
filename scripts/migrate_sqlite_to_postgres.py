@@ -120,6 +120,7 @@ TABLES_IN_ORDER: list[str] = [
     # Access tokens reference claims and claim_parties
     "claim_access_tokens",
     "repair_shop_access_tokens",
+    "third_party_access_tokens",
     # Standalone tables
     "idempotency_keys",
     "fraud_report_filings",

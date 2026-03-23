@@ -3,8 +3,10 @@ import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { PortalProvider } from './context/PortalContext';
 import { RepairPortalProvider } from './context/RepairPortalProvider';
+import { ThirdPartyPortalProvider } from './context/ThirdPartyPortalProvider';
 import PortalGuard from './components/PortalGuard';
 import RepairPortalGuard from './components/RepairPortalGuard';
+import ThirdPartyPortalGuard from './components/ThirdPartyPortalGuard';
 import Dashboard from './pages/Dashboard';
 import ClaimsList from './pages/ClaimsList';
 import ClaimDetail from './pages/ClaimDetail';
@@ -24,6 +26,8 @@ import PortalClaimsList from './pages/PortalClaimsList';
 import PortalClaimDetail from './pages/PortalClaimDetail';
 import RepairPortalLogin from './pages/RepairPortalLogin';
 import RepairPortalClaimDetail from './pages/RepairPortalClaimDetail';
+import ThirdPartyPortalLogin from './pages/ThirdPartyPortalLogin';
+import ThirdPartyPortalClaimDetail from './pages/ThirdPartyPortalClaimDetail';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -31,6 +35,7 @@ export default function App() {
     <ErrorBoundary>
       <PortalProvider>
         <RepairPortalProvider>
+        <ThirdPartyPortalProvider>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
@@ -82,7 +87,20 @@ export default function App() {
             />
             <Route path="" element={<Navigate to="/repair-portal/login" replace />} />
           </Route>
+          <Route path="/third-party-portal">
+            <Route path="login" element={<ThirdPartyPortalLogin />} />
+            <Route
+              path="claims/:claimId"
+              element={
+                <ThirdPartyPortalGuard>
+                  <ThirdPartyPortalClaimDetail />
+                </ThirdPartyPortalGuard>
+              }
+            />
+            <Route path="" element={<Navigate to="/third-party-portal/login" replace />} />
+          </Route>
         </Routes>
+        </ThirdPartyPortalProvider>
         </RepairPortalProvider>
       </PortalProvider>
     </ErrorBoundary>

@@ -908,6 +908,35 @@ class RepairShopPortalConfig(BaseSettings):
         return str(v).strip().lower() in ("true", "1", "yes")
 
 
+class ThirdPartyPortalConfig(BaseSettings):
+    """Third-party self-service portal (counterparty / lienholder magic links)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="THIRD_PARTY_PORTAL_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable /api/third-party-portal routes and token minting.",
+    )
+    token_expiry_days: int = Field(
+        default=90,
+        ge=1,
+        le=365,
+        description="Third-party access token validity in days.",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_enabled(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
 class PrivacyConfig(BaseSettings):
     """Privacy and data protection configuration."""
 
@@ -1361,6 +1390,7 @@ class Settings(BaseSettings):
     claim_search_rest: ClaimSearchRestConfig = Field(default_factory=ClaimSearchRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     repair_shop_portal: RepairShopPortalConfig = Field(default_factory=RepairShopPortalConfig)
+    third_party_portal: ThirdPartyPortalConfig = Field(default_factory=ThirdPartyPortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     retention_export: RetentionExportConfig = Field(default_factory=RetentionExportConfig)
 

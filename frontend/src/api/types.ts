@@ -90,6 +90,13 @@ export interface Claim {
   attachments?: Array<{ url: string; type: string; description?: string }>;
   /** Subrogation cases with arbitration tracking */
   subrogation_cases?: SubrogationCase[];
+  /** Third-party portal: adjuster / policyholder contact (no policy number) */
+  primary_carrier_contact?: {
+    party_type?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+  } | null;
   /** UCSPA / prompt-payment compliance (ISO date strings unless noted) */
   acknowledged_at?: string;
   acknowledgment_due?: string;

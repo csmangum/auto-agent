@@ -45,6 +45,7 @@ from claim_agent.db.constants import (
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
     STATUS_PROCESSING,
+    THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES,
     VALID_REPAIR_STATUSES,
 )
 from sqlalchemy import text
@@ -74,6 +75,7 @@ from claim_agent.storage.s3 import S3StorageAdapter
 from claim_agent.services.bi_allocation import allocate_bi_limits
 from claim_agent.services.portal_verification import create_claim_access_token
 from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_access_token
+from claim_agent.services.third_party_portal_tokens import create_third_party_access_token
 from claim_agent.services.supplemental_request import execute_supplemental_request
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.rag.constants import normalize_state
@@ -985,6 +987,17 @@ class CreateRepairShopPortalTokenBody(BaseModel):
     )
 
 
+class CreateThirdPartyPortalTokenBody(BaseModel):
+    """Optional claim party to associate with the token (audit)."""
+
+    party_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "Claim party ID on this claim; must be witness, attorney, provider, or lienholder"
+        ),
+    )
+
+
 @router.post("/claims/{claim_id}/portal-token", dependencies=[RequireAdjuster])
 def create_portal_token(
     request: Request,
@@ -1053,6 +1066,49 @@ def create_repair_shop_portal_token(
             claim_id,
             shop_id=body.shop_id,
         )
+        result = {"claim_id": claim_id, "token": token}
+        store_response_if_idempotent(idem_key, 200, result)
+        return result
+    except Exception:
+        release_idempotency_on_error(idem_key)
+        raise
+
+
+@router.post("/claims/{claim_id}/third-party-portal-token", dependencies=[RequireAdjuster])
+def create_third_party_portal_token(
+    request: Request,
+    claim_id: str,
+    body: CreateThirdPartyPortalTokenBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Create a third-party portal access token. Returns the raw token once."""
+    idem_key, cached = get_idempotency_key_and_cached(request)
+    if cached is not None:
+        return cached
+    try:
+        ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+        if not get_settings().third_party_portal.enabled:
+            raise HTTPException(status_code=503, detail="Third-party portal is disabled")
+        party_id = body.party_id
+        if party_id is not None:
+            parties = ctx.repo.get_claim_parties(claim_id)
+            match = next((p for p in parties if p.get("id") == party_id), None)
+            if match is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"party_id {party_id} is not a party on this claim",
+                )
+            ptype = str(match.get("party_type") or "").strip().lower()
+            if ptype not in THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Third-party portal tokens may only be issued for parties of type: "
+                        f"{', '.join(sorted(THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES))}"
+                    ),
+                )
+        token = create_third_party_access_token(claim_id, party_id=party_id)
         result = {"claim_id": claim_id, "token": token}
         store_response_if_idempotent(idem_key, 200, result)
         return result
