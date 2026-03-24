@@ -10,6 +10,7 @@ from claim_agent.mock_crew.notifier import (
     get_pending_mock_responses,
     mock_notify_user,
 )
+from claim_agent.notifications.claimant import notify_claimant, send_otp_notification
 from claim_agent.notifications.user import notify_user
 
 
@@ -435,8 +436,6 @@ class TestNotifyClaimantMockIntercept:
 
     def test_notify_claimant_suppressed_when_mock_enabled(self):
         """notify_claimant should not submit email/SMS jobs when mock is active."""
-        from claim_agent.notifications.claimant import notify_claimant
-
         with (
             patch(
                 "claim_agent.notifications.claimant.get_mock_crew_config",
@@ -459,8 +458,6 @@ class TestNotifyClaimantMockIntercept:
 
     def test_notify_claimant_real_path_when_mock_off(self):
         """notify_claimant uses the real path when mock is disabled."""
-        from claim_agent.notifications.claimant import notify_claimant
-
         with (
             patch(
                 "claim_agent.notifications.claimant.get_mock_crew_config",
@@ -485,5 +482,117 @@ class TestNotifyClaimantMockIntercept:
                 email="test@example.com",
             )
 
-            # The executor submit should have been called (real path)
             mock_exec.submit.assert_called_once()
+
+    def test_notify_claimant_suppressed_without_contact_info(self):
+        """Mock intercept fires even when email and phone are both None."""
+        with (
+            patch(
+                "claim_agent.notifications.claimant.get_mock_crew_config",
+                return_value=_MOCK_CREW_ON,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.mock_notify_claimant",
+            ) as mock_fn,
+            patch("claim_agent.notifications.claimant._EXECUTOR") as mock_exec,
+        ):
+            notify_claimant("receipt_acknowledged", "CLM-210")
+
+            mock_fn.assert_called_once_with("receipt_acknowledged", "CLM-210")
+            mock_exec.submit.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests for send_otp_notification intercept
+# ---------------------------------------------------------------------------
+
+
+class TestSendOtpNotificationMockIntercept:
+    """Tests: send_otp_notification is suppressed under mock crew + mock notifier."""
+
+    def test_otp_notification_suppressed_when_mock_enabled(self, caplog):
+        """send_otp_notification should not attempt real delivery when mock is active."""
+        with (
+            patch(
+                "claim_agent.notifications.claimant.get_mock_crew_config",
+                return_value=_MOCK_CREW_ON,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ),
+            patch("claim_agent.notifications.claimant._send_email") as mock_email,
+            patch("claim_agent.notifications.claimant._send_sms") as mock_sms,
+        ):
+            with caplog.at_level(logging.INFO, logger="claim_agent.notifications.claimant"):
+                send_otp_notification("user@example.com", "email", "123456", "VER-001")
+
+            mock_email.assert_not_called()
+            mock_sms.assert_not_called()
+
+        assert any("OTP notification suppressed" in m for m in caplog.messages)
+
+    def test_otp_notification_real_path_when_mock_off(self):
+        """send_otp_notification uses the real path when mock is disabled."""
+        with (
+            patch(
+                "claim_agent.notifications.claimant.get_mock_crew_config",
+                return_value=_MOCK_CREW_OFF,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.get_notification_config",
+                return_value={"email_enabled": True, "sms_enabled": False,
+                              "sendgrid_api_key": "key", "sendgrid_from_email": "from@x.com",
+                              "twilio_account_sid": "", "twilio_auth_token": "",
+                              "twilio_from_phone": ""},
+            ),
+            patch("claim_agent.notifications.claimant._send_email") as mock_email,
+        ):
+            send_otp_notification("user@example.com", "email", "123456", "VER-002")
+
+            mock_email.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests for clear_all_pending_mock_responses
+# ---------------------------------------------------------------------------
+
+
+class TestClearAllPendingMockResponses:
+    """Explicit tests for clear_all_pending_mock_responses()."""
+
+    def test_clears_queued_responses(self):
+        """Queued responses are removed after clear_all_pending_mock_responses()."""
+        with (
+            patch(
+                "claim_agent.mock_crew.notifier.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_AUTO,
+            ),
+            patch(
+                "claim_agent.mock_crew.notifier.get_mock_claimant_config",
+                return_value=_MOCK_CLAIMANT_ON,
+            ),
+            patch(
+                "claim_agent.mock_crew.claimant.get_mock_claimant_config",
+                return_value=_MOCK_CLAIMANT_ON,
+            ),
+        ):
+            mock_notify_user("claimant", "CLM-300", "Need photos.")
+            mock_notify_user("claimant", "CLM-301", "Need estimate.")
+
+        assert get_pending_mock_responses("CLM-300") != []
+        clear_all_pending_mock_responses()
+        assert get_pending_mock_responses("CLM-301") == []
+
+    def test_clear_is_idempotent(self):
+        """Calling clear on an already-empty queue does not raise."""
+        clear_all_pending_mock_responses()
+        clear_all_pending_mock_responses()

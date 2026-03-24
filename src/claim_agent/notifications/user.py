@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
+from claim_agent.mock_crew.notifier import mock_notify_user
 from claim_agent.models.user import UserType
 from claim_agent.notifications.claimant import notify_claimant
 
@@ -54,8 +55,6 @@ def notify_user(
 
     # Mock intercept: suppress real notifications during testing
     if get_mock_crew_config()["enabled"] and get_mock_notifier_config()["enabled"]:
-        from claim_agent.mock_crew.notifier import mock_notify_user
-
         mock_notify_user(
             user_type,
             claim_id,
