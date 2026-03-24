@@ -214,6 +214,28 @@ def test_workflow_bypasses_authority(seeded_db):
     assert pid > 0
 
 
+def test_get_payment_by_claim_external_ref_normalizes_like_create(seeded_db):
+    """Lookup strips/truncates external_ref the same way as create_payment."""
+    from claim_agent.db.payment_repository import normalize_payment_external_ref
+
+    repo = PaymentRepository(db_path=seeded_db)
+    ref = "  lookup-norm-1  "
+    data = ClaimPaymentCreate(
+        claim_id="CLM-TEST01",
+        amount=1.0,
+        payee="A",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref=ref,
+    )
+    pid = repo.create_payment(data, actor_id="adj-1", skip_authority_check=True)
+    stored = normalize_payment_external_ref(ref)
+    row = repo.get_payment_by_claim_external_ref("CLM-TEST01", ref)
+    assert row is not None
+    assert row["id"] == pid
+    assert row["external_ref"] == stored
+
+
 def test_create_payment_external_ref_idempotent(seeded_db):
     repo = PaymentRepository(db_path=seeded_db)
     data = ClaimPaymentCreate(

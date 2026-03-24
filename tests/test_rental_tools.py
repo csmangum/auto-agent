@@ -11,6 +11,7 @@ from claim_agent.context import ClaimContext
 from claim_agent.db.database import init_db
 from claim_agent.db.payment_repository import PaymentRepository
 from claim_agent.db.rental_repository import RentalAuthorizationRepository
+from claim_agent.tools import rental_logic as rental_logic_mod
 from claim_agent.tools.rental_logic import (
     check_rental_coverage_impl,
     get_rental_limits_impl,
@@ -188,6 +189,7 @@ class TestProcessRentalReimbursement:
             rental_days=3,
             policy_number="POL-001",
         )
+        rental_logic_mod._IDEMPOTENCY_CACHE.clear()
         result2 = process_rental_reimbursement_impl(
             claim_id="CLM-RENT-01",
             amount=105.0,
@@ -206,15 +208,17 @@ class TestProcessRentalReimbursement:
         monkeypatch.setattr(
             "claim_agent.tools.rental_logic.get_db_path", lambda: seeded_rental_db
         )
-        results = [
-            process_rental_reimbursement_impl(
-                claim_id="CLM-RENT-01",
-                amount=70.0,
-                rental_days=2,
-                policy_number="POL-001",
+        results = []
+        for _ in range(3):
+            rental_logic_mod._IDEMPOTENCY_CACHE.clear()
+            results.append(
+                process_rental_reimbursement_impl(
+                    claim_id="CLM-RENT-01",
+                    amount=70.0,
+                    rental_days=2,
+                    policy_number="POL-001",
+                )
             )
-            for _ in range(3)
-        ]
         parsed = [json.loads(r) for r in results]
         # All calls return the same reimbursement_id
         assert all(p["reimbursement_id"] == parsed[0]["reimbursement_id"] for p in parsed)
@@ -320,9 +324,7 @@ class TestProcessRentalReimbursementPersistence:
 
     @pytest.fixture(autouse=True)
     def _clear_rental_idempotency_cache(self):
-        from claim_agent.tools import rental_logic
-
-        rental_logic._IDEMPOTENCY_CACHE.clear()
+        rental_logic_mod._IDEMPOTENCY_CACHE.clear()
         yield
 
     def test_reimbursement_id_matches_claim_payment_when_ctx_provided(self, seeded_temp_db):
@@ -398,8 +400,7 @@ class TestProcessRentalReimbursementPersistence:
         rid1 = data1["reimbursement_id"]
         assert rid1.startswith("RENT-")
 
-        from claim_agent.tools import rental_logic
-        rental_logic._IDEMPOTENCY_CACHE.clear()
+        rental_logic_mod._IDEMPOTENCY_CACHE.clear()
 
         ctx2 = ClaimContext.from_defaults(db_path=seeded_temp_db)
         result2 = process_rental_reimbursement_impl(

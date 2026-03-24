@@ -37,6 +37,11 @@ _STATUS_VOIDED = PaymentStatus.VOIDED.value
 _EXTERNAL_REF_MAX = 200
 
 
+def normalize_payment_external_ref(external_ref: str | None) -> str | None:
+    """Strip and truncate external_ref the same way as ``create_payment`` persistence."""
+    return (external_ref or "").strip()[:_EXTERNAL_REF_MAX] or None
+
+
 def settlement_payee_and_party_id_from_claim_data(claim_data: dict) -> tuple[str, int | None]:
     """Primary payee label and DB party id for automated settlement disbursement.
 
@@ -183,7 +188,7 @@ class PaymentRepository:
             safe_payee_secondary = sanitize_payee(data.payee_secondary) or None
         else:
             safe_payee_secondary = None
-        ext_ref = (data.external_ref or "").strip()[:_EXTERNAL_REF_MAX] or None
+        ext_ref = normalize_payment_external_ref(data.external_ref)
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text("SELECT id FROM claims WHERE id = :claim_id"),
@@ -295,16 +300,19 @@ class PaymentRepository:
         return row_to_dict(row) if row else None
 
     def get_payment_by_claim_external_ref(
-        self, claim_id: str, external_ref: str
+        self, claim_id: str, external_ref: str | None
     ) -> dict[str, Any] | None:
         """Find a payment by (claim_id, external_ref). Returns None if not found."""
+        normalized_ref = normalize_payment_external_ref(external_ref)
+        if normalized_ref is None:
+            return None
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text(
                     "SELECT * FROM claim_payments "
                     "WHERE claim_id = :claim_id AND external_ref = :external_ref"
                 ),
-                {"claim_id": claim_id, "external_ref": external_ref},
+                {"claim_id": claim_id, "external_ref": normalized_ref},
             ).fetchone()
         return row_to_dict(row) if row else None
 

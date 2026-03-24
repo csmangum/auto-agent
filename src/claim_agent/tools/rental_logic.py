@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from claim_agent.adapters.registry import get_policy_adapter
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_db_path
-from claim_agent.db.payment_repository import PaymentRepository, _EXTERNAL_REF_MAX
+from claim_agent.db.payment_repository import PaymentRepository, normalize_payment_external_ref
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 from claim_agent.tools.payment_logic import WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX
@@ -33,10 +34,20 @@ DEFAULT_MAX_DAYS = 30
 # "full_coverage" is a legacy misnomer; real policies use coverages array with collision/comprehensive.
 RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
 
-# In-memory idempotency fast-path: (claim_id, amount, rental_days) -> reimbursement_id.
+# In-memory idempotency fast-path: (claim_id, amount_cents, rental_days) -> reimbursement_id.
 # Persists to ``rental_authorizations`` when ``ctx`` is provided; DB is the source of truth
 # across processes; this cache avoids duplicate work within a single process.
-_IDEMPOTENCY_CACHE: dict[tuple[str, float, int], str] = {}
+_IDEMPOTENCY_CACHE: dict[tuple[str, int, int], str] = {}
+
+
+def _rental_amount_cents(amount: float | int) -> int:
+    """Map a dollar amount to whole cents (quantize to 2 decimals, HALF_UP) for idempotency keys."""
+    try:
+        d = Decimal(str(amount))
+    except InvalidOperation:
+        d = Decimal(str(float(amount)))
+    quantized = d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return int(quantized * 100)
 
 
 def _parse_rental_limits(rental: dict | None) -> tuple[float, float, int]:
@@ -232,7 +243,8 @@ def process_rental_reimbursement_impl(
     so the claimant portal Rental tab includes the reimbursement.
 
     Idempotent: repeated calls with the same (claim_id, amount, rental_days) use a
-    deterministic ``external_ref`` and unique index on (claim_id, external_ref); an
+    deterministic ``external_ref`` (amount encoded as cents via Decimal HALF_UP to 2 decimals)
+    and unique index on (claim_id, external_ref); an
     in-memory cache speeds same-process repeats. ``create_payment`` also recovers from
     duplicate inserts under concurrency (IntegrityError).
     """
@@ -263,6 +275,8 @@ def process_rental_reimbursement_impl(
                 "message": "Invalid rental_days",
             }
         )
+    amount_cents = _rental_amount_cents(amount)
+    idempotency_key = (claim_id, amount_cents, rental_days)
     coverage_json = check_rental_coverage_impl(policy_number, ctx=ctx)
     try:
         coverage = json.loads(coverage_json)
@@ -291,7 +305,6 @@ def process_rental_reimbursement_impl(
                 "message": limits.get("error", "Could not retrieve policy limits"),
             }
         )
-    idempotency_key = (claim_id, float(amount), rental_days)
     if idempotency_key in _IDEMPOTENCY_CACHE:
         rid = _IDEMPOTENCY_CACHE[idempotency_key]
         return json.dumps(
@@ -353,14 +366,11 @@ def process_rental_reimbursement_impl(
             }
         )
 
-    # Build a deterministic external_ref for DB-level idempotency.
-    # amount_cents avoids floating-point representation differences.
-    # Truncate like PaymentRepository.create_payment so lookup matches stored rows.
-    amount_cents = int(round(float(amount) * 100))
+    # Build a deterministic external_ref for DB-level idempotency (same cents as idempotency_key).
     _ref_body = (
         f"{WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX}{claim_id}:{amount_cents}:{rental_days}"
     ).strip()
-    external_ref = (_ref_body[:_EXTERNAL_REF_MAX] if _ref_body else None)
+    external_ref = normalize_payment_external_ref(_ref_body)
 
     db_path = ctx.repo.db_path if (ctx and ctx.repo) else get_db_path()
     pay_repo = PaymentRepository(db_path=db_path)
