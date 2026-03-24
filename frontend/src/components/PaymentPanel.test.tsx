@@ -120,6 +120,7 @@ describe('PaymentPanel', () => {
     expect(screen.getByText('Amount ($) *')).toBeInTheDocument();
     expect(screen.getByText('Payee *')).toBeInTheDocument();
     expect(screen.getByText('Payment Method *')).toBeInTheDocument();
+    expect(screen.getByText('Payee Type *')).toBeInTheDocument();
   });
 
   it('renders empty state when no payments', () => {
@@ -142,15 +143,6 @@ describe('PaymentPanel', () => {
 
     render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
     expect(screen.getByText('Payments')).toBeInTheDocument();
-  });
-
-  it('shows payment form fields when "+ New Payment" is clicked', () => {
-    render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
-    fireEvent.click(screen.getByText('+ New Payment'));
-    expect(screen.getByText('Amount ($) *')).toBeInTheDocument();
-    expect(screen.getByText('Payment Method *')).toBeInTheDocument();
-    expect(screen.getByText('Payee *')).toBeInTheDocument();
-    expect(screen.getByText('Payee Type *')).toBeInTheDocument();
   });
 
   it('shows payment details including check number and secondary payee', () => {
