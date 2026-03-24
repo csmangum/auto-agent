@@ -13,8 +13,6 @@ from typing import Any
 from claim_agent.config import get_settings
 from claim_agent.mock_crew.image_generator import generate_damage_image
 
-logger = logging.getLogger(__name__)
-
 # ---------------------------------------------------------------------------
 # Repair estimate helpers
 # ---------------------------------------------------------------------------
