@@ -229,6 +229,15 @@ def get_mock_crew_config() -> dict:
     }
 
 
+def get_mock_claimant_config() -> dict:
+    """Mock Claimant configuration (enabled, response_strategy)."""
+    s = get_settings().mock_claimant
+    return {
+        "enabled": s.enabled,
+        "response_strategy": s.response_strategy,
+    }
+
+
 def get_chat_config() -> dict:
     """Chat agent configuration."""
     s = get_settings().chat

@@ -835,6 +835,37 @@ class MockCrewConfig(BaseSettings):
             return None
 
 
+class MockClaimantConfig(BaseSettings):
+    """Mock Claimant: rule/template-based claimant simulation for testing."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(default=False, validation_alias="MOCK_CLAIMANT_ENABLED")
+    response_strategy: str = Field(
+        default="immediate",
+        validation_alias="MOCK_CLAIMANT_RESPONSE_STRATEGY",
+        description="Response strategy: immediate | delayed | refuse | partial",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("response_strategy", mode="before")
+    @classmethod
+    def _parse_strategy(cls, v: Any) -> str:
+        valid = {"immediate", "delayed", "refuse", "partial"}
+        val = str(v).strip().lower() if v else "immediate"
+        return val if val in valid else "immediate"
+
+
 class PortalConfig(BaseSettings):
     """Claimant self-service portal configuration."""
 
@@ -1381,6 +1412,7 @@ class Settings(BaseSettings):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     mock_crew: MockCrewConfig = Field(default_factory=MockCrewConfig)
+    mock_claimant: MockClaimantConfig = Field(default_factory=MockClaimantConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
