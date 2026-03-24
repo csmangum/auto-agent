@@ -8,10 +8,16 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from claim_agent.adapters.registry import get_policy_adapter
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.db.database import get_db_path
+from claim_agent.db.payment_repository import PaymentRepository, normalize_payment_external_ref
+from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
+from claim_agent.tools.payment_logic import WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX
 from claim_agent.db.rental_repository import RentalAuthorizationRepository
 
 if TYPE_CHECKING:
@@ -28,10 +34,20 @@ DEFAULT_MAX_DAYS = 30
 # "full_coverage" is a legacy misnomer; real policies use coverages array with collision/comprehensive.
 RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
 
-# In-memory idempotency fast-path: (claim_id, amount, rental_days) -> reimbursement_id.
+# In-memory idempotency fast-path: (claim_id, amount_cents, rental_days) -> reimbursement_id.
 # Persists to ``rental_authorizations`` when ``ctx`` is provided; DB is the source of truth
 # across processes; this cache avoids duplicate work within a single process.
-_IDEMPOTENCY_CACHE: dict[tuple[str, float, int], str] = {}
+_IDEMPOTENCY_CACHE: dict[tuple[str, int, int], str] = {}
+
+
+def _rental_amount_cents(amount: float | int) -> int:
+    """Map a dollar amount to whole cents (quantize to 2 decimals, HALF_UP) for idempotency keys."""
+    try:
+        d = Decimal(str(amount))
+    except InvalidOperation:
+        d = Decimal(str(float(amount)))
+    quantized = d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return int(quantized * 100)
 
 
 def _parse_rental_limits(rental: dict | None) -> tuple[float, float, int]:
@@ -222,9 +238,15 @@ def process_rental_reimbursement_impl(
 ) -> str:
     """Process rental reimbursement for an approved rental.
 
-    Validates amount against limits from get_rental_limits_impl.
-    Idempotent: repeated calls with same (claim_id, amount, rental_days) return
-    the same reimbursement_id (in-memory fast-path; DB row when ``ctx`` is set).
+    Validates amount against limits from get_rental_limits_impl, then persists an
+    authorized payment row via PaymentRepository using ``WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX``
+    so the claimant portal Rental tab includes the reimbursement.
+
+    Idempotent: repeated calls with the same (claim_id, amount, rental_days) use a
+    deterministic ``external_ref`` (amount encoded as cents via Decimal HALF_UP to 2 decimals)
+    and unique index on (claim_id, external_ref); an
+    in-memory cache speeds same-process repeats. ``create_payment`` also recovers from
+    duplicate inserts under concurrency (IntegrityError).
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -235,7 +257,7 @@ def process_rental_reimbursement_impl(
                 "message": "Invalid claim_id",
             }
         )
-    if not isinstance(amount, (int, float)) or amount < 0:
+    if not isinstance(amount, (int, float)) or amount <= 0:
         return json.dumps(
             {
                 "reimbursement_id": "",
@@ -253,6 +275,8 @@ def process_rental_reimbursement_impl(
                 "message": "Invalid rental_days",
             }
         )
+    amount_cents = _rental_amount_cents(amount)
+    idempotency_key = (claim_id, amount_cents, rental_days)
     coverage_json = check_rental_coverage_impl(policy_number, ctx=ctx)
     try:
         coverage = json.loads(coverage_json)
@@ -281,7 +305,6 @@ def process_rental_reimbursement_impl(
                 "message": limits.get("error", "Could not retrieve policy limits"),
             }
         )
-    idempotency_key = (claim_id, float(amount), rental_days)
     if idempotency_key in _IDEMPOTENCY_CACHE:
         rid = _IDEMPOTENCY_CACHE[idempotency_key]
         return json.dumps(
@@ -342,7 +365,69 @@ def process_rental_reimbursement_impl(
                 "message": f"Amount {amount} exceeds limit {max_amount} (daily {daily_limit}, aggregate {aggregate_limit})",
             }
         )
-    reimbursement_id = f"RENT-{uuid.uuid4().hex[:8].upper()}"
+
+    # Build a deterministic external_ref for DB-level idempotency (same cents as idempotency_key).
+    _ref_body = (
+        f"{WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX}{claim_id}:{amount_cents}:{rental_days}"
+    ).strip()
+    external_ref = normalize_payment_external_ref(_ref_body)
+
+    db_path = ctx.repo.db_path if (ctx and ctx.repo) else get_db_path()
+    pay_repo = PaymentRepository(db_path=db_path)
+
+    # Check for an existing payment row first so we can return idempotent response.
+    if external_ref is not None:
+        existing = pay_repo.get_payment_by_claim_external_ref(claim_id, external_ref)
+        if existing is not None:
+            reimbursement_id = f"RENT-{existing['id']:08X}"
+            _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
+            return json.dumps(
+                {
+                    "reimbursement_id": reimbursement_id,
+                    "amount": float(amount),
+                    "status": "approved",
+                    "message": (
+                        f"Rental reimbursement {reimbursement_id} already processed "
+                        f"for claim {claim_id} (idempotent)"
+                    ),
+                }
+            )
+
+    pdata = ClaimPaymentCreate(
+        claim_id=claim_id,
+        amount=float(amount),
+        payee="Claimant",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref=external_ref,
+    )
+    try:
+        payment_id = pay_repo.create_payment(
+            pdata,
+            actor_id=ACTOR_WORKFLOW,
+            role="adjuster",
+            skip_authority_check=True,
+        )
+    except ClaimNotFoundError:
+        return json.dumps(
+            {
+                "reimbursement_id": "",
+                "amount": 0.0,
+                "status": "failed",
+                "message": (
+                    f"Claim {claim_id} not found in database; "
+                    "cannot record rental reimbursement"
+                ),
+            }
+        )
+
+    reimbursement_id = f"RENT-{payment_id:08X}"
+    logger.info(
+        "Rental reimbursement %s created for claim %s (payment_id=%d)",
+        reimbursement_id,
+        claim_id,
+        payment_id,
+    )
     _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
 
     # Persist to DB when ClaimContext is available (same DB path as ClaimRepository).
