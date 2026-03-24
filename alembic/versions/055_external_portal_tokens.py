@@ -11,6 +11,14 @@ JSON array so callers know precisely what actions are permitted.
 Legacy tables (``claim_access_tokens``, ``repair_shop_access_tokens``,
 ``third_party_access_tokens``) are NOT altered; new tokens should be issued
 via this table while old tokens remain valid until expiry.
+
+Schema management note
+~~~~~~~~~~~~~~~~~~~~~~
+On SQLite, ``database.py`` SCHEMA_SQL bootstrap also creates this table
+(via ``schema_unified_portal_sqlite.py``) using ``CREATE TABLE IF NOT EXISTS``.
+This Alembic migration is the **canonical** schema path for PostgreSQL
+deployments and is safe to run on bootstrapped SQLite databases (all DDL
+uses ``IF NOT EXISTS``).
 """
 
 from alembic import op

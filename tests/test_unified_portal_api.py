@@ -14,7 +14,11 @@ from fastapi.testclient import TestClient
 from claim_agent.config import reload_settings
 from claim_agent.services.portal_verification import create_claim_access_token
 from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_access_token
-from claim_agent.services.unified_portal_tokens import create_unified_portal_token
+from claim_agent.services.unified_portal_tokens import (
+    create_unified_portal_token,
+    revoke_unified_portal_token,
+    verify_unified_portal_token,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -246,22 +250,148 @@ class TestUnifiedShopLogin:
         assert resp.status_code == 401
 
     def test_login_response_shape(self, client, monkeypatch):
-        """Successful login response includes role and redirect fields."""
-        # Skip if JWT_SECRET is not configured (no JWT can be issued)
-        import os
+        """Successful login response includes role and redirect fields.
 
-        if not os.environ.get("JWT_SECRET"):
-            pytest.skip("JWT_SECRET not configured")
+        Requires JWT_SECRET and a seeded shop user.  Explicitly sets
+        JWT_SECRET so the test is deterministic rather than silently skipping.
+        """
+        from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
+
+        monkeypatch.setenv("JWT_SECRET", "test-secret-for-login-shape-32chars!")
+        reload_settings()
+        repo = RepairShopUserRepository()
+        try:
+            repo.create_shop_user(
+                shop_id="SHOP-LOGIN-TEST",
+                email="logintest@example.com",
+                password="testpassword123",
+            )
+        except ValueError:
+            pass  # already exists
         resp = client.post(
             "/api/portal/auth/login",
-            json={"email": "shop@example.com", "password": "pw"},
+            json={"email": "logintest@example.com", "password": "testpassword123"},
         )
-        # If the shop user exists and JWT is configured, expect 200
-        if resp.status_code == 200:
-            body = resp.json()
-            assert body.get("role") == "repair_shop"
-            assert "redirect" in body
-            assert body["redirect"] == "/repair-portal/claims"
-        else:
-            # No shop user in seeded DB → 401 is fine
-            assert resp.status_code == 401
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["role"] == "repair_shop"
+        assert body["redirect"] == "/repair-portal/claims"
+        assert "access_token" in body
+        assert body["token_type"] == "bearer"
+
+
+# ---------------------------------------------------------------------------
+# Token revocation
+# ---------------------------------------------------------------------------
+
+
+class TestTokenRevocation:
+    def test_revoke_valid_token(self, client):
+        """Revoking a token should make it fail verification."""
+        raw = create_unified_portal_token(
+            "claimant",
+            scopes=["read_claim"],
+            claim_id="CLM-TEST001",
+        )
+        rec = verify_unified_portal_token(raw)
+        assert rec is not None
+
+        assert revoke_unified_portal_token(raw) is True
+
+        rec_after = verify_unified_portal_token(raw)
+        assert rec_after is None
+
+    def test_revoke_invalid_token_returns_false(self):
+        """Revoking a non-existent token should return False."""
+        assert revoke_unified_portal_token("non-existent-token") is False
+
+    def test_revoke_empty_token(self):
+        assert revoke_unified_portal_token("") is False
+        assert revoke_unified_portal_token("   ") is False
+
+    def test_revoked_token_rejected_by_api(self, client):
+        """A revoked unified token should get 401 from /api/portal/auth/role."""
+        raw = create_unified_portal_token(
+            "repair_shop",
+            scopes=["read_claim"],
+            claim_id="CLM-TEST005",
+            shop_id="SHOP-REV",
+        )
+        resp = client.get(
+            "/api/portal/auth/role",
+            headers={"X-Portal-Token": raw},
+        )
+        assert resp.status_code == 200
+
+        revoke_unified_portal_token(raw)
+
+        resp2 = client.get(
+            "/api/portal/auth/role",
+            headers={"X-Portal-Token": raw},
+        )
+        assert resp2.status_code == 401
+
+    def test_double_revoke_returns_false(self):
+        """Revoking an already-revoked token should return False."""
+        raw = create_unified_portal_token(
+            "claimant",
+            claim_id="CLM-TEST001",
+        )
+        assert revoke_unified_portal_token(raw) is True
+        assert revoke_unified_portal_token(raw) is False
+
+
+# ---------------------------------------------------------------------------
+# TPA role
+# ---------------------------------------------------------------------------
+
+
+class TestTpaRole:
+    def test_tpa_unified_token_role_detection(self, client):
+        """Unified token with role=tpa returns correct role and redirect."""
+        raw = create_unified_portal_token(
+            "tpa",
+            scopes=["read_claim"],
+            claim_id="CLM-TEST001",
+        )
+        resp = client.get(
+            "/api/portal/auth/role",
+            headers={"X-Portal-Token": raw},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["role"] == "tpa"
+        assert body["claim_ids"] == ["CLM-TEST001"]
+        # TPA is not "claimant" so redirect should be repair-portal path
+        assert body["redirect"] == "/repair-portal/claims"
+
+
+# ---------------------------------------------------------------------------
+# Scope validation
+# ---------------------------------------------------------------------------
+
+
+class TestScopeValidation:
+    def test_invalid_scope_rejected_at_creation(self):
+        """create_unified_portal_token rejects unknown scope strings."""
+        with pytest.raises(ValueError, match="Invalid portal scopes"):
+            create_unified_portal_token(
+                "claimant",
+                scopes=["read_claim", "admin_override"],
+                claim_id="CLM-TEST001",
+            )
+
+    def test_invalid_scope_rejected_by_api(self, client, monkeypatch):
+        """POST /api/portal/auth/issue-token rejects unknown scopes (422)."""
+        monkeypatch.setenv("API_KEY", "test-key")
+        reload_settings()
+        resp = client.post(
+            "/api/portal/auth/issue-token",
+            json={
+                "role": "claimant",
+                "scopes": ["read_claim", "delete_everything"],
+                "claim_id": "CLM-TEST001",
+            },
+            headers={"Authorization": "Bearer test-key"},
+        )
+        assert resp.status_code == 422

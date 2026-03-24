@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-import jwt as pyjwt
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 from claim_agent.api.repair_portal_deps import (
     RepairShopJWTContext,
@@ -29,7 +27,7 @@ from claim_agent.api.routes.portal import (
     _resolve_portal_attachment_urls,
 )
 from claim_agent.config import get_settings
-from claim_agent.config.settings import get_jwt_access_ttl_seconds, get_jwt_secret
+from claim_agent.config.settings import get_jwt_access_ttl_seconds
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from claim_agent.db.database import get_db_path
@@ -38,6 +36,7 @@ from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.document import DocumentType
+from claim_agent.services.shop_jwt import ShopLoginBody, encode_shop_access_token
 from claim_agent.services.supplemental_request import execute_supplemental_request
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
@@ -98,37 +97,6 @@ def _infer_shop_and_auth(claim_id: str, claim_repo: ClaimRepository) -> tuple[st
     return shop_id, auth_id
 
 
-def _encode_shop_access_token(user_id: str, shop_id: str) -> str:
-    """Issue a short-lived JWT for a repair shop user."""
-    secret = get_jwt_secret()
-    if not secret:
-        raise HTTPException(
-            status_code=503,
-            detail="JWT_SECRET is not configured; cannot issue access tokens",
-        )
-    ttl = get_jwt_access_ttl_seconds()
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": user_id,
-        "role": "shop_user",
-        "shop_id": shop_id,
-        "token_use": "access",
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(seconds=ttl)).timestamp()),
-    }
-    return pyjwt.encode(payload, secret, algorithm="HS256")
-
-
-# --------------------------------------------------------------------------
-# Shop user auth
-# --------------------------------------------------------------------------
-
-
-class ShopLoginBody(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=1)
-
-
 @router.post("/auth/login")
 def repair_shop_login(body: ShopLoginBody):
     """Authenticate a repair shop user with email and password; returns a JWT access token."""
@@ -138,7 +106,7 @@ def repair_shop_login(body: ShopLoginBody):
     user = repo.verify_shop_user_password(body.email, body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    access = _encode_shop_access_token(str(user["id"]), str(user["shop_id"]))
+    access = encode_shop_access_token(str(user["id"]), str(user["shop_id"]))
     return {
         "access_token": access,
         "token_type": "bearer",

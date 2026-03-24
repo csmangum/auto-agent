@@ -19,20 +19,23 @@ New integrations should prefer ``POST /api/portal/auth/login``.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from typing import Literal
 
-import jwt as pyjwt
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.unified_portal_deps import (
     UnifiedPortalSession,
     require_unified_portal_session,
 )
 from claim_agent.config import get_settings
-from claim_agent.config.settings import get_jwt_access_ttl_seconds, get_jwt_secret
+from claim_agent.config.settings import get_jwt_access_ttl_seconds
 from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
-from claim_agent.services.unified_portal_tokens import create_unified_portal_token
+from claim_agent.services.shop_jwt import ShopLoginBody, encode_shop_access_token
+from claim_agent.services.unified_portal_tokens import (
+    VALID_PORTAL_SCOPES,
+    create_unified_portal_token,
+)
 
 router = APIRouter(prefix="/portal", tags=["unified-portal"])
 
@@ -84,32 +87,6 @@ def detect_portal_role(
 # ---------------------------------------------------------------------------
 
 
-class ShopLoginBody(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=1)
-
-
-def _encode_shop_access_token(user_id: str, shop_id: str) -> str:
-    """Issue a short-lived JWT for a repair shop user (mirrors repair_portal.py)."""
-    secret = get_jwt_secret()
-    if not secret:
-        raise HTTPException(
-            status_code=503,
-            detail="JWT_SECRET is not configured; cannot issue access tokens",
-        )
-    ttl = get_jwt_access_ttl_seconds()
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": user_id,
-        "role": "shop_user",
-        "shop_id": shop_id,
-        "token_use": "access",
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(seconds=ttl)).timestamp()),
-    }
-    return pyjwt.encode(payload, secret, algorithm="HS256")
-
-
 @router.post("/auth/login")
 def unified_shop_login(body: ShopLoginBody):
     """Authenticate a repair-shop user; returns a JWT access token.
@@ -127,7 +104,7 @@ def unified_shop_login(body: ShopLoginBody):
     user = repo.verify_shop_user_password(body.email, body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    access = _encode_shop_access_token(str(user["id"]), str(user["shop_id"]))
+    access = encode_shop_access_token(str(user["id"]), str(user["shop_id"]))
     return {
         "access_token": access,
         "token_type": "bearer",
@@ -144,14 +121,22 @@ def unified_shop_login(body: ShopLoginBody):
 
 
 class IssueUnifiedTokenBody(BaseModel):
-    role: str = Field(..., pattern=r"^(claimant|repair_shop|tpa)$")
+    role: Literal["claimant", "repair_shop", "tpa"]
     scopes: list[str] = Field(default_factory=list)
     claim_id: str | None = Field(default=None)
     shop_id: str | None = Field(default=None)
 
+    @field_validator("scopes")
+    @classmethod
+    def _check_scopes(cls, v: list[str]) -> list[str]:
+        invalid = set(v) - VALID_PORTAL_SCOPES
+        if invalid:
+            raise ValueError(f"Invalid scopes: {sorted(invalid)}")
+        return v
+
 
 @router.post("/auth/issue-token")
-def issue_unified_portal_token(body: IssueUnifiedTokenBody, request: Request):
+def issue_unified_portal_token(body: IssueUnifiedTokenBody):
     """Issue a unified portal token for a given role.
 
     This endpoint is intended for **internal / adjuster use** and is protected
@@ -159,10 +144,10 @@ def issue_unified_portal_token(body: IssueUnifiedTokenBody, request: Request):
     ``/portal/*`` which is public).  Frontends or scripts can obtain a token
     here and deliver it to the external party via email or secure link.
 
-    Returns the raw token once – not stored in plaintext.
+    Returns the raw token once -- not stored in plaintext.
     """
     raw = create_unified_portal_token(
-        body.role,  # type: ignore[arg-type]
+        body.role,
         scopes=body.scopes,
         claim_id=body.claim_id,
         shop_id=body.shop_id,

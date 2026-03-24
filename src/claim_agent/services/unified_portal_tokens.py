@@ -33,10 +33,31 @@ logger = logging.getLogger(__name__)
 
 PortalRole = Literal["claimant", "repair_shop", "tpa"]
 
+VALID_PORTAL_SCOPES: frozenset[str] = frozenset(
+    {
+        "read_claim",
+        "upload_doc",
+        "update_repair_status",
+        "view_estimate",
+        "submit_supplement",
+        "respond_followup",
+    }
+)
+
 
 def _hash_token(token: str) -> str:
     """SHA-256 hash of token for storage comparison."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _ts(dt: datetime) -> str:
+    """Format a UTC datetime as a sortable string for SQLite TEXT columns.
+
+    Uses the same format as SQLite's ``datetime('now')`` so that string
+    comparisons (``>``, ``<``) in WHERE clauses work correctly.  Also
+    valid for PostgreSQL TIMESTAMPTZ (interpreted as UTC).
+    """
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 @dataclass
@@ -69,12 +90,19 @@ def create_unified_portal_token(
 
     Returns:
         The raw token string.  Only returned once – not stored in plaintext.
+
+    Raises:
+        ValueError: If any scope string is not in ``VALID_PORTAL_SCOPES``.
     """
+    if scopes:
+        invalid = set(scopes) - VALID_PORTAL_SCOPES
+        if invalid:
+            raise ValueError(f"Invalid portal scopes: {sorted(invalid)}")
     raw = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw)
     settings = get_settings()
     expiry_days = settings.portal.token_expiry_days
-    expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
+    expires_at = _ts(datetime.now(timezone.utc) + timedelta(days=expiry_days))
     scopes_json = json.dumps(scopes or [])
     path = db_path or get_db_path()
     with get_connection(path) as conn:
@@ -108,7 +136,7 @@ def verify_unified_portal_token(
     if not raw_token or not raw_token.strip():
         return None
     token_hash = _hash_token(raw_token.strip())
-    now = datetime.now(timezone.utc)
+    now = _ts(datetime.now(timezone.utc))
     path = db_path or get_db_path()
     with get_connection(path) as conn:
         row = conn.execute(
@@ -146,7 +174,7 @@ def revoke_unified_portal_token(
     if not raw_token or not raw_token.strip():
         return False
     token_hash = _hash_token(raw_token.strip())
-    now = datetime.now(timezone.utc)
+    now = _ts(datetime.now(timezone.utc))
     path = db_path or get_db_path()
     with get_connection(path) as conn:
         result = conn.execute(

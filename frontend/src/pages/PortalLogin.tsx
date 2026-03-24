@@ -58,20 +58,18 @@ export default function PortalLogin() {
 
     if (qRole === 'repair_shop') setRole('repair_shop');
 
-    // Claimant deep-link
     const t = fromHash.token || qToken || '';
     const cid = fromHash.claim_id || qClaim || '';
-    if (t && !cid) {
-      // Token only → claimant token mode
-      setClaimantToken(t);
-      setClaimantMode('token');
-    }
 
-    // Repair-shop deep-link
     if (cid && t) {
+      // Both claim_id and token → repair-shop deep-link
       setShopClaimId(cid);
       setShopToken(t);
       setRole('repair_shop');
+    } else if (t && qRole !== 'repair_shop') {
+      // Token only (no claim_id, not repair_shop) → claimant token mode
+      setClaimantToken(t);
+      setClaimantMode('token');
     }
 
     // Strip sensitive token parameters from the query string and fragment.
