@@ -287,7 +287,18 @@ def dispatch_repair_authorized(
     config = get_webhook_config()
     shop_url = shop_webhook_url or config.get("shop_url")
     if shop_url:
-        full_payload = {**payload, "event": "repair.authorized", "timestamp": datetime.now(timezone.utc).isoformat()}
+        full_payload = {
+            **payload,
+            "event": "repair.authorized",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if get_mock_crew_config()["enabled"] and get_mock_webhook_config()["capture_enabled"]:
+            from claim_agent.mock_crew.webhook import capture_webhook
+
+            capture_webhook("repair.authorized", full_payload)
+            return
+
         def run_shop():
             try:
                 _deliver_one(

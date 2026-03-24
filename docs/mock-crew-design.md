@@ -263,6 +263,15 @@ send_user_message(claimant, "Please provide damage photos")
 
 **Async flow** (optional): Mock Notifier enqueues; background task or fixture drains queue and calls `record_user_response` after configurable delay.
 
+### 5.4 Mock Intercept Precedence
+
+`notify_user()` checks mock intercepts in order:
+
+1. **General notifier** (`MOCK_NOTIFIER_ENABLED`) — checked first for *all* user types. When enabled, `mock_notify_user` handles the call and returns immediately, regardless of user type.
+2. **Repair-shop-specific** (`MOCK_REPAIR_SHOP_ENABLED`) — checked only for `user_type=repair_shop`, and only if the general notifier intercept did not fire.
+
+If both `MOCK_NOTIFIER_ENABLED=true` and `MOCK_REPAIR_SHOP_ENABLED=true`, the general notifier takes precedence and the repair-shop intercept is never reached. This is by design: the general notifier provides a single capture point for all notification types, while the repair-shop mock exists for scenarios where only shop-specific acknowledgments need testing (with the general notifier disabled).
+
 ---
 
 ## 6. Requirements Summary

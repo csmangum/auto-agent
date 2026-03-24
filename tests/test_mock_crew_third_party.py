@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from claim_agent.config.settings_model import MockThirdPartyConfig, ThirdPartyOutcome
 from claim_agent.mock_crew.third_party import mock_send_demand_letter
 from claim_agent.tools.subrogation_logic import send_demand_letter_impl
 
@@ -202,3 +203,66 @@ class TestSendDemandLetterImplMockIntegration:
         result = json.loads(raw)
         assert "third_party_response" not in result
         assert result["status"] == "demand_sent"
+
+
+# ---------------------------------------------------------------------------
+# Tests for ThirdPartyOutcome validator fallback
+# ---------------------------------------------------------------------------
+
+
+class TestThirdPartyOutcomeValidator:
+    """Tests for MockThirdPartyConfig._parse_outcome validator."""
+
+    def test_invalid_outcome_falls_back_to_accept(self):
+        """An unrecognized outcome value should silently fall back to 'accept'."""
+        cfg = MockThirdPartyConfig(
+            MOCK_THIRD_PARTY_ENABLED="true",
+            MOCK_THIRD_PARTY_OUTCOME="invalid_value",
+        )
+        assert cfg.outcome == ThirdPartyOutcome.ACCEPT
+
+    def test_empty_outcome_falls_back_to_accept(self):
+        """An empty string outcome should fall back to 'accept'."""
+        cfg = MockThirdPartyConfig(
+            MOCK_THIRD_PARTY_ENABLED="true",
+            MOCK_THIRD_PARTY_OUTCOME="",
+        )
+        assert cfg.outcome == ThirdPartyOutcome.ACCEPT
+
+    def test_valid_outcomes_are_accepted(self):
+        """All valid outcome values should be parsed correctly."""
+        for value in ("accept", "reject", "negotiate"):
+            cfg = MockThirdPartyConfig(
+                MOCK_THIRD_PARTY_ENABLED="true",
+                MOCK_THIRD_PARTY_OUTCOME=value,
+            )
+            assert cfg.outcome.value == value
+
+    def test_case_insensitive_outcome(self):
+        """Outcome parsing should be case-insensitive."""
+        cfg = MockThirdPartyConfig(
+            MOCK_THIRD_PARTY_ENABLED="true",
+            MOCK_THIRD_PARTY_OUTCOME="NEGOTIATE",
+        )
+        assert cfg.outcome == ThirdPartyOutcome.NEGOTIATE
+
+
+# ---------------------------------------------------------------------------
+# Tests for mock_send_demand_letter with unknown outcome
+# ---------------------------------------------------------------------------
+
+
+class TestMockSendDemandLetterUnknownOutcome:
+    """Tests for mock_send_demand_letter when config returns unrecognized outcome."""
+
+    def test_unknown_outcome_falls_back_to_accept(self):
+        """If config somehow returns an unrecognized outcome, fall back to accept."""
+        unknown_config = {"enabled": True, "outcome": "unknown_value"}
+        with patch(
+            "claim_agent.mock_crew.third_party.get_mock_third_party_config",
+            return_value=unknown_config,
+        ):
+            response = mock_send_demand_letter("SUB-UNK", "CLM-UNK", 5000.0)
+
+        assert response["third_party_response"] == "accept"
+        assert response["counter_amount"] is None

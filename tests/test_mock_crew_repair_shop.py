@@ -3,8 +3,6 @@
 import logging
 from unittest.mock import patch
 
-import pytest
-
 from claim_agent.mock_crew.repair_shop import (
     clear_all_pending_repair_shop_responses,
     get_pending_repair_shop_responses,
@@ -22,14 +20,6 @@ _MOCK_CREW_OFF = {"enabled": False, "seed": None}
 _MOCK_REPAIR_SHOP_ON = {"enabled": True, "response_template": "Shop acknowledged."}
 _MOCK_REPAIR_SHOP_OFF = {"enabled": False, "response_template": "Shop acknowledged."}
 _MOCK_NOTIFIER_OFF = {"enabled": False, "auto_respond": False}
-
-
-@pytest.fixture(autouse=True)
-def _clean_queue():
-    """Ensure the global pending-response queue is empty before each test."""
-    clear_all_pending_repair_shop_responses()
-    yield
-    clear_all_pending_repair_shop_responses()
 
 
 # ---------------------------------------------------------------------------

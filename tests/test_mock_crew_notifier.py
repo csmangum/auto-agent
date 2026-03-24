@@ -3,8 +3,6 @@
 import logging
 from unittest.mock import patch
 
-import pytest
-
 from claim_agent.mock_crew.notifier import (
     clear_all_pending_mock_responses,
     get_pending_mock_responses,
@@ -25,14 +23,6 @@ _MOCK_NOTIFIER_AUTO = {"enabled": True, "auto_respond": True}
 _MOCK_NOTIFIER_OFF = {"enabled": False, "auto_respond": False}
 _MOCK_CLAIMANT_ON = {"enabled": True, "response_strategy": "immediate"}
 _MOCK_CLAIMANT_OFF = {"enabled": False, "response_strategy": "immediate"}
-
-
-@pytest.fixture(autouse=True)
-def _clean_queue():
-    """Ensure the global pending-response queue is empty before each test."""
-    clear_all_pending_mock_responses()
-    yield
-    clear_all_pending_mock_responses()
 
 
 # ---------------------------------------------------------------------------

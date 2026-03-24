@@ -15,6 +15,7 @@ This lets E2E tests exercise the full subrogation workflow (accept path, reject
 path, negotiation path) without any real outbound HTTP or external party.
 """
 
+import copy
 import logging
 from typing import Any
 
@@ -76,7 +77,7 @@ def mock_send_demand_letter(
     outcome = cfg["outcome"]
 
     template = _OUTCOME_RESPONSES.get(outcome, _OUTCOME_RESPONSES["accept"])
-    response: dict[str, Any] = dict(template)
+    response: dict[str, Any] = copy.deepcopy(template)
 
     # Resolve counter_amount from ratio if applicable
     if "counter_amount_ratio" in response:

@@ -3,14 +3,12 @@
 import logging
 from unittest.mock import patch
 
-import pytest
-
 from claim_agent.mock_crew.webhook import (
     capture_webhook,
     clear_captured_webhooks,
     get_captured_webhooks,
 )
-from claim_agent.notifications.webhook import dispatch_webhook
+from claim_agent.notifications.webhook import dispatch_repair_authorized, dispatch_webhook
 
 
 # ---------------------------------------------------------------------------
@@ -21,14 +19,6 @@ _MOCK_CREW_ON = {"enabled": True, "seed": None}
 _MOCK_CREW_OFF = {"enabled": False, "seed": None}
 _MOCK_WEBHOOK_CAPTURE_ON = {"capture_enabled": True}
 _MOCK_WEBHOOK_CAPTURE_OFF = {"capture_enabled": False}
-
-
-@pytest.fixture(autouse=True)
-def _clean_captured():
-    """Ensure the captured webhook list is empty before each test."""
-    clear_captured_webhooks()
-    yield
-    clear_captured_webhooks()
 
 
 # ---------------------------------------------------------------------------
@@ -220,3 +210,110 @@ class TestDispatchWebhookMockIntegration:
 
         captured = get_captured_webhooks()
         assert "timestamp" in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# Tests for dispatch_repair_authorized with mock webhook capture
+# ---------------------------------------------------------------------------
+
+
+_WEBHOOK_CONFIG_WITH_SHOP = {
+    "enabled": True,
+    "urls": ["https://example.com/hook"],
+    "secret": "",
+    "max_retries": 0,
+    "dead_letter_path": None,
+    "shop_url": "https://shop.example.com/hook",
+}
+
+
+class TestDispatchRepairAuthorizedMockIntegration:
+    """Integration tests: dispatch_repair_authorized shop-specific POST."""
+
+    def test_shop_specific_post_captured_when_mock_enabled(self):
+        """Shop-specific POST should be captured, not delivered via HTTP."""
+        with (
+            patch(
+                "claim_agent.notifications.webhook.get_mock_crew_config",
+                return_value=_MOCK_CREW_ON,
+            ),
+            patch(
+                "claim_agent.notifications.webhook.get_mock_webhook_config",
+                return_value=_MOCK_WEBHOOK_CAPTURE_ON,
+            ),
+            patch(
+                "claim_agent.notifications.webhook.get_webhook_config",
+                return_value=_WEBHOOK_CONFIG_WITH_SHOP,
+            ),
+        ):
+            dispatch_repair_authorized(
+                claim_id="CLM-RA01",
+                shop_id="SHOP-001",
+                shop_name="Quality Auto",
+                shop_phone="555-1234",
+                authorized_amount=2500.0,
+                authorization_id="RA-001",
+            )
+
+        captured = get_captured_webhooks(event="repair.authorized")
+        assert len(captured) == 2
+        claim_ids = [c["claim_id"] for c in captured]
+        assert all(cid == "CLM-RA01" for cid in claim_ids)
+
+    def test_shop_url_post_captured_when_explicit_url(self):
+        """Explicit shop_webhook_url should also be captured by mock."""
+        with (
+            patch(
+                "claim_agent.notifications.webhook.get_mock_crew_config",
+                return_value=_MOCK_CREW_ON,
+            ),
+            patch(
+                "claim_agent.notifications.webhook.get_mock_webhook_config",
+                return_value=_MOCK_WEBHOOK_CAPTURE_ON,
+            ),
+            patch(
+                "claim_agent.notifications.webhook.get_webhook_config",
+                return_value={**_WEBHOOK_CONFIG_WITH_SHOP, "shop_url": None},
+            ),
+        ):
+            dispatch_repair_authorized(
+                claim_id="CLM-RA02",
+                shop_id="SHOP-002",
+                shop_name="Fast Fix",
+                shop_phone="555-5678",
+                authorized_amount=1800.0,
+                authorization_id="RA-002",
+                shop_webhook_url="https://fastfix.example.com/hook",
+            )
+
+        captured = get_captured_webhooks(event="repair.authorized")
+        assert len(captured) == 2
+
+    def test_no_shop_url_captures_only_general_webhook(self):
+        """Without shop URL, only the general dispatch_webhook capture fires."""
+        with (
+            patch(
+                "claim_agent.notifications.webhook.get_mock_crew_config",
+                return_value=_MOCK_CREW_ON,
+            ),
+            patch(
+                "claim_agent.notifications.webhook.get_mock_webhook_config",
+                return_value=_MOCK_WEBHOOK_CAPTURE_ON,
+            ),
+            patch(
+                "claim_agent.notifications.webhook.get_webhook_config",
+                return_value={**_WEBHOOK_CONFIG_WITH_SHOP, "shop_url": None},
+            ),
+        ):
+            dispatch_repair_authorized(
+                claim_id="CLM-RA03",
+                shop_id="SHOP-003",
+                shop_name="No Shop URL",
+                shop_phone="555-0000",
+                authorized_amount=900.0,
+                authorization_id="RA-003",
+            )
+
+        captured = get_captured_webhooks(event="repair.authorized")
+        assert len(captured) == 1
+        assert captured[0]["claim_id"] == "CLM-RA03"
