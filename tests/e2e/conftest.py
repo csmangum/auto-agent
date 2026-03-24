@@ -106,10 +106,15 @@ def workflow_patches(mock_llm_instance, mock_router_response, mock_crew_response
         def __exit__(self, *exc):
             return self._stack.__exit__(*exc)
 
-        def set_router(self, claim_type: str, reasoning: str = ""):
-            self.router.return_value.kickoff.return_value = mock_router_response(
-                claim_type, reasoning
-            )
+        def set_router(self, claim_type: str, reasoning: str | None = None):
+            if reasoning is None:
+                self.router.return_value.kickoff.return_value = mock_router_response(
+                    claim_type
+                )
+            else:
+                self.router.return_value.kickoff.return_value = mock_router_response(
+                    claim_type, reasoning
+                )
 
         def add_patch(self, target: str):
             """Enter an additional ``patch(target)`` and return the mock."""
