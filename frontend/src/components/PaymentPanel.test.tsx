@@ -120,6 +120,7 @@ describe('PaymentPanel', () => {
     expect(screen.getByText('Amount ($) *')).toBeInTheDocument();
     expect(screen.getByText('Payee *')).toBeInTheDocument();
     expect(screen.getByText('Payment Method *')).toBeInTheDocument();
+    expect(screen.getByText('Payee Type *')).toBeInTheDocument();
   });
 
   it('renders empty state when no payments', () => {
@@ -142,5 +143,138 @@ describe('PaymentPanel', () => {
 
     render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
     expect(screen.getByText('Payments')).toBeInTheDocument();
+  });
+
+  it('shows payment details including check number and secondary payee', () => {
+    vi.mocked(useClaimPayments).mockReturnValue({
+      data: {
+        payments: [
+          {
+            id: 1,
+            claim_id: 'CLM-1',
+            amount: 2500,
+            payee: 'John Doe',
+            payee_type: 'claimant' as const,
+            payment_method: 'check' as const,
+            check_number: 'CHK-001',
+            status: 'authorized' as const,
+            authorized_by: 'admin',
+            created_at: '2025-01-15T10:00:00',
+            payee_secondary: 'ACME Bank',
+          },
+        ],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useClaimPayments>);
+
+    render(<PaymentPanel claimId="CLM-1" />, { wrapper: createWrapper() });
+    expect(screen.getAllByText('$2,500').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getByText(/CHK-001/)).toBeInTheDocument();
+    expect(screen.getByText(/ACME Bank/)).toBeInTheDocument();
+  });
+
+  it('calls issueMutation.mutate when Issue button is clicked', () => {
+    const issueMutate = vi.fn();
+    vi.mocked(useIssuePayment).mockReturnValue({
+      mutate: issueMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useIssuePayment>);
+
+    render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
+    fireEvent.click(screen.getByText('Issue'));
+    expect(issueMutate).toHaveBeenCalledWith({ paymentId: 1 });
+  });
+
+  it('shows Clear button for issued payments', () => {
+    vi.mocked(useClaimPayments).mockReturnValue({
+      data: {
+        payments: [
+          {
+            id: 3,
+            claim_id: 'CLM-001',
+            amount: 800,
+            payee: 'Repair Co',
+            payee_type: 'repair_shop' as const,
+            payment_method: 'ach' as const,
+            status: 'issued' as const,
+            authorized_by: 'adjuster',
+            created_at: '2025-01-20T10:00:00Z',
+            updated_at: '2025-01-20T10:00:00Z',
+          },
+        ],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useClaimPayments>);
+
+    render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
+    expect(screen.getByText('Clear')).toBeInTheDocument();
+  });
+
+  it('shows void reason input and calls voidMutation.mutate on confirm', () => {
+    const voidMutate = vi.fn();
+    vi.mocked(useVoidPayment).mockReturnValue({
+      mutate: voidMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useVoidPayment>);
+
+    render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
+    fireEvent.click(screen.getByText('Void'));
+    const reasonInput = screen.getByPlaceholderText('Reason...');
+    expect(reasonInput).toBeInTheDocument();
+    fireEvent.change(reasonInput, { target: { value: 'Duplicate payment' } });
+    fireEvent.click(screen.getByText('Confirm'));
+    expect(voidMutate).toHaveBeenCalledWith(
+      { paymentId: 1, reason: 'Duplicate payment' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it('shows correct summary totals for different statuses', () => {
+    vi.mocked(useClaimPayments).mockReturnValue({
+      data: {
+        payments: [
+          {
+            id: 1, claim_id: 'CLM-001', amount: 1000, payee: 'A', payee_type: 'claimant' as const,
+            payment_method: 'check' as const, status: 'authorized' as const,
+            authorized_by: 'x', created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z',
+          },
+          {
+            id: 2, claim_id: 'CLM-001', amount: 2000, payee: 'B', payee_type: 'claimant' as const,
+            payment_method: 'ach' as const, status: 'issued' as const,
+            authorized_by: 'x', created_at: '2025-01-02T00:00:00Z', updated_at: '2025-01-02T00:00:00Z',
+          },
+          {
+            id: 3, claim_id: 'CLM-001', amount: 3000, payee: 'C', payee_type: 'claimant' as const,
+            payment_method: 'wire' as const, status: 'cleared' as const,
+            authorized_by: 'x', created_at: '2025-01-03T00:00:00Z', updated_at: '2025-01-03T00:00:00Z',
+          },
+          {
+            id: 4, claim_id: 'CLM-001', amount: 500, payee: 'D', payee_type: 'claimant' as const,
+            payment_method: 'check' as const, status: 'voided' as const,
+            authorized_by: 'x', created_at: '2025-01-04T00:00:00Z', updated_at: '2025-01-04T00:00:00Z',
+          },
+        ],
+        total: 4,
+        limit: 100,
+        offset: 0,
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useClaimPayments>);
+
+    render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
+    expect(screen.getAllByText('$1,000').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$2,000').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$3,000').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$500').length).toBeGreaterThanOrEqual(1);
   });
 });

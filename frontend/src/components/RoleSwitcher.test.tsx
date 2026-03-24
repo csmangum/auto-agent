@@ -47,4 +47,38 @@ describe('RoleSwitcher', () => {
     renderRoleSwitcher();
     expect(screen.getByText('Customer')).toBeInTheDocument();
   });
+
+  it('shows role descriptions in dropdown', () => {
+    renderRoleSwitcher();
+    fireEvent.click(screen.getByRole('button', { name: /Adjuster/i }));
+    expect(screen.getByText('Internal claims adjuster with full system access')).toBeInTheDocument();
+    expect(screen.getByText('Policyholder or claimant filing and tracking claims')).toBeInTheDocument();
+    expect(screen.getByText('Body shop managing vehicle repairs and supplements')).toBeInTheDocument();
+    expect(screen.getByText('Other insurance company or third-party claimant')).toBeInTheDocument();
+  });
+
+  it('navigates to /simulate when selecting a non-adjuster role', () => {
+    renderRoleSwitcher();
+    fireEvent.click(screen.getByRole('button', { name: /Adjuster/i }));
+    fireEvent.click(screen.getByText('Customer'));
+    expect(screen.getByText('Customer')).toBeInTheDocument();
+  });
+
+  it('navigates to / when selecting adjuster role', () => {
+    localStorage.setItem('simulation_role', 'customer');
+    renderRoleSwitcher();
+    fireEvent.click(screen.getByRole('button', { name: /Customer/i }));
+    fireEvent.click(screen.getByText('Adjuster'));
+    expect(screen.getByText('Adjuster')).toBeInTheDocument();
+  });
+
+  it('closes dropdown when overlay is clicked and hides options', () => {
+    renderRoleSwitcher();
+    fireEvent.click(screen.getByRole('button', { name: /Adjuster/i }));
+    expect(screen.getByText('Simulate Role')).toBeInTheDocument();
+    expect(screen.getByText('Internal claims adjuster with full system access')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('role-switcher-overlay'));
+    expect(screen.queryByText('Simulate Role')).not.toBeInTheDocument();
+    expect(screen.queryByText('Internal claims adjuster with full system access')).not.toBeInTheDocument();
+  });
 });

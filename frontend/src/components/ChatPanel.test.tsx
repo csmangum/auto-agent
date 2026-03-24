@@ -125,4 +125,56 @@ describe('ChatPanel', () => {
     expect(screen.queryByText('Test')).not.toBeInTheDocument();
   });
 
+  it('returns to floating button after close and re-open works', () => {
+    renderPanel();
+    expect(screen.getByLabelText('Open chat assistant')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Open chat assistant'));
+    expect(screen.getAllByText('Claims Assistant').length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(screen.getByLabelText('Close chat'));
+    expect(screen.getByLabelText('Open chat assistant')).toBeInTheDocument();
+    expect(screen.queryByText('AI-powered help')).not.toBeInTheDocument();
+  });
+
+  it('shows suggestions only when no messages have been sent', () => {
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Open chat assistant'));
+    expect(screen.getByText('What are the escalation thresholds?')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Ask about claims, policies...'), {
+      target: { value: 'Hello' },
+    });
+    fireEvent.click(screen.getByLabelText('Send message'));
+    expect(screen.queryByText('What are the escalation thresholds?')).not.toBeInTheDocument();
+  });
+
+  it('clicking suggestion populates textarea for editing before send', () => {
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Open chat assistant'));
+    fireEvent.click(screen.getByText('Show me the review queue'));
+    const textarea = screen.getByPlaceholderText('Ask about claims, policies...');
+    expect(textarea).toHaveValue('Show me the review queue');
+    expect(screen.getByLabelText('Send message')).not.toBeDisabled();
+  });
+
+  it('sends message and creates user message in the chat', () => {
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Open chat assistant'));
+    const textarea = screen.getByPlaceholderText('Ask about claims, policies...');
+    fireEvent.change(textarea, { target: { value: 'What is my policy?' } });
+    fireEvent.click(screen.getByLabelText('Send message'));
+    expect(screen.getByText('What is my policy?')).toBeInTheDocument();
+    expect(mockStreamChat).toHaveBeenCalled();
+  });
+
+  it('clear button only appears when there are messages', async () => {
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Open chat assistant'));
+    expect(screen.queryByLabelText('Clear conversation')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Ask about claims, policies...'), {
+      target: { value: 'Hi' },
+    });
+    fireEvent.click(screen.getByLabelText('Send message'));
+    await vi.advanceTimersByTimeAsync(20);
+    expect(screen.getByLabelText('Clear conversation')).toBeInTheDocument();
+  });
+
 });
