@@ -51,6 +51,7 @@ export interface FollowUpMessage {
   response_content?: string;
   created_at?: string;
   responded_at?: string;
+  topic?: string;
 }
 
 export interface Claim {

@@ -203,6 +203,7 @@ CREATE TABLE IF NOT EXISTS follow_up_messages (
     created_at TEXT DEFAULT (datetime('now')),
     responded_at TEXT,
     actor_id TEXT DEFAULT 'workflow',
+    topic TEXT,
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_follow_up_messages_claim_id ON follow_up_messages(claim_id);

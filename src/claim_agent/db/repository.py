@@ -1798,6 +1798,7 @@ class ClaimRepository:
         message_content: str,
         *,
         actor_id: str = ACTOR_WORKFLOW,
+        topic: str | None = None,
     ) -> int:
         """Create a follow-up message record. Returns the message id. Raises ClaimNotFoundError if claim does not exist."""
         with get_connection(self._db_path) as conn:
@@ -1809,8 +1810,8 @@ class ClaimRepository:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             result = conn.execute(
                 text("""
-                INSERT INTO follow_up_messages (claim_id, user_type, message_content, status, actor_id)
-                VALUES (:claim_id, :user_type, :message_content, 'pending', :actor_id)
+                INSERT INTO follow_up_messages (claim_id, user_type, message_content, status, actor_id, topic)
+                VALUES (:claim_id, :user_type, :message_content, 'pending', :actor_id, :topic)
                 RETURNING id
                 """),
                 {
@@ -1818,6 +1819,7 @@ class ClaimRepository:
                     "user_type": user_type,
                     "message_content": sanitize_note(message_content),
                     "actor_id": actor_id,
+                    "topic": topic,
                 },
             )
             row = result.fetchone()
@@ -1927,7 +1929,7 @@ class ClaimRepository:
             if user_type:
                 rows = conn.execute(
                     text("""
-                    SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
+                    SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
                     FROM follow_up_messages
                     WHERE claim_id = :claim_id AND user_type = :user_type AND status IN ('pending', 'sent')
                     ORDER BY created_at DESC
@@ -1937,7 +1939,7 @@ class ClaimRepository:
             else:
                 rows = conn.execute(
                     text("""
-                    SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
+                    SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
                     FROM follow_up_messages
                     WHERE claim_id = :claim_id AND status IN ('pending', 'sent')
                     ORDER BY created_at DESC
@@ -1957,7 +1959,7 @@ class ClaimRepository:
                 raise ClaimNotFoundError(f"Claim not found: {claim_id}")
             rows = conn.execute(
                 text("""
-                SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
+                SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
                 FROM follow_up_messages
                 WHERE claim_id = :claim_id
                 ORDER BY created_at DESC
@@ -1971,7 +1973,7 @@ class ClaimRepository:
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text("""
-                SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at
+                SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
                 FROM follow_up_messages
                 WHERE id = :message_id
                 """),
