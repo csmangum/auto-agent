@@ -898,6 +898,13 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE subrogation_cases ADD COLUMN recovery_amount REAL")
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor = conn.execute("PRAGMA table_info(follow_up_messages)")
+        fum_columns = {row[1] for row in cursor.fetchall()}
+        if fum_columns and "topic" not in fum_columns:
+            conn.execute("ALTER TABLE follow_up_messages ADD COLUMN topic TEXT")
+    except sqlite3.OperationalError:
+        pass
     # Document management: claim_documents, document_requests, claim_tasks.document_request_id
     try:
         conn.execute("SELECT 1 FROM claim_documents LIMIT 1")

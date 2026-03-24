@@ -77,6 +77,36 @@ def test_send_user_message_success(repo, claim_id):
     assert data["message_id"] > 0
 
 
+def test_send_user_message_persists_rental_topic(repo, claim_id):
+    result = send_user_message.run(
+        claim_id=claim_id,
+        user_type="repair_shop",
+        message_content="Please upload your rental receipt.",
+        identifier="SHOP-001",
+        topic="rental",
+    )
+    data = json.loads(result)
+    assert data["success"] is True
+    mid = data["message_id"]
+    rows = repo.get_follow_up_messages(claim_id)
+    match = next((m for m in rows if m["id"] == mid), None)
+    assert match is not None
+    assert match.get("topic") == "rental"
+
+
+def test_send_user_message_rejects_invalid_topic(repo, claim_id):
+    result = send_user_message.run(
+        claim_id=claim_id,
+        user_type="repair_shop",
+        message_content="Hello.",
+        identifier="SHOP-001",
+        topic="not_a_real_topic",
+    )
+    data = json.loads(result)
+    assert data["success"] is False
+    assert "topic" in data["message"].lower()
+
+
 def test_send_user_message_invalid_claim(repo):
     result = send_user_message.run(
         claim_id="CLM-NONEXISTENT",
@@ -201,13 +231,18 @@ def test_record_user_response_rejects_cross_claim_when_claim_id_provided(repo, c
 
 def test_check_pending_responses(repo, claim_id):
     repo.create_follow_up_message(
-        claim_id, "claimant", "Please upload photos.", actor_id="workflow"
+        claim_id,
+        "claimant",
+        "Please upload photos.",
+        actor_id="workflow",
+        topic="rental",
     )
     result = check_pending_responses.run(claim_id=claim_id)
     data = json.loads(result)
     assert data["error"] is None
     assert len(data["pending"]) >= 1
     assert data["pending"][0]["user_type"] == "claimant"
+    assert data["pending"][0].get("topic") == "rental"
 
 
 def test_check_pending_responses_invalid_claim(repo):

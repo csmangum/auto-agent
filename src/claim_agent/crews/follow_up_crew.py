@@ -60,7 +60,9 @@ TASK:
 
 Using the outreach plan from the previous task, compose a professional, clear message tailored to the user type.
 Then use send_user_message with claim_id, user_type, and message_content.
-Pass email or phone to send_user_message when available (e.g., from external context); claim_data does not include contact info.""",
+Pass email or phone to send_user_message when available (e.g., from external context); claim_data does not include contact info.
+When the task concerns loss of use, substitute transportation, rental receipts, or rental coordination, pass topic="rental"
+so the claimant sees the message on the portal Rental tab.""",
                 expected_output=(
                     "Summary of the send_user_message result: whether the message was delivered, "
                     "any message_id returned, or an error if delivery failed (e.g., no contact channel)."
