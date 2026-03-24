@@ -1,12 +1,16 @@
 """Tests for rental reimbursement tools."""
 
 import json
+import sqlite3
 import tempfile
 from pathlib import Path
 
 import pytest
 
+from claim_agent.context import ClaimContext
 from claim_agent.db.database import init_db
+from claim_agent.db.payment_repository import PaymentRepository
+from claim_agent.db.rental_repository import RentalAuthorizationRepository
 from claim_agent.tools.rental_logic import (
     check_rental_coverage_impl,
     get_rental_limits_impl,
@@ -34,8 +38,6 @@ def temp_db_rental():
 @pytest.fixture
 def seeded_rental_db(temp_db_rental):
     """Temp DB with a test claim inserted."""
-    import sqlite3
-
     conn = sqlite3.connect(temp_db_rental)
     conn.execute(
         "INSERT INTO claims (id, policy_number, vin, status) VALUES (?, ?, ?, ?)",
@@ -217,8 +219,6 @@ class TestProcessRentalReimbursement:
         # All calls return the same reimbursement_id
         assert all(p["reimbursement_id"] == parsed[0]["reimbursement_id"] for p in parsed)
 
-        from claim_agent.db.payment_repository import PaymentRepository
-
         pay_repo = PaymentRepository(db_path=seeded_rental_db)
         rows, total = pay_repo.get_payments_for_claim("CLM-RENT-01")
         # Only one row for this (claim, amount, days) combination
@@ -237,7 +237,6 @@ class TestProcessRentalReimbursement:
             rental_days=1,
             policy_number="POL-001",
         )
-        from claim_agent.db.payment_repository import PaymentRepository
         from claim_agent.tools.payment_logic import WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX
 
         pay_repo = PaymentRepository(db_path=seeded_rental_db)
@@ -326,11 +325,44 @@ class TestProcessRentalReimbursementPersistence:
         rental_logic._IDEMPOTENCY_CACHE.clear()
         yield
 
+    def test_reimbursement_id_matches_claim_payment_when_ctx_provided(self, seeded_temp_db):
+        """Rental authorization reimbursement_id matches claim_payments row (payment PK)."""
+        # Distinct (amount, days) from sibling persistence tests on CLM-TEST001.
+        ctx = ClaimContext.from_defaults(db_path=seeded_temp_db, llm=None)
+        result = process_rental_reimbursement_impl(
+            claim_id="CLM-TEST001",
+            amount=92.5,
+            rental_days=3,
+            policy_number="POL-001",
+            ctx=ctx,
+        )
+        data = json.loads(result)
+        assert data["status"] == "approved"
+        rid = data["reimbursement_id"]
+        assert rid.startswith("RENT-")
+
+        pay_repo = PaymentRepository(db_path=seeded_temp_db)
+        rows, total = pay_repo.get_payments_for_claim("CLM-TEST001")
+        match = next(
+            (
+                r
+                for r in rows
+                if (r.get("external_ref") or "").startswith("workflow_rental:")
+                and abs(float(r["amount"]) - 92.5) < 1e-6
+            ),
+            None,
+        )
+        assert match is not None, "expected workflow_rental payment for this reimbursement"
+        assert rid == f"RENT-{match['id']:08X}"
+
+        rental_repo = RentalAuthorizationRepository(db_path=seeded_temp_db)
+        auth = rental_repo.get_by_reimbursement_id(rid)
+        assert auth is not None
+        assert auth["reimbursement_id"] == rid
+        assert auth["claim_id"] == "CLM-TEST001"
+
     def test_persists_authorization_when_ctx_provided(self, seeded_temp_db):
         """Rental row is written to the same DB as ClaimRepository."""
-        from claim_agent.context import ClaimContext
-        from claim_agent.db.rental_repository import RentalAuthorizationRepository
-
         ctx = ClaimContext.from_defaults(db_path=seeded_temp_db)
         result = process_rental_reimbursement_impl(
             claim_id="CLM-TEST001",
@@ -353,8 +385,6 @@ class TestProcessRentalReimbursementPersistence:
 
     def test_cross_process_idempotency_preserves_reimbursement_id(self, seeded_temp_db):
         """Cache miss + DB lookup returns same reimbursement_id (cross-process idempotency)."""
-        from claim_agent.context import ClaimContext
-
         ctx = ClaimContext.from_defaults(db_path=seeded_temp_db)
         result1 = process_rental_reimbursement_impl(
             claim_id="CLM-TEST001",

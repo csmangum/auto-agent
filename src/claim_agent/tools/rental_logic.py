@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from claim_agent.adapters.registry import get_policy_adapter
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_db_path
-from claim_agent.db.payment_repository import PaymentRepository
+from claim_agent.db.payment_repository import PaymentRepository, _EXTERNAL_REF_MAX
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 from claim_agent.tools.payment_logic import WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX
@@ -231,11 +231,10 @@ def process_rental_reimbursement_impl(
     authorized payment row via PaymentRepository using ``WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX``
     so the claimant portal Rental tab includes the reimbursement.
 
-    Idempotent: repeated calls with the same (claim_id, amount, rental_days) return the
-    same reimbursement_id via a DB-level unique constraint on (claim_id, external_ref).
-    Validates amount against limits from get_rental_limits_impl.
-    Idempotent: repeated calls with same (claim_id, amount, rental_days) return
-    the same reimbursement_id (in-memory fast-path; DB row when ``ctx`` is set).
+    Idempotent: repeated calls with the same (claim_id, amount, rental_days) use a
+    deterministic ``external_ref`` and unique index on (claim_id, external_ref); an
+    in-memory cache speeds same-process repeats. ``create_payment`` also recovers from
+    duplicate inserts under concurrency (IntegrityError).
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -356,27 +355,33 @@ def process_rental_reimbursement_impl(
 
     # Build a deterministic external_ref for DB-level idempotency.
     # amount_cents avoids floating-point representation differences.
+    # Truncate like PaymentRepository.create_payment so lookup matches stored rows.
     amount_cents = int(round(float(amount) * 100))
-    external_ref = f"{WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX}{claim_id}:{amount_cents}:{rental_days}"
+    _ref_body = (
+        f"{WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX}{claim_id}:{amount_cents}:{rental_days}"
+    ).strip()
+    external_ref = (_ref_body[:_EXTERNAL_REF_MAX] if _ref_body else None)
 
     db_path = ctx.repo.db_path if (ctx and ctx.repo) else get_db_path()
     pay_repo = PaymentRepository(db_path=db_path)
 
     # Check for an existing payment row first so we can return idempotent response.
-    existing = pay_repo.get_payment_by_claim_external_ref(claim_id, external_ref)
-    if existing is not None:
-        reimbursement_id = f"RENT-{existing['id']:08X}"
-        return json.dumps(
-            {
-                "reimbursement_id": reimbursement_id,
-                "amount": float(amount),
-                "status": "approved",
-                "message": (
-                    f"Rental reimbursement {reimbursement_id} already processed "
-                    f"for claim {claim_id} (idempotent)"
-                ),
-            }
-        )
+    if external_ref is not None:
+        existing = pay_repo.get_payment_by_claim_external_ref(claim_id, external_ref)
+        if existing is not None:
+            reimbursement_id = f"RENT-{existing['id']:08X}"
+            _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
+            return json.dumps(
+                {
+                    "reimbursement_id": reimbursement_id,
+                    "amount": float(amount),
+                    "status": "approved",
+                    "message": (
+                        f"Rental reimbursement {reimbursement_id} already processed "
+                        f"for claim {claim_id} (idempotent)"
+                    ),
+                }
+            )
 
     pdata = ClaimPaymentCreate(
         claim_id=claim_id,
@@ -413,7 +418,6 @@ def process_rental_reimbursement_impl(
         claim_id,
         payment_id,
     )
-    reimbursement_id = f"RENT-{uuid.uuid4().hex[:8].upper()}"
     _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
 
     # Persist to DB when ClaimContext is available (same DB path as ClaimRepository).
