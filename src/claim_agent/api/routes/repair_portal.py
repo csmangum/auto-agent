@@ -1,14 +1,21 @@
-"""Repair shop self-service portal API (per-claim magic token)."""
+"""Repair shop self-service portal API (per-claim magic token and shop user accounts)."""
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import jwt as pyjwt
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
-from claim_agent.api.repair_portal_deps import RepairShopPortalContext, require_repair_shop_access
+from claim_agent.api.repair_portal_deps import (
+    RepairShopJWTContext,
+    RepairShopPortalContext,
+    require_repair_shop_access,
+    require_shop_user_jwt,
+)
 from claim_agent.api.routes.claims import (
     _ALLOWED_DOCUMENT_EXTENSIONS,
     _MAX_UPLOAD_SIZE_BYTES,
@@ -21,9 +28,12 @@ from claim_agent.api.routes.portal import (
     RecordFollowUpResponseBody,
     _resolve_portal_attachment_urls,
 )
+from claim_agent.config import get_settings
+from claim_agent.config.settings import get_jwt_access_ttl_seconds, get_jwt_secret
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from claim_agent.db.database import get_db_path
+from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError
@@ -86,6 +96,89 @@ def _infer_shop_and_auth(claim_id: str, claim_repo: ClaimRepository) -> tuple[st
             auth_id = str(parsed.get("authorization_id", "")).strip() or None
             break
     return shop_id, auth_id
+
+
+def _encode_shop_access_token(user_id: str, shop_id: str) -> str:
+    """Issue a short-lived JWT for a repair shop user."""
+    secret = get_jwt_secret()
+    if not secret:
+        raise HTTPException(
+            status_code=503,
+            detail="JWT_SECRET is not configured; cannot issue access tokens",
+        )
+    ttl = get_jwt_access_ttl_seconds()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id,
+        "role": "shop_user",
+        "shop_id": shop_id,
+        "token_use": "access",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=ttl)).timestamp()),
+    }
+    return pyjwt.encode(payload, secret, algorithm="HS256")
+
+
+# --------------------------------------------------------------------------
+# Shop user auth
+# --------------------------------------------------------------------------
+
+
+class ShopLoginBody(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1)
+
+
+@router.post("/auth/login")
+def repair_shop_login(body: ShopLoginBody):
+    """Authenticate a repair shop user with email and password; returns a JWT access token."""
+    if not get_settings().repair_shop_portal.enabled:
+        raise HTTPException(status_code=503, detail="Repair shop portal is disabled")
+    repo = RepairShopUserRepository()
+    user = repo.verify_shop_user_password(body.email, body.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    access = _encode_shop_access_token(str(user["id"]), str(user["shop_id"]))
+    return {
+        "access_token": access,
+        "token_type": "bearer",
+        "expires_in": get_jwt_access_ttl_seconds(),
+        "shop_id": user["shop_id"],
+    }
+
+
+# --------------------------------------------------------------------------
+# Multi-claim inbox
+# --------------------------------------------------------------------------
+
+
+@router.get("/claims")
+def list_repair_portal_claims(
+    ctx: RepairShopJWTContext = Depends(require_shop_user_jwt),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """Return all claims assigned to the authenticated shop (requires shop-user JWT)."""
+    shop_repo = RepairShopUserRepository()
+    total = shop_repo.count_assignments_for_shop(ctx.shop_id)
+    assignments = shop_repo.get_assignments_for_shop(ctx.shop_id, limit=limit, offset=offset)
+    claim_repo = _get_claim_repo()
+    claim_ids = [str(a["claim_id"]) for a in assignments]
+    by_id = claim_repo.get_claims_by_ids(claim_ids)
+    claims = []
+    for a in assignments:
+        row = by_id.get(str(a["claim_id"]))
+        if row is not None:
+            shaped = _shape_repair_portal_claim(row)
+            shaped["assigned_at"] = a.get("assigned_at")
+            claims.append(shaped)
+    return {
+        "shop_id": ctx.shop_id,
+        "claims": claims,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/claims/{claim_id}")

@@ -919,6 +919,24 @@ class ClaimRepository:
             return None
         return row_to_dict(row)
 
+    def get_claims_by_ids(self, claim_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Fetch claims by ID. Omitted keys are not in the returned map."""
+        if not claim_ids:
+            return {}
+        placeholders, params = _sql_in_params("gcid_", claim_ids)
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                text(f"SELECT * FROM claims WHERE id IN ({placeholders})"),
+                params,
+            ).fetchall()
+        out: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            d = row_to_dict(row)
+            cid = d.get("id")
+            if cid is not None:
+                out[str(cid)] = d
+        return out
+
     def _append_reserve_adequacy_gate_audit(
         self,
         conn: Any,
