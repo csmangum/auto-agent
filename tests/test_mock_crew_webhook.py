@@ -9,6 +9,7 @@ from claim_agent.mock_crew.webhook import (
     get_captured_webhooks,
 )
 from claim_agent.notifications.webhook import dispatch_repair_authorized, dispatch_webhook
+from tests.conftest import LogCaptureHandler
 
 
 # ---------------------------------------------------------------------------
@@ -95,13 +96,22 @@ class TestCaptureWebhook:
 
         assert len(get_captured_webhooks()) == 1
 
-    def test_logs_capture_at_info(self, caplog):
+    def test_logs_capture_at_info(self):
         """capture_webhook should log at INFO level."""
-        with caplog.at_level(logging.INFO, logger="claim_agent.mock_crew.webhook"):
+        log = logging.getLogger("claim_agent.mock_crew.webhook")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.INFO)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.INFO)
+        try:
             capture_webhook("claim.submitted", {"event": "claim.submitted", "claim_id": "CLM-W08"})
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
-        assert any("CLM-W08" in m for m in caplog.messages)
-        assert any("claim.submitted" in m for m in caplog.messages)
+        assert any("CLM-W08" in m for m in cap.messages)
+        assert any("claim.submitted" in m for m in cap.messages)
 
     def test_get_captured_webhooks_returns_empty_list_when_no_match(self):
         """get_captured_webhooks(event='nonexistent') should return empty list."""

@@ -1,6 +1,7 @@
 """Tests for mock third party: mock_send_demand_letter and send_demand_letter_impl integration."""
 
 import json
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from claim_agent.config.settings_model import MockThirdPartyConfig, ThirdPartyOutcome
 from claim_agent.mock_crew.third_party import mock_send_demand_letter
 from claim_agent.tools.subrogation_logic import send_demand_letter_impl
+from tests.conftest import LogCaptureHandler
 
 
 # ---------------------------------------------------------------------------
@@ -77,19 +79,26 @@ class TestMockSendDemandLetter:
         # 3333.33 * 0.6 = 1999.998 → 2000.0
         assert response["counter_amount"] == pytest.approx(2000.0, abs=0.01)
 
-    def test_logs_interception_at_info(self, caplog):
+    def test_logs_interception_at_info(self):
         """mock_send_demand_letter should log at INFO level."""
-        import logging
-
-        with patch(
-            "claim_agent.mock_crew.third_party.get_mock_third_party_config",
-            return_value=_MOCK_THIRD_PARTY_ACCEPT,
-        ):
-            with caplog.at_level(logging.INFO, logger="claim_agent.mock_crew.third_party"):
+        log = logging.getLogger("claim_agent.mock_crew.third_party")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.INFO)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.INFO)
+        try:
+            with patch(
+                "claim_agent.mock_crew.third_party.get_mock_third_party_config",
+                return_value=_MOCK_THIRD_PARTY_ACCEPT,
+            ):
                 mock_send_demand_letter("SUB-005", "CLM-005", 1000.0)
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
-        assert any("CLM-005" in m for m in caplog.messages)
-        assert any("accept" in m for m in caplog.messages)
+        assert any("CLM-005" in m for m in cap.messages)
+        assert any("accept" in m for m in cap.messages)
 
 
 # ---------------------------------------------------------------------------

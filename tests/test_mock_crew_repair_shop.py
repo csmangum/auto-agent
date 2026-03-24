@@ -9,6 +9,7 @@ from claim_agent.mock_crew.repair_shop import (
     mock_notify_repair_shop,
 )
 from claim_agent.notifications.user import notify_user
+from tests.conftest import LogCaptureHandler
 
 
 # ---------------------------------------------------------------------------
@@ -30,30 +31,48 @@ _MOCK_NOTIFIER_OFF = {"enabled": False, "auto_respond": False}
 class TestMockNotifyRepairShop:
     """Unit tests for mock_notify_repair_shop()."""
 
-    def test_logs_notification_at_info(self, caplog):
+    def test_logs_notification_at_info(self):
         """mock_notify_repair_shop should log metadata at INFO (not full message body)."""
-        with patch(
-            "claim_agent.mock_crew.repair_shop.get_mock_repair_shop_config",
-            return_value=_MOCK_REPAIR_SHOP_ON,
-        ):
-            with caplog.at_level(logging.INFO, logger="claim_agent.mock_crew.repair_shop"):
+        log = logging.getLogger("claim_agent.mock_crew.repair_shop")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.INFO)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.INFO)
+        try:
+            with patch(
+                "claim_agent.mock_crew.repair_shop.get_mock_repair_shop_config",
+                return_value=_MOCK_REPAIR_SHOP_ON,
+            ):
                 mock_notify_repair_shop("CLM-R01", "Please confirm appointment.")
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
-        assert any("CLM-R01" in m for m in caplog.messages)
+        assert any("CLM-R01" in m for m in cap.messages)
         # Full message body must NOT appear in INFO records
-        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        info_messages = [r.getMessage() for r in cap.records if r.levelno == logging.INFO]
         assert not any("Please confirm appointment." in m for m in info_messages)
 
-    def test_full_message_logged_at_debug(self, caplog):
+    def test_full_message_logged_at_debug(self):
         """mock_notify_repair_shop should log the message body at DEBUG level."""
-        with patch(
-            "claim_agent.mock_crew.repair_shop.get_mock_repair_shop_config",
-            return_value=_MOCK_REPAIR_SHOP_ON,
-        ):
-            with caplog.at_level(logging.DEBUG, logger="claim_agent.mock_crew.repair_shop"):
+        log = logging.getLogger("claim_agent.mock_crew.repair_shop")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.DEBUG)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.DEBUG)
+        try:
+            with patch(
+                "claim_agent.mock_crew.repair_shop.get_mock_repair_shop_config",
+                return_value=_MOCK_REPAIR_SHOP_ON,
+            ):
                 mock_notify_repair_shop("CLM-R02", "Sensitive repair content.")
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
-        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        debug_messages = [r.getMessage() for r in cap.records if r.levelno == logging.DEBUG]
         assert any("Sensitive repair content." in m for m in debug_messages)
 
     def test_acknowledgment_queued(self):

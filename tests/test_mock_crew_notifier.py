@@ -10,6 +10,7 @@ from claim_agent.mock_crew.notifier import (
 )
 from claim_agent.notifications.claimant import notify_claimant, send_otp_notification
 from claim_agent.notifications.user import notify_user
+from tests.conftest import LogCaptureHandler
 
 
 # ---------------------------------------------------------------------------
@@ -33,36 +34,50 @@ _MOCK_CLAIMANT_OFF = {"enabled": False, "response_strategy": "immediate"}
 class TestMockNotifyUser:
     """Unit tests for mock_notify_user()."""
 
-    def test_logs_notification_at_info(self, caplog):
+    def test_logs_notification_at_info(self):
         """mock_notify_user should log metadata at INFO level (not full message body)."""
-        with patch(
-            "claim_agent.mock_crew.notifier.get_mock_notifier_config",
-            return_value=_MOCK_NOTIFIER_ON,
-        ):
-            with caplog.at_level(logging.INFO, logger="claim_agent.mock_crew.notifier"):
+        log = logging.getLogger("claim_agent.mock_crew.notifier")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.INFO)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.INFO)
+        try:
+            with patch(
+                "claim_agent.mock_crew.notifier.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ):
                 mock_notify_user("claimant", "CLM-001", "Please upload photos.")
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
         # Metadata is present at INFO
-        assert any("CLM-001" in m for m in caplog.messages)
-        assert any("claimant" in m for m in caplog.messages)
+        assert any("CLM-001" in m for m in cap.messages)
+        assert any("claimant" in m for m in cap.messages)
         # Full message body must NOT appear in INFO records
-        info_messages = [
-            r.message for r in caplog.records if r.levelno == logging.INFO
-        ]
+        info_messages = [r.getMessage() for r in cap.records if r.levelno == logging.INFO]
         assert not any("Please upload photos." in m for m in info_messages)
 
-    def test_full_message_logged_at_debug(self, caplog):
+    def test_full_message_logged_at_debug(self):
         """mock_notify_user should log the message body at DEBUG level."""
-        with patch(
-            "claim_agent.mock_crew.notifier.get_mock_notifier_config",
-            return_value=_MOCK_NOTIFIER_ON,
-        ):
-            with caplog.at_level(logging.DEBUG, logger="claim_agent.mock_crew.notifier"):
+        log = logging.getLogger("claim_agent.mock_crew.notifier")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.DEBUG)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.DEBUG)
+        try:
+            with patch(
+                "claim_agent.mock_crew.notifier.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ):
                 mock_notify_user("claimant", "CLM-001b", "Sensitive content here.")
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
-        debug_messages = [
-            r.message for r in caplog.records if r.levelno == logging.DEBUG
-        ]
+        debug_messages = [r.getMessage() for r in cap.records if r.levelno == logging.DEBUG]
         assert any("Sensitive content here." in m for m in debug_messages)
 
     def test_no_response_queued_when_auto_respond_false(self):
@@ -162,21 +177,30 @@ class TestMockNotifyUser:
             responses = get_pending_mock_responses(f"CLM-09{i}")
             assert len(responses) == 1, f"Expected 1 response for user_type={ut}"
 
-    def test_template_data_keys_logged(self, caplog):
+    def test_template_data_keys_logged(self):
         """Template data keys should appear in the log output."""
-        with patch(
-            "claim_agent.mock_crew.notifier.get_mock_notifier_config",
-            return_value=_MOCK_NOTIFIER_ON,
-        ):
-            with caplog.at_level(logging.INFO, logger="claim_agent.mock_crew.notifier"):
+        log = logging.getLogger("claim_agent.mock_crew.notifier")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.INFO)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.INFO)
+        try:
+            with patch(
+                "claim_agent.mock_crew.notifier.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ):
                 mock_notify_user(
                     "adjuster",
                     "CLM-005",
                     "Internal update.",
                     template_data={"claim_type": "partial_loss", "deadline": "2026-04-01"},
                 )
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
-        assert any("claim_type" in m or "deadline" in m for m in caplog.messages)
+        assert any("claim_type" in m or "deadline" in m for m in cap.messages)
 
 
 # ---------------------------------------------------------------------------
@@ -504,27 +528,36 @@ class TestNotifyClaimantMockIntercept:
 class TestSendOtpNotificationMockIntercept:
     """Tests: send_otp_notification is suppressed under mock crew + mock notifier."""
 
-    def test_otp_notification_suppressed_when_mock_enabled(self, caplog):
+    def test_otp_notification_suppressed_when_mock_enabled(self):
         """send_otp_notification should not attempt real delivery when mock is active."""
-        with (
-            patch(
-                "claim_agent.notifications.claimant.get_mock_crew_config",
-                return_value=_MOCK_CREW_ON,
-            ),
-            patch(
-                "claim_agent.notifications.claimant.get_mock_notifier_config",
-                return_value=_MOCK_NOTIFIER_ON,
-            ),
-            patch("claim_agent.notifications.claimant._send_email") as mock_email,
-            patch("claim_agent.notifications.claimant._send_sms") as mock_sms,
-        ):
-            with caplog.at_level(logging.INFO, logger="claim_agent.notifications.claimant"):
+        log = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        cap.setLevel(logging.INFO)
+        prev_level = log.level
+        log.addHandler(cap)
+        log.setLevel(logging.INFO)
+        try:
+            with (
+                patch(
+                    "claim_agent.notifications.claimant.get_mock_crew_config",
+                    return_value=_MOCK_CREW_ON,
+                ),
+                patch(
+                    "claim_agent.notifications.claimant.get_mock_notifier_config",
+                    return_value=_MOCK_NOTIFIER_ON,
+                ),
+                patch("claim_agent.notifications.claimant._send_email") as mock_email,
+                patch("claim_agent.notifications.claimant._send_sms") as mock_sms,
+            ):
                 send_otp_notification("user@example.com", "email", "123456", "VER-001")
 
-            mock_email.assert_not_called()
-            mock_sms.assert_not_called()
+                mock_email.assert_not_called()
+                mock_sms.assert_not_called()
+        finally:
+            log.removeHandler(cap)
+            log.setLevel(prev_level)
 
-        assert any("OTP notification suppressed" in m for m in caplog.messages)
+        assert any("OTP notification suppressed" in m for m in cap.messages)
 
     def test_otp_notification_real_path_when_mock_off(self):
         """send_otp_notification uses the real path when mock is disabled."""
