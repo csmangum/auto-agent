@@ -1,8 +1,8 @@
 """REST ERP adapter — HTTP-backed integration with repair/shop management systems.
 
-Sends signed JSON requests to a vendor ERP API for outbound events (assignment,
-estimate updates, status changes) and polls for inbound events (estimate approvals,
-parts delays, supplement requests).
+Sends authenticated JSON requests (via a configurable HTTP auth header) to a vendor
+ERP API for outbound events (assignment, estimate updates, status changes) and
+polls for inbound events (estimate approvals, parts delays, supplement requests).
 
 Configure via ``ERP_REST_*`` environment variables when ``ERP_ADAPTER=rest``.
 """
@@ -14,6 +14,7 @@ from typing import Any
 
 from claim_agent.adapters.base import ERPAdapter
 from claim_agent.adapters.http_client import AdapterHttpClient
+from claim_agent.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -187,8 +188,6 @@ def _extract_result(raw: Any) -> dict[str, Any]:
 
 def create_rest_erp_adapter() -> RestERPAdapter:
     """Build a REST ERP adapter from environment settings."""
-    from claim_agent.config import get_settings
-
     cfg = get_settings().erp_rest
     if not cfg.base_url.strip():
         raise ValueError(

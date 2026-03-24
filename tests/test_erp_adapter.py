@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -436,7 +437,7 @@ def _erp_payload(overrides: dict | None = None) -> dict:
     base = {
         "event_type": "estimate_approved",
         "claim_id": "CLM-TEST005",
-        "shop_id": "SHOP-1",
+        "shop_id": "SHOP-001",
         "erp_event_id": "ERP-EVT-TEST-001",
         "occurred_at": "2025-06-01T10:00:00Z",
         "approved_amount": 1800.0,
@@ -553,6 +554,62 @@ class TestERPWebhook:
         resp = _post_erp(client, payload)
         assert resp.status_code == 400
 
+    def test_estimate_approved_unmatched_shop_returns_400(self, client, monkeypatch):
+        """Shop ID not matching any partial_loss authorization → 400."""
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({"shop_id": "SHOP-UNKNOWN"}))
+        assert resp.status_code == 400
+        assert "authorization" in resp.json()["detail"].lower()
+
+    def test_parts_delayed_unmatched_shop_returns_400(self, client, monkeypatch):
+        """Parts-delayed event with unrecognized shop → 400."""
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({
+            "event_type": "parts_delayed",
+            "shop_id": "SHOP-UNKNOWN",
+            "delay_reason": "Out of stock",
+        }))
+        assert resp.status_code == 400
+        assert "authorization" in resp.json()["detail"].lower()
+
+    def test_estimate_approved_db_failure_returns_500(self, client, monkeypatch):
+        """DB write failure on estimate_approved → 500 (not swallowed)."""
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+
+        def _raise_db_error(*a, **kw):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(
+            "claim_agent.api.routes.webhooks.RepairStatusRepository.insert_repair_status",
+            _raise_db_error,
+        )
+        resp = _post_erp(client, _erp_payload())
+        assert resp.status_code == 500
+        assert "repair status" in resp.json()["detail"].lower()
+
+    def test_parts_delayed_db_failure_returns_500(self, client, monkeypatch):
+        """DB write failure on parts_delayed → 500 (not swallowed)."""
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+
+        def _raise_db_error(*a, **kw):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(
+            "claim_agent.api.routes.webhooks.RepairStatusRepository.insert_repair_status",
+            _raise_db_error,
+        )
+        resp = _post_erp(client, _erp_payload({
+            "event_type": "parts_delayed",
+            "delay_reason": "Supply chain disruption",
+            "expected_availability_date": "2025-06-15",
+        }))
+        assert resp.status_code == 500
+        assert "repair status" in resp.json()["detail"].lower()
+
 
 # ---------------------------------------------------------------------------
 # Adapter registry – get_erp_adapter() returns mock by default
@@ -596,3 +653,361 @@ class TestERPAdapterRegistry:
         with pytest.raises(ValueError, match="ERP_REST_BASE_URL"):
             get_erp_adapter()
         reset_adapters()
+
+
+# ---------------------------------------------------------------------------
+# MockERPAdapter – submission_status field naming consistency
+# ---------------------------------------------------------------------------
+
+
+class TestMockERPAdapterSubmissionStatus:
+    """Records use 'submission_status' for submission result, 'status' for domain value."""
+
+    def test_assignment_record_has_submission_status(self):
+        adapter = MockERPAdapter()
+        adapter.push_repair_assignment(
+            claim_id="CLM-SS-001",
+            shop_id="SHOP-1",
+            authorization_id=None,
+            repair_amount=1000.0,
+            vehicle_info=None,
+        )
+        record = adapter.get_pushed_assignments()[0]
+        assert record["submission_status"] == "submitted"
+        assert "push_status" not in record
+
+    def test_estimate_record_has_submission_status(self):
+        adapter = MockERPAdapter()
+        adapter.push_estimate_update(
+            claim_id="CLM-SS-002",
+            shop_id="SHOP-1",
+            authorization_id=None,
+            estimate_amount=2000.0,
+            line_items=None,
+            is_supplement=False,
+        )
+        record = adapter.get_pushed_estimate_updates()[0]
+        assert record["submission_status"] == "submitted"
+        assert "push_status" not in record
+
+    def test_status_record_has_submission_status_and_domain_status(self):
+        adapter = MockERPAdapter()
+        adapter.push_repair_status(
+            claim_id="CLM-SS-003",
+            shop_id="SHOP-1",
+            authorization_id=None,
+            status="parts_ordered",
+            notes=None,
+        )
+        record = adapter.get_pushed_status_updates()[0]
+        # Domain repair status
+        assert record["status"] == "parts_ordered"
+        # Submission result
+        assert record["submission_status"] == "submitted"
+        assert "push_status" not in record
+
+
+# ---------------------------------------------------------------------------
+# RestERPAdapter – unit tests (AdapterHttpClient stubbed)
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    status_code = 200
+
+    def __init__(self, data):
+        self._data = data
+
+    def json(self):
+        return self._data
+
+    def raise_for_status(self):
+        pass
+
+
+class _FakeHttpClient:
+    """Minimal AdapterHttpClient stub that records calls."""
+
+    def __init__(self, **kw):
+        self.posted: list[dict] = []
+        self.get_calls: list[dict] = []
+        self._response_data: Any = {"erp_reference": "REF-001", "status": "submitted"}
+
+    def post(self, path, *, params=None, json=None):
+        self.posted.append({"path": path, "json": json})
+        return _FakeResponse(self._response_data)
+
+    def get(self, path, *, params=None):
+        self.get_calls.append({"path": path, "params": params})
+        return _FakeResponse(self._response_data)
+
+
+class TestRestERPAdapterPushAssignment:
+    def test_posts_to_assignment_path(self, monkeypatch):
+        stub = _FakeHttpClient()
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        adapter.push_repair_assignment(
+            claim_id="CLM-R001",
+            shop_id="SHOP-1",
+            authorization_id="AUTH-X",
+            repair_amount=3500.0,
+            vehicle_info={"vin": "VIN123"},
+        )
+        assert len(stub.posted) == 1
+        assert stub.posted[0]["path"] == "/repairs/assignment"
+        body = stub.posted[0]["json"]
+        assert body["claim_id"] == "CLM-R001"
+        assert body["authorization_id"] == "AUTH-X"
+        assert body["repair_amount"] == 3500.0
+
+    def test_shop_id_mapping_applied(self, monkeypatch):
+        stub = _FakeHttpClient()
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(
+            base_url="https://erp.example.com",
+            shop_id_map={"SHOP-1": "erp-loc-42"},
+        )
+        adapter.push_repair_assignment(
+            claim_id="CLM-R002",
+            shop_id="SHOP-1",
+            authorization_id=None,
+            repair_amount=None,
+            vehicle_info=None,
+        )
+        assert stub.posted[0]["json"]["shop_id"] == "erp-loc-42"
+
+    def test_returns_normalized_result(self, monkeypatch):
+        stub = _FakeHttpClient()
+        stub._response_data = {"erp_reference": "ERP-ABC", "status": "accepted"}
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        result = adapter.push_repair_assignment(
+            claim_id="CLM-R003",
+            shop_id="SHOP-2",
+            authorization_id=None,
+            repair_amount=None,
+            vehicle_info=None,
+        )
+        assert result["erp_reference"] == "ERP-ABC"
+        assert result["status"] == "accepted"
+
+
+class TestRestERPAdapterPushEstimate:
+    def test_amount_rounded_to_two_decimals(self, monkeypatch):
+        stub = _FakeHttpClient()
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        adapter.push_estimate_update(
+            claim_id="CLM-E001",
+            shop_id="SHOP-1",
+            authorization_id=None,
+            estimate_amount=1234.5678,
+            line_items=None,
+            is_supplement=False,
+        )
+        assert stub.posted[0]["json"]["estimate_amount"] == 1234.57
+
+    def test_posts_to_estimate_path(self, monkeypatch):
+        stub = _FakeHttpClient()
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com", estimate_path="/v2/estimate")
+        adapter.push_estimate_update(
+            claim_id="CLM-E002",
+            shop_id="SHOP-1",
+            authorization_id=None,
+            estimate_amount=500.0,
+            line_items=[{"part": "bumper"}],
+            is_supplement=True,
+        )
+        assert stub.posted[0]["path"] == "/v2/estimate"
+        body = stub.posted[0]["json"]
+        assert body["is_supplement"] is True
+        assert body["line_items"] == [{"part": "bumper"}]
+
+
+class TestRestERPAdapterPushStatus:
+    def test_posts_status_and_notes(self, monkeypatch):
+        stub = _FakeHttpClient()
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        adapter.push_repair_status(
+            claim_id="CLM-S001",
+            shop_id="SHOP-3",
+            authorization_id="AUTH-Z",
+            status="repair",
+            notes="Frame work done",
+        )
+        body = stub.posted[0]["json"]
+        assert body["status"] == "repair"
+        assert body["notes"] == "Frame work done"
+        assert body["authorization_id"] == "AUTH-Z"
+
+    def test_shop_id_mapping_applied(self, monkeypatch):
+        stub = _FakeHttpClient()
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(
+            base_url="https://erp.example.com",
+            shop_id_map={"SHOP-3": "99"},
+        )
+        adapter.push_repair_status(
+            claim_id="CLM-S002",
+            shop_id="SHOP-3",
+            authorization_id=None,
+            status="qa",
+            notes=None,
+        )
+        assert stub.posted[0]["json"]["shop_id"] == "99"
+
+
+class TestRestERPAdapterPullEvents:
+    def test_passes_shop_id_and_since_params(self, monkeypatch):
+        stub = _FakeHttpClient()
+        stub._response_data = []
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(
+            base_url="https://erp.example.com",
+            shop_id_map={"SHOP-1": "42"},
+        )
+        adapter.pull_pending_events(shop_id="SHOP-1", since="2025-06-01T00:00:00Z")
+        params = stub.get_calls[0]["params"]
+        assert params["shop_id"] == "42"
+        assert params["since"] == "2025-06-01T00:00:00Z"
+
+    def test_returns_list_from_events_key(self, monkeypatch):
+        stub = _FakeHttpClient()
+        stub._response_data = {
+            "events": [
+                {"event_type": "estimate_approved", "claim_id": "CLM-P001"},
+                {"event_type": "parts_delayed", "claim_id": "CLM-P002"},
+            ]
+        }
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        events = adapter.pull_pending_events()
+        assert len(events) == 2
+        assert events[0]["claim_id"] == "CLM-P001"
+
+    def test_returns_bare_list_response(self, monkeypatch):
+        stub = _FakeHttpClient()
+        stub._response_data = [{"event_type": "supplement_requested", "claim_id": "CLM-P003"}]
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        events = adapter.pull_pending_events()
+        assert len(events) == 1
+        assert events[0]["event_type"] == "supplement_requested"
+
+    def test_filters_non_dict_items(self, monkeypatch):
+        stub = _FakeHttpClient()
+        stub._response_data = [{"event_type": "parts_delayed"}, "bad-item", 42]
+        monkeypatch.setattr("claim_agent.adapters.real.erp_rest.AdapterHttpClient", lambda **kw: stub)
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        events = adapter.pull_pending_events()
+        assert len(events) == 1
+
+
+class TestExtractResult:
+    def test_normalizes_erp_reference_and_status(self):
+        from claim_agent.adapters.real.erp_rest import _extract_result
+
+        result = _extract_result({"erp_reference": "REF-123", "status": "accepted"})
+        assert result["erp_reference"] == "REF-123"
+        assert result["status"] == "accepted"
+
+    def test_falls_back_to_reference_field(self):
+        from claim_agent.adapters.real.erp_rest import _extract_result
+
+        result = _extract_result({"reference": "REF-456", "status": "submitted"})
+        assert result["erp_reference"] == "REF-456"
+
+    def test_falls_back_to_id_field(self):
+        from claim_agent.adapters.real.erp_rest import _extract_result
+
+        result = _extract_result({"id": "ID-789"})
+        assert result["erp_reference"] == "ID-789"
+        assert result["status"] == "submitted"
+
+    def test_non_dict_returns_defaults(self):
+        from claim_agent.adapters.real.erp_rest import _extract_result
+
+        result = _extract_result("not-a-dict")
+        assert result["erp_reference"] == ""
+        assert result["status"] == "unknown"
+
+    def test_passes_through_optional_fields(self):
+        from claim_agent.adapters.real.erp_rest import _extract_result
+
+        result = _extract_result({
+            "erp_reference": "REF-X",
+            "status": "accepted",
+            "approved_amount": 2000.0,
+            "message": "OK",
+        })
+        assert result["approved_amount"] == 2000.0
+        assert result["message"] == "OK"
+
+
+class TestCreateRestERPAdapterFactory:
+    def test_raises_without_base_url(self, monkeypatch):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()  # base_url defaults to ""
+
+        class FakeSettings:
+            erp_rest = cfg
+
+        monkeypatch.setattr(
+            "claim_agent.adapters.real.erp_rest.get_settings", lambda: FakeSettings()
+        )
+        from claim_agent.adapters.real.erp_rest import create_rest_erp_adapter
+
+        with pytest.raises(ValueError, match="ERP_REST_BASE_URL"):
+            create_rest_erp_adapter()
+
+    def test_builds_adapter_with_correct_config(self, monkeypatch):
+        from claim_agent.config.settings_model import ERPRestConfig
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        cfg = ERPRestConfig()
+        cfg.base_url = "https://erp.example.com/v2"
+        cfg.auth_value = "Bearer tok"
+        cfg.assignment_path = "/v2/repairs/assignment"
+        cfg.timeout = 30.0
+
+        class FakeSettings:
+            erp_rest = cfg
+
+        monkeypatch.setattr(
+            "claim_agent.adapters.real.erp_rest.get_settings", lambda: FakeSettings()
+        )
+        monkeypatch.setattr(
+            "claim_agent.adapters.real.erp_rest.AdapterHttpClient",
+            lambda **kw: object(),
+        )
+        from claim_agent.adapters.real.erp_rest import create_rest_erp_adapter
+
+        adapter = create_rest_erp_adapter()
+        assert isinstance(adapter, RestERPAdapter)
+        assert adapter._assignment_path == "/v2/repairs/assignment"

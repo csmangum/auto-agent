@@ -74,7 +74,7 @@ class MockERPAdapter(ERPAdapter):
             "authorization_id": authorization_id,
             "repair_amount": repair_amount,
             "vehicle_info": copy.deepcopy(vehicle_info) if vehicle_info else None,
-            "status": "submitted",
+            "submission_status": "submitted",
         }
         with self._lock:
             self._assignments.append(record)
@@ -101,7 +101,7 @@ class MockERPAdapter(ERPAdapter):
             "estimate_amount": round(float(estimate_amount), 2),
             "line_items": copy.deepcopy(line_items) if line_items else None,
             "is_supplement": is_supplement,
-            "status": "submitted",
+            "submission_status": "submitted",
         }
         with self._lock:
             self._estimate_updates.append(record)
@@ -126,7 +126,7 @@ class MockERPAdapter(ERPAdapter):
             "authorization_id": authorization_id,
             "status": status,
             "notes": notes,
-            "push_status": "submitted",
+            "submission_status": "submitted",
         }
         with self._lock:
             self._status_updates.append(record)

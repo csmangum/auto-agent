@@ -263,6 +263,13 @@ async def erp_webhook(request: Request) -> Response:
     if parsed.event_type == "estimate_approved":
         # Transition to 'repair' stage on approval if claim is a partial_loss
         if claim.get("claim_type") == "partial_loss":
+            if not _claim_has_authorization(parsed.claim_id, parsed.shop_id, authorization_id=None):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "detail": "Claim has no matching repair authorization for this shop_id",
+                    },
+                )
             status_repo = RepairStatusRepository(db_path=get_db_path())
             try:
                 status_repo.insert_repair_status(
@@ -283,9 +290,20 @@ async def erp_webhook(request: Request) -> Response:
                 logger.exception(
                     "ERP webhook: failed to record repair status for estimate_approved: %s", e
                 )
+                return JSONResponse(
+                    status_code=500,
+                    content={"detail": "Failed to record repair status"},
+                )
 
     elif parsed.event_type == "parts_delayed":
         if claim.get("claim_type") == "partial_loss":
+            if not _claim_has_authorization(parsed.claim_id, parsed.shop_id, authorization_id=None):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "detail": "Claim has no matching repair authorization for this shop_id",
+                    },
+                )
             status_repo = RepairStatusRepository(db_path=get_db_path())
             try:
                 note = f"ERP parts delayed; erp_event_id={parsed.erp_event_id}"
@@ -303,6 +321,10 @@ async def erp_webhook(request: Request) -> Response:
             except Exception as e:
                 logger.exception(
                     "ERP webhook: failed to record repair status for parts_delayed: %s", e
+                )
+                return JSONResponse(
+                    status_code=500,
+                    content={"detail": "Failed to record repair status"},
                 )
 
     elif parsed.event_type == "supplement_requested":
