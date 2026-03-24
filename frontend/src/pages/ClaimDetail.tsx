@@ -27,6 +27,7 @@ import {
   useCreateDocumentRequest,
   useCreatePartyRelationship,
   useDeletePartyRelationship,
+  useActiveNoteTemplates,
 } from '../api/queries';
 import { formatDateTime, formatDate } from '../utils/date';
 import type {
@@ -190,22 +191,8 @@ function ReserveTab({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Note Templates
-// ---------------------------------------------------------------------------
-
-const NOTE_TEMPLATES = [
-  { label: 'Initial Contact', text: 'Initial contact attempted with claimant. Left voicemail / spoke with insured regarding claim details and next steps.' },
-  { label: 'Inspection Scheduled', text: 'Vehicle inspection scheduled for [DATE] at [LOCATION]. Claimant has been notified.' },
-  { label: 'Coverage Verified', text: 'Coverage verified for this loss. Policy is active with applicable coverage for the reported damages.' },
-  { label: 'Claim Acknowledged', text: 'Claim receipt acknowledged per UCSPA requirements. Acknowledgment letter sent to claimant.' },
-  { label: 'Awaiting Documents', text: 'Awaiting the following documents from claimant: [DOCUMENT LIST]. Follow-up scheduled for [DATE].' },
-  { label: 'Estimate Received', text: 'Repair estimate received from [SHOP NAME]. Total estimate: $[AMOUNT]. Reviewing for authorization.' },
-  { label: 'Payment Issued', text: 'Payment issued to [PAYEE] in the amount of $[AMOUNT] via [METHOD]. Check/reference #[NUMBER].' },
-  { label: 'Supervisor Review', text: 'Claim reviewed with supervisor. Decision: [DECISION]. Notes: [NOTES].' },
-];
-
 interface NotesTabProps {
+  noteTemplates: Array<{ id: number; label: string; body: string }>;
   notes: Array<{ id?: number; note: string; actor_id: string; created_at?: string }>;
   followUps: Array<{
     id: number;
@@ -220,7 +207,7 @@ interface NotesTabProps {
   addNoteMutation: ReturnType<typeof useAddClaimNote>;
 }
 
-function NotesTab({ notes, followUps, addNoteMutation }: NotesTabProps) {
+function NotesTab({ noteTemplates, notes, followUps, addNoteMutation }: NotesTabProps) {
   const [noteText, setNoteText] = useState('');
   const [actorId, setActorId] = useState('adjuster');
 
@@ -240,21 +227,23 @@ function NotesTab({ notes, followUps, addNoteMutation }: NotesTabProps) {
         <h3 className="text-sm font-semibold text-gray-300 mb-4">Add Note</h3>
 
         {/* Templates */}
-        <div className="mb-3">
-          <label className="block text-xs text-gray-500 mb-1">Quick Templates</label>
-          <div className="flex flex-wrap gap-1.5">
-            {NOTE_TEMPLATES.map((t) => (
-              <button
-                key={t.label}
-                type="button"
-                onClick={() => setNoteText(t.text)}
-                className="px-2 py-1 text-xs bg-gray-900/50 text-gray-400 rounded ring-1 ring-gray-700/50 hover:bg-gray-800 hover:text-gray-200 transition-colors"
-              >
-                {t.label}
-              </button>
-            ))}
+        {noteTemplates.length > 0 && (
+          <div className="mb-3">
+            <label className="block text-xs text-gray-500 mb-1">Quick Templates</label>
+            <div className="flex flex-wrap gap-1.5">
+              {noteTemplates.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setNoteText(t.body)}
+                  className="px-2 py-1 text-xs bg-gray-900/50 text-gray-400 rounded ring-1 ring-gray-700/50 hover:bg-gray-800 hover:text-gray-200 transition-colors"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <form onSubmit={handleAddNote} className="space-y-3">
           <div>
@@ -852,6 +841,7 @@ export default function ClaimDetail() {
   const createDocRequestMutation = useCreateDocumentRequest(claimId);
   const createRelMutation = useCreatePartyRelationship(claimId);
   const deleteRelMutation = useDeletePartyRelationship(claimId);
+  const { data: noteTemplates = [] } = useActiveNoteTemplates();
   const history = historyData?.history ?? [];
   const workflows = workflowsData?.workflows ?? [];
   const notes = claim?.notes ?? [];
@@ -1220,6 +1210,7 @@ export default function ClaimDetail() {
 
         {activeTab === 'notes' && (
           <NotesTab
+            noteTemplates={noteTemplates}
             notes={notes}
             followUps={followUps}
             addNoteMutation={addNoteMutation}

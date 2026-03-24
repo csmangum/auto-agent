@@ -9,6 +9,7 @@ import {
   DocsIcon,
   EscalationIcon,
   FraudIcon,
+  NoteTemplateIcon,
   PartialLossIcon,
   PlusIcon,
   QueueIcon,
@@ -37,6 +38,7 @@ export const NAV_ICONS = {
   workbench: WorkbenchIcon,
   queue: QueueIcon,
   diary: DiaryIcon,
+  noteTemplates: NoteTemplateIcon,
 } as const;
 
 export const SKILL_GROUP_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {

@@ -532,3 +532,19 @@ export interface FraudReportingComplianceResponse {
   claims: FraudComplianceClaim[];
   total: number;
 }
+
+export interface NoteTemplate {
+  id: number;
+  label: string;
+  body: string;
+  category: string | null;
+  is_active: number | boolean;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteTemplatesResponse {
+  templates: NoteTemplate[];
+}

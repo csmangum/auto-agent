@@ -45,6 +45,10 @@ import {
   deletePartyRelationship,
   getFraudReportingCompliance,
   getCurrentUser,
+  getNoteTemplates,
+  createNoteTemplate,
+  updateNoteTemplate,
+  deleteNoteTemplate,
 } from './client';
 import type {
   CostBreakdown,
@@ -57,6 +61,8 @@ import type {
   UpdateDocumentBody,
   CreatePartyRelationshipPayload,
   GetFraudReportingComplianceParams,
+  NoteTemplateCreatePayload,
+  NoteTemplateUpdatePayload,
 } from './client';
 
 export const queryKeys = {
@@ -92,6 +98,7 @@ export const queryKeys = {
   fraudReportingCompliance: (params: GetFraudReportingComplianceParams) =>
     ['compliance', 'fraud-reporting', params] as const,
   currentUser: ['auth', 'me'] as const,
+  noteTemplates: ['note-templates'] as const,
 };
 
 export function useClaimsStats() {
@@ -532,5 +539,58 @@ export function useCurrentUser() {
     queryFn: getCurrentUser,
     staleTime: 5 * 60 * 1000,
     retry: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Note Templates
+// ---------------------------------------------------------------------------
+
+export function useNoteTemplates() {
+  return useQuery({
+    queryKey: queryKeys.noteTemplates,
+    queryFn: () => getNoteTemplates(),
+    staleTime: 60 * 1000,
+    select: (data) => data.templates,
+  });
+}
+
+export function useActiveNoteTemplates() {
+  return useQuery({
+    queryKey: [...queryKeys.noteTemplates, 'active'],
+    queryFn: () => getNoteTemplates({ activeOnly: true }),
+    staleTime: 60 * 1000,
+    select: (data) => data.templates,
+  });
+}
+
+export function useCreateNoteTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: NoteTemplateCreatePayload) => createNoteTemplate(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.noteTemplates });
+    },
+  });
+}
+
+export function useUpdateNoteTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: NoteTemplateUpdatePayload & { id: number }) =>
+      updateNoteTemplate(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.noteTemplates });
+    },
+  });
+}
+
+export function useDeleteNoteTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => deleteNoteTemplate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.noteTemplates });
+    },
   });
 }

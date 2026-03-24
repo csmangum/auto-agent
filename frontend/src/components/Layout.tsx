@@ -27,6 +27,7 @@ const REFERENCE_NAV: NavItem[] = [
   { to: '/agents', label: 'Agents & Crews', icon: 'agents' },
   { to: '/cost', label: 'LLM Cost', icon: 'cost' },
   { to: '/system', label: 'System Config', icon: 'system' },
+  { to: '/system/templates', label: 'Note Templates', icon: 'noteTemplates' },
 ];
 
 const WORKBENCH_NAV: NavItem[] = [
