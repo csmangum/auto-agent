@@ -234,7 +234,7 @@ def get_mock_claimant_config() -> dict:
     s = get_settings().mock_claimant
     return {
         "enabled": s.enabled,
-        "response_strategy": s.response_strategy,
+        "response_strategy": s.response_strategy.value,
     }
 
 

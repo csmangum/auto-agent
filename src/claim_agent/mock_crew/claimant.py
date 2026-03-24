@@ -86,7 +86,7 @@ _DEFAULT_INCIDENTS: list[dict[str, str]] = [
     },
 ]
 
-_DEFAULT_VEHICLE = {
+_DEFAULT_VEHICLE: dict[str, Any] = {
     "vin": "1HGBH41JXMN109186",
     "year": 2021,
     "make": "Honda",
@@ -167,13 +167,22 @@ def generate_claim_input(scenario: dict[str, Any]) -> ClaimInput:
     rng = _build_rng(seed)
 
     # --- Policy ---
-    policy = scenario.get("policy") or {}
+    policy: dict[str, Any] = scenario.get("policy") or {}
     policy_number: str = policy.get("policy_number") or _DEFAULT_POLICY_NUMBER
 
     # --- Vehicle ---
-    vehicle = scenario.get("vehicle") or {}
+    vehicle: dict[str, Any] = scenario.get("vehicle") or {}
     vin: str = vehicle.get("vin") or _DEFAULT_VEHICLE["vin"]
-    vehicle_year: int = int(vehicle.get("year") or _DEFAULT_VEHICLE["year"])
+    raw_year = vehicle.get("year")
+    try:
+        vehicle_year: int = int(raw_year) if raw_year else int(_DEFAULT_VEHICLE["year"])
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid vehicle year %r; falling back to default %r",
+            raw_year,
+            _DEFAULT_VEHICLE["year"],
+        )
+        vehicle_year = int(_DEFAULT_VEHICLE["year"])
     vehicle_make: str = vehicle.get("make") or _DEFAULT_VEHICLE["make"]
     vehicle_model: str = vehicle.get("model") or _DEFAULT_VEHICLE["model"]
 
@@ -259,13 +268,23 @@ def respond_to_message(
     """
     logger.debug("Mock claimant responding to claim %s", claim_id)
     claimant_cfg = get_mock_claimant_config()
-    strategy = claimant_cfg.get("response_strategy", ResponseStrategy.IMMEDIATE)
+    if not claimant_cfg.get("enabled", True):
+        raise RuntimeError(
+            "Mock claimant is disabled via configuration; "
+            "respond_to_message() should not be called."
+        )
 
-    if strategy == ResponseStrategy.REFUSE:
+    raw_strategy = claimant_cfg.get("response_strategy", ResponseStrategy.IMMEDIATE.value)
+    try:
+        strategy = ResponseStrategy(raw_strategy)
+    except ValueError:
+        strategy = ResponseStrategy.IMMEDIATE
+
+    if strategy is ResponseStrategy.REFUSE:
         return _RESPONSE_STRATEGY_REFUSE_MSG
-    if strategy == ResponseStrategy.DELAYED:
+    if strategy is ResponseStrategy.DELAYED:
         return _RESPONSE_STRATEGY_DELAYED_MSG
-    if strategy == ResponseStrategy.PARTIAL:
+    if strategy is ResponseStrategy.PARTIAL:
         return _RESPONSE_STRATEGY_PARTIAL_MSG
 
     # --- immediate (default): keyword-driven replies ---
