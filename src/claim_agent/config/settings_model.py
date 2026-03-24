@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
@@ -835,6 +836,48 @@ class MockCrewConfig(BaseSettings):
             return None
 
 
+class ResponseStrategy(str, Enum):
+    """Mock claimant response strategies."""
+
+    IMMEDIATE = "immediate"
+    DELAYED = "delayed"
+    REFUSE = "refuse"
+    PARTIAL = "partial"
+
+
+class MockClaimantConfig(BaseSettings):
+    """Mock Claimant: rule/template-based claimant simulation for testing."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(default=False, validation_alias="MOCK_CLAIMANT_ENABLED")
+    response_strategy: ResponseStrategy = Field(
+        default=ResponseStrategy.IMMEDIATE,
+        validation_alias="MOCK_CLAIMANT_RESPONSE_STRATEGY",
+        description="Response strategy: immediate | delayed | refuse | partial",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("response_strategy", mode="before")
+    @classmethod
+    def _parse_strategy(cls, v: Any) -> str:
+        if isinstance(v, ResponseStrategy):
+            return v.value
+        valid = {s.value for s in ResponseStrategy}
+        val = str(v).strip().lower() if v else ResponseStrategy.IMMEDIATE.value
+        return val if val in valid else ResponseStrategy.IMMEDIATE.value
+
+
 class PortalConfig(BaseSettings):
     """Claimant self-service portal configuration."""
 
@@ -1381,6 +1424,7 @@ class Settings(BaseSettings):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     mock_crew: MockCrewConfig = Field(default_factory=MockCrewConfig)
+    mock_claimant: MockClaimantConfig = Field(default_factory=MockClaimantConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
