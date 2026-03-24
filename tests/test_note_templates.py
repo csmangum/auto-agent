@@ -149,23 +149,38 @@ def test_api_delete_not_found(client):
     assert r.status_code == 404
 
 
-def test_api_deactivate_hides_from_adjuster(client, monkeypatch):
+def test_api_deactivate_hides_from_adjuster(temp_db, monkeypatch):
     """Inactive templates should be excluded when adjuster role requests list."""
-    r = client.post(
+    # Use a supervisor key to create/modify templates, and an adjuster key to fetch.
+    monkeypatch.setenv("API_KEYS", "sk-sup:supervisor:supervisor1,sk-adj:adjuster:adjuster1")
+    reload_settings()
+    client_auth = TestClient(app)
+
+    r = client_auth.post(
         "/api/note-templates",
         json={"label": "T1", "body": "body1"},
+        headers={"X-API-Key": "sk-sup"},
     )
+    assert r.status_code == 201, r.text
     tid = r.json()["id"]
-    client.patch(f"/api/note-templates/{tid}", json={"is_active": False})
+    client_auth.patch(
+        f"/api/note-templates/{tid}",
+        json={"is_active": False},
+        headers={"X-API-Key": "sk-sup"},
+    )
 
-    client.post(
+    client_auth.post(
         "/api/note-templates",
         json={"label": "T2", "body": "body2"},
+        headers={"X-API-Key": "sk-sup"},
     )
 
-    # Default auth is admin (no auth configured) so both visible
-    r3 = client.get("/api/note-templates")
-    assert len(r3.json()["templates"]) == 2
+    # Adjuster should only see the active template
+    r3 = client_auth.get("/api/note-templates", headers={"X-API-Key": "sk-adj"})
+    assert r3.status_code == 200
+    templates = r3.json()["templates"]
+    assert len(templates) == 1
+    assert templates[0]["label"] == "T2"
 
 
 def test_api_create_validation(client):
@@ -174,3 +189,48 @@ def test_api_create_validation(client):
 
     r2 = client.post("/api/note-templates", json={"label": "L", "body": ""})
     assert r2.status_code == 422
+
+
+def test_api_create_whitespace_only_rejected(client):
+    """Whitespace-only label or body should be rejected with 422."""
+    r = client.post("/api/note-templates", json={"label": "   ", "body": "body"})
+    assert r.status_code == 422
+
+    r2 = client.post("/api/note-templates", json={"label": "Label", "body": "   "})
+    assert r2.status_code == 422
+
+
+def test_api_create_category_normalized(client):
+    """Empty-string category should be stored as None."""
+    r = client.post(
+        "/api/note-templates",
+        json={"label": "L", "body": "Body", "category": "  "},
+    )
+    assert r.status_code == 201
+    assert r.json()["category"] is None
+
+
+def test_repo_create_blank_label_raises(repo):
+    """Repository should raise ValueError for whitespace-only label."""
+    with pytest.raises(ValueError, match="label"):
+        repo.create("   ", "some body")
+
+
+def test_repo_create_blank_body_raises(repo):
+    """Repository should raise ValueError for whitespace-only body."""
+    with pytest.raises(ValueError, match="body"):
+        repo.create("A label", "   ")
+
+
+def test_repo_update_blank_label_raises(repo):
+    """Repository should raise ValueError when updating label to whitespace-only."""
+    t = repo.create("Original", "Original body")
+    with pytest.raises(ValueError, match="label"):
+        repo.update(t["id"], label="   ")
+
+
+def test_repo_update_blank_body_raises(repo):
+    """Repository should raise ValueError when updating body to whitespace-only."""
+    t = repo.create("Original", "Original body")
+    with pytest.raises(ValueError, match="body"):
+        repo.update(t["id"], body="   ")
