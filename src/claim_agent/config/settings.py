@@ -238,6 +238,18 @@ def get_mock_claimant_config() -> dict:
     }
 
 
+def get_mock_notifier_config() -> dict:
+    """Mock Notifier configuration (enabled, auto_respond).
+
+    Note: enabled is only meaningful when get_mock_crew_config()["enabled"] is True.
+    """
+    s = get_settings().mock_notifier
+    return {
+        "enabled": s.enabled,
+        "auto_respond": s.auto_respond,
+    }
+
+
 def get_chat_config() -> dict:
     """Chat agent configuration."""
     s = get_settings().chat

@@ -866,6 +866,29 @@ class MockClaimantConfig(BaseSettings):
         return val if val in valid else "immediate"
 
 
+class MockNotifierConfig(BaseSettings):
+    """Mock Notifier: intercept outbound notifications for testing.
+
+    Only active when ``MOCK_CREW_ENABLED=true``.
+    """
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(default=False, validation_alias="MOCK_NOTIFIER_ENABLED")
+    auto_respond: bool = Field(default=False, validation_alias="MOCK_NOTIFIER_AUTO_RESPOND")
+
+    @field_validator("enabled", "auto_respond", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
 class PortalConfig(BaseSettings):
     """Claimant self-service portal configuration."""
 
@@ -1413,6 +1436,7 @@ class Settings(BaseSettings):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     mock_crew: MockCrewConfig = Field(default_factory=MockCrewConfig)
     mock_claimant: MockClaimantConfig = Field(default_factory=MockClaimantConfig)
+    mock_notifier: MockNotifierConfig = Field(default_factory=MockNotifierConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
