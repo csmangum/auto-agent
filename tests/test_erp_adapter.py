@@ -1011,3 +1011,248 @@ class TestCreateRestERPAdapterFactory:
         adapter = create_rest_erp_adapter()
         assert isinstance(adapter, RestERPAdapter)
         assert adapter._assignment_path == "/v2/repairs/assignment"
+
+
+# ---------------------------------------------------------------------------
+# ERP webhook – non-partial_loss claim type returns 400
+# ---------------------------------------------------------------------------
+
+
+class TestERPWebhookNonPartialLoss:
+    def test_estimate_approved_non_partial_loss_returns_400(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({
+            "claim_id": "CLM-TEST002",
+            "event_type": "estimate_approved",
+        }))
+        assert resp.status_code == 400
+        body = resp.json()
+        assert "partial_loss" in body["detail"].lower()
+        assert body["erp_event_id"] == "ERP-EVT-TEST-001"
+
+    def test_parts_delayed_non_partial_loss_returns_400(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({
+            "claim_id": "CLM-TEST002",
+            "event_type": "parts_delayed",
+        }))
+        assert resp.status_code == 400
+        assert "partial_loss" in resp.json()["detail"].lower()
+
+    def test_supplement_requested_non_partial_loss_returns_200(self, client, monkeypatch):
+        """supplement_requested is logged only; should still return 200 for any claim type."""
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({
+            "claim_id": "CLM-TEST002",
+            "event_type": "supplement_requested",
+            "supplement_amount": 200.0,
+        }))
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# ERP webhook – idempotency (duplicate erp_event_id)
+# ---------------------------------------------------------------------------
+
+
+class TestERPWebhookIdempotency:
+    def test_duplicate_estimate_approved_returns_already_processed(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        payload = _erp_payload({"erp_event_id": "ERP-IDEMPOTENT-001"})
+        resp1 = _post_erp(client, payload)
+        assert resp1.status_code == 200
+        assert resp1.json().get("already_processed") is not True
+
+        resp2 = _post_erp(client, payload)
+        assert resp2.status_code == 200
+        body2 = resp2.json()
+        assert body2["ok"] is True
+        assert body2["already_processed"] is True
+        assert body2["erp_event_id"] == "ERP-IDEMPOTENT-001"
+
+    def test_duplicate_parts_delayed_returns_already_processed(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        payload = _erp_payload({
+            "event_type": "parts_delayed",
+            "erp_event_id": "ERP-IDEMPOTENT-002",
+            "delay_reason": "Backordered",
+        })
+        resp1 = _post_erp(client, payload)
+        assert resp1.status_code == 200
+
+        resp2 = _post_erp(client, payload)
+        assert resp2.status_code == 200
+        assert resp2.json()["already_processed"] is True
+
+
+# ---------------------------------------------------------------------------
+# ERP webhook – error responses include erp_event_id
+# ---------------------------------------------------------------------------
+
+
+class TestERPWebhookErrorResponseFields:
+    def test_invalid_event_type_includes_erp_event_id(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({"event_type": "bad_type"}))
+        assert resp.status_code == 400
+        assert resp.json()["erp_event_id"] == "ERP-EVT-TEST-001"
+
+    def test_claim_not_found_includes_erp_event_id(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({"claim_id": "CLM-NOPE"}))
+        assert resp.status_code == 404
+        assert resp.json()["erp_event_id"] == "ERP-EVT-TEST-001"
+
+    def test_non_partial_loss_includes_erp_event_id(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload({"claim_id": "CLM-TEST002"}))
+        assert resp.status_code == 400
+        assert resp.json()["erp_event_id"] == "ERP-EVT-TEST-001"
+
+    def test_db_failure_includes_erp_event_id(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+
+        def _raise_db_error(*a, **kw):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(
+            "claim_agent.api.routes.webhooks.RepairStatusRepository.insert_repair_status",
+            _raise_db_error,
+        )
+        monkeypatch.setattr(
+            "claim_agent.api.routes.webhooks.RepairStatusRepository.has_erp_event",
+            lambda *a, **kw: False,
+        )
+        resp = _post_erp(client, _erp_payload())
+        assert resp.status_code == 500
+        assert resp.json()["erp_event_id"] == "ERP-EVT-TEST-001"
+
+    def test_success_includes_erp_event_id(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        resp = _post_erp(client, _erp_payload())
+        assert resp.status_code == 200
+        assert resp.json()["erp_event_id"] == "ERP-EVT-TEST-001"
+
+
+# ---------------------------------------------------------------------------
+# ERPRestConfig.shop_id_map parsing edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestERPRestConfigShopIdMapParsing:
+    def test_empty_string(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = ""
+        assert cfg.shop_id_map == {}
+
+    def test_single_pair(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = "SHOP-1=42"
+        assert cfg.shop_id_map == {"SHOP-1": "42"}
+
+    def test_multiple_pairs(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = "SHOP-1=42,SHOP-2=99"
+        assert cfg.shop_id_map == {"SHOP-1": "42", "SHOP-2": "99"}
+
+    def test_trailing_comma_ignored(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = "SHOP-1=42,"
+        assert cfg.shop_id_map == {"SHOP-1": "42"}
+
+    def test_empty_value_skipped(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = "SHOP-1=,"
+        assert cfg.shop_id_map == {}
+
+    def test_empty_key_skipped(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = "=42"
+        assert cfg.shop_id_map == {}
+
+    def test_whitespace_trimmed(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = " SHOP-1 = 42 , SHOP-2 = 99 "
+        assert cfg.shop_id_map == {"SHOP-1": "42", "SHOP-2": "99"}
+
+    def test_malformed_no_equals(self):
+        from claim_agent.config.settings_model import ERPRestConfig
+
+        cfg = ERPRestConfig()
+        cfg.shop_id_map_raw = "SHOP-1,SHOP-2=99"
+        assert cfg.shop_id_map == {"SHOP-2": "99"}
+
+
+# ---------------------------------------------------------------------------
+# RestERPAdapter – CircuitOpenError in pull_pending_events
+# ---------------------------------------------------------------------------
+
+
+class TestRestERPAdapterCircuitBreaker:
+    def test_pull_pending_events_returns_empty_on_circuit_open(self, monkeypatch):
+        from claim_agent.adapters.http_client import CircuitOpenError
+
+        class _CircuitOpenClient:
+            def __init__(self, **kw):
+                pass
+
+            def get(self, path, *, params=None):
+                raise CircuitOpenError("circuit open")
+
+        monkeypatch.setattr(
+            "claim_agent.adapters.real.erp_rest.AdapterHttpClient", _CircuitOpenClient
+        )
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        events = adapter.pull_pending_events()
+        assert events == []
+
+    def test_push_assignment_propagates_circuit_open(self, monkeypatch):
+        from claim_agent.adapters.http_client import CircuitOpenError
+
+        class _CircuitOpenClient:
+            def __init__(self, **kw):
+                pass
+
+            def post(self, path, *, params=None, json=None):
+                raise CircuitOpenError("circuit open")
+
+        monkeypatch.setattr(
+            "claim_agent.adapters.real.erp_rest.AdapterHttpClient", _CircuitOpenClient
+        )
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        with pytest.raises(CircuitOpenError):
+            adapter.push_repair_assignment(
+                claim_id="CLM-X",
+                shop_id="SHOP-1",
+                authorization_id=None,
+                repair_amount=None,
+                vehicle_info=None,
+            )

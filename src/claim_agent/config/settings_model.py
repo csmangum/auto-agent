@@ -1489,7 +1489,7 @@ class ERPRestConfig(BaseSettings):
     )
     shop_id_map_raw: str = Field(
         default="",
-        validation_alias="ERP_SHOP_ID_MAP",
+        validation_alias="ERP_REST_SHOP_ID_MAP",
         description=(
             "Comma-separated internal_id=erp_id pairs for shop identity mapping "
             "(e.g. 'SHOP-1=42,SHOP-2=99'). Leave empty to use internal IDs as-is."

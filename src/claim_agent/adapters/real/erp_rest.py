@@ -13,7 +13,7 @@ import logging
 from typing import Any
 
 from claim_agent.adapters.base import ERPAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient
+from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
 from claim_agent.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -157,7 +157,11 @@ class RestERPAdapter(ERPAdapter):
             params["shop_id"] = self.resolve_shop_id(shop_id)
         if since:
             params["since"] = since
-        resp = self._client.get(self._events_path, params=params)
+        try:
+            resp = self._client.get(self._events_path, params=params)
+        except CircuitOpenError:
+            logger.warning("ERP adapter circuit breaker open; returning empty event list")
+            return []
         raw = resp.json()
         items = raw if isinstance(raw, list) else raw.get("events") or []
         return [item for item in items if isinstance(item, dict)]
