@@ -285,6 +285,17 @@ def get_mock_webhook_config() -> dict:
     }
 
 
+def get_mock_erp_capture_config() -> dict:
+    """Mock ERP capture configuration (capture_enabled).
+
+    Note: capture_enabled is only meaningful when get_mock_crew_config()["enabled"] is True.
+    """
+    s = get_settings().mock_erp_capture
+    return {
+        "capture_enabled": s.capture_enabled,
+    }
+
+
 def get_chat_config() -> dict:
     """Chat agent configuration."""
     s = get_settings().chat

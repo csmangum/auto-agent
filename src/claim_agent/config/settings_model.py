@@ -476,6 +476,11 @@ class SchedulerConfig(BaseSettings):
     timezone: str = "UTC"
     ucspa_deadline_check_cron: str = "0 9 * * *"
     diary_escalate_cron: str = "0 * * * *"
+    erp_poll_cron: str = Field(
+        default="*/15 * * * *",
+        validation_alias="SCHEDULER_ERP_POLL_CRON",
+        description="Cron schedule for ERP inbound-event polling (default: every 15 minutes)",
+    )
     ucspa_days_ahead: int = Field(
         default=3,
         ge=1,
@@ -984,6 +989,28 @@ class MockWebhookConfig(BaseSettings):
     )
 
     capture_enabled: bool = Field(default=False, validation_alias="MOCK_WEBHOOK_CAPTURE_ENABLED")
+
+    @field_validator("capture_enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
+class MockERPCaptureConfig(BaseSettings):
+    """Mock ERP capture: record outbound ERP pushes in-memory for testing.
+
+    Only active when ``MOCK_CREW_ENABLED=true``.
+    """
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    capture_enabled: bool = Field(default=False, validation_alias="MOCK_ERP_CAPTURE_ENABLED")
 
     @field_validator("capture_enabled", mode="before")
     @classmethod
@@ -1621,6 +1648,7 @@ class Settings(BaseSettings):
     mock_repair_shop: MockRepairShopConfig = Field(default_factory=MockRepairShopConfig)
     mock_third_party: MockThirdPartyConfig = Field(default_factory=MockThirdPartyConfig)
     mock_webhook: MockWebhookConfig = Field(default_factory=MockWebhookConfig)
+    mock_erp_capture: MockERPCaptureConfig = Field(default_factory=MockERPCaptureConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     mock_document: MockDocumentGeneratorConfig = Field(default_factory=MockDocumentGeneratorConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
