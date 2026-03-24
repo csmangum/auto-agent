@@ -25,6 +25,12 @@ class NoteTemplateRepository:
         sort_order: int = 0,
         created_by: str | None = None,
     ) -> dict[str, Any]:
+        label = label.strip()
+        body = body.strip()
+        if not label:
+            raise ValueError("label cannot be blank")
+        if not body:
+            raise ValueError("body cannot be blank")
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text(
@@ -33,8 +39,8 @@ class NoteTemplateRepository:
                     "RETURNING *"
                 ),
                 {
-                    "label": label.strip(),
-                    "body": body.strip(),
+                    "label": label,
+                    "body": body,
                     "category": category.strip() if category else None,
                     "sort_order": sort_order,
                     "created_by": created_by,
@@ -75,11 +81,17 @@ class NoteTemplateRepository:
         fields: list[str] = []
         params: dict[str, Any] = {"id": template_id}
         if label is not None:
+            label = label.strip()
+            if not label:
+                raise ValueError("label cannot be blank")
             fields.append("label = :label")
-            params["label"] = label.strip()
+            params["label"] = label
         if body is not None:
+            body = body.strip()
+            if not body:
+                raise ValueError("body cannot be blank")
             fields.append("body = :body")
-            params["body"] = body.strip()
+            params["body"] = body
         if category is not ...:
             fields.append("category = :category")
             params["category"] = category.strip() if category else None

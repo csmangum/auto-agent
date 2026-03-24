@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import require_role
@@ -28,6 +28,22 @@ class NoteTemplateCreateBody(BaseModel):
     category: Optional[str] = Field(default=None, max_length=MAX_CATEGORY)
     sort_order: int = Field(default=0, ge=0)
 
+    @field_validator("label", "body", mode="after")
+    @classmethod
+    def strip_and_validate_not_blank(cls, v: str, info) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError(f"{info.field_name} cannot be blank or whitespace-only")
+        return stripped
+
+    @field_validator("category", mode="after")
+    @classmethod
+    def normalize_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped if stripped else None
+
 
 class NoteTemplateUpdateBody(BaseModel):
     label: Optional[str] = Field(default=None, min_length=1, max_length=MAX_LABEL)
@@ -35,6 +51,24 @@ class NoteTemplateUpdateBody(BaseModel):
     category: Optional[str] = Field(default=None, max_length=MAX_CATEGORY)
     is_active: Optional[bool] = None
     sort_order: Optional[int] = Field(default=None, ge=0)
+
+    @field_validator("label", "body", mode="after")
+    @classmethod
+    def strip_and_validate_not_blank(cls, v: Optional[str], info) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError(f"{info.field_name} cannot be blank or whitespace-only")
+        return stripped
+
+    @field_validator("category", mode="after")
+    @classmethod
+    def normalize_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped if stripped else None
 
 
 @router.get("")
