@@ -294,6 +294,20 @@ class PaymentRepository:
             ).fetchone()
         return row_to_dict(row) if row else None
 
+    def get_payment_by_claim_external_ref(
+        self, claim_id: str, external_ref: str
+    ) -> dict[str, Any] | None:
+        """Find a payment by (claim_id, external_ref). Returns None if not found."""
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text(
+                    "SELECT * FROM claim_payments "
+                    "WHERE claim_id = :claim_id AND external_ref = :external_ref"
+                ),
+                {"claim_id": claim_id, "external_ref": external_ref},
+            ).fetchone()
+        return row_to_dict(row) if row else None
+
     def get_payments_for_claim(
         self,
         claim_id: str,
