@@ -34,13 +34,13 @@ Based on codebase analysis, the following external interactions must be mocked:
 | **Claimant** | Human files claim, receives `send_user_message`, responds via `record_user_response` | Submit claims; auto-respond to follow-up messages with plausible content |
 | **Policy lookup** | PolicyAdapter (mock/stub) | Already mocked via `mock_db.json`; ensure coverage |
 | **Valuation** | ValuationAdapter (mock/stub) | Already mocked; ensure coverage |
-| **Repair shop** | RepairShopAdapter, receives follow-ups | Already mocked for shops; add mock repair shop *responses* to follow-ups |
+| **Repair shop** | RepairShopAdapter, receives follow-ups | Intercept repair-shop `notify_user` calls; queue configurable acknowledgment (`MOCK_REPAIR_SHOP_ENABLED`) |
 | **Parts catalog** | PartsAdapter (mock/stub) | Already mocked |
 | **SIU** | SIUAdapter (mock/stub) | Already mocked |
 | **Document generation (input)** | Claimant uploads estimates, photos, PDFs | Generate mock claimant documents (estimates, damage photos) for claim context |
-| **Notifications** | `notify_user` → email/SMS/portal | Mock delivery; optionally auto-trigger mock claimant response |
-| **Webhooks** | Outbound HTTP to external URLs | Mock webhook receiver; capture payloads for assertions |
-| **Subrogation** | `send_demand_letter` → third party | Mock third-party response (accept, reject, negotiate) |
+| **Notifications** | `notify_user` → email/SMS/portal | Mock delivery; optionally auto-trigger mock claimant response (`MOCK_NOTIFIER_ENABLED`) |
+| **Webhooks** | Outbound HTTP to external URLs | Capture payloads in-memory for assertions; suppress real HTTP (`MOCK_WEBHOOK_CAPTURE_ENABLED`) |
+| **Subrogation** | `send_demand_letter` → third party | Return configurable outcome—accept, reject, or negotiate (`MOCK_THIRD_PARTY_ENABLED`) |
 | **Storage** | Local/S3 for attachments | Mock storage adapter for tests |
 
 ---

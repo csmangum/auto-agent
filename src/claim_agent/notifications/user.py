@@ -8,8 +8,9 @@ Stub implementation: logs intent. Real integration via adapters.
 import logging
 from typing import Any
 
-from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
+from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_mock_repair_shop_config, get_notification_config
 from claim_agent.mock_crew.notifier import mock_notify_user
+from claim_agent.mock_crew.repair_shop import mock_notify_repair_shop
 from claim_agent.models.user import UserType
 from claim_agent.notifications.claimant import notify_claimant
 
@@ -93,6 +94,9 @@ def notify_user(
         )
         return True
     elif ut == UserType.REPAIR_SHOP:
+        if get_mock_crew_config()["enabled"] and get_mock_repair_shop_config()["enabled"]:
+            mock_notify_repair_shop(claim_id, message, identifier=identifier)
+            return True
         logger.info(
             "Would send follow-up to repair_shop via portal/API: claim_id=%s identifier=%s (stub)",
             claim_id,
