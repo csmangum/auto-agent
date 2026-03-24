@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import jwt as pyjwt
 from fastapi import HTTPException, Request
 
 from claim_agent.config import get_settings
+from claim_agent.config.settings import get_jwt_secret
+from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
 from claim_agent.services.repair_shop_portal_tokens import verify_repair_shop_token
 
 
@@ -28,15 +31,16 @@ class RepairShopJWTContext:
 
 
 def _verify_shop_jwt(token: str) -> dict[str, Any] | None:
-    """Verify a JWT issued to a shop user. Returns decoded payload or None."""
-    from claim_agent.config.settings import get_jwt_secret
+    """Verify a JWT issued to a shop user. Returns decoded payload or None.
 
+    In addition to cryptographic verification and claim checks, this looks up
+    the user record and rejects deactivated accounts so that a deactivation
+    takes effect immediately rather than waiting for JWT expiry.
+    """
     secret = get_jwt_secret()
     if not secret:
         return None
     try:
-        import jwt as pyjwt
-
         payload = pyjwt.decode(token, secret, algorithms=["HS256"])
         if payload.get("token_use") == "refresh":
             return None
@@ -45,6 +49,9 @@ def _verify_shop_jwt(token: str) -> dict[str, Any] | None:
         if not payload.get("shop_id"):
             return None
         if not payload.get("sub"):
+            return None
+        user = RepairShopUserRepository().get_shop_user_by_id(str(payload["sub"]))
+        if user is None or not user.get("is_active"):
             return None
         return payload
     except Exception:
@@ -96,9 +103,6 @@ def require_repair_shop_access(request: Request, claim_id: str) -> RepairShopPor
             raise HTTPException(status_code=401, detail="Invalid or expired token")
         shop_id = str(payload["shop_id"])
         sub = str(payload["sub"])
-        # Verify claim is assigned to this shop
-        from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
-
         repo = RepairShopUserRepository()
         if not repo.is_claim_assigned_to_shop(claim_id, shop_id):
             raise HTTPException(

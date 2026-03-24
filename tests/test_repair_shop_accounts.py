@@ -6,10 +6,17 @@ Covers:
 - Multi-claim inbox (GET /repair-portal/claims)
 - Authorization boundaries: shop A cannot read shop B's claims
 - Backward-compat: per-claim tokens still work
+- Deactivated user rejection
+- Expired JWT rejection
+- Shop JWT cannot access internal adjuster endpoints
+- Pagination correctness
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
+import jwt as pyjwt
 import pytest
 from fastapi.testclient import TestClient
 
@@ -356,4 +363,209 @@ class TestJWTSingleClaimAccess:
         )
         assert resp.status_code == 200
         assert resp.json()["id"] == "CLM-TEST005"
+
+
+@pytest.mark.usefixtures("repair_portal_and_auth")
+class TestDeactivatedUserRejection:
+    """Deactivated shop users must be rejected at login and JWT verification."""
+
+    def test_deactivated_user_cannot_login(self, admin_client, anon_client):
+        admin_client.post(
+            "/api/repair-shop-users",
+            json={"shop_id": "SHOP-DEACT", "email": "deact@example.com", "password": "secure123"},
+        )
+        # Deactivate the user
+        users_resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-DEACT")
+        user_id = users_resp.json()["users"][0]["id"]
+        admin_client.delete(f"/api/repair-shop-users/{user_id}")
+
+        resp = anon_client.post(
+            "/api/repair-portal/auth/login",
+            json={"email": "deact@example.com", "password": "secure123"},
+        )
+        assert resp.status_code == 401
+
+    def test_deactivated_user_jwt_rejected(self, admin_client, adjuster_client, anon_client):
+        """A JWT obtained before deactivation must be rejected after deactivation."""
+        admin_client.post(
+            "/api/repair-shop-users",
+            json={"shop_id": "SHOP-DEACT2", "email": "deact2@example.com", "password": "secure123"},
+        )
+        login_resp = anon_client.post(
+            "/api/repair-portal/auth/login",
+            json={"email": "deact2@example.com", "password": "secure123"},
+        )
+        assert login_resp.status_code == 200
+        token = login_resp.json()["access_token"]
+
+        # Assign a claim so the token would normally work
+        adjuster_client.post(
+            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            json={"shop_id": "SHOP-DEACT2"},
+        )
+
+        # Verify the token works before deactivation
+        resp = anon_client.get(
+            "/api/repair-portal/claims/CLM-TEST005",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+
+        # Deactivate the user
+        users_resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-DEACT2")
+        user_id = users_resp.json()["users"][0]["id"]
+        admin_client.delete(f"/api/repair-shop-users/{user_id}")
+
+        # JWT should now be rejected
+        resp = anon_client.get(
+            "/api/repair-portal/claims/CLM-TEST005",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+
+
+@pytest.mark.usefixtures("repair_portal_and_auth")
+class TestExpiredJWT:
+    """An expired JWT must be rejected."""
+
+    def test_expired_jwt_is_rejected(self, admin_client, anon_client):
+        admin_client.post(
+            "/api/repair-shop-users",
+            json={"shop_id": "SHOP-EXP", "email": "exp@example.com", "password": "secure123"},
+        )
+        users_resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-EXP")
+        user_id = users_resp.json()["users"][0]["id"]
+
+        now = datetime.now(timezone.utc)
+        expired_payload = {
+            "sub": user_id,
+            "role": "shop_user",
+            "shop_id": "SHOP-EXP",
+            "token_use": "access",
+            "iat": int((now - timedelta(hours=2)).timestamp()),
+            "exp": int((now - timedelta(hours=1)).timestamp()),
+        }
+        expired_token = pyjwt.encode(expired_payload, _JWT_SECRET, algorithm="HS256")
+        resp = anon_client.get(
+            "/api/repair-portal/claims",
+            headers={"Authorization": f"Bearer {expired_token}"},
+        )
+        assert resp.status_code == 401
+
+
+@pytest.mark.usefixtures("repair_portal_and_auth")
+class TestShopJWTCannotAccessInternalEndpoints:
+    """Shop-user JWTs must not grant access to internal adjuster/admin endpoints."""
+
+    def test_shop_jwt_rejected_by_claims_list(self, admin_client, anon_client):
+        """A shop-user JWT must not work for GET /api/claims (adjuster endpoint)."""
+        admin_client.post(
+            "/api/repair-shop-users",
+            json={"shop_id": "SHOP-INTL", "email": "intl@example.com", "password": "secure123"},
+        )
+        login_resp = anon_client.post(
+            "/api/repair-portal/auth/login",
+            json={"email": "intl@example.com", "password": "secure123"},
+        )
+        assert login_resp.status_code == 200
+        token = login_resp.json()["access_token"]
+
+        resp = anon_client.get(
+            "/api/claims",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        # shop_user role is not in KNOWN_ROLES, so the main auth pipeline rejects it
+        assert resp.status_code in (401, 403)
+
+    def test_shop_jwt_rejected_by_admin_users_endpoint(self, admin_client, anon_client):
+        """A shop-user JWT must not work for GET /api/repair-shop-users (admin endpoint)."""
+        admin_client.post(
+            "/api/repair-shop-users",
+            json={"shop_id": "SHOP-INTL2", "email": "intl2@example.com", "password": "secure123"},
+        )
+        login_resp = anon_client.post(
+            "/api/repair-portal/auth/login",
+            json={"email": "intl2@example.com", "password": "secure123"},
+        )
+        assert login_resp.status_code == 200
+        token = login_resp.json()["access_token"]
+
+        resp = anon_client.get(
+            "/api/repair-shop-users",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code in (401, 403)
+
+
+@pytest.mark.usefixtures("repair_portal_and_auth")
+class TestPagination:
+    """Pagination correctness for multi-claim inbox and shop user listing."""
+
+    def _create_and_login(self, admin_client, anon_client, shop_id: str, email: str) -> str:
+        admin_client.post(
+            "/api/repair-shop-users",
+            json={"shop_id": shop_id, "email": email, "password": "secure123"},
+        )
+        resp = anon_client.post(
+            "/api/repair-portal/auth/login",
+            json={"email": email, "password": "secure123"},
+        )
+        assert resp.status_code == 200, resp.json()
+        return resp.json()["access_token"]
+
+    def test_claims_pagination_total_reflects_all_assignments(
+        self, admin_client, adjuster_client, anon_client
+    ):
+        """total must be the true count, not the page length."""
+        token = self._create_and_login(
+            admin_client, anon_client, "SHOP-PAG", "pag@example.com"
+        )
+        adjuster_client.post(
+            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            json={"shop_id": "SHOP-PAG"},
+        )
+        adjuster_client.post(
+            "/api/claims/CLM-TEST001/repair-shop-assignment",
+            json={"shop_id": "SHOP-PAG"},
+        )
+
+        # Fetch page with limit=1
+        resp = anon_client.get(
+            "/api/repair-portal/claims?limit=1&offset=0",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["claims"]) == 1
+        assert data["total"] == 2
+
+        # Fetch second page
+        resp2 = anon_client.get(
+            "/api/repair-portal/claims?limit=1&offset=1",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert len(data2["claims"]) == 1
+        assert data2["total"] == 2
+
+        # Pages should return different claims
+        assert data["claims"][0]["id"] != data2["claims"][0]["id"]
+
+    def test_shop_users_pagination_total(self, admin_client):
+        """total must be the true count for shop user listing."""
+        for i in range(3):
+            admin_client.post(
+                "/api/repair-shop-users",
+                json={
+                    "shop_id": "SHOP-PAGUSERS",
+                    "email": f"paguser{i}@example.com",
+                    "password": "secure123",
+                },
+            )
+        resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-PAGUSERS&limit=1&offset=0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["users"]) == 1
+        assert data["total"] == 3
 

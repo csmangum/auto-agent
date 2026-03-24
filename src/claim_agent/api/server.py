@@ -216,7 +216,11 @@ def _is_third_party_portal_path(path: str) -> bool:
 
 def _is_auth_public_path(path: str) -> bool:
     """Login and refresh do not require a bearer token."""
-    return path in ("/api/auth/login", "/api/auth/refresh")
+    return path in (
+        "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/repair-portal/auth/login",
+    )
 
 
 def _normalize_path(path: str) -> str:

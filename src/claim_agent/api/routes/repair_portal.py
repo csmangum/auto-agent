@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import jwt as pyjwt
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
@@ -28,6 +29,7 @@ from claim_agent.api.routes.portal import (
     _resolve_portal_attachment_urls,
 )
 from claim_agent.config import get_settings
+from claim_agent.config.settings import get_jwt_access_ttl_seconds, get_jwt_secret
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from claim_agent.db.database import get_db_path
@@ -98,10 +100,6 @@ def _infer_shop_and_auth(claim_id: str, claim_repo: ClaimRepository) -> tuple[st
 
 def _encode_shop_access_token(user_id: str, shop_id: str) -> str:
     """Issue a short-lived JWT for a repair shop user."""
-    from claim_agent.config.settings import get_jwt_access_ttl_seconds, get_jwt_secret
-
-    import jwt as pyjwt
-
     secret = get_jwt_secret()
     if not secret:
         raise HTTPException(
@@ -131,12 +129,6 @@ class ShopLoginBody(BaseModel):
     password: str = Field(..., min_length=1)
 
 
-class CreateShopUserBody(BaseModel):
-    shop_id: str = Field(..., min_length=1, max_length=128)
-    email: EmailStr
-    password: str = Field(..., min_length=8)
-
-
 @router.post("/auth/login")
 def repair_shop_login(body: ShopLoginBody):
     """Authenticate a repair shop user with email and password; returns a JWT access token."""
@@ -146,8 +138,6 @@ def repair_shop_login(body: ShopLoginBody):
     user = repo.verify_shop_user_password(body.email, body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    from claim_agent.config.settings import get_jwt_access_ttl_seconds
-
     access = _encode_shop_access_token(str(user["id"]), str(user["shop_id"]))
     return {
         "access_token": access,
@@ -170,6 +160,7 @@ def list_repair_portal_claims(
 ):
     """Return all claims assigned to the authenticated shop (requires shop-user JWT)."""
     shop_repo = RepairShopUserRepository()
+    total = shop_repo.count_assignments_for_shop(ctx.shop_id)
     assignments = shop_repo.get_assignments_for_shop(ctx.shop_id, limit=limit, offset=offset)
     claim_repo = _get_claim_repo()
     claims = []
@@ -182,7 +173,7 @@ def list_repair_portal_claims(
     return {
         "shop_id": ctx.shop_id,
         "claims": claims,
-        "total": len(claims),
+        "total": total,
         "limit": limit,
         "offset": offset,
     }

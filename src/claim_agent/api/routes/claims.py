@@ -74,6 +74,7 @@ from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.storage.s3 import S3StorageAdapter
 from claim_agent.services.bi_allocation import allocate_bi_limits
 from claim_agent.services.portal_verification import create_claim_access_token
+from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
 from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_access_token
 from claim_agent.services.third_party_portal_tokens import create_third_party_access_token
 from claim_agent.services.supplemental_request import execute_supplemental_request
@@ -1091,8 +1092,6 @@ def assign_repair_shop_to_claim(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Assign a repair shop to a claim so shop users can view it via the multi-claim portal."""
-    from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
-
     ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     repo = RepairShopUserRepository()
     try:
@@ -1114,8 +1113,6 @@ def list_repair_shop_assignments(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """List all repair shop assignments for a claim."""
-    from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
-
     ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     repo = RepairShopUserRepository()
     return {"claim_id": claim_id, "assignments": repo.get_assignments_for_claim(claim_id)}
@@ -1132,8 +1129,6 @@ def remove_repair_shop_assignment(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Remove a repair shop assignment from a claim."""
-    from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
-
     ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
     repo = RepairShopUserRepository()
     found = repo.remove_assignment(claim_id, shop_id)

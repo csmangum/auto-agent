@@ -31,8 +31,8 @@ def list_shop_users(
 ):
     """List repair shop user accounts (admin only)."""
     repo = RepairShopUserRepository()
-    users = repo.list_shop_users(shop_id=shop_id, limit=limit, offset=offset)
-    return {"users": users, "total": len(users)}
+    users, total = repo.list_shop_users(shop_id=shop_id, limit=limit, offset=offset)
+    return {"users": users, "total": total}
 
 
 @router.post("", status_code=201)

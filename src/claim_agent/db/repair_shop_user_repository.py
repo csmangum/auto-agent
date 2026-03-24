@@ -119,10 +119,14 @@ class RepairShopUserRepository:
         shop_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[dict[str, Any]]:
-        """List shop users, optionally filtered by shop_id."""
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List shop users, optionally filtered by shop_id. Returns (rows, total)."""
         with get_connection(self._db_path) as conn:
             if shop_id is not None:
+                total = conn.execute(
+                    text("SELECT COUNT(*) FROM repair_shop_users WHERE shop_id = :shop_id"),
+                    {"shop_id": shop_id},
+                ).scalar() or 0
                 rows = conn.execute(
                     text(
                         "SELECT id, shop_id, email, is_active, created_at, updated_at "
@@ -132,6 +136,9 @@ class RepairShopUserRepository:
                     {"shop_id": shop_id, "limit": limit, "offset": offset},
                 ).fetchall()
             else:
+                total = conn.execute(
+                    text("SELECT COUNT(*) FROM repair_shop_users"),
+                ).scalar() or 0
                 rows = conn.execute(
                     text(
                         "SELECT id, shop_id, email, is_active, created_at, updated_at "
@@ -140,7 +147,7 @@ class RepairShopUserRepository:
                     ),
                     {"limit": limit, "offset": offset},
                 ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows], int(total)
 
     def deactivate_shop_user(self, user_id: str) -> bool:
         """Soft-delete (deactivate) a shop user. Returns True if found."""
@@ -237,6 +244,19 @@ class RepairShopUserRepository:
                 {"shop_id": shop_id, "limit": limit, "offset": offset},
             ).fetchall()
         return [row_to_dict(r) for r in rows]
+
+    def count_assignments_for_shop(self, shop_id: str) -> int:
+        """Return total number of claim assignments for a given shop."""
+        with get_connection(self._db_path) as conn:
+            return int(
+                conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM repair_shop_claim_assignments "
+                        "WHERE shop_id = :shop_id"
+                    ),
+                    {"shop_id": shop_id},
+                ).scalar() or 0
+            )
 
     def is_claim_assigned_to_shop(self, claim_id: str, shop_id: str) -> bool:
         """Return True if the given shop is assigned to the given claim."""
