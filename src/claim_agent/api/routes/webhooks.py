@@ -202,6 +202,143 @@ class ERPWebhookPayload(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class ERPWebhookProcessingError(Exception):
+    """Raised when ERP event processing fails with a known API status."""
+
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        detail: str,
+        extra: dict[str, str | bool] | None = None,
+    ) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+        self.extra = extra or {}
+
+
+def process_erp_webhook_payload(parsed: ERPWebhookPayload) -> dict[str, str | bool]:
+    """Validate and apply one parsed ERP inbound event.
+
+    Returns the API response payload for success or duplicate-idempotent cases.
+    Raises :class:`ERPWebhookProcessingError` for known user-facing failures.
+    """
+    if parsed.event_type not in VALID_ERP_EVENT_TYPES:
+        raise ERPWebhookProcessingError(
+            status_code=400,
+            detail=f"Invalid event_type. Must be one of: {sorted(VALID_ERP_EVENT_TYPES)}",
+            extra={"erp_event_id": parsed.erp_event_id},
+        )
+
+    repo = ClaimRepository(db_path=get_db_path())
+    claim = repo.get_claim(parsed.claim_id)
+    if claim is None:
+        raise ERPWebhookProcessingError(
+            status_code=404,
+            detail=f"Claim not found: {parsed.claim_id}",
+            extra={"erp_event_id": parsed.erp_event_id},
+        )
+
+    if parsed.event_type in ("estimate_approved", "parts_delayed"):
+        if claim.get("claim_type") != "partial_loss":
+            raise ERPWebhookProcessingError(
+                status_code=400,
+                detail="ERP repair events only apply to partial_loss claims",
+                extra={"erp_event_id": parsed.erp_event_id},
+            )
+
+        if not _claim_has_authorization(
+            parsed.claim_id, parsed.shop_id, parsed.authorization_id
+        ):
+            raise ERPWebhookProcessingError(
+                status_code=400,
+                detail=(
+                    "Claim has no matching repair authorization "
+                    "for this shop_id"
+                ),
+                extra={"erp_event_id": parsed.erp_event_id},
+            )
+
+        status_repo = RepairStatusRepository(db_path=get_db_path())
+
+        if status_repo.has_erp_event(parsed.claim_id, parsed.erp_event_id):
+            return {
+                "ok": True,
+                "already_processed": True,
+                "event_type": parsed.event_type,
+                "claim_id": parsed.claim_id,
+                "erp_event_id": parsed.erp_event_id,
+            }
+
+    if parsed.event_type == "estimate_approved":
+        try:
+            status_repo.insert_repair_status(
+                claim_id=parsed.claim_id,
+                shop_id=parsed.shop_id,
+                status="repair",
+                notes=(
+                    "ERP estimate approved"
+                    + (
+                        f"; amount={parsed.approved_amount}"
+                        if parsed.approved_amount is not None
+                        else ""
+                    )
+                    + f"; erp_event_id={parsed.erp_event_id}"
+                ),
+            )
+        except Exception as e:
+            logger.exception(
+                "ERP webhook: failed to record repair status for estimate_approved: %s", e
+            )
+            raise ERPWebhookProcessingError(
+                status_code=500,
+                detail="Failed to record repair status",
+                extra={"erp_event_id": parsed.erp_event_id},
+            ) from e
+
+    elif parsed.event_type == "parts_delayed":
+        try:
+            note = f"ERP parts delayed; erp_event_id={parsed.erp_event_id}"
+            if parsed.delay_reason:
+                note += f"; reason={parsed.delay_reason}"
+            if parsed.expected_availability_date:
+                note += f"; eta={parsed.expected_availability_date}"
+            status_repo.insert_repair_status(
+                claim_id=parsed.claim_id,
+                shop_id=parsed.shop_id,
+                status="parts_ordered",
+                notes=note,
+                pause_reason=parsed.delay_reason,
+            )
+        except Exception as e:
+            logger.exception(
+                "ERP webhook: failed to record repair status for parts_delayed: %s", e
+            )
+            raise ERPWebhookProcessingError(
+                status_code=500,
+                detail="Failed to record repair status",
+                extra={"erp_event_id": parsed.erp_event_id},
+            ) from e
+
+    elif parsed.event_type == "supplement_requested":
+        logger.info(
+            "ERP webhook: supplement_requested claim_id=%s shop_id=%s "
+            "supplement_amount=%s erp_event_id=%s",
+            parsed.claim_id,
+            parsed.shop_id,
+            parsed.supplement_amount,
+            parsed.erp_event_id,
+        )
+
+    return {
+        "ok": True,
+        "event_type": parsed.event_type,
+        "claim_id": parsed.claim_id,
+        "erp_event_id": parsed.erp_event_id,
+    }
+
+
 @router.post("/erp")
 async def erp_webhook(request: Request) -> Response:
     """Receive inbound events from repair/shop management systems (ERP).
@@ -242,136 +379,15 @@ async def erp_webhook(request: Request) -> Response:
             content={"detail": "Invalid payload"},
         )
 
-    if parsed.event_type not in VALID_ERP_EVENT_TYPES:
+    try:
+        result = process_erp_webhook_payload(parsed)
+    except ERPWebhookProcessingError as e:
         return JSONResponse(
-            status_code=400,
+            status_code=e.status_code,
             content={
-                "detail": (
-                    f"Invalid event_type. Must be one of: {sorted(VALID_ERP_EVENT_TYPES)}"
-                ),
-                "erp_event_id": parsed.erp_event_id,
+                "detail": e.detail,
+                **e.extra,
             },
         )
 
-    repo = ClaimRepository(db_path=get_db_path())
-    claim = repo.get_claim(parsed.claim_id)
-    if claim is None:
-        return JSONResponse(
-            status_code=404,
-            content={
-                "detail": f"Claim not found: {parsed.claim_id}",
-                "erp_event_id": parsed.erp_event_id,
-            },
-        )
-
-    if parsed.event_type in ("estimate_approved", "parts_delayed"):
-        if claim.get("claim_type") != "partial_loss":
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "detail": "ERP repair events only apply to partial_loss claims",
-                    "erp_event_id": parsed.erp_event_id,
-                },
-            )
-
-        if not _claim_has_authorization(
-            parsed.claim_id, parsed.shop_id, parsed.authorization_id
-        ):
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "detail": (
-                        "Claim has no matching repair authorization "
-                        "for this shop_id"
-                    ),
-                    "erp_event_id": parsed.erp_event_id,
-                },
-            )
-
-        status_repo = RepairStatusRepository(db_path=get_db_path())
-
-        if status_repo.has_erp_event(parsed.claim_id, parsed.erp_event_id):
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "ok": True,
-                    "already_processed": True,
-                    "event_type": parsed.event_type,
-                    "claim_id": parsed.claim_id,
-                    "erp_event_id": parsed.erp_event_id,
-                },
-            )
-
-    if parsed.event_type == "estimate_approved":
-        try:
-            status_repo.insert_repair_status(
-                claim_id=parsed.claim_id,
-                shop_id=parsed.shop_id,
-                status="repair",
-                notes=(
-                    "ERP estimate approved"
-                    + (
-                        f"; amount={parsed.approved_amount}"
-                        if parsed.approved_amount is not None
-                        else ""
-                    )
-                    + f"; erp_event_id={parsed.erp_event_id}"
-                ),
-            )
-        except Exception as e:
-            logger.exception(
-                "ERP webhook: failed to record repair status for estimate_approved: %s", e
-            )
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "detail": "Failed to record repair status",
-                    "erp_event_id": parsed.erp_event_id,
-                },
-            )
-
-    elif parsed.event_type == "parts_delayed":
-        try:
-            note = f"ERP parts delayed; erp_event_id={parsed.erp_event_id}"
-            if parsed.delay_reason:
-                note += f"; reason={parsed.delay_reason}"
-            if parsed.expected_availability_date:
-                note += f"; eta={parsed.expected_availability_date}"
-            status_repo.insert_repair_status(
-                claim_id=parsed.claim_id,
-                shop_id=parsed.shop_id,
-                status="parts_ordered",
-                notes=note,
-                pause_reason=parsed.delay_reason,
-            )
-        except Exception as e:
-            logger.exception(
-                "ERP webhook: failed to record repair status for parts_delayed: %s", e
-            )
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "detail": "Failed to record repair status",
-                    "erp_event_id": parsed.erp_event_id,
-                },
-            )
-
-    elif parsed.event_type == "supplement_requested":
-        logger.info(
-            "ERP webhook: supplement_requested claim_id=%s shop_id=%s "
-            "supplement_amount=%s erp_event_id=%s",
-            parsed.claim_id,
-            parsed.shop_id,
-            parsed.supplement_amount,
-            parsed.erp_event_id,
-        )
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "ok": True,
-            "event_type": parsed.event_type,
-            "claim_id": parsed.claim_id,
-            "erp_event_id": parsed.erp_event_id,
-        },
-    )
+    return JSONResponse(status_code=200, content=result)

@@ -20,6 +20,7 @@ def _scheduler_settings(enabled: bool = True) -> SimpleNamespace:
         timezone="UTC",
         diary_escalate_cron="0 * * * *",
         ucspa_deadline_check_cron="0 9 * * *",
+        erp_poll_cron="*/15 * * * *",
         ucspa_days_ahead=3,
     )
 
@@ -47,11 +48,15 @@ def test_ensure_scheduler_running_starts_jobs_when_enabled():
             scheduler.ensure_scheduler_running()
 
     assert scheduler._scheduler is fake_scheduler
-    assert len(add_job_calls) == 2
+    assert len(add_job_calls) == 3
     job_ids = {call["kwargs"]["id"] for call in add_job_calls}
-    assert job_ids == {"diary_escalate", "ucspa_deadlines"}
+    assert job_ids == {"diary_escalate", "ucspa_deadlines", "erp_poll"}
     funcs = {call["args"][0] for call in add_job_calls}
-    assert funcs == {scheduler._run_diary_escalation_job, scheduler._run_ucspa_deadline_job}
+    assert funcs == {
+        scheduler._run_diary_escalation_job,
+        scheduler._run_ucspa_deadline_job,
+        scheduler._run_erp_poll_job,
+    }
     scheduler._scheduler = None
 
 

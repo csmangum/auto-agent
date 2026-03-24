@@ -214,6 +214,26 @@ class TestGenerateRepairAuthorizationERPPush:
         assert "authorization_id" in data
         assert "erp_reference" not in data
 
+    def test_pending_approval_does_not_push_erp(self):
+        """No ERP push should occur until the customer approves authorization."""
+        from claim_agent.tools.partial_loss_logic import generate_repair_authorization_impl
+
+        mock_adapter = _make_mock_erp_adapter()
+        with patch("claim_agent.tools.partial_loss_logic.get_erp_adapter", return_value=mock_adapter):
+            result = generate_repair_authorization_impl(
+                claim_id="CLM-AUTH-006",
+                shop_id="SHOP-001",
+                repair_estimate=self._ESTIMATE,
+                customer_approved=False,
+            )
+
+        data = json.loads(result)
+        assert data["authorization_status"] == "pending_approval"
+        assert "erp_reference" not in data
+        mock_adapter.push_repair_assignment.assert_not_called()
+        mock_adapter.push_estimate_update.assert_not_called()
+        mock_adapter.push_repair_status.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # update_repair_authorization_impl – ERP push calls for supplement
@@ -478,6 +498,31 @@ class TestERPPollJob:
             _run_erp_poll_job()
 
         mock_adapter.pull_pending_events.assert_called_once()
+
+    def test_poll_job_records_estimate_approved_event(self, seeded_temp_db):
+        """Polling path applies the same state updates as the webhook path."""
+        from claim_agent.db.repair_status_repository import RepairStatusRepository
+        from claim_agent.scheduler import _run_erp_poll_job
+
+        events = [
+            {
+                "event_type": "estimate_approved",
+                "claim_id": "CLM-TEST005",
+                "shop_id": "SHOP-001",
+                "erp_event_id": "ERP-POLL-APPLY-001",
+                "occurred_at": "2025-06-01T10:00:00Z",
+                "approved_amount": 2100.0,
+            }
+        ]
+        mock_adapter = _make_mock_erp_adapter(**{"pull_pending_events.return_value": events})
+        with patch("claim_agent.adapters.registry.get_erp_adapter", return_value=mock_adapter):
+            _run_erp_poll_job()
+
+        status_repo = RepairStatusRepository(db_path=seeded_temp_db)
+        latest = status_repo.get_repair_status("CLM-TEST005")
+        assert latest is not None
+        assert latest["status"] == "repair"
+        assert "ERP-POLL-APPLY-001" in (latest.get("notes") or "")
 
     def test_poll_job_survives_adapter_error(self):
         """_run_erp_poll_job catches and logs exceptions from the ERP adapter."""

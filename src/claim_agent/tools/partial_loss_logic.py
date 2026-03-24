@@ -590,47 +590,48 @@ def generate_repair_authorization_impl(
     authorization_id = authorization["authorization_id"]
     authorized_amount = authorization["authorized_amount"]
 
-    # Push repair assignment (with authorization_id) to ERP.
-    erp_assign_result = _push_erp_and_capture(
-        "push_repair_assignment",
-        "assignment",
-        {
-            "claim_id": claim_id,
-            "shop_id": shop_id,
-            "authorization_id": authorization_id,
-            "repair_amount": authorized_amount,
-            "vehicle_info": None,
-        },
-    )
-    if erp_assign_result.get("erp_reference"):
-        authorization["erp_reference"] = erp_assign_result["erp_reference"]
+    if customer_approved:
+        # Push repair assignment (with authorization_id) to ERP only after approval.
+        erp_assign_result = _push_erp_and_capture(
+            "push_repair_assignment",
+            "assignment",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": authorization_id,
+                "repair_amount": authorized_amount,
+                "vehicle_info": None,
+            },
+        )
+        if erp_assign_result.get("erp_reference"):
+            authorization["erp_reference"] = erp_assign_result["erp_reference"]
 
-    # Push the repair estimate to ERP.
-    _push_erp_and_capture(
-        "push_estimate_update",
-        "estimate",
-        {
-            "claim_id": claim_id,
-            "shop_id": shop_id,
-            "authorization_id": authorization_id,
-            "estimate_amount": authorized_amount,
-            "line_items": None,
-            "is_supplement": False,
-        },
-    )
+        # Push the repair estimate to ERP.
+        _push_erp_and_capture(
+            "push_estimate_update",
+            "estimate",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": authorization_id,
+                "estimate_amount": authorized_amount,
+                "line_items": None,
+                "is_supplement": False,
+            },
+        )
 
-    # Push initial repair status ("received") to ERP.
-    _push_erp_and_capture(
-        "push_repair_status",
-        "status",
-        {
-            "claim_id": claim_id,
-            "shop_id": shop_id,
-            "authorization_id": authorization_id,
-            "status": "received",
-            "notes": "Repair authorization issued",
-        },
-    )
+        # Push initial repair status ("received") to ERP.
+        _push_erp_and_capture(
+            "push_repair_status",
+            "status",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": authorization_id,
+                "status": "received",
+                "notes": "Repair authorization issued",
+            },
+        )
 
     return json.dumps(authorization)
 

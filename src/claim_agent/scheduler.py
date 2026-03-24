@@ -9,12 +9,18 @@ from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from pydantic import ValidationError
 
 from claim_agent.compliance.ucspa import claims_with_deadlines_approaching
 from claim_agent.config import get_settings
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.escalation import run_deadline_escalation
 from claim_agent.notifications.webhook import dispatch_ucspa_deadline_approaching
+from claim_agent.api.routes.webhooks import (
+    ERPWebhookPayload,
+    ERPWebhookProcessingError,
+    process_erp_webhook_payload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,24 +66,16 @@ def _run_ucspa_deadline_job() -> None:
 
 
 def _process_erp_inbound_event(event: dict[str, Any]) -> None:
-    """Process a single inbound ERP event received via polling.
-
-    Logs the event for observability.  Duplicate handling and claim-state
-    updates for events already ingested via the ``POST /api/webhooks/erp``
-    webhook are handled upstream; this path is for events that were *not*
-    delivered via the webhook (e.g. when the webhook endpoint was temporarily
-    unavailable).
-    """
-    event_type = event.get("event_type", "")
-    claim_id = event.get("claim_id", "")
-    shop_id = event.get("shop_id", "")
-    erp_event_id = event.get("erp_event_id", "")
+    """Process one polled ERP event using webhook-equivalent logic."""
+    parsed = ERPWebhookPayload(**event)
+    result = process_erp_webhook_payload(parsed)
     logger.info(
-        "ERP poll: inbound event_type=%s claim_id=%s shop_id=%s erp_event_id=%s",
-        event_type,
-        claim_id,
-        shop_id,
-        erp_event_id,
+        "ERP poll: processed event_type=%s claim_id=%s shop_id=%s erp_event_id=%s already_processed=%s",
+        parsed.event_type,
+        parsed.claim_id,
+        parsed.shop_id,
+        parsed.erp_event_id,
+        result.get("already_processed", False),
     )
 
 
@@ -94,6 +92,13 @@ def _run_erp_poll_job() -> None:
         for event in events:
             try:
                 _process_erp_inbound_event(event)
+            except ValidationError:
+                logger.exception("ERP poll: invalid inbound event payload")
+            except ERPWebhookProcessingError:
+                logger.exception(
+                    "ERP poll: failed business processing for event erp_event_id=%s",
+                    event.get("erp_event_id"),
+                )
             except Exception:
                 logger.exception(
                     "ERP poll: failed to process event erp_event_id=%s",
