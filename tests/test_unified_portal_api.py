@@ -362,8 +362,7 @@ class TestTpaRole:
         body = resp.json()
         assert body["role"] == "tpa"
         assert body["claim_ids"] == ["CLM-TEST001"]
-        # TPA is not "claimant" so redirect should be repair-portal path
-        assert body["redirect"] == "/repair-portal/claims"
+        assert body["redirect"] == "/third-party-portal/claims"
 
 
 # ---------------------------------------------------------------------------

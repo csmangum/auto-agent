@@ -72,7 +72,12 @@ def detect_portal_role(
     path could leak information via response latency.  New deployments should
     issue unified tokens (``X-Portal-Token``) which carry the role explicitly.
     """
-    redirect = "/portal/claims" if session.role == "claimant" else "/repair-portal/claims"
+    if session.role == "claimant":
+        redirect = "/portal/claims"
+    elif session.role == "tpa":
+        redirect = "/third-party-portal/claims"
+    else:
+        redirect = "/repair-portal/claims"
     return {
         "role": session.role,
         "claim_ids": session.claim_ids,

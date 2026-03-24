@@ -113,16 +113,15 @@ async def require_unified_portal_session(request: Request) -> UnifiedPortalSessi
         )
 
     # --- 3–5. Claimant credentials (legacy portal session) ----------------
-    settings = get_settings()
-    if not settings.portal.enabled:
-        raise HTTPException(status_code=503, detail="Claimant portal is disabled")
-
     token = (request.headers.get("x-claim-access-token") or "").strip() or None
     pn = (request.headers.get("x-policy-number") or "").strip() or None
     vin = (request.headers.get("x-vin") or "").strip() or None
     email = (request.headers.get("x-email") or "").strip() or None
 
     if token or (pn and vin) or email:
+        settings = get_settings()
+        if not settings.portal.enabled:
+            raise HTTPException(status_code=503, detail="Claimant portal is disabled")
         ids = get_claim_ids_for_claimant(
             token=token,
             policy_number=pn,

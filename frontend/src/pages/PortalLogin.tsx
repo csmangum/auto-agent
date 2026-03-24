@@ -66,6 +66,9 @@ export default function PortalLogin() {
       setShopClaimId(cid);
       setShopToken(t);
       setRole('repair_shop');
+    } else if (t && qRole === 'repair_shop') {
+      // Token only with repair_shop role → store as repair-shop token
+      setShopToken(t);
     } else if (t && qRole !== 'repair_shop') {
       // Token only (no claim_id, not repair_shop) → claimant token mode
       setClaimantToken(t);
