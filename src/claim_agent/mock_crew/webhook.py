@@ -79,8 +79,8 @@ def get_captured_webhooks(event: str | None = None) -> list[dict[str, Any]]:
     """
     with _lock:
         if event is None:
-            return list(_captured)
-        return [p for p in _captured if p.get("event") == event]
+            return [dict(p) for p in _captured]
+        return [dict(p) for p in _captured if p.get("event") == event]
 
 
 def clear_captured_webhooks() -> None:

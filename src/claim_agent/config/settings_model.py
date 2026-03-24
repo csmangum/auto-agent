@@ -965,6 +965,8 @@ class MockThirdPartyConfig(BaseSettings):
     @classmethod
     def _parse_outcome(cls, v: Any) -> str:
         valid = {o.value for o in ThirdPartyOutcome}
+        if isinstance(v, ThirdPartyOutcome):
+            return v.value
         val = str(v).strip().lower() if v else ThirdPartyOutcome.ACCEPT.value
         return val if val in valid else ThirdPartyOutcome.ACCEPT.value
 
