@@ -9,7 +9,7 @@ without a persistent ctx.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -76,8 +76,10 @@ class RentalAuthorizationRepository:
     ) -> int:
         """Insert or update the rental authorization for a claim.
 
-        If a row already exists for ``claim_id`` (by ``reimbursement_id`` when
-        provided, otherwise by ``claim_id``) the existing row is updated.
+        When ``reimbursement_id`` is set, only a row with that id is updated;
+        otherwise a new row is inserted (so prior reimbursement IDs stay
+        addressable). When ``reimbursement_id`` is omitted, the latest row for
+        ``claim_id`` is updated if one exists, else a row is inserted.
 
         Returns the id of the inserted/updated row.
         """
@@ -242,8 +244,7 @@ class RentalAuthorizationRepository:
                 """),
                 {"rid": reimbursement_id},
             ).fetchone()
-            if row:
-                return row[0]
+            return cast(int, row[0]) if row else None
         row = conn.execute(
             text("""
             SELECT id FROM rental_authorizations
@@ -252,4 +253,4 @@ class RentalAuthorizationRepository:
             """),
             {"claim_id": claim_id},
         ).fetchone()
-        return row[0] if row else None
+        return cast(int, row[0]) if row else None

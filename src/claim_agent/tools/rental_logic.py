@@ -292,14 +292,15 @@ def process_rental_reimbursement_impl(
                 "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
             }
         )
-    
-    # Check DB for existing authorization when ctx is available (cross-process idempotency).
+
+    rental_repo: RentalAuthorizationRepository | None = None
     if ctx is not None:
+        rental_repo = RentalAuthorizationRepository(db_path=ctx.repo.db_path)
+
+    # Check DB for existing authorization when ctx is available (cross-process idempotency).
+    if rental_repo is not None:
         try:
-            repo = RentalAuthorizationRepository(
-                db_path=getattr(ctx.repo, "_db_path", None),
-            )
-            existing = repo.get_authorization(claim_id)
+            existing = rental_repo.get_authorization(claim_id)
             if (
                 existing
                 and existing.get("authorized_days") == rental_days
@@ -316,8 +317,8 @@ def process_rental_reimbursement_impl(
                         "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
                     }
                 )
-        except Exception as exc:
-            logger.warning("Failed to check DB for existing rental authorization: %s", exc)
+        except Exception:
+            logger.exception("Failed to check DB for existing rental authorization")
     
     daily_limit = float(limits["daily_limit"])
     aggregate_limit = float(limits["aggregate_limit"])
@@ -345,12 +346,9 @@ def process_rental_reimbursement_impl(
     _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
 
     # Persist to DB when ClaimContext is available (same DB path as ClaimRepository).
-    if ctx is not None:
+    if rental_repo is not None:
         try:
-            repo = RentalAuthorizationRepository(
-                db_path=getattr(ctx.repo, "_db_path", None),
-            )
-            repo.upsert_authorization(
+            rental_repo.upsert_authorization(
                 claim_id=claim_id,
                 authorized_days=rental_days,
                 daily_cap=daily_limit,
@@ -359,8 +357,8 @@ def process_rental_reimbursement_impl(
                 reimbursement_id=reimbursement_id,
                 amount_approved=float(amount),
             )
-        except Exception as exc:
-            logger.warning("Failed to persist rental authorization: %s", exc)
+        except Exception:
+            logger.exception("Failed to persist rental authorization")
 
     return json.dumps(
         {

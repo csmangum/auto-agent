@@ -13,7 +13,7 @@ persisted when the rental crew completes.  Each row captures:
 - ``amount_approved``  – total amount approved (capped by daily_cap * days and
                          aggregate_limit)
 
-The portal DTO (``/portal/claims/{id}/rental-summary``) omits ``reservation_ref``
+The portal DTO (``GET /api/portal/claims/{claim_id}/rental-summary``) omits ``reservation_ref``
 and ``agency_ref`` which are internal/vendor-sensitive, and exposes only the
 structured fields a claimant needs to understand their rental entitlement.
 

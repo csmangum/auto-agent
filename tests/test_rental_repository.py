@@ -88,6 +88,31 @@ class TestUpsertAuthorization:
         record = repo.get_authorization("CLM-TEST001")
         assert record["status"] == "completed"
 
+    def test_new_reimbursement_id_inserts_row_preserving_prior_id(self, repo):
+        """A distinct reimbursement_id must not update the prior row for the same claim."""
+        row_id1 = repo.upsert_authorization(
+            claim_id="CLM-TEST001",
+            authorized_days=5,
+            daily_cap=35.0,
+            reimbursement_id="RENT-FIRST",
+            amount_approved=175.0,
+        )
+        row_id2 = repo.upsert_authorization(
+            claim_id="CLM-TEST001",
+            authorized_days=7,
+            daily_cap=40.0,
+            reimbursement_id="RENT-SECOND",
+            amount_approved=280.0,
+        )
+        assert row_id1 != row_id2
+        first = repo.get_by_reimbursement_id("RENT-FIRST")
+        second = repo.get_by_reimbursement_id("RENT-SECOND")
+        assert first is not None and second is not None
+        assert first["amount_approved"] == 175.0
+        assert second["amount_approved"] == 280.0
+        latest = repo.get_authorization("CLM-TEST001")
+        assert latest["reimbursement_id"] == "RENT-SECOND"
+
     def test_update_by_claim_id_when_no_reimbursement_id(self, repo):
         """Second upsert for same claim_id (no reimbursement_id) updates existing row."""
         row_id1 = repo.upsert_authorization(
