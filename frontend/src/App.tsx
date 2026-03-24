@@ -24,7 +24,6 @@ import DiaryCalendar from './pages/DiaryCalendar';
 import PortalLogin from './pages/PortalLogin';
 import PortalClaimsList from './pages/PortalClaimsList';
 import PortalClaimDetail from './pages/PortalClaimDetail';
-import RepairPortalLogin from './pages/RepairPortalLogin';
 import RepairPortalClaimDetail from './pages/RepairPortalClaimDetail';
 import ThirdPartyPortalLogin from './pages/ThirdPartyPortalLogin';
 import ThirdPartyPortalClaimDetail from './pages/ThirdPartyPortalClaimDetail';
@@ -90,7 +89,7 @@ export default function App() {
             <Route path="" element={<Navigate to="/portal/login" replace />} />
           </Route>
           <Route path="/repair-portal">
-            <Route path="login" element={<RepairPortalLogin />} />
+            <Route path="login" element={<Navigate to="/portal/login?role=repair_shop" replace />} />
             <Route
               path="claims/:claimId"
               element={
@@ -99,7 +98,7 @@ export default function App() {
                 </RepairPortalGuard>
               }
             />
-            <Route path="" element={<Navigate to="/repair-portal/login" replace />} />
+            <Route path="" element={<Navigate to="/portal/login?role=repair_shop" replace />} />
           </Route>
           <Route path="/third-party-portal">
             <Route path="login" element={<ThirdPartyPortalLogin />} />
