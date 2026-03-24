@@ -1189,6 +1189,25 @@ class MockImageConfig(BaseSettings):
         return str(v).strip().lower() in ("true", "1", "yes")
 
 
+class MockDocumentGeneratorConfig(BaseSettings):
+    """Mock document generator: repair estimates and damage photo URLs."""
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(default=False, validation_alias="MOCK_DOCUMENT_GENERATOR_ENABLED")
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
 # ---------------------------------------------------------------------------
 # Adapter backends (dynamic env keys)
 # ---------------------------------------------------------------------------
@@ -1450,6 +1469,7 @@ class Settings(BaseSettings):
     mock_claimant: MockClaimantConfig = Field(default_factory=MockClaimantConfig)
     mock_notifier: MockNotifierConfig = Field(default_factory=MockNotifierConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
+    mock_document: MockDocumentGeneratorConfig = Field(default_factory=MockDocumentGeneratorConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)
     policy_rest: PolicyRestConfig = Field(default_factory=PolicyRestConfig)
     valuation_rest: ValuationRestConfig = Field(default_factory=ValuationRestConfig)
