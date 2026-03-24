@@ -28,11 +28,12 @@ def base_claim_context():
     }
 
 
-def _make_settings(seed=None, generator_enabled=False, tmp_path=None):
+def _make_settings(seed=None, generator_enabled=False, tmp_path=None, enabled=True):
     """Build a minimal mock settings object."""
     m = type("S", (), {})()
     m.mock_crew = type("MC", (), {"seed": seed})()
     m.mock_image = type("MI", (), {"generator_enabled": generator_enabled})()
+    m.mock_document = type("MD", (), {"enabled": enabled})()
     if tmp_path is not None:
         m.get_attachment_storage_base_path = lambda: tmp_path
     return m
@@ -160,6 +161,48 @@ class TestGenerateRepairEstimate:
             result = generate_repair_estimate(ctx)
         assert len(result["line_items"]) >= 5
 
+    def test_raises_when_disabled(self, base_claim_context):
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=None, enabled=False)
+            with pytest.raises(ValueError, match="disabled"):
+                generate_repair_estimate(base_claim_context)
+
+    def test_estimated_damage_zero_ignored(self, base_claim_context):
+        ctx = {**base_claim_context, "estimated_damage": 0}
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=42)
+            result = generate_repair_estimate(ctx)
+        ctx_no_override = {**base_claim_context}
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=42)
+            baseline = generate_repair_estimate(ctx_no_override)
+        assert result["total"] == baseline["total"]
+
+    def test_estimated_damage_negative_ignored(self, base_claim_context):
+        ctx = {**base_claim_context, "estimated_damage": -500.0}
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=42)
+            result = generate_repair_estimate(ctx)
+        ctx_no_override = {**base_claim_context}
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=42)
+            baseline = generate_repair_estimate(ctx_no_override)
+        assert result["total"] == baseline["total"]
+
+    def test_estimated_damage_non_numeric_ignored(self, base_claim_context):
+        ctx = {**base_claim_context, "estimated_damage": "not a number"}
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=42)
+            result = generate_repair_estimate(ctx)
+        assert result["total"] > 0
+
+    def test_line_items_sum_matches_subtotal(self, base_claim_context):
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=42)
+            result = generate_repair_estimate(base_claim_context)
+        line_total_sum = sum(item["line_total"] for item in result["line_items"])
+        assert abs(line_total_sum - result["subtotal"]) < 0.02
+
 
 # ---------------------------------------------------------------------------
 # generate_damage_photo_url tests
@@ -220,3 +263,20 @@ class TestGenerateDamagePhotoUrl:
             result = generate_damage_photo_url(ctx)
 
         assert expected_filename in result
+
+    def test_raises_when_disabled(self, base_claim_context, tmp_path):
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(
+                seed=None, generator_enabled=False, tmp_path=tmp_path, enabled=False,
+            )
+            with pytest.raises(ValueError, match="disabled"):
+                generate_damage_photo_url(base_claim_context)
+
+    def test_claim_id_special_chars_sanitized(self, tmp_path):
+        ctx = {"claim_id": "CLM/001 (test)"}
+        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
+            ms.return_value = _make_settings(seed=None, generator_enabled=False, tmp_path=tmp_path)
+            result = generate_damage_photo_url(ctx)
+        assert "/" not in result.split("mock_generated/")[-1]
+        assert " " not in result.split("mock_generated/")[-1]
+        assert "(" not in result.split("mock_generated/")[-1]

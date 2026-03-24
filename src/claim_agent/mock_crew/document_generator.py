@@ -11,6 +11,7 @@ import random
 from typing import Any
 
 from claim_agent.config import get_settings
+from claim_agent.mock_crew.image_generator import generate_damage_image
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _LABOR_RATE_PER_HOUR = 125.0  # USD per hour, typical body-shop rate
+_TAX_RATE = 0.08
 
 _DAMAGE_PART_CATALOG: list[dict[str, Any]] = [
     {"part": "Front Bumper Cover", "part_cost": 450.0, "labor_hours": 3.0},
@@ -76,7 +78,7 @@ _SHOP_NAMES = [
 ]
 
 
-def _select_parts(claim_context: dict[str, Any], rng: random.Random) -> list[str]:
+def _select_parts(claim_context: dict[str, Any]) -> list[str]:
     """Select relevant parts based on damage description keywords."""
     damage = (claim_context.get("damage_description") or "").lower()
     incident = (claim_context.get("incident_description") or "").lower()
@@ -147,6 +149,13 @@ def generate_repair_estimate(claim_context: dict[str, Any]) -> dict[str, Any]:
         Dict with keys ``line_items``, ``subtotal_parts``, ``subtotal_labor``,
         ``subtotal``, ``tax``, ``total``, ``shop_name``, ``currency``.
     """
+    cfg = get_settings().mock_document
+    if not cfg.enabled:
+        raise ValueError(
+            "Mock document generator is disabled. "
+            "Set MOCK_DOCUMENT_GENERATOR_ENABLED=true."
+        )
+
     seed = get_settings().mock_crew.seed
     if seed is not None:
         ctx_str = json.dumps(claim_context, sort_keys=True)
@@ -156,14 +165,13 @@ def generate_repair_estimate(claim_context: dict[str, Any]) -> dict[str, Any]:
 
     rng = random.Random(derived_seed)
 
-    part_names = _select_parts(claim_context, rng)
+    part_names = _select_parts(claim_context)
     line_items = _build_line_items(part_names, rng)
 
     subtotal_parts = round(sum(item["part_cost"] for item in line_items), 2)
     subtotal_labor = round(sum(item["labor_cost"] for item in line_items), 2)
     subtotal = round(subtotal_parts + subtotal_labor, 2)
-    tax_rate = 0.08
-    tax = round(subtotal * tax_rate, 2)
+    tax = round(subtotal * _TAX_RATE, 2)
     total = round(subtotal + tax, 2)
 
     # Honour an explicit estimated_damage override if provided
@@ -172,12 +180,11 @@ def generate_repair_estimate(claim_context: dict[str, Any]) -> dict[str, Any]:
         try:
             override_val = float(estimated_override)
             if override_val > 0:
-                # Scale all monetary values proportionally
                 scale = override_val / total if total else 1.0
                 subtotal_parts = round(subtotal_parts * scale, 2)
                 subtotal_labor = round(subtotal_labor * scale, 2)
                 subtotal = round(subtotal_parts + subtotal_labor, 2)
-                tax = round(subtotal * tax_rate, 2)
+                tax = round(subtotal * _TAX_RATE, 2)
                 total = round(subtotal + tax, 2)
                 for item in line_items:
                     item["part_cost"] = round(item["part_cost"] * scale, 2)
@@ -188,7 +195,7 @@ def generate_repair_estimate(claim_context: dict[str, Any]) -> dict[str, Any]:
 
     shop_name = rng.choice(_SHOP_NAMES)
 
-    vehicle_parts = " ".join(
+    vehicle_desc = " ".join(
         filter(
             None,
             [
@@ -201,7 +208,7 @@ def generate_repair_estimate(claim_context: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "claim_id": claim_context.get("claim_id"),
-        "vehicle": vehicle_parts or None,
+        "vehicle": vehicle_desc or None,
         "shop_name": shop_name,
         "line_items": line_items,
         "subtotal_parts": subtotal_parts,
@@ -230,10 +237,15 @@ def generate_damage_photo_url(claim_context: dict[str, Any]) -> str:
     Returns:
         ``file://`` URL (from image generator) or a placeholder path string.
     """
+    doc_cfg = get_settings().mock_document
+    if not doc_cfg.enabled:
+        raise ValueError(
+            "Mock document generator is disabled. "
+            "Set MOCK_DOCUMENT_GENERATOR_ENABLED=true."
+        )
+
     cfg = get_settings().mock_image
     if cfg.generator_enabled:
-        from claim_agent.mock_crew.image_generator import generate_damage_image
-
         return generate_damage_image(claim_context, fallback_on_error=True)
 
     # Return a deterministic placeholder path so callers always get a string
@@ -244,7 +256,8 @@ def generate_damage_photo_url(claim_context: dict[str, Any]) -> str:
         filename = f"mock_damage_{h}.png"
     else:
         claim_id = claim_context.get("claim_id", "unknown")
-        filename = f"mock_damage_{claim_id}.png"
+        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(claim_id))
+        filename = f"mock_damage_{safe_id}.png"
 
     base = get_settings().get_attachment_storage_base_path()
     out_path = base / "mock_generated" / filename
