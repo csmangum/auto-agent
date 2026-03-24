@@ -38,6 +38,7 @@ os.environ.setdefault(
 
 from sqlalchemy import text
 
+from claim_agent.config import reload_settings
 from claim_agent.db.database import get_connection, init_db
 
 
@@ -373,8 +374,6 @@ def _reset_settings(request):
 @pytest.fixture(autouse=True)
 def temp_db():
     """Use a temporary SQLite DB for tests."""
-    from claim_agent.config import reload_settings
-
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     init_db(path)
@@ -477,7 +476,5 @@ def mock_crew(monkeypatch):
     monkeypatch.setenv("VISION_ADAPTER", "mock")
     monkeypatch.setenv("MOCK_IMAGE_VISION_ANALYSIS_SOURCE", "claim_context")
     monkeypatch.setenv("MOCK_CREW_SEED", "42")
-    from claim_agent.config import reload_settings
-
-    reload_settings()  # vision_logic reads adapter via get_settings()
+    reload_settings()
     yield
