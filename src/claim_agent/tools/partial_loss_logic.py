@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_ERP_LOG_IDENTIFIER_KEYS = frozenset({"claim_id", "shop_id", "authorization_id"})
+
 
 def _push_erp_and_capture(
     method: str,
@@ -52,7 +54,23 @@ def _push_erp_and_capture(
         fn = getattr(erp, method)
         result: dict[str, Any] = fn(**payload)
     except Exception:
-        logger.warning("ERP adapter %s failed (non-fatal): payload=%s", method, payload, exc_info=True)
+        identifiers = {
+            k: payload[k]
+            for k in _ERP_LOG_IDENTIFIER_KEYS
+            if k in payload
+        }
+        logger.warning(
+            "ERP adapter %s failed (non-fatal)",
+            method,
+            exc_info=True,
+            extra={
+                "extra_data": {
+                    "erp_method": method,
+                    "erp_event_type": event_type,
+                    "identifiers": identifiers,
+                },
+            },
+        )
         return {}
 
     if get_mock_crew_config()["enabled"] and get_mock_erp_capture_config()["capture_enabled"]:

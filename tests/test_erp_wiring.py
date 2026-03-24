@@ -294,6 +294,32 @@ class TestUpdateRepairAuthorizationERPPush:
         assert call_kw["claim_id"] == "CLM-SUP-002"
         assert call_kw["status"] == "supplemental"
 
+    def test_supplement_pending_approval_does_not_push_erp(self):
+        """No supplemental ERP push until the customer approves the update."""
+        from claim_agent.tools.partial_loss_logic import update_repair_authorization_impl
+
+        mock_adapter = _make_mock_erp_adapter()
+        with patch("claim_agent.tools.partial_loss_logic.get_erp_adapter", return_value=mock_adapter):
+            result = update_repair_authorization_impl(
+                claim_id="CLM-SUP-PEND",
+                shop_id="SHOP-001",
+                original_total=3500.0,
+                original_parts=2000.0,
+                original_labor=1500.0,
+                original_insurance_pays=3000.0,
+                supplemental_total=800.0,
+                supplemental_parts=500.0,
+                supplemental_labor=300.0,
+                supplemental_insurance_pays=800.0,
+                authorization_id="RA-ORIGINAL",
+                customer_approved=False,
+            )
+
+        data = json.loads(result)
+        assert data["authorization_status"] == "pending_approval"
+        mock_adapter.push_estimate_update.assert_not_called()
+        mock_adapter.push_repair_status.assert_not_called()
+
     def test_erp_failure_is_non_fatal(self):
         """ERP push failure does not prevent supplemental authorization update."""
         from claim_agent.tools.partial_loss_logic import update_repair_authorization_impl
