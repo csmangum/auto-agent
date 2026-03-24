@@ -163,9 +163,11 @@ def list_repair_portal_claims(
     total = shop_repo.count_assignments_for_shop(ctx.shop_id)
     assignments = shop_repo.get_assignments_for_shop(ctx.shop_id, limit=limit, offset=offset)
     claim_repo = _get_claim_repo()
+    claim_ids = [str(a["claim_id"]) for a in assignments]
+    by_id = claim_repo.get_claims_by_ids(claim_ids)
     claims = []
     for a in assignments:
-        row = claim_repo.get_claim(a["claim_id"])
+        row = by_id.get(str(a["claim_id"]))
         if row is not None:
             shaped = _shape_repair_portal_claim(row)
             shaped["assigned_at"] = a.get("assigned_at")

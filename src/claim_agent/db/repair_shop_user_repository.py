@@ -173,9 +173,9 @@ class RepairShopUserRepository:
         assigned_by: str | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
-        """Create or return existing (claim_id, shop_id) assignment.
+        """Create a new (claim_id, shop_id) assignment.
 
-        Raises ValueError if the combination already exists.
+        Raises ValueError if that shop is already assigned to the claim.
         """
         now = _utcnow_iso()
         with get_connection(self._db_path) as conn:

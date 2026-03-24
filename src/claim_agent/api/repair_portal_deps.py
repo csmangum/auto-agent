@@ -84,9 +84,11 @@ def require_repair_shop_access(request: Request, claim_id: str) -> RepairShopPor
 
     Accepts two credential types (in precedence order):
 
-    1. **Shop-user JWT** (``Authorization: Bearer <jwt>``) – issued by
-       ``POST /api/repair-portal/auth/login``.  The claim must be explicitly
-       assigned to the shop via ``POST /api/claims/{claim_id}/repair-shop-assignment``.
+    1. **Shop-user JWT** (``Authorization: Bearer <jwt>``) – when the bearer
+       token verifies as a shop-user JWT, issued by
+       ``POST /api/repair-portal/auth/login``. The claim must be assigned to
+       that shop. A non-shop Bearer (e.g. another API key) does not block the
+       legacy header below.
 
     2. **Per-claim token** (``X-Repair-Shop-Access-Token``) – legacy single-use
        magic token minted by adjusters; kept for backward compatibility.
@@ -95,25 +97,26 @@ def require_repair_shop_access(request: Request, claim_id: str) -> RepairShopPor
         raise HTTPException(status_code=503, detail="Repair shop portal is disabled")
 
     # --- JWT path (shop user account) ---
+    # Only treat Bearer as shop JWT when verification succeeds; otherwise fall
+    # through so a random/other API Bearer plus X-Repair-Shop-Access-Token still works.
     bearer = request.headers.get("authorization", "")
     if bearer.lower().startswith("bearer "):
         token = bearer[7:].strip()
         payload = _verify_shop_jwt(token)
-        if payload is None:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
-        shop_id = str(payload["shop_id"])
-        sub = str(payload["sub"])
-        repo = RepairShopUserRepository()
-        if not repo.is_claim_assigned_to_shop(claim_id, shop_id):
-            raise HTTPException(
-                status_code=403,
-                detail="This claim is not assigned to your shop",
+        if payload is not None:
+            shop_id = str(payload["shop_id"])
+            sub = str(payload["sub"])
+            repo = RepairShopUserRepository()
+            if not repo.is_claim_assigned_to_shop(claim_id, shop_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="This claim is not assigned to your shop",
+                )
+            return RepairShopPortalContext(
+                claim_id=claim_id,
+                shop_id=shop_id,
+                identity=f"shop-user:{sub}",
             )
-        return RepairShopPortalContext(
-            claim_id=claim_id,
-            shop_id=shop_id,
-            identity=f"shop-user:{sub}",
-        )
 
     # --- Per-claim token path (legacy) ---
     raw = request.headers.get("x-repair-shop-access-token")

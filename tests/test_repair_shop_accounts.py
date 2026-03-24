@@ -364,6 +364,25 @@ class TestJWTSingleClaimAccess:
         assert resp.status_code == 200
         assert resp.json()["id"] == "CLM-TEST005"
 
+    def test_per_claim_token_with_unrelated_bearer_header(
+        self, adjuster_client, anon_client
+    ):
+        """X-Repair-Shop-Access-Token works when Authorization is a non-shop Bearer."""
+        mint = adjuster_client.post(
+            "/api/claims/CLM-TEST005/repair-shop-portal-token", json={}
+        )
+        assert mint.status_code == 200, mint.json()
+        portal_token = mint.json()["token"]
+        resp = anon_client.get(
+            "/api/repair-portal/claims/CLM-TEST005",
+            headers={
+                "Authorization": "Bearer totally-invalid-not-a-shop-jwt",
+                "X-Repair-Shop-Access-Token": portal_token,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "CLM-TEST005"
+
 
 @pytest.mark.usefixtures("repair_portal_and_auth")
 class TestDeactivatedUserRejection:
