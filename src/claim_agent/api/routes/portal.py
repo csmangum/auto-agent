@@ -29,6 +29,7 @@ from claim_agent.context import ClaimContext
 from claim_agent.db.constants import DISPUTABLE_STATUSES
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.payment_repository import PaymentRepository
+from claim_agent.db.rental_repository import RentalAuthorizationRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.models.dispute import DisputeType
@@ -139,6 +140,10 @@ def _get_claim_repo() -> ClaimRepository:
 
 def _get_payment_repo() -> PaymentRepository:
     return PaymentRepository(db_path=get_db_path())
+
+
+def _get_rental_repo() -> RentalAuthorizationRepository:
+    return RentalAuthorizationRepository(db_path=get_db_path())
 
 
 @router.get("/claims")
@@ -307,6 +312,28 @@ def list_portal_payments(
         claim_id, status=None, limit=limit, offset=offset
     )
     return {"claim_id": claim_id, "payments": payments, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/claims/{claim_id}/rental-summary")
+def get_portal_rental_summary(
+    claim_id: str,
+    claimant: ClaimantContext = Depends(require_claimant_access),
+):
+    """Get the sanitized rental authorization summary for a claim.
+
+    Returns the structured rental entitlement (authorized days, daily cap,
+    direct-bill flag, status, and approved amount) without exposing internal
+    reservation or agency references.
+
+    Returns ``{"claim_id": ..., "rental": null}`` when no rental authorization
+    has been persisted yet for this claim.
+    """
+    repo = _get_claim_repo()
+    if repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+    rental_repo = _get_rental_repo()
+    summary = rental_repo.get_portal_summary(claim_id)
+    return {"claim_id": claim_id, "rental": summary}
 
 
 @router.post("/claims/{claim_id}/documents")

@@ -77,6 +77,11 @@ from claim_agent.db.schema_unified_portal_sqlite import (
     IDX_EPT_ROLE,
     IDX_EPT_TOKEN_HASH,
 )
+from claim_agent.db.schema_rental_sqlite import (
+    RENTAL_AUTHORIZATIONS_TABLE_SQLITE,
+    IDX_RENTAL_AUTH_CLAIM_ID,
+    IDX_RENTAL_AUTH_REIMBURSEMENT_ID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -576,6 +581,18 @@ CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_acce
     + IDX_EPT_CLAIM_ID
     + ";\n"
     + IDX_EPT_EXPIRES_AT
+    + ";\n"
+)
+
+SCHEMA_SQL += (
+    """
+-- Rental authorizations: structured rental arrangements persisted when rental crew completes
+"""
+    + RENTAL_AUTHORIZATIONS_TABLE_SQLITE
+    + ";\n"
+    + IDX_RENTAL_AUTH_CLAIM_ID
+    + ";\n"
+    + IDX_RENTAL_AUTH_REIMBURSEMENT_ID
     + ";\n"
 )
 
