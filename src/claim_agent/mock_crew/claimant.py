@@ -7,7 +7,7 @@ Scenario shape (all keys optional; sensible defaults applied when absent):
     {
         "claim_type": str,          # e.g. "partial_loss", "total_loss", "new"
         "incident": {
-            "date": str,            # ISO "YYYY-MM-DD"; defaults to today
+            "date": str,            # ISO "YYYY-MM-DD"; defaults to 7 days ago
             "description": str,     # free-text incident description
             "location": str,        # e.g. "Main St & 1st Ave, Austin, TX"
             "loss_state": str,      # two-letter state code, e.g. "TX"
@@ -28,11 +28,16 @@ Scenario shape (all keys optional; sensible defaults applied when absent):
     }
 """
 
+import logging
 import random
 from datetime import date, timedelta
 from typing import Any
 
 from claim_agent.config.settings import get_mock_claimant_config, get_mock_crew_config
+from claim_agent.config.settings_model import ResponseStrategy
+from claim_agent.models.claim import ClaimInput, ClaimType
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Default templates
@@ -110,16 +115,19 @@ _PHOTO_KEYWORDS = frozenset(
     {"photo", "photos", "picture", "pictures", "image", "images", "upload", "attach", "attachment"}
 )
 _ESTIMATE_KEYWORDS = frozenset(
-    {"estimate", "shop", "repair", "quote", "appraisal", "body shop", "mechanic", "invoice"}
+    {
+        "estimate", "quote", "appraisal", "body shop", "mechanic", "invoice",
+        "repair estimate", "repair shop",
+    }
 )
 _POLICE_REPORT_KEYWORDS = frozenset(
-    {"police report", "police", "report", "incident report", "case number", "officer"}
+    {"police report", "police", "incident report", "case number", "officer"}
 )
 _MEDICAL_KEYWORDS = frozenset(
     {"medical", "doctor", "hospital", "injury", "injuries", "records", "treatment", "prescription"}
 )
 _CONTACT_KEYWORDS = frozenset(
-    {"contact", "phone", "email", "address", "reach", "get in touch", "call", "number"}
+    {"contact", "phone", "email", "reach", "get in touch", "phone number"}
 )
 
 
@@ -138,11 +146,11 @@ def _build_rng(seed: int | None) -> random.Random:
 # ---------------------------------------------------------------------------
 
 
-def generate_claim_input(scenario: dict[str, Any]) -> dict[str, Any]:
-    """Generate a ClaimInput-compatible dict from a scenario description.
+def generate_claim_input(scenario: dict[str, Any]) -> ClaimInput:
+    """Generate a validated ClaimInput from a scenario description.
 
     The scenario may omit any key; defaults are applied for missing fields so
-    the result is always a valid ClaimInput payload.
+    the result is always a valid ClaimInput.
 
     The random seed is drawn from the shared mock crew config (``MOCK_CREW_SEED``)
     so that all mock crew components produce correlated, reproducible outputs from
@@ -152,7 +160,7 @@ def generate_claim_input(scenario: dict[str, Any]) -> dict[str, Any]:
         scenario: Partial scenario dict (see module docstring for shape).
 
     Returns:
-        Dict matching the ClaimInput schema (ready for ``ClaimInput(**result)``).
+        Validated ClaimInput instance.
     """
     crew_cfg = get_mock_crew_config()
     seed: int | None = crew_cfg.get("seed")
@@ -177,7 +185,6 @@ def generate_claim_input(scenario: dict[str, Any]) -> dict[str, Any]:
     if raw_date:
         incident_date: str = raw_date
     else:
-        # default to 7 days ago for a plausible recent incident
         incident_date = (date.today() - timedelta(days=7)).isoformat()
 
     incident_description: str = incident.get("description") or template["description"]
@@ -196,8 +203,17 @@ def generate_claim_input(scenario: dict[str, Any]) -> dict[str, Any]:
         except (TypeError, ValueError):
             estimated_damage = None
 
-    # --- Claim type ---
+    # --- Claim type (validated against ClaimType enum) ---
     claim_type: str | None = scenario.get("claim_type") or None
+    if claim_type is not None:
+        valid_types = {ct.value for ct in ClaimType}
+        if claim_type not in valid_types:
+            logger.warning(
+                "Invalid claim_type %r (valid: %s); dropping from scenario",
+                claim_type,
+                ", ".join(sorted(valid_types)),
+            )
+            claim_type = None
 
     result: dict[str, Any] = {
         "policy_number": policy_number,
@@ -210,7 +226,6 @@ def generate_claim_input(scenario: dict[str, Any]) -> dict[str, Any]:
         "damage_description": damage_description,
     }
 
-    # Conditionally add optional fields only when non-None to keep the payload clean
     if estimated_damage is not None:
         result["estimated_damage"] = estimated_damage
     if claim_type is not None:
@@ -220,7 +235,7 @@ def generate_claim_input(scenario: dict[str, Any]) -> dict[str, Any]:
     if loss_state is not None:
         result["loss_state"] = loss_state
 
-    return result
+    return ClaimInput.model_validate(result)
 
 
 def respond_to_message(
@@ -242,15 +257,15 @@ def respond_to_message(
     Returns:
         A short string reply from the mock claimant.
     """
+    logger.debug("Mock claimant responding to claim %s", claim_id)
     claimant_cfg = get_mock_claimant_config()
-    strategy: str = claimant_cfg.get("response_strategy", "immediate")
+    strategy = claimant_cfg.get("response_strategy", ResponseStrategy.IMMEDIATE)
 
-    # Strategy short-circuits
-    if strategy == "refuse":
+    if strategy == ResponseStrategy.REFUSE:
         return _RESPONSE_STRATEGY_REFUSE_MSG
-    if strategy == "delayed":
+    if strategy == ResponseStrategy.DELAYED:
         return _RESPONSE_STRATEGY_DELAYED_MSG
-    if strategy == "partial":
+    if strategy == ResponseStrategy.PARTIAL:
         return _RESPONSE_STRATEGY_PARTIAL_MSG
 
     # --- immediate (default): keyword-driven replies ---

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
@@ -835,6 +836,15 @@ class MockCrewConfig(BaseSettings):
             return None
 
 
+class ResponseStrategy(str, Enum):
+    """Mock claimant response strategies."""
+
+    IMMEDIATE = "immediate"
+    DELAYED = "delayed"
+    REFUSE = "refuse"
+    PARTIAL = "partial"
+
+
 class MockClaimantConfig(BaseSettings):
     """Mock Claimant: rule/template-based claimant simulation for testing."""
 
@@ -845,8 +855,8 @@ class MockClaimantConfig(BaseSettings):
     )
 
     enabled: bool = Field(default=False, validation_alias="MOCK_CLAIMANT_ENABLED")
-    response_strategy: str = Field(
-        default="immediate",
+    response_strategy: ResponseStrategy = Field(
+        default=ResponseStrategy.IMMEDIATE,
         validation_alias="MOCK_CLAIMANT_RESPONSE_STRATEGY",
         description="Response strategy: immediate | delayed | refuse | partial",
     )
@@ -861,9 +871,9 @@ class MockClaimantConfig(BaseSettings):
     @field_validator("response_strategy", mode="before")
     @classmethod
     def _parse_strategy(cls, v: Any) -> str:
-        valid = {"immediate", "delayed", "refuse", "partial"}
-        val = str(v).strip().lower() if v else "immediate"
-        return val if val in valid else "immediate"
+        valid = {s.value for s in ResponseStrategy}
+        val = str(v).strip().lower() if v else ResponseStrategy.IMMEDIATE.value
+        return val if val in valid else ResponseStrategy.IMMEDIATE.value
 
 
 class PortalConfig(BaseSettings):

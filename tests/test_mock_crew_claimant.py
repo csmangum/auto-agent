@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from claim_agent.mock_crew.claimant import generate_claim_input, respond_to_message
+from claim_agent.models.claim import ClaimInput
 
 
 class TestGenerateClaimInput:
@@ -17,37 +18,37 @@ class TestGenerateClaimInput:
             return_value={"enabled": True, "seed": seed},
         )
 
+    def test_returns_claim_input_instance(self):
+        """Result is a validated ClaimInput model."""
+        with self._patch_seed(42):
+            result = generate_claim_input({})
+        assert isinstance(result, ClaimInput)
+
     def test_minimal_scenario_returns_required_fields(self):
         """Empty scenario produces all required ClaimInput fields."""
         with self._patch_seed(42):
             result = generate_claim_input({})
 
-        required = [
-            "policy_number",
-            "vin",
-            "vehicle_year",
-            "vehicle_make",
-            "vehicle_model",
-            "incident_date",
-            "incident_description",
-            "damage_description",
-        ]
-        for field in required:
-            assert field in result, f"Missing required field: {field}"
+        assert result.policy_number
+        assert result.vin
+        assert result.vehicle_year > 0
+        assert result.vehicle_make
+        assert result.vehicle_model
+        assert result.incident_date is not None
+        assert result.incident_description
+        assert result.damage_description
 
     def test_defaults_are_sensible(self):
         """Default values fall back to template vehicle and recent incident date."""
         with self._patch_seed(0):
             result = generate_claim_input({})
 
-        assert result["policy_number"] == "POL-001"
-        assert result["vin"] == "1HGBH41JXMN109186"
-        assert result["vehicle_make"] == "Honda"
-        assert result["vehicle_model"] == "Accord"
-        assert result["vehicle_year"] == 2021
-        # Date should be a valid ISO string and in the past
-        incident_date = date.fromisoformat(result["incident_date"])
-        assert incident_date <= date.today()
+        assert result.policy_number == "POL-001"
+        assert result.vin == "1HGBH41JXMN109186"
+        assert result.vehicle_make == "Honda"
+        assert result.vehicle_model == "Accord"
+        assert result.vehicle_year == 2021
+        assert result.incident_date <= date.today()
 
     def test_scenario_vehicle_overrides_defaults(self):
         """Vehicle fields from scenario override defaults."""
@@ -62,10 +63,10 @@ class TestGenerateClaimInput:
         with self._patch_seed(1):
             result = generate_claim_input(scenario)
 
-        assert result["vin"] == "5YJSA1E26HF999999"
-        assert result["vehicle_year"] == 2023
-        assert result["vehicle_make"] == "Tesla"
-        assert result["vehicle_model"] == "Model Y"
+        assert result.vin == "5YJSA1E26HF999999"
+        assert result.vehicle_year == 2023
+        assert result.vehicle_make == "Tesla"
+        assert result.vehicle_model == "Model Y"
 
     def test_scenario_policy_overrides_default(self):
         """policy.policy_number from scenario is used."""
@@ -73,7 +74,7 @@ class TestGenerateClaimInput:
         with self._patch_seed(2):
             result = generate_claim_input(scenario)
 
-        assert result["policy_number"] == "POL-007"
+        assert result.policy_number == "POL-007"
 
     def test_scenario_incident_overrides_defaults(self):
         """Incident date, description, location, and loss_state from scenario are used."""
@@ -88,10 +89,10 @@ class TestGenerateClaimInput:
         with self._patch_seed(3):
             result = generate_claim_input(scenario)
 
-        assert result["incident_date"] == "2025-06-15"
-        assert result["incident_description"] == "Hit a deer on the highway."
-        assert result["incident_location"] == "I-35, Austin, TX"
-        assert result["loss_state"] == "TX"
+        assert result.incident_date == date(2025, 6, 15)
+        assert result.incident_description == "Hit a deer on the highway."
+        assert result.incident_location == "I-35, Austin, TX"
+        assert result.loss_state == "TX"
 
     def test_scenario_damage_overrides_defaults(self):
         """Damage description and estimated_damage from scenario are used."""
@@ -104,8 +105,8 @@ class TestGenerateClaimInput:
         with self._patch_seed(4):
             result = generate_claim_input(scenario)
 
-        assert result["damage_description"] == "Total loss: frame bent beyond repair."
-        assert result["estimated_damage"] == pytest.approx(18000.0)
+        assert result.damage_description == "Total loss: frame bent beyond repair."
+        assert result.estimated_damage == pytest.approx(18000.0)
 
     def test_negative_estimated_damage_excluded(self):
         """Negative estimated_damage is silently dropped (set to None)."""
@@ -113,7 +114,15 @@ class TestGenerateClaimInput:
         with self._patch_seed(5):
             result = generate_claim_input(scenario)
 
-        assert "estimated_damage" not in result
+        assert result.estimated_damage is None
+
+    def test_non_numeric_estimated_damage_excluded(self):
+        """Non-numeric estimated_damage is silently dropped."""
+        scenario = {"damage": {"estimated_damage": "abc"}}
+        with self._patch_seed(5):
+            result = generate_claim_input(scenario)
+
+        assert result.estimated_damage is None
 
     def test_claim_type_included_when_provided(self):
         """claim_type from scenario is included in result."""
@@ -121,21 +130,29 @@ class TestGenerateClaimInput:
         with self._patch_seed(6):
             result = generate_claim_input(scenario)
 
-        assert result["claim_type"] == "total_loss"
+        assert result.claim_type == "total_loss"
 
     def test_claim_type_absent_when_not_provided(self):
         """claim_type is absent from result when not in scenario."""
         with self._patch_seed(7):
             result = generate_claim_input({})
 
-        assert "claim_type" not in result
+        assert result.claim_type is None
+
+    def test_invalid_claim_type_dropped(self):
+        """Invalid claim_type is dropped with a warning."""
+        scenario = {"claim_type": "made_up_type"}
+        with self._patch_seed(6):
+            result = generate_claim_input(scenario)
+
+        assert result.claim_type is None
 
     def test_optional_location_absent_when_not_provided(self):
         """incident_location is absent from result when not in scenario."""
         with self._patch_seed(8):
             result = generate_claim_input({})
 
-        assert "incident_location" not in result
+        assert result.incident_location is None
 
     def test_deterministic_with_seed(self):
         """Same seed produces same output."""
@@ -166,12 +183,12 @@ class TestGenerateClaimInput:
         with self._patch_seed(0):
             result = generate_claim_input(scenario)
 
-        assert result["policy_number"] == "POL-010"
-        assert result["vin"] == "ABC123"
-        assert result["vehicle_year"] == 2020
-        assert result["claim_type"] == "partial_loss"
-        assert result["loss_state"] == "CA"
-        assert result["estimated_damage"] == pytest.approx(4500.0)
+        assert result.policy_number == "POL-010"
+        assert result.vin == "ABC123"
+        assert result.vehicle_year == 2020
+        assert result.claim_type == "partial_loss"
+        assert result.loss_state == "CA"
+        assert result.estimated_damage == pytest.approx(4500.0)
 
 
 class TestRespondToMessage:
@@ -191,8 +208,8 @@ class TestRespondToMessage:
             assert "portal" in reply.lower() or "photo" in reply.lower()
 
     def test_estimate_request_acknowledged(self):
-        """Messages mentioning estimate/shop trigger a shop estimate response."""
-        for phrase in ["can you get an estimate", "take it to a repair shop", "body shop quote"]:
+        """Messages mentioning estimate trigger a shop estimate response."""
+        for phrase in ["can you get an estimate", "body shop quote", "get a repair estimate"]:
             with self._patch_strategy("immediate"):
                 reply = respond_to_message("CLM-001", phrase, {})
             assert "estimate" in reply.lower() or "shop" in reply.lower()
@@ -208,6 +225,12 @@ class TestRespondToMessage:
         with self._patch_strategy("immediate"):
             reply = respond_to_message("CLM-001", "What is the weather today?", {})
         assert len(reply) > 0
+        assert "shortly" in reply.lower() or "provide" in reply.lower()
+
+    def test_empty_message_hits_fallback(self):
+        """Empty string message content triggers generic fallback."""
+        with self._patch_strategy("immediate"):
+            reply = respond_to_message("CLM-001", "", {})
         assert "shortly" in reply.lower() or "provide" in reply.lower()
 
     def test_strategy_refuse(self):
@@ -239,18 +262,45 @@ class TestRespondToMessage:
         assert isinstance(reply, str)
         assert len(reply) > 0
 
+    def test_none_claim_context(self):
+        """Explicit None for claim_context works without error."""
+        with self._patch_strategy("immediate"):
+            reply = respond_to_message("CLM-001", "please provide medical records", None)
+        assert isinstance(reply, str)
+        assert "medical" in reply.lower() or "doctor" in reply.lower()
+
     def test_medical_request_with_vehicle_context(self):
-        """Medical records request uses vehicle context when available."""
+        """Medical records request includes vehicle info when context is available."""
         ctx = {"vehicle": {"year": 2021, "make": "Honda", "model": "Accord"}}
         with self._patch_strategy("immediate"):
             reply = respond_to_message("CLM-003", "please provide medical records", ctx)
         assert "medical" in reply.lower() or "doctor" in reply.lower()
+        assert "2021" in reply or "Honda" in reply or "Accord" in reply
 
     def test_contact_information_request(self):
         """Messages about contact info produce an appropriate reply."""
         with self._patch_strategy("immediate"):
-            reply = respond_to_message("CLM-004", "Can you provide your phone number?", {})
+            reply = respond_to_message("CLM-004", "Can you share your contact info?", {})
         assert "contact" in reply.lower() or "reach" in reply.lower() or "file" in reply.lower()
+
+    def test_broad_words_no_longer_false_positive(self):
+        """Previously overly broad keywords no longer cause false matches."""
+        with self._patch_strategy("immediate"):
+            # "report" alone (without "police") should hit generic fallback
+            reply = respond_to_message("CLM-001", "please send the status report", {})
+            assert "shortly" in reply.lower() or "provide" in reply.lower()
+
+            # "number" alone should hit generic fallback, not contact
+            reply = respond_to_message("CLM-001", "what is the claim number?", {})
+            assert "shortly" in reply.lower() or "provide" in reply.lower()
+
+    def test_keyword_priority_photo_over_estimate(self):
+        """When message matches multiple categories, earlier priority wins."""
+        with self._patch_strategy("immediate"):
+            reply = respond_to_message(
+                "CLM-001", "please upload photos and get an estimate", {}
+            )
+            assert "photo" in reply.lower() or "portal" in reply.lower()
 
 
 class TestGetMockClaimantConfig:
@@ -263,7 +313,6 @@ class TestGetMockClaimantConfig:
         from claim_agent.config.settings import get_mock_claimant_config
 
         with _patch.dict("os.environ", {}, clear=False):
-            # Force reload so env overrides take effect
             from claim_agent.config import reload_settings
 
             reload_settings()
@@ -291,7 +340,6 @@ class TestGetMockClaimantConfig:
         assert cfg["enabled"] is True
         assert cfg["response_strategy"] == "refuse"
 
-        # Restore defaults
         reload_settings()
 
     def test_invalid_strategy_falls_back_to_immediate(self):
