@@ -6,7 +6,6 @@ Deterministic when MOCK_CREW_SEED is set.
 
 import hashlib
 import json
-import logging
 import random
 from typing import Any
 
