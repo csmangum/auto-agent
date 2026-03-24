@@ -42,6 +42,7 @@ from claim_agent.api.routes.dsar import router as dsar_router
 from claim_agent.api.routes.portal import router as portal_router
 from claim_agent.api.routes.repair_portal import router as repair_portal_router
 from claim_agent.api.routes.third_party_portal import router as third_party_portal_router
+from claim_agent.api.routes.unified_portal import router as unified_portal_router
 from claim_agent.api.routes.reserve_reports import router as reserve_reports_router
 from claim_agent.api.routes.retention import router as retention_router
 from claim_agent.api.routes.privacy import router as privacy_router
@@ -200,7 +201,13 @@ _PUBLIC_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
 
 
 def _is_portal_path(path: str) -> bool:
-    """True if path is under /api/portal (uses claimant verification, not bearer auth)."""
+    """True if path is under /api/portal (uses portal-specific auth, not bearer auth).
+
+    The ``/api/portal/auth/issue-token`` admin endpoint is excluded so it
+    falls through to the normal API-key / Bearer-token auth middleware.
+    """
+    if path.startswith("/api/portal/auth/issue-token"):
+        return False
     return path.startswith("/api/portal")
 
 
@@ -220,6 +227,7 @@ def _is_auth_public_path(path: str) -> bool:
         "/api/auth/login",
         "/api/auth/refresh",
         "/api/repair-portal/auth/login",
+        "/api/portal/auth/login",
     )
 
 
@@ -329,6 +337,7 @@ app.include_router(payments_router, prefix="/api")
 app.include_router(webhooks_router, prefix="/api")
 app.include_router(dsar_router, prefix="/api")
 app.include_router(portal_router, prefix="/api")
+app.include_router(unified_portal_router, prefix="/api")
 app.include_router(repair_portal_router, prefix="/api")
 app.include_router(third_party_portal_router, prefix="/api")
 app.include_router(reserve_reports_router, prefix="/api")

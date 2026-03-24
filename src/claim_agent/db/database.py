@@ -70,6 +70,13 @@ from claim_agent.db.schema_privacy_sqlite import (
     IDX_DPA_REGISTRY_SUBPROCESSOR,
     IDX_DSAR_VERIFICATION_TOKENS_IDENTIFIER,
 )
+from claim_agent.db.schema_unified_portal_sqlite import (
+    EXTERNAL_PORTAL_TOKENS_TABLE_SQLITE,
+    IDX_EPT_CLAIM_ID,
+    IDX_EPT_EXPIRES_AT,
+    IDX_EPT_ROLE,
+    IDX_EPT_TOKEN_HASH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -556,6 +563,19 @@ CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_acce
     + IDX_RSCA_CLAIM_ID
     + ";\n"
     + IDX_RSCA_SHOP_ID
+    + ";\n"
+    + """
+-- Unified external portal tokens: role-bearing, hashed tokens for any external role
+"""
+    + EXTERNAL_PORTAL_TOKENS_TABLE_SQLITE
+    + ";\n"
+    + IDX_EPT_TOKEN_HASH
+    + ";\n"
+    + IDX_EPT_ROLE
+    + ";\n"
+    + IDX_EPT_CLAIM_ID
+    + ";\n"
+    + IDX_EPT_EXPIRES_AT
     + ";\n"
 )
 
