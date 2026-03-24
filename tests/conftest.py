@@ -481,3 +481,39 @@ def mock_crew(monkeypatch):
 
     reload_settings()  # vision_logic reads adapter via get_settings()
     yield
+
+
+@pytest.fixture()
+def mock_crew_with_images(monkeypatch):
+    """Enable Mock Crew with image generation for tests that exercise the image pipeline.
+
+    Extends the ``mock_crew`` fixture by also enabling ``MOCK_IMAGE_GENERATOR_ENABLED``.
+    Tests that use this fixture require an OpenRouter / OpenAI API key to actually
+    generate images.  When no key is present the fixture is **skipped** so that CI
+    does not fail on missing credentials.
+
+    Environment variables set:
+    - ``MOCK_CREW_ENABLED=true``
+    - ``MOCK_IMAGE_GENERATOR_ENABLED=true``
+    - ``VISION_ADAPTER=mock``
+    - ``MOCK_IMAGE_VISION_ANALYSIS_SOURCE=claim_context``
+    - ``MOCK_CREW_SEED=42``
+
+    Compatibility:
+    - Works alongside ``temp_db``, ``seeded_temp_db``, and ``claim_context``.
+    - Do **not** combine with the plain ``mock_crew`` fixture (redundant).
+    """
+    import os
+
+    if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("OPENROUTER_API_KEY"):
+        pytest.skip("OPENAI_API_KEY / OPENROUTER_API_KEY not set – skipping image generation test")
+
+    monkeypatch.setenv("MOCK_CREW_ENABLED", "true")
+    monkeypatch.setenv("MOCK_IMAGE_GENERATOR_ENABLED", "true")
+    monkeypatch.setenv("VISION_ADAPTER", "mock")
+    monkeypatch.setenv("MOCK_IMAGE_VISION_ANALYSIS_SOURCE", "claim_context")
+    monkeypatch.setenv("MOCK_CREW_SEED", "42")
+    from claim_agent.config import reload_settings
+
+    reload_settings()
+    yield
