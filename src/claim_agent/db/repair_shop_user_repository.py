@@ -186,6 +186,7 @@ class RepairShopUserRepository:
                         INSERT INTO repair_shop_claim_assignments
                             (claim_id, shop_id, assigned_by, notes, assigned_at)
                         VALUES (:claim_id, :shop_id, :assigned_by, :notes, :assigned_at)
+                        RETURNING id
                         """
                     ),
                     {
@@ -196,7 +197,8 @@ class RepairShopUserRepository:
                         "assigned_at": now,
                     },
                 )
-                row_id = result.lastrowid
+                row = result.fetchone()
+                row_id = int(row[0]) if row else None
             except IntegrityError as e:
                 raise ValueError(
                     f"Shop '{shop_id}' is already assigned to claim '{claim_id}'"
