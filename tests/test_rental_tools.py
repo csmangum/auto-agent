@@ -242,7 +242,6 @@ class TestProcessRentalReimbursementPersistence:
     def test_cross_process_idempotency_preserves_reimbursement_id(self, seeded_temp_db):
         """Cache miss + DB lookup returns same reimbursement_id (cross-process idempotency)."""
         from claim_agent.context import ClaimContext
-        from claim_agent.db.rental_repository import RentalAuthorizationRepository
 
         ctx = ClaimContext.from_defaults(db_path=seeded_temp_db)
         result1 = process_rental_reimbursement_impl(
