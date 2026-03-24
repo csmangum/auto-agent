@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import NoteTemplatesAdmin from './NoteTemplatesAdmin';
@@ -58,6 +58,10 @@ const mockTemplates = [
 
 describe('NoteTemplatesAdmin', () => {
   const mutateFn = vi.fn();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   beforeEach(() => {
     vi.mocked(useNoteTemplates).mockReturnValue({
@@ -270,6 +274,5 @@ describe('NoteTemplatesAdmin', () => {
     fireEvent.click(deleteButtons[0]);
     expect(window.confirm).toHaveBeenCalled();
     expect(deleteFn).toHaveBeenCalledWith(1);
-    vi.mocked(window.confirm).mockRestore();
   });
 });
