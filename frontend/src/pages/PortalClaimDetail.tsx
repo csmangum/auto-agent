@@ -134,8 +134,12 @@ export default function PortalClaimDetail() {
     (e) =>
       CUSTOMER_VISIBLE_ACTIONS.has(e.action) || e.action.includes('status')
   );
-  const pendingFollowUps = followUps.filter((m) => m.status !== 'responded');
-  const rentalFollowUps = followUps.filter((m) => m.topic === 'rental');
+  const rentalFollowUps = followUps.filter(
+    (m) => m.topic === 'rental' && (m.user_type === 'claimant' || m.user_type === 'policyholder')
+  );
+  const pendingFollowUps = followUps.filter(
+    (m) => m.status !== 'responded' && m.topic !== 'rental'
+  );
   const pendingRentalFollowUps = rentalFollowUps.filter((m) => m.status !== 'responded');
   const documents = (docsData?.documents ?? []) as Array<{
     id: number;
