@@ -54,16 +54,33 @@ def e2e_client(integration_db: str, monkeypatch):
 
 @pytest.fixture
 def workflow_patches(mock_llm_instance, mock_router_response, mock_crew_response):
-    """Flatten the common 6-deep workflow patch stack into a single context manager.
+    """Provide a context manager that patches the common workflow components.
 
-    Yields a ``WorkflowMocks`` dict with keys for each patched target.  Tests
-    configure mocks *after* entering the context (``mocks["router"].return_value
-    .kickoff.return_value = ...``).
+    Returns a context-manager object with attributes for each shared patched
+    target:
 
-    Extra claim-type crew patches can be added by the test using additional
-    ``with patch(...)`` blocks around the API call — this fixture only covers the
-    targets shared across all claim types: get_llm, router, after-action,
-    escalation, and task planner.
+    * ``llm`` – ``claim_agent.workflow.orchestrator.get_llm``
+    * ``router`` – ``claim_agent.workflow.stages.create_router_crew``
+    * ``after_action`` – ``claim_agent.workflow.stages.create_after_action_crew``
+    * ``escalation`` – ``claim_agent.workflow.stages.evaluate_escalation_impl``
+    * ``task_planner`` – ``claim_agent.workflow.stages.create_task_planner_crew``
+
+    Usage::
+
+        with workflow_patches as wf:
+            wf.set_router("auto_approve")
+            wf.after_action.return_value.kickoff.return_value = ...
+
+    On entry the context preconfigures sensible defaults:
+
+    * ``llm.return_value`` → ``mock_llm_instance``
+    * ``after_action`` kickoff → ``"After-action summary added."``
+    * ``escalation`` → no-review-needed JSON
+    * ``task_planner`` kickoff → ``"Tasks created."``
+
+    ``set_router(claim_type, reasoning="")`` sets the router crew result.
+    ``add_patch(target)`` enters an additional ``unittest.mock.patch`` into the
+    same underlying ``ExitStack``.
     """
     factory_mod._storage_instance = None
 

@@ -117,51 +117,56 @@ def test_e2e_mock_crew_follow_up_flow(
 
     clear_all_pending_mock_responses()
 
-    # Step 1: submit claim
-    with workflow_patches as mocks:
-        mocks.set_router("new")
-        crew = mocks.add_patch(f"{_STAGES}.create_new_claim_crew")
-        crew.return_value.kickoff.return_value = mock_crew_response("OK")
+    try:
+        # Step 1: submit claim
+        with workflow_patches as mocks:
+            mocks.set_router("new")
+            crew = mocks.add_patch(f"{_STAGES}.create_new_claim_crew")
+            crew.return_value.kickoff.return_value = mock_crew_response("OK")
 
-        resp = e2e_client.post("/api/claims", json=sample_new_claim)
+            resp = e2e_client.post("/api/claims", json=sample_new_claim)
 
-    assert resp.status_code == 200
-    claim_id = resp.json()["claim_id"]
+        assert resp.status_code == 200
+        claim_id = resp.json()["claim_id"]
 
-    # Step 2: run follow-up (crew mocked -> notify_user NOT called by crew)
-    with (
-        patch("claim_agent.workflow.follow_up_orchestrator.get_llm") as mock_llm2,
-        patch("claim_agent.workflow.follow_up_orchestrator.create_follow_up_crew") as mock_follow,
-    ):
-        mock_llm2.return_value = mock_llm_instance
-        mock_follow.return_value.kickoff.return_value = mock_crew_response(
-            "Follow-up outreach sent to claimant."
+        # Step 2: run follow-up (crew mocked -> notify_user NOT called by crew)
+        with (
+            patch("claim_agent.workflow.follow_up_orchestrator.get_llm") as mock_llm2,
+            patch(
+                "claim_agent.workflow.follow_up_orchestrator.create_follow_up_crew"
+            ) as mock_follow,
+        ):
+            mock_llm2.return_value = mock_llm_instance
+            mock_follow.return_value.kickoff.return_value = mock_crew_response(
+                "Follow-up outreach sent to claimant."
+            )
+            follow_resp = e2e_client.post(
+                f"/api/claims/{claim_id}/follow-up/run",
+                json={"task": "Request damage photos from claimant."},
+            )
+
+        assert follow_resp.status_code == 200
+
+        # Step 3: assert pending responses queued (xfail: empty because crew is mocked)
+        pending = get_pending_mock_responses(claim_id)
+        assert len(pending) > 0, (
+            "Expected >=1 pending mock response from mock notifier intercept of notify_user; "
+            "got 0 because mocked crew kickoff does not call notify_user."
         )
-        follow_resp = e2e_client.post(
-            f"/api/claims/{claim_id}/follow-up/run",
-            json={"task": "Request damage photos from claimant."},
+
+        # Step 4: record first response (would execute if step 3 passes)
+        first_response = pending[0]
+        messages_resp = e2e_client.get(f"/api/claims/{claim_id}/follow-up")
+        assert messages_resp.status_code == 200
+        messages = messages_resp.json()["messages"]
+        assert len(messages) > 0
+        message_id = messages[0]["id"]
+
+        record_resp = e2e_client.post(
+            f"/api/claims/{claim_id}/follow-up/record-response",
+            json={"message_id": message_id, "response_content": first_response["response_text"]},
         )
-
-    assert follow_resp.status_code == 200
-
-    # Step 3: assert pending responses queued (xfail: empty because crew is mocked)
-    pending = get_pending_mock_responses(claim_id)
-    assert len(pending) > 0, (
-        "Expected >=1 pending mock response from mock notifier intercept of notify_user; "
-        "got 0 because mocked crew kickoff does not call notify_user."
-    )
-
-    # Step 4: record first response (would execute if step 3 passes)
-    first_response = pending[0]
-    messages_resp = e2e_client.get(f"/api/claims/{claim_id}/follow-up")
-    assert messages_resp.status_code == 200
-    messages = messages_resp.json()["messages"]
-    assert len(messages) > 0
-    message_id = messages[0]["id"]
-
-    record_resp = e2e_client.post(
-        f"/api/claims/{claim_id}/follow-up/record-response",
-        json={"message_id": message_id, "response_content": first_response["response_text"]},
-    )
-    assert record_resp.status_code == 200
-    assert record_resp.json()["success"] is True
+        assert record_resp.status_code == 200
+        assert record_resp.json()["success"] is True
+    finally:
+        clear_all_pending_mock_responses()
