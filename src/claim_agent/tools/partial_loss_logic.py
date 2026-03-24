@@ -844,31 +844,32 @@ def update_repair_authorization_impl(
         "shop_webhook_url": shop.get("webhook_url"),
     }
 
-    # Push supplemental estimate update to ERP.
-    _push_erp_and_capture(
-        "push_estimate_update",
-        "estimate",
-        {
-            "claim_id": claim_id,
-            "shop_id": shop_id,
-            "authorization_id": supplemental_auth_id,
-            "estimate_amount": supplemental_total,
-            "line_items": None,
-            "is_supplement": True,
-        },
-    )
+    if customer_approved:
+        # Push supplemental estimate update to ERP.
+        _push_erp_and_capture(
+            "push_estimate_update",
+            "estimate",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": supplemental_auth_id,
+                "estimate_amount": supplemental_total,
+                "line_items": None,
+                "is_supplement": True,
+            },
+        )
 
-    # Push status update to reflect the supplemental authorization.
-    _push_erp_and_capture(
-        "push_repair_status",
-        "status",
-        {
-            "claim_id": claim_id,
-            "shop_id": shop_id,
-            "authorization_id": supplemental_auth_id,
-            "status": "supplemental",
-            "notes": f"Supplemental authorization issued; supplemental_total={supplemental_total}",
-        },
-    )
+        # Push status update to reflect the supplemental authorization.
+        _push_erp_and_capture(
+            "push_repair_status",
+            "status",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": supplemental_auth_id,
+                "status": "supplemental",
+                "notes": f"Supplemental authorization issued; supplemental_total={supplemental_total}",
+            },
+        )
 
     return json.dumps(result)
