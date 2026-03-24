@@ -1319,12 +1319,13 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "cms": "CMS_ADAPTER",
     "fraud_reporting": "FRAUD_REPORTING_ADAPTER",
     "reverse_image": "REVERSE_IMAGE_ADAPTER",
+    "erp": "ERP_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 # Adapters that have a REST implementation; "rest" is invalid for all others
 REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset(
-    {"policy", "fraud_reporting", "state_bureau", "claim_search"}
+    {"policy", "fraud_reporting", "state_bureau", "claim_search", "erp"}
 )
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
 VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
@@ -1452,6 +1453,63 @@ class ClaimSearchRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
+class ERPRestConfig(BaseSettings):
+    """REST ERP adapter configuration (ERP_ADAPTER=rest).
+
+    Connects to an external repair/shop management system (e.g. Mitchell
+    RepairCenter, CCC ONE, Solera) for bi-directional repair workflow sync.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="ERP_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="ERP API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    assignment_path: str = Field(
+        default="/repairs/assignment",
+        description="API path for repair assignment notifications",
+    )
+    estimate_path: str = Field(
+        default="/repairs/estimate",
+        description="API path for estimate / supplement updates",
+    )
+    status_path: str = Field(
+        default="/repairs/status",
+        description="API path for repair status sync",
+    )
+    events_path: str = Field(
+        default="/repairs/events",
+        description="API path for polling inbound ERP events",
+    )
+    shop_id_map_raw: str = Field(
+        default="",
+        validation_alias="ERP_REST_SHOP_ID_MAP",
+        description=(
+            "Comma-separated internal_id=erp_id pairs for shop identity mapping "
+            "(e.g. 'SHOP-1=42,SHOP-2=99'). Leave empty to use internal IDs as-is."
+        ),
+    )
+
+    @property
+    def shop_id_map(self) -> dict[str, str]:
+        """Parse the raw shop-ID mapping string into a dict."""
+        result: dict[str, str] = {}
+        for pair in (self.shop_id_map_raw or "").split(","):
+            pair = pair.strip()
+            if "=" in pair:
+                k, _, v = pair.partition("=")
+                k, v = k.strip(), v.strip()
+                if k and v:
+                    result[k] = v
+        return result
+
+
 # ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
@@ -1571,6 +1629,7 @@ class Settings(BaseSettings):
     fraud_reporting_rest: FraudReportingRestConfig = Field(default_factory=FraudReportingRestConfig)
     state_bureau: StateBureauConfig = Field(default_factory=StateBureauConfig)
     claim_search_rest: ClaimSearchRestConfig = Field(default_factory=ClaimSearchRestConfig)
+    erp_rest: ERPRestConfig = Field(default_factory=ERPRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     repair_shop_portal: RepairShopPortalConfig = Field(default_factory=RepairShopPortalConfig)
     third_party_portal: ThirdPartyPortalConfig = Field(default_factory=ThirdPartyPortalConfig)
@@ -1642,6 +1701,7 @@ class Settings(BaseSettings):
     cms_adapter: str = Field(default="mock", validation_alias="CMS_ADAPTER")
     fraud_reporting_adapter: str = Field(default="mock", validation_alias="FRAUD_REPORTING_ADAPTER")
     reverse_image_adapter: str = Field(default="mock", validation_alias="REVERSE_IMAGE_ADAPTER")
+    erp_adapter: str = Field(default="mock", validation_alias="ERP_ADAPTER")
 
     @field_validator("siu_default_state", mode="before")
     @classmethod

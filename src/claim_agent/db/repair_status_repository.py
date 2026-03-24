@@ -108,6 +108,23 @@ class RepairStatusRepository:
             ).fetchall()
         return [row_to_dict(r) for r in rows]
 
+    def has_erp_event(self, claim_id: str, erp_event_id: str) -> bool:
+        """Check whether a repair_status row for this erp_event_id already exists.
+
+        Uses a substring match on the ``notes`` column (``erp_event_id=<value>``).
+        """
+        marker = f"erp_event_id={erp_event_id}"
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text("""
+                SELECT 1 FROM repair_status
+                WHERE claim_id = :claim_id AND notes LIKE :pattern
+                LIMIT 1
+                """),
+                {"claim_id": claim_id, "pattern": f"%{marker}%"},
+            ).fetchone()
+        return row is not None
+
     def get_cycle_time_days(self, claim_id: str) -> float | None:
         """Compute repair cycle time in days: from first 'received' to first 'ready'.
 
