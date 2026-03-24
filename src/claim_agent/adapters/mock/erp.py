@@ -153,12 +153,19 @@ class MockERPAdapter(ERPAdapter):
             self._pending_events = []
 
         filtered: list[dict[str, Any]] = []
+        non_matching: list[dict[str, Any]] = []
         for evt in events:
             if shop_id is not None and evt.get("shop_id") != shop_id:
+                non_matching.append(evt)
                 continue
             if since is not None and evt.get("occurred_at", "") <= since:
+                non_matching.append(evt)
                 continue
             filtered.append(copy.deepcopy(evt))
+        
+        with self._lock:
+            self._pending_events.extend(non_matching)
+        
         return filtered
 
     # ------------------------------------------------------------------
