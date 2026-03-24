@@ -4,13 +4,21 @@ When ``MOCK_CREW_ENABLED=true`` and ``MOCK_NOTIFIER_ENABLED=true``, all calls to
 :func:`claim_agent.notifications.user.notify_user` are intercepted before any
 real email/SMS is attempted.  The mock notifier:
 
-1. Logs the notification (user_type, claim_id, message, template_data keys) at
-   INFO level so test output can confirm the message was "sent".
+1. Logs notification metadata (user_type, claim_id, message length, template_data
+   keys) at INFO level—the raw message body is emitted only at DEBUG to avoid
+   leaking PII into production-visible log streams.
 2. Optionally auto-generates a claimant response via the Mock Claimant module
    when ``MOCK_NOTIFIER_AUTO_RESPOND=true`` **and** ``MOCK_CLAIMANT_ENABLED=true``.
-   The response is enqueued under ``claim_id`` so tests can drain it with
-   :func:`get_pending_mock_responses` and subsequently call
+   Auto-respond is restricted to claimant-facing user types (claimant,
+   policyholder, witness, attorney) so that internal/operational notifications
+   to adjusters, SIU staff, or repair shops do not erroneously produce a
+   "claimant" reply.  The response is enqueued under ``claim_id`` so tests can
+   drain it with :func:`get_pending_mock_responses` and subsequently call
    ``record_user_response``.
+3. A secondary intercept in :func:`claim_agent.notifications.claimant.notify_claimant`
+   suppresses real email/SMS for milestone events (receipt_acknowledged, etc.)
+   that are triggered directly by the repository or other internal callers,
+   rather than routed through ``notify_user``.
 
 Message-ID approach (documented per the plan):
     The notification intercept happens inside ``notify_user``, which does **not**
@@ -34,6 +42,9 @@ from typing import Any
 from claim_agent.config.settings import get_mock_claimant_config, get_mock_notifier_config
 
 logger = logging.getLogger(__name__)
+
+# User types that represent claimant-facing parties and may generate a mock reply.
+_CLAIMANT_FACING_USER_TYPES = frozenset({"claimant", "policyholder", "witness", "attorney"})
 
 # ---------------------------------------------------------------------------
 # In-process pending-response queue (claim_id → list of response dicts)
@@ -60,6 +71,14 @@ def mock_notify_user(
     Called by :func:`claim_agent.notifications.user.notify_user` when both
     ``MOCK_CREW_ENABLED`` and ``MOCK_NOTIFIER_ENABLED`` are true.
 
+    The raw message body is only logged at DEBUG level to avoid leaking PII
+    into logs.  INFO carries only non-sensitive metadata (user_type, claim_id,
+    message length, template_data keys).
+
+    Auto-respond is only attempted for claimant-facing user types
+    (claimant, policyholder, witness, attorney).  Notifications to adjusters,
+    SIU staff, or repair shops are suppressed but do not produce a reply.
+
     Args:
         user_type: Recipient type (claimant, repair_shop, adjuster, …).
         claim_id: Claim identifier.
@@ -69,16 +88,25 @@ def mock_notify_user(
     td_keys = list(template_data.keys()) if template_data else []
     logger.info(
         "MockNotifier: notification suppressed for user_type=%s claim_id=%s "
-        "template_data_keys=%s | message=%s",
+        "message_len=%d template_data_keys=%s",
         user_type,
         claim_id,
+        len(message),
         td_keys,
-        message,
     )
+    logger.debug("MockNotifier: message body for claim_id=%s: %s", claim_id, message)
 
-    # Auto-respond only when the mock claimant is also enabled
+    # Auto-respond only for claimant-facing parties and when the mock claimant is enabled
     notifier_cfg = get_mock_notifier_config()
     if not notifier_cfg.get("auto_respond"):
+        return
+
+    if user_type not in _CLAIMANT_FACING_USER_TYPES:
+        logger.debug(
+            "MockNotifier: auto_respond skipped for non-claimant user_type=%s claim_id=%s",
+            user_type,
+            claim_id,
+        )
         return
 
     claimant_cfg = get_mock_claimant_config()
@@ -108,6 +136,32 @@ def mock_notify_user(
     logger.info(
         "MockNotifier: auto-response queued response_id=%s claim_id=%s",
         response_id,
+        claim_id,
+    )
+
+
+def mock_notify_claimant(
+    event: str,
+    claim_id: str,
+) -> None:
+    """Log and suppress a direct notify_claimant() milestone notification during testing.
+
+    Called by :func:`claim_agent.notifications.claimant.notify_claimant` when both
+    ``MOCK_CREW_ENABLED`` and ``MOCK_NOTIFIER_ENABLED`` are true.  This covers
+    call sites (e.g. ClaimRepository milestone hooks) that invoke ``notify_claimant``
+    directly rather than routing through ``notify_user``.
+
+    Unlike :func:`mock_notify_user`, this function does **not** enqueue an
+    auto-response because milestone events (receipt_acknowledged, claim_closed,
+    etc.) are outbound-only broadcasts that do not expect a claimant reply.
+
+    Args:
+        event: Claimant event type (e.g. ``receipt_acknowledged``, ``claim_closed``).
+        claim_id: Claim identifier.
+    """
+    logger.info(
+        "MockNotifier: claimant milestone notification suppressed event=%s claim_id=%s",
+        event,
         claim_id,
     )
 

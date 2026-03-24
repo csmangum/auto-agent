@@ -43,7 +43,7 @@ class TestMockNotifyUser:
     """Unit tests for mock_notify_user()."""
 
     def test_logs_notification_at_info(self, caplog):
-        """mock_notify_user should log the notification at INFO level."""
+        """mock_notify_user should log metadata at INFO level (not full message body)."""
         with patch(
             "claim_agent.mock_crew.notifier.get_mock_notifier_config",
             return_value=_MOCK_NOTIFIER_ON,
@@ -51,8 +51,28 @@ class TestMockNotifyUser:
             with caplog.at_level(logging.INFO, logger="claim_agent.mock_crew.notifier"):
                 mock_notify_user("claimant", "CLM-001", "Please upload photos.")
 
+        # Metadata is present at INFO
         assert any("CLM-001" in m for m in caplog.messages)
         assert any("claimant" in m for m in caplog.messages)
+        # Full message body must NOT appear in INFO records
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        assert not any("Please upload photos." in m for m in info_messages)
+
+    def test_full_message_logged_at_debug(self, caplog):
+        """mock_notify_user should log the message body at DEBUG level."""
+        with patch(
+            "claim_agent.mock_crew.notifier.get_mock_notifier_config",
+            return_value=_MOCK_NOTIFIER_ON,
+        ):
+            with caplog.at_level(logging.DEBUG, logger="claim_agent.mock_crew.notifier"):
+                mock_notify_user("claimant", "CLM-001b", "Sensitive content here.")
+
+        debug_messages = [
+            r.message for r in caplog.records if r.levelno == logging.DEBUG
+        ]
+        assert any("Sensitive content here." in m for m in debug_messages)
 
     def test_no_response_queued_when_auto_respond_false(self):
         """When auto_respond=False, no response should be enqueued."""
@@ -106,6 +126,50 @@ class TestMockNotifyUser:
                 mock_notify_user("claimant", "CLM-004", "Provide repair estimate.")
 
         assert get_pending_mock_responses("CLM-004") == []
+
+    def test_auto_respond_skips_for_non_claimant_user_types(self):
+        """auto_respond should not enqueue responses for adjuster/repair_shop/siu."""
+        with (
+            patch(
+                "claim_agent.mock_crew.notifier.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_AUTO,
+            ),
+            patch(
+                "claim_agent.mock_crew.notifier.get_mock_claimant_config",
+                return_value=_MOCK_CLAIMANT_ON,
+            ),
+        ):
+            mock_notify_user("adjuster", "CLM-006", "Internal adjuster note.")
+            mock_notify_user("repair_shop", "CLM-007", "Repair authorization.")
+            mock_notify_user("siu", "CLM-008", "SIU referral.")
+
+        assert get_pending_mock_responses("CLM-006") == []
+        assert get_pending_mock_responses("CLM-007") == []
+        assert get_pending_mock_responses("CLM-008") == []
+
+    def test_auto_respond_enqueues_for_claimant_facing_types(self):
+        """auto_respond should queue responses for all claimant-facing user types."""
+        claimant_types = ["claimant", "policyholder", "witness", "attorney"]
+        with (
+            patch(
+                "claim_agent.mock_crew.notifier.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_AUTO,
+            ),
+            patch(
+                "claim_agent.mock_crew.notifier.get_mock_claimant_config",
+                return_value=_MOCK_CLAIMANT_ON,
+            ),
+            patch(
+                "claim_agent.mock_crew.claimant.get_mock_claimant_config",
+                return_value=_MOCK_CLAIMANT_ON,
+            ),
+        ):
+            for i, ut in enumerate(claimant_types):
+                mock_notify_user(ut, f"CLM-09{i}", "Please upload photos.")
+
+        for i, ut in enumerate(claimant_types):
+            responses = get_pending_mock_responses(f"CLM-09{i}")
+            assert len(responses) == 1, f"Expected 1 response for user_type={ut}"
 
     def test_template_data_keys_logged(self, caplog):
         """Template data keys should appear in the log output."""
@@ -359,3 +423,67 @@ class TestMockNotifierConfig:
             assert cfg["auto_respond"] is True
 
         reload_settings()
+
+
+# ---------------------------------------------------------------------------
+# Tests for notify_claimant intercept
+# ---------------------------------------------------------------------------
+
+
+class TestNotifyClaimantMockIntercept:
+    """Tests: notify_claimant is suppressed under mock crew + mock notifier."""
+
+    def test_notify_claimant_suppressed_when_mock_enabled(self):
+        """notify_claimant should not submit email/SMS jobs when mock is active."""
+        from claim_agent.notifications.claimant import notify_claimant
+
+        with (
+            patch(
+                "claim_agent.notifications.claimant.get_mock_crew_config",
+                return_value=_MOCK_CREW_ON,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ),
+            patch("claim_agent.notifications.claimant._EXECUTOR") as mock_exec,
+        ):
+            notify_claimant(
+                "receipt_acknowledged",
+                "CLM-200",
+                email="test@example.com",
+            )
+
+            # Executor must not have been called (no real email/SMS submitted)
+            mock_exec.submit.assert_not_called()
+
+    def test_notify_claimant_real_path_when_mock_off(self):
+        """notify_claimant uses the real path when mock is disabled."""
+        from claim_agent.notifications.claimant import notify_claimant
+
+        with (
+            patch(
+                "claim_agent.notifications.claimant.get_mock_crew_config",
+                return_value=_MOCK_CREW_OFF,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.get_mock_notifier_config",
+                return_value=_MOCK_NOTIFIER_ON,
+            ),
+            patch(
+                "claim_agent.notifications.claimant.get_notification_config",
+                return_value={"email_enabled": True, "sms_enabled": False,
+                              "sendgrid_api_key": "key", "sendgrid_from_email": "from@x.com",
+                              "twilio_account_sid": "", "twilio_auth_token": "",
+                              "twilio_from_phone": ""},
+            ),
+            patch("claim_agent.notifications.claimant._EXECUTOR") as mock_exec,
+        ):
+            notify_claimant(
+                "receipt_acknowledged",
+                "CLM-201",
+                email="test@example.com",
+            )
+
+            # The executor submit should have been called (real path)
+            mock_exec.submit.assert_called_once()
