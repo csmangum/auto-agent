@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -58,6 +59,50 @@ def _run_ucspa_deadline_job() -> None:
     logger.info("Scheduler UCSPA deadline sweep complete: alerts=%d", len(claims))
 
 
+def _process_erp_inbound_event(event: dict[str, Any]) -> None:
+    """Process a single inbound ERP event received via polling.
+
+    Logs the event for observability.  Duplicate handling and claim-state
+    updates for events already ingested via the ``POST /api/webhooks/erp``
+    webhook are handled upstream; this path is for events that were *not*
+    delivered via the webhook (e.g. when the webhook endpoint was temporarily
+    unavailable).
+    """
+    event_type = event.get("event_type", "")
+    claim_id = event.get("claim_id", "")
+    shop_id = event.get("shop_id", "")
+    erp_event_id = event.get("erp_event_id", "")
+    logger.info(
+        "ERP poll: inbound event_type=%s claim_id=%s shop_id=%s erp_event_id=%s",
+        event_type,
+        claim_id,
+        shop_id,
+        erp_event_id,
+    )
+
+
+def _run_erp_poll_job() -> None:
+    """Poll ERP for pending inbound events and process each one."""
+    try:
+        from claim_agent.adapters.registry import get_erp_adapter
+
+        erp = get_erp_adapter()
+        events = erp.pull_pending_events()
+        if not events:
+            return
+        logger.info("ERP poll: received %d inbound event(s)", len(events))
+        for event in events:
+            try:
+                _process_erp_inbound_event(event)
+            except Exception:
+                logger.exception(
+                    "ERP poll: failed to process event erp_event_id=%s",
+                    event.get("erp_event_id"),
+                )
+    except Exception:
+        logger.exception("Scheduler ERP poll job failed")
+
+
 def ensure_scheduler_running() -> None:
     """Start in-process scheduler when enabled. Safe to call multiple times."""
     global _scheduler
@@ -93,12 +138,24 @@ def ensure_scheduler_running() -> None:
                 max_instances=1,
                 coalesce=True,
             )
+            scheduler.add_job(
+                _run_erp_poll_job,
+                trigger=CronTrigger.from_crontab(
+                    config.erp_poll_cron,
+                    timezone=config.timezone,
+                ),
+                id="erp_poll",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
             scheduler.start()
             _scheduler = scheduler
             logger.info(
-                "In-process scheduler enabled (diary=%s ucspa=%s timezone=%s)",
+                "In-process scheduler enabled (diary=%s ucspa=%s erp_poll=%s timezone=%s)",
                 config.diary_escalate_cron,
                 config.ucspa_deadline_check_cron,
+                config.erp_poll_cron,
                 config.timezone,
             )
         except Exception:

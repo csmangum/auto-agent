@@ -463,14 +463,17 @@ def _reset_mock_crew_stores():
     from claim_agent.mock_crew.notifier import clear_all_pending_mock_responses
     from claim_agent.mock_crew.repair_shop import clear_all_pending_repair_shop_responses
     from claim_agent.mock_crew.webhook import clear_captured_webhooks
+    from claim_agent.mock_crew.erp import clear_captured_erp_events
 
     clear_all_pending_mock_responses()
     clear_all_pending_repair_shop_responses()
     clear_captured_webhooks()
+    clear_captured_erp_events()
     yield
     clear_all_pending_mock_responses()
     clear_all_pending_repair_shop_responses()
     clear_captured_webhooks()
+    clear_captured_erp_events()
 
 
 @pytest.fixture()
