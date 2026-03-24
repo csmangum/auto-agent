@@ -7,7 +7,8 @@ from typing import Any
 
 import httpx
 
-from claim_agent.config.settings import get_notification_config
+from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
+from claim_agent.mock_crew.notifier import mock_notify_claimant
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,15 @@ def send_otp_notification(
         otp: The plaintext OTP code to deliver.
         verification_id: Tracking ID included in the message for debugging.
     """
+    # Mock intercept: suppress real OTP delivery during testing
+    if get_mock_crew_config()["enabled"] and get_mock_notifier_config()["enabled"]:
+        logger.info(
+            "MockNotifier: OTP notification suppressed channel=%s verification_id=%s",
+            channel,
+            verification_id,
+        )
+        return
+
     config = get_notification_config()
     subject = "Your DSAR verification code"
     message = (
@@ -128,6 +138,14 @@ def notify_claimant(
     """
     if opt_out:
         return
+
+    # Mock intercept: suppress real email/SMS during testing.
+    # Must run before contact-info / channel-enabled guards so the mock fires
+    # even when email/phone are None or notification channels are disabled.
+    if get_mock_crew_config()["enabled"] and get_mock_notifier_config()["enabled"]:
+        mock_notify_claimant(event, claim_id)
+        return
+
     if not email and not phone:
         return
 

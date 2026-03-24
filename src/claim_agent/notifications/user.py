@@ -8,7 +8,8 @@ Stub implementation: logs intent. Real integration via adapters.
 import logging
 from typing import Any
 
-from claim_agent.config.settings import get_notification_config
+from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
+from claim_agent.mock_crew.notifier import mock_notify_user
 from claim_agent.models.user import UserType
 from claim_agent.notifications.claimant import notify_claimant
 
@@ -51,6 +52,16 @@ def notify_user(
     except ValueError:
         logger.warning("Unknown user_type for notify_user: %s", user_type)
         return False
+
+    # Mock intercept: suppress real notifications during testing
+    if get_mock_crew_config()["enabled"] and get_mock_notifier_config()["enabled"]:
+        mock_notify_user(
+            user_type,
+            claim_id,
+            message,
+            template_data=template_data,
+        )
+        return True  # pretend delivered so mark_follow_up_sent runs
 
     if ut in (UserType.CLAIMANT, UserType.POLICYHOLDER, UserType.WITNESS, UserType.ATTORNEY):
         config = get_notification_config()
