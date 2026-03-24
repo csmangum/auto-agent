@@ -316,6 +316,25 @@ def process_rental_reimbursement_impl(
         )
     reimbursement_id = f"RENT-{uuid.uuid4().hex[:8].upper()}"
     _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
+
+    # Persist to DB when a ClaimContext with a DB path is available.
+    if ctx is not None:
+        try:
+            from claim_agent.db.rental_repository import RentalAuthorizationRepository
+
+            repo = RentalAuthorizationRepository(db_path=getattr(ctx, "db_path", None))
+            repo.upsert_authorization(
+                claim_id=claim_id,
+                authorized_days=rental_days,
+                daily_cap=daily_limit,
+                direct_bill=False,
+                status="authorized",
+                reimbursement_id=reimbursement_id,
+                amount_approved=float(amount),
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to persist rental authorization: %s", exc)
+
     return json.dumps(
         {
             "reimbursement_id": reimbursement_id,
