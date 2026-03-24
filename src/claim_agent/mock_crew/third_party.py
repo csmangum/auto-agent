@@ -69,9 +69,9 @@ def mock_send_demand_letter(
         third_party_info: Optional context about the third party.
 
     Returns:
-        Dict with demand letter confirmation fields plus third-party response
-        fields (``third_party_response``, ``third_party_message``, and
-        optionally ``counter_amount``).
+        Dict containing the mock third-party response fields:
+        ``third_party_response``, ``third_party_message``, and optionally
+        ``counter_amount``.
     """
     cfg = get_mock_third_party_config()
     outcome = cfg["outcome"]
