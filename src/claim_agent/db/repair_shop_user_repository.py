@@ -198,12 +198,21 @@ class RepairShopUserRepository:
                     },
                 )
                 row = result.fetchone()
-                row_id = int(row[0]) if row else None
+                if row is None:
+                    raise RuntimeError(
+                        "INSERT INTO repair_shop_claim_assignments RETURNING id produced no row"
+                    )
+                row_id = int(row[0])
             except IntegrityError as e:
                 raise ValueError(
                     f"Shop '{shop_id}' is already assigned to claim '{claim_id}'"
                 ) from e
-        return self.get_assignment_by_id(row_id)  # type: ignore[return-value]
+        assignment = self.get_assignment_by_id(row_id)
+        if assignment is None:
+            raise RuntimeError(
+                f"Assignment id {row_id} not found immediately after insert"
+            )
+        return assignment
 
     def get_assignment_by_id(self, assignment_id: int) -> dict[str, Any] | None:
         with get_connection(self._db_path) as conn:
