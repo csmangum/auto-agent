@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from typing import TYPE_CHECKING
 
 from claim_agent.adapters.registry import get_policy_adapter
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.db.database import get_db_path
+from claim_agent.db.payment_repository import PaymentRepository
+from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
+from claim_agent.tools.payment_logic import WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -26,10 +31,6 @@ DEFAULT_MAX_DAYS = 30
 # Coverage types that typically include rental reimbursement (Part D / physical damage).
 # "full_coverage" is a legacy misnomer; real policies use coverages array with collision/comprehensive.
 RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
-
-# In-memory idempotency cache for mock: (claim_id, amount, rental_days) -> reimbursement_id.
-# TODO: Real implementation must persist to repository and enforce idempotency in DB.
-_IDEMPOTENCY_CACHE: dict[tuple[str, float, int], str] = {}
 
 
 def _parse_rental_limits(rental: dict | None) -> tuple[float, float, int]:
@@ -220,11 +221,12 @@ def process_rental_reimbursement_impl(
 ) -> str:
     """Process rental reimbursement for an approved rental.
 
-    Validates amount against limits from get_rental_limits_impl.
-    Idempotent: repeated calls with same (claim_id, amount, rental_days) return
-    the same reimbursement_id (in-memory cache for mock).
-    TODO: Real implementation must persist to repository and enforce
-    idempotency in DB.
+    Validates amount against limits from get_rental_limits_impl, then persists an
+    authorized payment row via PaymentRepository using ``WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX``
+    so the claimant portal Rental tab includes the reimbursement.
+
+    Idempotent: repeated calls with the same (claim_id, amount, rental_days) return the
+    same reimbursement_id via a DB-level unique constraint on (claim_id, external_ref).
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -281,17 +283,6 @@ def process_rental_reimbursement_impl(
                 "message": limits.get("error", "Could not retrieve policy limits"),
             }
         )
-    idempotency_key = (claim_id, float(amount), rental_days)
-    if idempotency_key in _IDEMPOTENCY_CACHE:
-        rid = _IDEMPOTENCY_CACHE[idempotency_key]
-        return json.dumps(
-            {
-                "reimbursement_id": rid,
-                "amount": float(amount),
-                "status": "approved",
-                "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
-            }
-        )
     daily_limit = float(limits["daily_limit"])
     aggregate_limit = float(limits["aggregate_limit"])
     max_days = limits.get("max_days")
@@ -314,8 +305,66 @@ def process_rental_reimbursement_impl(
                 "message": f"Amount {amount} exceeds limit {max_amount} (daily {daily_limit}, aggregate {aggregate_limit})",
             }
         )
-    reimbursement_id = f"RENT-{uuid.uuid4().hex[:8].upper()}"
-    _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
+
+    # Build a deterministic external_ref for DB-level idempotency.
+    # amount_cents avoids floating-point representation differences.
+    amount_cents = int(round(float(amount) * 100))
+    external_ref = f"{WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX}{claim_id}:{amount_cents}:{rental_days}"
+
+    db_path = ctx.repo.db_path if (ctx and ctx.repo) else get_db_path()
+    pay_repo = PaymentRepository(db_path=db_path)
+
+    # Check for an existing payment row first so we can return idempotent response.
+    existing = pay_repo.get_payment_by_claim_external_ref(claim_id, external_ref)
+    if existing is not None:
+        reimbursement_id = f"RENT-{existing['id']:08X}"
+        return json.dumps(
+            {
+                "reimbursement_id": reimbursement_id,
+                "amount": float(amount),
+                "status": "approved",
+                "message": (
+                    f"Rental reimbursement {reimbursement_id} already processed "
+                    f"for claim {claim_id} (idempotent)"
+                ),
+            }
+        )
+
+    pdata = ClaimPaymentCreate(
+        claim_id=claim_id,
+        amount=float(amount),
+        payee="Claimant",
+        payee_type=PayeeType.CLAIMANT,
+        payment_method=PaymentMethod.CHECK,
+        external_ref=external_ref,
+    )
+    try:
+        payment_id = pay_repo.create_payment(
+            pdata,
+            actor_id=ACTOR_WORKFLOW,
+            role="adjuster",
+            skip_authority_check=True,
+        )
+    except ClaimNotFoundError:
+        return json.dumps(
+            {
+                "reimbursement_id": "",
+                "amount": 0.0,
+                "status": "failed",
+                "message": (
+                    f"Claim {claim_id} not found in database; "
+                    "cannot record rental reimbursement"
+                ),
+            }
+        )
+
+    reimbursement_id = f"RENT-{payment_id:08X}"
+    logger.info(
+        "Rental reimbursement %s created for claim %s (payment_id=%d)",
+        reimbursement_id,
+        claim_id,
+        payment_id,
+    )
     return json.dumps(
         {
             "reimbursement_id": reimbursement_id,
