@@ -422,3 +422,20 @@ def test_audit_log_retention_years_after_purge_valid():
         else:
             os.environ["AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE"] = prev
         reload_settings()
+
+
+def test_mock_claimant_config_accepts_enum_response_strategy():
+    """MockClaimantConfig._parse_strategy should accept ResponseStrategy enum directly."""
+    from claim_agent.config.settings_model import MockClaimantConfig, ResponseStrategy
+
+    config = MockClaimantConfig(
+        MOCK_CLAIMANT_ENABLED=True,
+        MOCK_CLAIMANT_RESPONSE_STRATEGY=ResponseStrategy.REFUSE
+    )
+    assert config.response_strategy == ResponseStrategy.REFUSE
+
+    config2 = MockClaimantConfig(
+        MOCK_CLAIMANT_ENABLED=True,
+        MOCK_CLAIMANT_RESPONSE_STRATEGY=ResponseStrategy.DELAYED
+    )
+    assert config2.response_strategy == ResponseStrategy.DELAYED

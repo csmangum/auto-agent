@@ -871,6 +871,8 @@ class MockClaimantConfig(BaseSettings):
     @field_validator("response_strategy", mode="before")
     @classmethod
     def _parse_strategy(cls, v: Any) -> str:
+        if isinstance(v, ResponseStrategy):
+            return v.value
         valid = {s.value for s in ResponseStrategy}
         val = str(v).strip().lower() if v else ResponseStrategy.IMMEDIATE.value
         return val if val in valid else ResponseStrategy.IMMEDIATE.value
