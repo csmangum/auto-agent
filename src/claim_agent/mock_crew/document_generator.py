@@ -45,7 +45,7 @@ _DAMAGE_PART_CATALOG: list[dict[str, Any]] = [
 
 _KEYWORDS_TO_PARTS: dict[str, list[str]] = {
     "front": ["Front Bumper Cover", "Hood", "Headlight Assembly (Left)", "Headlight Assembly (Right)"],
-    "rear": ["Rear Bumper Cover", "Taillight Assembly (Left)", "Rear Window"],
+    "rear": ["Rear Bumper Cover", "Taillight Assembly (Left)", "Taillight Assembly (Right)", "Rear Window"],
     "side": ["Front Fender (Left)", "Driver Door", "Rear Quarter Panel (Left)"],
     "fender": ["Front Fender (Left)", "Front Fender (Right)"],
     "bumper": ["Front Bumper Cover"],

@@ -280,12 +280,6 @@ def get_mock_image_config() -> dict:
     }
 
 
-def get_mock_document_config() -> dict:
-    """Mock document generator configuration."""
-    s = get_settings().mock_document
-    return {"enabled": s.enabled}
-
-
 # Re-export as module-level names for existing imports (lazy via __getattr__)
 def __getattr__(name: str):
     if name == "DEFAULT_BASE_VALUE":
