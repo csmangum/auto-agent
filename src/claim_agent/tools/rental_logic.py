@@ -292,6 +292,33 @@ def process_rental_reimbursement_impl(
                 "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
             }
         )
+    
+    # Check DB for existing authorization when ctx is available (cross-process idempotency).
+    if ctx is not None:
+        try:
+            repo = RentalAuthorizationRepository(
+                db_path=getattr(ctx.repo, "_db_path", None),
+            )
+            existing = repo.get_authorization(claim_id)
+            if (
+                existing
+                and existing.get("authorized_days") == rental_days
+                and existing.get("amount_approved") == float(amount)
+                and existing.get("reimbursement_id")
+            ):
+                rid = existing["reimbursement_id"]
+                _IDEMPOTENCY_CACHE[idempotency_key] = rid
+                return json.dumps(
+                    {
+                        "reimbursement_id": rid,
+                        "amount": float(amount),
+                        "status": "approved",
+                        "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
+                    }
+                )
+        except Exception as exc:
+            logger.warning("Failed to check DB for existing rental authorization: %s", exc)
+    
     daily_limit = float(limits["daily_limit"])
     aggregate_limit = float(limits["aggregate_limit"])
     max_days = limits.get("max_days")
