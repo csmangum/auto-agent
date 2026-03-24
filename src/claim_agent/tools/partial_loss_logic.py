@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Optional, cast
 
-from claim_agent.adapters.registry import get_parts_adapter, get_policy_adapter, get_repair_shop_adapter
+from claim_agent.adapters.registry import get_erp_adapter, get_parts_adapter, get_policy_adapter, get_repair_shop_adapter
 from claim_agent.compliance.state_rules import get_total_loss_threshold
 from claim_agent.config import get_settings
 from claim_agent.config.settings import (
@@ -26,6 +26,58 @@ if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
 
 logger = logging.getLogger(__name__)
+
+_ERP_LOG_IDENTIFIER_KEYS = frozenset({"claim_id", "shop_id", "authorization_id"})
+
+
+def _push_erp_and_capture(
+    method: str,
+    event_type: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Call one ERP adapter push method and optionally capture for test assertions.
+
+    Args:
+        method: Adapter method to call (``push_repair_assignment``,
+            ``push_estimate_update``, ``push_repair_status``).
+        event_type: Short label used by :func:`capture_erp_event`
+            (``assignment``, ``estimate``, ``status``).
+        payload: Keyword arguments forwarded to the adapter method.
+
+    Returns:
+        The result dict returned by the adapter, or ``{}`` on error.
+    """
+    from claim_agent.config.settings import get_mock_crew_config, get_mock_erp_capture_config
+
+    try:
+        erp = get_erp_adapter()
+        fn = getattr(erp, method)
+        result: dict[str, Any] = fn(**payload)
+    except Exception:
+        identifiers = {
+            k: payload[k]
+            for k in _ERP_LOG_IDENTIFIER_KEYS
+            if k in payload
+        }
+        logger.warning(
+            "ERP adapter %s failed (non-fatal)",
+            method,
+            exc_info=True,
+            extra={
+                "extra_data": {
+                    "erp_method": method,
+                    "erp_event_type": event_type,
+                    "identifiers": identifiers,
+                },
+            },
+        )
+        return {}
+
+    if get_mock_crew_config()["enabled"] and get_mock_erp_capture_config()["capture_enabled"]:
+        from claim_agent.mock_crew.erp import capture_erp_event
+        capture_erp_event(event_type, {**payload, **result})
+
+    return result
 
 
 def _get_shop_labor_rate(
@@ -134,6 +186,20 @@ def assign_repair_shop_impl(
         "estimated_repair_days": repair_days,
         "confirmation_number": f"RSA-{uuid.uuid4().hex[:8].upper()}",
     }
+
+    erp_result = _push_erp_and_capture(
+        "push_repair_assignment",
+        "assignment",
+        {
+            "claim_id": claim_id,
+            "shop_id": shop_id,
+            "authorization_id": None,
+            "repair_amount": None,
+            "vehicle_info": None,
+        },
+    )
+    if erp_result.get("erp_reference"):
+        assignment["erp_reference"] = erp_result["erp_reference"]
 
     return json.dumps(assignment)
 
@@ -539,6 +605,52 @@ def generate_repair_authorization_impl(
         "shop_webhook_url": shop.get("webhook_url"),
     }
 
+    authorization_id = authorization["authorization_id"]
+    authorized_amount = authorization["authorized_amount"]
+
+    if customer_approved:
+        # Push repair assignment (with authorization_id) to ERP only after approval.
+        erp_assign_result = _push_erp_and_capture(
+            "push_repair_assignment",
+            "assignment",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": authorization_id,
+                "repair_amount": authorized_amount,
+                "vehicle_info": None,
+            },
+        )
+        if erp_assign_result.get("erp_reference"):
+            authorization["erp_reference"] = erp_assign_result["erp_reference"]
+
+        # Push the repair estimate to ERP.
+        _push_erp_and_capture(
+            "push_estimate_update",
+            "estimate",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": authorization_id,
+                "estimate_amount": authorized_amount,
+                "line_items": None,
+                "is_supplement": False,
+            },
+        )
+
+        # Push initial repair status ("received") to ERP.
+        _push_erp_and_capture(
+            "push_repair_status",
+            "status",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": authorization_id,
+                "status": "received",
+                "notes": "Repair authorization issued",
+            },
+        )
+
     return json.dumps(authorization)
 
 
@@ -749,4 +861,33 @@ def update_repair_authorization_impl(
         "valid_until": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
         "shop_webhook_url": shop.get("webhook_url"),
     }
+
+    if customer_approved:
+        # Push supplemental estimate update to ERP.
+        _push_erp_and_capture(
+            "push_estimate_update",
+            "estimate",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": supplemental_auth_id,
+                "estimate_amount": supplemental_total,
+                "line_items": None,
+                "is_supplement": True,
+            },
+        )
+
+        # Push status update to reflect the supplemental authorization.
+        _push_erp_and_capture(
+            "push_repair_status",
+            "status",
+            {
+                "claim_id": claim_id,
+                "shop_id": shop_id,
+                "authorization_id": supplemental_auth_id,
+                "status": "supplemental",
+                "notes": f"Supplemental authorization issued; supplemental_total={supplemental_total}",
+            },
+        )
+
     return json.dumps(result)

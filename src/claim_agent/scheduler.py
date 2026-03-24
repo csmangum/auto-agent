@@ -5,15 +5,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from pydantic import ValidationError
 
 from claim_agent.compliance.ucspa import claims_with_deadlines_approaching
 from claim_agent.config import get_settings
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.escalation import run_deadline_escalation
 from claim_agent.notifications.webhook import dispatch_ucspa_deadline_approaching
+from claim_agent.api.routes.webhooks import (
+    ERPWebhookPayload,
+    ERPWebhookProcessingError,
+    process_erp_webhook_payload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +65,49 @@ def _run_ucspa_deadline_job() -> None:
     logger.info("Scheduler UCSPA deadline sweep complete: alerts=%d", len(claims))
 
 
+def _process_erp_inbound_event(event: dict[str, Any]) -> None:
+    """Process one polled ERP event using webhook-equivalent logic."""
+    parsed = ERPWebhookPayload(**event)
+    result = process_erp_webhook_payload(parsed)
+    logger.info(
+        "ERP poll: processed event_type=%s claim_id=%s shop_id=%s erp_event_id=%s already_processed=%s",
+        parsed.event_type,
+        parsed.claim_id,
+        parsed.shop_id,
+        parsed.erp_event_id,
+        result.get("already_processed", False),
+    )
+
+
+def _run_erp_poll_job() -> None:
+    """Poll ERP for pending inbound events and process each one."""
+    try:
+        from claim_agent.adapters.registry import get_erp_adapter
+
+        erp = get_erp_adapter()
+        events = erp.pull_pending_events()
+        if not events:
+            return
+        logger.info("ERP poll: received %d inbound event(s)", len(events))
+        for event in events:
+            try:
+                _process_erp_inbound_event(event)
+            except ValidationError:
+                logger.exception("ERP poll: invalid inbound event payload")
+            except ERPWebhookProcessingError:
+                logger.exception(
+                    "ERP poll: failed business processing for event erp_event_id=%s",
+                    event.get("erp_event_id"),
+                )
+            except Exception:
+                logger.exception(
+                    "ERP poll: failed to process event erp_event_id=%s",
+                    event.get("erp_event_id"),
+                )
+    except Exception:
+        logger.exception("Scheduler ERP poll job failed")
+
+
 def ensure_scheduler_running() -> None:
     """Start in-process scheduler when enabled. Safe to call multiple times."""
     global _scheduler
@@ -93,12 +143,24 @@ def ensure_scheduler_running() -> None:
                 max_instances=1,
                 coalesce=True,
             )
+            scheduler.add_job(
+                _run_erp_poll_job,
+                trigger=CronTrigger.from_crontab(
+                    config.erp_poll_cron,
+                    timezone=config.timezone,
+                ),
+                id="erp_poll",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
             scheduler.start()
             _scheduler = scheduler
             logger.info(
-                "In-process scheduler enabled (diary=%s ucspa=%s timezone=%s)",
+                "In-process scheduler enabled (diary=%s ucspa=%s erp_poll=%s timezone=%s)",
                 config.diary_escalate_cron,
                 config.ucspa_deadline_check_cron,
+                config.erp_poll_cron,
                 config.timezone,
             )
         except Exception:
