@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from claim_agent.api.auth import AuthContext
@@ -66,8 +66,6 @@ def get_shop_user(user_id: str, _auth: AuthContext = RequireAdmin):
 @router.delete("/{user_id}", status_code=204)
 def deactivate_shop_user(user_id: str, _auth: AuthContext = RequireAdmin):
     """Deactivate a repair shop user account (admin only)."""
-    from fastapi import Response
-
     repo = RepairShopUserRepository()
     found = repo.deactivate_shop_user(user_id)
     if not found:
