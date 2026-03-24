@@ -14,6 +14,7 @@ from typing import Any, Callable, TypeVar, cast
 from claim_agent.adapters.base import (
     CMSReportingAdapter,
     ClaimSearchAdapter,
+    ERPAdapter,
     FraudReportingAdapter,
     GapInsuranceAdapter,
     NMVTISAdapter,
@@ -277,6 +278,36 @@ def get_reverse_image_adapter() -> ReverseImageAdapter:
     from claim_agent.adapters.stub import StubReverseImageAdapter
 
     return _get_or_create_adapter("reverse_image", StubReverseImageAdapter, MockReverseImageAdapter)
+
+
+def _erp_rest_factory() -> ERPAdapter:
+    from claim_agent.adapters.real.erp_rest import create_rest_erp_adapter
+    return create_rest_erp_adapter()
+
+
+def get_erp_adapter() -> ERPAdapter:
+    """Return the configured ERP (repair/shop management system) adapter.
+
+    Backend is selected by the ``ERP_ADAPTER`` environment variable
+    (default: ``mock``).  Supported values: ``mock``, ``stub``, ``rest``.
+
+    * ``mock`` – :class:`~claim_agent.adapters.mock.erp.MockERPAdapter`
+      records all outbound pushes in memory and returns seeded inbound events;
+      suitable for tests and development.
+    * ``stub`` – :class:`~claim_agent.adapters.stub.StubERPAdapter` raises
+      ``NotImplementedError`` for all methods; a placeholder for real integration.
+    * ``rest`` – :class:`~claim_agent.adapters.real.erp_rest.RestERPAdapter`
+      sends HTTP requests to the configured ERP API (requires ``ERP_REST_BASE_URL``).
+    """
+    from claim_agent.adapters.mock.erp import MockERPAdapter
+    from claim_agent.adapters.stub import StubERPAdapter
+
+    return _get_or_create_adapter(
+        "erp",
+        StubERPAdapter,
+        MockERPAdapter,
+        rest_factory=_erp_rest_factory,
+    )
 
 
 def reset_adapters() -> None:

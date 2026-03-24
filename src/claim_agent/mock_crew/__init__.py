@@ -8,6 +8,11 @@ from claim_agent.config.settings_model import ResponseStrategy, ThirdPartyOutcom
 from claim_agent.mock_crew.claim_generator import generate_claim_from_prompt
 from claim_agent.mock_crew.claimant import generate_claim_input, respond_to_message
 from claim_agent.mock_crew.document_generator import generate_damage_photo_url, generate_repair_estimate
+from claim_agent.mock_crew.erp import (
+    capture_erp_event,
+    clear_captured_erp_events,
+    get_captured_erp_events,
+)
 from claim_agent.mock_crew.image_generator import generate_damage_image
 from claim_agent.mock_crew.notifier import clear_all_pending_mock_responses, get_pending_mock_responses
 from claim_agent.mock_crew.repair_shop import (
@@ -27,15 +32,18 @@ __all__ = [
     "ResponseStrategy",
     "ThirdPartyOutcome",
     "analyze_damage_photo_mock",
+    "capture_erp_event",
     "capture_webhook",
     "clear_all_pending_mock_responses",
     "clear_all_pending_repair_shop_responses",
+    "clear_captured_erp_events",
     "clear_captured_webhooks",
     "generate_claim_from_prompt",
     "generate_claim_input",
     "generate_damage_image",
     "generate_damage_photo_url",
     "generate_repair_estimate",
+    "get_captured_erp_events",
     "get_captured_webhooks",
     "get_pending_mock_responses",
     "get_pending_repair_shop_responses",

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from claim_agent.config.settings import get_webhook_config
+from claim_agent.adapters.base import VALID_ERP_EVENT_TYPES
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from claim_agent.db.database import get_db_path
 from claim_agent.db.repair_status_repository import RepairStatusRepository
@@ -158,4 +159,164 @@ async def repair_status_webhook(request: Request) -> Response:
     return JSONResponse(
         status_code=200,
         content={"ok": True, "repair_status_id": row_id},
+    )
+
+
+# ---------------------------------------------------------------------------
+# ERP inbound webhook (ERP → carrier)
+# ---------------------------------------------------------------------------
+
+
+class ERPWebhookPayload(BaseModel):
+    """Payload for ``POST /webhooks/erp``.
+
+    ERP systems POST signed events to this endpoint to notify the carrier of
+    estimate approvals, parts delays, and supplement requests.  The signature
+    scheme is the same HMAC-SHA256 pattern used by the repair-status webhook.
+
+    event_type values
+    -----------------
+    - ``estimate_approved``  – ERP approved the repair estimate.
+    - ``parts_delayed``      – Parts are delayed; repair timeline extended.
+    - ``supplement_requested`` – Shop discovered additional damage needing authorization.
+
+    Optional fields per event type
+    -------------------------------
+    - ``estimate_approved``: ``approved_amount`` (float).
+    - ``parts_delayed``: ``delay_reason`` (str), ``expected_availability_date`` (str).
+    - ``supplement_requested``: ``supplement_amount`` (float), ``description`` (str).
+    """
+
+    event_type: str = Field(..., min_length=1, max_length=64)
+    claim_id: str = Field(..., min_length=1, max_length=64)
+    shop_id: str = Field(..., min_length=1, max_length=128)
+    erp_event_id: str = Field(..., min_length=1, max_length=128)
+    occurred_at: str = Field(..., min_length=1, max_length=64)
+    # event_type-specific optional fields
+    approved_amount: float | None = Field(default=None)
+    delay_reason: str | None = Field(default=None, max_length=1000)
+    expected_availability_date: str | None = Field(default=None, max_length=64)
+    supplement_amount: float | None = Field(default=None)
+    description: str | None = Field(default=None, max_length=2000)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/erp")
+async def erp_webhook(request: Request) -> Response:
+    """Receive inbound events from repair/shop management systems (ERP).
+
+    Payload: event_type, claim_id, shop_id, erp_event_id, occurred_at, and
+    event-type-specific optional fields.
+
+    Supported event types: estimate_approved, parts_delayed, supplement_requested.
+
+    Requests must include ``X-Webhook-Signature: sha256=<hex>``
+    (``WEBHOOK_SECRET`` is required).
+    """
+    body = await request.body()
+    config = get_webhook_config()
+    if not _verify_webhook_signature(
+        body,
+        request.headers.get("X-Webhook-Signature"),
+        config.get("secret") or "",
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing webhook signature"},
+        )
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"Invalid JSON: {e!s}"},
+        )
+
+    try:
+        parsed = ERPWebhookPayload(**payload)
+    except ValidationError:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Invalid payload"},
+        )
+
+    if parsed.event_type not in VALID_ERP_EVENT_TYPES:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": (
+                    f"Invalid event_type. Must be one of: {sorted(VALID_ERP_EVENT_TYPES)}"
+                ),
+            },
+        )
+
+    repo = ClaimRepository(db_path=get_db_path())
+    claim = repo.get_claim(parsed.claim_id)
+    if claim is None:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": f"Claim not found: {parsed.claim_id}"},
+        )
+
+    # Record the inbound ERP event as a repair status update when applicable
+    if parsed.event_type == "estimate_approved":
+        # Transition to 'repair' stage on approval if claim is a partial_loss
+        if claim.get("claim_type") == "partial_loss":
+            status_repo = RepairStatusRepository(db_path=get_db_path())
+            try:
+                status_repo.insert_repair_status(
+                    claim_id=parsed.claim_id,
+                    shop_id=parsed.shop_id,
+                    status="repair",
+                    notes=(
+                        "ERP estimate approved"
+                        + (
+                            f"; amount={parsed.approved_amount}"
+                            if parsed.approved_amount is not None
+                            else ""
+                        )
+                        + f"; erp_event_id={parsed.erp_event_id}"
+                    ),
+                )
+            except Exception as e:
+                logger.exception(
+                    "ERP webhook: failed to record repair status for estimate_approved: %s", e
+                )
+
+    elif parsed.event_type == "parts_delayed":
+        if claim.get("claim_type") == "partial_loss":
+            status_repo = RepairStatusRepository(db_path=get_db_path())
+            try:
+                note = f"ERP parts delayed; erp_event_id={parsed.erp_event_id}"
+                if parsed.delay_reason:
+                    note += f"; reason={parsed.delay_reason}"
+                if parsed.expected_availability_date:
+                    note += f"; eta={parsed.expected_availability_date}"
+                status_repo.insert_repair_status(
+                    claim_id=parsed.claim_id,
+                    shop_id=parsed.shop_id,
+                    status="parts_ordered",
+                    notes=note,
+                    pause_reason=parsed.delay_reason,
+                )
+            except Exception as e:
+                logger.exception(
+                    "ERP webhook: failed to record repair status for parts_delayed: %s", e
+                )
+
+    elif parsed.event_type == "supplement_requested":
+        # Log supplement request; adjuster workflow handles approval
+        logger.info(
+            "ERP webhook: supplement_requested claim_id=%s shop_id=%s "
+            "supplement_amount=%s erp_event_id=%s",
+            parsed.claim_id,
+            parsed.shop_id,
+            parsed.supplement_amount,
+            parsed.erp_event_id,
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={"ok": True, "event_type": parsed.event_type, "claim_id": parsed.claim_id},
     )

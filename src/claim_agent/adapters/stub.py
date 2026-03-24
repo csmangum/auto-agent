@@ -11,6 +11,7 @@ from typing import Any
 from claim_agent.adapters.base import (
     CMSReportingAdapter,
     ClaimSearchAdapter,
+    ERPAdapter,
     GapInsuranceAdapter,
     NMVTISAdapter,
     OCRAdapter,
@@ -231,4 +232,67 @@ class StubReverseImageAdapter(ReverseImageAdapter):
             "(e.g. Google Cloud Vision similarWebPages, TinEye, or an internal "
             "prior-claim image index). "
             "Return a list of dicts each containing url, match_score, and source_label."
+        )
+
+
+class StubERPAdapter(ERPAdapter):
+    """Placeholder for a real repair/shop management system (ERP) integration.
+
+    Replace each method with calls to the production ERP API
+    (e.g. Mitchell RepairCenter, CCC ONE, Solera, or a custom shop platform).
+    Configure ``ERP_REST_*`` env vars and set ``ERP_ADAPTER=rest``.
+    """
+
+    def push_repair_assignment(
+        self,
+        *,
+        claim_id: str,
+        shop_id: str,
+        authorization_id: str | None,
+        repair_amount: float | None,
+        vehicle_info: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubERPAdapter.push_repair_assignment: connect to a production ERP API. "
+            "Expected return: {erp_reference, status}."
+        )
+
+    def push_estimate_update(
+        self,
+        *,
+        claim_id: str,
+        shop_id: str,
+        authorization_id: str | None,
+        estimate_amount: float,
+        line_items: list[dict[str, Any]] | None,
+        is_supplement: bool,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubERPAdapter.push_estimate_update: connect to a production ERP API. "
+            "Expected return: {erp_reference, status}."
+        )
+
+    def push_repair_status(
+        self,
+        *,
+        claim_id: str,
+        shop_id: str,
+        authorization_id: str | None,
+        status: str,
+        notes: str | None,
+    ) -> dict[str, Any]:
+        raise NotImplementedError(
+            "StubERPAdapter.push_repair_status: connect to a production ERP API. "
+            "Expected return: {erp_reference, status}."
+        )
+
+    def pull_pending_events(
+        self,
+        *,
+        shop_id: str | None = None,
+        since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        raise NotImplementedError(
+            "StubERPAdapter.pull_pending_events: connect to a production ERP API. "
+            "Expected return: list of inbound event dicts."
         )
