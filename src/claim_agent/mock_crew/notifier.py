@@ -50,7 +50,7 @@ _CLAIMANT_FACING_USER_TYPES = frozenset({"claimant", "policyholder", "witness", 
 # In-process pending-response queue (claim_id → list of response dicts)
 # ---------------------------------------------------------------------------
 
-_lock: threading.Lock = threading.Lock()
+_lock = threading.Lock()
 _pending: dict[str, list[dict[str, Any]]] = {}
 
 
