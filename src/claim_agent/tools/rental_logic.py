@@ -17,6 +17,7 @@ from claim_agent.db.payment_repository import PaymentRepository
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.payment import ClaimPaymentCreate, PayeeType, PaymentMethod
 from claim_agent.tools.payment_logic import WORKFLOW_RENTAL_EXTERNAL_REF_PREFIX
+from claim_agent.db.rental_repository import RentalAuthorizationRepository
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -31,6 +32,11 @@ DEFAULT_MAX_DAYS = 30
 # Coverage types that typically include rental reimbursement (Part D / physical damage).
 # "full_coverage" is a legacy misnomer; real policies use coverages array with collision/comprehensive.
 RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
+
+# In-memory idempotency fast-path: (claim_id, amount, rental_days) -> reimbursement_id.
+# Persists to ``rental_authorizations`` when ``ctx`` is provided; DB is the source of truth
+# across processes; this cache avoids duplicate work within a single process.
+_IDEMPOTENCY_CACHE: dict[tuple[str, float, int], str] = {}
 
 
 def _parse_rental_limits(rental: dict | None) -> tuple[float, float, int]:
@@ -227,6 +233,9 @@ def process_rental_reimbursement_impl(
 
     Idempotent: repeated calls with the same (claim_id, amount, rental_days) return the
     same reimbursement_id via a DB-level unique constraint on (claim_id, external_ref).
+    Validates amount against limits from get_rental_limits_impl.
+    Idempotent: repeated calls with same (claim_id, amount, rental_days) return
+    the same reimbursement_id (in-memory fast-path; DB row when ``ctx`` is set).
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -283,6 +292,45 @@ def process_rental_reimbursement_impl(
                 "message": limits.get("error", "Could not retrieve policy limits"),
             }
         )
+    idempotency_key = (claim_id, float(amount), rental_days)
+    if idempotency_key in _IDEMPOTENCY_CACHE:
+        rid = _IDEMPOTENCY_CACHE[idempotency_key]
+        return json.dumps(
+            {
+                "reimbursement_id": rid,
+                "amount": float(amount),
+                "status": "approved",
+                "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
+            }
+        )
+
+    rental_repo: RentalAuthorizationRepository | None = None
+    if ctx is not None:
+        rental_repo = RentalAuthorizationRepository(db_path=ctx.repo.db_path)
+
+    # Check DB for existing authorization when ctx is available (cross-process idempotency).
+    if rental_repo is not None:
+        try:
+            existing = rental_repo.get_authorization(claim_id)
+            if (
+                existing
+                and existing.get("authorized_days") == rental_days
+                and existing.get("amount_approved") == float(amount)
+                and existing.get("reimbursement_id")
+            ):
+                rid = existing["reimbursement_id"]
+                _IDEMPOTENCY_CACHE[idempotency_key] = rid
+                return json.dumps(
+                    {
+                        "reimbursement_id": rid,
+                        "amount": float(amount),
+                        "status": "approved",
+                        "message": f"Rental reimbursement {rid} already processed for claim {claim_id} (idempotent)",
+                    }
+                )
+        except Exception:
+            logger.exception("Failed to check DB for existing rental authorization")
+    
     daily_limit = float(limits["daily_limit"])
     aggregate_limit = float(limits["aggregate_limit"])
     max_days = limits.get("max_days")
@@ -365,6 +413,24 @@ def process_rental_reimbursement_impl(
         claim_id,
         payment_id,
     )
+    reimbursement_id = f"RENT-{uuid.uuid4().hex[:8].upper()}"
+    _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
+
+    # Persist to DB when ClaimContext is available (same DB path as ClaimRepository).
+    if rental_repo is not None:
+        try:
+            rental_repo.upsert_authorization(
+                claim_id=claim_id,
+                authorized_days=rental_days,
+                daily_cap=daily_limit,
+                direct_bill=False,
+                status="authorized",
+                reimbursement_id=reimbursement_id,
+                amount_approved=float(amount),
+            )
+        except Exception:
+            logger.exception("Failed to persist rental authorization")
+
     return json.dumps(
         {
             "reimbursement_id": reimbursement_id,

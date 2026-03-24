@@ -316,6 +316,75 @@ class TestProcessRentalReimbursement:
         assert data["status"] == "failed"
 
 
+class TestProcessRentalReimbursementPersistence:
+    """DB persistence when ClaimContext is provided."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_rental_idempotency_cache(self):
+        from claim_agent.tools import rental_logic
+
+        rental_logic._IDEMPOTENCY_CACHE.clear()
+        yield
+
+    def test_persists_authorization_when_ctx_provided(self, seeded_temp_db):
+        """Rental row is written to the same DB as ClaimRepository."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.db.rental_repository import RentalAuthorizationRepository
+
+        ctx = ClaimContext.from_defaults(db_path=seeded_temp_db)
+        result = process_rental_reimbursement_impl(
+            claim_id="CLM-TEST001",
+            amount=70.0,
+            rental_days=2,
+            policy_number="POL-001",
+            ctx=ctx,
+        )
+        data = json.loads(result)
+        assert data["status"] == "approved"
+        rid = data["reimbursement_id"]
+        assert rid.startswith("RENT-")
+
+        repo = RentalAuthorizationRepository(db_path=seeded_temp_db)
+        record = repo.get_by_reimbursement_id(rid)
+        assert record is not None
+        assert record["claim_id"] == "CLM-TEST001"
+        assert record["authorized_days"] == 2
+        assert record["amount_approved"] == 70.0
+
+    def test_cross_process_idempotency_preserves_reimbursement_id(self, seeded_temp_db):
+        """Cache miss + DB lookup returns same reimbursement_id (cross-process idempotency)."""
+        from claim_agent.context import ClaimContext
+
+        ctx = ClaimContext.from_defaults(db_path=seeded_temp_db)
+        result1 = process_rental_reimbursement_impl(
+            claim_id="CLM-TEST001",
+            amount=140.0,
+            rental_days=4,
+            policy_number="POL-001",
+            ctx=ctx,
+        )
+        data1 = json.loads(result1)
+        assert data1["status"] == "approved"
+        rid1 = data1["reimbursement_id"]
+        assert rid1.startswith("RENT-")
+
+        from claim_agent.tools import rental_logic
+        rental_logic._IDEMPOTENCY_CACHE.clear()
+
+        ctx2 = ClaimContext.from_defaults(db_path=seeded_temp_db)
+        result2 = process_rental_reimbursement_impl(
+            claim_id="CLM-TEST001",
+            amount=140.0,
+            rental_days=4,
+            policy_number="POL-001",
+            ctx=ctx2,
+        )
+        data2 = json.loads(result2)
+        assert data2["status"] == "approved"
+        assert data2["reimbursement_id"] == rid1, "DB lookup should return existing reimbursement_id"
+        assert "idempotent" in data2["message"].lower()
+
+
 class TestRentalToolsWrapper:
     """Test rental_tools.py CrewAI wrappers."""
 
