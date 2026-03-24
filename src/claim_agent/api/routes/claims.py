@@ -1074,6 +1074,77 @@ def create_repair_shop_portal_token(
         raise
 
 
+class AssignRepairShopBody(BaseModel):
+    shop_id: str = Field(..., min_length=1, max_length=128)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.post(
+    "/claims/{claim_id}/repair-shop-assignment",
+    dependencies=[RequireAdjuster],
+    status_code=201,
+)
+def assign_repair_shop_to_claim(
+    claim_id: str,
+    body: AssignRepairShopBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Assign a repair shop to a claim so shop users can view it via the multi-claim portal."""
+    from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
+
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+    repo = RepairShopUserRepository()
+    try:
+        assignment = repo.assign_claim_to_shop(
+            claim_id=claim_id,
+            shop_id=body.shop_id,
+            assigned_by=auth.identity,
+            notes=body.notes,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return assignment
+
+
+@router.get("/claims/{claim_id}/repair-shop-assignments", dependencies=[RequireAdjuster])
+def list_repair_shop_assignments(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """List all repair shop assignments for a claim."""
+    from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
+
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+    repo = RepairShopUserRepository()
+    return {"claim_id": claim_id, "assignments": repo.get_assignments_for_claim(claim_id)}
+
+
+@router.delete(
+    "/claims/{claim_id}/repair-shop-assignment/{shop_id}",
+    dependencies=[RequireAdjuster],
+)
+def remove_repair_shop_assignment(
+    claim_id: str,
+    shop_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Remove a repair shop assignment from a claim."""
+    from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
+
+    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+    repo = RepairShopUserRepository()
+    found = repo.remove_assignment(claim_id, shop_id)
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Shop '{shop_id}' is not assigned to claim '{claim_id}'",
+        )
+    return {"ok": True}
+
+
 @router.post("/claims/{claim_id}/third-party-portal-token", dependencies=[RequireAdjuster])
 def create_third_party_portal_token(
     request: Request,

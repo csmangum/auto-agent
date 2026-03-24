@@ -47,6 +47,7 @@ from claim_agent.api.routes.retention import router as retention_router
 from claim_agent.api.routes.privacy import router as privacy_router
 from claim_agent.api.routes.auth_routes import router as auth_login_router
 from claim_agent.api.routes.users import router as users_admin_router
+from claim_agent.api.routes.repair_shop_users import router as repair_shop_users_router
 from claim_agent.api.routes.note_templates import router as note_templates_router
 from claim_agent.config import get_settings
 from claim_agent.db.database import ensure_fresh_db_on_startup, is_postgres_backend
@@ -331,6 +332,7 @@ app.include_router(retention_router, prefix="/api")
 app.include_router(privacy_router, prefix="/api")
 app.include_router(auth_login_router, prefix="/api")
 app.include_router(users_admin_router, prefix="/api")
+app.include_router(repair_shop_users_router, prefix="/api")
 app.include_router(note_templates_router, prefix="/api")
 
 
