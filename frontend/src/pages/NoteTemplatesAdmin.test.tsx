@@ -179,4 +179,97 @@ describe('NoteTemplatesAdmin', () => {
     expect(statusButtons[0].textContent).toBe('Active');
     expect(statusButtons[1].textContent).toBe('Inactive');
   });
+
+  it('renders table headers and template body text', () => {
+    const Wrapper = createWrapper();
+    render(
+      <Wrapper>
+        <NoteTemplatesAdmin />
+      </Wrapper>,
+    );
+    const headers = ['Label', 'Body', 'Category', 'Order', 'Status', 'Actions'];
+    for (const h of headers) {
+      expect(screen.getAllByText(h).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(screen.getByText('Contacted claimant.')).toBeInTheDocument();
+    expect(screen.getByText('Coverage OK.')).toBeInTheDocument();
+    expect(screen.getByText('general')).toBeInTheDocument();
+  });
+
+  it('shows input fields in edit mode', async () => {
+    const Wrapper = createWrapper();
+    render(
+      <Wrapper>
+        <NoteTemplatesAdmin />
+      </Wrapper>,
+    );
+    const editButtons = screen.getAllByText('Edit');
+    fireEvent.click(editButtons[0]);
+    await waitFor(() => {
+      const inputs = screen.getAllByDisplayValue('Initial Contact');
+      expect(inputs.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByDisplayValue('Contacted claimant.')).toBeInTheDocument();
+    });
+  });
+
+  it('calls update mutation when toggling active/inactive', () => {
+    const updateFn = vi.fn();
+    vi.mocked(useUpdateNoteTemplate).mockReturnValue({
+      mutate: updateFn,
+      isPending: false,
+    } as never);
+    const Wrapper = createWrapper();
+    render(
+      <Wrapper>
+        <NoteTemplatesAdmin />
+      </Wrapper>,
+    );
+    const activeButton = screen.getAllByRole('button').find(
+      (b) => b.textContent === 'Active',
+    );
+    expect(activeButton).toBeTruthy();
+    fireEvent.click(activeButton!);
+    expect(updateFn).toHaveBeenCalledWith({ id: 1, is_active: false });
+  });
+
+  it('calls create mutation on form submission', () => {
+    const createFn = vi.fn();
+    vi.mocked(useCreateNoteTemplate).mockReturnValue({
+      mutate: createFn,
+      isPending: false,
+    } as never);
+    const Wrapper = createWrapper();
+    render(
+      <Wrapper>
+        <NoteTemplatesAdmin />
+      </Wrapper>,
+    );
+    fireEvent.change(screen.getByLabelText('Label *'), { target: { value: 'Follow Up' } });
+    fireEvent.change(screen.getByLabelText('Body *'), { target: { value: 'Following up on claim.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Template' }));
+    expect(createFn).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'Follow Up', body: 'Following up on claim.' }),
+      expect.anything(),
+    );
+  });
+
+  it('calls delete mutation after confirming', () => {
+    const deleteFn = vi.fn();
+    vi.mocked(useDeleteNoteTemplate).mockReturnValue({
+      mutate: deleteFn,
+      isPending: false,
+    } as never);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const Wrapper = createWrapper();
+    render(
+      <Wrapper>
+        <NoteTemplatesAdmin />
+      </Wrapper>,
+    );
+    const deleteButtons = screen.getAllByText('Delete');
+    fireEvent.click(deleteButtons[0]);
+    expect(window.confirm).toHaveBeenCalled();
+    expect(deleteFn).toHaveBeenCalledWith(1);
+    vi.mocked(window.confirm).mockRestore();
+  });
 });

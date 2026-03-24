@@ -514,4 +514,194 @@ describe('ClaimDetail', () => {
     expect(screen.getByText(/BI demand basis/)).toBeInTheDocument();
     expect(screen.getByText(/Recovered:.*3,000/)).toBeInTheDocument();
   });
+
+  it('shows UCSPA compliance deadlines and denial reason', () => {
+    vi.mocked(useClaim).mockReturnValue({
+      data: {
+        ...mockClaim,
+        acknowledgment_due: '2025-02-01',
+        investigation_due: '2025-03-01',
+        payment_due: '2025-04-01',
+        acknowledged_at: '2025-01-20T10:00:00',
+        settlement_agreed_at: '2025-01-25T12:00:00',
+        denial_letter_sent_at: '2025-01-28T09:00:00',
+        denial_reason: 'Coverage excluded',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+
+    expect(screen.getByText('UCSPA & deadlines')).toBeInTheDocument();
+    expect(screen.getByText('Acknowledgment due')).toBeInTheDocument();
+    expect(screen.getByText('Investigation due')).toBeInTheDocument();
+    expect(screen.getByText('Payment due')).toBeInTheDocument();
+    expect(screen.getByText('Denial reason')).toBeInTheDocument();
+    expect(screen.getByText('Coverage excluded')).toBeInTheDocument();
+  });
+
+  it('shows parties section with relationships', () => {
+    vi.mocked(useClaim).mockReturnValue({
+      data: {
+        ...mockClaim,
+        parties: [
+          {
+            id: 1,
+            party_type: 'claimant',
+            name: 'Jane Doe',
+            email: 'jane@example.com',
+            phone: '555-1234',
+            relationships: [],
+          },
+          {
+            id: 2,
+            party_type: 'attorney',
+            name: 'Law Firm',
+            role: 'representation',
+            relationships: [
+              {
+                id: 10,
+                from_party_id: 2,
+                to_party_id: 1,
+                relationship_type: 'represented_by',
+              },
+            ],
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+
+    expect(screen.getByText('Parties')).toBeInTheDocument();
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+    expect(screen.getByText('Law Firm')).toBeInTheDocument();
+    expect(screen.getByText('jane@example.com')).toBeInTheDocument();
+    expect(screen.getByText('555-1234')).toBeInTheDocument();
+    const relTexts = screen.getAllByText(/represented by/);
+    expect(relTexts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows documents in documents tab', () => {
+    vi.mocked(useClaimDocuments).mockReturnValue({
+      data: {
+        claim_id: 'CLM-001',
+        documents: [
+          {
+            id: 1,
+            claim_id: 'CLM-001',
+            document_type: 'estimate',
+            review_status: 'pending',
+            storage_key: 'docs/estimate_v1.pdf',
+            version: 1,
+            created_at: '2025-01-15',
+            received_from: 'claimant',
+            privileged: false,
+            url: '/files/estimate.pdf',
+          },
+        ],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    const docHeadings = screen.getAllByText('Documents (1)');
+    expect(docHeadings.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('estimate_v1.pdf')).toBeInTheDocument();
+    expect(screen.getByText(/from claimant/)).toBeInTheDocument();
+  });
+
+  it('shows notes and follow-up messages in notes tab', () => {
+    vi.mocked(useClaim).mockReturnValue({
+      data: {
+        ...mockClaim,
+        notes: [
+          {
+            id: 1,
+            note: 'Contacted claimant',
+            actor_id: 'adjuster',
+            created_at: '2025-01-16T10:00:00',
+          },
+        ],
+        follow_up_messages: [
+          {
+            id: 1,
+            claim_id: 'CLM-001',
+            user_type: 'claimant',
+            message_content: 'Please update me',
+            status: 'sent',
+            created_at: '2025-01-17T10:00:00',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+
+    const notesTab = screen.getAllByRole('button').find(b => b.textContent?.includes('Notes ('));
+    expect(notesTab).toBeTruthy();
+    fireEvent.click(notesTab!);
+    expect(screen.getByText('Contacted claimant')).toBeInTheDocument();
+    expect(screen.getByText('Please update me')).toBeInTheDocument();
+  });
+
+  it('shows document requests in documents tab', () => {
+    vi.mocked(useDocumentRequests).mockReturnValue({
+      data: {
+        claim_id: 'CLM-001',
+        requests: [
+          {
+            id: 1,
+            claim_id: 'CLM-001',
+            document_type: 'police_report',
+            requested_from: 'police dept',
+            status: 'requested',
+            created_at: '2025-01-16',
+          },
+        ],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    expect(screen.getByText('Document Requests (1)')).toBeInTheDocument();
+    expect(screen.getByText(/From: police dept/)).toBeInTheDocument();
+  });
 });

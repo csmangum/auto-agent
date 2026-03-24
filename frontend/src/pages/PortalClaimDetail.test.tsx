@@ -322,4 +322,91 @@ describe('PortalClaimDetail', () => {
     fireEvent.click(screen.getByText('Dispute'));
     await screen.findByText('Disputes not available');
   });
+
+  it('shows repair status tab with progress and history', async () => {
+    mockGetRepairStatus.mockResolvedValue({
+      latest: { status: 'paint', status_updated_at: '2025-01-20T14:00:00Z', notes: 'Base coat applied' },
+      history: [
+        { status: 'received', status_updated_at: '2025-01-16T10:00:00Z' },
+        { status: 'disassembly', status_updated_at: '2025-01-17T10:00:00Z' },
+        { status: 'paint', status_updated_at: '2025-01-20T14:00:00Z', notes: 'Base coat applied' },
+      ],
+      cycle_time_days: 4,
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Repair Status'));
+    await screen.findByText(/Base coat applied/);
+    expect(screen.getByText('Repair Progress')).toBeInTheDocument();
+  });
+
+  it('shows documents tab with listed documents and upload area', async () => {
+    mockGetDocuments.mockResolvedValue({
+      documents: [
+        { id: 10, document_type: 'police_report', received_date: '2025-01-17', storage_key: 'claim/CLM-001/police.pdf' },
+        { id: 11, document_type: 'damage_photo', received_date: '2025-01-18', storage_key: 'claim/CLM-001/photo.jpg' },
+      ],
+      total: 2,
+    });
+    mockGetDocumentRequests.mockResolvedValue({ document_requests: [], total: 0 });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Documents'));
+    await screen.findByText(/police_report/);
+    expect(screen.getByText(/damage_photo/)).toBeInTheDocument();
+    expect(screen.getByText(/Click to upload/)).toBeInTheDocument();
+  });
+
+  it('shows dispute form when claim is disputable (settled)', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      status: 'settled',
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Dispute'));
+    await screen.findByText('File a Dispute');
+    expect(screen.getByText(/Dispute Type/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'File Dispute' })).toBeInTheDocument();
+  });
+
+  it('shows messages tab with response content', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      follow_up_messages: [
+        {
+          id: 5,
+          claim_id: 'CLM-001',
+          user_type: 'claimant',
+          message_content: 'Please provide photos of the damage.',
+          status: 'responded',
+          response_content: 'I have uploaded the photos as requested.',
+          created_at: '2025-01-17T09:00:00Z',
+          responded_at: '2025-01-17T15:00:00Z',
+        },
+      ],
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Messages'));
+    await screen.findByText(/Please provide photos of the damage/);
+    expect(screen.getByText(/I have uploaded the photos as requested/)).toBeInTheDocument();
+    expect(screen.getByText('Your response')).toBeInTheDocument();
+  });
 });
