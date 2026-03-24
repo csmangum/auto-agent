@@ -135,6 +135,8 @@ export default function PortalClaimDetail() {
       CUSTOMER_VISIBLE_ACTIONS.has(e.action) || e.action.includes('status')
   );
   const pendingFollowUps = followUps.filter((m) => m.status !== 'responded');
+  const rentalFollowUps = followUps.filter((m) => m.topic === 'rental');
+  const pendingRentalFollowUps = rentalFollowUps.filter((m) => m.status !== 'responded');
   const documents = (docsData?.documents ?? []) as Array<{
     id: number;
     document_type?: string;
@@ -166,7 +168,7 @@ export default function PortalClaimDetail() {
   const openRentalDocRequests = rentalDocRequests.filter((r) =>
     isOpenDocumentRequestStatus(r.status)
   );
-  const rentalTabBadgeCount = openRentalDocRequests.length;
+  const rentalTabBadgeCount = openRentalDocRequests.length + pendingRentalFollowUps.length;
 
   const invalidateClaim = () => {
     const keys = [
@@ -361,6 +363,7 @@ export default function PortalClaimDetail() {
               claimType={claim.claim_type as string}
               rentalPayments={rentalCoordinationPayments}
               rentalDocRequests={rentalDocRequests}
+              rentalFollowUps={rentalFollowUps}
               repairLatest={
                 (repairData?.latest ?? null) as Record<string, unknown> | null
               }
@@ -665,6 +668,7 @@ function RentalTab({
   claimType,
   rentalPayments,
   rentalDocRequests,
+  rentalFollowUps,
   repairLatest,
   docRequestsError,
   docRequestsLoading,
@@ -689,6 +693,7 @@ function RentalTab({
     requested_at?: string;
     requested_from?: string;
   }>;
+  rentalFollowUps: FollowUpMessage[];
   repairLatest: Record<string, unknown> | null;
   docRequestsError?: boolean;
   docRequestsLoading?: boolean;
@@ -799,6 +804,52 @@ function RentalTab({
             No rental-related document requests right now.
           </p>
         ) : null}
+      </div>
+
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+        <h3 className="text-sm font-semibold text-gray-300 mb-2">
+          Messages from your adjuster
+        </h3>
+        {rentalFollowUps.length > 0 ? (
+          <ul className="space-y-3">
+            {rentalFollowUps.map((m) => (
+              <li
+                key={m.id}
+                className="flex flex-col gap-1 py-2 border-b border-gray-700/50 last:border-0"
+              >
+                <div className="flex justify-between gap-2">
+                  <p className="text-sm text-gray-300">{m.message_content}</p>
+                  <span className="text-xs text-gray-500 capitalize shrink-0">
+                    {m.status.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                {m.created_at && (
+                  <span className="text-xs text-gray-500">
+                    Sent: {formatDateTime(m.created_at) ?? m.created_at}
+                  </span>
+                )}
+                {m.response_content && (
+                  <div className="mt-1 pl-3 border-l border-gray-700/50">
+                    <p className="text-xs text-gray-400">
+                      Your reply: {m.response_content}
+                    </p>
+                    {m.responded_at && (
+                      <span className="text-xs text-gray-500">
+                        {formatDateTime(m.responded_at) ?? m.responded_at}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">
+            No rental-related messages from your adjuster right now. Visit the{' '}
+            <span className="text-gray-300">Messages</span> tab for all adjuster
+            communication.
+          </p>
+        )}
       </div>
 
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
