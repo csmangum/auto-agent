@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from claim_agent.config.settings import get_notification_config
+from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +137,13 @@ def notify_claimant(
 
     if event not in CLAIMANT_EVENTS:
         logger.warning("Unknown claimant event: %s", event)
+        return
+
+    # Mock intercept: suppress real email/SMS during testing
+    if get_mock_crew_config()["enabled"] and get_mock_notifier_config()["enabled"]:
+        from claim_agent.mock_crew.notifier import mock_notify_claimant
+
+        mock_notify_claimant(event, claim_id)
         return
 
     subject, message = _build_notification_message(event, claim_id, template_data)
