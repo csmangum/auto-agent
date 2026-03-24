@@ -141,6 +141,35 @@ class TestVisionLogicMockBranch:
         parsed = json.loads(result)
         assert "fender" in parsed["parts_affected"]
 
+    def test_impl_routes_to_mock_with_claim_context(self, mock_crew):
+        """analyze_damage_photo_impl routes through the mock when mock_crew fixture is active.
+
+        Validates severity inference, parts extraction, consistency, and cross-checks
+        against a direct analyze_damage_photo_mock call.
+        """
+        damage_description = "severe damage to bumper and fender after rear collision"
+        claim_context = {
+            "claim_id": "CLM-TEST-MOCK",
+            "damage_description": damage_description,
+        }
+        raw = analyze_damage_photo_impl(
+            "file://mock-image.jpg",
+            damage_description,
+            claim_context,
+        )
+        result = json.loads(raw)
+
+        assert result["severity"] == "high"
+        assert "bumper" in result["parts_affected"]
+        assert "fender" in result["parts_affected"]
+        assert result["consistency_with_description"] == "consistent"
+        assert result.get("error") is None
+
+        raw_direct = analyze_damage_photo_mock(
+            "file://mock-image.jpg", damage_description, claim_context
+        )
+        assert json.loads(raw_direct) == result
+
     def test_uses_real_when_vision_adapter_real_and_mock_crew_disabled(self):
         """When VISION_ADAPTER=real and mock crew disabled, calls litellm."""
         with patch("claim_agent.tools.vision_logic.get_adapter_backend") as mock_backend:
