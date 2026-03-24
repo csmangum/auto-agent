@@ -457,6 +457,22 @@ def reset_global_metrics():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_mock_crew_stores():
+    """Clear all in-memory mock crew stores between tests."""
+    from claim_agent.mock_crew.notifier import clear_all_pending_mock_responses
+    from claim_agent.mock_crew.repair_shop import clear_all_pending_repair_shop_responses
+    from claim_agent.mock_crew.webhook import clear_captured_webhooks
+
+    clear_all_pending_mock_responses()
+    clear_all_pending_repair_shop_responses()
+    clear_captured_webhooks()
+    yield
+    clear_all_pending_mock_responses()
+    clear_all_pending_repair_shop_responses()
+    clear_captured_webhooks()
+
+
 @pytest.fixture()
 def claim_context(temp_db):
     """Provide a ClaimContext wired to the per-test temp DB."""

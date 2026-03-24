@@ -901,6 +901,98 @@ class MockNotifierConfig(BaseSettings):
         return str(v).strip().lower() in ("true", "1", "yes")
 
 
+class MockRepairShopConfig(BaseSettings):
+    """Mock Repair Shop: intercept repair-shop follow-up notifications for testing.
+
+    Only active when ``MOCK_CREW_ENABLED=true``.
+    """
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(default=False, validation_alias="MOCK_REPAIR_SHOP_ENABLED")
+    response_template: str = Field(
+        default="Repair shop acknowledged receipt of request. Appointment will be scheduled.",
+        validation_alias="MOCK_REPAIR_SHOP_RESPONSE_TEMPLATE",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
+class ThirdPartyOutcome(str, Enum):
+    """Possible outcomes when a mock third party receives a demand letter."""
+
+    ACCEPT = "accept"
+    REJECT = "reject"
+    NEGOTIATE = "negotiate"
+
+
+class MockThirdPartyConfig(BaseSettings):
+    """Mock Third Party: intercept demand-letter dispatch for testing.
+
+    Only active when ``MOCK_CREW_ENABLED=true``.
+    """
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(default=False, validation_alias="MOCK_THIRD_PARTY_ENABLED")
+    outcome: ThirdPartyOutcome = Field(
+        default=ThirdPartyOutcome.ACCEPT,
+        validation_alias="MOCK_THIRD_PARTY_OUTCOME",
+        description="Third-party response outcome: accept | reject | negotiate",
+    )
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("outcome", mode="before")
+    @classmethod
+    def _parse_outcome(cls, v: Any) -> str:
+        valid = {o.value for o in ThirdPartyOutcome}
+        if isinstance(v, ThirdPartyOutcome):
+            return v.value
+        val = str(v).strip().lower() if v else ThirdPartyOutcome.ACCEPT.value
+        return val if val in valid else ThirdPartyOutcome.ACCEPT.value
+
+
+class MockWebhookConfig(BaseSettings):
+    """Mock Webhook: capture outbound webhook payloads in-memory for testing.
+
+    Only active when ``MOCK_CREW_ENABLED=true``.
+    """
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    capture_enabled: bool = Field(default=False, validation_alias="MOCK_WEBHOOK_CAPTURE_ENABLED")
+
+    @field_validator("capture_enabled", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+
 class PortalConfig(BaseSettings):
     """Claimant self-service portal configuration."""
 
@@ -1468,6 +1560,9 @@ class Settings(BaseSettings):
     mock_crew: MockCrewConfig = Field(default_factory=MockCrewConfig)
     mock_claimant: MockClaimantConfig = Field(default_factory=MockClaimantConfig)
     mock_notifier: MockNotifierConfig = Field(default_factory=MockNotifierConfig)
+    mock_repair_shop: MockRepairShopConfig = Field(default_factory=MockRepairShopConfig)
+    mock_third_party: MockThirdPartyConfig = Field(default_factory=MockThirdPartyConfig)
+    mock_webhook: MockWebhookConfig = Field(default_factory=MockWebhookConfig)
     mock_image: MockImageConfig = Field(default_factory=MockImageConfig)
     mock_document: MockDocumentGeneratorConfig = Field(default_factory=MockDocumentGeneratorConfig)
     chat: ChatConfig = Field(default_factory=ChatConfig)

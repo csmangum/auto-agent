@@ -6,6 +6,7 @@ import datetime
 import json
 import logging
 
+from claim_agent.config.settings import get_mock_crew_config, get_mock_third_party_config
 from claim_agent.db.database import get_db_path
 from claim_agent.db.repository import ClaimRepository
 
@@ -216,6 +217,16 @@ def send_demand_letter_impl(
         "sent_at": sent_at,
         "status": "demand_sent",
     }
+
+    # Mock third-party intercept: return configurable outcome when enabled
+    if get_mock_crew_config()["enabled"] and get_mock_third_party_config()["enabled"]:
+        from claim_agent.mock_crew.third_party import mock_send_demand_letter
+
+        third_party_response = mock_send_demand_letter(
+            case_id, claim_id, amount_sought, third_party_info
+        )
+        result.update(third_party_response)
+
     return json.dumps(result)
 
 

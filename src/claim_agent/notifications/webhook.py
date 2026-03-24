@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from claim_agent.config.settings import get_webhook_config
+from claim_agent.config.settings import get_mock_crew_config, get_mock_webhook_config, get_webhook_config
 
 logger = logging.getLogger(__name__)
 
@@ -139,11 +139,18 @@ def _deliver_one(
 
 def dispatch_webhook(event: str, payload: dict[str, Any]) -> None:
     """Dispatch webhook to all configured URLs. Runs in thread pool, non-blocking."""
+    payload = {**payload, "event": event, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+    # Mock webhook capture: record payload in-memory and skip real HTTP delivery
+    if get_mock_crew_config()["enabled"] and get_mock_webhook_config()["capture_enabled"]:
+        from claim_agent.mock_crew.webhook import capture_webhook
+
+        capture_webhook(event, payload)
+        return
+
     config = get_webhook_config()
     if not config["enabled"] or not config["urls"]:
         return
-
-    payload = {**payload, "event": event, "timestamp": datetime.now(timezone.utc).isoformat()}
 
     def run():
         for url in config["urls"]:
@@ -280,7 +287,18 @@ def dispatch_repair_authorized(
     config = get_webhook_config()
     shop_url = shop_webhook_url or config.get("shop_url")
     if shop_url:
-        full_payload = {**payload, "event": "repair.authorized", "timestamp": datetime.now(timezone.utc).isoformat()}
+        full_payload = {
+            **payload,
+            "event": "repair.authorized",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if get_mock_crew_config()["enabled"] and get_mock_webhook_config()["capture_enabled"]:
+            from claim_agent.mock_crew.webhook import capture_webhook
+
+            capture_webhook("repair.authorized", full_payload)
+            return
+
         def run_shop():
             try:
                 _deliver_one(

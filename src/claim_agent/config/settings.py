@@ -250,6 +250,41 @@ def get_mock_notifier_config() -> dict:
     }
 
 
+def get_mock_repair_shop_config() -> dict:
+    """Mock Repair Shop configuration (enabled, response_template).
+
+    Note: enabled is only meaningful when get_mock_crew_config()["enabled"] is True.
+    """
+    s = get_settings().mock_repair_shop
+    return {
+        "enabled": s.enabled,
+        "response_template": s.response_template,
+    }
+
+
+def get_mock_third_party_config() -> dict:
+    """Mock Third Party configuration (enabled, outcome).
+
+    Note: enabled is only meaningful when get_mock_crew_config()["enabled"] is True.
+    """
+    s = get_settings().mock_third_party
+    return {
+        "enabled": s.enabled,
+        "outcome": s.outcome.value,
+    }
+
+
+def get_mock_webhook_config() -> dict:
+    """Mock Webhook configuration (capture_enabled).
+
+    Note: capture_enabled is only meaningful when get_mock_crew_config()["enabled"] is True.
+    """
+    s = get_settings().mock_webhook
+    return {
+        "capture_enabled": s.capture_enabled,
+    }
+
+
 def get_chat_config() -> dict:
     """Chat agent configuration."""
     s = get_settings().chat

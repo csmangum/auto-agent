@@ -34,13 +34,13 @@ Based on codebase analysis, the following external interactions must be mocked:
 | **Claimant** | Human files claim, receives `send_user_message`, responds via `record_user_response` | Submit claims; auto-respond to follow-up messages with plausible content |
 | **Policy lookup** | PolicyAdapter (mock/stub) | Already mocked via `mock_db.json`; ensure coverage |
 | **Valuation** | ValuationAdapter (mock/stub) | Already mocked; ensure coverage |
-| **Repair shop** | RepairShopAdapter, receives follow-ups | Already mocked for shops; add mock repair shop *responses* to follow-ups |
+| **Repair shop** | RepairShopAdapter, receives follow-ups | Intercept repair-shop `notify_user` calls; queue configurable acknowledgment (`MOCK_REPAIR_SHOP_ENABLED`) |
 | **Parts catalog** | PartsAdapter (mock/stub) | Already mocked |
 | **SIU** | SIUAdapter (mock/stub) | Already mocked |
 | **Document generation (input)** | Claimant uploads estimates, photos, PDFs | Generate mock claimant documents (estimates, damage photos) for claim context |
-| **Notifications** | `notify_user` → email/SMS/portal | Mock delivery; optionally auto-trigger mock claimant response |
-| **Webhooks** | Outbound HTTP to external URLs | Mock webhook receiver; capture payloads for assertions |
-| **Subrogation** | `send_demand_letter` → third party | Mock third-party response (accept, reject, negotiate) |
+| **Notifications** | `notify_user` → email/SMS/portal | Mock delivery; optionally auto-trigger mock claimant response (`MOCK_NOTIFIER_ENABLED`) |
+| **Webhooks** | Outbound HTTP to external URLs | Capture payloads in-memory for assertions; suppress real HTTP (`MOCK_WEBHOOK_CAPTURE_ENABLED`) |
+| **Subrogation** | `send_demand_letter` → third party | Return configurable outcome—accept, reject, or negotiate (`MOCK_THIRD_PARTY_ENABLED`) |
 | **Storage** | Local/S3 for attachments | Mock storage adapter for tests |
 
 ---
@@ -262,6 +262,15 @@ send_user_message(claimant, "Please provide damage photos")
 **Synchronous test flow**: Test calls `mock_claimant.respond_to_message(claim_id, message_id)` → gets response text → calls `record_user_response(message_id, response_text)`.
 
 **Async flow** (optional): Mock Notifier enqueues; background task or fixture drains queue and calls `record_user_response` after configurable delay.
+
+### 5.4 Mock Intercept Precedence
+
+`notify_user()` checks mock intercepts in order:
+
+1. **General notifier** (`MOCK_NOTIFIER_ENABLED`) — checked first for *all* user types. When enabled, `mock_notify_user` handles the call and returns immediately, regardless of user type.
+2. **Repair-shop-specific** (`MOCK_REPAIR_SHOP_ENABLED`) — checked only for `user_type=repair_shop`, and only if the general notifier intercept did not fire.
+
+If both `MOCK_NOTIFIER_ENABLED=true` and `MOCK_REPAIR_SHOP_ENABLED=true`, the general notifier takes precedence and the repair-shop intercept is never reached. This is by design: the general notifier provides a single capture point for all notification types, while the repair-shop mock exists for scenarios where only shop-specific acknowledgments need testing (with the general notifier disabled).
 
 ---
 

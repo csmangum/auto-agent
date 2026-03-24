@@ -8,8 +8,14 @@ Stub implementation: logs intent. Real integration via adapters.
 import logging
 from typing import Any
 
-from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
+from claim_agent.config.settings import (
+    get_mock_crew_config,
+    get_mock_notifier_config,
+    get_mock_repair_shop_config,
+    get_notification_config,
+)
 from claim_agent.mock_crew.notifier import mock_notify_user
+from claim_agent.mock_crew.repair_shop import mock_notify_repair_shop
 from claim_agent.models.user import UserType
 from claim_agent.notifications.claimant import notify_claimant
 
@@ -53,8 +59,10 @@ def notify_user(
         logger.warning("Unknown user_type for notify_user: %s", user_type)
         return False
 
+    mock_crew_enabled = get_mock_crew_config()["enabled"]
+
     # Mock intercept: suppress real notifications during testing
-    if get_mock_crew_config()["enabled"] and get_mock_notifier_config()["enabled"]:
+    if mock_crew_enabled and get_mock_notifier_config()["enabled"]:
         mock_notify_user(
             user_type,
             claim_id,
@@ -93,6 +101,9 @@ def notify_user(
         )
         return True
     elif ut == UserType.REPAIR_SHOP:
+        if mock_crew_enabled and get_mock_repair_shop_config()["enabled"]:
+            mock_notify_repair_shop(claim_id, message, identifier=identifier)
+            return True
         logger.info(
             "Would send follow-up to repair_shop via portal/API: claim_id=%s identifier=%s (stub)",
             claim_id,
