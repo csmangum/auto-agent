@@ -329,6 +329,188 @@ class ReverseImageAdapter(ABC):
         ...
 
 
+class ERPAdapter(ABC):
+    """Interface for repair / shop management system (ERP) integrations.
+
+    Supports bi-directional sync between the carrier and external ERP systems
+    (e.g. Mitchell RepairCenter, CCC ONE, Solera, or custom shop platforms).
+
+    Outbound methods push carrier-side events to the ERP (assignment, estimate
+    updates, status changes).  The inbound method polls the ERP for pending
+    events that should be reflected in claim workflows (estimate approvals,
+    parts delays, supplement requests).
+
+    Identity mapping
+    ----------------
+    ``resolve_shop_id`` translates the internal ``shop_id`` to the ERP
+    tenant / location identifier.  The default implementation is an identity
+    mapping; override in adapters whose ERP uses a different ID scheme.
+
+    Adapter selection
+    -----------------
+    Set ``ERP_ADAPTER=mock | stub | rest`` (default: ``mock``).
+    For ``rest``, also configure the ``ERP_REST_*`` env vars.
+    """
+
+    @abstractmethod
+    def push_repair_assignment(
+        self,
+        *,
+        claim_id: str,
+        shop_id: str,
+        authorization_id: str | None,
+        repair_amount: float | None,
+        vehicle_info: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Notify ERP of a new repair assignment (outbound: carrier → ERP).
+
+        Parameters
+        ----------
+        claim_id:
+            Internal claim identifier.
+        shop_id:
+            Internal shop identifier (resolved via ``resolve_shop_id`` before
+            submitting to the ERP).
+        authorization_id:
+            Repair authorization reference, if issued.
+        repair_amount:
+            Approved repair amount in dollars, if known.
+        vehicle_info:
+            Optional dict with VIN, year, make, model.
+
+        Returns
+        -------
+        dict
+            Must include ``erp_reference`` (str) and ``status``
+            (``submitted`` | ``queued`` | ``rejected``).
+            Optional: ``message`` (str).
+        """
+        ...
+
+    @abstractmethod
+    def push_estimate_update(
+        self,
+        *,
+        claim_id: str,
+        shop_id: str,
+        authorization_id: str | None,
+        estimate_amount: float,
+        line_items: list[dict[str, Any]] | None,
+        is_supplement: bool,
+    ) -> dict[str, Any]:
+        """Push an estimate or supplement update to ERP (outbound: carrier → ERP).
+
+        Parameters
+        ----------
+        claim_id:
+            Internal claim identifier.
+        shop_id:
+            Internal shop identifier.
+        authorization_id:
+            Repair authorization reference.
+        estimate_amount:
+            Total estimate amount in dollars.
+        line_items:
+            Optional list of ``{description, quantity, unit_price}`` dicts.
+        is_supplement:
+            ``True`` when this is a supplemental estimate rather than an initial one.
+
+        Returns
+        -------
+        dict
+            Must include ``erp_reference`` (str) and ``status``.
+            Optional: ``approved_amount`` (float), ``message`` (str).
+        """
+        ...
+
+    @abstractmethod
+    def push_repair_status(
+        self,
+        *,
+        claim_id: str,
+        shop_id: str,
+        authorization_id: str | None,
+        status: str,
+        notes: str | None,
+    ) -> dict[str, Any]:
+        """Sync a repair status change to ERP (outbound: carrier → ERP).
+
+        Parameters
+        ----------
+        status:
+            One of the ``VALID_REPAIR_STATUSES`` values (e.g. ``received``,
+            ``parts_ordered``, ``ready``).
+
+        Returns
+        -------
+        dict
+            Must include ``erp_reference`` (str) and ``status``.
+        """
+        ...
+
+    @abstractmethod
+    def pull_pending_events(
+        self,
+        *,
+        shop_id: str | None = None,
+        since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Poll ERP for pending inbound events (inbound: ERP → carrier).
+
+        Parameters
+        ----------
+        shop_id:
+            If provided, limit results to this shop (internal ID).
+        since:
+            ISO-8601 timestamp; if provided, return only events newer than
+            this value.
+
+        Returns
+        -------
+        list[dict]
+            Each dict must include:
+
+            * ``event_type`` (str): ``estimate_approved`` | ``parts_delayed``
+              | ``supplement_requested``.
+            * ``claim_id`` (str): internal claim identifier.
+            * ``shop_id`` (str): internal shop identifier.
+            * ``erp_event_id`` (str): ERP-side reference (for idempotency).
+            * ``occurred_at`` (str): ISO-8601 timestamp.
+
+            Optional per event type:
+
+            * ``estimate_approved``: ``approved_amount`` (float).
+            * ``parts_delayed``: ``delay_reason`` (str),
+              ``expected_availability_date`` (str).
+            * ``supplement_requested``: ``supplement_amount`` (float),
+              ``description`` (str).
+        """
+        ...
+
+    def resolve_shop_id(self, internal_shop_id: str) -> str:
+        """Map internal shop_id to the ERP tenant / location ID.
+
+        The default implementation is an identity mapping—the internal ID is
+        used as-is.  Override in adapters whose ERP has a separate identity
+        scheme (e.g. numeric location codes, tenant UUIDs).
+
+        Args:
+            internal_shop_id: The shop_id stored in the carrier system.
+
+        Returns:
+            The corresponding ERP identifier for the shop.
+        """
+        return internal_shop_id
+
+
+# ---------------------------------------------------------------------------
+# ERP event types (shared by adapters and inbound webhook routes)
+# ---------------------------------------------------------------------------
+
+VALID_ERP_EVENT_TYPES: frozenset[str] = frozenset(
+    {"estimate_approved", "parts_delayed", "supplement_requested"}
+)
+
 class GapInsuranceAdapter(ABC):
     """Interface for gap (loan/lease) carrier coordination after auto total loss."""
 
