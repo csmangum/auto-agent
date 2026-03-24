@@ -2,10 +2,12 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { PortalProvider } from '../context/PortalContext';
+import { RepairPortalProvider } from '../context/RepairPortalProvider';
 import PortalLogin from './PortalLogin';
 
 const mockGetClaims = vi.fn();
 const mockClearPortalSession = vi.fn();
+const mockGetRepairClaim = vi.fn();
 
 vi.mock('../api/portalClient', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/portalClient')>();
@@ -19,11 +21,24 @@ vi.mock('../api/portalClient', async (importOriginal) => {
   };
 });
 
+vi.mock('../api/repairPortalClient', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/repairPortalClient')>();
+  return {
+    ...actual,
+    repairPortalApi: {
+      ...actual.repairPortalApi,
+      getClaim: (...args: unknown[]) => mockGetRepairClaim(...args),
+    },
+  };
+});
+
 function createWrapper(initialPath = '/portal/login') {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <PortalProvider>
-        <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>
+        <RepairPortalProvider>
+          <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>
+        </RepairPortalProvider>
       </PortalProvider>
     );
   };
@@ -35,6 +50,7 @@ describe('PortalLogin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetClaims.mockResolvedValue({ claims: [{ id: 'CLM-1' }], total: 1 });
+    mockGetRepairClaim.mockResolvedValue({ id: 'CLM-1' });
   });
 
   it('renders policy/VIN and token mode tabs', () => {
@@ -57,7 +73,7 @@ describe('PortalLogin', () => {
       </Wrapper>
     );
     fireEvent.click(screen.getByText('Access Token'));
-    expect(screen.getByPlaceholderText(/paste token/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/paste token from email/i)).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('e.g. POL-12345')).not.toBeInTheDocument();
   });
 
@@ -146,15 +162,16 @@ describe('PortalLogin', () => {
     });
   });
 
-  it('switches to token mode when claim_id and token in URL', () => {
+  it('switches to repair-shop mode when claim_id and token in URL', () => {
     const WrapperWithParams = createWrapper('/portal/login?claim_id=CLM-1&token=abc123');
     render(
       <WrapperWithParams>
         <PortalLogin />
       </WrapperWithParams>
     );
-    expect(screen.getByPlaceholderText(/paste token/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue('abc123')).toBeInTheDocument();
+    // When both claim_id and token are in the URL, the page switches to repair-shop mode
+    expect(screen.getByText('Repair Shop Portal')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('e.g. CLM-...')).toBeInTheDocument();
   });
 
   it('successful token login calls getClaims', async () => {
@@ -164,7 +181,7 @@ describe('PortalLogin', () => {
       </Wrapper>
     );
     fireEvent.click(screen.getByText('Access Token'));
-    fireEvent.change(screen.getByPlaceholderText(/paste token/i), {
+    fireEvent.change(screen.getByPlaceholderText(/paste token from email/i), {
       target: { value: 'my-token-123' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
@@ -189,5 +206,16 @@ describe('PortalLogin', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
     expect(screen.getByRole('button', { name: 'Verifying...' })).toBeInTheDocument();
+  });
+
+  it('shows repair shop form when Repair Shop role selected', () => {
+    render(
+      <Wrapper>
+        <PortalLogin />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByText('Repair Shop'));
+    expect(screen.getByText('Repair Shop Portal')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('e.g. CLM-...')).toBeInTheDocument();
   });
 });
