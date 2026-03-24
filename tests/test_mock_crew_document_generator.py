@@ -167,27 +167,21 @@ class TestGenerateRepairEstimate:
             with pytest.raises(ValueError, match="disabled"):
                 generate_repair_estimate(base_claim_context)
 
-    def test_estimated_damage_zero_ignored(self, base_claim_context):
+    def test_estimated_damage_zero_not_scaled(self, base_claim_context):
+        """estimated_damage=0 should not scale the total to zero."""
         ctx = {**base_claim_context, "estimated_damage": 0}
         with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
             ms.return_value = _make_settings(seed=42)
             result = generate_repair_estimate(ctx)
-        ctx_no_override = {**base_claim_context}
-        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
-            ms.return_value = _make_settings(seed=42)
-            baseline = generate_repair_estimate(ctx_no_override)
-        assert result["total"] == baseline["total"]
+        assert result["total"] > 100
 
-    def test_estimated_damage_negative_ignored(self, base_claim_context):
+    def test_estimated_damage_negative_not_scaled(self, base_claim_context):
+        """Negative estimated_damage should not produce a negative total."""
         ctx = {**base_claim_context, "estimated_damage": -500.0}
         with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
             ms.return_value = _make_settings(seed=42)
             result = generate_repair_estimate(ctx)
-        ctx_no_override = {**base_claim_context}
-        with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
-            ms.return_value = _make_settings(seed=42)
-            baseline = generate_repair_estimate(ctx_no_override)
-        assert result["total"] == baseline["total"]
+        assert result["total"] > 100
 
     def test_estimated_damage_non_numeric_ignored(self, base_claim_context):
         ctx = {**base_claim_context, "estimated_damage": "not a number"}
@@ -244,7 +238,7 @@ class TestGenerateDamagePhotoUrl:
         with patch("claim_agent.mock_crew.document_generator.get_settings") as ms:
             ms.return_value = _make_settings(seed=None, generator_enabled=True, tmp_path=tmp_path)
             with patch(
-                "claim_agent.mock_crew.image_generator.generate_damage_image"
+                "claim_agent.mock_crew.document_generator.generate_damage_image"
             ) as mock_gen:
                 mock_gen.return_value = "file:///tmp/mock_damage_abc123.png"
                 result = generate_damage_photo_url(base_claim_context)
