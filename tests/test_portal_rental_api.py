@@ -132,6 +132,7 @@ class TestRentalSummaryEndpoint:
         # Vendor-sensitive fields must NOT be present
         assert "reservation_ref" not in rental
         assert "agency_ref" not in rental
+        assert "id" not in rental
 
     def test_direct_bill_true_returned_correctly(
         self, client, monkeypatch, seeded_temp_db

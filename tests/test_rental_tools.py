@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from claim_agent.tools.rental_logic import (
     check_rental_coverage_impl,
     get_rental_limits_impl,
@@ -200,6 +202,42 @@ class TestProcessRentalReimbursement:
         )
         data = json.loads(result)
         assert data["status"] == "failed"
+
+
+class TestProcessRentalReimbursementPersistence:
+    """DB persistence when ClaimContext is provided."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_rental_idempotency_cache(self):
+        from claim_agent.tools import rental_logic
+
+        rental_logic._IDEMPOTENCY_CACHE.clear()
+        yield
+
+    def test_persists_authorization_when_ctx_provided(self, seeded_temp_db):
+        """Rental row is written to the same DB as ClaimRepository."""
+        from claim_agent.context import ClaimContext
+        from claim_agent.db.rental_repository import RentalAuthorizationRepository
+
+        ctx = ClaimContext.from_defaults(db_path=seeded_temp_db)
+        result = process_rental_reimbursement_impl(
+            claim_id="CLM-TEST001",
+            amount=70.0,
+            rental_days=2,
+            policy_number="POL-001",
+            ctx=ctx,
+        )
+        data = json.loads(result)
+        assert data["status"] == "approved"
+        rid = data["reimbursement_id"]
+        assert rid.startswith("RENT-")
+
+        repo = RentalAuthorizationRepository(db_path=seeded_temp_db)
+        record = repo.get_by_reimbursement_id(rid)
+        assert record is not None
+        assert record["claim_id"] == "CLM-TEST001"
+        assert record["authorized_days"] == 2
+        assert record["amount_approved"] == 70.0
 
 
 class TestRentalToolsWrapper:

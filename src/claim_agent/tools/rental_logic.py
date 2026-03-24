@@ -12,6 +12,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from claim_agent.adapters.registry import get_policy_adapter
+from claim_agent.db.rental_repository import RentalAuthorizationRepository
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -27,8 +28,9 @@ DEFAULT_MAX_DAYS = 30
 # "full_coverage" is a legacy misnomer; real policies use coverages array with collision/comprehensive.
 RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_coverage"})
 
-# In-memory idempotency cache for mock: (claim_id, amount, rental_days) -> reimbursement_id.
-# TODO: Real implementation must persist to repository and enforce idempotency in DB.
+# In-memory idempotency fast-path: (claim_id, amount, rental_days) -> reimbursement_id.
+# Persists to ``rental_authorizations`` when ``ctx`` is provided; DB is the source of truth
+# across processes; this cache avoids duplicate work within a single process.
 _IDEMPOTENCY_CACHE: dict[tuple[str, float, int], str] = {}
 
 
@@ -222,9 +224,7 @@ def process_rental_reimbursement_impl(
 
     Validates amount against limits from get_rental_limits_impl.
     Idempotent: repeated calls with same (claim_id, amount, rental_days) return
-    the same reimbursement_id (in-memory cache for mock).
-    TODO: Real implementation must persist to repository and enforce
-    idempotency in DB.
+    the same reimbursement_id (in-memory fast-path; DB row when ``ctx`` is set).
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -317,12 +317,12 @@ def process_rental_reimbursement_impl(
     reimbursement_id = f"RENT-{uuid.uuid4().hex[:8].upper()}"
     _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
 
-    # Persist to DB when a ClaimContext with a DB path is available.
+    # Persist to DB when ClaimContext is available (same DB path as ClaimRepository).
     if ctx is not None:
         try:
-            from claim_agent.db.rental_repository import RentalAuthorizationRepository
-
-            repo = RentalAuthorizationRepository(db_path=getattr(ctx, "db_path", None))
+            repo = RentalAuthorizationRepository(
+                db_path=getattr(ctx.repo, "_db_path", None),
+            )
             repo.upsert_authorization(
                 claim_id=claim_id,
                 authorized_days=rental_days,
@@ -332,7 +332,7 @@ def process_rental_reimbursement_impl(
                 reimbursement_id=reimbursement_id,
                 amount_approved=float(amount),
             )
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:
             logger.warning("Failed to persist rental authorization: %s", exc)
 
     return json.dumps(

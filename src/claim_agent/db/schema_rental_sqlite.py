@@ -34,7 +34,8 @@ RENTAL_AUTHORIZATIONS_TABLE_SQLITE = """CREATE TABLE IF NOT EXISTS rental_author
     amount_approved REAL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (claim_id) REFERENCES claims(id)
+    FOREIGN KEY (claim_id) REFERENCES claims(id),
+    CHECK (status IN ('authorized', 'in_progress', 'completed', 'cancelled'))
 )"""
 
 IDX_RENTAL_AUTH_CLAIM_ID = (

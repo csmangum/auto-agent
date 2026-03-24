@@ -12,8 +12,20 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+
+# Allowed ``status`` values; enforced in Python and via CHECK in DDL (new DBs).
+RENTAL_AUTHORIZATION_STATUSES = frozenset(
+    {"authorized", "in_progress", "completed", "cancelled"}
+)
+
+
+def _validate_rental_status(status: str) -> None:
+    if status not in RENTAL_AUTHORIZATION_STATUSES:
+        allowed = ", ".join(sorted(RENTAL_AUTHORIZATION_STATUSES))
+        raise ValueError(f"Invalid rental authorization status {status!r}; must be one of: {allowed}")
 
 
 def _now_iso() -> str:
@@ -23,9 +35,9 @@ def _now_iso() -> str:
 # Fields that are safe to expose to claimants via the portal DTO.
 # reservation_ref and agency_ref are intentionally excluded (vendor-sensitive /
 # internal-only; not PII per se, but not appropriate for the self-service portal).
+# Internal PK ``id`` is omitted to avoid leaking table cardinality.
 _PORTAL_SAFE_FIELDS = frozenset(
     {
-        "id",
         "claim_id",
         "authorized_days",
         "daily_cap",
@@ -69,14 +81,13 @@ class RentalAuthorizationRepository:
 
         Returns the id of the inserted/updated row.
         """
+        _validate_rental_status(status)
         now = _now_iso()
 
-        # Check for existing record: prefer reimbursement_id match (idempotency),
-        # fall back to any existing authorization for this claim.
-        existing_id = self._find_existing(claim_id, reimbursement_id)
+        with get_connection(self._db_path) as conn:
+            existing_id = self._find_existing(conn, claim_id, reimbursement_id)
 
-        if existing_id is not None:
-            with get_connection(self._db_path) as conn:
+            if existing_id is not None:
                 conn.execute(
                     text("""
                     UPDATE rental_authorizations
@@ -104,9 +115,8 @@ class RentalAuthorizationRepository:
                         "now": now,
                     },
                 )
-            return existing_id
+                return existing_id
 
-        with get_connection(self._db_path) as conn:
             result = conn.execute(
                 text("""
                 INSERT INTO rental_authorizations
@@ -136,17 +146,23 @@ class RentalAuthorizationRepository:
             return row[0] if row else 0
 
     def update_status(self, claim_id: str, status: str) -> bool:
-        """Update the status of a claim's rental authorization.
+        """Update the status of the most recent rental authorization for a claim.
 
         Returns True if a row was updated, False if no authorization exists.
         """
+        _validate_rental_status(status)
         now = _now_iso()
         with get_connection(self._db_path) as conn:
             result = conn.execute(
                 text("""
                 UPDATE rental_authorizations
                 SET status = :status, updated_at = :now
-                WHERE claim_id = :claim_id
+                WHERE id = (
+                    SELECT id FROM rental_authorizations
+                    WHERE claim_id = :claim_id
+                    ORDER BY id DESC
+                    LIMIT 1
+                )
                 """),
                 {"status": status, "now": now, "claim_id": claim_id},
             )
@@ -213,27 +229,27 @@ class RentalAuthorizationRepository:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _find_existing(self, claim_id: str, reimbursement_id: str | None) -> int | None:
+    def _find_existing(
+        self, conn: Connection, claim_id: str, reimbursement_id: str | None
+    ) -> int | None:
         """Return the id of an existing row to update, or None to insert."""
-        with get_connection(self._db_path) as conn:
-            if reimbursement_id:
-                row = conn.execute(
-                    text("""
-                    SELECT id FROM rental_authorizations
-                    WHERE reimbursement_id = :rid
-                    LIMIT 1
-                    """),
-                    {"rid": reimbursement_id},
-                ).fetchone()
-                if row:
-                    return row[0]
-            # Fall back to most recent authorization for this claim
+        if reimbursement_id:
             row = conn.execute(
                 text("""
                 SELECT id FROM rental_authorizations
-                WHERE claim_id = :claim_id
-                ORDER BY id DESC LIMIT 1
+                WHERE reimbursement_id = :rid
+                LIMIT 1
                 """),
-                {"claim_id": claim_id},
+                {"rid": reimbursement_id},
             ).fetchone()
+            if row:
+                return row[0]
+        row = conn.execute(
+            text("""
+            SELECT id FROM rental_authorizations
+            WHERE claim_id = :claim_id
+            ORDER BY id DESC LIMIT 1
+            """),
+            {"claim_id": claim_id},
+        ).fetchone()
         return row[0] if row else None

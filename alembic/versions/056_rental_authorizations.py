@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS rental_authorizations (
     reimbursement_id TEXT,
     amount_approved REAL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (status IN ('authorized', 'in_progress', 'completed', 'cancelled'))
 )
 """
 

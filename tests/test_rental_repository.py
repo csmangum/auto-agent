@@ -106,6 +106,17 @@ class TestUpsertAuthorization:
         assert record["authorized_days"] == 7
         assert record["status"] == "in_progress"
 
+    def test_upsert_invalid_status_raises(self, repo):
+        """Invalid status raises ValueError before touching the DB."""
+        with pytest.raises(ValueError, match="Invalid rental authorization status"):
+            repo.upsert_authorization(
+                claim_id="CLM-TEST001",
+                authorized_days=5,
+                daily_cap=35.0,
+                reimbursement_id="RENT-BADSTAT",
+                status="bogus",
+            )
+
 
 class TestGetAuthorization:
     """Tests for get_authorization (internal full view)."""
@@ -180,6 +191,7 @@ class TestGetPortalSummary:
         assert summary["amount_approved"] == 245.0
         assert "created_at" in summary
         assert "updated_at" in summary
+        assert "id" not in summary
 
 
 class TestGetByReimbursementId:
@@ -228,3 +240,41 @@ class TestUpdateStatus:
         repo.update_status("CLM-TEST001", "completed")
         record = repo.get_authorization("CLM-TEST001")
         assert record["status"] == "completed"
+
+    def test_update_status_invalid_status_raises(self, repo):
+        repo.upsert_authorization(
+            claim_id="CLM-TEST001",
+            authorized_days=5,
+            daily_cap=35.0,
+        )
+        with pytest.raises(ValueError, match="Invalid rental authorization status"):
+            repo.update_status("CLM-TEST001", "not_a_status")
+
+    def test_update_status_only_updates_latest_row(self, repo, seeded_temp_db):
+        """When multiple rows exist, only the most recent row is updated."""
+        from sqlalchemy import text
+
+        from claim_agent.db.database import get_connection
+
+        repo.upsert_authorization(
+            claim_id="CLM-TEST001",
+            authorized_days=3,
+            daily_cap=35.0,
+            reimbursement_id="RENT-OLDER",
+            status="authorized",
+        )
+        with get_connection(seeded_temp_db) as conn:
+            conn.execute(
+                text("""
+                INSERT INTO rental_authorizations
+                    (claim_id, authorized_days, daily_cap, reimbursement_id, status)
+                VALUES ('CLM-TEST001', 14, 40.0, 'RENT-NEWER', 'authorized')
+                """)
+            )
+        assert repo.update_status("CLM-TEST001", "completed") is True
+        latest = repo.get_authorization("CLM-TEST001")
+        assert latest["reimbursement_id"] == "RENT-NEWER"
+        assert latest["status"] == "completed"
+        older = repo.get_by_reimbursement_id("RENT-OLDER")
+        assert older is not None
+        assert older["status"] == "authorized"
