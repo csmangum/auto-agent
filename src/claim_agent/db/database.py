@@ -41,6 +41,14 @@ from claim_agent.db.schema_note_templates_sqlite import (
     IDX_NOTE_TEMPLATES_ACTIVE,
     NOTE_TEMPLATES_TABLE_SQLITE,
 )
+from claim_agent.db.schema_repair_portal_sqlite import (
+    IDX_REPAIR_SHOP_USERS_EMAIL,
+    IDX_REPAIR_SHOP_USERS_SHOP_ID,
+    IDX_RSCA_CLAIM_ID,
+    IDX_RSCA_SHOP_ID,
+    REPAIR_SHOP_CLAIM_ASSIGNMENTS_TABLE_SQLITE,
+    REPAIR_SHOP_USERS_TABLE_SQLITE,
+)
 from claim_agent.db.schema_incidents_sqlite import (
     CLAIM_LINKS_TABLE_SQLITE,
     INCIDENTS_TABLE_SQLITE,
@@ -530,6 +538,24 @@ CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_acce
     + NOTE_TEMPLATES_TABLE_SQLITE
     + ";\n"
     + IDX_NOTE_TEMPLATES_ACTIVE
+    + ";\n"
+    + """
+-- Repair shop user accounts: shop-level login for multi-claim portal access
+"""
+    + REPAIR_SHOP_USERS_TABLE_SQLITE
+    + ";\n"
+    + IDX_REPAIR_SHOP_USERS_EMAIL
+    + ";\n"
+    + IDX_REPAIR_SHOP_USERS_SHOP_ID
+    + ";\n"
+    + """
+-- Repair shop claim assignments: explicit shop ↔ claim pairings with audit trail
+"""
+    + REPAIR_SHOP_CLAIM_ASSIGNMENTS_TABLE_SQLITE
+    + ";\n"
+    + IDX_RSCA_CLAIM_ID
+    + ";\n"
+    + IDX_RSCA_SHOP_ID
     + ";\n"
 )
 
