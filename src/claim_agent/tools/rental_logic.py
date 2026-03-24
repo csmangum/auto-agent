@@ -245,7 +245,7 @@ def process_rental_reimbursement_impl(
                 "message": "Invalid claim_id",
             }
         )
-    if not isinstance(amount, (int, float)) or amount < 0:
+    if not isinstance(amount, (int, float)) or amount <= 0:
         return json.dumps(
             {
                 "reimbursement_id": "",
