@@ -22,8 +22,10 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from claim_agent.api.auth import AuthContext
+from claim_agent.api.deps import require_role
 from claim_agent.api.unified_portal_deps import (
     UnifiedPortalSession,
     require_unified_portal_session,
@@ -38,6 +40,8 @@ from claim_agent.services.unified_portal_tokens import (
 )
 
 router = APIRouter(prefix="/portal", tags=["unified-portal"])
+
+RequireAdjusterForPortalToken = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 # ---------------------------------------------------------------------------
@@ -65,12 +69,10 @@ def detect_portal_role(
 
     Security note
     -------------
-    When legacy token headers are used, the backend probes the appropriate
-    token table directly (no cross-table sequential search), so there is no
-    timing oracle across token types.  However, sequential probing of
-    ``repair_shop_access_tokens`` vs ``claim_access_tokens`` within the legacy
-    path could leak information via response latency.  New deployments should
-    issue unified tokens (``X-Portal-Token``) which carry the role explicitly.
+    When legacy token headers are used, the backend selects the verifier from
+    the header present and reads only the matching token table—there is no
+    cross-table sequential probe in this path. New deployments should prefer
+    unified tokens (``X-Portal-Token``), which carry the role explicitly.
     """
     if session.role == "claimant":
         redirect = "/portal/claims"
@@ -139,15 +141,33 @@ class IssueUnifiedTokenBody(BaseModel):
             raise ValueError(f"Invalid scopes: {sorted(invalid)}")
         return v
 
+    @model_validator(mode="after")
+    def _require_fields_for_role(self) -> IssueUnifiedTokenBody:
+        if self.role == "claimant":
+            if not (self.claim_id and str(self.claim_id).strip()):
+                raise ValueError("claim_id is required for claimant tokens")
+        elif self.role == "repair_shop":
+            if not (self.shop_id and str(self.shop_id).strip()):
+                raise ValueError("shop_id is required for repair_shop tokens")
+            if not (self.claim_id and str(self.claim_id).strip()):
+                raise ValueError("claim_id is required for repair_shop tokens")
+        else:
+            if not (self.claim_id and str(self.claim_id).strip()):
+                raise ValueError("claim_id is required for tpa tokens")
+        return self
+
 
 @router.post("/auth/issue-token")
-def issue_unified_portal_token(body: IssueUnifiedTokenBody):
+def issue_unified_portal_token(
+    body: IssueUnifiedTokenBody,
+    _auth: AuthContext = RequireAdjusterForPortalToken,
+):
     """Issue a unified portal token for a given role.
 
-    This endpoint is intended for **internal / adjuster use** and is protected
-    by the standard API-key / Bearer-token auth middleware (unlike the rest of
-    ``/portal/*`` which is public).  Frontends or scripts can obtain a token
-    here and deliver it to the external party via email or secure link.
+    This endpoint is intended for **internal / adjuster use** and requires an
+    authenticated caller with role ``adjuster``, ``supervisor``, ``admin``, or
+    ``executive`` (API key or JWT), in addition to the global API auth
+    middleware (unlike the rest of ``/portal/*``, which is public).
 
     Returns the raw token once -- not stored in plaintext.
     """

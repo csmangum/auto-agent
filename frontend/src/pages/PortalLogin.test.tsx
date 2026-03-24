@@ -162,14 +162,25 @@ describe('PortalLogin', () => {
     });
   });
 
-  it('switches to repair-shop mode when claim_id and token in URL', () => {
+  it('treats query claim_id+token without role as claimant flow (not repair shop)', () => {
     const WrapperWithParams = createWrapper('/portal/login?claim_id=CLM-1&token=abc123');
     render(
       <WrapperWithParams>
         <PortalLogin />
       </WrapperWithParams>
     );
-    // When both claim_id and token are in the URL, the page switches to repair-shop mode
+    expect(screen.getByText('Claimant Portal')).toBeInTheDocument();
+  });
+
+  it('uses query claim_id+token as repair shop when role=repair_shop', () => {
+    const WrapperWithParams = createWrapper(
+      '/portal/login?claim_id=CLM-1&token=abc123&role=repair_shop'
+    );
+    render(
+      <WrapperWithParams>
+        <PortalLogin />
+      </WrapperWithParams>
+    );
     expect(screen.getByText('Repair Shop Portal')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('e.g. CLM-...')).toBeInTheDocument();
   });

@@ -61,16 +61,20 @@ export default function PortalLogin() {
     const t = fromHash.token || qToken || '';
     const cid = fromHash.claim_id || qClaim || '';
 
-    if (cid && t) {
-      // Both claim_id and token → repair-shop deep-link
+    // Fragment deep-link (repair shop): #claim_id=...&token=... (token stays off query string)
+    if (fromHash.claim_id && fromHash.token) {
+      setShopClaimId(fromHash.claim_id);
+      setShopToken(fromHash.token);
+      setRole('repair_shop');
+    } else if (qRole === 'repair_shop' && cid && t) {
+      // Query-string repair link must include role=repair_shop so claimant ?claim_id=&token= bookmarks keep working
       setShopClaimId(cid);
       setShopToken(t);
       setRole('repair_shop');
-    } else if (t && qRole === 'repair_shop') {
-      // Token only with repair_shop role → store as repair-shop token
+    } else if (t && qRole === 'repair_shop' && !cid) {
       setShopToken(t);
-    } else if (t && qRole !== 'repair_shop') {
-      // Token only (no claim_id, not repair_shop) → claimant token mode
+    } else if (t) {
+      // Claimant magic link (?token= or ?claim_id=&token= without repair role)
       setClaimantToken(t);
       setClaimantMode('token');
     }

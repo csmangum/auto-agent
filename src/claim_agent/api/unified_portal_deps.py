@@ -74,16 +74,23 @@ async def require_unified_portal_session(request: Request) -> UnifiedPortalSessi
                 status_code=401,
                 detail="Invalid or expired portal token.",
             )
-        claim_ids: list[str] = []
-        if rec.claim_id:
-            claim_ids = [rec.claim_id]
-        elif rec.role == "claimant":
-            # Unified claimant token without a specific claim: not currently
-            # supported – require explicit claim_id in token.
+        settings = get_settings()
+        if rec.role == "claimant":
+            if not settings.portal.enabled:
+                raise HTTPException(status_code=503, detail="Claimant portal is disabled")
+        elif rec.role == "repair_shop":
+            if not settings.repair_shop_portal.enabled:
+                raise HTTPException(status_code=503, detail="Repair shop portal is disabled")
+        elif rec.role == "tpa":
+            if not settings.third_party_portal.enabled:
+                raise HTTPException(status_code=503, detail="Third-party portal is disabled")
+
+        if not rec.claim_id:
             raise HTTPException(
                 status_code=401,
-                detail="Unified claimant tokens must specify a claim_id.",
+                detail="Unified portal tokens must specify a claim_id.",
             )
+        claim_ids = [rec.claim_id]
         return UnifiedPortalSession(
             role=rec.role,
             claim_ids=claim_ids,

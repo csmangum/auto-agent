@@ -55,7 +55,7 @@ CREATE TABLE external_portal_tokens (
     token_hash TEXT NOT NULL UNIQUE,   -- SHA-256(raw_token)
     role      TEXT NOT NULL,           -- 'claimant' | 'repair_shop' | 'tpa'
     scopes    TEXT NOT NULL DEFAULT '[]', -- JSON array of permissions
-    claim_id  TEXT REFERENCES claims(id), -- NULL = all assigned claims
+    claim_id  TEXT REFERENCES claims(id), -- required for sessions; NULL not supported for access
     shop_id   TEXT,
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
@@ -74,14 +74,13 @@ When legacy token headers are presented, the backend validates against the
 appropriate table directly based on which header is sent. There is no
 cross-table sequential lookup that would leak which table holds a token.
 
-However, the `GET /api/portal/auth/role` endpoint probes tables in sequence
-when the caller sends a credential without an explicit role. A remote attacker
-who can measure response latency with sub-millisecond precision *could*
-infer which table a stolen token hash matches. The practical risk is very low:
-tokens are secrets, and SHA-256 lookups take similar time across tables.
+The `GET /api/portal/auth/role` endpoint follows the same pattern: it resolves
+the credential using the header(s) present (see the table above) and performs
+only the corresponding lookup—not a sequential scan of multiple token tables.
 
-**Mitigation:** Issue `X-Portal-Token` (unified tokens) for new integrations.
-The role is embedded in the token record, eliminating the sequential lookup.
+Unified tokens (`X-Portal-Token`) remain the preferred option for new
+integrations because they carry the role explicitly and simplify backend logic
+and operational policy.
 
 ### Token revocation
 
@@ -112,7 +111,9 @@ raw = create_claim_access_token("CLM-12345", party_id=7, email="user@example.com
 from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_access_token
 
 raw = create_repair_shop_access_token("CLM-12345", shop_id="SHOP-001")
-# Deep-link format: https://claims.example.com/portal/login#claim_id=CLM-12345&token=<raw>
+# Deep-link (recommended): fragment keeps token off the query string:
+# https://claims.example.com/portal/login#claim_id=CLM-12345&token=<raw>
+# Query-string alternative: /portal/login?role=repair_shop&claim_id=...&token=...
 ```
 
 ### Unified token (recommended for new integrations)
@@ -147,9 +148,8 @@ API-key auth) can also be used to mint unified tokens programmatically.
 | Old URL | Status | New URL |
 |---|---|---|
 | `GET /repair-portal/login` (frontend) | **Redirects** (302) to `/portal/login?role=repair_shop` | `/portal/login` |
-| `POST /api/repair-portal/auth/login` | **Active** (backward compat) | `POST /api/portal/auth/login` |
+| `POST /api/repair-portal/auth/login` | **Active** (backward compat); schedule removal after one release cycle | `POST /api/portal/auth/login` |
 | `/repair-portal/claims/:id` (frontend) | **Active** (no change) | n/a |
-| `POST /api/repair-portal/auth/login` | Schedule removal after one release cycle | — |
 
 The backend route `/api/repair-portal/*` will remain active indefinitely for
 existing API integrations; operators who want to enforce the unified entry

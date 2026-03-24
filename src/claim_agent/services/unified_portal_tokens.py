@@ -4,14 +4,12 @@ Unified tokens live in ``external_portal_tokens`` and carry an explicit
 ``role`` so the backend can determine the caller's portal context from a
 *single* credential without probing multiple legacy tables.
 
-Security note (timing oracle)
-------------------------------
-The fallback detection in ``detect_role_from_headers`` probes legacy token
-tables sequentially: repair_shop → claimant.  A sophisticated attacker who
-can measure exact response latency could infer which table a stolen token
-hash exists in.  The risk is low in practice (tokens are secrets) but
-operators should be aware.  New integrations should issue unified tokens
-(this module) which carry the role explicitly and eliminate the oracle.
+Some **legacy** resolution paths elsewhere in the API (for example, guessing
+role from separate headers and looking up ``repair_shop_access_tokens`` vs
+``claim_access_tokens`` in sequence) could in theory allow a timing oracle
+across tables. The practical risk is very low (tokens are secrets). New
+integrations should prefer unified tokens, which carry ``role`` explicitly and
+avoid that class of ambiguity.
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ from typing import Literal
 from sqlalchemy import text
 
 from claim_agent.config import get_settings
-from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.db.database import get_connection, get_db_path, is_postgres_backend, row_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +82,7 @@ def create_unified_portal_token(
     Args:
         role: The portal role this token grants (``claimant``, ``repair_shop``, ``tpa``).
         scopes: Optional list of fine-grained permission strings.
-        claim_id: Restrict to a specific claim (NULL means all assigned claims for the role).
+        claim_id: Required for all roles; session code resolves access from this claim.
         shop_id: Required when ``role == "repair_shop"`` to identify the shop.
         db_path: Override DB path (for testing).
 
@@ -92,17 +90,31 @@ def create_unified_portal_token(
         The raw token string.  Only returned once – not stored in plaintext.
 
     Raises:
-        ValueError: If any scope string is not in ``VALID_PORTAL_SCOPES``.
+        ValueError: If any scope string is not in ``VALID_PORTAL_SCOPES``, or
+            required fields for the role are missing.
     """
     if scopes:
         invalid = set(scopes) - VALID_PORTAL_SCOPES
         if invalid:
             raise ValueError(f"Invalid portal scopes: {sorted(invalid)}")
+    if not claim_id or not str(claim_id).strip():
+        raise ValueError("claim_id is required for unified portal tokens")
+    if role == "repair_shop" and not (shop_id and str(shop_id).strip()):
+        raise ValueError("shop_id is required when role is repair_shop")
     raw = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw)
     settings = get_settings()
-    expiry_days = settings.portal.token_expiry_days
-    expires_at = _ts(datetime.now(timezone.utc) + timedelta(days=expiry_days))
+    if role == "repair_shop":
+        expiry_days = settings.repair_shop_portal.token_expiry_days
+    elif role == "tpa":
+        expiry_days = settings.third_party_portal.token_expiry_days
+    else:
+        expiry_days = settings.portal.token_expiry_days
+    expires_at_dt = datetime.now(timezone.utc) + timedelta(days=expiry_days)
+    # Bind timezone-aware datetimes for PostgreSQL; SQLite TEXT columns use UTC strings.
+    expires_at: datetime | str = (
+        expires_at_dt if is_postgres_backend() else _ts(expires_at_dt)
+    )
     scopes_json = json.dumps(scopes or [])
     path = db_path or get_db_path()
     with get_connection(path) as conn:
@@ -136,8 +148,9 @@ def verify_unified_portal_token(
     if not raw_token or not raw_token.strip():
         return None
     token_hash = _hash_token(raw_token.strip())
-    now = _ts(datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
     path = db_path or get_db_path()
+    now_param: datetime | str = now if is_postgres_backend() else _ts(now)
     with get_connection(path) as conn:
         row = conn.execute(
             text("""
@@ -147,7 +160,7 @@ def verify_unified_portal_token(
                   AND expires_at > :now
                   AND revoked_at IS NULL
             """),
-            {"token_hash": token_hash, "now": now},
+            {"token_hash": token_hash, "now": now_param},
         ).fetchone()
     if row is None:
         return None
@@ -174,8 +187,9 @@ def revoke_unified_portal_token(
     if not raw_token or not raw_token.strip():
         return False
     token_hash = _hash_token(raw_token.strip())
-    now = _ts(datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
     path = db_path or get_db_path()
+    now_param: datetime | str = now if is_postgres_backend() else _ts(now)
     with get_connection(path) as conn:
         result = conn.execute(
             text("""
@@ -183,7 +197,7 @@ def revoke_unified_portal_token(
                 SET revoked_at = :now
                 WHERE token_hash = :token_hash AND revoked_at IS NULL
             """),
-            {"token_hash": token_hash, "now": now},
+            {"token_hash": token_hash, "now": now_param},
         )
         conn.commit()
         return (result.rowcount or 0) > 0

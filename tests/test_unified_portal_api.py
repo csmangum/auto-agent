@@ -30,6 +30,7 @@ def _use_seeded_db(seeded_temp_db):
 def _enable_portals(monkeypatch):
     monkeypatch.setenv("CLAIMANT_PORTAL_ENABLED", "true")
     monkeypatch.setenv("REPAIR_SHOP_PORTAL_ENABLED", "true")
+    monkeypatch.setenv("THIRD_PARTY_PORTAL_ENABLED", "true")
     monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
     reload_settings()
     yield
@@ -145,6 +146,31 @@ class TestDetectPortalRole:
             headers={"X-Portal-Token": "not-a-valid-token"},
         )
         assert resp.status_code == 401
+
+    def test_unified_token_503_when_claimant_portal_disabled(self, client, monkeypatch):
+        monkeypatch.setenv("CLAIMANT_PORTAL_ENABLED", "false")
+        reload_settings()
+        raw = create_unified_portal_token("claimant", claim_id="CLM-TEST001")
+        resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
+        assert resp.status_code == 503
+
+    def test_unified_token_503_when_repair_portal_disabled(self, client, monkeypatch):
+        monkeypatch.setenv("REPAIR_SHOP_PORTAL_ENABLED", "false")
+        reload_settings()
+        raw = create_unified_portal_token(
+            "repair_shop",
+            claim_id="CLM-TEST005",
+            shop_id="SHOP-X",
+        )
+        resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
+        assert resp.status_code == 503
+
+    def test_unified_token_503_when_third_party_portal_disabled(self, client, monkeypatch):
+        monkeypatch.setenv("THIRD_PARTY_PORTAL_ENABLED", "false")
+        reload_settings()
+        raw = create_unified_portal_token("tpa", claim_id="CLM-TEST001")
+        resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
+        assert resp.status_code == 503
 
     def test_role_repair_shop_invalid_token(self, client):
         """Invalid repair shop token → 401."""
@@ -380,17 +406,51 @@ class TestScopeValidation:
                 claim_id="CLM-TEST001",
             )
 
-    def test_invalid_scope_rejected_by_api(self, client, monkeypatch):
-        """POST /api/portal/auth/issue-token rejects unknown scopes (422)."""
-        monkeypatch.setenv("API_KEY", "test-key")
+    def test_create_requires_claim_id(self):
+        with pytest.raises(ValueError, match="claim_id is required"):
+            create_unified_portal_token("claimant")
+
+    def test_create_repair_shop_requires_shop_id(self):
+        with pytest.raises(ValueError, match="shop_id is required"):
+            create_unified_portal_token("repair_shop", claim_id="CLM-TEST005")
+
+    def test_issue_token_requires_bearer_and_adjuster_role(self, client, monkeypatch):
+        """POST /api/portal/auth/issue-token uses CLAIMS_API_KEY auth and RBAC."""
+        monkeypatch.setenv("API_KEYS", "")
+        monkeypatch.setenv("CLAIMS_API_KEY", "issuer-key")
+        monkeypatch.setenv("JWT_SECRET", "")
+        reload_settings()
+        payload = {
+            "role": "claimant",
+            "scopes": ["read_claim", "delete_everything"],
+            "claim_id": "CLM-TEST001",
+        }
+        assert client.post("/api/portal/auth/issue-token", json=payload).status_code == 401
+        assert (
+            client.post(
+                "/api/portal/auth/issue-token",
+                json=payload,
+                headers={"Authorization": "Bearer wrong"},
+            ).status_code
+            == 401
+        )
+        assert (
+            client.post(
+                "/api/portal/auth/issue-token",
+                json=payload,
+                headers={"Authorization": "Bearer issuer-key"},
+            ).status_code
+            == 422
+        )
+
+    def test_issue_token_insufficient_api_key_role(self, client, monkeypatch):
+        monkeypatch.setenv("CLAIMS_API_KEY", "")
+        monkeypatch.setenv("API_KEYS", "lowpriv:readonly")
+        monkeypatch.setenv("JWT_SECRET", "")
         reload_settings()
         resp = client.post(
             "/api/portal/auth/issue-token",
-            json={
-                "role": "claimant",
-                "scopes": ["read_claim", "delete_everything"],
-                "claim_id": "CLM-TEST001",
-            },
-            headers={"Authorization": "Bearer test-key"},
+            json={"role": "claimant", "claim_id": "CLM-TEST001"},
+            headers={"Authorization": "Bearer lowpriv"},
         )
-        assert resp.status_code == 422
+        assert resp.status_code == 403
