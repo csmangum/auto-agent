@@ -1385,6 +1385,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "fraud_reporting": "FRAUD_REPORTING_ADAPTER",
     "reverse_image": "REVERSE_IMAGE_ADAPTER",
     "erp": "ERP_ADAPTER",
+    "medical_records": "MEDICAL_RECORDS_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
@@ -1404,6 +1405,7 @@ REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset(
         "ocr",
         "cms",
         "reverse_image",
+        "medical_records",
     }
 )
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
@@ -1734,6 +1736,39 @@ class OCRRestConfig(BaseSettings):
     )
 
 
+class MedicalRecordsRestConfig(BaseSettings):
+    """REST medical records adapter configuration (MEDICAL_RECORDS_ADAPTER=rest).
+
+    Connects to an HIE, provider portal, or equivalent medical records system.
+    All returned data is PHI; handle per HIPAA minimum-necessary standards.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEDICAL_RECORDS_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="HIE or provider portal base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    query_path: str = Field(
+        default="/medical-records/query",
+        description="Path for the records query endpoint",
+    )
+    response_key: str = Field(
+        default="",
+        description="Optional JSON envelope key wrapping the records data (e.g. data)",
+    )
+    timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="Request timeout seconds",
+    )
+
+
 class CMSRestConfig(BaseSettings):
     """REST CMS/Medicare reporting adapter configuration (CMS_ADAPTER=rest)."""
 
@@ -1911,6 +1946,7 @@ class Settings(BaseSettings):
     nmvtis_rest: NMVTISRestConfig = Field(default_factory=NMVTISRestConfig)
     gap_insurance_rest: GapInsuranceRestConfig = Field(default_factory=GapInsuranceRestConfig)
     ocr_rest: OCRRestConfig = Field(default_factory=OCRRestConfig)
+    medical_records_rest: MedicalRecordsRestConfig = Field(default_factory=MedicalRecordsRestConfig)
     cms_rest: CMSRestConfig = Field(default_factory=CMSRestConfig)
     reverse_image_rest: ReverseImageRestConfig = Field(default_factory=ReverseImageRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
@@ -2005,6 +2041,7 @@ class Settings(BaseSettings):
     fraud_reporting_adapter: str = Field(default="mock", validation_alias="FRAUD_REPORTING_ADAPTER")
     reverse_image_adapter: str = Field(default="mock", validation_alias="REVERSE_IMAGE_ADAPTER")
     erp_adapter: str = Field(default="mock", validation_alias="ERP_ADAPTER")
+    medical_records_adapter: str = Field(default="mock", validation_alias="MEDICAL_RECORDS_ADAPTER")
 
     @field_validator("siu_default_state", mode="before")
     @classmethod

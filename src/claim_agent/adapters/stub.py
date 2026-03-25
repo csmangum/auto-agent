@@ -13,6 +13,7 @@ from claim_agent.adapters.base import (
     ClaimSearchAdapter,
     ERPAdapter,
     GapInsuranceAdapter,
+    MedicalRecordsAdapter,
     NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
@@ -295,4 +296,32 @@ class StubERPAdapter(ERPAdapter):
         raise NotImplementedError(
             "StubERPAdapter.pull_pending_events: connect to a production ERP API. "
             "Expected return: list of inbound event dicts."
+        )
+
+
+class StubMedicalRecordsAdapter(MedicalRecordsAdapter):
+    """Placeholder for a real medical records integration (HIE, provider portal, CMS).
+
+    Replace the body of ``query_medical_records`` with a call to the production
+    medical records system (e.g. CommonWell, Carequality, Direct Secure Messaging,
+    or a carrier-specific provider portal).
+
+    Privacy reminder: returned data is PHI.  Ensure that all access is logged,
+    transmission is encrypted, and that HIPAA minimum-necessary standards are
+    applied.  Configure ``MEDICAL_RECORDS_REST_*`` env vars and set
+    ``MEDICAL_RECORDS_ADAPTER=rest`` to enable the REST backend.
+    """
+
+    def query_medical_records(
+        self,
+        claim_id: str,
+        claimant_id: str = "",
+        *,
+        date_range: tuple[str, str] | None = None,
+    ) -> dict[str, Any] | None:
+        raise NotImplementedError(
+            "StubMedicalRecordsAdapter: connect to a real medical records system "
+            "(e.g. HIE, provider portal, or CMS). "
+            "Expected return: {claim_id, claimant_id, records, total_charges, "
+            "treatment_summary} or None."
         )

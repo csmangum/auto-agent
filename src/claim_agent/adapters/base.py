@@ -544,3 +544,54 @@ class GapInsuranceAdapter(ABC):
         raise NotImplementedError(
             "GapInsuranceAdapter.get_claim_status: override for carrier status polling."
         )
+
+
+class MedicalRecordsAdapter(ABC):
+    """Interface for querying medical records from HIEs, provider portals, or CMS.
+
+    Production implementations should integrate with a Health Information Exchange
+    (HIE), provider portal, or equivalent medical records system.  All returned
+    data is PHI and must be handled according to applicable HIPAA and state
+    privacy regulations.
+
+    Adapter selection
+    -----------------
+    Set ``MEDICAL_RECORDS_ADAPTER=mock | stub | rest`` (default: ``mock``).
+    For ``rest``, also configure the ``MEDICAL_RECORDS_REST_*`` env vars.
+    """
+
+    @abstractmethod
+    def query_medical_records(
+        self,
+        claim_id: str,
+        claimant_id: str = "",
+        *,
+        date_range: tuple[str, str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Return medical records associated with a bodily injury claim.
+
+        Parameters
+        ----------
+        claim_id:
+            Internal claim identifier.
+        claimant_id:
+            Claimant identifier (patient) used to scope the records lookup.
+        date_range:
+            Optional ``(start_date, end_date)`` pair in ``YYYY-MM-DD`` format
+            to restrict records to a specific treatment window.
+
+        Returns
+        -------
+        dict | None
+            ``None`` if no records are found or the claimant cannot be
+            identified.  When records are found, the dict must contain:
+
+            * ``claim_id`` (str)
+            * ``claimant_id`` (str)
+            * ``records`` (list[dict]): each entry has ``provider``,
+              ``date_of_service``, ``diagnosis``, ``charges`` (float),
+              ``treatment``.
+            * ``total_charges`` (float): sum of all record charges.
+            * ``treatment_summary`` (str): plain-language summary.
+        """
+        ...
