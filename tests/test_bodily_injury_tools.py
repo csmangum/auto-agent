@@ -3,6 +3,8 @@
 import json
 from unittest.mock import patch
 
+import pytest
+
 from claim_agent.tools.bodily_injury_logic import (
     assess_injury_severity_impl,
     audit_medical_bills_impl,
@@ -47,6 +49,20 @@ class TestQueryMedicalRecords:
         result_default = query_medical_records_impl("CLM-001")
         data_default = json.loads(result_default)
         assert data_default["claimant_id"] == "claimant-1"
+
+    def test_adapter_returns_none_yields_error_structure(self):
+        """When the adapter returns None, the impl returns an error JSON structure."""
+        with patch(
+            "claim_agent.tools.bodily_injury_logic.get_medical_records_adapter"
+        ) as mock_factory:
+            mock_adapter = mock_factory.return_value
+            mock_adapter.query_medical_records.return_value = None
+            result = query_medical_records_impl("CLM-MISSING")
+        data = json.loads(result)
+        assert "error" in data
+        assert data["records"] == []
+        assert data["total_charges"] is None
+        assert data["claim_id"] == "CLM-MISSING"
 
 
 class TestAssessInjurySeverity:

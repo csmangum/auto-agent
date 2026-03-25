@@ -7,6 +7,7 @@ from claim_agent.adapters.base import (
     ClaimSearchAdapter,
     FraudReportingAdapter,
     GapInsuranceAdapter,
+    MedicalRecordsAdapter,
     NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
@@ -20,6 +21,7 @@ from claim_agent.adapters.mock import (
     MockClaimSearchAdapter,
     MockFraudReportingAdapter,
     MockGapInsuranceAdapter,
+    MockMedicalRecordsAdapter,
     MockNMVTISAdapter,
     MockPartsAdapter,
     MockPolicyAdapter,
@@ -34,6 +36,7 @@ from claim_agent.adapters.registry import (
     get_cms_reporting_adapter,
     get_fraud_reporting_adapter,
     get_gap_insurance_adapter,
+    get_medical_records_adapter,
     get_nmvtis_adapter,
     get_ocr_adapter,
     get_parts_adapter,
@@ -47,6 +50,7 @@ from claim_agent.adapters.registry import (
 from claim_agent.adapters.stub import (
     StubClaimSearchAdapter,
     StubGapInsuranceAdapter,
+    StubMedicalRecordsAdapter,
     StubNMVTISAdapter,
     StubOCRAdapter,
     StubPartsAdapter,
@@ -108,6 +112,10 @@ class TestABCEnforcement:
     def test_fraud_reporting_adapter_is_abstract(self):
         with pytest.raises(TypeError):
             FraudReportingAdapter()  # type: ignore[abstract]
+
+    def test_medical_records_adapter_is_abstract(self):
+        with pytest.raises(TypeError):
+            MedicalRecordsAdapter()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +363,45 @@ class TestMockClaimSearchAdapter:
         assert isinstance(MockClaimSearchAdapter(), ClaimSearchAdapter)
 
 
+class TestMockMedicalRecordsAdapter:
+    def test_valid_claim_id_returns_records(self):
+        adapter = MockMedicalRecordsAdapter()
+        result = adapter.query_medical_records("CLM-001")
+        assert result is not None
+        assert result["claim_id"] == "CLM-001"
+        assert isinstance(result["records"], list)
+        assert len(result["records"]) > 0
+        assert "total_charges" in result
+        assert isinstance(result["total_charges"], float)
+        assert "treatment_summary" in result
+
+    def test_claimant_id_included_in_response(self):
+        adapter = MockMedicalRecordsAdapter()
+        result = adapter.query_medical_records("CLM-001", "claimant-42")
+        assert result is not None
+        assert result["claimant_id"] == "claimant-42"
+
+    def test_default_claimant_id(self):
+        adapter = MockMedicalRecordsAdapter()
+        result = adapter.query_medical_records("CLM-001")
+        assert result is not None
+        assert result["claimant_id"] == "claimant-1"
+
+    def test_invalid_claim_id_returns_none(self):
+        adapter = MockMedicalRecordsAdapter()
+        assert adapter.query_medical_records("") is None
+
+    def test_date_range_accepted(self):
+        adapter = MockMedicalRecordsAdapter()
+        result = adapter.query_medical_records(
+            "CLM-001", date_range=("2024-01-01", "2024-12-31")
+        )
+        assert result is not None
+
+    def test_implements_interface(self):
+        assert isinstance(MockMedicalRecordsAdapter(), MedicalRecordsAdapter)
+
+
 class TestMockOCRAdapter:
     def test_extract_estimate_returns_structured_data(self, tmp_path):
         adapter = MockOCRAdapter()
@@ -475,6 +522,10 @@ class TestStubAdapters:
                 shortfall_amount=1.0,
             )
 
+    def test_stub_medical_records_raises(self):
+        with pytest.raises(NotImplementedError, match="StubMedicalRecordsAdapter"):
+            StubMedicalRecordsAdapter().query_medical_records("CLM-001")
+
 
 # ---------------------------------------------------------------------------
 # Registry tests
@@ -494,6 +545,7 @@ class TestRegistry:
         assert isinstance(get_nmvtis_adapter(), MockNMVTISAdapter)
         assert isinstance(get_gap_insurance_adapter(), MockGapInsuranceAdapter)
         assert isinstance(get_ocr_adapter(), MockOCRAdapter)
+        assert isinstance(get_medical_records_adapter(), MockMedicalRecordsAdapter)
 
     def test_stub_backend_via_env(self, monkeypatch):
         reset_adapters()
@@ -508,6 +560,7 @@ class TestRegistry:
         monkeypatch.setenv("NMVTIS_ADAPTER", "stub")
         monkeypatch.setenv("GAP_INSURANCE_ADAPTER", "stub")
         monkeypatch.setenv("OCR_ADAPTER", "stub")
+        monkeypatch.setenv("MEDICAL_RECORDS_ADAPTER", "stub")
         reload_settings()
         assert isinstance(get_policy_adapter(), StubPolicyAdapter)
         assert isinstance(get_valuation_adapter(), StubValuationAdapter)
@@ -520,6 +573,7 @@ class TestRegistry:
         assert isinstance(get_nmvtis_adapter(), StubNMVTISAdapter)
         assert isinstance(get_gap_insurance_adapter(), StubGapInsuranceAdapter)
         assert isinstance(get_ocr_adapter(), StubOCRAdapter)
+        assert isinstance(get_medical_records_adapter(), StubMedicalRecordsAdapter)
 
     def test_singleton_returns_same_instance(self):
         reset_adapters()
@@ -1050,4 +1104,68 @@ class TestRestReverseImageAdapter:
             result = adapter.match_web_occurrences(b"fake-image-bytes")
         # Should return empty list on HTTP error (no real server)
         assert isinstance(result, list)
+        reset_adapters()
+
+
+class TestRestMedicalRecordsAdapter:
+    """REST medical records adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("MEDICAL_RECORDS_ADAPTER", "rest")
+        monkeypatch.delenv("MEDICAL_RECORDS_REST_BASE_URL", raising=False)
+        reload_settings()
+        with pytest.raises(ValueError, match="MEDICAL_RECORDS_REST_BASE_URL"):
+            get_medical_records_adapter()
+        reset_adapters()
+
+    def test_rest_query_returns_records(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("MEDICAL_RECORDS_ADAPTER", "rest")
+        monkeypatch.setenv("MEDICAL_RECORDS_REST_BASE_URL", "https://hie.example.com/api/v1")
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "claim_id": "CLM-001",
+            "claimant_id": "P123",
+            "records": [{"provider": "Hospital", "date_of_service": "2024-01-15",
+                         "diagnosis": "Whiplash", "charges": 3500.0, "treatment": "ER"}],
+            "total_charges": 3500.0,
+            "treatment_summary": "ER visit for whiplash.",
+        }
+
+        with patch("claim_agent.adapters.real.medical_records_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.post.return_value = mock_resp
+            MockClient.return_value = client
+            adapter = get_medical_records_adapter()
+            result = adapter.query_medical_records("CLM-001", "P123")
+        assert result is not None
+        assert result["claim_id"] == "CLM-001"
+        assert result["total_charges"] == 3500.0
+        assert len(result["records"]) == 1
+        reset_adapters()
+
+    def test_rest_query_404_returns_none(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("MEDICAL_RECORDS_ADAPTER", "rest")
+        monkeypatch.setenv("MEDICAL_RECORDS_REST_BASE_URL", "https://hie.example.com/api/v1")
+        reload_settings()
+
+        request = httpx.Request("POST", "https://hie.example.com/api/v1/medical-records/query")
+        response = httpx.Response(404, request=request)
+        http_error = httpx.HTTPStatusError("Not Found", request=request, response=response)
+
+        with patch("claim_agent.adapters.real.medical_records_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.post.side_effect = http_error
+            MockClient.return_value = client
+            adapter = get_medical_records_adapter()
+            result = adapter.query_medical_records("CLM-UNKNOWN", "P999")
+        assert result is None
         reset_adapters()

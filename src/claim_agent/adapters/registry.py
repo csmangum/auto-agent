@@ -19,6 +19,7 @@ from claim_agent.adapters.base import (
     ERPAdapter,
     FraudReportingAdapter,
     GapInsuranceAdapter,
+    MedicalRecordsAdapter,
     NMVTISAdapter,
     OCRAdapter,
     PartsAdapter,
@@ -380,6 +381,37 @@ def get_erp_adapter() -> ERPAdapter:
         StubERPAdapter,
         MockERPAdapter,
         rest_factory=_erp_rest_factory,
+    )
+
+
+def _medical_records_rest_factory() -> MedicalRecordsAdapter:
+    from claim_agent.adapters.real.medical_records_rest import create_rest_medical_records_adapter
+    return create_rest_medical_records_adapter()
+
+
+def get_medical_records_adapter() -> MedicalRecordsAdapter:
+    """Return the configured medical records adapter.
+
+    Backend is selected by the ``MEDICAL_RECORDS_ADAPTER`` environment variable
+    (default: ``mock``).  Supported values: ``mock``, ``stub``, ``rest``.
+
+    * ``mock`` – :class:`~claim_agent.adapters.mock.medical_records.MockMedicalRecordsAdapter`
+      returns deterministic fabricated records; suitable for tests and development.
+      **Do not use in production** – data is not real PHI.
+    * ``stub`` – :class:`~claim_agent.adapters.stub.StubMedicalRecordsAdapter` raises
+      ``NotImplementedError``; use as a placeholder until a real integration is wired.
+    * ``rest`` – :class:`~claim_agent.adapters.real.medical_records_rest.RestMedicalRecordsAdapter`
+      queries an HIE or provider portal API (requires ``MEDICAL_RECORDS_REST_BASE_URL``).
+      This is the only backend suitable for pilot and production use with bodily injury claims.
+    """
+    from claim_agent.adapters.mock.medical_records import MockMedicalRecordsAdapter
+    from claim_agent.adapters.stub import StubMedicalRecordsAdapter
+
+    return _get_or_create_adapter(
+        "medical_records",
+        StubMedicalRecordsAdapter,
+        MockMedicalRecordsAdapter,
+        rest_factory=_medical_records_rest_factory,
     )
 
 
