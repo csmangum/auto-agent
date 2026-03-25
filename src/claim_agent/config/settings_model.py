@@ -754,6 +754,26 @@ class AuthConfig(BaseSettings):
     )
     cors_origins_raw: str = Field(default="", validation_alias="CORS_ORIGINS")
     trust_forwarded_for: bool = Field(default=False, validation_alias="TRUST_FORWARDED_FOR")
+    enforce_https: bool = Field(
+        default=False,
+        validation_alias="ENFORCE_HTTPS",
+        description=(
+            "When true, add Strict-Transport-Security (HSTS) headers and redirect "
+            "HTTP requests to HTTPS based on the X-Forwarded-Proto header. "
+            "Enable only when deployed behind a TLS-terminating reverse proxy."
+        ),
+    )
+    hsts_max_age: int = Field(
+        default=31536000,
+        ge=0,
+        validation_alias="HSTS_MAX_AGE",
+        description="HSTS max-age in seconds (default: 31536000 = 1 year).",
+    )
+    hsts_include_subdomains: bool = Field(
+        default=True,
+        validation_alias="HSTS_INCLUDE_SUBDOMAINS",
+        description="Append 'includeSubDomains' to the HSTS header (default: true).",
+    )
 
     @field_validator("jwt_secret_raw", mode="after")
     @classmethod

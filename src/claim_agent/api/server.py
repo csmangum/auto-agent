@@ -15,6 +15,7 @@ Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -258,6 +259,60 @@ def _is_auth_public_path(path: str) -> bool:
 def _normalize_path(path: str) -> str:
     """Strip trailing slash for consistent path matching (e.g. /api/health/ -> /api/health)."""
     return path.rstrip("/") or "/"
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to every response.
+
+    When ENFORCE_HTTPS=true (i.e. deployed behind a TLS-terminating proxy):
+    - HTTP requests (X-Forwarded-Proto: http) are redirected to HTTPS.
+    - Strict-Transport-Security (HSTS) is appended to all HTTPS responses.
+
+    Security headers added unconditionally:
+    - X-Content-Type-Options: nosniff
+    - X-Frame-Options: DENY
+    - Referrer-Policy: strict-origin-when-cross-origin
+    - Permissions-Policy: restricts powerful browser features
+    """
+    settings = get_settings()
+    auth_cfg = settings.auth
+
+    if auth_cfg.enforce_https:
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "").lower()
+        if forwarded_proto == "http":
+            # Redirect to the same URL but over HTTPS
+            host = request.headers.get("X-Forwarded-Host") or request.headers.get("host", "")
+            url = str(request.url)
+            if host:
+                # Rebuild using the original public host (strip internal host)
+                parsed = urlparse(url)
+                https_url = urlunparse(parsed._replace(scheme="https", netloc=host))
+            else:
+                https_url = url.replace("http://", "https://", 1)
+            return Response(
+                status_code=301,
+                headers={"Location": https_url},
+            )
+
+    response = await call_next(request)
+
+    # Unconditional hardening headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "geolocation=(), microphone=(), camera=(), payment=()"
+    )
+
+    if auth_cfg.enforce_https:
+        hsts_value = f"max-age={auth_cfg.hsts_max_age}"
+        if auth_cfg.hsts_include_subdomains:
+            hsts_value += "; includeSubDomains"
+        hsts_value += "; preload"
+        response.headers["Strict-Transport-Security"] = hsts_value
+
+    return response
 
 
 @app.middleware("http")
