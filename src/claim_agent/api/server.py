@@ -62,8 +62,32 @@ import logging
 _server_logger = logging.getLogger(__name__)
 
 
+_DEV_ENVIRONMENTS = frozenset({"dev", "development", "test", "testing"})
+
+
+def _check_auth_configuration() -> None:
+    """Refuse to start in non-development environments when no auth is configured.
+
+    When ENVIRONMENT is not one of dev/development/test/testing and no API_KEYS,
+    CLAIMS_API_KEY, or JWT_SECRET is set, the server would grant every caller
+    admin access.  Fail fast rather than silently expose an unprotected API.
+    """
+    if is_auth_required():
+        return
+    env = get_settings().auth.environment.strip().lower()
+    if env not in _DEV_ENVIRONMENTS:
+        raise RuntimeError(
+            f"Authentication is not configured (API_KEYS, CLAIMS_API_KEY, and JWT_SECRET "
+            f"are all unset) but ENVIRONMENT is set to '{get_settings().auth.environment}'. "
+            "Configure at least one auth mechanism before deploying, or set "
+            "ENVIRONMENT=development to allow unauthenticated access in a local dev setup."
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _check_auth_configuration()
+
     if is_postgres_backend() and get_settings().paths.run_migrations_on_startup:
         from alembic import command
         from alembic.config import Config

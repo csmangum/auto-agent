@@ -727,6 +727,14 @@ class AuthConfig(BaseSettings):
         populate_by_name=True,
     )
 
+    environment: str = Field(
+        default="development",
+        validation_alias="ENVIRONMENT",
+        description=(
+            "Deployment environment. Set to 'production' to enforce authentication at startup. "
+            "Use 'development' (default) or 'dev' to allow unauthenticated local runs."
+        ),
+    )
     api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
     claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
     jwt_secret_raw: str = Field(default="", validation_alias="JWT_SECRET")
