@@ -1124,7 +1124,10 @@ def ucspa_deadlines(
     ] = 3,
     dispatch_webhooks: Annotated[
         bool,
-        typer.Option("--webhooks", "-w", help="Dispatch ucspa.deadline_approaching webhooks"),
+        typer.Option(
+            "--webhooks/--no-webhooks",
+            help="Dispatch ucspa.deadline_approaching webhooks (default: on)",
+        ),
     ] = True,
 ) -> None:
     """Check UCSPA deadlines and optionally dispatch webhook alerts for approaching deadlines."""

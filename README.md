@@ -61,8 +61,8 @@ cp .env.example .env
 # Process a claim
 claim-agent process tests/sample_claims/partial_loss_parking.json
 
-# Check status (use the claim_id from the process output)
-claim-agent status CLM-11EEF959
+# Check status (use the claim_id printed by process)
+claim-agent status CLM-XXXXXXXX
 ```
 
 ## CLI Commands
@@ -82,12 +82,17 @@ claim-agent status CLM-11EEF959
 | `claim-agent request-info <id> [--note "..."]` | Request more info |
 | `claim-agent escalate-siu <id>` | Escalate to SIU |
 | `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention period |
-| `claim-agent retention-report [--years N]` | Retention audit report (counts by tier, litigation hold, pending archive) |
-| `claim-agent litigation-hold --claim-id X --on|--off` | Set or clear litigation hold on a claim |
+| `claim-agent document-retention-enforce [--dry-run] [--as-of YYYY-MM-DD]` | Soft-archive claim documents past `retention_date` (does not delete files) |
+| `claim-agent retention-purge [--dry-run] [--years N] [--include-litigation-hold] [--export-before-purge]` | Purge archived claims past purge horizon (anonymize PII) |
+| `claim-agent retention-export [--dry-run] [--years N] [--include-litigation-hold]` | Export eligible archived claims to S3/Glacier (requires retention export settings) |
+| `claim-agent retention-report [--years N] [--purge-years N] [--audit-purge-years N] [--include-litigation-hold-audit]` | Retention audit report (counts by tier, litigation hold, pending archive/purge) |
+| `claim-agent audit-log-export --output FILE [-o] [--dry-run] [--years N] ...` | Export audit log rows for purged claims past audit horizon (NDJSON) |
+| `claim-agent audit-log-purge [--dry-run] [--years N] [--ack-exported] ...` | Delete eligible audit log rows (requires `AUDIT_LOG_PURGE_ENABLED=true` and `--ack-exported`) |
+| `claim-agent litigation-hold --claim-id X` plus `--on` or `--off` | Set or clear litigation hold (exactly one of `--on` / `--off`) |
 | `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
 | `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
 | `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
-| `claim-agent ucspa-deadlines [--days N] [--no-webhooks]` | Check UCSPA deadlines; webhook alerts dispatched by default (`--no-webhooks` to suppress) |
+| `claim-agent ucspa-deadlines [--days N] [--webhooks / --no-webhooks]` | Check UCSPA deadlines; webhooks on by default (`--no-webhooks` to suppress) |
 | `claim-agent run-scheduler` | Run optional in-process scheduler in foreground (requires `SCHEDULER_ENABLED=true`) |
 
 ## Sample Claims
@@ -104,6 +109,9 @@ claim-agent status CLM-11EEF959
 | `tests/sample_claims/partial_loss_front_collision.json` | Partial loss |
 | `tests/sample_claims/bodily_injury_claim.json` | Bodily injury (BI workflow) |
 | `tests/sample_claims/reopened_claim.json` | Reopened (prior settled claim) |
+| `tests/sample_claims/coverage_denied_theft.json` | Coverage denied (theft) |
+| `tests/sample_claims/territory_denied_mexico.json` | Territory / jurisdiction |
+| `tests/sample_claims/multi_vehicle_incident.json` | Multi-vehicle / incident grouping |
 
 ## Documentation
 
@@ -130,6 +138,10 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [MCP Server](docs/mcp-server.md) | External tool access and health check |
 | [Mock Crew Design](docs/mock-crew-design.md) | Mock external interactions for testing |
 | [Alerting](docs/alerting.md) | Alert configuration |
+| [Unified portal](docs/unified_portal.md) | Single login entry for claimant and repair shop portals |
+| [Adapter SLA](docs/adapter_sla.md) | Integration latency and availability targets |
+| [Actuarial reserve reporting](docs/actuarial-reserve-reporting.md) | Reserve report API endpoints |
+| [Eval suite gaps](docs/eval-suite-gaps.md) | Evaluation suite status and known gaps |
 
 ## Project Layout
 
@@ -149,7 +161,7 @@ src/claim_agent/
 ├── compliance/       # UCSPA and regulatory compliance
 ├── data/             # Data loaders
 ├── diary/            # Diary/calendar system (auto-create, escalation)
-├── workflow/         # Orchestrators (claim_review, siu, supplemental, handback)
+├── workflow/         # Routing, escalation, orchestrators (SIU, supplemental, dispute, handback, …)
 ├── services/         # Business logic services (adjuster, DSAR)
 ├── adapters/         # Policy, valuation, repair shop, parts, SIU adapters
 ├── mock_crew/        # Mock claimant, image gen, vision (testing)
@@ -157,7 +169,7 @@ src/claim_agent/
 ├── storage/          # Local and S3 storage for attachments
 ├── notifications/    # Webhooks and claimant notifications
 ├── utils/            # Sanitization, retry
-├── db/               # SQLite database
+├── db/               # Database layer (SQLite default; PostgreSQL when DATABASE_URL is set)
 ├── models/           # Pydantic models (ClaimInput, ClaimType, etc.)
 ├── observability/    # Logging, tracing, metrics
 └── mcp_server/       # Optional MCP server (includes health_check)

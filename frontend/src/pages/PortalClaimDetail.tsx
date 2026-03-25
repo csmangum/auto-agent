@@ -965,7 +965,7 @@ function DisputeTab({
         <EmptyState
           icon="⚖️"
           title="Disputes not available"
-          description={`Your claim is currently "${status.replace(/_/g, ' ')}". Disputes can only be filed on settled or resolved claims.`}
+          description={`Your claim is currently "${status.replace(/_/g, ' ')}". Disputes can only be filed when the claim is open or settled.`}
         />
       </div>
     );

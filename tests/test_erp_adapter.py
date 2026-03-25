@@ -1041,8 +1041,8 @@ class TestERPWebhookNonPartialLoss:
         assert resp.status_code == 400
         assert "partial_loss" in resp.json()["detail"].lower()
 
-    def test_supplement_requested_non_partial_loss_returns_200(self, client, monkeypatch):
-        """supplement_requested is logged only; should still return 200 for any claim type."""
+    def test_supplement_requested_non_partial_loss_returns_400(self, client, monkeypatch):
+        """supplement_requested follows the same partial_loss + authorization rules as other ERP events."""
         monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
         reload_settings()
         resp = _post_erp(client, _erp_payload({
@@ -1050,7 +1050,8 @@ class TestERPWebhookNonPartialLoss:
             "event_type": "supplement_requested",
             "supplement_amount": 200.0,
         }))
-        assert resp.status_code == 200
+        assert resp.status_code == 400
+        assert "partial_loss" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1084,6 +1085,23 @@ class TestERPWebhookIdempotency:
         })
         resp1 = _post_erp(client, payload)
         assert resp1.status_code == 200
+
+        resp2 = _post_erp(client, payload)
+        assert resp2.status_code == 200
+        assert resp2.json()["already_processed"] is True
+
+    def test_duplicate_supplement_requested_returns_already_processed(self, client, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", _SECRET)
+        reload_settings()
+        payload = _erp_payload({
+            "event_type": "supplement_requested",
+            "erp_event_id": "ERP-IDEMPOTENT-SUPP-001",
+            "supplement_amount": 250.0,
+            "description": "Additional labor",
+        })
+        resp1 = _post_erp(client, payload)
+        assert resp1.status_code == 200
+        assert resp1.json().get("already_processed") is not True
 
         resp2 = _post_erp(client, payload)
         assert resp2.status_code == 200

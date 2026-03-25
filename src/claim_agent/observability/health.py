@@ -17,6 +17,24 @@ from claim_agent.db.database import get_connection, get_replica_connection, has_
 logger = logging.getLogger(__name__)
 
 
+def _evaluate_adapter_health(adapter: object) -> str:
+    """Run ``adapter.health_check()`` if present; return check status string."""
+    hc = getattr(adapter, "health_check", None)
+    if not callable(hc):
+        return "skipped"
+    try:
+        raw = hc()
+    except Exception as e:
+        logger.exception("Adapter health_check() raised: %s", e)
+        return f"error:{e!s}"
+    if not isinstance(raw, tuple) or len(raw) != 2:
+        return f"error:health_check must return (bool, str), got {type(raw).__name__!r}"
+    ok, msg = raw[0], raw[1]
+    if not isinstance(ok, bool):
+        return f"error:health_check bool expected, got {type(ok).__name__!r}"
+    return "ok" if ok else f"degraded:{msg}"
+
+
 def _check_adapters() -> dict[str, str]:
     """Run health checks on adapters that support health_check()."""
     checks: dict[str, str] = {}
@@ -26,6 +44,15 @@ def _check_adapters() -> dict[str, str]:
         ("repair_shop", "get_repair_shop_adapter"),
         ("parts", "get_parts_adapter"),
         ("siu", "get_siu_adapter"),
+        ("fraud_reporting", "get_fraud_reporting_adapter"),
+        ("state_bureau", "get_state_bureau_adapter"),
+        ("claim_search", "get_claim_search_adapter"),
+        ("erp", "get_erp_adapter"),
+        ("nmvtis", "get_nmvtis_adapter"),
+        ("gap_insurance", "get_gap_insurance_adapter"),
+        ("ocr", "get_ocr_adapter"),
+        ("cms", "get_cms_reporting_adapter"),
+        ("reverse_image", "get_reverse_image_adapter"),
     ]
     for name, getter_name in adapters_to_check:
         backend = get_adapter_backend(name)
@@ -45,11 +72,7 @@ def _check_adapters() -> dict[str, str]:
 
                 getter = getattr(registry, getter_name)
                 adapter = getter()
-                if hasattr(adapter, "health_check"):
-                    ok, msg = adapter.health_check()
-                    checks[f"adapter_{name}"] = "ok" if ok else f"degraded:{msg}"
-                else:
-                    checks[f"adapter_{name}"] = "skipped"
+                checks[f"adapter_{name}"] = _evaluate_adapter_health(adapter)
             except Exception as e:
                 logger.exception("Adapter %s health check failed: %s", name, e)
                 checks[f"adapter_{name}"] = f"error:{e!s}"
@@ -62,11 +85,7 @@ def _check_adapters() -> dict[str, str]:
 
             getter = getattr(registry, getter_name)
             adapter = getter()
-            if hasattr(adapter, "health_check"):
-                ok, msg = adapter.health_check()
-                checks[f"adapter_{name}"] = "ok" if ok else f"degraded:{msg}"
-            else:
-                checks[f"adapter_{name}"] = "skipped"
+            checks[f"adapter_{name}"] = _evaluate_adapter_health(adapter)
         except Exception as e:
             logger.exception("Adapter %s health check failed: %s", name, e)
             checks[f"adapter_{name}"] = f"error:{e!s}"
@@ -79,9 +98,11 @@ def check_health() -> dict:
     Returns:
         Dict with keys:
         - status: "ok" | "degraded"
-        - checks: {"database": "ok"|"error", "database_replica": "ok"|"error"|"skipped",
-                   "llm": "ok"|"degraded"|"skipped",
-                   "adapter_*": "ok"|"degraded:msg"|"skipped"}
+        - checks: database, database_replica, llm, and per-adapter keys
+          ``adapter_<name>`` for policy, valuation, repair_shop, parts, siu,
+          fraud_reporting, state_bureau, claim_search, erp, nmvtis, gap_insurance,
+          ocr, cms, reverse_image. Each adapter value is "ok", "degraded:msg",
+          "skipped", or "error:...".
     """
     checks: dict[str, str] = {}
     db_ok = _check_database()

@@ -1128,14 +1128,6 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             """)
     except sqlite3.OperationalError:
         pass
-    # Migration 057: add topic column to follow_up_messages for rental-related messages
-    try:
-        cursor = conn.execute("PRAGMA table_info(follow_up_messages)")
-        fum_columns = {row[1] for row in cursor.fetchall()}
-        if "topic" not in fum_columns:
-            conn.execute("ALTER TABLE follow_up_messages ADD COLUMN topic TEXT")
-    except sqlite3.OperationalError:
-        pass
 
 
 def _run_schema(db_path: str) -> None:

@@ -45,9 +45,16 @@ flowchart LR
 ### Human-in-the-Loop and Operations
 
 - **[Adjuster Workflow](adjuster-workflow.md)** - Review queue API, CLI, and audit trail
-- **[Review Queue](review-queue.md)** - Frontend planned implementation for review queue
+- **[Review Queue](review-queue.md)** - Workbench assignment queue vs. remaining UI notes
 - **[Alerting](alerting.md)** - Prometheus alert rules and configuration
 - **[Compliance Corpus Requirements](compliance-corpus-requirements.md)** - RAG corpus requirements
+
+### Additional reference
+
+- **[Unified portal](unified_portal.md)** - Single login entry for claimant and repair shop portals
+- **[Adapter SLA](adapter_sla.md)** - Integration latency and availability targets
+- **[Actuarial reserve reporting](actuarial-reserve-reporting.md)** - Supervisor/admin reserve report APIs
+- **[Eval suite gaps](eval-suite-gaps.md)** - Evaluation suite status and known gaps
 
 
 ## Quick Reference
@@ -69,12 +76,17 @@ flowchart LR
 | `claim-agent request-info <id> [--note "..."]` | Request more info |
 | `claim-agent escalate-siu <id>` | Escalate to SIU |
 | `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention |
-| `claim-agent retention-report [--years N]` | Retention audit report (counts by tier, litigation hold, pending archive) |
-| `claim-agent litigation-hold --claim-id X --on\|--off` | Set or clear litigation hold on a claim |
+| `claim-agent document-retention-enforce [--dry-run] [--as-of YYYY-MM-DD]` | Soft-archive documents past `retention_date` |
+| `claim-agent retention-purge [--dry-run] [--years N] [--include-litigation-hold] [--export-before-purge]` | Purge archived claims past purge horizon |
+| `claim-agent retention-export [--dry-run] [--years N] [--include-litigation-hold]` | Export eligible claims to cold storage (S3/Glacier settings) |
+| `claim-agent retention-report [--years N] [--purge-years N] [--audit-purge-years N] [--include-litigation-hold-audit]` | Retention audit report |
+| `claim-agent audit-log-export -o FILE [--dry-run] [--years N] ...` | Export audit log rows (NDJSON) for purged claims past audit horizon |
+| `claim-agent audit-log-purge [--dry-run] [--years N] --ack-exported ...` | Delete eligible audit rows (requires `AUDIT_LOG_PURGE_ENABLED=true`) |
+| `claim-agent litigation-hold --claim-id X --on` / `--off` | Set or clear litigation hold (pass exactly one of `--on` or `--off`) |
 | `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
 | `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
 | `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
-| `claim-agent ucspa-deadlines [--days N] [--no-webhooks]` | Check UCSPA deadlines; webhook alerts dispatched by default (`--no-webhooks` to suppress) |
+| `claim-agent ucspa-deadlines [--days N] [--webhooks / --no-webhooks]` | Check UCSPA deadlines; webhooks on by default (`--no-webhooks` to suppress) |
 | `claim-agent run-scheduler` | Run optional in-process scheduler in foreground (requires `SCHEDULER_ENABLED=true`) |
 
 ### Claim Types at a Glance
@@ -97,7 +109,7 @@ See [Claim Types](claim-types.md) for classification criteria and examples.
 - **Router-Based Classification** - Intelligent claim routing ([Architecture](architecture.md#router-delegator-pattern))
 - **Skills-Based Prompts** - Agent prompts in readable markdown ([Skills](skills.md))
 - **Human-in-the-Loop** - Escalation for high-risk claims ([Agent Flow](agent-flow.md#4-escalation-check-hitl))
-- **Persistent State** - SQLite with full audit trail ([Database](database.md))
+- **Persistent State** - SQLite by default or PostgreSQL with `DATABASE_URL`; full audit trail ([Database](database.md))
 - **Extensible Tools** - Easy to add capabilities ([Tools](tools.md))
 - **Pluggable Adapters** - Swap mock data for real integrations via env vars ([Adapters](adapters.md))
 - **Observability** - Structured logging, correlation IDs, LangSmith/LiteLLM tracing, cost and latency metrics ([Observability](observability.md))

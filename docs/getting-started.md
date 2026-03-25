@@ -46,16 +46,19 @@ See [Configuration](configuration.md) for all options.
 claim-agent process tests/sample_claims/partial_loss_parking.json
 ```
 
-Output:
+Output shape (values depend on your DB and duplicate data in `data/mock_db.json`; use `new_claim.json` or a fresh `data/claims.db` for a simpler first run):
+
 ```json
 {
-  "claim_id": "CLM-11EEF959",
-  "claim_type": "new",
-  "router_output": "new\nThis claim appears to be a first-time submission...",
-  "workflow_output": "Claim ID: CLM-11EEF959, Status: open...",
-  "summary": "Claim ID: CLM-11EEF959, Status: open..."
+  "claim_id": "CLM-…",
+  "claim_type": "…",
+  "router_output": "…",
+  "workflow_output": "…",
+  "summary": "…"
 }
 ```
+
+For local development without a live LLM, set `MOCK_CREW_ENABLED=true` (see [Mock Crew Design](mock-crew-design.md)).
 
 ### Check Claim Status
 
@@ -83,14 +86,17 @@ claim-agent history CLM-11EEF959
 | `tests/sample_claims/partial_loss_front_collision.json` | partial_loss | Front collision |
 | `tests/sample_claims/bodily_injury_claim.json` | bodily_injury | Bodily injury (BI workflow) |
 | `tests/sample_claims/reopened_claim.json` | reopened | Prior settled claim reopened |
+| `tests/sample_claims/coverage_denied_theft.json` | (workflow) | Coverage denied (theft) |
+| `tests/sample_claims/territory_denied_mexico.json` | (workflow) | Territory / jurisdiction |
+| `tests/sample_claims/multi_vehicle_incident.json` | (workflow) | Multi-vehicle / incident grouping |
 
 See [Claim Types](claim-types.md) for classification criteria.
 
 ## Processing Different Claim Types
 
 ```bash
-# New claim
-claim-agent process tests/sample_claims/partial_loss_parking.json
+# New claim (explicit new-claim fixture)
+claim-agent process tests/sample_claims/new_claim.json
 
 # Total loss
 claim-agent process tests/sample_claims/total_loss_claim.json
@@ -128,6 +134,9 @@ pytest tests/ -v --ignore=tests/integration --ignore=tests/e2e --ignore=tests/lo
 
 # Integration tests (mocked LLM, no API key needed)
 pytest tests/integration/ -v -m "integration and not slow and not llm"
+
+# E2E tests (API + mocked LLM)
+pytest tests/e2e/ -v -m e2e
 ```
 
 ## CLI Reference
@@ -140,7 +149,9 @@ pytest tests/integration/ -v -m "integration and not slow and not llm"
 | `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from a stage: `coverage_verification`, `economic_analysis`, `fraud_prescreening`, `duplicate_detection`, `router`, `escalation_check`, `workflow`, `task_creation`, `rental`, `liability_determination`, `settlement`, `subrogation`, `salvage`, `after_action`) |
 | `claim-agent metrics [id]` | Show metrics (optional claim ID) |
 | `claim-agent retention-enforce [--dry-run] [--years N] [--include-litigation-hold]` | Archive claims older than retention |
-| `claim-agent retention-report [--years N]` | Retention audit report |
+| `claim-agent document-retention-enforce [--dry-run] [--as-of YYYY-MM-DD]` | Soft-archive documents past `retention_date` |
+| `claim-agent retention-purge …` / `retention-export …` / `audit-log-export …` / `audit-log-purge …` | Advanced retention and audit lifecycle (see [PII and Retention](pii-and-retention.md)) |
+| `claim-agent retention-report [--years N] [--purge-years N] …` | Retention audit report |
 
 See [docs/index.md](index.md) for the full CLI reference.
 

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 
 from claim_agent.config import get_settings
 from claim_agent.services.portal_verification import get_claim_ids_for_claimant
@@ -155,3 +155,32 @@ async def require_unified_portal_session(request: Request) -> UnifiedPortalSessi
             "X-Claim-Access-Token, or policy/VIN credentials."
         ),
     )
+
+
+def require_portal_scopes(*required: str):
+    """Build a FastAPI dependency that enforces unified-token scopes.
+
+    Legacy sessions (empty ``scopes``) retain full access for the resolved role.
+    When ``scopes`` is non-empty, the caller must hold every scope in *required*.
+
+    Usage::
+
+        @router.post("/example")
+        def example(session: UnifiedPortalSession = Depends(require_portal_scopes("upload_doc"))):
+            ...
+    """
+
+    required_set = frozenset(required)
+
+    async def _dep(session: UnifiedPortalSession = Depends(require_unified_portal_session)) -> UnifiedPortalSession:
+        if not session.scopes:
+            return session
+        missing = sorted(required_set - set(session.scopes))
+        if missing:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Missing required portal scope(s): {missing}",
+            )
+        return session
+
+    return _dep

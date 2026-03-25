@@ -202,10 +202,7 @@ class RestValuationAdapter(ValuationAdapter):
 
     def health_check(self, path: str = "/health") -> tuple[bool, str]:
         """Probe gateway liveness (same pattern as policy REST adapter)."""
-        ok, msg = self._client.health_check(path=path)
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback(primary_path=path)
 
 
 def create_valuation_rest_adapter(provider: str) -> RestValuationAdapter:
