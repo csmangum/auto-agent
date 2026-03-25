@@ -68,7 +68,7 @@ Schedule a cron job to dump the database regularly:
 ```bash
 # /etc/cron.d/claims-pg-backup – daily backup at 02:00 UTC, 14-day retention
 0 2 * * * postgres pg_dump -Fc -U claims claims \
-  > /backups/claims_$(date +\%Y\%m\%d_\%H\%M\%S).dump \
+  > /backups/claims_$(date +\%Y\%m\%d_\%H\%M\%S).dump 2>&1 \
   && find /backups -name 'claims_*.dump' -mtime +14 -delete
 ```
 
@@ -77,7 +77,7 @@ For point-in-time recovery, enable WAL archiving in `postgresql.conf`:
 ```
 wal_level = replica
 archive_mode = on
-archive_command = 'cp %p /wal_archive/%f'
+archive_command = 'cp %p /wal_archive/%f && sync /wal_archive/%f'
 ```
 
 #### AWS RDS

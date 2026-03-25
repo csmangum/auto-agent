@@ -65,15 +65,19 @@ def test_postgres_connection(postgres_db):
 
 
 def test_postgres_version(postgres_db):
-    """Verify PostgreSQL version is reported (confirms we are not on SQLite)."""
+    """Verify PostgreSQL version meets minimum requirements (12+)."""
     from sqlalchemy import text
 
     from claim_agent.db.database import get_connection
 
     with get_connection() as conn:
-        row = conn.execute(text("SELECT version()")).fetchone()
+        row = conn.execute(text("SHOW server_version_num")).fetchone()
     assert row is not None
-    assert "PostgreSQL" in row[0]
+    # server_version_num is a zero-padded string like "140006"; 120000 == PostgreSQL 12.0
+    version_num = int(row[0])
+    assert version_num >= 120000, (
+        f"PostgreSQL 12+ required; server_version_num={version_num}"
+    )
 
 
 def test_postgres_repository_crud(postgres_db):
@@ -161,18 +165,18 @@ def test_postgres_concurrent_writes(postgres_db):
     created_ids: list[str] = []
     lock = threading.Lock()
 
-    def insert_claim(index: int) -> None:
+    def insert_claim(worker_id: int) -> None:
         repo = ClaimRepository()
         try:
             cid = repo.create_claim(
                 ClaimInput(
-                    policy_number=f"POL-CONC-{index:04d}",
-                    vin=f"VINCONC{index:05d}",
+                    policy_number=f"POL-CONC-{worker_id:04d}",
+                    vin=f"VINCONC{worker_id:05d}",
                     vehicle_year=2024,
                     vehicle_make="Concurrent",
                     vehicle_model="Writer",
                     incident_date="2025-03-01",
-                    incident_description=f"Concurrent write test {index}",
+                    incident_description=f"Concurrent write test {worker_id}",
                     damage_description="Minor",
                 )
             )
