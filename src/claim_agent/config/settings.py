@@ -184,7 +184,7 @@ def get_webhook_config() -> dict:
     s = get_settings().webhook
     return {
         "urls": s.urls.copy(),
-        "secret": s.secret,
+        "secret": s.secret.get_secret_value(),
         "max_retries": s.max_retries,
         "enabled": s.enabled,
         "shop_url": s.shop_url,

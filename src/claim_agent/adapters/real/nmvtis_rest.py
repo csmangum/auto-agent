@@ -16,10 +16,18 @@ Configure via environment variables:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from claim_agent.adapters.base import NMVTISAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient, extract_response_envelope
+from claim_agent.adapters.http_client import (
+    AdapterHttpClient,
+    CircuitOpenError,
+    extract_response_envelope,
+    safe_adapter_json_dict,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class RestNMVTISAdapter(NMVTISAdapter):
@@ -75,8 +83,15 @@ class RestNMVTISAdapter(NMVTISAdapter):
         if dmv_reference is not None:
             body["dmv_reference"] = dmv_reference
 
-        resp = self._client.post(self._report_path, json=body)
-        data = extract_response_envelope(resp.json(), self._response_key)
+        try:
+            resp = self._client.post(self._report_path, json=body)
+        except CircuitOpenError:
+            logger.warning("NMVTIS adapter circuit breaker open on submit_total_loss_report")
+            raise ValueError("NMVTIS REST unavailable: circuit breaker open") from None
+        parsed = safe_adapter_json_dict(resp, log_label="nmvtis_rest")
+        if parsed is None:
+            raise ValueError("NMVTIS REST API returned invalid or non-object JSON")
+        data = extract_response_envelope(parsed, self._response_key)
         if not isinstance(data, dict):
             raise ValueError(
                 f"NMVTIS REST API returned unexpected response type: {type(data).__name__}"

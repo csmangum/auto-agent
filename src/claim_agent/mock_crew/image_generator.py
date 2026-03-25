@@ -25,7 +25,7 @@ _PLACEHOLDER_KEYS = frozenset(
 def _get_api_key() -> str:
     """Get API key for OpenRouter (OPENAI_API_KEY or OPENROUTER_API_KEY)."""
     llm = get_settings().llm
-    api_key = (llm.api_key or "").strip()
+    api_key = (llm.api_key.get_secret_value() or "").strip()
     if not api_key or api_key in _PLACEHOLDER_KEYS:
         api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     return api_key

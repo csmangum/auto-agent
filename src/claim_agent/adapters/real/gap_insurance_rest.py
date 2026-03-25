@@ -25,6 +25,7 @@ from claim_agent.adapters.http_client import (
     AdapterHttpClient,
     CircuitOpenError,
     extract_response_envelope,
+    safe_adapter_json_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,8 +84,15 @@ class RestGapInsuranceAdapter(GapInsuranceAdapter):
         if vin is not None:
             body["vin"] = vin
 
-        resp = self._client.post(self._submit_path, json=body)
-        data = extract_response_envelope(resp.json(), self._response_key)
+        try:
+            resp = self._client.post(self._submit_path, json=body)
+        except CircuitOpenError:
+            logger.warning("Gap insurance adapter circuit breaker open on submit_shortfall_claim")
+            raise ValueError("Gap insurance REST unavailable: circuit breaker open") from None
+        parsed = safe_adapter_json_dict(resp, log_label="gap_insurance_rest")
+        if parsed is None:
+            raise ValueError("Gap insurance REST API returned invalid or non-object JSON")
+        data = extract_response_envelope(parsed, self._response_key)
         if not isinstance(data, dict):
             raise ValueError(
                 f"Gap insurance REST API returned unexpected response type: {type(data).__name__}"
@@ -112,7 +120,10 @@ class RestGapInsuranceAdapter(GapInsuranceAdapter):
             if exc.response is not None and exc.response.status_code == 404:
                 return None
             raise
-        data = extract_response_envelope(resp.json(), self._response_key)
+        parsed = safe_adapter_json_dict(resp, log_label="gap_insurance_rest")
+        if parsed is None:
+            return None
+        data = extract_response_envelope(parsed, self._response_key)
         return data if isinstance(data, dict) else None
 
     def health_check(self) -> tuple[bool, str]:

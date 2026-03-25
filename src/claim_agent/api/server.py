@@ -106,6 +106,17 @@ async def lifespan(_app: FastAPI):
         alembic_cfg = Config(Path(__file__).resolve().parent.parent.parent.parent / "alembic.ini")
         command.upgrade(alembic_cfg, "head")
     elif not is_postgres_backend():
+        env = get_settings().auth.environment.strip().lower()
+        if env not in _DEV_ENVIRONMENTS:
+            _server_logger.warning(
+                "SQLite is configured as the database backend "
+                "(DATABASE_URL is not set). SQLite does not support concurrent writes "
+                "and will cause 'database is locked' errors under a multi-worker API "
+                "server. It also has no replication, high-availability, or "
+                "point-in-time recovery. Set DATABASE_URL to a PostgreSQL connection "
+                "string and run 'alembic upgrade head' before going to production. "
+                "See docs/database.md for details."
+            )
         ensure_fresh_db_on_startup()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
@@ -280,12 +291,44 @@ def _base_security_response_headers() -> dict[str, str]:
         "Permissions-Policy": (
             "geolocation=(), microphone=(), camera=(), payment=()"
         ),
+        # Note: 'unsafe-inline' for script/style is a pragmatic SPA trade-off; tightening
+        # to nonces hashes would improve XSS resistance but needs frontend build support.
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'"
         ),
     }
+
+
+def _hsts_header_value() -> str | None:
+    """Return Strict-Transport-Security value when HTTPS enforcement is enabled."""
+    auth_cfg = get_settings().auth
+    if not auth_cfg.enforce_https:
+        return None
+    hsts_value = f"max-age={auth_cfg.hsts_max_age}"
+    if auth_cfg.hsts_include_subdomains:
+        hsts_value += "; includeSubDomains"
+    if auth_cfg.hsts_preload:
+        hsts_value += "; preload"
+    return hsts_value
+
+
+def _secured_api_json_response(request: Request, status_code: int, content: dict) -> JSONResponse:
+    """JSON error responses with the same hardening as ``security_headers_middleware``.
+
+    Ensures early returns from auth/rate-limit middleware (before ``call_next``) still
+    get CSP, frame denial, cache control, and optional HSTS.
+    """
+    headers = dict(_base_security_response_headers())
+    path = _normalize_path(request.url.path)
+    cc = _maybe_cache_control_no_store(path)
+    if cc:
+        headers["Cache-Control"] = cc
+    hsts = _hsts_header_value()
+    if hsts:
+        headers["Strict-Transport-Security"] = hsts
+    return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
 def _maybe_cache_control_no_store(path: str) -> str | None:
@@ -315,16 +358,18 @@ async def auth_middleware(request: Request, call_next):
 
     token = _get_token(request)
     if not token:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid or missing API key"},
+        return _secured_api_json_response(
+            request,
+            401,
+            {"detail": "Invalid or missing API key"},
         )
 
     ctx = verify_token(token)
     if ctx is None:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid or expired token"},
+        return _secured_api_json_response(
+            request,
+            401,
+            {"detail": "Invalid or expired token"},
         )
 
     request.state.auth = ctx
@@ -344,9 +389,10 @@ async def rate_limit_middleware(request: Request, call_next):
             else is_rate_limited(ip)
         )
         if limited:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded. Try again later."},
+            return _secured_api_json_response(
+                request,
+                429,
+                {"detail": "Rate limit exceeded. Try again later."},
             )
     return await call_next(request)
 
@@ -390,13 +436,9 @@ async def security_headers_middleware(request: Request, call_next):
     if cc:
         response.headers["Cache-Control"] = cc
 
-    if auth_cfg.enforce_https:
-        hsts_value = f"max-age={auth_cfg.hsts_max_age}"
-        if auth_cfg.hsts_include_subdomains:
-            hsts_value += "; includeSubDomains"
-        if auth_cfg.hsts_preload:
-            hsts_value += "; preload"
-        response.headers["Strict-Transport-Security"] = hsts_value
+    hsts = _hsts_header_value()
+    if hsts:
+        response.headers["Strict-Transport-Security"] = hsts
 
     return response
 

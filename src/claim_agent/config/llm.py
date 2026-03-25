@@ -75,7 +75,7 @@ def ensure_openrouter_api_key() -> None:
     """
     env_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     if not env_key or env_key in _PLACEHOLDER_KEYS:
-        api_key = (get_settings().llm.api_key or "").strip()
+        api_key = (get_settings().llm.api_key.get_secret_value() or "").strip()
         if api_key and api_key not in _PLACEHOLDER_KEYS:
             os.environ["OPENROUTER_API_KEY"] = api_key
 
@@ -129,7 +129,7 @@ def get_llm(model_name: str | None = None):
         return None
 
     llm_cfg = get_settings().llm
-    api_key = llm_cfg.api_key.strip()
+    api_key = llm_cfg.api_key.get_secret_value().strip()
     base = llm_cfg.api_base.strip()
 
     # When using OpenRouter, accept OPENROUTER_API_KEY as fallback
@@ -144,8 +144,11 @@ def get_llm(model_name: str | None = None):
 
     model = (model_name or _get_model_override() or llm_cfg.model_name or "gpt-4o-mini").strip()
 
+    # Per-call timeout prevents individual LLM calls from hanging indefinitely
+    llm_call_timeout = get_settings().llm_call_timeout_seconds
+
     # Build optional kwargs for prompt caching
-    extra_kwargs: dict = {}
+    extra_kwargs: dict = {"timeout": llm_call_timeout}
     if llm_cfg.cache_enabled:
         extra_kwargs["caching"] = True
         if llm_cfg.cache_seed is not None:
@@ -158,9 +161,10 @@ def get_llm(model_name: str | None = None):
 
     # Log LLM configuration
     logger.debug(
-        "Configuring LLM: model=%s, base_url=%s",
+        "Configuring LLM: model=%s, base_url=%s, timeout=%ss",
         model,
         base if base else "default",
+        llm_call_timeout,
     )
 
     if base and "openrouter" in base.lower():
@@ -185,7 +189,7 @@ def has_valid_llm_config() -> bool:
     Use this to skip tests that require a live LLM when only placeholders are set.
     """
     llm_cfg = get_settings().llm
-    api_key = llm_cfg.api_key.strip()
+    api_key = llm_cfg.api_key.get_secret_value().strip()
     base = llm_cfg.api_base.strip()
     if (not api_key or api_key in _PLACEHOLDER_KEYS) and base and "openrouter" in base.lower():
         api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()

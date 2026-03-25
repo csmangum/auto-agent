@@ -360,7 +360,7 @@ class WebhookConfig(BaseSettings):
 
     urls_raw: str = Field(default="", validation_alias="WEBHOOK_URLS")
     url: str = Field(default="", validation_alias="WEBHOOK_URL")
-    secret: str = ""
+    secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
     max_retries: int = 5
     enabled: bool = True
     shop_url: str | None = None
@@ -498,7 +498,9 @@ class TracingConfig(BaseSettings):
     )
 
     langsmith_enabled: bool = Field(default=False, validation_alias="LANGSMITH_TRACING")
-    langsmith_api_key: str = Field(default="", validation_alias="LANGSMITH_API_KEY")
+    langsmith_api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="LANGSMITH_API_KEY"
+    )
     langsmith_project: str = Field(default="claim-agent", validation_alias="LANGSMITH_PROJECT")
     langsmith_endpoint: str = Field(
         default="https://api.smith.langchain.com", validation_alias="LANGSMITH_ENDPOINT"
@@ -632,7 +634,10 @@ class LLMConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        validation_alias="OPENAI_API_KEY",
+    )
     api_base: str = Field(default="", validation_alias="OPENAI_API_BASE")
     model_name: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL_NAME")
     vision_model: str = Field(default="gpt-4o", validation_alias="OPENAI_VISION_MODEL")
@@ -736,9 +741,15 @@ class AuthConfig(BaseSettings):
             "Prefer CLAIM_AGENT_ENVIRONMENT; ENVIRONMENT is accepted for backward compatibility."
         ),
     )
-    api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
-    claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
-    jwt_secret_raw: str = Field(default="", validation_alias="JWT_SECRET")
+    api_keys_raw: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="API_KEYS"
+    )
+    claims_api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="CLAIMS_API_KEY"
+    )
+    jwt_secret_raw: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="JWT_SECRET"
+    )
     jwt_access_ttl_seconds: int = Field(
         default=900,
         ge=60,
@@ -787,9 +798,9 @@ class AuthConfig(BaseSettings):
 
     @field_validator("jwt_secret_raw", mode="after")
     @classmethod
-    def _validate_jwt_key_length(cls, v: str) -> str:
+    def _validate_jwt_key_length(cls, v: SecretStr) -> SecretStr:
         min_len = 32
-        stripped = v.strip()
+        stripped = v.get_secret_value().strip()
         if stripped and len(stripped) < min_len:
             raise ValueError(
                 f"JWT_SECRET must be at least {min_len} characters "
@@ -800,7 +811,7 @@ class AuthConfig(BaseSettings):
     @property
     def api_key_entries(self) -> dict[str, ApiKeyEntry]:
         """API_KEYS / CLAIMS_API_KEY: key -> role and optional identity (``key:role`` or ``key:role:user_id``)."""
-        raw = self.api_keys_raw.strip()
+        raw = self.api_keys_raw.get_secret_value().strip()
         if raw:
             result: dict[str, ApiKeyEntry] = {}
             for part in raw.split(","):
@@ -821,7 +832,7 @@ class AuthConfig(BaseSettings):
                 else:
                     result[part] = ApiKeyEntry(role="admin", identity=None)
             return result
-        key = self.claims_api_key.strip()
+        key = self.claims_api_key.get_secret_value().strip()
         if key:
             return {key: ApiKeyEntry(role="admin", identity=None)}
         return {}
@@ -833,7 +844,7 @@ class AuthConfig(BaseSettings):
 
     @property
     def jwt_secret(self) -> str | None:
-        raw = self.jwt_secret_raw.strip()
+        raw = self.jwt_secret_raw.get_secret_value().strip()
         return raw if raw else None
 
     @property
@@ -1249,8 +1260,8 @@ class PrivacyConfig(BaseSettings):
         validation_alias="OTP_CODE_LENGTH",
         description="Length of the numeric OTP code.",
     )
-    otp_pepper: str = Field(
-        default="",
+    otp_pepper: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
         validation_alias="OTP_PEPPER",
         description=(
             "Server-side secret (pepper) used as the HMAC key when hashing OTP codes. "
@@ -1385,6 +1396,7 @@ ADAPTER_ENV_KEYS: dict[str, str] = {
     "fraud_reporting": "FRAUD_REPORTING_ADAPTER",
     "reverse_image": "REVERSE_IMAGE_ADAPTER",
     "erp": "ERP_ADAPTER",
+    "medical_records": "MEDICAL_RECORDS_ADAPTER",
 }
 VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
@@ -1404,6 +1416,7 @@ REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset(
         "ocr",
         "cms",
         "reverse_image",
+        "medical_records",
     }
 )
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
@@ -1734,6 +1747,39 @@ class OCRRestConfig(BaseSettings):
     )
 
 
+class MedicalRecordsRestConfig(BaseSettings):
+    """REST medical records adapter configuration (MEDICAL_RECORDS_ADAPTER=rest).
+
+    Connects to an HIE, provider portal, or equivalent medical records system.
+    All returned data is PHI; handle per HIPAA minimum-necessary standards.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="MEDICAL_RECORDS_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="HIE or provider portal base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    query_path: str = Field(
+        default="/medical-records/query",
+        description="Path for the records query endpoint",
+    )
+    response_key: str = Field(
+        default="",
+        description="Optional JSON envelope key wrapping the records data (e.g. data)",
+    )
+    timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="Request timeout seconds",
+    )
+
+
 class CMSRestConfig(BaseSettings):
     """REST CMS/Medicare reporting adapter configuration (CMS_ADAPTER=rest)."""
 
@@ -1911,6 +1957,7 @@ class Settings(BaseSettings):
     nmvtis_rest: NMVTISRestConfig = Field(default_factory=NMVTISRestConfig)
     gap_insurance_rest: GapInsuranceRestConfig = Field(default_factory=GapInsuranceRestConfig)
     ocr_rest: OCRRestConfig = Field(default_factory=OCRRestConfig)
+    medical_records_rest: MedicalRecordsRestConfig = Field(default_factory=MedicalRecordsRestConfig)
     cms_rest: CMSRestConfig = Field(default_factory=CMSRestConfig)
     reverse_image_rest: ReverseImageRestConfig = Field(default_factory=ReverseImageRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
@@ -1931,6 +1978,28 @@ class Settings(BaseSettings):
     )
     max_llm_calls_per_claim: int = Field(
         default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM"
+    )
+    claim_workflow_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        validation_alias="CLAIM_WORKFLOW_TIMEOUT_SECONDS",
+        description=(
+            "Wall-clock timeout (seconds) for run_claim_workflow(). "
+            "Checked only between workflow stages (not mid-stage); a single slow stage can "
+            "exceed this until it finishes. Use LLM_CALL_TIMEOUT_SECONDS to cap individual LLM "
+            "calls. When exceeded, the claim is marked failed and a claim.timeout webhook fires. "
+            "Default 600 (10 minutes). Minimum 30."
+        ),
+    )
+    llm_call_timeout_seconds: int = Field(
+        default=120,
+        ge=10,
+        validation_alias="LLM_CALL_TIMEOUT_SECONDS",
+        description=(
+            "Per-LLM-call timeout (seconds) passed to the CrewAI LLM instance. "
+            "Prevents individual LLM calls from hanging indefinitely. "
+            "Default 120 (2 minutes). Minimum 10."
+        ),
     )
     after_action_note_max_tokens: int = Field(
         default=1024,
@@ -1985,6 +2054,7 @@ class Settings(BaseSettings):
     fraud_reporting_adapter: str = Field(default="mock", validation_alias="FRAUD_REPORTING_ADAPTER")
     reverse_image_adapter: str = Field(default="mock", validation_alias="REVERSE_IMAGE_ADAPTER")
     erp_adapter: str = Field(default="mock", validation_alias="ERP_ADAPTER")
+    medical_records_adapter: str = Field(default="mock", validation_alias="MEDICAL_RECORDS_ADAPTER")
 
     @field_validator("siu_default_state", mode="before")
     @classmethod

@@ -1,10 +1,11 @@
 """Bodily injury claim logic: medical records, injury severity, settlement calculation.
 
-Mock implementations for query_medical_records, assess_injury_severity,
+Implementations for query_medical_records, assess_injury_severity,
 calculate_bi_settlement, PIP/MedPay exhaustion, CMS reporting, minor settlement,
 structured settlement, loss of earnings, and medical bill auditing.
-Real implementations would integrate with medical records systems (e.g., HIEs,
-provider portals), policy systems, and CMS. TODO: Add MedicalRecordsAdapter for production.
+Medical records are retrieved via the pluggable MedicalRecordsAdapter (default: mock).
+Set MEDICAL_RECORDS_ADAPTER=rest and configure MEDICAL_RECORDS_REST_* env vars for
+production use with a real HIE or provider portal.
 """
 
 from __future__ import annotations
@@ -14,7 +15,11 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from claim_agent.adapters.registry import get_cms_reporting_adapter, get_policy_adapter
+from claim_agent.adapters.registry import (
+    get_cms_reporting_adapter,
+    get_medical_records_adapter,
+    get_policy_adapter,
+)
 
 if TYPE_CHECKING:
     from claim_agent.context import ClaimContext
@@ -51,9 +56,10 @@ def query_medical_records_impl(
 ) -> str:
     """Query medical records associated with a bodily injury claim.
 
-    Returns mock medical records summary. MOCK: Returns deterministic data
-    varied by claim_id hash for test realism; production would integrate with
-    medical records systems (e.g., HIEs, provider portals).
+    Delegates to the configured MedicalRecordsAdapter (see MEDICAL_RECORDS_ADAPTER).
+    In development / testing the mock adapter returns deterministic data.
+    In production, configure MEDICAL_RECORDS_ADAPTER=rest with a real HIE or
+    provider portal endpoint so that actual PHI is used instead of fabricated data.
     """
     if not claim_id or not isinstance(claim_id, str):
         return json.dumps(
@@ -64,34 +70,20 @@ def query_medical_records_impl(
                 "treatment_summary": None,
             }
         )
-    # Mock response: vary total_charges by claim_id for test realism
-    claim_hash = hash(claim_id) % 1000
-    base_charges = 3750.0
-    total_charges = base_charges + (claim_hash % 5) * 500
-    return json.dumps(
-        {
-            "claim_id": claim_id,
-            "claimant_id": claimant_id or "claimant-1",
-            "records": [
-                {
-                    "provider": "Emergency Dept - General Hospital",
-                    "date_of_service": "2024-01-15",
-                    "diagnosis": "Whiplash, cervical strain",
-                    "charges": 3500.00,
-                    "treatment": "Exam, X-rays, pain management",
-                },
-                {
-                    "provider": "Primary Care - Dr. Smith",
-                    "date_of_service": "2024-01-20",
-                    "diagnosis": "Follow-up, soft tissue injury",
-                    "charges": 250.00,
-                    "treatment": "Office visit, physical therapy referral",
-                },
-            ],
-            "total_charges": total_charges,
-            "treatment_summary": "Initial ER visit for cervical strain/whiplash; follow-up with PCP. No surgery or hospitalization.",
-        }
-    )
+    adapter = get_medical_records_adapter()
+    result = adapter.query_medical_records(claim_id, claimant_id)
+    if result is None:
+        return json.dumps(
+            {
+                "error": "No medical records found",
+                "claim_id": claim_id,
+                "claimant_id": claimant_id or "claimant-1",
+                "records": [],
+                "total_charges": None,
+                "treatment_summary": None,
+            }
+        )
+    return json.dumps(result)
 
 
 def assess_injury_severity_impl(

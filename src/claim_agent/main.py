@@ -126,13 +126,48 @@ def serve(
     ] = False,
     port: Annotated[int, typer.Option("--port", help="API server port")] = 8000,
     host: Annotated[str, typer.Option("--host", help="API server host")] = "0.0.0.0",
+    workers: Annotated[
+        int,
+        typer.Option(
+            "--workers",
+            "-w",
+            help="Number of worker processes (requires PostgreSQL; SQLite does not support multiple writers).",
+        ),
+    ] = 1,
 ) -> None:
     """Start REST API server."""
+    import logging
+
+    from claim_agent.db.database import is_postgres_backend
+
+    _serve_logger = logging.getLogger(__name__)
+
+    if workers > 1 and not is_postgres_backend():
+        _serve_logger.error(
+            "Cannot start %d workers with SQLite: SQLite does not support concurrent "
+            "writes across processes and will produce 'database is locked' errors. "
+            "Set DATABASE_URL to a PostgreSQL connection string and run "
+            "'alembic upgrade head' before using multiple workers. "
+            "See docs/database.md for setup instructions.",
+            workers,
+        )
+        raise SystemExit(1)
+
+    if reload and workers > 1:
+        _serve_logger.error(
+            "--reload is incompatible with --workers > 1: uvicorn ignores (or errors on) "
+            "the workers setting when reload mode is active. "
+            "Use --workers=1 (the default) with --reload for development, or omit --reload "
+            "and use --workers for production."
+        )
+        raise SystemExit(1)
+
     uvicorn.run(
         "claim_agent.api.server:app",
         host=host,
         port=port,
         reload=reload,
+        workers=workers if workers > 1 else None,
     )
 
 

@@ -75,7 +75,6 @@ from claim_agent.db.schema_unified_portal_sqlite import (
     IDX_EPT_CLAIM_ID,
     IDX_EPT_EXPIRES_AT,
     IDX_EPT_ROLE,
-    IDX_EPT_TOKEN_HASH,
 )
 from claim_agent.db.schema_rental_sqlite import (
     RENTAL_AUTHORIZATIONS_TABLE_SQLITE,
@@ -574,8 +573,6 @@ CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_acce
 -- Unified external portal tokens: role-bearing, hashed tokens for any external role
 """
     + EXTERNAL_PORTAL_TOKENS_TABLE_SQLITE
-    + ";\n"
-    + IDX_EPT_TOKEN_HASH
     + ";\n"
     + IDX_EPT_ROLE
     + ";\n"

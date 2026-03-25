@@ -91,15 +91,15 @@ def _hash_otp(otp: str, salt: str) -> str:
     """Return HMAC-SHA256 of *salt*:*otp* keyed with a server-side pepper (hex digest).
 
     The pepper is read from ``PrivacyConfig.otp_pepper`` (env: ``OTP_PEPPER``), falling
-    back to ``AuthConfig.jwt_secret_raw`` when the dedicated pepper is not set.  Using a
+    back to ``settings.auth.jwt_secret`` when the dedicated pepper is not set.  Using a
     server-side secret means that even if the database is fully compromised an attacker
     cannot brute-force 6-digit OTPs offline without also knowing the pepper.
     """
     settings = get_settings()
-    pepper = settings.privacy.otp_pepper.strip()
+    pepper = settings.privacy.otp_pepper.get_secret_value().strip()
     if not pepper:
         # Fallback to JWT secret so existing deployments without OTP_PEPPER still work.
-        pepper = settings.auth.jwt_secret_raw.strip()
+        pepper = settings.auth.jwt_secret or ""
     if not pepper:
         # Last-resort: use the salt itself (no server secret available).  Log a warning
         # so operators notice and configure OTP_PEPPER.
@@ -183,6 +183,13 @@ def request_otp(
     # Fail closed when self-service OTP is disabled in configuration.
     if not privacy.otp_enabled:
         raise PermissionError("DSAR self-service OTP flow is disabled by configuration.")
+
+    # Require a server-side secret so OTP hashes are not keyed only with per-row salt (weak).
+    if not privacy.otp_pepper.get_secret_value().strip() and not settings.auth.jwt_secret:
+        raise PermissionError(
+            "DSAR OTP cannot be issued: configure OTP_PEPPER or JWT_SECRET so OTP hashes "
+            "use a server-side secret."
+        )
 
     path = db_path or get_db_path()
     now = datetime.now(timezone.utc)

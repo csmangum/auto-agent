@@ -59,7 +59,9 @@ class TestLLMConfig:
                 mock_llm.return_value = MagicMock()
                 from claim_agent.config.llm import get_llm
                 result = get_llm()
-                mock_llm.assert_called_once_with(model="gpt-4o-mini", api_key="test-api-key")
+                mock_llm.assert_called_once_with(
+                    model="gpt-4o-mini", api_key="test-api-key", timeout=120
+                )
                 assert result is not None
         finally:
             if original_key is not None:
@@ -92,7 +94,9 @@ class TestLLMConfig:
                 mock_llm.return_value = MagicMock()
                 from claim_agent.config.llm import get_llm
                 get_llm()
-                mock_llm.assert_called_once_with(model="gpt-4-turbo", api_key="test-api-key")
+                mock_llm.assert_called_once_with(
+                    model="gpt-4-turbo", api_key="test-api-key", timeout=120
+                )
         finally:
             if original_key is not None:
                 os.environ["OPENAI_API_KEY"] = original_key
@@ -128,6 +132,7 @@ class TestLLMConfig:
                     model="anthropic/claude-3",
                     base_url="https://openrouter.ai/api/v1",
                     api_key="test-api-key",
+                    timeout=120,
                 )
         finally:
             if original_key is not None:
@@ -225,6 +230,7 @@ class TestLLMConfig:
                     model="gpt-4o-mini",
                     base_url="https://openrouter.ai/api/v1",
                     api_key="sk-real-openrouter-key",
+                    timeout=120,
                 )
         finally:
             if original_key is not None:
