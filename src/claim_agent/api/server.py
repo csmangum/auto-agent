@@ -294,6 +294,61 @@ def _maybe_cache_control_no_store(path: str) -> str | None:
 
 
 @app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Verify auth when configured. Set request.state.auth on success."""
+    path = _normalize_path(request.url.path)
+    if (
+        not path.startswith("/api/")
+        or path in _PUBLIC_PATHS
+        or _is_portal_path(path)
+        or _is_repair_portal_path(path)
+        or _is_third_party_portal_path(path)
+        or _is_auth_public_path(path)
+    ):
+        return await call_next(request)
+
+    if not is_auth_required():
+        return await call_next(request)
+
+    token = _get_token(request)
+    if not token:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing API key"},
+        )
+
+    ctx = verify_token(token)
+    if ctx is None:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or expired token"},
+        )
+
+    request.state.auth = ctx
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limit API routes: 100 req/min per IP; login/refresh use 20 req/min per IP."""
+    path = _normalize_path(request.url.path)
+    if path.startswith("/api/") and path not in _PUBLIC_PATHS:
+        settings = get_settings()
+        ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
+        limited = (
+            is_auth_rate_limited(ip)
+            if _is_auth_public_path(path)
+            else is_rate_limited(ip)
+        )
+        if limited:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Try again later."},
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     """Add security headers to every response.
 
@@ -345,61 +400,6 @@ async def security_headers_middleware(request: Request, call_next):
         response.headers["Strict-Transport-Security"] = hsts_value
 
     return response
-
-
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    """Rate limit API routes: 100 req/min per IP; login/refresh use 20 req/min per IP."""
-    path = _normalize_path(request.url.path)
-    if path.startswith("/api/") and path not in _PUBLIC_PATHS:
-        settings = get_settings()
-        ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
-        limited = (
-            is_auth_rate_limited(ip)
-            if _is_auth_public_path(path)
-            else is_rate_limited(ip)
-        )
-        if limited:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded. Try again later."},
-            )
-    return await call_next(request)
-
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    """Verify auth when configured. Set request.state.auth on success."""
-    path = _normalize_path(request.url.path)
-    if (
-        not path.startswith("/api/")
-        or path in _PUBLIC_PATHS
-        or _is_portal_path(path)
-        or _is_repair_portal_path(path)
-        or _is_third_party_portal_path(path)
-        or _is_auth_public_path(path)
-    ):
-        return await call_next(request)
-
-    if not is_auth_required():
-        return await call_next(request)
-
-    token = _get_token(request)
-    if not token:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid or missing API key"},
-        )
-
-    ctx = verify_token(token)
-    if ctx is None:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid or expired token"},
-        )
-
-    request.state.auth = ctx
-    return await call_next(request)
 
 
 def _health_response():
