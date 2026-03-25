@@ -106,4 +106,5 @@ The frontend adjuster workbench maps to the following routes and API endpoints (
 
 - [Database Schema](database.md) – claims table, audit log, status constants
 - [logic.py](../src/claim_agent/tools/logic.py) – `evaluate_escalation_impl`, priority computation
-- [main_crew.py](../src/claim_agent/crews/main_crew.py) – escalation detection and workflow
+- [orchestrator.py](../src/claim_agent/workflow/orchestrator.py) – workflow execution (`run_claim_workflow`)
+- [workflow/helpers.py](../src/claim_agent/workflow/helpers.py) – workflow stages and checkpoint invalidation (used when resuming from a stage)

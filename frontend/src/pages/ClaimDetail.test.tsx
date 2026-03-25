@@ -4,6 +4,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ClaimDetail from './ClaimDetail';
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 vi.mock('../api/queries', () => ({
   useClaim: vi.fn(),
   useClaimHistory: vi.fn(),
@@ -131,6 +138,7 @@ describe('ClaimDetail', () => {
     } as never);
     vi.mocked(useUploadDocument).mockReturnValue({
       mutate: vi.fn(),
+      mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
       isError: false,
       error: null,
@@ -358,6 +366,37 @@ describe('ClaimDetail', () => {
     
     fireEvent.change(reasonInput, { target: { value: 'Supplemental estimate' } });
     expect(reasonInput).toHaveValue('Supplemental estimate');
+  });
+
+  it('keeps reserve inputs when update fails', () => {
+    const mutate = vi.fn(
+      (_vars: unknown, opts?: { onError?: (e: Error) => void }) => {
+        opts?.onError?.(new Error('Server error'));
+      }
+    );
+    vi.mocked(usePatchClaimReserve).mockReturnValue({
+      mutate,
+      isPending: false,
+      isError: false,
+      error: null,
+    } as never);
+
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+
+    const amountInput = screen.getByLabelText(/amount/i);
+    const reasonInput = screen.getByLabelText(/reason/i);
+    fireEvent.change(amountInput, { target: { value: '9999' } });
+    fireEvent.change(reasonInput, { target: { value: 'Keep me' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Reserve' }));
+
+    expect(mutate).toHaveBeenCalled();
+    expect(amountInput).toHaveValue(9999);
+    expect(reasonInput).toHaveValue('Keep me');
   });
 
   it('shows reserve adequacy warning when inadequate', () => {

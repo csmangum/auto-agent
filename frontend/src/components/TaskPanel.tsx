@@ -1,11 +1,21 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { createClaimTask, updateTask } from '../api/client';
 import type { CreateTaskPayload, UpdateTaskPayload } from '../api/client';
 import type { ClaimTask, TaskStatus, TaskPriority, TaskType } from '../api/types';
 import { queryKeys } from '../api/queries';
 import { formatDateTime } from '../utils/date';
 import EmptyState from './EmptyState';
+import { getErrorMessage } from '../utils/errorMessage';
+
+/** Backend validation on title; show inline only and avoid duplicate error toasts. */
+function isTaskCreateTitleValidationError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : '';
+  if (!msg.trim()) return false;
+  const m = msg.toLowerCase();
+  return m.includes('title') || m.includes('empty');
+}
 
 const TASK_TYPE_LABELS: Record<TaskType, string> = {
   gather_information: 'Gather Information',
@@ -100,6 +110,12 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
       setAssignedTo('');
       setDueDate('');
       onDone();
+      toast.success('Task created');
+    },
+    onError: (err) => {
+      if (!isTaskCreateTitleValidationError(err)) {
+        toast.error(getErrorMessage(err, 'Failed to create task'));
+      }
     },
   });
 
@@ -116,7 +132,7 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
   };
 
   const errorMsg = mutation.error instanceof Error ? mutation.error.message : '';
-  const isTitleError = mutation.isError && (errorMsg.toLowerCase().includes('title') || errorMsg.toLowerCase().includes('empty'));
+  const isTitleError = mutation.isError && isTaskCreateTitleValidationError(mutation.error);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-gray-900/50 rounded-lg p-4 ring-1 ring-gray-700/50" aria-label="Create new task">
@@ -221,11 +237,6 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
           {mutation.isPending ? 'Creating...' : 'Create Task'}
         </button>
       </div>
-      {mutation.isError && !isTitleError && (
-        <p className="text-xs text-red-400">
-          {errorMsg || 'Failed to create task'}
-        </p>
-      )}
     </form>
   );
 }
@@ -240,6 +251,10 @@ function TaskCard({ task, claimId }: { task: ClaimTask; claimId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.claimTasks(claimId) });
+      toast.success('Task updated');
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err, 'Failed to update task'));
     },
   });
 

@@ -187,7 +187,13 @@ describe('PaymentPanel', () => {
 
     render(<PaymentPanel claimId="CLM-001" />, { wrapper: createWrapper() });
     fireEvent.click(screen.getByText('Issue'));
-    expect(issueMutate).toHaveBeenCalledWith({ paymentId: 1 });
+    expect(issueMutate).toHaveBeenCalledWith(
+      { paymentId: 1 },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    );
   });
 
   it('shows Clear button for issued payments', () => {

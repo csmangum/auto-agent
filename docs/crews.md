@@ -30,7 +30,7 @@ For classification criteria and claim examples, see [Claim Types](claim-types.md
 
 ## Router Crew
 
-**Location**: `src/claim_agent/crews/main_crew.py`
+**Location**: `src/claim_agent/workflow/routing.py` (`create_router_crew`). End-to-end claim execution is orchestrated in [`workflow/orchestrator.py`](../src/claim_agent/workflow/orchestrator.py) (`run_claim_workflow`). The module `claim_agent.crews.main_crew` is a **compatibility shim** that re-exports workflow symbols; new code should import from `claim_agent.workflow`.
 
 The Router Crew is the entry point for all claim processing. It contains a single agent that classifies claims into one of seven types.
 
@@ -1132,5 +1132,5 @@ To add a new claim type workflow, see [Architecture](architecture.md) for the ov
 1. **Create skill files** in `src/claim_agent/skills/` for each agent (see [Skills](skills.md))
 2. **Create agents** in `src/claim_agent/agents/your_type.py` that load skills
 3. **Create crew** in `src/claim_agent/crews/your_type_crew.py`
-4. **Register** in `main_crew.py` `run_claim_workflow()`
-5. **Update router** skill to recognize the new type
+4. **Register** the new type in `run_claim_workflow()` in [`workflow/orchestrator.py`](../src/claim_agent/workflow/orchestrator.py) (and related dispatch helpers as needed). Imports may still use `claim_agent.crews.main_crew` for `run_claim_workflow` only because that module re-exports it.
+5. **Update** the router skill and [`workflow/routing.py`](../src/claim_agent/workflow/routing.py) so the new `claim_type` is classified and routed; extend [`ClaimType`](../src/claim_agent/models/claim.py) and downstream models if you add an enum value.

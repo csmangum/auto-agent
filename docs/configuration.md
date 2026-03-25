@@ -6,7 +6,7 @@ For database configuration, see [Database](database.md). For getting started, se
 
 ## Environment Variables
 
-All configuration is done through environment variables. Copy `.env.example` to `.env` and customize:
+All configuration is done through environment variables. Copy `.env.example` to `.env` and customize. **[.env.example](../.env.example)** is the canonical list of variables and defaults; the sections below document the most important groups and behavior.
 
 ```bash
 cp .env.example .env
@@ -29,6 +29,9 @@ cp .env.example .env
 | `DB_POOL_SIZE` | `5` | PostgreSQL pool size (see [Database](database.md)) |
 | `DB_MAX_OVERFLOW` | `10` | PostgreSQL pool overflow (see [Database](database.md)) |
 | `MOCK_DB_PATH` | `data/mock_db.json` | Path to mock policy/vehicle data |
+| `READ_REPLICA_DATABASE_URL` | (unset) | PostgreSQL read-replica URL; when set with `DATABASE_URL`, read-heavy queries use the replica (writes stay on the primary). |
+| `RUN_MIGRATIONS_ON_STARTUP` | `true` | When using PostgreSQL, run `alembic upgrade head` on API startup. Set `false` if migrations are a separate deploy step. |
+| `FRESH_CLAIMS_DB_ON_STARTUP` | `false` | **Dev only:** if `true`, deletes and recreates the claims database on every server start. |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
@@ -60,6 +63,9 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 | `HSTS_MAX_AGE` | HSTS `max-age` in seconds (default one year). |
 | `HSTS_INCLUDE_SUBDOMAINS` | Default `true`; append `includeSubDomains` to HSTS. |
 | `HSTS_PRELOAD` | Default `false`; append `preload` to HSTS only when you intend to join the browser preload list. |
+| `CORS_ORIGINS` | Comma-separated browser origins allowed by CORS (production; default allows local dev). |
+| `CORS_METHODS` | Comma-separated HTTP methods for CORS (default `GET,HEAD,POST,PUT,PATCH,DELETE`). |
+| `CORS_HEADERS` | Comma-separated request headers for CORS. If set, **replaces** the built-in default list (not merged). See `.env.example` for the default header names. |
 
 **Roles**: `adjuster` (submit/view claims, docs; when using JWT or `key:role:user_id`, list/get/stats/review-queue are scoped to assigned claims), `supervisor` (all adjuster + reprocess, metrics, assign claims), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system, `/api/users`; may set `skip_authority_check` on reserve updates).
 
@@ -92,6 +98,7 @@ You can run recurring compliance/operations jobs either with the built-in in-pro
 - **Built-in scheduler (optional):** set `SCHEDULER_ENABLED=true` and run the API (`claim-agent serve`) or foreground scheduler (`claim-agent run-scheduler`).
   - `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` controls automatic `ucspa-deadlines` behavior (with webhook dispatch).
   - `SCHEDULER_DIARY_ESCALATE_CRON` controls automatic `diary-escalate` behavior.
+  - `SCHEDULER_ERP_POLL_CRON` controls inbound ERP event polling when ERP integration is enabled (default every 15 minutes in `.env.example`).
 - **External cron (fallback / preferred in some deployments):** leave `SCHEDULER_ENABLED=false` and schedule CLI commands externally.
 
 **Multi-worker and multi-replica deployments:** The scheduler is **in-process**. Each API process (each Uvicorn/Gunicorn **worker**, or each replica pod) that starts with `SCHEDULER_ENABLED=true` runs its **own** copy of the same cron jobs. That duplicates diary escalations, UCSPA sweeps, and webhook volume. Recommended patterns:
@@ -115,15 +122,25 @@ Each external-system adapter can be configured independently. See [Adapters](ada
 
 | Variable | Default | Values | Description |
 |----------|---------|--------|-------------|
-| `POLICY_ADAPTER` | `mock` | `mock`, `stub` | Policy database backend |
-| `VALUATION_ADAPTER` | `mock` | `mock`, `stub` | Vehicle valuation backend |
-| `REPAIR_SHOP_ADAPTER` | `mock` | `mock`, `stub` | Repair shop network backend |
-| `PARTS_ADAPTER` | `mock` | `mock`, `stub` | Parts catalog backend |
-| `SIU_ADAPTER` | `mock` | `mock`, `stub` | SIU case management backend |
-| `CLAIM_SEARCH_ADAPTER` | `mock` | `mock`, `stub` | Claim search backend (fraud cross-reference) |
+| `POLICY_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Policy database backend |
+| `VALUATION_ADAPTER` | `mock` | `mock`, `stub`, `rest`, `ccc`, `mitchell`, `audatex` | Vehicle valuation backend (see `.env.example` for `VALUATION_REST_*`) |
+| `REPAIR_SHOP_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Repair shop network backend |
+| `PARTS_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Parts catalog backend |
+| `SIU_ADAPTER` | `mock` | `mock`, `stub`, `rest` | SIU case management backend |
+| `STATE_BUREAU_ADAPTER` | `mock` | `mock`, `stub`, `rest` | State DOI fraud bureau filing |
+| `FRAUD_REPORTING_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Aggregated fraud filing (state bureau / NICB / NISS paths when `rest`) |
+| `CLAIM_SEARCH_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Cross-carrier ClaimSearch-style backend |
+| `NMVTIS_ADAPTER` | `mock` | `mock`, `stub`, `rest` | NMVTIS total-loss / salvage reporting |
+| `GAP_INSURANCE_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Gap (loan/lease) carrier after total loss |
+| `CMS_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Medicare Section 111 / CMS reporting |
+| `ERP_ADAPTER` | `mock` | `mock`, `rest` | Shop management / ERP integration (bidirectional repair sync) |
+| `REVERSE_IMAGE_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Reverse-image / stock-photo fraud signals |
+| `MEDICAL_RECORDS_ADAPTER` | `mock` | `mock`, `stub`, `rest` | Medical records / HIE (bodily injury); `mock` returns fabricated PHI — not for production BI |
 | `SIU_DEFAULT_STATE` | `California` | Any state name | Fallback state for SIU fraud bureau reporting when claim/policy state is missing |
 | `VISION_ADAPTER` | `real` | `real`, `mock` | Vision analysis: `real` (litellm) or `mock` (claim-context derived) |
-| `OCR_ADAPTER` | `mock` | `mock`, `stub` | OCR for document extraction (estimates, photos) |
+| `OCR_ADAPTER` | `mock` | `mock`, `stub`, `rest` | OCR for document extraction (estimates, photos) |
+
+REST backends use `*_REST_*` environment variables (URLs, auth headers, timeouts). **Authoritative list:** [.env.example](../.env.example) and [Adapters](adapters.md).
 
 ### Mock Crew (Testing)
 
@@ -137,9 +154,62 @@ The Mock Crew simulates external interactions for E2E testing without real peopl
 | `MOCK_IMAGE_MODEL` | `google/gemini-2.0-flash-exp` | OpenRouter model for image generation |
 | `MOCK_IMAGE_VISION_ANALYSIS_SOURCE` | `claim_context` | Vision analysis: `claim_context` (mock) or `openrouter` (real API) |
 
+Additional Mock Crew toggles (`MOCK_DOCUMENT_GENERATOR_*`, `MOCK_CLAIMANT_*`, `MOCK_NOTIFIER_*`, `MOCK_REPAIR_SHOP_*`, `MOCK_THIRD_PARTY_*`, webhook/ERP capture flags) are listed in [.env.example](../.env.example).
+
+### Portals and chat
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAIMANT_PORTAL_ENABLED` | `true` | Enable claimant self-service routes (`/api/portal/*`). |
+| `CLAIMANT_VERIFICATION_MODE` | `policy_vin` | Claimant verification: `token`, `policy_vin`, or `email`. |
+| `CLAIM_ACCESS_TOKEN_EXPIRY_DAYS` | `90` | Magic-link / access token lifetime when using token mode. |
+| `REPAIR_SHOP_PORTAL_ENABLED` | `false` | Repair shop portal (`/api/repair-portal`). |
+| `REPAIR_SHOP_PORTAL_TOKEN_EXPIRY_DAYS` | `90` | Repair shop per-claim token lifetime. |
+| `THIRD_PARTY_PORTAL_ENABLED` | `false` | Third-party / lienholder portal (`/api/third-party-portal`). |
+| `THIRD_PARTY_PORTAL_TOKEN_EXPIRY_DAYS` | `90` | Third-party portal token lifetime. |
+| `CHAT_MAX_TOOL_ROUNDS` | `5` | Max tool-call rounds per chat agent turn. |
+| `CHAT_MAX_MESSAGE_HISTORY` | `50` | Max messages retained per turn for the chat agent. |
+| `CHAT_SYSTEM_PROMPT_OVERRIDE` | (empty) | Optional override for the chat system prompt. |
+
+### Async workflow processing
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAIM_AGENT_MAX_CONCURRENT_BACKGROUND_TASKS` | `10` | Cap concurrent background workflow tasks; `POST` with `?async=true` returns **503** when saturated (`0` = unlimited). |
+| `CLAIM_AGENT_TASK_RECOVERY_ENABLED` | `true` | On startup, recover claims stuck in `processing`. |
+| `CLAIM_AGENT_TASK_RECOVERY_STUCK_MINUTES` | `30` | Minimum minutes in `processing` before recovery treats a claim as stuck. |
+
+### Request body and upload limits
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_REQUEST_BODY_SIZE_MB` | `10` | Max JSON/non-upload body size. |
+| `MAX_UPLOAD_BODY_SIZE_MB` | `100` | Max `multipart/form-data` body size. |
+| `MAX_UPLOAD_FILE_SIZE_MB` | `50` | Max size per uploaded file (claims API and portals). |
+
+### Diary system
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DIARY_AUTO_CREATE_ON_STATUS_CHANGE` | `true` | Auto-create diary entries on key status transitions. |
+| `DIARY_ESCALATION_HOURS_BEFORE_SUPERVISOR` | `24` | Hours after an overdue diary notification before escalating to supervisor. |
+
+### Database backups (operational)
+
+Backups use `scripts/backup_postgres.py` (PostgreSQL only). Key variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKUP_ENABLED` | `false` | Convention flag that backups are expected (does not run `pg_dump` by itself). |
+| `BACKUP_DIR` | `data/backups` | Local directory for dump files. |
+| `BACKUP_RETENTION_DAYS` | `14` | Local retention before rotation. |
+| `BACKUP_S3_BUCKET` | (unset) | Optional S3 upload target. |
+
+See [.env.example](../.env.example) for `BACKUP_COMPRESS`, `BACKUP_S3_*`, paths/timeouts for `pg_dump` / `pg_restore` / `psql`.
+
 ### Observability
 
-Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `CLAIM_AGENT_LOG_LEVEL`, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `CLAIM_AGENT_TRACE_LLM`, `CLAIM_AGENT_TRACE_TOOLS`. See [Observability](observability.md) for full details.
+Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `CLAIM_AGENT_LOG_LEVEL`, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `CLAIM_AGENT_TRACE_LLM`, `CLAIM_AGENT_TRACE_TOOLS`, `CLAIM_AGENT_LOG_PROMPTS`, `CLAIM_AGENT_LOG_RESPONSES`. See [Observability](observability.md) for full details.
 
 ### PII and Retention
 
@@ -151,8 +221,23 @@ Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `C
 | `STATE_RETENTION_PATH` | `data/state_retention_periods.json` | Path to state-specific retention periods (per-state years). |
 | `AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE` | (unset) | Calendar years after claim `purged_at` before audit rows are eligible for `audit-log-export` / `audit-log-purge` tooling. |
 | `AUDIT_LOG_PURGE_ENABLED` | `false` | Must be `true` for `claim-agent audit-log-purge` to delete `claim_audit_log` rows. |
+| `RETENTION_EXPORT_ENABLED` | `false` | Enable S3/Glacier export pipeline for `claim-agent retention-export` and `--export-before-purge`. |
+| `RETENTION_EXPORT_S3_BUCKET` | (unset) | Required when export is enabled. Other `RETENTION_EXPORT_*` variables (prefix, endpoint, storage class, encryption) are in [.env.example](../.env.example). |
 
 See [PII and Retention](pii-and-retention.md) for full documentation.
+
+### Privacy, DSAR, and cross-border transfers
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_DATA_MINIMIZATION` | `true` | When true, minimize claim fields sent in LLM prompts (allowlists / masking). |
+| `DSAR_VERIFICATION_REQUIRED` | `true` | DSAR access/deletion: require `claim_id` or `policy_number`+`vin` for verification. |
+| `LITIGATION_HOLD_BLOCKS_DELETION` | `true` | When true, DSAR deletion skips claims on litigation hold. |
+| `DATA_REGION` | `us` | Deployment data region: `us`, `eu`, or `other` (source jurisdiction when `loss_state` absent). |
+| `CROSS_BORDER_POLICY` | `audit` | Cross-border handling: `allow`, `audit`, or `restrict` when transfer mechanisms are missing. |
+| `LLM_TRANSFER_MECHANISM` | `scc` | Legal basis for LLM API transfers (e.g. `scc`, `adequacy_decision`, `explicit_consent`, `bcr`, `legitimate_interests`, `none`). |
+
+OTP self-service verification (`OTP_ENABLED`, `OTP_PEPPER`, `OTP_*` limits) and audit redaction (`AUDIT_LOG_STATE_REDACTION_ENABLED`, `DSAR_AUDIT_LOG_POLICY`) are documented in [.env.example](../.env.example).
 
 ### Reserve management
 
@@ -327,7 +412,7 @@ High-value thresholds: `HIGH_VALUE_DAMAGE_THRESHOLD` (default 25000), `HIGH_VALU
 
 Pre-routing fraud: `PRE_ROUTING_FRAUD_DAMAGE_RATIO` (default 0.9). When damage-to-value ratio exceeds this and damage is not catastrophic, pre-routing fraud indicators are evaluated.
 
-Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_THRESHOLD`, `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`, `ESCALATION_FRAUD_DAMAGE_VS_VALUE_RATIO`, `ESCALATION_VIN_CLAIMS_DAYS`, `ESCALATION_CONFIDENCE_DECREMENT_PER_PATTERN`, `ESCALATION_DESCRIPTION_OVERLAP_THRESHOLD`. Mid-workflow escalation SLA hours: `ESCALATION_SLA_HOURS_CRITICAL` (24), `ESCALATION_SLA_HOURS_HIGH` (24), `ESCALATION_SLA_HOURS_MEDIUM` (48), `ESCALATION_SLA_HOURS_LOW` (72). Low-confidence router escalations (always medium priority) use `ESCALATION_SLA_HOURS_MEDIUM`. `ROUTER_ESCALATION_SLA_HOURS` is deprecated in favor of the unified `ESCALATION_SLA_HOURS_*` constants.
+Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_THRESHOLD`, `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`, `ESCALATION_FRAUD_DAMAGE_VS_VALUE_RATIO`, `ESCALATION_VIN_CLAIMS_DAYS`, `ESCALATION_CONFIDENCE_DECREMENT_PER_PATTERN`, `ESCALATION_DESCRIPTION_OVERLAP_THRESHOLD`. Mid-workflow escalation SLA hours: `ESCALATION_SLA_HOURS_CRITICAL` (24), `ESCALATION_SLA_HOURS_HIGH` (24), `ESCALATION_SLA_HOURS_MEDIUM` (48), `ESCALATION_SLA_HOURS_LOW` (72). Low-confidence router escalations (always medium priority) use `ESCALATION_SLA_HOURS_MEDIUM`. `ROUTER_ESCALATION_SLA_HOURS` is deprecated in favor of the unified `ESCALATION_SLA_HOURS_*` constants. Set `ESCALATION_USE_AGENT=false` to use rule-based `evaluate_escalation` instead of the escalation agent.
 
 Fraud variables: `FRAUD_MULTIPLE_CLAIMS_DAYS`, `FRAUD_MULTIPLE_CLAIMS_THRESHOLD`, `FRAUD_*_SCORE`, `FRAUD_*_THRESHOLD`, `FRAUD_CRITICAL_INDICATOR_COUNT`.
 
@@ -425,7 +510,7 @@ src/claim_agent/skills/
 ├── router.md           # Claim Router Supervisor
 ├── intake.md           # Intake Specialist
 ├── policy_checker.md   # Policy Verification Specialist
-└── ...                 # 20 skill files total
+└── ...                 # dozens of skill files (see `skills/` directory)
 ```
 
 ### Skill File Format

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import type { UseMutationResult } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import PageHeader from '../components/PageHeader';
 import StatusBadge from '../components/StatusBadge';
 import TypeBadge from '../components/TypeBadge';
@@ -38,6 +39,7 @@ import type {
   DocumentVersionGroup,
 } from '../api/types';
 import type { PatchClaimReserveBody } from '../api/client';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface ReserveTabProps {
   reserveAmount: number | undefined;
@@ -70,9 +72,19 @@ function ReserveTab({
     e.preventDefault();
     const num = parseFloat(amount);
     if (Number.isNaN(num) || num < 0) return;
-    patchReserveMutation.mutate({ reserve_amount: num, reason: reason || undefined });
-    setAmount('');
-    setReason('');
+    patchReserveMutation.mutate(
+      { reserve_amount: num, reason: reason || undefined },
+      {
+        onSuccess: () => {
+          toast.success('Reserve updated');
+          setAmount('');
+          setReason('');
+        },
+        onError: (err) => {
+          toast.error(getErrorMessage(err, 'Failed to update reserve'));
+        },
+      }
+    );
   };
 
   return (
@@ -118,13 +130,6 @@ function ReserveTab({
               className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
-          {patchReserveMutation.isError && (
-            <p className="text-sm text-red-400">
-              {patchReserveMutation.error instanceof Error
-                ? patchReserveMutation.error.message
-                : 'Failed to update reserve'}
-            </p>
-          )}
           <button
             type="submit"
             disabled={patchReserveMutation.isPending}
@@ -216,7 +221,15 @@ function NotesTab({ noteTemplates, notes, followUps, addNoteMutation }: NotesTab
     if (!noteText.trim()) return;
     addNoteMutation.mutate(
       { note: noteText.trim(), actorId: actorId.trim() || 'adjuster' },
-      { onSuccess: () => setNoteText('') }
+      {
+        onSuccess: () => {
+          setNoteText('');
+          toast.success('Note added');
+        },
+        onError: (err) => {
+          toast.error(getErrorMessage(err, 'Failed to add note'));
+        },
+      }
     );
   };
 
@@ -279,11 +292,6 @@ function NotesTab({ noteTemplates, notes, followUps, addNoteMutation }: NotesTab
               {addNoteMutation.isPending ? 'Adding…' : 'Add Note'}
             </button>
           </div>
-          {addNoteMutation.isError && (
-            <p className="text-sm text-red-400">
-              {addNoteMutation.error instanceof Error ? addNoteMutation.error.message : 'Failed to add note'}
-            </p>
-          )}
         </form>
       </div>
 
@@ -403,13 +411,41 @@ function DocumentsTab({
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      uploadMutation.mutate({
-        file,
-        documentType: uploadType,
-        receivedFrom: uploadFrom,
-      });
-    }
+    const list = Array.from(files);
+    void (async () => {
+      try {
+        const outcomes = await Promise.allSettled(
+          list.map((file) =>
+            uploadMutation.mutateAsync({
+              file,
+              documentType: uploadType,
+              receivedFrom: uploadFrom,
+            })
+          )
+        );
+        const ok = outcomes.filter((o) => o.status === 'fulfilled').length;
+        const failed = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
+        if (ok > 0) {
+          toast.success(
+            ok === 1 && list.length === 1
+              ? `Uploaded ${list[0].name}`
+              : `Uploaded ${ok} of ${list.length} file${list.length === 1 ? '' : 's'}`
+          );
+        }
+        if (failed.length > 0) {
+          const first = failed[0].reason;
+          toast.error(
+            failed.length === 1
+              ? getErrorMessage(first, 'Upload failed')
+              : `${failed.length} uploads failed: ${getErrorMessage(first, 'Upload failed')}`
+          );
+        }
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    })();
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -420,10 +456,20 @@ function DocumentsTab({
 
   const handleCreateRequest = (e: React.FormEvent) => {
     e.preventDefault();
-    createDocRequestMutation.mutate({
-      document_type: reqDocType,
-      requested_from: reqFrom || undefined,
-    });
+    createDocRequestMutation.mutate(
+      {
+        document_type: reqDocType,
+        requested_from: reqFrom || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Document request created');
+        },
+        onError: (err) => {
+          toast.error(getErrorMessage(err, 'Failed to create document request'));
+        },
+      }
+    );
   };
 
   // Determine if URL is an image
@@ -491,11 +537,6 @@ function DocumentsTab({
         </div>
         {uploadMutation.isPending && (
           <p className="text-xs text-blue-400 mt-2">Uploading…</p>
-        )}
-        {uploadMutation.isError && (
-          <p className="text-xs text-red-400 mt-2">
-            {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Upload failed'}
-          </p>
         )}
       </div>
 
@@ -592,7 +633,15 @@ function DocumentsTab({
                     <div className="flex items-center gap-2 shrink-0">
                       <select
                         value={doc.review_status}
-                        onChange={(e) => updateDocMutation.mutate({ docId: doc.id, body: { review_status: e.target.value } })}
+                        onChange={(e) =>
+                          updateDocMutation.mutate(
+                            { docId: doc.id, body: { review_status: e.target.value } },
+                            {
+                              onError: (err) => {
+                                toast.error(getErrorMessage(err, 'Failed to update document'));
+                              },
+                            }
+                          )}
                         className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
                         {REVIEW_STATUSES.map((s) => (
@@ -702,6 +751,7 @@ interface AddRelationshipFormProps {
   parties: ClaimParty[];
   onSubmit: (body: { from_party_id: number; to_party_id: number; relationship_type: string }) => void;
   isPending: boolean;
+  /** Last mutation error from the parent; used so the form reset effect does not run on failure. Toasts surface errors to the user. */
   error: Error | null;
   onSuccess: () => void;
 }
@@ -742,11 +792,6 @@ function AddRelationshipForm({ parties, onSubmit, isPending, error, onSuccess }:
       <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
         Add Relationship
       </h4>
-      {error && (
-        <p className="text-xs text-red-400">
-          {error.message}
-        </p>
-      )}
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[140px]">
           <label htmlFor="rel-from" className="block text-xs text-gray-500 mb-1">From</label>
@@ -1083,7 +1128,16 @@ export default function ClaimDetail() {
                                 <button
                                   type="button"
                                   title="Remove relationship"
-                                  onClick={() => deleteRelMutation.mutate(r.id)}
+                                  onClick={() =>
+                                    deleteRelMutation.mutate(r.id, {
+                                      onSuccess: () => {
+                                        toast.success('Relationship removed');
+                                      },
+                                      onError: (err) => {
+                                        toast.error(getErrorMessage(err, 'Failed to remove relationship'));
+                                      },
+                                    })
+                                  }
                                   className="ml-1 text-red-400/60 hover:text-red-400 transition-colors"
                                 >
                                   ✕
@@ -1098,7 +1152,16 @@ export default function ClaimDetail() {
                 </div>
                 <AddRelationshipForm
                   parties={parties}
-                  onSubmit={(body) => createRelMutation.mutate(body)}
+                  onSubmit={(body) =>
+                    createRelMutation.mutate(body, {
+                      onSuccess: () => {
+                        toast.success('Relationship added');
+                      },
+                      onError: (err) => {
+                        toast.error(getErrorMessage(err, 'Failed to add relationship'));
+                      },
+                    })
+                  }
                   isPending={createRelMutation.isPending}
                   error={createRelMutation.error}
                   onSuccess={() => {}}

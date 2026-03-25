@@ -37,11 +37,13 @@ src/claim_agent/
 ├── context.py        # ClaimContext for CLI/API
 ├── events.py         # Event handling
 ├── exceptions.py     # ClaimAgentError and domain exceptions
+├── rbac_roles.py     # RBAC role name constants
 ├── api/              # FastAPI routes, auth, deps
 ├── config/           # LLM (llm.py), protocol (llm_protocol.py), settings (settings.py, settings_model.py)
 ├── agents/           # Agent definitions
 ├── chat/             # Chat agent for claimant portal
 ├── compliance/       # UCSPA and regulatory compliance
+├── privacy/          # Cross-border transfer and DPA-related helpers
 ├── crews/            # Crew definitions (router, workflows)
 ├── data/             # Data loaders
 ├── diary/            # Diary/calendar system (auto-create, escalation)
@@ -161,7 +163,7 @@ The backend uses SQLite by default (`data/claims.db`, auto-created). No external
 
 ### Non-obvious caveats
 
-- `MOCK_CREW_ENABLED=true` is required to process claims without a real LLM API key. This enables the mock crew that simulates LLM responses.
+- **`claim-agent process` / workflow agents** need a valid `OPENAI_API_KEY` (or `OPENROUTER_API_KEY` when using OpenRouter); placeholder values in `.env` are rejected in `get_llm()`. **Unit/integration/E2E tests** mock the LLM and do not need a key. **`MOCK_CREW_ENABLED=true`** mocks external integrations (claimant, vision, webhooks, etc.)—not the CrewAI workflow LLM.
 - The `.env` file must exist (copy from `.env.example`) even for testing; Pydantic settings reads it at import time.
 - CrewAI prompts for tracing preferences interactively on first run; the CLI auto-times-out after 20 s. This is harmless but may cause a `Fatal Python error` message at process exit — it is cosmetic and does not affect results.
 - `mypy` takes ~60 s on the full `src/claim_agent/` tree.

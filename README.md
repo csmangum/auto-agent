@@ -2,6 +2,18 @@
 
 Proof of concept for an agentic AI system acting as a Claim Representative for auto insurance claims. Built with [CrewAI](https://crewai.com/) and Python.
 
+**New here?** Use [Quick Start](#quick-start) below, then skim [Sample claims](#sample-claims) and the [docs index](#documentation).
+
+### What you need
+
+| | |
+|--|--|
+| **Python** | 3.10 or newer |
+| **LLM** | A valid [OpenRouter](https://openrouter.ai/) or OpenAI API key in `.env` for **`claim-agent process`** / `serve` (agents call a real model). The **test suite** mocks the LLM and does not need a key. **Mock crew** simulates claimants/vision/webhooks—it does *not* replace the workflow LLM. |
+| **Dashboard (optional)** | [Node.js](https://nodejs.org/) with `npm` for `cd frontend && npm run dev` |
+
+More detail: [Getting Started](docs/getting-started.md). On Windows, activate the venv with `.venv\Scripts\activate` instead of `source .venv/bin/activate`.
+
 ## Features
 
 - **Workflow Routing** - Router agent classifies claims and delegates to specialized crews
@@ -51,19 +63,23 @@ flowchart TB
 ## Quick Start
 
 ```bash
-# Setup
+# Setup (from repo root)
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 cp .env.example .env
-# Edit .env with your OpenRouter/OpenAI API key
-
-# Process a claim
-claim-agent process tests/sample_claims/partial_loss_parking.json
-
-# Check status (use the claim_id printed by process)
-claim-agent status CLM-XXXXXXXX
 ```
+
+**Run a claim (needs a real key):** In `.env`, set `OPENAI_API_KEY` to a real value (not the `your_openrouter_key` placeholder). For OpenRouter, keep `OPENAI_API_BASE` and `OPENAI_MODEL_NAME` aligned with `.env.example`.
+
+```bash
+claim-agent process tests/sample_claims/partial_loss_parking.json
+claim-agent status CLM-XXXXXXXX   # use the claim_id printed by process
+```
+
+The first run may download embedding models used for RAG (~tens of MB); subsequent runs are faster.
+
+**No API key yet?** Run the project tests (they mock the LLM)—see [Testing](#testing). Optional: add `MOCK_CREW_ENABLED=true`, `VISION_ADAPTER=mock`, and `MOCK_IMAGE_VISION_ANALYSIS_SOURCE=claim_context` to reduce external vision calls once you do have a key ([Mock Crew](#testing) snippet below).
 
 ## CLI Commands
 
@@ -137,6 +153,8 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [RAG](docs/rag.md) | Policy and compliance search |
 | [MCP Server](docs/mcp-server.md) | External tool access and health check |
 | [Mock Crew Design](docs/mock-crew-design.md) | Mock external interactions for testing |
+| [Mock crew requirements](docs/mock-crew-requirements.md) | Requirements checklist and traceability |
+| [Mock crew implementation plan](docs/mock-crew-implementation-plan.md) | Phased mock crew implementation |
 | [Alerting](docs/alerting.md) | Alert configuration |
 | [Unified portal](docs/unified_portal.md) | Single login entry for claimant and repair shop portals |
 | [Adapter SLA](docs/adapter_sla.md) | Integration latency and availability targets |
@@ -151,14 +169,16 @@ src/claim_agent/
 ├── context.py        # Workflow context helpers
 ├── events.py         # Event definitions
 ├── exceptions.py     # ClaimAgentError and domain exceptions
+├── rbac_roles.py     # RBAC role name constants
 ├── api/              # REST API (FastAPI routes, auth, deps)
-├── config/           # LLM (llm.py) and centralized settings (settings.py)
+├── config/           # LLM (llm.py), protocol (llm_protocol.py), settings (settings.py, settings_model.py)
 ├── agents/           # Agent definitions
 ├── crews/            # Crew definitions
 ├── skills/           # Agent prompts (markdown)
 ├── tools/            # CrewAI tools
 ├── chat/             # Chat agent for claimant portal
 ├── compliance/       # UCSPA and regulatory compliance
+├── privacy/          # Cross-border transfer and DPA-related helpers
 ├── data/             # Data loaders
 ├── diary/            # Diary/calendar system (auto-create, escalation)
 ├── workflow/         # Routing, escalation, orchestrators (SIU, supplemental, dispute, handback, …)
@@ -178,21 +198,22 @@ src/claim_agent/
 ## Testing
 
 ```bash
-# Unit tests (no API key needed)
-# MOCK_DB_PATH defaults to data/mock_db.json if unset
+# Unit tests (no API key needed). Prefer the venv’s pytest:
 export MOCK_DB_PATH=data/mock_db.json
-pytest tests/ -v --ignore=tests/integration --ignore=tests/e2e --ignore=tests/load \
+.venv/bin/pytest tests/ -v --ignore=tests/integration --ignore=tests/e2e --ignore=tests/load \
   -m "not slow and not integration and not llm and not e2e and not load"
 
 # Integration tests (mocked LLM, no API key needed)
-pytest tests/integration/ -v -m "integration and not slow and not llm"
+.venv/bin/pytest tests/integration/ -v -m "integration and not slow and not llm"
 
 # E2E tests (submit claims via API, mocked LLM, no API key needed)
-pytest tests/e2e/ -v -m e2e
+.venv/bin/pytest tests/e2e/ -v -m e2e
 
 # Load tests (concurrent claim submissions, throughput, latency)
-LOAD_TEST_CONCURRENCY=20 pytest tests/load/ -v -m load -s
+LOAD_TEST_CONCURRENCY=20 .venv/bin/pytest tests/load/ -v -m load -s
 ```
+
+With the venv activated, `python -m pytest …` works the same way.
 
 E2E tests submit claims via the REST API and assert claim_id, status, and audit history. Load tests report throughput (claims/sec), latency percentiles (p50, p99), and error rate. Set `LOAD_TEST_CONCURRENCY` for concurrency (default 10). Use `LOAD_TEST_OUTPUT=report.json` to write metrics to a file.
 
@@ -234,7 +255,7 @@ python scripts/seed_claims_from_mock_db.py
 
 ## Frontend (Dashboard & Adjuster Workbench)
 
-A React + Vite frontend provides a claims management dashboard, an adjuster workbench (assignment queue, diary/calendar, per-claim notes/reserves/payments/documents), and reference pages for docs, skills, and system config.
+A React + Vite frontend provides a claims management dashboard, an adjuster workbench (assignment queue, diary/calendar, per-claim notes/reserves/payments/documents), and reference pages for docs, skills, and system config. **Requires Node.js and npm** (install dependencies once with `cd frontend && npm install`).
 
 ```bash
 # Terminal 1: Start backend (use --reload for dev auto-reload)
@@ -281,11 +302,6 @@ Run claim tools as an MCP server:
 ```bash
 python -m claim_agent.mcp_server.server
 ```
-
-## Requirements
-
-- Python 3.10+
-- [OpenRouter](https://openrouter.ai/) or OpenAI API key
 
 ## License
 
