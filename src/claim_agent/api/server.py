@@ -87,6 +87,28 @@ def _check_auth_configuration() -> None:
         )
 
 
+def _check_rate_limit_configuration() -> None:
+    """Warn in non-development environments when Redis is not configured for rate limiting.
+
+    In-memory rate limiting is not shared across uvicorn workers, so an attacker
+    can multiply their request budget by the number of workers. When
+    CLAIM_AGENT_ENVIRONMENT is not one of dev/development/test/testing and
+    REDIS_URL is unset, emit a warning so operators know to configure Redis before
+    going to production.
+    """
+    if get_settings().paths.redis_url:
+        return
+    env = get_settings().auth.environment.strip().lower()
+    if env not in _DEV_ENVIRONMENTS:
+        _server_logger.warning(
+            "Rate limiting uses in-memory storage (REDIS_URL not set). "
+            "Not shared across workers — each uvicorn worker enforces its own limit, "
+            "allowing attackers to multiply their request budget by the worker count. "
+            "For production, set REDIS_URL and install the redis extra: "
+            "pip install -e '.[redis]'."
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _check_auth_configuration()
@@ -121,12 +143,7 @@ async def lifespan(_app: FastAPI):
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
     ensure_scheduler_running()
-
-    if not get_settings().paths.redis_url:
-        _server_logger.warning(
-            "Rate limiting uses in-memory storage (REDIS_URL not set). "
-            "Not shared across workers. For production, set REDIS_URL and pip install -e '.[redis]'."
-        )
+    _check_rate_limit_configuration()
 
     _idempotency_cleanup_task: asyncio.Task | None = None
     _idempotency_cleanup_stop = asyncio.Event()
