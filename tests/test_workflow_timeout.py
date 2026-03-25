@@ -13,6 +13,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from claim_agent.exceptions import ClaimWorkflowTimeoutError
 from claim_agent.db.repository import ClaimRepository
@@ -327,7 +328,7 @@ class TestLLMCallTimeout:
         with patch("claim_agent.config.llm.get_settings") as mock_settings, \
              patch("crewai.LLM", FakeLLM):
             s = MagicMock()
-            s.llm.api_key = "test-key"
+            s.llm.api_key = SecretStr("test-key")
             s.llm.api_base = ""
             s.llm.model_name = "gpt-4o-mini"
             s.llm.cache_enabled = False
