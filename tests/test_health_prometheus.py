@@ -65,10 +65,90 @@ class TestHealth:
             "claim_agent.adapters.real.policy_rest.AdapterHttpClient"
         ) as mock_client_cls:
             mock_client = MagicMock()
-            mock_client.health_check.return_value = (True, "ok")
+            mock_client.health_check_with_fallback.return_value = (True, "ok")
             mock_client_cls.return_value = mock_client
             result = check_health()
         assert result["checks"]["adapter_policy"] == "ok"
+
+    def test_health_check_nmvtis_rest_includes_probe(self, monkeypatch):
+        """When NMVTIS_ADAPTER=rest, adapter_nmvtis is probed."""
+        from unittest.mock import MagicMock, patch
+
+        from claim_agent.adapters import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("NMVTIS_ADAPTER", "rest")
+        monkeypatch.setenv("NMVTIS_REST_BASE_URL", "https://nmvtis.example.com/api/v1")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+
+        with patch(
+            "claim_agent.adapters.real.nmvtis_rest.AdapterHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.health_check_with_fallback.return_value = (True, "ok")
+            mock_client_cls.return_value = mock_client
+            result = check_health()
+        assert result["checks"]["adapter_nmvtis"] == "ok"
+
+    def test_health_check_fraud_reporting_rest_skipped_without_health_method(
+        self, monkeypatch
+    ):
+        """REST fraud adapter has no health_check; report skipped not error."""
+        from claim_agent.adapters import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("FRAUD_REPORTING_ADAPTER", "rest")
+        monkeypatch.setenv(
+            "FRAUD_REPORTING_REST_BASE_URL", "https://fraud.example.com/api/v1"
+        )
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+        result = check_health()
+        assert result["checks"]["adapter_fraud_reporting"] == "skipped"
+
+    def test_health_check_malformed_adapter_health_check_return(self, monkeypatch):
+        """Bad health_check return shape surfaces as error:* without crashing."""
+        from unittest.mock import patch
+
+        from claim_agent.adapters import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("OCR_ADAPTER", "rest")
+        monkeypatch.setenv("OCR_REST_BASE_URL", "https://ocr.example.com/api/v1")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+
+        class BadAdapter:
+            def health_check(self):
+                return ()
+
+        with patch(
+            "claim_agent.adapters.registry.get_ocr_adapter",
+            return_value=BadAdapter(),
+        ):
+            result = check_health()
+        assert result["checks"]["adapter_ocr"].startswith("error:")
+
+    def test_health_check_includes_extended_adapter_keys(self):
+        """All wired adapter names appear under checks (mock backends → skipped)."""
+        result = check_health()
+        for key in (
+            "adapter_fraud_reporting",
+            "adapter_state_bureau",
+            "adapter_claim_search",
+            "adapter_erp",
+            "adapter_nmvtis",
+            "adapter_gap_insurance",
+            "adapter_ocr",
+            "adapter_cms",
+            "adapter_reverse_image",
+        ):
+            assert key in result["checks"], f"missing {key}"
+            assert result["checks"][key] == "skipped"
 
 
 class TestPrometheus:
