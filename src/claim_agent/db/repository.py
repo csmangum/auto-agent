@@ -3090,6 +3090,26 @@ class ClaimRepository:
             ).fetchall()
         return [row_to_dict(r) for r in rows], total
 
+    def get_stuck_processing_claims(self, stuck_after_minutes: int) -> list[dict[str, Any]]:
+        """Return claims that have been in 'processing' status for longer than stuck_after_minutes.
+
+        Used by the startup recovery scan to detect in-flight claims that were lost
+        when the server was restarted mid-processing.
+        """
+        if stuck_after_minutes < 1:
+            raise ValueError("stuck_after_minutes must be at least 1")
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(minutes=stuck_after_minutes)
+        # Use a format compatible with SQLite CURRENT_TIMESTAMP for lexicographic comparison.
+        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+        with get_connection(self._db_path) as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT * FROM claims WHERE status = :status AND updated_at <= :cutoff"
+                ),
+                {"status": STATUS_PROCESSING, "cutoff": cutoff},
+            ).fetchall()
+        return [row_to_dict(r) for r in rows]
+
     def search_claims(
         self,
         vin: str | None = None,
