@@ -687,7 +687,11 @@ def _get_engine_for_path(path: str | None) -> Engine:
         return _get_engine()
     with _engine_lock:
         if db_path not in _sqlite_engines:
-            url = f"sqlite:///{db_path}" if db_path.startswith("/") else f"sqlite:///{db_path}"
+            # Relative paths: sqlite:///relative.db; absolute POSIX: sqlite:////abs/path.db
+            from pathlib import Path
+
+            path_str = Path(db_path).as_posix()
+            url = f"sqlite:///{path_str}"
             _sqlite_engines[db_path] = create_engine(url, poolclass=NullPool)
         return _sqlite_engines[db_path]
 
@@ -841,10 +845,11 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             conn.execute(
                 "ALTER TABLE claims ADD COLUMN retention_tier TEXT NOT NULL DEFAULT 'active'"
             )
+            # One-time backfill when the column is new; do not re-run every startup.
+            conn.execute("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'")
+            conn.execute("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'")
         if "purged_at" not in columns:
             conn.execute("ALTER TABLE claims ADD COLUMN purged_at TEXT")
-        conn.execute("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'")
-        conn.execute("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'")
         # UCSPA compliance (migration 026)
         for col, col_type in [
             ("acknowledged_at", "TEXT"),

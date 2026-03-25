@@ -61,18 +61,70 @@ For configuration options, see [Configuration](configuration.md).
 
 ### Database backups
 
-#### Self-managed PostgreSQL (pg_dump)
+> **Pilot requirement:** Backups must be configured before going live.  The application
+> ships an automated backup script (`scripts/backup_postgres.py`) and restore script
+> (`scripts/restore_postgres.py`) to satisfy this requirement.
 
-Schedule a cron job to dump the database regularly:
+#### RTO / RPO targets
+
+| Objective | Target | Mechanism |
+|-----------|--------|-----------|
+| **Recovery Point Objective (RPO)** | ≤ 24 hours (full backup) / ≤ minutes (PITR) | Daily `pg_dump` via `backup_postgres.py`; reduce to near-zero with WAL archiving (see below) |
+| **Recovery Time Objective (RTO)** | ≤ 4 hours | `pg_restore` from latest dump + `alembic upgrade head` + smoke tests |
+
+These targets assume:
+- Daily scheduled backups via `backup_postgres.py` with 14-day local retention.
+- Backups are uploaded to S3 (or equivalent durable object store) so that a disk failure does not destroy both the primary data **and** the backup.
+- The restore procedure has been rehearsed at least once (see [Tested restore procedure](#tested-restore-procedure) below).
+
+For stricter RPO (< 1 hour), enable WAL archiving (see [Point-in-time recovery](#point-in-time-recovery-pitr) below).
+
+#### Automated backup script
+
+The repository includes `scripts/backup_postgres.py` which:
+
+- Runs `pg_dump -Fc` (custom compressed format) against `DATABASE_URL`.
+- Writes dump files to `BACKUP_DIR` (default: `data/backups`).
+- Rotates local files older than `BACKUP_RETENTION_DAYS` days (default: 14).
+- Optionally uploads the new backup to `BACKUP_S3_BUCKET`.
+
+**Quick start (cron):**
 
 ```bash
-# /etc/cron.d/claims-pg-backup – daily backup at 02:00 UTC, 14-day retention
-0 2 * * * postgres pg_dump -Fc -U claims claims \
-  > /backups/claims_$(date +\%Y\%m\%d_\%H\%M\%S).dump 2>&1 \
-  && find /backups -name 'claims_*.dump' -mtime +14 -delete
+# /etc/cron.d/claims-pg-backup — daily backup at 02:00 UTC
+0 2 * * * app-user \
+    DATABASE_URL=postgresql://claims:secret@localhost:5432/claims \
+    BACKUP_DIR=/var/backups/claims \
+    BACKUP_RETENTION_DAYS=14 \
+    BACKUP_S3_BUCKET=my-claims-backups \
+    python /app/scripts/backup_postgres.py >> /var/log/claims-backup.log 2>&1
 ```
 
-For point-in-time recovery, enable WAL archiving in `postgresql.conf`:
+**Environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKUP_ENABLED` | `false` | Convention for schedulers; backups run only when `backup_postgres.py` is invoked |
+| `BACKUP_DIR` | `data/backups` | Local directory for dump files |
+| `BACKUP_RETENTION_DAYS` | `14` | Days to keep local backups before rotation |
+| `BACKUP_COMPRESS` | `true` | Custom compressed format (`-Fc`); set `false` for plain SQL |
+| `BACKUP_S3_BUCKET` | *(empty)* | S3 bucket for off-site backup upload |
+| `BACKUP_S3_PREFIX` | `postgres-backups` | Key prefix inside the S3 bucket |
+| `BACKUP_S3_ENDPOINT` | *(empty)* | S3-compatible endpoint (e.g. MinIO) |
+| `BACKUP_PG_DUMP_PATH` | `pg_dump` | Path to `pg_dump` binary |
+| `BACKUP_PG_RESTORE_PATH` | `pg_restore` | Path to `pg_restore` binary |
+| `BACKUP_PG_PSQL_PATH` | `psql` | Path to `psql` binary (used by restore script) |
+
+**Dry-run validation:**
+
+```bash
+DATABASE_URL=postgresql://claims:secret@localhost:5432/claims \
+  python scripts/backup_postgres.py --dry-run
+```
+
+#### Point-in-time recovery (PITR)
+
+To reduce RPO to minutes, enable WAL archiving in `postgresql.conf`:
 
 ```
 wal_level = replica
@@ -80,9 +132,7 @@ archive_mode = on
 archive_command = 'cp %p /wal_archive/%f && sync /wal_archive/%f'
 ```
 
-#### AWS RDS
-
-Enable **automated backups** (1–35 day retention window) and **Multi-AZ** for failover:
+For RDS, enable **automated backups** (1–35 day retention) and **Multi-AZ** for failover:
 
 ```bash
 aws rds modify-db-instance \
@@ -92,7 +142,7 @@ aws rds modify-db-instance \
   --apply-immediately
 ```
 
-Use **RDS snapshots** before schema migrations. Create a manual snapshot:
+Take **RDS snapshots** before schema migrations:
 
 ```bash
 aws rds create-db-snapshot \
@@ -100,11 +150,87 @@ aws rds create-db-snapshot \
   --db-snapshot-identifier claims-pre-migration-$(date +%Y%m%d)
 ```
 
-#### Restore from pg_dump backup
+#### Tested restore procedure
+
+Run this procedure at least once before go-live, and repeat after any significant infrastructure change.
+
+**Step 1 — Stop the application** to prevent writes during restore:
 
 ```bash
-pg_restore -U claims -d claims /backups/claims_YYYYMMDD_HHMMSS.dump
+# Docker Compose
+docker compose stop claim-agent
+
+# Or systemd
+systemctl stop claim-agent
 ```
+
+**Step 2 — List available backups:**
+
+```bash
+python scripts/restore_postgres.py --list
+# Example output:
+#   Available backups in data/backups (newest first):
+#     claims_claims_20240201_020001.dump  (45.23 MB)
+#     claims_claims_20240131_020001.dump  (44.98 MB)
+```
+
+**Step 3 — (Optional) Create a pre-restore snapshot (RDS):**
+
+```bash
+aws rds create-db-snapshot \
+  --db-instance-identifier claims-db \
+  --db-snapshot-identifier claims-pre-restore-$(date +%Y%m%d)
+```
+
+**Step 4 — Drop and recreate the database** to start from a clean state:
+
+```bash
+psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='claims' AND pid <> pg_backend_pid();"
+psql -U postgres -c "DROP DATABASE IF EXISTS claims;"
+psql -U postgres -c "CREATE DATABASE claims OWNER claims;"
+```
+
+**Step 5 — Run the restore script:**
+
+```bash
+DATABASE_URL=postgresql://claims:secret@localhost:5432/claims \
+  python scripts/restore_postgres.py /var/backups/claims/claims_claims_20240201_020001.dump
+```
+
+The script automatically runs `alembic upgrade head` after restoring and performs a smoke-test query (`SELECT count(*) FROM claims`).
+
+**Step 6 — Verify row counts** match the pre-failure baseline.
+
+**Step 7 — Restart the application:**
+
+```bash
+docker compose start claim-agent
+```
+
+**Step 8 — Run smoke tests:**
+
+```bash
+MOCK_DB_PATH=data/mock_db.json pytest tests/ -v \
+  -m "not slow and not integration and not llm and not e2e and not load"
+```
+
+**Restore timing (RTO validation):**  Record the wall-clock time for each restore test.  Target ≤ 4 hours end-to-end (including communication and decision time); the technical restore itself should complete in < 1 hour for a typical pilot-scale dataset.
+
+#### Self-managed PostgreSQL (pg_dump — manual)
+
+If you prefer to run `pg_dump` directly (without the automation script):
+
+```bash
+# Manual backup
+pg_dump -Fc -U claims claims > /backups/claims_$(date +%Y%m%d_%H%M%S).dump
+
+# Restore
+pg_restore -U claims -d claims /backups/claims_YYYYMMDD_HHMMSS.dump
+
+# Apply any pending migrations after restore
+alembic upgrade head
+```
+
 
 ## PostgreSQL Setup
 

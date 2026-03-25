@@ -1,6 +1,7 @@
 """Authentication: API key lookup and JWT verification."""
 
 import hashlib
+import hmac
 import logging
 from dataclasses import dataclass
 
@@ -23,6 +24,11 @@ def _key_identity(key: str) -> str:
     return "key-" + hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
+def _api_key_digest(key: str) -> bytes:
+    """SHA-256 digest for timing-safe comparison (avoids short-circuit string equality)."""
+    return hashlib.sha256(key.encode()).digest()
+
+
 def verify_token(token: str) -> AuthContext | None:
     """Verify token and return AuthContext if valid. None if invalid."""
 
@@ -33,12 +39,13 @@ def verify_token(token: str) -> AuthContext | None:
     if not token:
         return None
 
-    # API key lookup
+    # API key lookup (timing-safe: compare SHA-256 digests with hmac.compare_digest)
     api_entries = get_api_key_entries()
-    if token in api_entries:
-        entry = api_entries[token]
-        ident = entry.identity if entry.identity else _key_identity(token)
-        return AuthContext(identity=ident, role=entry.role)
+    token_digest = _api_key_digest(token)
+    for stored_key, entry in api_entries.items():
+        if hmac.compare_digest(token_digest, _api_key_digest(stored_key)):
+            ident = entry.identity if entry.identity else _key_identity(token)
+            return AuthContext(identity=ident, role=entry.role)
 
     # JWT verification (optional)
     jwt_secret = get_jwt_secret()

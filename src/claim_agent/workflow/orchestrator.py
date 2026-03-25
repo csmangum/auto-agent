@@ -403,25 +403,40 @@ def run_claim_workflow(
             details = str(e)
             if len(details) > 500:
                 details = details[:500] + "..."
-            repo.update_claim_status(
-                claim_id,
-                STATUS_FAILED,
-                details=details,
-                actor_id=_actor,
-                skip_validation=True,
-            )
+            try:
+                repo.update_claim_status(
+                    claim_id,
+                    STATUS_FAILED,
+                    details=details,
+                    actor_id=_actor,
+                    skip_validation=True,
+                )
+            except Exception as status_err:
+                logger.warning(
+                    "Failed to mark claim failed after workflow error (original error preserved): %s",
+                    status_err,
+                    extra={"claim_id": claim_id},
+                )
 
             workflow_duration = (time.time() - workflow_start_time) * 1000
-            logger.log_event(
-                "workflow_failed",
-                error=details,
-                duration_ms=workflow_duration,
-                level=logging.ERROR,
-            )
+            try:
+                logger.log_event(
+                    "workflow_failed",
+                    error=details,
+                    duration_ms=workflow_duration,
+                    level=logging.ERROR,
+                )
+            except Exception as log_err:
+                logger.warning(
+                    "workflow_failed log_event failed: %s",
+                    log_err,
+                    extra={"claim_id": claim_id},
+                )
 
             if isinstance(e, ClaimWorkflowTimeoutError):
                 try:
                     from claim_agent.notifications.webhook import dispatch_webhook
+
                     dispatch_webhook(
                         "claim.timeout",
                         {
@@ -439,17 +454,45 @@ def run_claim_workflow(
                     )
 
             if wf_ctx is not None:
-                _record_crew_usage_delta(
-                    claim_id=claim_id,
-                    llm=ctx.llm,
-                    metrics=metrics,
-                    crew="residual",
-                    claim_type=wf_ctx.claim_type or None,
-                )
+                try:
+                    _record_crew_usage_delta(
+                        claim_id=claim_id,
+                        llm=ctx.llm,
+                        metrics=metrics,
+                        crew="residual",
+                        claim_type=wf_ctx.claim_type or None,
+                    )
+                except Exception as usage_err:
+                    logger.warning(
+                        "Crew usage delta recording failed after workflow error: %s",
+                        usage_err,
+                        extra={"claim_id": claim_id},
+                    )
 
-            metrics.end_claim(claim_id, status="error")
-            record_claim_outcome(claim_id, "error", (time.time() - workflow_start_time))
-            metrics.log_claim_summary(claim_id)
+            try:
+                metrics.end_claim(claim_id, status="error")
+            except Exception as m_err:
+                logger.warning(
+                    "metrics.end_claim failed after workflow error: %s",
+                    m_err,
+                    extra={"claim_id": claim_id},
+                )
+            try:
+                record_claim_outcome(claim_id, "error", (time.time() - workflow_start_time))
+            except Exception as ro_err:
+                logger.warning(
+                    "record_claim_outcome failed after workflow error: %s",
+                    ro_err,
+                    extra={"claim_id": claim_id},
+                )
+            try:
+                metrics.log_claim_summary(claim_id)
+            except Exception as summary_err:
+                logger.warning(
+                    "log_claim_summary failed after workflow error: %s",
+                    summary_err,
+                    extra={"claim_id": claim_id},
+                )
 
             raise
         finally:

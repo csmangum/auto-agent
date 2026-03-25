@@ -1831,6 +1831,107 @@ class ReverseImageRestConfig(BaseSettings):
 
 
 # ---------------------------------------------------------------------------
+# Backup configuration
+# ---------------------------------------------------------------------------
+
+
+class BackupConfig(BaseSettings):
+    """PostgreSQL backup configuration.
+
+    Documents paths, retention, and S3 options shared with ``scripts/backup_postgres.py``.
+    Schedulers or operators use ``enabled`` as a convention; nothing in the app triggers
+    backups automatically from this flag alone.
+    """
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    enabled: bool = Field(
+        default=False,
+        validation_alias="BACKUP_ENABLED",
+        description=(
+            "Whether scheduled/ops workflows should run PostgreSQL backups (convention for "
+            "cron, systemd, or external orchestration). Does not start backups by itself; "
+            "invoke ``scripts/backup_postgres.py`` explicitly. No effect on SQLite "
+            "(CLAIMS_DB_PATH) deployments."
+        ),
+    )
+    backup_dir: str = Field(
+        default="data/backups",
+        validation_alias="BACKUP_DIR",
+        description="Local directory where pg_dump files are written.",
+    )
+    retention_days: int = Field(
+        default=14,
+        ge=1,
+        validation_alias="BACKUP_RETENTION_DAYS",
+        description="Number of days to retain local backup files before rotation.",
+    )
+    s3_bucket: str = Field(
+        default="",
+        validation_alias="BACKUP_S3_BUCKET",
+        description=(
+            "S3 bucket to upload backups to. Leave empty to keep backups local only."
+        ),
+    )
+    s3_prefix: str = Field(
+        default="postgres-backups",
+        validation_alias="BACKUP_S3_PREFIX",
+        description="Key prefix for S3 backup objects.",
+    )
+    s3_endpoint: str | None = Field(
+        default=None,
+        validation_alias="BACKUP_S3_ENDPOINT",
+        description="Optional S3-compatible endpoint URL (e.g. MinIO).",
+    )
+    compress: bool = Field(
+        default=True,
+        validation_alias="BACKUP_COMPRESS",
+        description=(
+            "When true, pg_dump uses custom compressed format (-Fc). "
+            "When false, plain SQL (-Fp, larger files, human-readable)."
+        ),
+    )
+    pg_dump_path: str = Field(
+        default="pg_dump",
+        validation_alias="BACKUP_PG_DUMP_PATH",
+        description="Path to the pg_dump binary. Defaults to searching PATH.",
+    )
+    pg_restore_path: str = Field(
+        default="pg_restore",
+        validation_alias="BACKUP_PG_RESTORE_PATH",
+        description="Path to the pg_restore binary. Defaults to searching PATH.",
+    )
+    pg_psql_path: str = Field(
+        default="psql",
+        validation_alias="BACKUP_PG_PSQL_PATH",
+        description="Path to the psql binary used by the restore script. Defaults to searching PATH.",
+    )
+
+    @field_validator("enabled", "compress", mode="before")
+    @classmethod
+    def _parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().lower() in ("true", "1", "yes")
+
+    @field_validator("s3_bucket", mode="before")
+    @classmethod
+    def _normalize_s3_bucket(cls, v: Any) -> str:
+        return str(v).strip() if v else ""
+
+    @field_validator("s3_endpoint", mode="before")
+    @classmethod
+    def _empty_to_none(cls, v: Any) -> str | None:
+        if v is None or str(v).strip() == "":
+            return None
+        return str(v).strip()
+
+
+# ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
 
@@ -1965,6 +2066,7 @@ class Settings(BaseSettings):
     third_party_portal: ThirdPartyPortalConfig = Field(default_factory=ThirdPartyPortalConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     retention_export: RetentionExportConfig = Field(default_factory=RetentionExportConfig)
+    backup: BackupConfig = Field(default_factory=BackupConfig)
 
     # Flat fields for compatibility (duplicate detection, high-value, etc.)
     duplicate_similarity_threshold: int = 40

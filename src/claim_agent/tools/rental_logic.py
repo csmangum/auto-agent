@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+from collections import OrderedDict
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
@@ -37,7 +39,28 @@ RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_cover
 # In-memory idempotency fast-path: (claim_id, amount_cents, rental_days) -> reimbursement_id.
 # Persists to ``rental_authorizations`` when ``ctx`` is provided; DB is the source of truth
 # across processes; this cache avoids duplicate work within a single process.
-_IDEMPOTENCY_CACHE: dict[tuple[str, int, int], str] = {}
+_IDEMPOTENCY_MAX_ENTRIES = 4096
+_idempotency_cache: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+_idempotency_lock = threading.Lock()
+# Backward compatibility alias for tests
+_IDEMPOTENCY_CACHE = _idempotency_cache
+
+
+def _idempotency_cache_get(key: tuple[str, int, int]) -> str | None:
+    with _idempotency_lock:
+        if key not in _idempotency_cache:
+            return None
+        val = _idempotency_cache[key]
+        _idempotency_cache.move_to_end(key)
+        return val
+
+
+def _idempotency_cache_set(key: tuple[str, int, int], value: str) -> None:
+    with _idempotency_lock:
+        _idempotency_cache[key] = value
+        _idempotency_cache.move_to_end(key)
+        while len(_idempotency_cache) > _IDEMPOTENCY_MAX_ENTRIES:
+            _idempotency_cache.popitem(last=False)
 
 
 def _rental_amount_cents(amount: float | int) -> int:
@@ -305,8 +328,9 @@ def process_rental_reimbursement_impl(
                 "message": limits.get("error", "Could not retrieve policy limits"),
             }
         )
-    if idempotency_key in _IDEMPOTENCY_CACHE:
-        rid = _IDEMPOTENCY_CACHE[idempotency_key]
+    cached_rid = _idempotency_cache_get(idempotency_key)
+    if cached_rid is not None:
+        rid = cached_rid
         return json.dumps(
             {
                 "reimbursement_id": rid,
@@ -331,7 +355,7 @@ def process_rental_reimbursement_impl(
                 and existing.get("reimbursement_id")
             ):
                 rid = existing["reimbursement_id"]
-                _IDEMPOTENCY_CACHE[idempotency_key] = rid
+                _idempotency_cache_set(idempotency_key, rid)
                 return json.dumps(
                     {
                         "reimbursement_id": rid,
@@ -380,7 +404,7 @@ def process_rental_reimbursement_impl(
         existing = pay_repo.get_payment_by_claim_external_ref(claim_id, external_ref)
         if existing is not None:
             reimbursement_id = f"RENT-{existing['id']:08X}"
-            _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
+            _idempotency_cache_set(idempotency_key, reimbursement_id)
             return json.dumps(
                 {
                     "reimbursement_id": reimbursement_id,
@@ -428,7 +452,7 @@ def process_rental_reimbursement_impl(
         claim_id,
         payment_id,
     )
-    _IDEMPOTENCY_CACHE[idempotency_key] = reimbursement_id
+    _idempotency_cache_set(idempotency_key, reimbursement_id)
 
     # Persist to DB when ClaimContext is available (same DB path as ClaimRepository).
     if rental_repo is not None:
