@@ -111,3 +111,16 @@ class PaymentAuthorityError(ClaimAgentError):
 
 class PaymentNotFoundError(ClaimAgentError):
     """Payment ID does not exist."""
+
+
+class ClaimWorkflowTimeoutError(ClaimAgentError):
+    """Claim workflow exceeded the configured wall-clock timeout."""
+
+    def __init__(self, claim_id: str, elapsed_seconds: float, timeout_seconds: float):
+        self.claim_id = claim_id
+        self.elapsed_seconds = elapsed_seconds
+        self.timeout_seconds = timeout_seconds
+        super().__init__(
+            f"Claim {claim_id} workflow timed out after {elapsed_seconds:.1f}s "
+            f"(limit {timeout_seconds:.0f}s)"
+        )

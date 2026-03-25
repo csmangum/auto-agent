@@ -29,7 +29,7 @@ from claim_agent.models.stage_outputs import (
     FraudPrescreeningResult,
     RouterStageResult,
 )
-from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
+from claim_agent.exceptions import ClaimNotFoundError, ClaimWorkflowTimeoutError, DomainValidationError
 from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
 from claim_agent.models.claim import ClaimInput
 from claim_agent.observability import claim_context, get_logger
@@ -324,6 +324,10 @@ def run_claim_workflow(
                 _stage_salvage,
                 _stage_after_action,
             ):
+                _timeout_seconds = get_settings().claim_workflow_timeout_seconds
+                _elapsed = time.time() - workflow_start_time
+                if _elapsed >= _timeout_seconds:
+                    raise ClaimWorkflowTimeoutError(claim_id, _elapsed, _timeout_seconds)
                 early_return = stage_fn(wf_ctx)
                 if early_return is not None:
                     return early_return
@@ -413,6 +417,25 @@ def run_claim_workflow(
                 duration_ms=workflow_duration,
                 level=logging.ERROR,
             )
+
+            if isinstance(e, ClaimWorkflowTimeoutError):
+                try:
+                    from claim_agent.notifications.webhook import dispatch_webhook
+                    dispatch_webhook(
+                        "claim.timeout",
+                        {
+                            "claim_id": claim_id,
+                            "elapsed_seconds": e.elapsed_seconds,
+                            "timeout_seconds": e.timeout_seconds,
+                            "reason": str(e),
+                        },
+                    )
+                except Exception as webhook_err:
+                    logger.warning(
+                        "Timeout webhook dispatch failed (best-effort): %s",
+                        webhook_err,
+                        extra={"claim_id": claim_id},
+                    )
 
             _record_crew_usage_delta(
                 claim_id=claim_id,
