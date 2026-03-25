@@ -318,6 +318,35 @@ class TestJWTSecretValidation:
         assert config.jwt_secret == "b" * 32
 
 
+class TestAuthConfigCorsProperties:
+    """CORS methods/headers parsing on AuthConfig."""
+
+    def test_cors_methods_default_includes_head(self):
+        from claim_agent.config.settings_model import AuthConfig, _DEFAULT_CORS_METHODS
+
+        config = AuthConfig()
+        assert config.cors_methods == list(_DEFAULT_CORS_METHODS)
+        assert "HEAD" in config.cors_methods
+
+    def test_cors_methods_custom_uppercased(self):
+        from claim_agent.config.settings_model import AuthConfig
+
+        config = AuthConfig(cors_methods_raw="get, patch ")
+        assert config.cors_methods == ["GET", "PATCH"]
+
+    def test_cors_headers_default_matches_builtin_list(self):
+        from claim_agent.config.settings_model import AuthConfig, _DEFAULT_CORS_HEADERS
+
+        config = AuthConfig()
+        assert config.cors_headers == list(_DEFAULT_CORS_HEADERS)
+
+    def test_cors_headers_custom_trimmed(self):
+        from claim_agent.config.settings_model import AuthConfig
+
+        config = AuthConfig(cors_headers_raw="X-Foo, X-Bar")
+        assert config.cors_headers == ["X-Foo", "X-Bar"]
+
+
 def test_get_mock_crew_config_returns_dict():
     """get_mock_crew_config returns dict with enabled and seed."""
     with patch.dict(

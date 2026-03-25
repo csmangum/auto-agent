@@ -1,5 +1,7 @@
 """Tests for security-headers and HTTPS-redirect middleware."""
 
+import anyio
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -423,6 +425,107 @@ class TestRequestBodySizeLimitMiddleware:
         assert resp.json()["detail"] == "Invalid Content-Length header"
 
     def test_no_content_length_header_passes_through(self, client):
-        """Requests without Content-Length are not rejected by the size middleware."""
+        """GET requests without Content-Length are not rejected by the size middleware."""
         resp = client.get("/api/health")
         assert resp.status_code == 200
+
+    def test_post_streaming_body_without_content_length_returns_411(self, client):
+        """POST under /api/ with chunked/streaming body (no Content-Length) returns 411."""
+
+        async def _streaming_post():
+            transport = httpx.ASGITransport(app=client.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as ac:
+
+                async def agen():
+                    yield b'{"claim_id": "x"}'
+
+                return await ac.post(
+                    "/api/claims/process",
+                    headers={"Content-Type": "application/json"},
+                    content=agen(),
+                )
+
+        resp = anyio.run(_streaming_post)
+        assert resp.status_code == 411
+        assert resp.json()["detail"] == "Content-Length required"
+
+    def test_negative_content_length_returns_400(self, client):
+        """Negative Content-Length is invalid HTTP and must return 400."""
+        resp = client.post(
+            "/api/claims/process",
+            content=b"{}",
+            headers={"Content-Type": "application/json", "Content-Length": "-1"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid Content-Length header"
+
+
+class TestCorsConfiguration:
+    """CORS allow_methods / allow_headers from settings (including defaults)."""
+
+    def test_preflight_allow_methods_includes_head(self, client):
+        resp = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "HEAD",
+            },
+        )
+        assert resp.status_code == 200
+        methods = resp.headers.get("access-control-allow-methods", "")
+        assert "HEAD" in methods.replace(" ", "")
+
+    def test_preflight_allow_headers_reflects_defaults(self, client):
+        resp = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization,x-api-key",
+            },
+        )
+        assert resp.status_code == 200
+        allow_headers = resp.headers.get("access-control-allow-headers", "").lower()
+        assert "authorization" in allow_headers
+        assert "x-api-key" in allow_headers
+
+    def test_cors_methods_env_uppercased_on_preflight(self, monkeypatch, request):
+        from claim_agent.api.server import create_app
+        from claim_agent.config import reload_settings
+
+        request.addfinalizer(reload_settings)
+        monkeypatch.setenv("CORS_METHODS", "get, options")
+        reload_settings()
+        with TestClient(create_app(), raise_server_exceptions=True) as tc:
+            resp = tc.options(
+                "/api/health",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+        assert resp.status_code == 200
+        methods = resp.headers.get("access-control-allow-methods", "").replace(" ", "")
+        assert "GET" in methods
+        assert "OPTIONS" in methods
+
+    def test_cors_headers_env_replaces_defaults_on_preflight(self, monkeypatch, request):
+        from claim_agent.api.server import create_app
+        from claim_agent.config import reload_settings
+
+        request.addfinalizer(reload_settings)
+        monkeypatch.setenv("CORS_HEADERS", "X-Custom-Alpha, X-Custom-Beta")
+        reload_settings()
+        with TestClient(create_app(), raise_server_exceptions=True) as tc:
+            resp = tc.options(
+                "/api/health",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "x-custom-alpha",
+                },
+            )
+        assert resp.status_code == 200
+        allow_headers = resp.headers.get("access-control-allow-headers", "")
+        assert "X-Custom-Alpha" in allow_headers
+        assert "X-Custom-Beta" in allow_headers

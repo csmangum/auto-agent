@@ -715,7 +715,7 @@ _DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
-_DEFAULT_CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+_DEFAULT_CORS_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]
 
 _DEFAULT_CORS_HEADERS = [
     "Authorization",
@@ -2155,8 +2155,9 @@ class Settings(BaseSettings):
         validation_alias="MAX_REQUEST_BODY_SIZE_MB",
         description=(
             "Maximum allowed request body size in megabytes for non-file-upload endpoints "
-            "(default 10 MB). Requests advertising a larger Content-Length are rejected "
-            "with HTTP 413 before reading the body."
+            "(default 10 MB). POST/PUT/PATCH under /api/ must send Content-Length (not "
+            "chunked without a length); larger advertised lengths return HTTP 413 before "
+            "reading the body."
         ),
     )
     max_upload_body_size_mb: int = Field(
@@ -2167,6 +2168,16 @@ class Settings(BaseSettings):
             "Maximum allowed request body size in megabytes for multipart/form-data "
             "file-upload endpoints (default 100 MB). Supplements the per-file limit "
             "enforced by individual route handlers."
+        ),
+    )
+    max_upload_file_size_mb: int = Field(
+        default=50,
+        ge=1,
+        validation_alias="MAX_UPLOAD_FILE_SIZE_MB",
+        description=(
+            "Maximum size in megabytes for a single uploaded file in claims routes "
+            "(default 50 MB). The full multipart request is still capped by "
+            "MAX_UPLOAD_BODY_SIZE_MB."
         ),
     )
     crew_verbose: bool = Field(default=True, validation_alias="CREWAI_VERBOSE")

@@ -137,7 +137,10 @@ router = APIRouter(tags=["claims"])
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 RequireSupervisor = require_role("supervisor", "admin", "executive")
 
-_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+def _max_upload_file_size_bytes() -> int:
+    """Per-file upload cap from settings (MAX_UPLOAD_FILE_SIZE_MB)."""
+    return get_settings().max_upload_file_size_mb * 1024 * 1024
 
 
 def _adjuster_scope_params(auth: AuthContext) -> dict[str, Any]:
@@ -1349,7 +1352,7 @@ async def upload_claim_document(
         if not chunk:
             break
         total_size += len(chunk)
-        if total_size > _MAX_UPLOAD_SIZE_BYTES:
+        if total_size > _max_upload_file_size_bytes():
             raise HTTPException(status_code=413, detail="File exceeds maximum upload size")
         chunks.append(chunk)
     content = b"".join(chunks)
@@ -2267,10 +2270,13 @@ async def _process_claim_with_attachments(
                 if not chunk:
                     break
                 total_size += len(chunk)
-                if total_size > _MAX_UPLOAD_SIZE_BYTES:
+                if total_size > _max_upload_file_size_bytes():
+                    max_mb = get_settings().max_upload_file_size_mb
                     raise HTTPException(
                         status_code=413,
-                        detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+                        detail=(
+                            f"File '{f.filename}' exceeds the maximum upload size of {max_mb} MB."
+                        ),
                     )
                 chunks.append(chunk)
             buffered_files.append((f.filename, b"".join(chunks), f.content_type))

@@ -62,18 +62,10 @@ import logging
 
 _server_logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Request body size limits
-# ---------------------------------------------------------------------------
-# Protect all endpoints against excessively large payloads that could exhaust
-# memory or disk.  File-upload endpoints enforce their own per-file limit via
-# _MAX_UPLOAD_SIZE_BYTES in routes/claims.py; these constants act as global
-# upper bounds checked at the middleware layer (Content-Length header).
-#
-# Both values are configurable via environment variables:
-#   MAX_REQUEST_BODY_SIZE_MB  (default 10)  – for JSON / form-data endpoints
-#   MAX_UPLOAD_BODY_SIZE_MB   (default 100) – for multipart/form-data uploads
+# Bytes per MB for request body size checks (see request_body_size_limit_middleware).
 _MB = 1024 * 1024
+
+_BODY_LENGTH_REQUIRED_METHODS = frozenset({"POST", "PUT", "PATCH"})
 
 
 _DEV_ENVIRONMENTS = frozenset({"dev", "development", "test", "testing"})
@@ -438,12 +430,35 @@ async def request_body_size_limit_middleware(request: Request, call_next):
     The check uses the Content-Length header so that oversized payloads are
     rejected before the body is read into memory.  Route handlers that accept
     file uploads enforce additional per-file limits independently.
+
+    POST/PUT/PATCH under ``/api/`` must send ``Content-Length`` (not chunked
+    without a length) so limits cannot be bypassed via ``Transfer-Encoding:
+    chunked``.
     """
+    path = _normalize_path(request.url.path)
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    method = request.method.upper()
     content_length_header = request.headers.get("content-length")
+    if method in _BODY_LENGTH_REQUIRED_METHODS and content_length_header is None:
+        return _secured_api_json_response(
+            request,
+            status.HTTP_411_LENGTH_REQUIRED,
+            {"detail": "Content-Length required"},
+        )
+
     if content_length_header is not None:
         try:
             content_length = int(content_length_header)
         except ValueError:
+            return _secured_api_json_response(
+                request,
+                400,
+                {"detail": "Invalid Content-Length header"},
+            )
+
+        if content_length < 0:
             return _secured_api_json_response(
                 request,
                 400,
