@@ -225,6 +225,7 @@ class TestSafeDispatchClaimEvent:
     def test_swallows_exceptions_and_logs(self):
         webhook_logger = logging.getLogger("claim_agent.notifications.webhook")
         cap = LogCaptureHandler()
+        prev_level = webhook_logger.level
         webhook_logger.addHandler(cap)
         webhook_logger.setLevel(logging.WARNING)
         try:
@@ -234,6 +235,7 @@ class TestSafeDispatchClaimEvent:
                 mock.assert_called_once()
         finally:
             webhook_logger.removeHandler(cap)
+            webhook_logger.setLevel(prev_level)
         assert any("Webhook dispatch failed" in m for m in cap.messages)
         assert any("executor shutdown" in m for m in cap.messages)
 

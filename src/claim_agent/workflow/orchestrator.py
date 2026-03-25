@@ -207,18 +207,19 @@ def run_claim_workflow(
     workflow_start_time = time.time()
     _actor = actor_id if actor_id is not None else ACTOR_WORKFLOW
 
-    _llm = llm or (ctx.llm if ctx else None) or get_llm()
+    # Resolve explicit LLM only here; defer get_llm() until after processing-lock validation
+    # so DomainValidationError / ClaimNotFound paths do not require API keys.
+    _base_llm = llm or (ctx.llm if ctx else None)
     claim_input, claim_data = _normalize_claim_data(claim_data)
     if ctx is None:
-        ctx = ClaimContext.from_defaults(llm=_llm)
+        ctx = ClaimContext.from_defaults(llm=_base_llm)
     elif ctx.llm is None or llm is not None:
-        # Apply _llm: fill in when ctx has none, or override when explicit llm was passed
         ctx = ClaimContext(
             repo=ctx.repo,
             adjuster_service=ctx.adjuster_service,
             adapters=ctx.adapters,
             metrics=ctx.metrics,
-            llm=_llm,
+            llm=llm if llm is not None else ctx.llm,
         )
     repo = ctx.repo
     metrics = ctx.metrics
@@ -275,6 +276,14 @@ def run_claim_workflow(
             else:
                 repo.acquire_processing_lock(claim_id, actor_id=_actor)
                 processing_lock_held = True
+            if ctx.llm is None:
+                ctx = ClaimContext(
+                    repo=ctx.repo,
+                    adjuster_service=ctx.adjuster_service,
+                    adapters=ctx.adapters,
+                    metrics=ctx.metrics,
+                    llm=get_llm(),
+                )
             logger.log_event("workflow_started", status=STATUS_PROCESSING)
 
             db_parties = repo.get_claim_parties(claim_id)
