@@ -240,36 +240,35 @@ def process_erp_webhook_payload(parsed: ERPWebhookPayload) -> dict[str, str | bo
             extra={"erp_event_id": parsed.erp_event_id},
         )
 
-    if parsed.event_type in VALID_ERP_EVENT_TYPES:
-        if claim.get("claim_type") != "partial_loss":
-            raise ERPWebhookProcessingError(
-                status_code=400,
-                detail="ERP repair events only apply to partial_loss claims",
-                extra={"erp_event_id": parsed.erp_event_id},
-            )
+    if claim.get("claim_type") != "partial_loss":
+        raise ERPWebhookProcessingError(
+            status_code=400,
+            detail="ERP repair events only apply to partial_loss claims",
+            extra={"erp_event_id": parsed.erp_event_id},
+        )
 
-        if not _claim_has_authorization(
-            parsed.claim_id, parsed.shop_id, parsed.authorization_id
-        ):
-            raise ERPWebhookProcessingError(
-                status_code=400,
-                detail=(
-                    "Claim has no matching repair authorization "
-                    "for this shop_id"
-                ),
-                extra={"erp_event_id": parsed.erp_event_id},
-            )
+    if not _claim_has_authorization(
+        parsed.claim_id, parsed.shop_id, parsed.authorization_id
+    ):
+        raise ERPWebhookProcessingError(
+            status_code=400,
+            detail=(
+                "Claim has no matching repair authorization "
+                "for this shop_id"
+            ),
+            extra={"erp_event_id": parsed.erp_event_id},
+        )
 
-        status_repo = RepairStatusRepository(db_path=get_db_path())
+    status_repo = RepairStatusRepository(db_path=get_db_path())
 
-        if status_repo.has_erp_event(parsed.claim_id, parsed.erp_event_id):
-            return {
-                "ok": True,
-                "already_processed": True,
-                "event_type": parsed.event_type,
-                "claim_id": parsed.claim_id,
-                "erp_event_id": parsed.erp_event_id,
-            }
+    if status_repo.has_erp_event(parsed.claim_id, parsed.erp_event_id):
+        return {
+            "ok": True,
+            "already_processed": True,
+            "event_type": parsed.event_type,
+            "claim_id": parsed.claim_id,
+            "erp_event_id": parsed.erp_event_id,
+        }
 
     if parsed.event_type == "estimate_approved":
         try:

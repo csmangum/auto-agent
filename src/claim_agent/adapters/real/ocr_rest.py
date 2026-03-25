@@ -79,8 +79,6 @@ class RestOCRAdapter(OCRAdapter):
                 files=files,
                 params={"document_type": document_type},
             )
-            if resp.status_code == 404:
-                return None
             return self._unwrap_payload(resp.json())
         except CircuitOpenError:
             logger.warning("OCR adapter circuit breaker open; returning None")
