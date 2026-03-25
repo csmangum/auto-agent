@@ -55,6 +55,9 @@ flowchart LR
 - **[Adapter SLA](adapter_sla.md)** - Integration latency and availability targets
 - **[Actuarial reserve reporting](actuarial-reserve-reporting.md)** - Supervisor/admin reserve report APIs
 - **[Eval suite gaps](eval-suite-gaps.md)** - Evaluation suite status and known gaps
+- **[Mock Crew Design](mock-crew-design.md)** - Mock external interactions for testing
+- **[Mock crew requirements](mock-crew-requirements.md)** - Requirements checklist and traceability
+- **[Mock crew implementation plan](mock-crew-implementation-plan.md)** - Phased mock crew work
 
 
 ## Quick Reference

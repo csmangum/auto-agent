@@ -2731,7 +2731,13 @@ async def file_supplemental(
 @router.post("/claims/{claim_id}/reprocess")
 async def reprocess_claim(
     claim_id: str,
-    from_stage: Optional[str] = Query(None, description="Resume from this stage (router, escalation_check, workflow, settlement)"),
+    from_stage: Optional[str] = Query(
+        None,
+        description=(
+            "Resume from this stage using checkpoints from the most recent workflow run. "
+            f"Must be one of: {', '.join(WORKFLOW_STAGES)}"
+        ),
+    ),
     auth: AuthContext = RequireSupervisor,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
@@ -2740,8 +2746,6 @@ async def reprocess_claim(
     Pass ``from_stage`` to resume from a specific stage using checkpoints from
     the most recent workflow run.
     """
-    from claim_agent.crews.main_crew import WORKFLOW_STAGES
-
     if from_stage is not None and from_stage not in WORKFLOW_STAGES:
         raise HTTPException(
             status_code=400,

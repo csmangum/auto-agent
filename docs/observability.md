@@ -90,7 +90,7 @@ See [Alerting](alerting.md) for recommended Prometheus alert rules and scrape co
 ### Example (human format)
 
 ```
-2025-01-31 12:00:00 INFO     [claim=CLM-001, type=new] claim_agent.crews.main_crew: [workflow_started] status=processing
+2025-01-31 12:00:00 INFO     [claim=CLM-001, type=new] claim_agent.workflow.orchestrator: [workflow_started] status=processing
 2025-01-31 12:00:01 INFO     [claim=CLM-001, type=new] claim_agent.observability.metrics: [llm_metric] claim_id=CLM-001, model=gpt-4o-mini, tokens=500/200, cost=$0.0002, latency=1200ms, status=success
 ```
 

@@ -348,6 +348,23 @@ def _seed_test_data(db_path: str) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _claim_agent_logger_propagate_for_caplog():
+    """Keep package logs visible to pytest's caplog after CLI tests run.
+
+    ``get_logger('claim_agent')`` (via Typer's global callback in ``main``) attaches a
+    StreamHandler and sets ``propagate=False`` so messages do not bubble to the root
+    logger. pytest's ``caplog`` fixture only records root handlers, so any test that
+    runs after a CLI invocation would otherwise see empty ``caplog.messages`` for
+    ``claim_agent.api.server``, ``claim_agent.notifications.webhook``, etc.
+    """
+    log = logging.getLogger("claim_agent")
+    previous = log.propagate
+    log.propagate = True
+    yield
+    log.propagate = previous
+
+
+@pytest.fixture(autouse=True)
 def _reset_sticky_logger_levels():
     """Tests that call setLevel on shared loggers must restore; fix order-sensitive caplog."""
     yield

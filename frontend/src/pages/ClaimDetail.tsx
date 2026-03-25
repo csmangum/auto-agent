@@ -413,31 +413,37 @@ function DocumentsTab({
     if (!files || files.length === 0) return;
     const list = Array.from(files);
     void (async () => {
-      const outcomes = await Promise.allSettled(
-        list.map((file) =>
-          uploadMutation.mutateAsync({
-            file,
-            documentType: uploadType,
-            receivedFrom: uploadFrom,
-          })
-        )
-      );
-      const ok = outcomes.filter((o) => o.status === 'fulfilled').length;
-      const failed = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
-      if (ok > 0) {
-        toast.success(
-          ok === 1 && list.length === 1
-            ? `Uploaded ${list[0].name}`
-            : `Uploaded ${ok} of ${list.length} file${list.length === 1 ? '' : 's'}`
+      try {
+        const outcomes = await Promise.allSettled(
+          list.map((file) =>
+            uploadMutation.mutateAsync({
+              file,
+              documentType: uploadType,
+              receivedFrom: uploadFrom,
+            })
+          )
         );
-      }
-      if (failed.length > 0) {
-        const first = failed[0].reason;
-        toast.error(
-          failed.length === 1
-            ? getErrorMessage(first, 'Upload failed')
-            : `${failed.length} uploads failed: ${getErrorMessage(first, 'Upload failed')}`
-        );
+        const ok = outcomes.filter((o) => o.status === 'fulfilled').length;
+        const failed = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
+        if (ok > 0) {
+          toast.success(
+            ok === 1 && list.length === 1
+              ? `Uploaded ${list[0].name}`
+              : `Uploaded ${ok} of ${list.length} file${list.length === 1 ? '' : 's'}`
+          );
+        }
+        if (failed.length > 0) {
+          const first = failed[0].reason;
+          toast.error(
+            failed.length === 1
+              ? getErrorMessage(first, 'Upload failed')
+              : `${failed.length} uploads failed: ${getErrorMessage(first, 'Upload failed')}`
+          );
+        }
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
     })();
   };

@@ -58,7 +58,7 @@ Output shape (values depend on your DB and duplicate data in `data/mock_db.json`
 }
 ```
 
-For local development without a live LLM, set `MOCK_CREW_ENABLED=true` (see [Mock Crew Design](mock-crew-design.md)).
+Processing a claim through the CLI calls a real LLM via `OPENAI_API_KEY` (placeholders such as `your_openrouter_key` are rejected). To explore the codebase **without** an API key, run the **test suite** (it mocks the LLM). `MOCK_CREW_ENABLED=true` simulates claimants, vision, and similar integrations—it does **not** replace the workflow LLM (see [Mock Crew Design](mock-crew-design.md)).
 
 ### Check Claim Status
 
