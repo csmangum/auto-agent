@@ -3249,22 +3249,18 @@ class TestProcessClaimEndpoint:
         assert resp.status_code == 200
 
     def test_file_too_large_returns_413(self, client, monkeypatch, tmp_path):
-        """A file exceeding the 50 MB limit returns HTTP 413."""
+        """A file exceeding MAX_UPLOAD_FILE_SIZE_MB returns HTTP 413."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         self._mock_workflow(monkeypatch)
         from claim_agent.api.routes import claims as claims_module
 
         # Temporarily lower the limit to make the test fast
-        original_limit = claims_module._MAX_UPLOAD_SIZE_BYTES
-        monkeypatch.setattr(claims_module, "_MAX_UPLOAD_SIZE_BYTES", 10)
-        try:
-            resp = client.post(
-                "/api/claims/process",
-                data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
-                files=[("files", ("big.jpg", b"X" * 11, "image/jpeg"))],
-            )
-        finally:
-            claims_module._MAX_UPLOAD_SIZE_BYTES = original_limit
+        monkeypatch.setattr(claims_module, "_max_upload_file_size_bytes", lambda: 10)
+        resp = client.post(
+            "/api/claims/process",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            files=[("files", ("big.jpg", b"X" * 11, "image/jpeg"))],
+        )
         assert resp.status_code == 413
 
     def test_valid_claim_with_files_creates_single_claim(self, client, monkeypatch, tmp_path):

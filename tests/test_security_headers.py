@@ -1,5 +1,7 @@
 """Tests for security-headers and HTTPS-redirect middleware."""
 
+import anyio
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -303,3 +305,248 @@ class TestSecurityHeadersOnShortCircuitResponses:
         assert resp.headers.get("cache-control") == "no-store"
         csp = resp.headers.get("content-security-policy", "")
         assert "default-src 'self'" in csp
+
+
+class TestRequestBodySizeLimitMiddleware:
+    """Middleware rejects oversized request bodies before route handlers read them."""
+
+    def test_json_request_within_limit_passes(self, client):
+        """A small JSON payload under the 10 MB limit is accepted."""
+        payload = b'{"claim_id": "test"}'
+        resp = client.post(
+            "/api/claims/process",
+            content=payload,
+            headers={"Content-Type": "application/json", "Content-Length": str(len(payload))},
+        )
+        # May return 422 (validation) or other non-413 status – just not 413
+        assert resp.status_code != 413
+
+    def test_json_request_over_limit_returns_413(self, monkeypatch):
+        """A Content-Length exceeding MAX_REQUEST_BODY_SIZE_MB returns 413."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_REQUEST_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware checks the Content-Length header only (does not read the body),
+            # so advertising an oversized Content-Length is sufficient to trigger the limit.
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "Request body too large"
+
+    def test_multipart_request_over_limit_returns_413(self, monkeypatch):
+        """A multipart Content-Length exceeding MAX_UPLOAD_BODY_SIZE_MB returns 413."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_UPLOAD_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware checks the Content-Length header only (does not read the body).
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "multipart/form-data; boundary=----boundary",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "Request body too large"
+
+    def test_multipart_content_type_case_insensitive_uses_upload_limit(self, monkeypatch):
+        """Multipart detection is case-insensitive (RFC 7231 media types)."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_UPLOAD_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "Multipart/Form-Data; boundary=----boundary",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "Request body too large"
+
+    def test_multipart_request_within_limit_is_not_rejected_by_middleware(self, monkeypatch):
+        """Multipart uploads within the upload limit are not rejected by the size middleware."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_UPLOAD_BODY_SIZE_MB", "100")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware only reads the Content-Length header; the actual body is tiny.
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "multipart/form-data; boundary=----boundary",
+                    "Content-Length": "1024",
+                },
+            )
+        # Should not be rejected by the size middleware; may fail validation (422) etc.
+        assert resp.status_code != 413
+
+    def test_413_response_includes_security_headers(self, monkeypatch):
+        """413 responses from the body size middleware carry all required security headers."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_REQUEST_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware checks the Content-Length header only (does not read the body).
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.headers.get("x-content-type-options") == "nosniff"
+        assert resp.headers.get("x-frame-options") == "DENY"
+        assert resp.headers.get("cache-control") == "no-store"
+        csp = resp.headers.get("content-security-policy", "")
+        assert "default-src 'self'" in csp
+
+    def test_invalid_content_length_returns_400(self, client):
+        """A non-integer Content-Length header returns 400 Bad Request."""
+        resp = client.post(
+            "/api/claims/process",
+            content=b"{}",
+            headers={"Content-Type": "application/json", "Content-Length": "not-a-number"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid Content-Length header"
+
+    def test_no_content_length_header_passes_through(self, client):
+        """GET requests without Content-Length are not rejected by the size middleware."""
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+
+    def test_post_streaming_body_without_content_length_returns_411(self, client):
+        """POST under /api/ with chunked/streaming body (no Content-Length) returns 411."""
+
+        async def _streaming_post():
+            transport = httpx.ASGITransport(app=client.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as ac:
+
+                async def agen():
+                    yield b'{"claim_id": "x"}'
+
+                return await ac.post(
+                    "/api/claims/process",
+                    headers={"Content-Type": "application/json"},
+                    content=agen(),
+                )
+
+        resp = anyio.run(_streaming_post)
+        assert resp.status_code == 411
+        assert resp.json()["detail"] == "Content-Length required"
+
+    def test_negative_content_length_returns_400(self, client):
+        """Negative Content-Length is invalid HTTP and must return 400."""
+        resp = client.post(
+            "/api/claims/process",
+            content=b"{}",
+            headers={"Content-Type": "application/json", "Content-Length": "-1"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid Content-Length header"
+
+
+class TestCorsConfiguration:
+    """CORS allow_methods / allow_headers from settings (including defaults)."""
+
+    def test_preflight_allow_methods_includes_head(self, client):
+        resp = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "HEAD",
+            },
+        )
+        assert resp.status_code == 200
+        methods = resp.headers.get("access-control-allow-methods", "")
+        assert "HEAD" in methods.replace(" ", "")
+
+    def test_preflight_allow_headers_reflects_defaults(self, client):
+        resp = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization,x-api-key",
+            },
+        )
+        assert resp.status_code == 200
+        allow_headers = resp.headers.get("access-control-allow-headers", "").lower()
+        assert "authorization" in allow_headers
+        assert "x-api-key" in allow_headers
+
+    def test_cors_methods_env_uppercased_on_preflight(self, monkeypatch, request):
+        from claim_agent.api.server import create_app
+        from claim_agent.config import reload_settings
+
+        request.addfinalizer(reload_settings)
+        monkeypatch.setenv("CORS_METHODS", "get, options")
+        reload_settings()
+        with TestClient(create_app(), raise_server_exceptions=True) as tc:
+            resp = tc.options(
+                "/api/health",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+        assert resp.status_code == 200
+        methods = resp.headers.get("access-control-allow-methods", "").replace(" ", "")
+        assert "GET" in methods
+        assert "OPTIONS" in methods
+
+    def test_cors_headers_env_replaces_defaults_on_preflight(self, monkeypatch, request):
+        from claim_agent.api.server import create_app
+        from claim_agent.config import reload_settings
+
+        request.addfinalizer(reload_settings)
+        monkeypatch.setenv("CORS_HEADERS", "X-Custom-Alpha, X-Custom-Beta")
+        reload_settings()
+        with TestClient(create_app(), raise_server_exceptions=True) as tc:
+            resp = tc.options(
+                "/api/health",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "x-custom-alpha",
+                },
+            )
+        assert resp.status_code == 200
+        allow_headers = resp.headers.get("access-control-allow-headers", "")
+        assert "X-Custom-Alpha" in allow_headers
+        assert "X-Custom-Beta" in allow_headers

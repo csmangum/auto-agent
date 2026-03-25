@@ -137,7 +137,16 @@ router = APIRouter(tags=["claims"])
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 RequireSupervisor = require_role("supervisor", "admin", "executive")
 
-_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+def _max_upload_file_size_bytes() -> int:
+    """Per-file upload cap from settings (MAX_UPLOAD_FILE_SIZE_MB)."""
+    return get_settings().max_upload_file_size_mb * 1024 * 1024
+
+
+def _upload_file_size_exceeded_detail() -> str:
+    """HTTP 413 detail for per-file upload limit (shared by claims and portal routes)."""
+    mb = get_settings().max_upload_file_size_mb
+    return f"File exceeds the maximum upload size of {mb} MB."
 
 
 def _adjuster_scope_params(auth: AuthContext) -> dict[str, Any]:
@@ -1349,8 +1358,8 @@ async def upload_claim_document(
         if not chunk:
             break
         total_size += len(chunk)
-        if total_size > _MAX_UPLOAD_SIZE_BYTES:
-            raise HTTPException(status_code=413, detail="File exceeds maximum upload size")
+        if total_size > _max_upload_file_size_bytes():
+            raise HTTPException(status_code=413, detail=_upload_file_size_exceeded_detail())
         chunks.append(chunk)
     content = b"".join(chunks)
     if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:
@@ -2267,10 +2276,13 @@ async def _process_claim_with_attachments(
                 if not chunk:
                     break
                 total_size += len(chunk)
-                if total_size > _MAX_UPLOAD_SIZE_BYTES:
+                if total_size > _max_upload_file_size_bytes():
+                    max_mb = get_settings().max_upload_file_size_mb
                     raise HTTPException(
                         status_code=413,
-                        detail=f"File '{f.filename}' exceeds the maximum upload size of {_MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
+                        detail=(
+                            f"File '{f.filename}' exceeds the maximum upload size of {max_mb} MB."
+                        ),
                     )
                 chunks.append(chunk)
             buffered_files.append((f.filename, b"".join(chunks), f.content_type))

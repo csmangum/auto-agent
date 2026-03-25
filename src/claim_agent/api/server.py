@@ -62,6 +62,11 @@ import logging
 
 _server_logger = logging.getLogger(__name__)
 
+# Bytes per MB for request body size checks (see request_body_size_limit_middleware).
+_MB = 1024 * 1024
+
+_BODY_LENGTH_REQUIRED_METHODS = frozenset({"POST", "PUT", "PATCH"})
+
 
 _DEV_ENVIRONMENTS = frozenset({"dev", "development", "test", "testing"})
 
@@ -84,6 +89,28 @@ def _check_auth_configuration() -> None:
             f"'{get_settings().auth.environment}'. "
             "Configure at least one auth mechanism before deploying, or set "
             "CLAIM_AGENT_ENVIRONMENT=development to allow unauthenticated access in a local dev setup."
+        )
+
+
+def _check_rate_limit_configuration() -> None:
+    """Warn in non-development environments when Redis is not configured for rate limiting.
+
+    In-memory rate limiting is not shared across uvicorn workers, so an attacker
+    can multiply their request budget by the number of workers. When
+    CLAIM_AGENT_ENVIRONMENT is not one of dev/development/test/testing and
+    REDIS_URL is unset, emit a warning so operators know to configure Redis before
+    going to production.
+    """
+    if get_settings().paths.redis_url:
+        return
+    env = get_settings().auth.environment.strip().lower()
+    if env not in _DEV_ENVIRONMENTS:
+        _server_logger.warning(
+            "Rate limiting uses in-memory storage (REDIS_URL not set). "
+            "Not shared across workers — each uvicorn worker enforces its own limit, "
+            "allowing attackers to multiply their request budget by the worker count. "
+            "For production, set REDIS_URL and install the redis extra: "
+            "pip install -e '.[redis]'."
         )
 
 
@@ -121,12 +148,7 @@ async def lifespan(_app: FastAPI):
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
     ensure_scheduler_running()
-
-    if not get_settings().paths.redis_url:
-        _server_logger.warning(
-            "Rate limiting uses in-memory storage (REDIS_URL not set). "
-            "Not shared across workers. For production, set REDIS_URL and pip install -e '.[redis]'."
-        )
+    _check_rate_limit_configuration()
 
     _idempotency_cleanup_task: asyncio.Task | None = None
     _idempotency_cleanup_stop = asyncio.Event()
@@ -205,8 +227,8 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.auth.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=settings.auth.cors_methods,
+        allow_headers=settings.auth.cors_headers,
     )
 
     async def _invalid_claim_transition_handler(
@@ -393,6 +415,68 @@ async def rate_limit_middleware(request: Request, call_next):
                 request,
                 429,
                 {"detail": "Rate limit exceeded. Try again later."},
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def request_body_size_limit_middleware(request: Request, call_next):
+    """Reject requests whose Content-Length exceeds the configured body size limit.
+
+    Applies a 10 MB cap to all non-file-upload endpoints and a 100 MB cap to
+    multipart/form-data requests (file uploads).  These limits are configurable
+    via MAX_REQUEST_BODY_SIZE_MB and MAX_UPLOAD_BODY_SIZE_MB environment variables.
+
+    The check uses the Content-Length header so that oversized payloads are
+    rejected before the body is read into memory.  Route handlers that accept
+    file uploads enforce additional per-file limits independently.
+
+    POST/PUT/PATCH under ``/api/`` must send ``Content-Length`` (not chunked
+    without a length) so limits cannot be bypassed via ``Transfer-Encoding:
+    chunked``.
+    """
+    path = _normalize_path(request.url.path)
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    method = request.method.upper()
+    content_length_header = request.headers.get("content-length")
+    if method in _BODY_LENGTH_REQUIRED_METHODS and content_length_header is None:
+        return _secured_api_json_response(
+            request,
+            status.HTTP_411_LENGTH_REQUIRED,
+            {"detail": "Content-Length required"},
+        )
+
+    if content_length_header is not None:
+        try:
+            content_length = int(content_length_header)
+        except ValueError:
+            return _secured_api_json_response(
+                request,
+                400,
+                {"detail": "Invalid Content-Length header"},
+            )
+
+        if content_length < 0:
+            return _secured_api_json_response(
+                request,
+                400,
+                {"detail": "Invalid Content-Length header"},
+            )
+
+        settings = get_settings()
+        content_type = request.headers.get("content-type", "").lower()
+        if "multipart/form-data" in content_type:
+            limit = settings.max_upload_body_size_mb * _MB
+        else:
+            limit = settings.max_request_body_size_mb * _MB
+
+        if content_length > limit:
+            return _secured_api_json_response(
+                request,
+                413,
+                {"detail": "Request body too large"},
             )
     return await call_next(request)
 

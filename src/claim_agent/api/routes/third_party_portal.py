@@ -14,10 +14,11 @@ from fastapi.responses import FileResponse
 
 from claim_agent.api.routes.claims import (
     _ALLOWED_DOCUMENT_EXTENSIONS,
-    _MAX_UPLOAD_SIZE_BYTES,
     _VALID_DOCUMENT_TYPES,
     _get_doc_repo,
+    _max_upload_file_size_bytes,
     _maybe_update_document_request_on_receipt,
+    _upload_file_size_exceeded_detail,
 )
 from claim_agent.api.routes.portal import (
     DisputeBody,
@@ -154,8 +155,8 @@ async def upload_third_party_portal_document(
         if not chunk:
             break
         total_size += len(chunk)
-        if total_size > _MAX_UPLOAD_SIZE_BYTES:
-            raise HTTPException(status_code=413, detail="File exceeds maximum upload size")
+        if total_size > _max_upload_file_size_bytes():
+            raise HTTPException(status_code=413, detail=_upload_file_size_exceeded_detail())
         chunks.append(chunk)
     content = b"".join(chunks)
     if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:

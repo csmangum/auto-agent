@@ -715,6 +715,24 @@ _DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
+_DEFAULT_CORS_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]
+
+_DEFAULT_CORS_HEADERS = [
+    "Authorization",
+    "Content-Type",
+    "Idempotency-Key",
+    "X-API-Key",
+    "X-Claim-Access-Token",
+    "X-Claim-Id",
+    "X-Email",
+    "X-Policy-Number",
+    "X-Portal-Token",
+    "X-Repair-Shop-Access-Token",
+    "X-Third-Party-Access-Token",
+    "X-Vin",
+    "X-Webhook-Signature",
+]
+
 
 @dataclass(frozen=True)
 class ApiKeyEntry:
@@ -765,6 +783,8 @@ class AuthConfig(BaseSettings):
         description="Opaque refresh token lifetime in seconds (default 7 days).",
     )
     cors_origins_raw: str = Field(default="", validation_alias="CORS_ORIGINS")
+    cors_methods_raw: str = Field(default="", validation_alias="CORS_METHODS")
+    cors_headers_raw: str = Field(default="", validation_alias="CORS_HEADERS")
     trust_forwarded_for: bool = Field(default=False, validation_alias="TRUST_FORWARDED_FOR")
     enforce_https: bool = Field(
         default=False,
@@ -853,6 +873,20 @@ class AuthConfig(BaseSettings):
         if raw:
             return [o.strip() for o in raw.split(",") if o.strip()]
         return list(_DEFAULT_CORS_ORIGINS)
+
+    @property
+    def cors_methods(self) -> list[str]:
+        raw = self.cors_methods_raw.strip()
+        if raw:
+            return [m.strip().upper() for m in raw.split(",") if m.strip()]
+        return list(_DEFAULT_CORS_METHODS)
+
+    @property
+    def cors_headers(self) -> list[str]:
+        raw = self.cors_headers_raw.strip()
+        if raw:
+            return [h.strip() for h in raw.split(",") if h.strip()]
+        return list(_DEFAULT_CORS_HEADERS)
 
 
 # ---------------------------------------------------------------------------
@@ -2115,6 +2149,38 @@ class Settings(BaseSettings):
         default=86400,
         validation_alias="IDEMPOTENCY_TTL_SECONDS",
         description="TTL in seconds for idempotency keys (default 24h)",
+    )
+    max_request_body_size_mb: int = Field(
+        default=10,
+        ge=1,
+        validation_alias="MAX_REQUEST_BODY_SIZE_MB",
+        description=(
+            "Maximum allowed request body size in megabytes for non-file-upload endpoints "
+            "(default 10 MB). POST/PUT/PATCH under /api/ must send Content-Length (not "
+            "chunked without a length); larger advertised lengths return HTTP 413 before "
+            "reading the body."
+        ),
+    )
+    max_upload_body_size_mb: int = Field(
+        default=100,
+        ge=1,
+        validation_alias="MAX_UPLOAD_BODY_SIZE_MB",
+        description=(
+            "Maximum allowed request body size in megabytes for multipart/form-data "
+            "file-upload endpoints (default 100 MB). Supplements the per-file limit "
+            "enforced by individual route handlers."
+        ),
+    )
+    max_upload_file_size_mb: int = Field(
+        default=50,
+        ge=1,
+        validation_alias="MAX_UPLOAD_FILE_SIZE_MB",
+        description=(
+            "Maximum size in megabytes for a single uploaded file on claims API routes "
+            "and claimant/repair/third-party portal document upload endpoints "
+            "(default 50 MB). The full multipart request is still capped by "
+            "MAX_UPLOAD_BODY_SIZE_MB."
+        ),
     )
     crew_verbose: bool = Field(default=True, validation_alias="CREWAI_VERBOSE")
     retention_period_years: int = 5
