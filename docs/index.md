@@ -86,7 +86,7 @@ flowchart LR
 | `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
 | `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
 | `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
-| `claim-agent ucspa-deadlines [--days N] [--no-webhooks]` | Check UCSPA deadlines; webhook alerts dispatched by default (`--no-webhooks` to suppress) |
+| `claim-agent ucspa-deadlines [--days N] [--webhooks / --no-webhooks]` | Check UCSPA deadlines; webhooks on by default (`--no-webhooks` to suppress) |
 | `claim-agent run-scheduler` | Run optional in-process scheduler in foreground (requires `SCHEDULER_ENABLED=true`) |
 
 ### Claim Types at a Glance

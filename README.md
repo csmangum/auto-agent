@@ -61,8 +61,8 @@ cp .env.example .env
 # Process a claim
 claim-agent process tests/sample_claims/partial_loss_parking.json
 
-# Check status (use the claim_id from the process output)
-claim-agent status CLM-11EEF959
+# Check status (use the claim_id printed by process)
+claim-agent status CLM-XXXXXXXX
 ```
 
 ## CLI Commands
@@ -88,11 +88,11 @@ claim-agent status CLM-11EEF959
 | `claim-agent retention-report [--years N] [--purge-years N] [--audit-purge-years N] [--include-litigation-hold-audit]` | Retention audit report (counts by tier, litigation hold, pending archive/purge) |
 | `claim-agent audit-log-export --output FILE [-o] [--dry-run] [--years N] ...` | Export audit log rows for purged claims past audit horizon (NDJSON) |
 | `claim-agent audit-log-purge [--dry-run] [--years N] [--ack-exported] ...` | Delete eligible audit log rows (requires `AUDIT_LOG_PURGE_ENABLED=true` and `--ack-exported`) |
-| `claim-agent litigation-hold --claim-id X --on|--off` | Set or clear litigation hold on a claim |
+| `claim-agent litigation-hold --claim-id X` plus `--on` or `--off` | Set or clear litigation hold (exactly one of `--on` / `--off`) |
 | `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
 | `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
 | `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
-| `claim-agent ucspa-deadlines [--days N] [--no-webhooks]` | Check UCSPA deadlines; webhook alerts dispatched by default (`--no-webhooks` to suppress) |
+| `claim-agent ucspa-deadlines [--days N] [--webhooks / --no-webhooks]` | Check UCSPA deadlines; webhooks on by default (`--no-webhooks` to suppress) |
 | `claim-agent run-scheduler` | Run optional in-process scheduler in foreground (requires `SCHEDULER_ENABLED=true`) |
 
 ## Sample Claims
@@ -161,7 +161,7 @@ src/claim_agent/
 ├── compliance/       # UCSPA and regulatory compliance
 ├── data/             # Data loaders
 ├── diary/            # Diary/calendar system (auto-create, escalation)
-├── workflow/         # Orchestrators (claim_review, siu, supplemental, handback)
+├── workflow/         # Routing, escalation, orchestrators (SIU, supplemental, dispute, handback, …)
 ├── services/         # Business logic services (adjuster, DSAR)
 ├── adapters/         # Policy, valuation, repair shop, parts, SIU adapters
 ├── mock_crew/        # Mock claimant, image gen, vision (testing)
