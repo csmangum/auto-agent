@@ -77,14 +77,14 @@ function ReserveTab({
       {
         onSuccess: () => {
           toast.success('Reserve updated');
+          setAmount('');
+          setReason('');
         },
         onError: (err) => {
           toast.error(getErrorMessage(err, 'Failed to update reserve'));
         },
       }
     );
-    setAmount('');
-    setReason('');
   };
 
   return (
@@ -411,23 +411,35 @@ function DocumentsTab({
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      uploadMutation.mutate(
-        {
-          file,
-          documentType: uploadType,
-          receivedFrom: uploadFrom,
-        },
-        {
-          onSuccess: () => {
-            toast.success(`Uploaded ${file.name}`);
-          },
-          onError: (err) => {
-            toast.error(getErrorMessage(err, 'Upload failed'));
-          },
-        }
+    const list = Array.from(files);
+    void (async () => {
+      const outcomes = await Promise.allSettled(
+        list.map((file) =>
+          uploadMutation.mutateAsync({
+            file,
+            documentType: uploadType,
+            receivedFrom: uploadFrom,
+          })
+        )
       );
-    }
+      const ok = outcomes.filter((o) => o.status === 'fulfilled').length;
+      const failed = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
+      if (ok > 0) {
+        toast.success(
+          ok === 1 && list.length === 1
+            ? `Uploaded ${list[0].name}`
+            : `Uploaded ${ok} of ${list.length} file${list.length === 1 ? '' : 's'}`
+        );
+      }
+      if (failed.length > 0) {
+        const first = failed[0].reason;
+        toast.error(
+          failed.length === 1
+            ? getErrorMessage(first, 'Upload failed')
+            : `${failed.length} uploads failed: ${getErrorMessage(first, 'Upload failed')}`
+        );
+      }
+    })();
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -619,9 +631,6 @@ function DocumentsTab({
                           updateDocMutation.mutate(
                             { docId: doc.id, body: { review_status: e.target.value } },
                             {
-                              onSuccess: () => {
-                                toast.success('Review status updated');
-                              },
                               onError: (err) => {
                                 toast.error(getErrorMessage(err, 'Failed to update document'));
                               },
@@ -736,6 +745,7 @@ interface AddRelationshipFormProps {
   parties: ClaimParty[];
   onSubmit: (body: { from_party_id: number; to_party_id: number; relationship_type: string }) => void;
   isPending: boolean;
+  /** Last mutation error from the parent; used so the form reset effect does not run on failure. Toasts surface errors to the user. */
   error: Error | null;
   onSuccess: () => void;
 }

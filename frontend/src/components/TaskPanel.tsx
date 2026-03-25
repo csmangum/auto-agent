@@ -9,7 +9,10 @@ import { formatDateTime } from '../utils/date';
 import EmptyState from './EmptyState';
 import { getErrorMessage } from '../utils/errorMessage';
 
-function isTaskTitleValidationMessage(msg: string): boolean {
+/** Backend validation on title; show inline only and avoid duplicate error toasts. */
+function isTaskCreateTitleValidationError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : '';
+  if (!msg.trim()) return false;
   const m = msg.toLowerCase();
   return m.includes('title') || m.includes('empty');
 }
@@ -110,8 +113,7 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
       toast.success('Task created');
     },
     onError: (err) => {
-      const msg = err instanceof Error ? err.message : '';
-      if (!isTaskTitleValidationMessage(msg)) {
+      if (!isTaskCreateTitleValidationError(err)) {
         toast.error(getErrorMessage(err, 'Failed to create task'));
       }
     },
@@ -130,7 +132,7 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
   };
 
   const errorMsg = mutation.error instanceof Error ? mutation.error.message : '';
-  const isTitleError = mutation.isError && (errorMsg.toLowerCase().includes('title') || errorMsg.toLowerCase().includes('empty'));
+  const isTitleError = mutation.isError && isTaskCreateTitleValidationError(mutation.error);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-gray-900/50 rounded-lg p-4 ring-1 ring-gray-700/50" aria-label="Create new task">
