@@ -106,6 +106,17 @@ async def lifespan(_app: FastAPI):
         alembic_cfg = Config(Path(__file__).resolve().parent.parent.parent.parent / "alembic.ini")
         command.upgrade(alembic_cfg, "head")
     elif not is_postgres_backend():
+        env = get_settings().auth.environment.strip().lower()
+        if env not in _DEV_ENVIRONMENTS:
+            _server_logger.warning(
+                "SQLite is configured as the database backend "
+                "(DATABASE_URL is not set). SQLite does not support concurrent writes "
+                "and will cause 'database is locked' errors under a multi-worker API "
+                "server. It also has no replication, high-availability, or "
+                "point-in-time recovery. Set DATABASE_URL to a PostgreSQL connection "
+                "string and run 'alembic upgrade head' before going to production. "
+                "See docs/database.md for details."
+            )
         ensure_fresh_db_on_startup()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()

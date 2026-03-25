@@ -2,6 +2,8 @@
 
 The system supports **SQLite** (default) and **PostgreSQL** for persistent storage of claims, audit logs, and workflow results.
 
+> **Production / Pilot requirement:** SQLite is suitable for local development and single-process testing only. It does not support concurrent writes, has no replication or high-availability, and provides no point-in-time recovery. Any multi-worker or production deployment **must** use PostgreSQL. See [Production & Pilot Readiness](#production--pilot-readiness) below.
+
 For configuration options, see [Configuration](configuration.md).
 
 ## Configuration
@@ -13,6 +15,96 @@ For configuration options, see [Configuration](configuration.md).
 | `READ_REPLICA_DATABASE_URL` | (unset) | Optional PostgreSQL read-replica URL. When set alongside `DATABASE_URL`, read-heavy queries are routed to this replica; all writes still go to the primary. Example: `postgresql://user:pass@replica-host:5432/claims` |
 | `DB_POOL_SIZE` | `5` | SQLAlchemy `pool_size` when using PostgreSQL (`ge=1`). Applied to both primary and replica engines. |
 | `DB_MAX_OVERFLOW` | `10` | SQLAlchemy `max_overflow` when using PostgreSQL (`ge=0`). Applied to both primary and replica engines. |
+| `RUN_MIGRATIONS_ON_STARTUP` | `true` | When `true` (default), the API server runs `alembic upgrade head` automatically at startup. Set to `false` to run migrations as a separate deploy step. |
+
+## Production & Pilot Readiness
+
+### Why PostgreSQL is required for production
+
+| Concern | SQLite | PostgreSQL |
+|---------|--------|-----------|
+| Concurrent writes (multiple workers) | ❌ Single-writer; `database is locked` errors | ✅ Full MVCC |
+| High availability / replication | ❌ None | ✅ Streaming replication, RDS Multi-AZ |
+| Point-in-time recovery | ❌ None | ✅ WAL archiving, RDS automated backups |
+| Connection pooling | ❌ No pooling | ✅ QueuePool (configurable) |
+| Multi-process API server | ❌ Incompatible | ✅ Required for any `--workers` > 1 |
+
+### Quick-start: switching to PostgreSQL
+
+1. **Provision a PostgreSQL instance** (local Docker, RDS, Cloud SQL, Azure DB, etc.).
+
+   ```bash
+   # Example: local Docker
+   docker run -d --name claims-pg \
+     -e POSTGRES_USER=claims -e POSTGRES_PASSWORD=secret \
+     -e POSTGRES_DB=claims \
+     -p 5432:5432 postgres:16
+   ```
+
+2. **Set `DATABASE_URL`** in `.env`:
+
+   ```
+   DATABASE_URL=postgresql://claims:secret@localhost:5432/claims
+   ```
+
+3. **Apply migrations** (the app does this automatically on startup when `RUN_MIGRATIONS_ON_STARTUP=true`, or run manually):
+
+   ```bash
+   alembic upgrade head
+   ```
+
+4. **Start the API server** (now safe for multiple workers):
+
+   ```bash
+   claim-agent serve --workers 4
+   ```
+
+### Database backups
+
+#### Self-managed PostgreSQL (pg_dump)
+
+Schedule a cron job to dump the database regularly:
+
+```bash
+# /etc/cron.d/claims-pg-backup – daily backup at 02:00 UTC, 14-day retention
+0 2 * * * postgres pg_dump -Fc -U claims claims \
+  > /backups/claims_$(date +\%Y\%m\%d_\%H\%M\%S).dump \
+  && find /backups -name 'claims_*.dump' -mtime +14 -delete
+```
+
+For point-in-time recovery, enable WAL archiving in `postgresql.conf`:
+
+```
+wal_level = replica
+archive_mode = on
+archive_command = 'cp %p /wal_archive/%f'
+```
+
+#### AWS RDS
+
+Enable **automated backups** (1–35 day retention window) and **Multi-AZ** for failover:
+
+```bash
+aws rds modify-db-instance \
+  --db-instance-identifier claims-db \
+  --backup-retention-period 14 \
+  --multi-az \
+  --apply-immediately
+```
+
+Use **RDS snapshots** before schema migrations. Create a manual snapshot:
+
+```bash
+aws rds create-db-snapshot \
+  --db-instance-identifier claims-db \
+  --db-snapshot-identifier claims-pre-migration-$(date +%Y%m%d)
+```
+
+#### Restore from pg_dump backup
+
+```bash
+pg_restore -U claims -d claims /backups/claims_YYYYMMDD_HHMMSS.dump
+```
 
 ## PostgreSQL Setup
 
