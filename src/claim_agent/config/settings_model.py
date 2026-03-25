@@ -2144,6 +2144,24 @@ class Settings(BaseSettings):
     max_concurrent_background_tasks: int = Field(
         default=10, validation_alias="CLAIM_AGENT_MAX_CONCURRENT_BACKGROUND_TASKS"
     )
+    task_recovery_enabled: bool = Field(
+        default=True,
+        validation_alias="CLAIM_AGENT_TASK_RECOVERY_ENABLED",
+        description=(
+            "When true, on startup the server scans for claims stuck in 'processing' "
+            "status for longer than task_recovery_stuck_minutes and marks them "
+            "'needs_review' so they can be manually retried. Default: true."
+        ),
+    )
+    task_recovery_stuck_minutes: int = Field(
+        default=30,
+        ge=1,
+        validation_alias="CLAIM_AGENT_TASK_RECOVERY_STUCK_MINUTES",
+        description=(
+            "Number of minutes a claim must be in 'processing' status before it is "
+            "considered stuck on startup recovery. Default: 30."
+        ),
+    )
     idempotency_ttl_seconds: int = Field(
         default=86400,
         validation_alias="IDEMPOTENCY_TTL_SECONDS",
