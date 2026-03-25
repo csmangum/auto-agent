@@ -1,12 +1,19 @@
-"""Webhook delivery with HMAC signing and retry."""
+"""Webhook delivery with HMAC signing and async retry.
 
+Uses a single background asyncio event loop (daemon thread) so that
+``asyncio.sleep()`` during exponential-backoff retries never blocks a shared
+thread pool.  Multiple in-flight retries run concurrently inside the one loop
+without monopolising any thread.
+"""
+
+import asyncio
 import atexit
 import hashlib
 import hmac
 import json
 import logging
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
@@ -16,15 +23,41 @@ from claim_agent.config.settings import get_mock_crew_config, get_mock_webhook_c
 
 logger = logging.getLogger(__name__)
 
-_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
+# ---------------------------------------------------------------------------
+# Background asyncio event loop
+# ---------------------------------------------------------------------------
+
+_loop: asyncio.AbstractEventLoop | None = None
+_loop_thread: threading.Thread | None = None
+_loop_lock = threading.Lock()
 
 
-def _shutdown_executor() -> None:
-    """Shut down the webhook executor for clean process exit."""
-    _EXECUTOR.shutdown(wait=False)
+def _get_loop() -> asyncio.AbstractEventLoop:
+    """Return (and lazily start) the shared background event loop."""
+    global _loop, _loop_thread
+    if _loop is not None and not _loop.is_closed():
+        return _loop
+    with _loop_lock:
+        if _loop is not None and not _loop.is_closed():
+            return _loop
+        _loop = asyncio.new_event_loop()
+        _loop_thread = threading.Thread(
+            target=_loop.run_forever,
+            name="webhook-event-loop",
+            daemon=True,
+        )
+        _loop_thread.start()
+    return _loop
 
 
-atexit.register(_shutdown_executor)
+def _shutdown_loop() -> None:
+    """Signal the background loop to stop on process exit."""
+    global _loop
+    if _loop is not None and not _loop.is_closed():
+        _loop.call_soon_threadsafe(_loop.stop)
+
+
+atexit.register(_shutdown_loop)
 
 # UCSPA deadline-approaching event (not status-based)
 UCSPA_DEADLINE_APPROACHING = "ucspa.deadline_approaching"
@@ -63,14 +96,19 @@ def _sign_payload(secret: str, body: bytes) -> str:
     ).hexdigest()
 
 
-def _deliver_one(
+async def _deliver_one(
     url: str,
     payload: dict[str, Any],
     secret: str,
     max_retries: int,
     dead_letter_path: str | None,
 ) -> None:
-    """Deliver webhook to a single URL with retry and exponential backoff."""
+    """Deliver webhook to a single URL with async retry and exponential backoff.
+
+    Uses ``httpx.AsyncClient`` so that ``asyncio.sleep()`` during back-off
+    yields the event loop to other pending deliveries instead of blocking a
+    thread.  Latency and outcome are logged for observability.
+    """
     body = json.dumps(payload).encode("utf-8")
     signature = _sign_payload(secret, body)
     headers = {
@@ -81,52 +119,59 @@ def _deliver_one(
         headers["X-Webhook-Signature"] = f"sha256={signature}"
 
     last_error: Exception | None = None
-    for attempt in range(max_retries + 1):
-        try:
-            with httpx.Client(timeout=30.0) as client:
-                resp = client.post(url, content=body, headers=headers)
-            if 200 <= resp.status_code < 300:
-                logger.debug(
-                    "Webhook delivered to %s event=%s claim_id=%s",
-                    url,
-                    payload.get("event"),
-                    payload.get("claim_id"),
+    start = time.monotonic()
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for attempt in range(max_retries + 1):
+            try:
+                resp = await client.post(url, content=body, headers=headers)
+                if 200 <= resp.status_code < 300:
+                    latency_ms = (time.monotonic() - start) * 1000
+                    logger.info(
+                        "Webhook delivered to %s event=%s claim_id=%s attempt=%d latency_ms=%.1f",
+                        url,
+                        payload.get("event"),
+                        payload.get("claim_id"),
+                        attempt + 1,
+                        latency_ms,
+                    )
+                    return
+                last_error = httpx.HTTPStatusError(
+                    f"Webhook returned {resp.status_code}",
+                    request=resp.request,
+                    response=resp,
                 )
-                return
-            last_error = httpx.HTTPStatusError(
-                f"Webhook returned {resp.status_code}",
-                request=resp.request,
-                response=resp,
-            )
-            # Retriable: 408 (timeout), 429 (rate limit), 5xx
-            if resp.status_code in (408, 429) or 500 <= resp.status_code < 600:
-                pass  # fall through to retry
-            else:
-                # Non-retriable (typically 4xx). Do not retry.
+                # Retriable: 408 (timeout), 429 (rate limit), 5xx
+                if resp.status_code in (408, 429) or 500 <= resp.status_code < 600:
+                    pass  # fall through to retry
+                else:
+                    # Non-retriable (typically 4xx). Do not retry.
+                    logger.warning(
+                        "Non-retriable webhook response %s from %s; not retrying.",
+                        resp.status_code,
+                        url,
+                    )
+                    break
+            except Exception as e:
+                last_error = e
                 logger.warning(
-                    "Non-retriable webhook response %s from %s; not retrying.",
-                    resp.status_code,
+                    "Webhook attempt %d/%d to %s failed: %s",
+                    attempt + 1,
+                    max_retries + 1,
                     url,
+                    e,
                 )
-                break
-        except Exception as e:
-            last_error = e
-            logger.warning(
-                "Webhook attempt %d/%d to %s failed: %s",
-                attempt + 1,
-                max_retries + 1,
-                url,
-                e,
-            )
 
-        if attempt < max_retries:
-            wait = min(2**attempt, 60)
-            time.sleep(wait)
+            if attempt < max_retries:
+                wait = min(2**attempt, 60)
+                await asyncio.sleep(wait)
 
+    latency_ms = (time.monotonic() - start) * 1000
     logger.error(
-        "Webhook delivery failed after %d attempts to %s: %s",
+        "Webhook delivery failed after %d attempts to %s latency_ms=%.1f: %s",
         max_retries + 1,
         url,
+        latency_ms,
         last_error,
     )
     if dead_letter_path:
@@ -138,7 +183,7 @@ def _deliver_one(
 
 
 def dispatch_webhook(event: str, payload: dict[str, Any]) -> None:
-    """Dispatch webhook to all configured URLs. Runs in thread pool, non-blocking."""
+    """Dispatch webhook to all configured URLs. Non-blocking: schedules delivery on the background event loop."""
     payload = {**payload, "event": event, "timestamp": datetime.now(timezone.utc).isoformat()}
 
     # Mock webhook capture: record payload in-memory and skip real HTTP delivery
@@ -152,10 +197,10 @@ def dispatch_webhook(event: str, payload: dict[str, Any]) -> None:
     if not config["enabled"] or not config["urls"]:
         return
 
-    def run():
+    async def run():
         for url in config["urls"]:
             try:
-                _deliver_one(
+                await _deliver_one(
                     url,
                     payload,
                     config["secret"],
@@ -165,7 +210,7 @@ def dispatch_webhook(event: str, payload: dict[str, Any]) -> None:
             except Exception as e:
                 logger.exception("Webhook dispatch error for %s: %s", url, e)
 
-    _EXECUTOR.submit(run)
+    asyncio.run_coroutine_threadsafe(run(), _get_loop())
 
 
 def dispatch_claim_event(
@@ -299,9 +344,9 @@ def dispatch_repair_authorized(
             capture_webhook("repair.authorized", full_payload)
             return
 
-        def run_shop():
+        async def run_shop():
             try:
-                _deliver_one(
+                await _deliver_one(
                     shop_url,
                     full_payload,
                     config["secret"],
@@ -310,4 +355,5 @@ def dispatch_repair_authorized(
                 )
             except Exception as e:
                 logger.exception("Shop webhook delivery error for %s: %s", shop_url, e)
-        _EXECUTOR.submit(run_shop)
+
+        asyncio.run_coroutine_threadsafe(run_shop(), _get_loop())
