@@ -174,6 +174,7 @@ def run_claim_workflow(
     resume_run_id: str | None = None,
     from_stage: str | None = None,
     ctx: ClaimContext | None = None,
+    processing_lock_already_held: bool = False,
 ) -> dict:
     """Run the full claim workflow: classify with router crew, then run the appropriate workflow crew.
 
@@ -194,6 +195,10 @@ def run_claim_workflow(
         from_stage: When resuming, invalidate checkpoints at and after this stage
             and re-execute from here.  One of ``WORKFLOW_STAGES``.
         ctx: Dependency-injection context. When ``None``, one is built from defaults.
+        processing_lock_already_held: If true, skip :meth:`ClaimRepository.acquire_processing_lock`
+            because the caller already transitioned the claim to ``processing`` (e.g. human-review
+            handback).  The claim must be in ``processing`` status or :class:`DomainValidationError`
+            is raised.
 
     Returns:
         dict with claim_id, claim_type, status, summary, workflow_output, and
@@ -259,8 +264,17 @@ def run_claim_workflow(
         litellm_callback: LiteLLMTracingCallback | None = None
         processing_lock_held = False
         try:
-            repo.acquire_processing_lock(claim_id, actor_id=_actor)
-            processing_lock_held = True
+            if processing_lock_already_held:
+                current = repo.get_claim(claim_id)
+                if not current or current.get("status") != STATUS_PROCESSING:
+                    raise DomainValidationError(
+                        f"processing_lock_already_held requires claim {claim_id} "
+                        f"to be in {STATUS_PROCESSING!r} status"
+                    )
+                processing_lock_held = True
+            else:
+                repo.acquire_processing_lock(claim_id, actor_id=_actor)
+                processing_lock_held = True
             logger.log_event("workflow_started", status=STATUS_PROCESSING)
 
             db_parties = repo.get_claim_parties(claim_id)

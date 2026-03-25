@@ -215,3 +215,26 @@ class TestAcquireProcessingLock:
         with patch.object(repository_module, "get_connection", patched_get_connection):
             with pytest.raises(InvalidClaimTransitionError, match="concurrently"):
                 repo.acquire_processing_lock(claim_id)
+
+
+class TestRunClaimWorkflowProcessingLockAlreadyHeld:
+    """run_claim_workflow(processing_lock_already_held=True) for handback-style entry."""
+
+    def test_raises_when_claim_not_in_processing(self, repo, claim_id, monkeypatch):
+        from claim_agent.context import ClaimContext
+        from claim_agent.db.claim_data import claim_data_from_row
+        from claim_agent.exceptions import DomainValidationError
+        from claim_agent.workflow.orchestrator import run_claim_workflow
+
+        monkeypatch.setenv("MOCK_CREW_ENABLED", "true")
+        row = repo.get_claim(claim_id)
+        claim_data = claim_data_from_row(row)
+        ctx = ClaimContext.from_defaults(db_path=repo.db_path)
+
+        with pytest.raises(DomainValidationError, match="processing_lock_already_held"):
+            run_claim_workflow(
+                claim_data,
+                existing_claim_id=claim_id,
+                ctx=ctx,
+                processing_lock_already_held=True,
+            )

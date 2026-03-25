@@ -32,21 +32,33 @@ _loop_thread: threading.Thread | None = None
 _loop_lock = threading.Lock()
 
 
+def _run_loop(loop: asyncio.AbstractEventLoop, ready: threading.Event) -> None:
+    """Run the background event loop in its dedicated thread; signal when it can accept work."""
+    asyncio.set_event_loop(loop)
+    loop.call_soon(ready.set)
+    loop.run_forever()
+
+
 def _get_loop() -> asyncio.AbstractEventLoop:
     """Return (and lazily start) the shared background event loop."""
     global _loop, _loop_thread
     if _loop is not None and not _loop.is_closed():
         return _loop
+    ready = threading.Event()
     with _loop_lock:
         if _loop is not None and not _loop.is_closed():
             return _loop
-        _loop = asyncio.new_event_loop()
+        new_loop = asyncio.new_event_loop()
+        _loop = new_loop
         _loop_thread = threading.Thread(
-            target=_loop.run_forever,
+            target=_run_loop,
+            args=(new_loop, ready),
             name="webhook-event-loop",
             daemon=True,
         )
         _loop_thread.start()
+    if not ready.wait(timeout=30.0):
+        raise RuntimeError("Webhook background event loop failed to start")
     return _loop
 
 
