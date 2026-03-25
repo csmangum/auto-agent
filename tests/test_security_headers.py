@@ -12,11 +12,14 @@ def _use_seeded_db(seeded_temp_db):
 
 @pytest.fixture(autouse=True)
 def _clear_rate_limit():
-    """Clear rate limit buckets before each test to avoid 429 interference."""
+    """Clear rate limit buckets before and after each test to avoid 429 interference."""
     from claim_agent.api.rate_limit import clear_rate_limit_buckets
 
     clear_rate_limit_buckets()
-    yield
+    try:
+        yield
+    finally:
+        clear_rate_limit_buckets()
 
 
 @pytest.fixture
@@ -68,7 +71,10 @@ class TestUnconditionalSecurityHeaders:
 
     def test_content_security_policy(self, client):
         resp = client.get("/api/health")
-        assert resp.headers.get("content-security-policy") == "default-src 'self'"
+        csp = resp.headers.get("content-security-policy", "")
+        assert "default-src 'self'" in csp
+        assert "script-src 'self' 'unsafe-inline'" in csp
+        assert "style-src 'self' 'unsafe-inline'" in csp
 
     def test_no_hsts_without_enforce_https(self, client):
         """HSTS must NOT be set when ENFORCE_HTTPS is false (avoid breaking HTTP-only dev)."""
@@ -187,7 +193,8 @@ class TestHttpsRedirectMiddleware:
         assert resp.status_code == 307
         assert resp.headers.get("x-content-type-options") == "nosniff"
         assert resp.headers.get("x-frame-options") == "DENY"
-        assert resp.headers.get("content-security-policy") == "default-src 'self'"
+        csp = resp.headers.get("content-security-policy", "")
+        assert "default-src 'self'" in csp
 
     def test_post_redirect_is_307(self, https_client):
         """307 preserves method; ensure redirect applies to POST."""
@@ -236,3 +243,61 @@ class TestHttpsRedirectMiddleware:
             follow_redirects=False,
         )
         assert resp.status_code == 200
+
+
+class TestSecurityHeadersOnShortCircuitResponses:
+    """Security headers must be present even when auth or rate-limit middleware short-circuits."""
+
+    def test_headers_on_401_from_auth_middleware(self, monkeypatch):
+        """401 from auth_middleware must still carry all security headers."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("API_KEYS", "valid-key:adjuster")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            resp = tc.get("/api/claims/stats")  # protected endpoint, no auth header
+        assert resp.status_code == 401
+        assert resp.headers.get("x-content-type-options") == "nosniff"
+        assert resp.headers.get("x-frame-options") == "DENY"
+        assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+        csp = resp.headers.get("content-security-policy", "")
+        assert "default-src 'self'" in csp
+
+    def test_headers_on_429_from_rate_limit_middleware(self, monkeypatch):
+        """429 from rate_limit_middleware must still carry all security headers."""
+        from claim_agent.api.rate_limit import clear_rate_limit_buckets, is_rate_limited
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("TRUST_FORWARDED_FOR", "true")
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        reload_settings()
+
+        # Exhaust rate limit for a known IP: is_rate_limited() both checks AND increments
+        # the counter, so calling it _MAX_REQUESTS times brings the IP to the limit.
+        test_ip = "10.99.99.99"
+        clear_rate_limit_buckets()
+        from claim_agent.api.rate_limit import _MAX_REQUESTS
+
+        for _ in range(_MAX_REQUESTS):
+            is_rate_limited(test_ip)
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            resp = tc.get(
+                "/api/claims/stats",
+                headers={"X-Forwarded-For": test_ip},
+            )
+        assert resp.status_code == 429
+        assert resp.headers.get("x-content-type-options") == "nosniff"
+        assert resp.headers.get("x-frame-options") == "DENY"
+        assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+        csp = resp.headers.get("content-security-policy", "")
+        assert "default-src 'self'" in csp
