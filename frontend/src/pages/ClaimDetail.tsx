@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTabs } from '../utils/useTabs';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import PageHeader from '../components/PageHeader';
@@ -854,9 +855,16 @@ function AddRelationshipForm({ parties, onSubmit, isPending, error, onSuccess }:
   );
 }
 
+const CLAIM_DETAIL_TABS = [
+  'overview', 'tasks', 'documents', 'reserve', 'payments',
+  'notes', 'comms', 'coverage', 'audit', 'workflows',
+] as const;
+type ClaimDetailTab = (typeof CLAIM_DETAIL_TABS)[number];
+
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useTabs<ClaimDetailTab>(CLAIM_DETAIL_TABS, 'overview');
+  const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const { data: claim, isLoading: claimLoading, error: claimError } = useClaim(claimId);
   const {
     data: historyData,
@@ -930,17 +938,29 @@ export default function ClaimDetail() {
   if (!claim) return null;
 
   const tabs = [
-    { key: 'overview', label: 'Overview', icon: '📋' },
-    { key: 'tasks', label: `Tasks (${claim?.tasks_total ?? tasks.length})`, icon: '☑️' },
-    { key: 'documents', label: `Documents (${documents.length || attachments.length})`, icon: '📎' },
-    { key: 'reserve', label: `Reserve (${reserveHistory.length})`, icon: '💰' },
-    { key: 'payments', label: 'Payments', icon: '💳' },
-    { key: 'notes', label: `Notes (${notesFollowUpsCount})`, icon: '📝' },
-    { key: 'comms', label: 'Comms Log', icon: '💬' },
-    { key: 'coverage', label: 'Coverage', icon: '🛡️' },
-    { key: 'audit', label: `Audit (${history.length})`, icon: '📜' },
-    { key: 'workflows', label: `Workflows (${workflows.length})`, icon: '🔄' },
+    { key: 'overview' as ClaimDetailTab, label: 'Overview', icon: '📋' },
+    { key: 'tasks' as ClaimDetailTab, label: `Tasks (${claim?.tasks_total ?? tasks.length})`, icon: '☑️' },
+    { key: 'documents' as ClaimDetailTab, label: `Documents (${documents.length || attachments.length})`, icon: '📎' },
+    { key: 'reserve' as ClaimDetailTab, label: `Reserve (${reserveHistory.length})`, icon: '💰' },
+    { key: 'payments' as ClaimDetailTab, label: 'Payments', icon: '💳' },
+    { key: 'notes' as ClaimDetailTab, label: `Notes (${notesFollowUpsCount})`, icon: '📝' },
+    { key: 'comms' as ClaimDetailTab, label: 'Comms Log', icon: '💬' },
+    { key: 'coverage' as ClaimDetailTab, label: 'Coverage', icon: '🛡️' },
+    { key: 'audit' as ClaimDetailTab, label: `Audit (${history.length})`, icon: '📜' },
+    { key: 'workflows' as ClaimDetailTab, label: `Workflows (${workflows.length})`, icon: '🔄' },
   ];
+
+  const handleTabKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    let next = idx;
+    if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    setActiveTab(tabs[next].key);
+    tabsRef.current[next]?.focus();
+  };
 
   const fields = [
     { label: 'Policy Number', value: claim.policy_number },
@@ -976,11 +996,18 @@ export default function ClaimDetail() {
 
       {/* Tabs */}
       <div className="border-b border-gray-700/50">
-        <nav className="flex gap-1">
-          {tabs.map((tab) => (
+        <nav role="tablist" aria-label="Claim sections" className="flex gap-1">
+          {tabs.map((tab, idx) => (
             <button
               key={tab.key}
+              id={`claim-tab-${tab.key}`}
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              aria-controls={`claim-panel-${tab.key}`}
+              tabIndex={activeTab === tab.key ? 0 : -1}
+              ref={(el) => { tabsRef.current[idx] = el; }}
               onClick={() => setActiveTab(tab.key)}
+              onKeyDown={(e) => handleTabKeyDown(e, idx)}
               className={`flex items-center gap-2 px-4 pb-3 pt-1 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
                   ? 'border-blue-500 text-blue-400'
@@ -995,7 +1022,13 @@ export default function ClaimDetail() {
       </div>
 
       {/* Tab content */}
-      <div className="animate-fade-in" key={activeTab}>
+      <div
+        role="tabpanel"
+        id={`claim-panel-${activeTab}`}
+        aria-labelledby={`claim-tab-${activeTab}`}
+        className="animate-fade-in"
+        key={activeTab}
+      >
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Details grid */}

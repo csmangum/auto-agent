@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
+import { useTabs } from '../utils/useTabs';
 import { toast } from 'sonner';
 import { getPortalSession, portalApi } from '../api/portalClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -49,16 +50,20 @@ function isOpenDocumentRequestStatus(status: string | undefined): boolean {
   return ['requested', 'partial', 'overdue'].includes(status.toLowerCase());
 }
 
+const PORTAL_DETAIL_TABS = [
+  'status', 'documents', 'messages', 'repair', 'payments', 'rental', 'dispute',
+] as const;
+type PortalDetailTab = (typeof PORTAL_DETAIL_TABS)[number];
+
 export default function PortalClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
   const navigate = useNavigate();
   const { logout } = usePortal();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const [activeTab, setActiveTab] = useState<
-    'status' | 'documents' | 'messages' | 'repair' | 'payments' | 'rental' | 'dispute'
-  >('status');
+  const [activeTab, setActiveTab] = useTabs<PortalDetailTab>(PORTAL_DETAIL_TABS, 'status');
   const [uploading, setUploading] = useState(false);
 
   const { data: claimData, isLoading, error, isSuccess: claimQuerySuccess } = useQuery({
@@ -223,22 +228,34 @@ export default function PortalClaimDetail() {
   }
 
   const tabs = [
-    { key: 'status' as const, label: 'Status', count: null },
-    { key: 'documents' as const, label: 'Documents', count: documents.length },
+    { key: 'status' as PortalDetailTab, label: 'Status', count: null },
+    { key: 'documents' as PortalDetailTab, label: 'Documents', count: documents.length },
     {
-      key: 'messages' as const,
+      key: 'messages' as PortalDetailTab,
       label: 'Messages',
       count: pendingFollowUps.length || null,
     },
-    { key: 'repair' as const, label: 'Repair Status', count: null },
-    { key: 'payments' as const, label: 'Payments', count: null },
+    { key: 'repair' as PortalDetailTab, label: 'Repair Status', count: null },
+    { key: 'payments' as PortalDetailTab, label: 'Payments', count: null },
     {
-      key: 'rental' as const,
+      key: 'rental' as PortalDetailTab,
       label: 'Rental',
       count: rentalTabBadgeCount > 0 ? rentalTabBadgeCount : null,
     },
-    { key: 'dispute' as const, label: 'Dispute', count: null },
+    { key: 'dispute' as PortalDetailTab, label: 'Dispute', count: null },
   ];
+
+  const handleTabKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    let next = idx;
+    if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    setActiveTab(tabs[next].key);
+    tabsRef.current[next]?.focus();
+  };
 
   const canDispute = ['settled', 'open'].includes(claim.status as string);
 
@@ -289,11 +306,18 @@ export default function PortalClaimDetail() {
         </div>
 
         <div className="border-b border-gray-700/50 mb-6 overflow-x-auto">
-          <nav className="flex gap-1 min-w-max">
-            {tabs.map((tab) => (
+          <nav role="tablist" aria-label="Claim sections" className="flex gap-1 min-w-max">
+            {tabs.map((tab, idx) => (
               <button
                 key={tab.key}
+                id={`portal-tab-${tab.key}`}
+                role="tab"
+                aria-selected={activeTab === tab.key}
+                aria-controls={`portal-panel-${tab.key}`}
+                tabIndex={activeTab === tab.key ? 0 : -1}
+                ref={(el) => { tabsRef.current[idx] = el; }}
                 onClick={() => setActiveTab(tab.key)}
+                onKeyDown={(e) => handleTabKeyDown(e, idx)}
                 className={`flex items-center gap-2 px-3 pb-3 pt-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.key
                     ? 'border-emerald-500 text-emerald-400'
@@ -311,7 +335,13 @@ export default function PortalClaimDetail() {
           </nav>
         </div>
 
-        <div className="animate-fade-in" key={activeTab}>
+        <div
+          role="tabpanel"
+          id={`portal-panel-${activeTab}`}
+          aria-labelledby={`portal-tab-${activeTab}`}
+          className="animate-fade-in"
+          key={activeTab}
+        >
           {activeTab === 'status' && (
             <StatusTab claim={claim} history={customerHistory} />
           )}

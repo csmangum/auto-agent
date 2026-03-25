@@ -443,4 +443,45 @@ describe('PortalClaimDetail', () => {
     expect(screen.getByText(/I have uploaded the photos as requested/)).toBeInTheDocument();
     expect(screen.getByText('Your response')).toBeInTheDocument();
   });
+
+  it('reads active tab from ?tab= search param', async () => {
+    const WrapperWithParam = createWrapper('/portal/claims/CLM-001?tab=documents');
+    mockGetDocuments.mockResolvedValue({ documents: [], total: 0 });
+    render(
+      <WrapperWithParam>
+        <PortalClaimDetail />
+      </WrapperWithParam>
+    );
+    await screen.findByText('Claim CLM-001...');
+    expect(screen.getByRole('tab', { name: 'Documents' })).toHaveAttribute('aria-selected', 'true');
+    expect(mockGetDocuments).toHaveBeenCalledWith('CLM-001');
+  });
+
+  it('falls back to status tab for an invalid ?tab= value', async () => {
+    const WrapperWithParam = createWrapper('/portal/claims/CLM-001?tab=bogus');
+    render(
+      <WrapperWithParam>
+        <PortalClaimDetail />
+      </WrapperWithParam>
+    );
+    await screen.findByText('Claim CLM-001...');
+    expect(screen.getByRole('tab', { name: 'Status' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Claim Summary')).toBeInTheDocument();
+  });
+
+  it('portal tab buttons have correct WAI-ARIA attributes', async () => {
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    const tablist = screen.getByRole('tablist');
+    expect(tablist).toBeInTheDocument();
+    const statusTab = screen.getByRole('tab', { name: 'Status' });
+    expect(statusTab).toHaveAttribute('aria-selected', 'true');
+    expect(statusTab).toHaveAttribute('aria-controls', 'portal-panel-status');
+    const tabpanel = screen.getByRole('tabpanel');
+    expect(tabpanel).toHaveAttribute('aria-labelledby', 'portal-tab-status');
+  });
 });
