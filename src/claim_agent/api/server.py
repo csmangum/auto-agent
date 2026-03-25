@@ -62,6 +62,19 @@ import logging
 
 _server_logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Request body size limits
+# ---------------------------------------------------------------------------
+# Protect all endpoints against excessively large payloads that could exhaust
+# memory or disk.  File-upload endpoints enforce their own per-file limit via
+# _MAX_UPLOAD_SIZE_BYTES in routes/claims.py; these constants act as global
+# upper bounds checked at the middleware layer (Content-Length header).
+#
+# Both values are configurable via environment variables:
+#   MAX_REQUEST_BODY_SIZE_MB  (default 10)  – for JSON / form-data endpoints
+#   MAX_UPLOAD_BODY_SIZE_MB   (default 100) – for multipart/form-data uploads
+_MB = 1024 * 1024
+
 
 _DEV_ENVIRONMENTS = frozenset({"dev", "development", "test", "testing"})
 
@@ -410,6 +423,45 @@ async def rate_limit_middleware(request: Request, call_next):
                 request,
                 429,
                 {"detail": "Rate limit exceeded. Try again later."},
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def request_body_size_limit_middleware(request: Request, call_next):
+    """Reject requests whose Content-Length exceeds the configured body size limit.
+
+    Applies a 10 MB cap to all non-file-upload endpoints and a 100 MB cap to
+    multipart/form-data requests (file uploads).  These limits are configurable
+    via MAX_REQUEST_BODY_SIZE_MB and MAX_UPLOAD_BODY_SIZE_MB environment variables.
+
+    The check uses the Content-Length header so that oversized payloads are
+    rejected before the body is read into memory.  Route handlers that accept
+    file uploads enforce additional per-file limits independently.
+    """
+    content_length_header = request.headers.get("content-length")
+    if content_length_header is not None:
+        try:
+            content_length = int(content_length_header)
+        except ValueError:
+            return _secured_api_json_response(
+                request,
+                400,
+                {"detail": "Invalid Content-Length header"},
+            )
+
+        settings = get_settings()
+        content_type = request.headers.get("content-type", "")
+        if "multipart/form-data" in content_type:
+            limit = settings.max_upload_body_size_mb * _MB
+        else:
+            limit = settings.max_request_body_size_mb * _MB
+
+        if content_length > limit:
+            return _secured_api_json_response(
+                request,
+                413,
+                {"detail": "Request body too large"},
             )
     return await call_next(request)
 

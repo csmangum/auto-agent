@@ -2116,6 +2116,26 @@ class Settings(BaseSettings):
         validation_alias="IDEMPOTENCY_TTL_SECONDS",
         description="TTL in seconds for idempotency keys (default 24h)",
     )
+    max_request_body_size_mb: int = Field(
+        default=10,
+        ge=1,
+        validation_alias="MAX_REQUEST_BODY_SIZE_MB",
+        description=(
+            "Maximum allowed request body size in megabytes for non-file-upload endpoints "
+            "(default 10 MB). Requests advertising a larger Content-Length are rejected "
+            "with HTTP 413 before reading the body."
+        ),
+    )
+    max_upload_body_size_mb: int = Field(
+        default=100,
+        ge=1,
+        validation_alias="MAX_UPLOAD_BODY_SIZE_MB",
+        description=(
+            "Maximum allowed request body size in megabytes for multipart/form-data "
+            "file-upload endpoints (default 100 MB). Supplements the per-file limit "
+            "enforced by individual route handlers."
+        ),
+    )
     crew_verbose: bool = Field(default=True, validation_alias="CREWAI_VERBOSE")
     retention_period_years: int = 5
     retention_purge_after_archive_years: int = Field(
