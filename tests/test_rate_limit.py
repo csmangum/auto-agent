@@ -1,5 +1,6 @@
 """Tests for rate limiting middleware."""
 
+import logging
 import os
 from unittest.mock import MagicMock
 
@@ -111,3 +112,62 @@ class TestGetClientIp:
         request.client = None
         request.headers.get = lambda key, default=None: None
         assert get_client_ip(request) == "unknown"
+
+
+class TestCheckRateLimitConfiguration:
+    """Tests for the startup rate limit configuration guard."""
+
+    def _check(self):
+        from claim_agent.api.server import _check_rate_limit_configuration
+
+        _check_rate_limit_configuration()
+
+    def test_no_warning_in_dev_without_redis(self, monkeypatch, caplog):
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "development")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+        with caplog.at_level(logging.WARNING, logger="claim_agent.api.server"):
+            self._check()
+        assert not any("Rate limiting" in m for m in caplog.messages)
+
+    def test_no_warning_in_test_environment_without_redis(self, monkeypatch, caplog):
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "test")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+        with caplog.at_level(logging.WARNING, logger="claim_agent.api.server"):
+            self._check()
+        assert not any("Rate limiting" in m for m in caplog.messages)
+
+    def test_warns_in_production_without_redis(self, monkeypatch, caplog):
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "production")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+        with caplog.at_level(logging.WARNING, logger="claim_agent.api.server"):
+            self._check()
+        assert any("Rate limiting" in m and "REDIS_URL" in m for m in caplog.messages)
+
+    def test_warns_in_staging_without_redis(self, monkeypatch, caplog):
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "staging")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+        with caplog.at_level(logging.WARNING, logger="claim_agent.api.server"):
+            self._check()
+        assert any("Rate limiting" in m and "REDIS_URL" in m for m in caplog.messages)
+
+    def test_no_warning_when_redis_configured_in_production(self, monkeypatch, caplog):
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "production")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+        with caplog.at_level(logging.WARNING, logger="claim_agent.api.server"):
+            self._check()
+        assert not any("Rate limiting" in m for m in caplog.messages)
