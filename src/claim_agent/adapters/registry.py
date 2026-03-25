@@ -3,9 +3,11 @@
 Each ``get_*_adapter()`` function returns a singleton selected by the
 corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
-Supported values: ``mock``, ``stub``, ``rest`` (policy, fraud_reporting, state_bureau, claim_search). Valuation also supports
-``ccc``, ``mitchell``, ``audatex`` with ``VALUATION_REST_*`` settings.
-``nmvtis``, ``gap_insurance``, and ``cms`` support ``mock`` and ``stub`` only. Unknown values raise ValueError.
+Supported values: ``mock``, ``stub``, ``rest`` (policy, fraud_reporting, state_bureau,
+claim_search, erp, repair_shop, parts, siu, nmvtis, gap_insurance, ocr, cms,
+reverse_image). Valuation also supports ``ccc``, ``mitchell``, ``audatex`` with
+``VALUATION_REST_*`` settings.
+Unknown values raise ValueError.
 """
 
 import threading
@@ -160,22 +162,52 @@ def get_valuation_adapter() -> ValuationAdapter:
         return cast(ValuationAdapter, _cache[key])
 
 
+def _repair_shop_rest_factory() -> RepairShopAdapter:
+    from claim_agent.adapters.real.repair_shop_rest import create_rest_repair_shop_adapter
+    return create_rest_repair_shop_adapter()
+
+
 def get_repair_shop_adapter() -> RepairShopAdapter:
     from claim_agent.adapters.stub import StubRepairShopAdapter
     from claim_agent.adapters.mock.repair_shop import MockRepairShopAdapter
-    return _get_or_create_adapter("repair_shop", StubRepairShopAdapter, MockRepairShopAdapter)
+    return _get_or_create_adapter(
+        "repair_shop",
+        StubRepairShopAdapter,
+        MockRepairShopAdapter,
+        rest_factory=_repair_shop_rest_factory,
+    )
+
+
+def _parts_rest_factory() -> PartsAdapter:
+    from claim_agent.adapters.real.parts_rest import create_rest_parts_adapter
+    return create_rest_parts_adapter()
 
 
 def get_parts_adapter() -> PartsAdapter:
     from claim_agent.adapters.stub import StubPartsAdapter
     from claim_agent.adapters.mock.parts import MockPartsAdapter
-    return _get_or_create_adapter("parts", StubPartsAdapter, MockPartsAdapter)
+    return _get_or_create_adapter(
+        "parts",
+        StubPartsAdapter,
+        MockPartsAdapter,
+        rest_factory=_parts_rest_factory,
+    )
+
+
+def _siu_rest_factory() -> SIUAdapter:
+    from claim_agent.adapters.real.siu_rest import create_rest_siu_adapter
+    return create_rest_siu_adapter()
 
 
 def get_siu_adapter() -> SIUAdapter:
     from claim_agent.adapters.stub import StubSIUAdapter
     from claim_agent.adapters.mock.siu import MockSIUAdapter
-    return _get_or_create_adapter("siu", StubSIUAdapter, MockSIUAdapter)
+    return _get_or_create_adapter(
+        "siu",
+        StubSIUAdapter,
+        MockSIUAdapter,
+        rest_factory=_siu_rest_factory,
+    )
 
 
 def get_state_bureau_adapter() -> StateBureauAdapter:
@@ -206,10 +238,25 @@ def _claim_search_rest_factory() -> ClaimSearchAdapter:
     return create_rest_claim_search_adapter()
 
 
+def _ocr_rest_factory() -> OCRAdapter:
+    from claim_agent.adapters.real.ocr_rest import create_rest_ocr_adapter
+    return create_rest_ocr_adapter()
+
+
 def get_ocr_adapter() -> OCRAdapter:
     from claim_agent.adapters.stub import StubOCRAdapter
     from claim_agent.adapters.mock.ocr import MockOCRAdapter
-    return _get_or_create_adapter("ocr", StubOCRAdapter, MockOCRAdapter)
+    return _get_or_create_adapter(
+        "ocr",
+        StubOCRAdapter,
+        MockOCRAdapter,
+        rest_factory=_ocr_rest_factory,
+    )
+
+
+def _nmvtis_rest_factory() -> NMVTISAdapter:
+    from claim_agent.adapters.real.nmvtis_rest import create_rest_nmvtis_adapter
+    return create_rest_nmvtis_adapter()
 
 
 def get_nmvtis_adapter() -> NMVTISAdapter:
@@ -219,7 +266,13 @@ def get_nmvtis_adapter() -> NMVTISAdapter:
         "nmvtis",
         StubNMVTISAdapter,
         MockNMVTISAdapter,
+        rest_factory=_nmvtis_rest_factory,
     )
+
+
+def _gap_insurance_rest_factory() -> GapInsuranceAdapter:
+    from claim_agent.adapters.real.gap_insurance_rest import create_rest_gap_insurance_adapter
+    return create_rest_gap_insurance_adapter()
 
 
 def get_gap_insurance_adapter() -> GapInsuranceAdapter:
@@ -229,7 +282,13 @@ def get_gap_insurance_adapter() -> GapInsuranceAdapter:
         "gap_insurance",
         StubGapInsuranceAdapter,
         MockGapInsuranceAdapter,
+        rest_factory=_gap_insurance_rest_factory,
     )
+
+
+def _cms_rest_factory() -> CMSReportingAdapter:
+    from claim_agent.adapters.real.cms_rest import create_rest_cms_reporting_adapter
+    return create_rest_cms_reporting_adapter()
 
 
 def get_cms_reporting_adapter() -> CMSReportingAdapter:
@@ -239,6 +298,7 @@ def get_cms_reporting_adapter() -> CMSReportingAdapter:
         "cms",
         StubCMSReportingAdapter,
         MockCMSReportingAdapter,
+        rest_factory=_cms_rest_factory,
     )
 
 
@@ -258,17 +318,25 @@ def get_fraud_reporting_adapter() -> FraudReportingAdapter:
     )
 
 
+def _reverse_image_rest_factory() -> ReverseImageAdapter:
+    from claim_agent.adapters.real.reverse_image_rest import create_rest_reverse_image_adapter
+    return create_rest_reverse_image_adapter()
+
+
 def get_reverse_image_adapter() -> ReverseImageAdapter:
     """Return the configured reverse-image / stock-photo lookup adapter.
 
     Backend is selected by the ``REVERSE_IMAGE_ADAPTER`` environment variable
-    (default: ``mock``).  Supported values: ``mock``, ``stub``.
+    (default: ``mock``).  Supported values: ``mock``, ``stub``, ``rest``.
 
     * ``mock`` – :class:`~claim_agent.adapters.mock.reverse_image.MockReverseImageAdapter`
       returns deterministic results without any network calls; suitable for tests
       and development.
     * ``stub`` – :class:`~claim_agent.adapters.stub.StubReverseImageAdapter` raises
       ``NotImplementedError``, acting as a placeholder for a real integration.
+    * ``rest`` – :class:`~claim_agent.adapters.real.reverse_image_rest.RestReverseImageAdapter`
+      sends images to the configured reverse-image provider API (requires
+      ``REVERSE_IMAGE_REST_BASE_URL``).
 
     The adapter should be called **only** when a reverse-image check is explicitly
     requested (e.g. via the ``REVERSE_IMAGE_ADAPTER`` feature flag) to avoid
@@ -277,7 +345,12 @@ def get_reverse_image_adapter() -> ReverseImageAdapter:
     from claim_agent.adapters.mock.reverse_image import MockReverseImageAdapter
     from claim_agent.adapters.stub import StubReverseImageAdapter
 
-    return _get_or_create_adapter("reverse_image", StubReverseImageAdapter, MockReverseImageAdapter)
+    return _get_or_create_adapter(
+        "reverse_image",
+        StubReverseImageAdapter,
+        MockReverseImageAdapter,
+        rest_factory=_reverse_image_rest_factory,
+    )
 
 
 def _erp_rest_factory() -> ERPAdapter:
