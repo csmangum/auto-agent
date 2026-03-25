@@ -10,6 +10,7 @@ Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/* endpoi
 require auth except /api/health, /api/portal/*, /api/repair-portal/*, /api/third-party-portal/*, /api/auth/login,
 and /api/auth/refresh.
 Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
+Non-dev deployments (CLAIM_AGENT_ENVIRONMENT) require at least one auth mechanism at startup.
 """
 
 import asyncio
@@ -62,8 +63,42 @@ import logging
 _server_logger = logging.getLogger(__name__)
 
 
+_DEV_ENVIRONMENTS = frozenset({"dev", "development", "test", "testing"})
+
+
+def _check_auth_configuration() -> None:
+    """Refuse to start in non-development environments when no auth is configured.
+
+    When CLAIM_AGENT_ENVIRONMENT (or legacy ENVIRONMENT) is not one of
+    dev/development/test/testing and no API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set,
+    the server would grant every caller admin access. Fail fast rather than silently
+    expose an unprotected API.
+    """
+    if is_auth_required():
+        return
+    env = get_settings().auth.environment.strip().lower()
+    if env not in _DEV_ENVIRONMENTS:
+        raise RuntimeError(
+            f"Authentication is not configured (API_KEYS, CLAIMS_API_KEY, and JWT_SECRET "
+            f"are all unset) but CLAIM_AGENT_ENVIRONMENT is set to "
+            f"'{get_settings().auth.environment}'. "
+            "Configure at least one auth mechanism before deploying, or set "
+            "CLAIM_AGENT_ENVIRONMENT=development to allow unauthenticated access in a local dev setup."
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _check_auth_configuration()
+
+    _auth_startup = get_settings().auth
+    if _auth_startup.enforce_https and not _auth_startup.trust_forwarded_for:
+        _server_logger.warning(
+            "ENFORCE_HTTPS=true but TRUST_FORWARDED_FOR=false: "
+            "HTTP→HTTPS redirect using X-Forwarded-Proto is disabled. "
+            "Set TRUST_FORWARDED_FOR=true only when behind a trusted reverse proxy."
+        )
+
     if is_postgres_backend() and get_settings().paths.run_migrations_on_startup:
         from alembic import command
         from alembic.config import Config
@@ -236,24 +271,29 @@ def _normalize_path(path: str) -> str:
     return path.rstrip("/") or "/"
 
 
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    """Rate limit API routes: 100 req/min per IP; login/refresh use 20 req/min per IP."""
-    path = _normalize_path(request.url.path)
-    if path.startswith("/api/") and path not in _PUBLIC_PATHS:
-        settings = get_settings()
-        ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
-        limited = (
-            is_auth_rate_limited(ip)
-            if _is_auth_public_path(path)
-            else is_rate_limited(ip)
-        )
-        if limited:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded. Try again later."},
-            )
-    return await call_next(request)
+def _base_security_response_headers() -> dict[str, str]:
+    """Headers applied to normal and redirect responses (browser hardening)."""
+    return {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": (
+            "geolocation=(), microphone=(), camera=(), payment=()"
+        ),
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'"
+        ),
+    }
+
+
+def _maybe_cache_control_no_store(path: str) -> str | None:
+    """Return Cache-Control value for API routes except health (see plan)."""
+    norm = _normalize_path(path)
+    if norm.startswith("/api/") and norm != "/api/health":
+        return "no-store"
+    return None
 
 
 @app.middleware("http")
@@ -289,6 +329,76 @@ async def auth_middleware(request: Request, call_next):
 
     request.state.auth = ctx
     return await call_next(request)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limit API routes: 100 req/min per IP; login/refresh use 20 req/min per IP."""
+    path = _normalize_path(request.url.path)
+    if path.startswith("/api/") and path not in _PUBLIC_PATHS:
+        settings = get_settings()
+        ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
+        limited = (
+            is_auth_rate_limited(ip)
+            if _is_auth_public_path(path)
+            else is_rate_limited(ip)
+        )
+        if limited:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Try again later."},
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to every response.
+
+    When ENFORCE_HTTPS=true and TRUST_FORWARDED_FOR=true (trusted proxy):
+    - HTTP requests (X-Forwarded-Proto: http) get a 307 redirect to HTTPS.
+
+    When ENFORCE_HTTPS=true, Strict-Transport-Security (HSTS) is set on responses.
+
+    Unconditional hardening headers include CSP (default-src 'self').
+    """
+    settings = get_settings()
+    auth_cfg = settings.auth
+    path = _normalize_path(request.url.path)
+
+    if (
+        auth_cfg.enforce_https
+        and auth_cfg.trust_forwarded_for
+        and request.headers.get("X-Forwarded-Proto", "").lower() == "http"
+    ):
+        # Build the redirect URL by only changing the scheme of the current request URL,
+        # avoiding direct use of X-Forwarded-Host/Host header values to prevent open redirect.
+        https_url = str(request.url.replace(scheme="https"))
+        redirect_headers = dict(_base_security_response_headers())
+        redirect_headers["Location"] = https_url
+        cc = _maybe_cache_control_no_store(path)
+        if cc:
+            redirect_headers["Cache-Control"] = cc
+        return Response(status_code=307, headers=redirect_headers)
+
+    response = await call_next(request)
+
+    for key, value in _base_security_response_headers().items():
+        response.headers[key] = value
+
+    cc = _maybe_cache_control_no_store(path)
+    if cc:
+        response.headers["Cache-Control"] = cc
+
+    if auth_cfg.enforce_https:
+        hsts_value = f"max-age={auth_cfg.hsts_max_age}"
+        if auth_cfg.hsts_include_subdomains:
+            hsts_value += "; includeSubDomains"
+        if auth_cfg.hsts_preload:
+            hsts_value += "; preload"
+        response.headers["Strict-Transport-Security"] = hsts_value
+
+    return response
 
 
 def _health_response():

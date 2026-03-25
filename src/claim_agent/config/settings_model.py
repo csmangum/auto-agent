@@ -14,7 +14,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger(__name__)
@@ -727,6 +727,15 @@ class AuthConfig(BaseSettings):
         populate_by_name=True,
     )
 
+    environment: str = Field(
+        default="development",
+        validation_alias=AliasChoices("CLAIM_AGENT_ENVIRONMENT", "ENVIRONMENT"),
+        description=(
+            "Deployment environment. Set to 'production' to enforce authentication at startup. "
+            "Use 'development' (default) or 'dev' to allow unauthenticated local runs. "
+            "Prefer CLAIM_AGENT_ENVIRONMENT; ENVIRONMENT is accepted for backward compatibility."
+        ),
+    )
     api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
     claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
     jwt_secret_raw: str = Field(default="", validation_alias="JWT_SECRET")
@@ -746,6 +755,35 @@ class AuthConfig(BaseSettings):
     )
     cors_origins_raw: str = Field(default="", validation_alias="CORS_ORIGINS")
     trust_forwarded_for: bool = Field(default=False, validation_alias="TRUST_FORWARDED_FOR")
+    enforce_https: bool = Field(
+        default=False,
+        validation_alias="ENFORCE_HTTPS",
+        description=(
+            "When true, add Strict-Transport-Security (HSTS) headers and redirect "
+            "HTTP requests to HTTPS based on the X-Forwarded-Proto header. "
+            "Requires TRUST_FORWARDED_FOR=true (trusted proxy) or the redirect logic is disabled. "
+            "Enable only when deployed behind a TLS-terminating reverse proxy."
+        ),
+    )
+    hsts_max_age: int = Field(
+        default=31536000,
+        ge=0,
+        validation_alias="HSTS_MAX_AGE",
+        description="HSTS max-age in seconds (default: 31536000 = 1 year).",
+    )
+    hsts_include_subdomains: bool = Field(
+        default=True,
+        validation_alias="HSTS_INCLUDE_SUBDOMAINS",
+        description="Append 'includeSubDomains' to the HSTS header (default: true).",
+    )
+    hsts_preload: bool = Field(
+        default=False,
+        validation_alias="HSTS_PRELOAD",
+        description=(
+            "When true, append the HSTS preload directive (submit via hstspreload.org). "
+            "Irreversible for months once in browser preload lists; default false."
+        ),
+    )
 
     @field_validator("jwt_secret_raw", mode="after")
     @classmethod

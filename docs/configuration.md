@@ -47,12 +47,17 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 
 | Variable | Description |
 |---------|-------------|
+| `CLAIM_AGENT_ENVIRONMENT` | Default `development`. If set to anything other than `dev`/`development`/`test`/`testing` and no API keys or `JWT_SECRET` are configured, the API **refuses to start** (prevents anonymous admin access in production). Legacy alias: `ENVIRONMENT`. |
 | `API_KEYS` | Comma-separated entries. Each entry is `key:role` or `key:role:user_id`. The optional third segment sets API identity (`sub`) for RBAC and adjuster-scoped claims (`claims.assignee` must match `user_id`). Example: `sk-adj:adjuster:uuid-of-adjuster` |
 | `CLAIMS_API_KEY` | Single API key (backward compat). When set and `API_KEYS` unset, treated as admin role |
 | `JWT_SECRET` | Secret for signing/verifying access JWTs from `POST /api/auth/login` and `Authorization: Bearer`. Access token payload: `sub`, `role`, `token_use`=`access`. Refresh tokens issued by login are opaque DB-backed strings, not JWTs. |
 | `JWT_ACCESS_TTL_SECONDS` | Access JWT lifetime in seconds (default 900). |
 | `JWT_REFRESH_TTL_SECONDS` | Opaque refresh token lifetime in seconds (default 604800). |
-| `TRUST_FORWARDED_FOR` | Default `false`. If `true`, trust `X-Forwarded-For` for client IP (API rate limiting and similar). Enable only behind a trusted reverse proxy. |
+| `TRUST_FORWARDED_FOR` | Default `false`. If `true`, trust `X-Forwarded-For` for client IP (rate limiting) and `X-Forwarded-Proto` for HTTP→HTTPS redirects when `ENFORCE_HTTPS=true`. Enable only behind a trusted reverse proxy. |
+| `ENFORCE_HTTPS` | Default `false`. If `true`, send HSTS and redirect clients when `X-Forwarded-Proto` is `http` (only when `TRUST_FORWARDED_FOR=true`). |
+| `HSTS_MAX_AGE` | HSTS `max-age` in seconds (default one year). |
+| `HSTS_INCLUDE_SUBDOMAINS` | Default `true`; append `includeSubDomains` to HSTS. |
+| `HSTS_PRELOAD` | Default `false`; append `preload` to HSTS only when you intend to join the browser preload list. |
 
 **Roles**: `adjuster` (submit/view claims, docs; when using JWT or `key:role:user_id`, list/get/stats/review-queue are scoped to assigned claims), `supervisor` (all adjuster + reprocess, metrics, assign claims), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system, `/api/users`; may set `skip_authority_check` on reserve updates).
 
