@@ -1292,6 +1292,97 @@ class ClaimRepository:
             )
         )
 
+    def acquire_processing_lock(
+        self,
+        claim_id: str,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Atomically acquire a processing lock by transitioning claim to ``processing``.
+
+        Uses an optimistic-locking ``UPDATE … WHERE id = :id AND status = :old_status``
+        to eliminate the TOCTOU window: the UPDATE only succeeds when the row still holds
+        the exact status we read and validated.  This is safe for both SQLite WAL and
+        PostgreSQL.
+
+        Raises:
+            ClaimNotFoundError: if the claim does not exist.
+            ClaimAlreadyProcessingError: if the claim is already in ``processing`` status.
+            InvalidClaimTransitionError: if the current status cannot transition to
+                ``processing`` according to the state machine.
+        """
+        from claim_agent.exceptions import ClaimAlreadyProcessingError
+
+        now = datetime.now(timezone.utc).isoformat()
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text("SELECT status FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+
+            old_status = row[0]
+            if old_status == STATUS_PROCESSING:
+                raise ClaimAlreadyProcessingError(claim_id)
+
+            # Validate the transition using the status we just read.
+            validate_transition(claim_id, old_status, STATUS_PROCESSING, actor_id=actor_id)
+
+            # Optimistic-lock UPDATE: only succeeds when status hasn't changed since our
+            # SELECT.  If a concurrent request already updated the row (to 'processing' or
+            # any other value), rowcount will be 0 and we raise appropriately.
+            result = conn.execute(
+                text(
+                    "UPDATE claims SET status = :new_status, updated_at = :now "
+                    "WHERE id = :claim_id AND status = :old_status"
+                ),
+                {
+                    "new_status": STATUS_PROCESSING,
+                    "now": now,
+                    "claim_id": claim_id,
+                    "old_status": old_status,
+                },
+            )
+            if result.rowcount == 0:
+                # Status changed concurrently — re-read to decide the right exception.
+                current_row = conn.execute(
+                    text("SELECT status FROM claims WHERE id = :claim_id"),
+                    {"claim_id": claim_id},
+                ).fetchone()
+                if current_row is not None and current_row[0] == STATUS_PROCESSING:
+                    raise ClaimAlreadyProcessingError(claim_id)
+                # Another concurrent modification; treat as a processing conflict.
+                raise ClaimAlreadyProcessingError(claim_id)
+
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log
+                    (claim_id, action, old_status, new_status, details, actor_id,
+                     before_state, after_state)
+                VALUES
+                    (:claim_id, :action, :old_status, :new_status, :details, :actor_id,
+                     :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_STATUS_CHANGE,
+                    "old_status": old_status,
+                    "new_status": STATUS_PROCESSING,
+                    "details": "Processing lock acquired",
+                    "actor_id": actor_id,
+                    "before_state": json.dumps({"status": old_status}),
+                    "after_state": json.dumps({"status": STATUS_PROCESSING}),
+                },
+            )
+
+        emit_claim_event(
+            ClaimEvent(
+                claim_id=claim_id,
+                status=STATUS_PROCESSING,
+                summary="Processing lock acquired",
+            )
+        )
+
     def save_workflow_result(
         self,
         claim_id: str,
