@@ -366,6 +366,27 @@ class TestRequestBodySizeLimitMiddleware:
         assert resp.status_code == 413
         assert resp.json()["detail"] == "Request body too large"
 
+    def test_multipart_content_type_case_insensitive_uses_upload_limit(self, monkeypatch):
+        """Multipart detection is case-insensitive (RFC 7231 media types)."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_UPLOAD_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "Multipart/Form-Data; boundary=----boundary",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "Request body too large"
+
     def test_multipart_request_within_limit_is_not_rejected_by_middleware(self, monkeypatch):
         """Multipart uploads within the upload limit are not rejected by the size middleware."""
         from claim_agent.config import reload_settings

@@ -466,7 +466,7 @@ async def request_body_size_limit_middleware(request: Request, call_next):
             )
 
         settings = get_settings()
-        content_type = request.headers.get("content-type", "")
+        content_type = request.headers.get("content-type", "").lower()
         if "multipart/form-data" in content_type:
             limit = settings.max_upload_body_size_mb * _MB
         else:

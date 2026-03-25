@@ -2176,7 +2176,8 @@ class Settings(BaseSettings):
         ge=1,
         validation_alias="MAX_UPLOAD_FILE_SIZE_MB",
         description=(
-            "Maximum size in megabytes for a single uploaded file in claims routes "
+            "Maximum size in megabytes for a single uploaded file on claims API routes "
+            "and claimant/repair/third-party portal document upload endpoints "
             "(default 50 MB). The full multipart request is still capped by "
             "MAX_UPLOAD_BODY_SIZE_MB."
         ),

@@ -143,6 +143,12 @@ def _max_upload_file_size_bytes() -> int:
     return get_settings().max_upload_file_size_mb * 1024 * 1024
 
 
+def _upload_file_size_exceeded_detail() -> str:
+    """HTTP 413 detail for per-file upload limit (shared by claims and portal routes)."""
+    mb = get_settings().max_upload_file_size_mb
+    return f"File exceeds the maximum upload size of {mb} MB."
+
+
 def _adjuster_scope_params(auth: AuthContext) -> dict[str, Any]:
     """Query params for adjuster-only claim scoping (assignee matches JWT sub / API key identity)."""
     if not adjuster_identity_scopes_assignee(auth):
@@ -1353,7 +1359,7 @@ async def upload_claim_document(
             break
         total_size += len(chunk)
         if total_size > _max_upload_file_size_bytes():
-            raise HTTPException(status_code=413, detail="File exceeds maximum upload size")
+            raise HTTPException(status_code=413, detail=_upload_file_size_exceeded_detail())
         chunks.append(chunk)
     content = b"".join(chunks)
     if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:

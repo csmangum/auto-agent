@@ -24,6 +24,7 @@ from claim_agent.api.routes.claims import (
     _get_doc_repo,
     _max_upload_file_size_bytes,
     _maybe_update_document_request_on_receipt,
+    _upload_file_size_exceeded_detail,
 )
 from claim_agent.context import ClaimContext
 from claim_agent.db.constants import DISPUTABLE_STATUSES
@@ -364,7 +365,7 @@ async def upload_portal_document(
             break
         total_size += len(chunk)
         if total_size > _max_upload_file_size_bytes():
-            raise HTTPException(status_code=413, detail="File exceeds maximum upload size")
+            raise HTTPException(status_code=413, detail=_upload_file_size_exceeded_detail())
         chunks.append(chunk)
     content = b"".join(chunks)
     if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:
