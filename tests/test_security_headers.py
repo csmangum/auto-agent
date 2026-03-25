@@ -303,3 +303,126 @@ class TestSecurityHeadersOnShortCircuitResponses:
         assert resp.headers.get("cache-control") == "no-store"
         csp = resp.headers.get("content-security-policy", "")
         assert "default-src 'self'" in csp
+
+
+class TestRequestBodySizeLimitMiddleware:
+    """Middleware rejects oversized request bodies before route handlers read them."""
+
+    def test_json_request_within_limit_passes(self, client):
+        """A small JSON payload under the 10 MB limit is accepted."""
+        payload = b'{"claim_id": "test"}'
+        resp = client.post(
+            "/api/claims/process",
+            content=payload,
+            headers={"Content-Type": "application/json", "Content-Length": str(len(payload))},
+        )
+        # May return 422 (validation) or other non-413 status – just not 413
+        assert resp.status_code != 413
+
+    def test_json_request_over_limit_returns_413(self, monkeypatch):
+        """A Content-Length exceeding MAX_REQUEST_BODY_SIZE_MB returns 413."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_REQUEST_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware checks the Content-Length header only (does not read the body),
+            # so advertising an oversized Content-Length is sufficient to trigger the limit.
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "Request body too large"
+
+    def test_multipart_request_over_limit_returns_413(self, monkeypatch):
+        """A multipart Content-Length exceeding MAX_UPLOAD_BODY_SIZE_MB returns 413."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_UPLOAD_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware checks the Content-Length header only (does not read the body).
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "multipart/form-data; boundary=----boundary",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "Request body too large"
+
+    def test_multipart_request_within_limit_is_not_rejected_by_middleware(self, monkeypatch):
+        """Multipart uploads within the upload limit are not rejected by the size middleware."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_UPLOAD_BODY_SIZE_MB", "100")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware only reads the Content-Length header; the actual body is tiny.
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "multipart/form-data; boundary=----boundary",
+                    "Content-Length": "1024",
+                },
+            )
+        # Should not be rejected by the size middleware; may fail validation (422) etc.
+        assert resp.status_code != 413
+
+    def test_413_response_includes_security_headers(self, monkeypatch):
+        """413 responses from the body size middleware carry all required security headers."""
+        from claim_agent.config import reload_settings
+
+        monkeypatch.setenv("MAX_REQUEST_BODY_SIZE_MB", "1")
+        reload_settings()
+
+        from claim_agent.api.server import app
+
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            # The middleware checks the Content-Length header only (does not read the body).
+            resp = tc.post(
+                "/api/claims/process",
+                content=b"x",
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(2 * 1024 * 1024),
+                },
+            )
+        assert resp.status_code == 413
+        assert resp.headers.get("x-content-type-options") == "nosniff"
+        assert resp.headers.get("x-frame-options") == "DENY"
+        assert resp.headers.get("cache-control") == "no-store"
+        csp = resp.headers.get("content-security-policy", "")
+        assert "default-src 'self'" in csp
+
+    def test_invalid_content_length_returns_400(self, client):
+        """A non-integer Content-Length header returns 400 Bad Request."""
+        resp = client.post(
+            "/api/claims/process",
+            content=b"{}",
+            headers={"Content-Type": "application/json", "Content-Length": "not-a-number"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid Content-Length header"
+
+    def test_no_content_length_header_passes_through(self, client):
+        """Requests without Content-Length are not rejected by the size middleware."""
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
