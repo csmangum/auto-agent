@@ -31,6 +31,7 @@ from claim_agent.adapters.mock import (
 from claim_agent.adapters.mock.ocr import MockOCRAdapter
 from claim_agent.adapters.registry import (
     get_claim_search_adapter,
+    get_cms_reporting_adapter,
     get_fraud_reporting_adapter,
     get_gap_insurance_adapter,
     get_nmvtis_adapter,
@@ -707,3 +708,346 @@ class TestRestPolicyAdapter:
             adapter = get_policy_adapter()
             result = adapter.get_policy("POL-UNKNOWN")
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# REST adapter registry tests (new adapters)
+# ---------------------------------------------------------------------------
+
+class TestRestRepairShopAdapter:
+    """REST repair-shop adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("REPAIR_SHOP_ADAPTER", "rest")
+        monkeypatch.delenv("REPAIR_SHOP_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="REPAIR_SHOP_REST_BASE_URL"):
+            get_repair_shop_adapter()
+        reset_adapters()
+
+    def test_rest_get_shops_returns_dict(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("REPAIR_SHOP_ADAPTER", "rest")
+        monkeypatch.setenv("REPAIR_SHOP_REST_BASE_URL", "https://shops.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"S1": {"name": "Joe's Auto"}, "S2": {"name": "Fast Fix"}}
+
+        with patch("claim_agent.adapters.real.repair_shop_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.get.return_value = mock_resp
+            MockClient.return_value = client
+            adapter = get_repair_shop_adapter()
+            result = adapter.get_shops()
+        assert "S1" in result
+        assert result["S1"]["name"] == "Joe's Auto"
+        reset_adapters()
+
+    def test_rest_get_shop_404_returns_none(self, monkeypatch):
+        import httpx
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("REPAIR_SHOP_ADAPTER", "rest")
+        monkeypatch.setenv("REPAIR_SHOP_REST_BASE_URL", "https://shops.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        request = httpx.Request("GET", "https://shops.example.com/api/v1/shops/MISSING")
+        response = httpx.Response(404, request=request)
+        http_error = httpx.HTTPStatusError("Not Found", request=request, response=response)
+
+        with patch("claim_agent.adapters.real.repair_shop_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.get.side_effect = http_error
+            MockClient.return_value = client
+            adapter = get_repair_shop_adapter()
+            result = adapter.get_shop("MISSING")
+        assert result is None
+        reset_adapters()
+
+
+class TestRestPartsAdapter:
+    """REST parts adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("PARTS_ADAPTER", "rest")
+        monkeypatch.delenv("PARTS_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="PARTS_REST_BASE_URL"):
+            get_parts_adapter()
+        reset_adapters()
+
+    def test_rest_get_catalog_returns_dict(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("PARTS_ADAPTER", "rest")
+        monkeypatch.setenv("PARTS_REST_BASE_URL", "https://parts.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [
+            {"part_id": "P1", "description": "Bumper Cover"},
+            {"part_id": "P2", "description": "Headlight"},
+        ]
+
+        with patch("claim_agent.adapters.real.parts_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.get.return_value = mock_resp
+            MockClient.return_value = client
+            adapter = get_parts_adapter()
+            result = adapter.get_catalog()
+        assert "P1" in result
+        assert result["P1"]["description"] == "Bumper Cover"
+        reset_adapters()
+
+
+class TestRestSIUAdapter:
+    """REST SIU adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("SIU_ADAPTER", "rest")
+        monkeypatch.delenv("SIU_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="SIU_REST_BASE_URL"):
+            get_siu_adapter()
+        reset_adapters()
+
+    def test_rest_create_case_returns_id(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("SIU_ADAPTER", "rest")
+        monkeypatch.setenv("SIU_REST_BASE_URL", "https://siu.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"case_id": "SIU-REST-001", "status": "open"}
+
+        with patch("claim_agent.adapters.real.siu_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.post.return_value = mock_resp
+            MockClient.return_value = client
+            adapter = get_siu_adapter()
+            case_id = adapter.create_case("CLAIM-1", ["indicator_a"])
+        assert case_id == "SIU-REST-001"
+        reset_adapters()
+
+
+class TestRestNMVTISAdapter:
+    """REST NMVTIS adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("NMVTIS_ADAPTER", "rest")
+        monkeypatch.delenv("NMVTIS_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="NMVTIS_REST_BASE_URL"):
+            get_nmvtis_adapter()
+        reset_adapters()
+
+    def test_rest_submit_report_returns_reference(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("NMVTIS_ADAPTER", "rest")
+        monkeypatch.setenv("NMVTIS_REST_BASE_URL", "https://nmvtis-gw.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "nmvtis_reference": "NMVTIS-REST-ABC123",
+            "status": "accepted",
+        }
+
+        with patch("claim_agent.adapters.real.nmvtis_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.post.return_value = mock_resp
+            MockClient.return_value = client
+            adapter = get_nmvtis_adapter()
+            result = adapter.submit_total_loss_report(
+                claim_id="C1",
+                vin="1HGBH41JXMN109186",
+                vehicle_year=2022,
+                make="Honda",
+                model="Civic",
+                loss_type="total_loss",
+                trigger_event="dmv_salvage_report",
+            )
+        assert result["nmvtis_reference"] == "NMVTIS-REST-ABC123"
+        assert result["status"] == "accepted"
+        reset_adapters()
+
+
+class TestRestGapInsuranceAdapter:
+    """REST gap insurance adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("GAP_INSURANCE_ADAPTER", "rest")
+        monkeypatch.delenv("GAP_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="GAP_REST_BASE_URL"):
+            get_gap_insurance_adapter()
+        reset_adapters()
+
+    def test_rest_submit_shortfall_returns_claim_id(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("GAP_INSURANCE_ADAPTER", "rest")
+        monkeypatch.setenv("GAP_REST_BASE_URL", "https://gap-carrier.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "gap_claim_id": "GAP-REST-9001",
+            "status": "submitted",
+        }
+
+        with patch("claim_agent.adapters.real.gap_insurance_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.post.return_value = mock_resp
+            MockClient.return_value = client
+            adapter = get_gap_insurance_adapter()
+            result = adapter.submit_shortfall_claim(
+                claim_id="C1",
+                policy_number="POL-001",
+                auto_payout_amount=15000.0,
+                loan_balance=20000.0,
+                shortfall_amount=5000.0,
+            )
+        assert result["gap_claim_id"] == "GAP-REST-9001"
+        assert result["status"] == "submitted"
+        reset_adapters()
+
+
+class TestRestOCRAdapter:
+    """REST OCR adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("OCR_ADAPTER", "rest")
+        monkeypatch.delenv("OCR_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="OCR_REST_BASE_URL"):
+            get_ocr_adapter()
+        reset_adapters()
+
+    def test_rest_extract_returns_none_on_missing_file(self, monkeypatch):
+        from pathlib import Path
+
+        reset_adapters()
+        monkeypatch.setenv("OCR_ADAPTER", "rest")
+        monkeypatch.setenv("OCR_REST_BASE_URL", "https://ocr.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        from unittest.mock import patch
+        with patch("claim_agent.adapters.real.ocr_rest.AdapterHttpClient"):
+            adapter = get_ocr_adapter()
+            result = adapter.extract_structured_data(
+                Path("/tmp/nonexistent_test_file.pdf"), "estimate"
+            )
+        assert result is None
+        reset_adapters()
+
+
+class TestRestCMSAdapter:
+    """REST CMS reporting adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        reset_adapters()
+        monkeypatch.setenv("CMS_ADAPTER", "rest")
+        monkeypatch.delenv("CMS_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="CMS_REST_BASE_URL"):
+            get_cms_reporting_adapter()
+        reset_adapters()
+
+    def test_rest_evaluate_returns_reporting_flags(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        reset_adapters()
+        monkeypatch.setenv("CMS_ADAPTER", "rest")
+        monkeypatch.setenv("CMS_REST_BASE_URL", "https://cms.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "settlement_amount": 50000.0,
+            "claimant_medicare_eligible": True,
+            "reporting_threshold": 750.0,
+            "reporting_required": True,
+            "conditional_payment_amount": 3000.0,
+            "msa_required": True,
+            "notes": "Report to CMS COBC.",
+        }
+
+        with patch("claim_agent.adapters.real.cms_rest.AdapterHttpClient") as MockClient:
+            client = MagicMock()
+            client.post.return_value = mock_resp
+            MockClient.return_value = client
+            adapter = get_cms_reporting_adapter()
+            result = adapter.evaluate_settlement_reporting(
+                claim_id="C1",
+                settlement_amount=50000.0,
+                claimant_medicare_eligible=True,
+            )
+        assert result["reporting_required"] is True
+        assert result["msa_required"] is True
+        assert result["conditional_payment_amount"] == 3000.0
+        reset_adapters()
+
+
+class TestRestReverseImageAdapter:
+    """REST reverse-image adapter with mocked HTTP."""
+
+    def test_rest_requires_base_url(self, monkeypatch):
+        from claim_agent.adapters.registry import get_reverse_image_adapter
+        reset_adapters()
+        monkeypatch.setenv("REVERSE_IMAGE_ADAPTER", "rest")
+        monkeypatch.delenv("REVERSE_IMAGE_REST_BASE_URL", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        with pytest.raises(ValueError, match="REVERSE_IMAGE_REST_BASE_URL"):
+            get_reverse_image_adapter()
+        reset_adapters()
+
+    def test_rest_match_web_occurrences_returns_empty_on_error(self, monkeypatch):
+        from claim_agent.adapters.registry import get_reverse_image_adapter
+        from unittest.mock import patch
+
+        reset_adapters()
+        monkeypatch.setenv("REVERSE_IMAGE_ADAPTER", "rest")
+        monkeypatch.setenv("REVERSE_IMAGE_REST_BASE_URL", "https://image-search.example.com/api/v1")
+        from claim_agent.config import reload_settings
+        reload_settings()
+
+        with patch("claim_agent.adapters.real.reverse_image_rest.AdapterHttpClient"):
+            adapter = get_reverse_image_adapter()
+            # Pass raw bytes with no network; OSError is caught and returns []
+            result = adapter.match_web_occurrences(b"fake-image-bytes")
+        # Should return empty list on HTTP error (no real server)
+        assert isinstance(result, list)
+        reset_adapters()

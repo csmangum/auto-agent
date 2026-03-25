@@ -1352,7 +1352,21 @@ VALID_ADAPTER_BACKENDS: frozenset[str] = frozenset({"mock", "stub", "rest"})
 VALID_VISION_ADAPTER_BACKENDS: frozenset[str] = frozenset({"real", "mock"})
 # Adapters that have a REST implementation; "rest" is invalid for all others
 REST_CAPABLE_ADAPTERS: frozenset[str] = frozenset(
-    {"policy", "fraud_reporting", "state_bureau", "claim_search", "erp"}
+    {
+        "policy",
+        "fraud_reporting",
+        "state_bureau",
+        "claim_search",
+        "erp",
+        "repair_shop",
+        "parts",
+        "siu",
+        "nmvtis",
+        "gap_insurance",
+        "ocr",
+        "cms",
+        "reverse_image",
+    }
 )
 # Valuation PAS-style HTTP providers (VALUATION_ADAPTER + VALUATION_REST_*)
 VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "audatex"})
@@ -1537,6 +1551,201 @@ class ERPRestConfig(BaseSettings):
         return result
 
 
+class RepairShopRestConfig(BaseSettings):
+    """REST repair-shop adapter configuration (REPAIR_SHOP_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="REPAIR_SHOP_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="Shop management API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    shops_path: str = Field(default="/shops", description="Path for listing all shops")
+    shop_path_template: str = Field(
+        default="/shops/{shop_id}",
+        description="Path template for a single shop; {shop_id} placeholder",
+    )
+    labor_path: str = Field(
+        default="/shops/labor-operations",
+        description="Path for labor operations catalog",
+    )
+    response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
+class PartsRestConfig(BaseSettings):
+    """REST parts-catalog adapter configuration (PARTS_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="PARTS_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="Parts management API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    catalog_path: str = Field(default="/parts/catalog", description="Path for the parts catalog")
+    response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
+class SIURestConfig(BaseSettings):
+    """REST SIU case-management adapter configuration (SIU_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="SIU_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="SIU case management API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    cases_path: str = Field(default="/siu/cases", description="Path for creating/getting cases")
+    notes_path_template: str = Field(
+        default="/siu/cases/{case_id}/notes",
+        description="Path template for adding notes; {case_id} placeholder",
+    )
+    status_path_template: str = Field(
+        default="/siu/cases/{case_id}/status",
+        description="Path template for updating status; {case_id} placeholder",
+    )
+    response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
+class NMVTISRestConfig(BaseSettings):
+    """REST NMVTIS reporting gateway adapter configuration (NMVTIS_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="NMVTIS_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="NMVTIS gateway API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    report_path: str = Field(
+        default="/nmvtis/reports",
+        description="Path for submitting total-loss / salvage reports",
+    )
+    response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
+class GapInsuranceRestConfig(BaseSettings):
+    """REST gap-insurance carrier adapter configuration (GAP_INSURANCE_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="GAP_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="Gap carrier API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    submit_path: str = Field(
+        default="/gap/claims",
+        description="Path for submitting shortfall claims",
+    )
+    status_path_template: str = Field(
+        default="/gap/claims/{gap_claim_id}",
+        description="Path template for polling claim status; {gap_claim_id} placeholder",
+    )
+    response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
+class OCRRestConfig(BaseSettings):
+    """REST OCR extraction adapter configuration (OCR_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="OCR_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="OCR API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    extract_path: str = Field(
+        default="/ocr/extract",
+        description="Path for document extraction endpoint",
+    )
+    response_key: str = Field(
+        default="",
+        description="Optional JSON envelope key wrapping the structured data (e.g. data)",
+    )
+    timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="Request timeout seconds (larger for OCR processing)",
+    )
+
+
+class CMSRestConfig(BaseSettings):
+    """REST CMS/Medicare reporting adapter configuration (CMS_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="CMS_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="CMS reporting gateway base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    evaluate_path: str = Field(
+        default="/cms/evaluate",
+        description="Path for settlement reporting evaluation endpoint",
+    )
+    response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
+    timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+
+
+class ReverseImageRestConfig(BaseSettings):
+    """REST reverse-image search adapter configuration (REVERSE_IMAGE_ADAPTER=rest)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="REVERSE_IMAGE_REST_",
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    base_url: str = Field(default="", description="Reverse-image provider API base URL")
+    auth_header: str = Field(default="Authorization", description="Auth header name")
+    auth_value: str = Field(default="", description="Bearer token or API key")
+    match_path: str = Field(
+        default="/images/match",
+        description="Path for image matching endpoint",
+    )
+    response_key: str = Field(
+        default="",
+        description="Optional JSON envelope key wrapping the matches list (e.g. matches)",
+    )
+    timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="Request timeout seconds (larger for image upload and processing)",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
@@ -1658,6 +1867,14 @@ class Settings(BaseSettings):
     state_bureau: StateBureauConfig = Field(default_factory=StateBureauConfig)
     claim_search_rest: ClaimSearchRestConfig = Field(default_factory=ClaimSearchRestConfig)
     erp_rest: ERPRestConfig = Field(default_factory=ERPRestConfig)
+    repair_shop_rest: RepairShopRestConfig = Field(default_factory=RepairShopRestConfig)
+    parts_rest: PartsRestConfig = Field(default_factory=PartsRestConfig)
+    siu_rest: SIURestConfig = Field(default_factory=SIURestConfig)
+    nmvtis_rest: NMVTISRestConfig = Field(default_factory=NMVTISRestConfig)
+    gap_insurance_rest: GapInsuranceRestConfig = Field(default_factory=GapInsuranceRestConfig)
+    ocr_rest: OCRRestConfig = Field(default_factory=OCRRestConfig)
+    cms_rest: CMSRestConfig = Field(default_factory=CMSRestConfig)
+    reverse_image_rest: ReverseImageRestConfig = Field(default_factory=ReverseImageRestConfig)
     portal: PortalConfig = Field(default_factory=PortalConfig)
     repair_shop_portal: RepairShopPortalConfig = Field(default_factory=RepairShopPortalConfig)
     third_party_portal: ThirdPartyPortalConfig = Field(default_factory=ThirdPartyPortalConfig)
