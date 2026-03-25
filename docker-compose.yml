@@ -2,6 +2,9 @@
 # Usage (HTTP / dev):    docker compose up
 # Usage (HTTPS / prod):  docker compose --profile tls up
 #
+# claim-agent still publishes port 8000 for direct HTTP access (debugging, health bypassing nginx).
+# For a hardened setup, remove the ports mapping and use `expose: ["8000"]` so only nginx reaches the API.
+#
 # For HTTPS, mount TLS certificates into the nginx service:
 #   Set NGINX_CERT_PATH and NGINX_KEY_PATH in .env or the environment.
 #   Example: NGINX_CERT_PATH=/etc/letsencrypt/live/example.com/fullchain.pem
@@ -23,9 +26,11 @@ services:
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-claim-agent}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
       - WEBHOOK_ENABLED=${WEBHOOK_ENABLED:-true}
-      # Enable HTTPS enforcement when running behind the nginx TLS proxy
+      # Enable HTTPS enforcement when running behind the nginx TLS proxy (set TRUST_FORWARDED_FOR=true
+      # in .env so X-Forwarded-Proto redirects and HSTS logic trust the proxy).
       - ENFORCE_HTTPS=${ENFORCE_HTTPS:-false}
       - HSTS_MAX_AGE=${HSTS_MAX_AGE:-31536000}
+      - HSTS_PRELOAD=${HSTS_PRELOAD:-false}
       - TRUST_FORWARDED_FOR=${TRUST_FORWARDED_FOR:-false}
     volumes:
       - claim-data:/app/data

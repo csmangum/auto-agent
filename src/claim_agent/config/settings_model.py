@@ -14,7 +14,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger(__name__)
@@ -729,10 +729,11 @@ class AuthConfig(BaseSettings):
 
     environment: str = Field(
         default="development",
-        validation_alias="ENVIRONMENT",
+        validation_alias=AliasChoices("CLAIM_AGENT_ENVIRONMENT", "ENVIRONMENT"),
         description=(
             "Deployment environment. Set to 'production' to enforce authentication at startup. "
-            "Use 'development' (default) or 'dev' to allow unauthenticated local runs."
+            "Use 'development' (default) or 'dev' to allow unauthenticated local runs. "
+            "Prefer CLAIM_AGENT_ENVIRONMENT; ENVIRONMENT is accepted for backward compatibility."
         ),
     )
     api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
@@ -760,6 +761,7 @@ class AuthConfig(BaseSettings):
         description=(
             "When true, add Strict-Transport-Security (HSTS) headers and redirect "
             "HTTP requests to HTTPS based on the X-Forwarded-Proto header. "
+            "Requires TRUST_FORWARDED_FOR=true (trusted proxy) or the redirect logic is disabled. "
             "Enable only when deployed behind a TLS-terminating reverse proxy."
         ),
     )
@@ -773,6 +775,14 @@ class AuthConfig(BaseSettings):
         default=True,
         validation_alias="HSTS_INCLUDE_SUBDOMAINS",
         description="Append 'includeSubDomains' to the HSTS header (default: true).",
+    )
+    hsts_preload: bool = Field(
+        default=False,
+        validation_alias="HSTS_PRELOAD",
+        description=(
+            "When true, append the HSTS preload directive (submit via hstspreload.org). "
+            "Irreversible for months once in browser preload lists; default false."
+        ),
     )
 
     @field_validator("jwt_secret_raw", mode="after")

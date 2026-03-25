@@ -135,7 +135,7 @@ class TestCheckAuthConfiguration:
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.delenv("JWT_SECRET", raising=False)
-        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "development")
         reload_settings()
         self._check()  # should not raise
 
@@ -143,7 +143,7 @@ class TestCheckAuthConfiguration:
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.delenv("JWT_SECRET", raising=False)
-        monkeypatch.setenv("ENVIRONMENT", "dev")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "dev")
         reload_settings()
         self._check()  # should not raise
 
@@ -151,7 +151,7 @@ class TestCheckAuthConfiguration:
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.delenv("JWT_SECRET", raising=False)
-        monkeypatch.setenv("ENVIRONMENT", "test")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "test")
         reload_settings()
         self._check()  # should not raise
 
@@ -159,7 +159,7 @@ class TestCheckAuthConfiguration:
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.delenv("JWT_SECRET", raising=False)
-        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "production")
         reload_settings()
         with pytest.raises(RuntimeError, match="Authentication is not configured"):
             self._check()
@@ -168,7 +168,7 @@ class TestCheckAuthConfiguration:
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.delenv("JWT_SECRET", raising=False)
-        monkeypatch.setenv("ENVIRONMENT", "staging")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "staging")
         reload_settings()
         with pytest.raises(RuntimeError, match="Authentication is not configured"):
             self._check()
@@ -177,7 +177,7 @@ class TestCheckAuthConfiguration:
         monkeypatch.setenv("API_KEYS", "sk-prod:admin")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.delenv("JWT_SECRET", raising=False)
-        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "production")
         reload_settings()
         self._check()  # should not raise
 
@@ -185,7 +185,7 @@ class TestCheckAuthConfiguration:
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.setenv("JWT_SECRET", "a" * 32)
-        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "production")
         reload_settings()
         self._check()  # should not raise
 
@@ -193,6 +193,16 @@ class TestCheckAuthConfiguration:
         monkeypatch.delenv("API_KEYS", raising=False)
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         monkeypatch.delenv("JWT_SECRET", raising=False)
-        monkeypatch.setenv("ENVIRONMENT", "Development")
+        monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "Development")
         reload_settings()
         self._check()  # should not raise
+
+    def test_legacy_environment_env_var_still_works(self, monkeypatch):
+        monkeypatch.delenv("CLAIM_AGENT_ENVIRONMENT", raising=False)
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        reload_settings()
+        with pytest.raises(RuntimeError, match="Authentication is not configured"):
+            self._check()
