@@ -4,6 +4,7 @@ import AuthControl from './AuthControl';
 import ChatPanel from './ChatPanel';
 import RoleSwitcher from './RoleSwitcher';
 import SimulationBanner from './SimulationBanner';
+import ThemeToggle from './ThemeToggle';
 import { DocumentIcon } from './icons';
 import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
 import { useRoleSimulation } from '../context/RoleSimulationContext';
@@ -125,6 +126,7 @@ export default function Layout() {
         <div className="p-4 border-t border-gray-800 space-y-3">
           <RoleSwitcher />
           <AuthControl />
+          <ThemeToggle />
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-gray-800 text-gray-500 ring-1 ring-gray-700">
               v0.1.0

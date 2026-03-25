@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { RoleSimulationProvider } from './context/RoleSimulationContext';
+import { ThemeProvider } from './context/ThemeContext';
 import App from './App';
 
 vi.mock('./api/queries', () => ({
@@ -39,15 +40,17 @@ function renderApp(initialPath = '/') {
     defaultOptions: { queries: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RoleSimulationProvider>
-          <MemoryRouter initialEntries={[initialPath]}>
-            <App />
-          </MemoryRouter>
-        </RoleSimulationProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RoleSimulationProvider>
+            <MemoryRouter initialEntries={[initialPath]}>
+              <App />
+            </MemoryRouter>
+          </RoleSimulationProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 
@@ -55,6 +58,16 @@ describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem('simulation_role');
+    document.documentElement.classList.remove('dark');
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
   });
 
   it('renders layout with navigation', () => {
