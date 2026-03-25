@@ -124,3 +124,19 @@ class ClaimWorkflowTimeoutError(ClaimAgentError):
             f"Claim {claim_id} workflow timed out after {elapsed_seconds:.1f}s "
             f"(limit {timeout_seconds:.0f}s)"
         )
+
+
+class ClaimAlreadyProcessingError(ClaimAgentError):
+    """Claim is already being processed by another workflow run.
+
+    Raised by :meth:`ClaimRepository.acquire_processing_lock` when a
+    concurrent attempt is made to start workflow processing on a claim that
+    is already in the ``processing`` status.
+    """
+
+    def __init__(self, claim_id: str):
+        self.claim_id = claim_id
+        super().__init__(
+            f"Claim {claim_id} is already being processed. "
+            "Retry after the current workflow run completes."
+        )

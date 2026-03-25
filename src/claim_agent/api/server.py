@@ -52,7 +52,10 @@ from claim_agent.api.routes.users import router as users_admin_router
 from claim_agent.api.routes.repair_shop_users import router as repair_shop_users_router
 from claim_agent.api.routes.note_templates import router as note_templates_router
 from claim_agent.config import get_settings
-from claim_agent.db.database import ensure_fresh_db_on_startup, is_postgres_backend
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
+from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+from claim_agent.db.database import ensure_fresh_db_on_startup, get_db_path, is_postgres_backend
+from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
 from claim_agent.exceptions import InvalidClaimTransitionError
@@ -114,6 +117,62 @@ def _check_rate_limit_configuration() -> None:
         )
 
 
+def _recover_stuck_processing_claims() -> None:
+    """Mark claims stuck in 'processing' as 'needs_review' on startup.
+
+    When the server is restarted while background workflow tasks are in flight, those
+    tasks are lost because they live only in memory.  This scan detects claims that are
+    still in the 'processing' status after the configured timeout and marks them
+    'needs_review' so an adjuster can retrigger or review them.
+
+    Controlled by:
+    - ``CLAIM_AGENT_TASK_RECOVERY_ENABLED`` (default true)
+    - ``CLAIM_AGENT_TASK_RECOVERY_STUCK_MINUTES`` (default 30)
+    """
+    settings = get_settings()
+    if not settings.task_recovery_enabled:
+        return
+    stuck_minutes = settings.task_recovery_stuck_minutes
+    try:
+        repo = ClaimRepository(db_path=get_db_path())
+        stuck_claims = repo.get_stuck_processing_claims(stuck_after_minutes=stuck_minutes)
+    except Exception:
+        _server_logger.exception("Startup recovery scan failed to query stuck processing claims")
+        return
+
+    if not stuck_claims:
+        _server_logger.debug("Startup recovery: no claims stuck in processing")
+        return
+
+    _server_logger.warning(
+        "Startup recovery: found %d claim(s) stuck in 'processing' (> %d min). "
+        "Marking as 'needs_review'.",
+        len(stuck_claims),
+        stuck_minutes,
+    )
+    for claim in stuck_claims:
+        claim_id = claim["id"]
+        try:
+            repo.update_claim_status(
+                claim_id,
+                STATUS_NEEDS_REVIEW,
+                details=(
+                    f"Claim was stuck in 'processing' on server restart "
+                    f"(exceeded {stuck_minutes}-minute threshold). "
+                    "Please review and resubmit for processing."
+                ),
+                actor_id=ACTOR_WORKFLOW,
+                skip_validation=True,
+            )
+            _server_logger.warning(
+                "Startup recovery: claim %s marked 'needs_review'", claim_id
+            )
+        except Exception:
+            _server_logger.exception(
+                "Startup recovery: failed to mark claim %s as needs_review", claim_id
+            )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _check_auth_configuration()
@@ -145,6 +204,7 @@ async def lifespan(_app: FastAPI):
                 "See docs/database.md for details."
             )
         ensure_fresh_db_on_startup()
+    _recover_stuck_processing_claims()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
     ensure_scheduler_running()

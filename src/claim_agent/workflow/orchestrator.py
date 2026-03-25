@@ -29,8 +29,13 @@ from claim_agent.models.stage_outputs import (
     FraudPrescreeningResult,
     RouterStageResult,
 )
-from claim_agent.exceptions import ClaimNotFoundError, ClaimWorkflowTimeoutError, DomainValidationError
-from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
+from claim_agent.exceptions import (
+    ClaimAlreadyProcessingError,
+    ClaimNotFoundError,
+    ClaimWorkflowTimeoutError,
+    DomainValidationError,
+)
+from claim_agent.db.constants import STATUS_FAILED, STATUS_NEEDS_REVIEW, STATUS_PROCESSING
 from claim_agent.models.claim import ClaimInput
 from claim_agent.observability import claim_context, get_logger
 from claim_agent.observability.prometheus import record_claim_outcome
@@ -169,6 +174,7 @@ def run_claim_workflow(
     resume_run_id: str | None = None,
     from_stage: str | None = None,
     ctx: ClaimContext | None = None,
+    processing_lock_already_held: bool = False,
 ) -> dict:
     """Run the full claim workflow: classify with router crew, then run the appropriate workflow crew.
 
@@ -189,6 +195,10 @@ def run_claim_workflow(
         from_stage: When resuming, invalidate checkpoints at and after this stage
             and re-execute from here.  One of ``WORKFLOW_STAGES``.
         ctx: Dependency-injection context. When ``None``, one is built from defaults.
+        processing_lock_already_held: If true, skip :meth:`ClaimRepository.acquire_processing_lock`
+            because the caller already transitioned the claim to ``processing`` (e.g. human-review
+            handback).  The claim must be in ``processing`` status or :class:`DomainValidationError`
+            is raised.
 
     Returns:
         dict with claim_id, claim_type, status, summary, workflow_output, and
@@ -197,18 +207,19 @@ def run_claim_workflow(
     workflow_start_time = time.time()
     _actor = actor_id if actor_id is not None else ACTOR_WORKFLOW
 
-    _llm = llm or (ctx.llm if ctx else None) or get_llm()
+    # Resolve explicit LLM only here; defer get_llm() until after processing-lock validation
+    # so DomainValidationError / ClaimNotFound paths do not require API keys.
+    _base_llm = llm or (ctx.llm if ctx else None)
     claim_input, claim_data = _normalize_claim_data(claim_data)
     if ctx is None:
-        ctx = ClaimContext.from_defaults(llm=_llm)
+        ctx = ClaimContext.from_defaults(llm=_base_llm)
     elif ctx.llm is None or llm is not None:
-        # Apply _llm: fill in when ctx has none, or override when explicit llm was passed
         ctx = ClaimContext(
             repo=ctx.repo,
             adjuster_service=ctx.adjuster_service,
             adapters=ctx.adapters,
             metrics=ctx.metrics,
-            llm=_llm,
+            llm=llm if llm is not None else ctx.llm,
         )
     repo = ctx.repo
     metrics = ctx.metrics
@@ -250,23 +261,43 @@ def run_claim_workflow(
         incident_latitude=claim_data.get("incident_latitude"),
         incident_longitude=claim_data.get("incident_longitude"),
     ):
-        repo.update_claim_status(claim_id, STATUS_PROCESSING, actor_id=_actor)
-        logger.log_event("workflow_started", status=STATUS_PROCESSING)
-        
-        db_parties = repo.get_claim_parties(claim_id)
-        if db_parties:
-            claim_data["parties"] = db_parties
-
-        litellm_callback = LiteLLMTracingCallback(
-            claim_id=claim_id,
-            metrics_collector=metrics,
-        )
-        with _callbacks_lock:  # protects list replacement, not litellm's iteration
-            prev_litellm_callbacks = list(getattr(litellm, "callbacks", None) or [])
-            litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
-
         wf_ctx: _WorkflowCtx | None = None
+        litellm_callback: LiteLLMTracingCallback | None = None
+        processing_lock_held = False
         try:
+            if processing_lock_already_held:
+                current = repo.get_claim(claim_id)
+                if not current or current.get("status") != STATUS_PROCESSING:
+                    raise DomainValidationError(
+                        f"processing_lock_already_held requires claim {claim_id} "
+                        f"to be in {STATUS_PROCESSING!r} status"
+                    )
+                processing_lock_held = True
+            else:
+                repo.acquire_processing_lock(claim_id, actor_id=_actor)
+                processing_lock_held = True
+            if ctx.llm is None:
+                ctx = ClaimContext(
+                    repo=ctx.repo,
+                    adjuster_service=ctx.adjuster_service,
+                    adapters=ctx.adapters,
+                    metrics=ctx.metrics,
+                    llm=get_llm(),
+                )
+            logger.log_event("workflow_started", status=STATUS_PROCESSING)
+
+            db_parties = repo.get_claim_parties(claim_id)
+            if db_parties:
+                claim_data["parties"] = db_parties
+
+            litellm_callback = LiteLLMTracingCallback(
+                claim_id=claim_id,
+                metrics_collector=metrics,
+            )
+            with _callbacks_lock:  # protects list replacement, not litellm's iteration
+                prev_litellm_callbacks = list(getattr(litellm, "callbacks", None) or [])
+                litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
+
             if from_stage and not resume_run_id:
                 logger.warning(
                     "from_stage=%s ignored because resume_run_id is not set",
@@ -331,6 +362,30 @@ def run_claim_workflow(
                     raise ClaimWorkflowTimeoutError(claim_id, _elapsed, _timeout_seconds)
                 early_return = stage_fn(wf_ctx)
                 if early_return is not None:
+                    claim_row = repo.get_claim(claim_id)
+                    if claim_row and claim_row.get("status") == STATUS_PROCESSING:
+                        logger.error(
+                            "Workflow stage returned early but claim still in processing; "
+                            "routing to needs_review",
+                            extra={"claim_id": claim_id},
+                        )
+                        try:
+                            repo.update_claim_status(
+                                claim_id,
+                                STATUS_NEEDS_REVIEW,
+                                details=(
+                                    "Workflow returned early while status was still processing; "
+                                    "please review."
+                                ),
+                                actor_id=_actor,
+                                skip_validation=True,
+                            )
+                        except Exception as cleanup_err:
+                            logger.warning(
+                                "Failed to move claim to needs_review after early return: %s",
+                                cleanup_err,
+                                extra={"claim_id": claim_id},
+                            )
                     return early_return
 
             current_claim = repo.get_claim(claim_id)
@@ -399,7 +454,11 @@ def run_claim_workflow(
                 if len(wf_ctx.workflow_output) > 500
                 else wf_ctx.workflow_output,
             }
+        except ClaimAlreadyProcessingError:
+            raise
         except Exception as e:
+            if not processing_lock_held:
+                raise
             details = str(e)
             if len(details) > 500:
                 details = details[:500] + "..."
@@ -496,6 +555,9 @@ def run_claim_workflow(
 
             raise
         finally:
-            with _callbacks_lock:  # protects list replacement, not litellm's iteration
-                current_callbacks = list(getattr(litellm, "callbacks", None) or [])
-                litellm.callbacks = [cb for cb in current_callbacks if cb is not litellm_callback]
+            if litellm_callback is not None:
+                with _callbacks_lock:  # protects list replacement, not litellm's iteration
+                    current_callbacks = list(getattr(litellm, "callbacks", None) or [])
+                    litellm.callbacks = [
+                        cb for cb in current_callbacks if cb is not litellm_callback
+                    ]

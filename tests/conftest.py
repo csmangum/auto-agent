@@ -348,6 +348,17 @@ def _seed_test_data(db_path: str) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reset_sticky_logger_levels():
+    """Tests that call setLevel on shared loggers must restore; fix order-sensitive caplog."""
+    yield
+    for name in (
+        "claim_agent.notifications.webhook",
+        "claim_agent.api.server",
+    ):
+        logging.getLogger(name).setLevel(logging.NOTSET)
+
+
+@pytest.fixture(autouse=True)
 def _reset_settings(request):
     """Reset the settings singleton so each test gets fresh config from env."""
     import claim_agent.config as _cfg

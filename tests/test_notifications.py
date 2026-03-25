@@ -1,11 +1,12 @@
 """Tests for webhooks and claimant notifications."""
 
+import asyncio
 import hashlib
 import hmac
 import logging
 import os
 import tempfile
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import text
 
@@ -224,6 +225,7 @@ class TestSafeDispatchClaimEvent:
     def test_swallows_exceptions_and_logs(self):
         webhook_logger = logging.getLogger("claim_agent.notifications.webhook")
         cap = LogCaptureHandler()
+        prev_level = webhook_logger.level
         webhook_logger.addHandler(cap)
         webhook_logger.setLevel(logging.WARNING)
         try:
@@ -233,6 +235,7 @@ class TestSafeDispatchClaimEvent:
                 mock.assert_called_once()
         finally:
             webhook_logger.removeHandler(cap)
+            webhook_logger.setLevel(prev_level)
         assert any("Webhook dispatch failed" in m for m in cap.messages)
         assert any("executor shutdown" in m for m in cap.messages)
 
@@ -249,33 +252,34 @@ class TestDispatchWebhook:
     """Tests for dispatch_webhook delivery."""
 
     def test_disabled_does_not_deliver(self):
-        with patch("claim_agent.notifications.webhook._EXECUTOR") as mock_exec:
+        with patch("claim_agent.notifications.webhook.asyncio.run_coroutine_threadsafe") as mock_rcf:
             with patch.dict(
                 os.environ,
                 {"WEBHOOK_URL": "https://x.com/hook", "WEBHOOK_ENABLED": "false"},
             ):
                 dispatch_webhook("claim.submitted", {"claim_id": "CLM-123"})
-                mock_exec.submit.assert_not_called()
+                mock_rcf.assert_not_called()
 
     def test_no_urls_does_not_deliver(self):
-        with patch("claim_agent.notifications.webhook._EXECUTOR") as mock_exec:
+        with patch("claim_agent.notifications.webhook.asyncio.run_coroutine_threadsafe") as mock_rcf:
             with patch.dict(
                 os.environ,
                 {"WEBHOOK_URL": "", "WEBHOOK_URLS": "", "WEBHOOK_ENABLED": "true"},
             ):
                 dispatch_webhook("claim.submitted", {"claim_id": "CLM-123"})
-                mock_exec.submit.assert_not_called()
+                mock_rcf.assert_not_called()
 
     def test_delivers_when_enabled_and_url_configured(self):
-        submitted = []
+        def run_coro_inline(coro, _loop):
+            asyncio.run(coro)
 
-        def run_sync(fn):
-            submitted.append(fn)
-            fn()
-
-        with patch("claim_agent.notifications.webhook._EXECUTOR") as mock_exec:
-            mock_exec.submit.side_effect = run_sync
-            with patch("claim_agent.notifications.webhook._deliver_one") as mock_deliver:
+        with patch(
+            "claim_agent.notifications.webhook.asyncio.run_coroutine_threadsafe",
+            side_effect=run_coro_inline,
+        ):
+            with patch(
+                "claim_agent.notifications.webhook._deliver_one", new_callable=AsyncMock
+            ) as mock_deliver:
                 with patch.dict(
                     os.environ,
                     {
@@ -286,9 +290,9 @@ class TestDispatchWebhook:
                 ):
                     reload_settings()
                     dispatch_webhook("claim.submitted", {"claim_id": "CLM-ABC"})
-                    mock_deliver.assert_called_once()
-                    assert mock_deliver.call_args[0][0] == "https://example.com/webhook"
-                    payload = mock_deliver.call_args[0][1]
+                    mock_deliver.assert_awaited_once()
+                    assert mock_deliver.await_args[0][0] == "https://example.com/webhook"
+                    payload = mock_deliver.await_args[0][1]
                     assert payload["event"] == "claim.submitted"
                     assert payload["claim_id"] == "CLM-ABC"
                     assert "timestamp" in payload

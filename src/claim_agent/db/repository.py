@@ -78,7 +78,13 @@ from claim_agent.rag.constants import normalize_state
 from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
 from claim_agent.db.state_machine import validate_transition
-from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
+from claim_agent.exceptions import (
+    ClaimAlreadyProcessingError,
+    ClaimNotFoundError,
+    DomainValidationError,
+    InvalidClaimTransitionError,
+    ReserveAuthorityError,
+)
 from claim_agent.utils.sanitization import (
     sanitize_actor_id,
     sanitize_denial_reason,
@@ -1289,6 +1295,104 @@ class ClaimRepository:
                 summary=details,
                 claim_type=final_claim_type,
                 payout_amount=final_payout,
+            )
+        )
+
+    def acquire_processing_lock(
+        self,
+        claim_id: str,
+        actor_id: str = ACTOR_WORKFLOW,
+    ) -> None:
+        """Atomically acquire a processing lock by transitioning claim to ``processing``.
+
+        Uses an optimistic-locking ``UPDATE … WHERE id = :id AND status = :old_status``
+        to eliminate the TOCTOU window: the UPDATE only succeeds when the row still holds
+        the exact status we read and validated.  This is safe for both SQLite WAL and
+        PostgreSQL.
+
+        Raises:
+            ClaimNotFoundError: if the claim does not exist.
+            ClaimAlreadyProcessingError: if the claim is already in ``processing`` status.
+            InvalidClaimTransitionError: if the current status cannot transition to
+                ``processing`` according to the state machine, or if the row was
+                modified concurrently to another status (optimistic lock lost).
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with get_connection(self._db_path) as conn:
+            row = conn.execute(
+                text("SELECT status FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            if row is None:
+                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
+
+            old_status = row[0]
+            if old_status == STATUS_PROCESSING:
+                raise ClaimAlreadyProcessingError(claim_id)
+
+            # Validate the transition using the status we just read.
+            validate_transition(claim_id, old_status, STATUS_PROCESSING, actor_id=actor_id)
+
+            # Optimistic-lock UPDATE: only succeeds when status hasn't changed since our
+            # SELECT.  If a concurrent request already updated the row (to 'processing' or
+            # any other value), rowcount will be 0 and we raise appropriately.
+            result = conn.execute(
+                text(
+                    "UPDATE claims SET status = :new_status, updated_at = :now "
+                    "WHERE id = :claim_id AND status = :old_status"
+                ),
+                {
+                    "new_status": STATUS_PROCESSING,
+                    "now": now,
+                    "claim_id": claim_id,
+                    "old_status": old_status,
+                },
+            )
+            if result.rowcount == 0:
+                # Status changed concurrently — re-read to decide the right exception.
+                current_row = conn.execute(
+                    text("SELECT status FROM claims WHERE id = :claim_id"),
+                    {"claim_id": claim_id},
+                ).fetchone()
+                if current_row is not None and current_row[0] == STATUS_PROCESSING:
+                    raise ClaimAlreadyProcessingError(claim_id)
+                concurrent = current_row[0] if current_row is not None else None
+                raise InvalidClaimTransitionError(
+                    claim_id,
+                    old_status,
+                    STATUS_PROCESSING,
+                    reason=(
+                        f"claim status changed concurrently to {concurrent!r}; "
+                        "retry the operation"
+                    ),
+                )
+
+            conn.execute(
+                text("""
+                INSERT INTO claim_audit_log
+                    (claim_id, action, old_status, new_status, details, actor_id,
+                     before_state, after_state)
+                VALUES
+                    (:claim_id, :action, :old_status, :new_status, :details, :actor_id,
+                     :before_state, :after_state)
+                """),
+                {
+                    "claim_id": claim_id,
+                    "action": AUDIT_EVENT_STATUS_CHANGE,
+                    "old_status": old_status,
+                    "new_status": STATUS_PROCESSING,
+                    "details": "Processing lock acquired",
+                    "actor_id": actor_id,
+                    "before_state": json.dumps({"status": old_status}),
+                    "after_state": json.dumps({"status": STATUS_PROCESSING}),
+                },
+            )
+
+        emit_claim_event(
+            ClaimEvent(
+                claim_id=claim_id,
+                status=STATUS_PROCESSING,
+                summary="Processing lock acquired",
             )
         )
 
@@ -3089,6 +3193,44 @@ class ClaimRepository:
                 params,
             ).fetchall()
         return [row_to_dict(r) for r in rows], total
+
+    def get_stuck_processing_claims(self, stuck_after_minutes: int) -> list[dict[str, Any]]:
+        """Return claims that have been in 'processing' status for longer than stuck_after_minutes.
+
+        Used by the startup recovery scan to detect in-flight claims that were lost
+        when the server was restarted mid-processing.
+        """
+        if stuck_after_minutes < 1:
+            raise ValueError("stuck_after_minutes must be at least 1")
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(minutes=stuck_after_minutes)
+        cutoff_iso = cutoff_dt.isoformat()
+        cutoff_space = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+        with get_connection(self._db_path) as conn:
+            if is_postgres_backend():
+                rows = conn.execute(
+                    text(
+                        "SELECT * FROM claims WHERE status = :status AND updated_at <= :cutoff"
+                    ),
+                    {"status": STATUS_PROCESSING, "cutoff": cutoff_iso},
+                ).fetchall()
+            else:
+                # SQLite stores updated_at as TEXT; values may be ISO-8601 (e.g. from
+                # .isoformat()) or space-separated (e.g. datetime('now')). Compare using
+                # the appropriate lexical form so both match the cutoff.
+                rows = conn.execute(
+                    text(
+                        "SELECT * FROM claims WHERE status = :status AND ("
+                        "(instr(COALESCE(updated_at, ''), 'T') > 0 AND updated_at <= :cutoff_iso) OR "
+                        "(instr(COALESCE(updated_at, ''), 'T') = 0 AND updated_at <= :cutoff_space)"
+                        ")"
+                    ),
+                    {
+                        "status": STATUS_PROCESSING,
+                        "cutoff_iso": cutoff_iso,
+                        "cutoff_space": cutoff_space,
+                    },
+                ).fetchall()
+        return [row_to_dict(r) for r in rows]
 
     def search_claims(
         self,

@@ -94,4 +94,5 @@ def run_handback_workflow(
         existing_claim_id=claim_id,
         actor_id=actor_id,
         ctx=ctx,
+        processing_lock_already_held=True,
     )

@@ -5,7 +5,7 @@ import json
 import logging
 import math
 from datetime import datetime, timezone
-from typing import Any, Literal, Optional
+from typing import Any, Literal, NoReturn, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -25,6 +25,7 @@ from claim_agent.api.idempotency import (
 from claim_agent.api.deps import require_role
 from claim_agent.config import get_settings
 from claim_agent.exceptions import (
+    ClaimAlreadyProcessingError,
     ClaimNotFoundError,
     DomainValidationError,
     InvalidClaimTransitionError,
@@ -99,6 +100,18 @@ from claim_agent.mock_crew.claim_generator import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Retry-After (seconds) hint when a claim is already being processed (HTTP 409).
+_CLAIM_ALREADY_PROCESSING_RETRY_AFTER = "30"
+
+
+def _http_already_processing(exc: ClaimAlreadyProcessingError) -> NoReturn:
+    """Raise HTTP 409 for concurrent workflow; never returns."""
+    raise HTTPException(
+        status_code=409,
+        detail=str(exc),
+        headers={"Retry-After": _CLAIM_ALREADY_PROCESSING_RETRY_AFTER},
+    ) from exc
 
 
 class GenerateClaimRequest(BaseModel):
@@ -217,6 +230,11 @@ def _run_workflow_background(
                 claim_id,
                 actor_id=actor_id,
                 ctx=bg_ctx,
+            )
+        except ClaimAlreadyProcessingError:
+            logger.warning(
+                "Claim %s is already being processed; background workflow skipped",
+                claim_id,
             )
         except InvalidClaimTransitionError as exc:
             logger.warning(
@@ -1857,14 +1875,17 @@ async def generate_and_submit_claim(
             )
             result = {"claim": claim_data, "submitted": True, "claim_id": claim_id}
         else:
-            result = await asyncio.to_thread(
-                run_claim_workflow,
-                claim_data_with_attachments,
-                None,
-                claim_id,
-                actor_id=actor_id,
-                ctx=ctx,
-            )
+            try:
+                result = await asyncio.to_thread(
+                    run_claim_workflow,
+                    claim_data_with_attachments,
+                    None,
+                    claim_id,
+                    actor_id=actor_id,
+                    ctx=ctx,
+                )
+            except ClaimAlreadyProcessingError as e:
+                _http_already_processing(e)
             result = {"claim": claim_data, "submitted": True, **result}
         store_response_if_idempotent(idem_key, 200, result)
         return result
@@ -1944,14 +1965,17 @@ async def create_claim(
             )
             result = {"claim_id": claim_id}
         else:
-            result = await asyncio.to_thread(
-                run_claim_workflow,
-                claim_data_with_attachments,
-                None,
-                claim_id,
-                actor_id=actor_id,
-                ctx=ctx,
-            )
+            try:
+                result = await asyncio.to_thread(
+                    run_claim_workflow,
+                    claim_data_with_attachments,
+                    None,
+                    claim_id,
+                    actor_id=actor_id,
+                    ctx=ctx,
+                )
+            except ClaimAlreadyProcessingError as e:
+                _http_already_processing(e)
         store_response_if_idempotent(idem_key, 200, result)
         return result
     except Exception:
@@ -2213,14 +2237,17 @@ async def process_claim(
             )
             result = {"claim_id": claim_id}
         else:
-            result = await asyncio.to_thread(
-                run_claim_workflow,
-                claim_data_with_attachments,
-                None,  # llm
-                claim_id,  # existing_claim_id
-                actor_id=actor_id,
-                ctx=ctx,
-            )
+            try:
+                result = await asyncio.to_thread(
+                    run_claim_workflow,
+                    claim_data_with_attachments,
+                    None,  # llm
+                    claim_id,  # existing_claim_id
+                    actor_id=actor_id,
+                    ctx=ctx,
+                )
+            except ClaimAlreadyProcessingError as e:
+                _http_already_processing(e)
         store_response_if_idempotent(idem_key, 200, result)
         return result
     except Exception:
@@ -2738,15 +2765,18 @@ async def reprocess_claim(
             from_stage = None
 
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    result = await asyncio.to_thread(
-        run_claim_workflow,
-        claim_data,
-        existing_claim_id=claim_id,
-        actor_id=actor_id,
-        resume_run_id=resume_run_id,
-        from_stage=from_stage,
-        ctx=ctx,
-    )
+    try:
+        result = await asyncio.to_thread(
+            run_claim_workflow,
+            claim_data,
+            existing_claim_id=claim_id,
+            actor_id=actor_id,
+            resume_run_id=resume_run_id,
+            from_stage=from_stage,
+            ctx=ctx,
+        )
+    except ClaimAlreadyProcessingError as e:
+        _http_already_processing(e)
     return result
 
 

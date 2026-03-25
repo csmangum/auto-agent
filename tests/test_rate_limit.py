@@ -17,16 +17,26 @@ from claim_agent.api.rate_limit import (
 )
 
 
+_REDIS_UNSET = object()
+
+
 @pytest.fixture(autouse=True)
 def _force_in_memory_backend():
-    """Ensure in-memory backend for tests (REDIS_URL unset, backend reset)."""
+    """Ensure in-memory backend for tests (no Redis URL; backend reset).
+
+    Use REDIS_URL="" so pydantic-settings does not reintroduce a URL from .env
+    after os.environ.pop (env file still loads when the variable is absent).
+    """
     from claim_agent.config import reload_settings
 
-    old_redis = os.environ.pop("REDIS_URL", None)
+    old_redis = os.environ.get("REDIS_URL", _REDIS_UNSET)
+    os.environ["REDIS_URL"] = ""
     reload_settings()
     reset_rate_limit_backend()
     yield
-    if old_redis is not None:
+    if old_redis is _REDIS_UNSET:
+        os.environ.pop("REDIS_URL", None)
+    else:
         os.environ["REDIS_URL"] = old_redis
     reload_settings()
     reset_rate_limit_backend()
@@ -123,7 +133,7 @@ class TestCheckRateLimitConfiguration:
         _check_rate_limit_configuration()
 
     def test_no_warning_in_dev_without_redis(self, monkeypatch, caplog):
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("REDIS_URL", "")
         monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "development")
         from claim_agent.config import reload_settings
 
@@ -133,7 +143,7 @@ class TestCheckRateLimitConfiguration:
         assert not any("Rate limiting" in m for m in caplog.messages)
 
     def test_no_warning_in_test_environment_without_redis(self, monkeypatch, caplog):
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("REDIS_URL", "")
         monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "test")
         from claim_agent.config import reload_settings
 
@@ -143,7 +153,7 @@ class TestCheckRateLimitConfiguration:
         assert not any("Rate limiting" in m for m in caplog.messages)
 
     def test_warns_in_production_without_redis(self, monkeypatch, caplog):
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("REDIS_URL", "")
         monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "production")
         from claim_agent.config import reload_settings
 
@@ -153,7 +163,7 @@ class TestCheckRateLimitConfiguration:
         assert any("Rate limiting" in m and "REDIS_URL" in m for m in caplog.messages)
 
     def test_warns_in_staging_without_redis(self, monkeypatch, caplog):
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.setenv("REDIS_URL", "")
         monkeypatch.setenv("CLAIM_AGENT_ENVIRONMENT", "staging")
         from claim_agent.config import reload_settings
 
