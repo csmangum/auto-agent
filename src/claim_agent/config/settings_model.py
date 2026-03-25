@@ -723,6 +723,7 @@ _DEFAULT_CORS_HEADERS = [
     "Idempotency-Key",
     "X-API-Key",
     "X-Claim-Access-Token",
+    "X-Claim-Id",
     "X-Email",
     "X-Policy-Number",
     "X-Portal-Token",
