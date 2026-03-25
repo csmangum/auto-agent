@@ -355,6 +355,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         run_pg_dump(pg_url, output_path, pg_dump_bin, compress, dry_run=False)
+    except ValueError as exc:
+        logger.error("Configuration error: %s", exc)
+        return 1
     except RuntimeError as exc:
         logger.error("Backup failed: %s", exc)
         return 2

@@ -158,7 +158,12 @@ def run_pg_restore(
     t = timeout if timeout is not None else restore_timeout_seconds()
 
     if backup_path.suffix == ".sql":
-        cmd = _psql_base_cmd(pg_psql_bin, params) + ["-f", str(backup_path)]
+        cmd = _psql_base_cmd(pg_psql_bin, params) + [
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-f",
+            str(backup_path),
+        ]
     else:
         cmd = _pg_restore_base_cmd(pg_restore_bin, params) + [str(backup_path)]
 
@@ -180,8 +185,17 @@ def run_pg_restore(
         logger.debug("restore stderr: %s", result.stderr.strip())
 
 
-def run_schema_upgrade(dry_run: bool = False, timeout: int | None = None) -> None:
-    """Run ``alembic upgrade head`` to apply any pending migrations."""
+def run_schema_upgrade(
+    dry_run: bool = False,
+    timeout: int | None = None,
+    database_url: str | None = None,
+) -> None:
+    """Run ``alembic upgrade head`` to apply any pending migrations.
+
+    When *database_url* is set, it is passed to the subprocess as ``DATABASE_URL``
+    so Alembic targets the same database as the restore (e.g. when using
+    ``--pg-url`` without exporting ``DATABASE_URL`` in the shell).
+    """
     alembic_bin = shutil.which("alembic")
     if alembic_bin is None:
         logger.warning("alembic not found on PATH; skipping schema upgrade.")
@@ -193,9 +207,19 @@ def run_schema_upgrade(dry_run: bool = False, timeout: int | None = None) -> Non
         logger.info("[dry-run] Skipping alembic upgrade head.")
         return
 
+    env = os.environ.copy()
+    if database_url is not None:
+        env["DATABASE_URL"] = database_url
+
     t = timeout if timeout is not None else alembic_timeout_seconds()
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=t)  # noqa: S603
+        result = subprocess.run(  # noqa: S603
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=t,
+            env=env,
+        )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"alembic upgrade head timed out after {t}s") from exc
     if result.returncode != 0:
@@ -287,19 +311,25 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         run_pg_restore(pg_url, backup_path, pg_restore_bin, pg_psql_bin)
+    except ValueError as exc:
+        logger.error("Configuration error: %s", exc)
+        return 1
     except RuntimeError as exc:
         logger.error("Restore failed: %s", exc)
         return 2
 
     if not args.no_schema_upgrade:
         try:
-            run_schema_upgrade()
+            run_schema_upgrade(database_url=pg_url)
         except RuntimeError as exc:
             logger.error("Schema upgrade failed: %s", exc)
             return 2
 
     try:
         run_smoke_test(pg_url, pg_psql_bin)
+    except ValueError as exc:
+        logger.error("Configuration error: %s", exc)
+        return 1
     except RuntimeError as exc:
         logger.error("Smoke test failed after restore: %s", exc)
         return 2

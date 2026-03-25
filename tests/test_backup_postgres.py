@@ -281,6 +281,34 @@ class TestBackupMain:
                 rc = bkp.main([])
         assert rc == 2
 
+    def test_malformed_pg_url_returns_1(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("DATABASE_URL", "postgresql:///claims")
+        monkeypatch.setenv("BACKUP_DIR", str(tmp_path))
+        with patch("shutil.which", return_value="/usr/bin/pg_dump"):
+            rc = bkp.main([])
+        assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# restore_postgres.run_schema_upgrade
+# ---------------------------------------------------------------------------
+
+
+class TestRunSchemaUpgrade:
+    def test_passes_database_url_to_subprocess_env(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "postgresql://wrong-host/wrongdb")
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+
+        with patch("shutil.which", return_value="/usr/bin/alembic"):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                rst.run_schema_upgrade(database_url="postgresql://restore-target/db")
+
+        env = mock_run.call_args.kwargs["env"]
+        assert env["DATABASE_URL"] == "postgresql://restore-target/db"
+
 
 # ---------------------------------------------------------------------------
 # restore_postgres helpers
@@ -356,6 +384,8 @@ class TestRunPgRestore:
             )
         cmd = mock_run.call_args[0][0]
         assert cmd[0] == "/usr/bin/psql"
+        assert "-v" in cmd
+        assert "ON_ERROR_STOP=1" in cmd
         assert "-f" in cmd
         assert str(sql_file) in cmd
 
@@ -439,6 +469,15 @@ class TestRestoreMain:
             with patch("subprocess.run", return_value=mock_result):
                 rc = rst.main([str(dump_file), "--no-schema-upgrade"])
         assert rc == 2
+
+    def test_malformed_pg_url_returns_1(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("DATABASE_URL", "postgresql:///claims")
+        monkeypatch.setenv("BACKUP_DIR", str(tmp_path))
+        dump_file = tmp_path / "claims_claims_20240101_020000.dump"
+        dump_file.write_bytes(b"PGDMP")
+        with patch("shutil.which", return_value="/usr/bin/pg_restore"):
+            rc = rst.main([str(dump_file), "--no-schema-upgrade"])
+        assert rc == 1
 
 
 # ---------------------------------------------------------------------------

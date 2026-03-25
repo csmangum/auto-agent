@@ -104,7 +104,7 @@ The repository includes `scripts/backup_postgres.py` which:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BACKUP_ENABLED` | `false` | Enable backup tracking in settings |
+| `BACKUP_ENABLED` | `false` | Convention for schedulers; backups run only when `backup_postgres.py` is invoked |
 | `BACKUP_DIR` | `data/backups` | Local directory for dump files |
 | `BACKUP_RETENTION_DAYS` | `14` | Days to keep local backups before rotation |
 | `BACKUP_COMPRESS` | `true` | Custom compressed format (`-Fc`); set `false` for plain SQL |

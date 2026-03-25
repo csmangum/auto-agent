@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlunparse, urlparse
@@ -30,13 +31,21 @@ class PostgresConnParams:
     dbname: str
 
 
+class _UTCFormatter(logging.Formatter):
+    """Log timestamps in UTC so a trailing ``Z`` in datefmt is accurate."""
+
+    converter = time.gmtime
+
+
 def configure_logging(verbose: bool, logger_name: str) -> None:
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    formatter = _UTCFormatter(
+        fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%SZ",
     )
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logging.basicConfig(level=level, handlers=[handler], force=True)
 
 
 def mask_url_password(url: str) -> str:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections import OrderedDict
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING
@@ -40,23 +41,26 @@ RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_cover
 # across processes; this cache avoids duplicate work within a single process.
 _IDEMPOTENCY_MAX_ENTRIES = 4096
 _idempotency_cache: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+_idempotency_lock = threading.Lock()
 # Backward compatibility alias for tests
 _IDEMPOTENCY_CACHE = _idempotency_cache
 
 
 def _idempotency_cache_get(key: tuple[str, int, int]) -> str | None:
-    if key not in _idempotency_cache:
-        return None
-    val = _idempotency_cache[key]
-    _idempotency_cache.move_to_end(key)
-    return val
+    with _idempotency_lock:
+        if key not in _idempotency_cache:
+            return None
+        val = _idempotency_cache[key]
+        _idempotency_cache.move_to_end(key)
+        return val
 
 
 def _idempotency_cache_set(key: tuple[str, int, int], value: str) -> None:
-    _idempotency_cache[key] = value
-    _idempotency_cache.move_to_end(key)
-    while len(_idempotency_cache) > _IDEMPOTENCY_MAX_ENTRIES:
-        _idempotency_cache.popitem(last=False)
+    with _idempotency_lock:
+        _idempotency_cache[key] = value
+        _idempotency_cache.move_to_end(key)
+        while len(_idempotency_cache) > _IDEMPOTENCY_MAX_ENTRIES:
+            _idempotency_cache.popitem(last=False)
 
 
 def _rental_amount_cents(amount: float | int) -> int:

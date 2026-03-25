@@ -1838,8 +1838,9 @@ class ReverseImageRestConfig(BaseSettings):
 class BackupConfig(BaseSettings):
     """PostgreSQL backup configuration.
 
-    Governs automated pg_dump backups, local retention, and optional S3 upload.
-    See ``scripts/backup_postgres.py`` for the backup runner.
+    Documents paths, retention, and S3 options shared with ``scripts/backup_postgres.py``.
+    Schedulers or operators use ``enabled`` as a convention; nothing in the app triggers
+    backups automatically from this flag alone.
     """
 
     model_config = SettingsConfigDict(
@@ -1852,8 +1853,10 @@ class BackupConfig(BaseSettings):
         default=False,
         validation_alias="BACKUP_ENABLED",
         description=(
-            "Enable automated PostgreSQL backups via scripts/backup_postgres.py. "
-            "Has no effect on SQLite (CLAIMS_DB_PATH) deployments."
+            "Whether scheduled/ops workflows should run PostgreSQL backups (convention for "
+            "cron, systemd, or external orchestration). Does not start backups by itself; "
+            "invoke ``scripts/backup_postgres.py`` explicitly. No effect on SQLite "
+            "(CLAIMS_DB_PATH) deployments."
         ),
     )
     backup_dir: str = Field(
