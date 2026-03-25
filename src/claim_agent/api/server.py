@@ -16,7 +16,6 @@ Non-dev deployments (CLAIM_AGENT_ENVIRONMENT) require at least one auth mechanis
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -281,7 +280,11 @@ def _base_security_response_headers() -> dict[str, str]:
         "Permissions-Policy": (
             "geolocation=(), microphone=(), camera=(), payment=()"
         ),
-        "Content-Security-Policy": "default-src 'self'",
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'"
+        ),
     }
 
 
@@ -368,13 +371,9 @@ async def security_headers_middleware(request: Request, call_next):
         and auth_cfg.trust_forwarded_for
         and request.headers.get("X-Forwarded-Proto", "").lower() == "http"
     ):
-        host = request.headers.get("X-Forwarded-Host") or request.headers.get("host", "")
-        url = str(request.url)
-        if host:
-            parsed = urlparse(url)
-            https_url = urlunparse(parsed._replace(scheme="https", netloc=host))
-        else:
-            https_url = url.replace("http://", "https://", 1)
+        # Build the redirect URL by only changing the scheme of the current request URL,
+        # avoiding direct use of X-Forwarded-Host/Host header values to prevent open redirect.
+        https_url = str(request.url.replace(scheme="https"))
         redirect_headers = dict(_base_security_response_headers())
         redirect_headers["Location"] = https_url
         cc = _maybe_cache_control_no_store(path)
