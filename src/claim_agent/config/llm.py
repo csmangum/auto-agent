@@ -144,8 +144,11 @@ def get_llm(model_name: str | None = None):
 
     model = (model_name or _get_model_override() or llm_cfg.model_name or "gpt-4o-mini").strip()
 
+    # Per-call timeout prevents individual LLM calls from hanging indefinitely
+    llm_call_timeout = get_settings().llm_call_timeout_seconds
+
     # Build optional kwargs for prompt caching
-    extra_kwargs: dict = {}
+    extra_kwargs: dict = {"timeout": llm_call_timeout}
     if llm_cfg.cache_enabled:
         extra_kwargs["caching"] = True
         if llm_cfg.cache_seed is not None:
@@ -158,9 +161,10 @@ def get_llm(model_name: str | None = None):
 
     # Log LLM configuration
     logger.debug(
-        "Configuring LLM: model=%s, base_url=%s",
+        "Configuring LLM: model=%s, base_url=%s, timeout=%ss",
         model,
         base if base else "default",
+        llm_call_timeout,
     )
 
     if base and "openrouter" in base.lower():

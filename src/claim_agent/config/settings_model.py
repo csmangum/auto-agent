@@ -1932,6 +1932,26 @@ class Settings(BaseSettings):
     max_llm_calls_per_claim: int = Field(
         default=50, validation_alias="CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM"
     )
+    claim_workflow_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        validation_alias="CLAIM_WORKFLOW_TIMEOUT_SECONDS",
+        description=(
+            "Wall-clock timeout (seconds) for run_claim_workflow(). "
+            "Claim is marked failed and a webhook is fired when exceeded. "
+            "Default 600 (10 minutes). Minimum 30."
+        ),
+    )
+    llm_call_timeout_seconds: int = Field(
+        default=120,
+        ge=10,
+        validation_alias="LLM_CALL_TIMEOUT_SECONDS",
+        description=(
+            "Per-LLM-call timeout (seconds) passed to the CrewAI LLM instance. "
+            "Prevents individual LLM calls from hanging indefinitely. "
+            "Default 120 (2 minutes). Minimum 10."
+        ),
+    )
     after_action_note_max_tokens: int = Field(
         default=1024,
         ge=1,
