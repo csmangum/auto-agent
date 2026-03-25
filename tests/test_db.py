@@ -1,6 +1,9 @@
 """Tests for database and ClaimRepository."""
 
 import os
+import sqlite3
+import tempfile
+from datetime import date
 
 import pytest
 from sqlalchemy import text
@@ -12,7 +15,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_SIU_CASE_CREATED,
 )
 from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING, STATUS_SETTLED
-from claim_agent.db.database import get_db_path, get_connection, row_to_dict
+from claim_agent.db.database import _run_migrations, get_connection, get_db_path, row_to_dict
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError, InvalidClaimTransitionError
 from claim_agent.models.claim import ClaimInput
@@ -48,6 +51,72 @@ def test_init_db_creates_tables(temp_db):
     assert "claim_audit_log" in tables
     assert "workflow_runs" in tables
     assert "claim_notes" in tables
+
+
+def test_init_db_follow_up_messages_has_topic_column(temp_db):
+    """Fresh SQLite schema includes follow_up_messages.topic for portal tagging."""
+    with get_connection(temp_db) as conn:
+        cur = conn.execute(text("PRAGMA table_info(follow_up_messages)"))
+        columns = {row[1] for row in cur.fetchall()}
+    assert "topic" in columns
+
+
+def test_run_migrations_adds_follow_up_messages_topic_on_legacy_db():
+    """SQLite _run_migrations adds topic when follow_up_messages predates that column."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE claims (id TEXT PRIMARY KEY)")
+        conn.execute("INSERT INTO claims (id) VALUES ('CLM-LEGACY')")
+        conn.execute(
+            """
+            CREATE TABLE follow_up_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id TEXT NOT NULL,
+                user_type TEXT NOT NULL,
+                message_content TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                response_content TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                responded_at TEXT,
+                actor_id TEXT DEFAULT 'workflow',
+                FOREIGN KEY (claim_id) REFERENCES claims(id)
+            )
+            """
+        )
+        conn.commit()
+        _run_migrations(conn)
+        conn.commit()
+        cols = {
+            row[1] for row in conn.execute("PRAGMA table_info(follow_up_messages)").fetchall()
+        }
+        conn.close()
+        assert "topic" in cols
+    finally:
+        os.unlink(path)
+
+
+def test_create_follow_up_message_roundtrips_topic(temp_db):
+    """Repository persists optional topic on follow-up rows."""
+    repo = ClaimRepository(db_path=temp_db)
+    claim_input = ClaimInput(
+        policy_number="POL-TOPIC",
+        vin="1HGBH41JXMN109199",
+        vehicle_year=2022,
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        incident_date=date(2025, 3, 1),
+        incident_description="Hail",
+        damage_description="Roof",
+    )
+    cid = repo.create_claim(claim_input)
+    mid = repo.create_follow_up_message(
+        cid, "claimant", "Please send rental receipt.", topic="rental"
+    )
+    msg = repo.get_follow_up_message_by_id(mid)
+    assert msg is not None
+    assert msg.get("topic") == "rental"
 
 
 def test_init_db_creates_claim_audit_log_action_index(temp_db):

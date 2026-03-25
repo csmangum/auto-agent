@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 VALID_USER_TYPES = [t.value for t in UserType]
 
+# Claimant portal surfaces tagged follow-ups (e.g. Rental tab). Omit topic for generic messages.
+FOLLOW_UP_TOPIC_RENTAL = "rental"
+_VALID_FOLLOW_UP_TOPICS = frozenset({FOLLOW_UP_TOPIC_RENTAL})
+
 
 @tool("Send User Message")
 def send_user_message(
@@ -24,6 +28,7 @@ def send_user_message(
     email: str | None = None,
     phone: str | None = None,
     identifier: str | None = None,
+    topic: str | None = None,
 ) -> str:
     """Send a follow-up message to a user (claimant, policyholder, repair_shop, etc.).
 
@@ -38,6 +43,8 @@ def send_user_message(
         email: Optional email address for the user (any supported user_type).
         phone: Optional phone number for SMS (any supported user_type).
         identifier: Optional user identifier (e.g., repair shop ID).
+        topic: Optional tag for portal grouping. Use "rental" for loss-of-use, rental receipts,
+            or rental coordination so the message appears on the claimant portal Rental tab.
 
     Returns:
         JSON with success (bool), message_id (int), and message or error.
@@ -45,6 +52,21 @@ def send_user_message(
     claim_id = str(claim_id).strip()
     user_type = str(user_type).strip().lower()
     message_content = str(message_content).strip()
+
+    normalized_topic: str | None = None
+    if topic is not None:
+        t = str(topic).strip().lower()
+        if t:
+            if t not in _VALID_FOLLOW_UP_TOPICS:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "message": (
+                            f"topic must be one of: {sorted(_VALID_FOLLOW_UP_TOPICS)} or omitted"
+                        ),
+                    }
+                )
+            normalized_topic = t
 
     if not claim_id:
         return json.dumps({"success": False, "message": "claim_id is required"})
@@ -70,7 +92,11 @@ def send_user_message(
                 pass
 
         msg_id = repo.create_follow_up_message(
-            claim_id, user_type, message_content, actor_id="follow_up_agent"
+            claim_id,
+            user_type,
+            message_content,
+            actor_id="follow_up_agent",
+            topic=normalized_topic,
         )
 
         try:
@@ -225,6 +251,7 @@ def check_pending_responses(
                 "message_content": p["message_content"],
                 "status": p["status"],
                 "created_at": p["created_at"],
+                "topic": p.get("topic"),
             }
             for p in pending
         ]

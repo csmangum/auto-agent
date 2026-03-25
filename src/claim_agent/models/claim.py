@@ -199,6 +199,20 @@ class ClaimInput(BaseModel):
         return self
 
 
+def _infer_fault_determination_from_liability_payload(data: dict[str, Any]) -> str:
+    """When the LLM omits fault_determination, derive a consistent value from liability %."""
+    pct = data.get("liability_percentage")
+    if pct is None:
+        return "unclear"
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return "unclear"
+    if p <= 0.0:
+        return "not_at_fault"
+    return "at_fault"
+
+
 class LiabilityDeterminationOutput(BaseModel):
     """Structured output from liability determination crew."""
 
@@ -224,6 +238,18 @@ class LiabilityDeterminationOutput(BaseModel):
         default=False,
         description="Whether subrogation recovery is eligible per state rules.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_fault_determination_when_missing(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("fault_determination")
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            out = dict(data)
+            out["fault_determination"] = _infer_fault_determination_from_liability_payload(out)
+            return out
+        return data
 
 
 class ClaimOutput(BaseModel):

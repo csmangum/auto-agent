@@ -269,6 +269,40 @@ describe('PortalClaimDetail', () => {
     expect(screen.getByText(/\$200/)).toBeInTheDocument();
   });
 
+  it('shows rental-topic adjuster messages on Rental tab', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      follow_up_messages: [
+        {
+          id: 42,
+          user_type: 'claimant',
+          message_content: 'Please confirm your rental return date.',
+          status: 'sent',
+          topic: 'rental',
+          created_at: '2025-01-21T12:00:00Z',
+        },
+      ],
+    });
+    mockGetDocumentRequests.mockResolvedValue({ document_requests: [], total: 0 });
+    mockGetPayments.mockResolvedValue({ payments: [], total: 0 });
+    mockGetRepairStatus.mockResolvedValue({
+      history: [],
+      latest: null,
+      cycle_time_days: null,
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByText('Rental'));
+    await screen.findByText('Messages from your adjuster');
+    expect(
+      screen.getByText(/Please confirm your rental return date/i)
+    ).toBeInTheDocument();
+  });
+
   it('shows payments tab with payments', async () => {
     mockGetPayments.mockResolvedValue({
       payments: [
