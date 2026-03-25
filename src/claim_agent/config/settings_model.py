@@ -360,7 +360,7 @@ class WebhookConfig(BaseSettings):
 
     urls_raw: str = Field(default="", validation_alias="WEBHOOK_URLS")
     url: str = Field(default="", validation_alias="WEBHOOK_URL")
-    secret: str = ""
+    secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
     max_retries: int = 5
     enabled: bool = True
     shop_url: str | None = None
@@ -498,7 +498,9 @@ class TracingConfig(BaseSettings):
     )
 
     langsmith_enabled: bool = Field(default=False, validation_alias="LANGSMITH_TRACING")
-    langsmith_api_key: str = Field(default="", validation_alias="LANGSMITH_API_KEY")
+    langsmith_api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="LANGSMITH_API_KEY"
+    )
     langsmith_project: str = Field(default="claim-agent", validation_alias="LANGSMITH_PROJECT")
     langsmith_endpoint: str = Field(
         default="https://api.smith.langchain.com", validation_alias="LANGSMITH_ENDPOINT"
@@ -632,7 +634,7 @@ class LLMConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    api_key: SecretStr = Field(default_factory=lambda: SecretStr(""), validation_alias="OPENAI_API_KEY")
     api_base: str = Field(default="", validation_alias="OPENAI_API_BASE")
     model_name: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL_NAME")
     vision_model: str = Field(default="gpt-4o", validation_alias="OPENAI_VISION_MODEL")
@@ -736,9 +738,15 @@ class AuthConfig(BaseSettings):
             "Prefer CLAIM_AGENT_ENVIRONMENT; ENVIRONMENT is accepted for backward compatibility."
         ),
     )
-    api_keys_raw: str = Field(default="", validation_alias="API_KEYS")
-    claims_api_key: str = Field(default="", validation_alias="CLAIMS_API_KEY")
-    jwt_secret_raw: str = Field(default="", validation_alias="JWT_SECRET")
+    api_keys_raw: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="API_KEYS"
+    )
+    claims_api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="CLAIMS_API_KEY"
+    )
+    jwt_secret_raw: SecretStr = Field(
+        default_factory=lambda: SecretStr(""), validation_alias="JWT_SECRET"
+    )
     jwt_access_ttl_seconds: int = Field(
         default=900,
         ge=60,
@@ -787,9 +795,9 @@ class AuthConfig(BaseSettings):
 
     @field_validator("jwt_secret_raw", mode="after")
     @classmethod
-    def _validate_jwt_key_length(cls, v: str) -> str:
+    def _validate_jwt_key_length(cls, v: SecretStr) -> SecretStr:
         min_len = 32
-        stripped = v.strip()
+        stripped = v.get_secret_value().strip()
         if stripped and len(stripped) < min_len:
             raise ValueError(
                 f"JWT_SECRET must be at least {min_len} characters "
@@ -800,7 +808,7 @@ class AuthConfig(BaseSettings):
     @property
     def api_key_entries(self) -> dict[str, ApiKeyEntry]:
         """API_KEYS / CLAIMS_API_KEY: key -> role and optional identity (``key:role`` or ``key:role:user_id``)."""
-        raw = self.api_keys_raw.strip()
+        raw = self.api_keys_raw.get_secret_value().strip()
         if raw:
             result: dict[str, ApiKeyEntry] = {}
             for part in raw.split(","):
@@ -821,7 +829,7 @@ class AuthConfig(BaseSettings):
                 else:
                     result[part] = ApiKeyEntry(role="admin", identity=None)
             return result
-        key = self.claims_api_key.strip()
+        key = self.claims_api_key.get_secret_value().strip()
         if key:
             return {key: ApiKeyEntry(role="admin", identity=None)}
         return {}
@@ -833,7 +841,7 @@ class AuthConfig(BaseSettings):
 
     @property
     def jwt_secret(self) -> str | None:
-        raw = self.jwt_secret_raw.strip()
+        raw = self.jwt_secret_raw.get_secret_value().strip()
         return raw if raw else None
 
     @property
@@ -1249,8 +1257,8 @@ class PrivacyConfig(BaseSettings):
         validation_alias="OTP_CODE_LENGTH",
         description="Length of the numeric OTP code.",
     )
-    otp_pepper: str = Field(
-        default="",
+    otp_pepper: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
         validation_alias="OTP_PEPPER",
         description=(
             "Server-side secret (pepper) used as the HMAC key when hashing OTP codes. "
