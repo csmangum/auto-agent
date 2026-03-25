@@ -175,10 +175,21 @@ def verify_unified_portal_token(
             role_str,
         )
         return None
+    raw_scopes = rec.get("scopes")
     try:
-        scopes: list[str] = json.loads(rec.get("scopes") or "[]")
+        scopes = json.loads(raw_scopes or "[]")
     except (ValueError, TypeError):
-        scopes = []
+        logger.warning(
+            "Rejecting unified portal token id=%s: invalid scopes JSON in database",
+            rec.get("id"),
+        )
+        return None
+    if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
+        logger.warning(
+            "Rejecting unified portal token id=%s: scopes must be a JSON array of strings",
+            rec.get("id"),
+        )
+        return None
     return UnifiedTokenRecord(
         token_id=int(rec["id"]),
         role=role_str,  # type: ignore[arg-type]

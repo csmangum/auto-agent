@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import backup_postgres as bkp
 import restore_postgres as rst
 
@@ -27,6 +29,9 @@ class TestMaskUrlPassword:
     def test_no_password_unchanged(self):
         url = "postgresql://localhost/claims"
         assert bkp._mask_url_password(url) == url
+
+    def test_fail_closed_on_bad_scheme(self):
+        assert bkp._mask_url_password("redis://user:pass@localhost:6379/0") == "<redacted>"
 
 
 class TestResolveBackupDir:
@@ -115,9 +120,16 @@ class TestRunPgDump:
 
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
+        kwargs = mock_run.call_args.kwargs
         assert cmd[0] == "/usr/bin/pg_dump"
         assert "-Fc" in cmd
+        assert "-h" in cmd
+        assert "localhost" in cmd
+        assert "-U" in cmd
+        assert "claims" in cmd
         assert str(output_path) in cmd
+        assert kwargs["env"].get("PGPASSWORD") == "secret"
+        assert "timeout" in kwargs
 
     def test_dry_run_skips_subprocess(self, tmp_path):
         output_path = tmp_path / "test.dump"
@@ -138,11 +150,8 @@ class TestRunPgDump:
         mock_result.stderr = "connection refused"
 
         with patch("subprocess.run", return_value=mock_result):
-            try:
+            with pytest.raises(RuntimeError, match="1"):
                 bkp.run_pg_dump("postgresql://localhost/claims", output_path, "pg_dump", compress=True)
-                assert False, "Expected RuntimeError"
-            except RuntimeError as exc:
-                assert "1" in str(exc)
 
     def test_plain_format_uses_Fp_flag(self, tmp_path):
         output_path = tmp_path / "claims.sql"
@@ -222,11 +231,8 @@ class TestUploadToS3:
         monkeypatch.setattr(builtins, "__import__", mock_import)
         local = tmp_path / "test.dump"
         local.write_bytes(b"test")
-        try:
+        with pytest.raises(RuntimeError, match="boto3"):
             bkp.upload_to_s3(local, "bucket", "prefix", None, dry_run=False)
-            assert False, "Expected RuntimeError"
-        except RuntimeError as exc:
-            assert "boto3" in str(exc)
 
     def test_s3_uri_format(self, tmp_path):
         local = tmp_path / "claims_20240101_020000.dump"
@@ -327,8 +333,11 @@ class TestRunPgRestore:
                 "/usr/bin/psql",
             )
         cmd = mock_run.call_args[0][0]
+        kwargs = mock_run.call_args.kwargs
         assert cmd[0] == "/usr/bin/pg_restore"
         assert str(dump_file) in cmd
+        assert "-h" in cmd
+        assert "timeout" in kwargs
 
     def test_uses_psql_for_sql_files(self, tmp_path):
         sql_file = tmp_path / "claims_20240101_020000.sql"
@@ -347,6 +356,8 @@ class TestRunPgRestore:
             )
         cmd = mock_run.call_args[0][0]
         assert cmd[0] == "/usr/bin/psql"
+        assert "-f" in cmd
+        assert str(sql_file) in cmd
 
     def test_dry_run_skips_subprocess(self, tmp_path):
         dump_file = tmp_path / "test.dump"
@@ -368,11 +379,8 @@ class TestRunPgRestore:
         mock_result.returncode = 1
         mock_result.stderr = "error"
         with patch("subprocess.run", return_value=mock_result):
-            try:
+            with pytest.raises(RuntimeError, match="1"):
                 rst.run_pg_restore("postgresql://localhost/claims", dump_file, "pg_restore", "psql")
-                assert False, "Expected RuntimeError"
-            except RuntimeError:
-                pass
 
 
 # ---------------------------------------------------------------------------

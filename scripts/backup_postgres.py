@@ -69,6 +69,8 @@ pg_restore manually::
 
 Always run ``alembic upgrade head`` after restoring to ensure the schema is
 at the expected revision.
+
+Subprocess timeouts (env): ``BACKUP_PG_DUMP_TIMEOUT`` (default 3600 seconds).
 """
 
 from __future__ import annotations
@@ -84,25 +86,24 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from _backup_common import (
+    PostgresConnParams,
+    configure_logging,
+    dump_timeout_seconds,
+    mask_url_password,
+    parse_postgres_url,
+    pg_subprocess_env,
+    resolve_backup_dir,
+    resolve_pg_url,
+)
+
 logger = logging.getLogger("backup_postgres")
 
 _DUMP_EXT_COMPRESSED = ".dump"
 _DUMP_EXT_PLAIN = ".sql"
 _DUMP_PREFIX = "claims_"
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _configure_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%SZ",
-    )
+_SCRIPTS_PARENT = Path(__file__).resolve().parent.parent
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -123,25 +124,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _resolve_pg_url(cli_url: str | None) -> str:
-    """Return pg URL from CLI arg or DATABASE_URL env var."""
-    url = cli_url or os.environ.get("DATABASE_URL", "")
-    if not url or not url.strip():
-        raise SystemExit("ERROR: No PostgreSQL URL provided. Set DATABASE_URL or pass --pg-url.")
-    url = url.strip()
-    if not url.startswith("postgresql://") and not url.startswith("postgres://"):
-        raise SystemExit(f"ERROR: DATABASE_URL does not look like a PostgreSQL URL: {url!r}")
-    return url
-
-
 def _resolve_backup_dir(cli_dir: str | None) -> Path:
-    env_dir = os.environ.get("BACKUP_DIR", "").strip()
-    raw = cli_dir or env_dir or "data/backups"
-    path = Path(raw)
-    if not path.is_absolute():
-        # Resolve relative to project root (two levels above scripts/)
-        path = Path(__file__).resolve().parent.parent / path
-    return path
+    return resolve_backup_dir(cli_dir, _SCRIPTS_PARENT)
 
 
 def _resolve_retention_days(cli_days: int | None) -> int:
@@ -180,9 +164,23 @@ def _backup_filename(db_name: str, compress: bool) -> str:
     return f"{_DUMP_PREFIX}{db_name}_{ts}{ext}"
 
 
-# ---------------------------------------------------------------------------
-# Core operations
-# ---------------------------------------------------------------------------
+def _pg_dump_command(pg_dump_bin: str, params: PostgresConnParams, fmt_flag: str, output_path: Path) -> list[str]:
+    cmd: list[str] = [pg_dump_bin, fmt_flag, "--no-password"]
+    if params.user:
+        cmd.extend(["-U", params.user])
+    cmd.extend(
+        [
+            "-h",
+            params.host,
+            "-p",
+            str(params.port),
+            "-d",
+            params.dbname,
+            "-f",
+            str(output_path),
+        ]
+    )
+    return cmd
 
 
 def run_pg_dump(
@@ -191,30 +189,36 @@ def run_pg_dump(
     pg_dump_bin: str,
     compress: bool,
     dry_run: bool = False,
+    timeout: int | None = None,
 ) -> None:
     """Run pg_dump and write output to *output_path*.
 
-    Args:
-        pg_url: Full PostgreSQL connection URL.
-        output_path: Destination file path.
-        pg_dump_bin: Resolved path to the pg_dump binary.
-        compress: When True use custom compressed format (-Fc); else plain SQL (-Fp).
-        dry_run: Log the command but do not execute it.
+    Uses discrete ``-h/-p/-U/-d`` flags and ``PGPASSWORD`` in the subprocess
+    environment so credentials do not appear in ``/proc/*/cmdline``.
     """
+    params = parse_postgres_url(pg_url)
     fmt_flag = "-Fc" if compress else "-Fp"
-    cmd = [pg_dump_bin, fmt_flag, "--no-password", "-f", str(output_path), pg_url]
-
-    # Mask credentials in log output
-    safe_url = _mask_url_password(pg_url)
-    safe_cmd = [pg_dump_bin, fmt_flag, "--no-password", "-f", str(output_path), safe_url]
-    logger.info("Running: %s", " ".join(safe_cmd))
+    cmd = _pg_dump_command(pg_dump_bin, params, fmt_flag, output_path)
+    safe_cmd = " ".join(cmd)
+    logger.info("Running: %s", safe_cmd)
 
     if dry_run:
         logger.info("[dry-run] Skipping actual pg_dump execution.")
         return
 
+    env = pg_subprocess_env(params.password)
+    t = timeout if timeout is not None else dump_timeout_seconds()
     start = time.monotonic()
-    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    try:
+        result = subprocess.run(  # noqa: S603
+            cmd,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=t,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"pg_dump timed out after {t}s") from exc
     elapsed = time.monotonic() - start
 
     if result.returncode != 0:
@@ -228,16 +232,7 @@ def run_pg_dump(
 
 
 def rotate_old_backups(backup_dir: Path, retention_days: int, dry_run: bool = False) -> list[Path]:
-    """Delete dump files in *backup_dir* older than *retention_days*.
-
-    Args:
-        backup_dir: Directory containing dump files.
-        retention_days: Maximum age in days; older files are deleted.
-        dry_run: Log deletions without removing files.
-
-    Returns:
-        List of files that were (or would be) deleted.
-    """
+    """Delete dump files in *backup_dir* older than *retention_days*."""
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=retention_days)
     deleted: list[Path] = []
 
@@ -245,7 +240,13 @@ def rotate_old_backups(backup_dir: Path, retention_days: int, dry_run: bool = Fa
         for f in backup_dir.glob(f"{_DUMP_PREFIX}*{ext}"):
             mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
             if mtime < cutoff:
-                logger.info("%s %s (mtime %s, older than %d days)", "[dry-run] would delete" if dry_run else "Deleting", f.name, mtime.date(), retention_days)
+                logger.info(
+                    "%s %s (mtime %s, older than %d days)",
+                    "[dry-run] would delete" if dry_run else "Deleting",
+                    f.name,
+                    mtime.date(),
+                    retention_days,
+                )
                 if not dry_run:
                     f.unlink()
                 deleted.append(f)
@@ -260,20 +261,7 @@ def upload_to_s3(
     s3_endpoint: str | None,
     dry_run: bool = False,
 ) -> str:
-    """Upload *local_path* to S3 and return the S3 URI.
-
-    Requires ``boto3`` (install with ``pip install boto3`` or the ``[s3]`` extra).
-
-    Args:
-        local_path: Path to the local dump file.
-        s3_bucket: Target S3 bucket name.
-        s3_prefix: Key prefix inside the bucket.
-        s3_endpoint: Optional S3-compatible endpoint URL.
-        dry_run: Log the upload target without executing.
-
-    Returns:
-        S3 URI of the uploaded object (e.g. ``s3://bucket/prefix/file.dump``).
-    """
+    """Upload *local_path* to S3 and return the S3 URI."""
     key = f"{s3_prefix.rstrip('/')}/{local_path.name}"
     s3_uri = f"s3://{s3_bucket}/{key}"
 
@@ -305,31 +293,16 @@ def upload_to_s3(
     return s3_uri
 
 
-def _mask_url_password(url: str) -> str:
-    """Replace the password in a PostgreSQL URL with ***."""
-    try:
-        parsed = urlparse(url)
-        if parsed.password:
-            return url.replace(parsed.password, "***", 1)
-    except Exception:
-        pass
-    return url
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+# Re-export for tests and backward-compatible imports
+_mask_url_password = mask_url_password
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    _configure_logging(args.verbose)
+    configure_logging(args.verbose, "backup_postgres")
 
-    # ------------------------------------------------------------------
-    # Resolve configuration
-    # ------------------------------------------------------------------
     try:
-        pg_url = _resolve_pg_url(args.pg_url)
+        pg_url = resolve_pg_url(args.pg_url)
     except SystemExit as exc:
         logger.error("%s", exc)
         return 1
@@ -347,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", exc)
         return 1
 
-    safe_url = _mask_url_password(pg_url)
+    safe_url = mask_url_password(pg_url)
     logger.info("Backup configuration:")
     logger.info("  pg_url        : %s", safe_url)
     logger.info("  backup_dir    : %s", backup_dir)
@@ -360,14 +333,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("[dry-run] Configuration validated. No backup will be created.")
         return 0
 
-    # ------------------------------------------------------------------
-    # Create backup directory
-    # ------------------------------------------------------------------
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    # ------------------------------------------------------------------
-    # Run pg_dump
-    # ------------------------------------------------------------------
     db_name = _db_name_from_url(pg_url)
     filename = _backup_filename(db_name, compress)
     output_path = backup_dir / filename
@@ -378,9 +345,6 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Backup failed: %s", exc)
         return 2
 
-    # ------------------------------------------------------------------
-    # Upload to S3 (if configured)
-    # ------------------------------------------------------------------
     if s3_bucket:
         try:
             s3_uri = upload_to_s3(output_path, s3_bucket, s3_prefix, s3_endpoint)
@@ -389,9 +353,6 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("S3 upload failed: %s", exc)
             return 2
 
-    # ------------------------------------------------------------------
-    # Rotate old local backups
-    # ------------------------------------------------------------------
     deleted = rotate_old_backups(backup_dir, retention_days)
     if deleted:
         logger.info("Rotated %d old backup(s).", len(deleted))

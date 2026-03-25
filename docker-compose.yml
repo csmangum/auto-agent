@@ -2,8 +2,8 @@
 # Usage (HTTP / dev):    docker compose up
 # Usage (HTTPS / prod):  docker compose --profile tls up
 #
-# claim-agent still publishes port 8000 for direct HTTP access (debugging, health bypassing nginx).
-# For a hardened setup, remove the ports mapping and use `expose: ["8000"]` so only nginx reaches the API.
+# claim-agent publishes port 8000 for local dev. When using --profile tls, comment out
+# the ``ports:`` block below so the API is only reachable via nginx (443), not directly on :8000.
 #
 # For HTTPS, mount TLS certificates into the nginx service:
 #   Set NGINX_CERT_PATH and NGINX_KEY_PATH in .env or the environment.
@@ -13,8 +13,11 @@
 services:
   claim-agent:
     build: .
+    expose:
+      - "8000"
     ports:
       - "8000:8000"
+    restart: unless-stopped
     environment:
       - CLAIMS_DB_PATH=/app/data/claims.db
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}

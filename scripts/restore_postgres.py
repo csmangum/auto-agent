@@ -13,8 +13,7 @@ Usage
 Positional argument
 -------------------
     backup-file   Path to a ``.dump`` (custom compressed) or ``.sql`` (plain)
-                  backup file produced by backup_postgres.py.  Pass ``-`` to
-                  list available backups from BACKUP_DIR without restoring.
+                  backup file produced by backup_postgres.py.  Omit when using --list.
 
 Options
 -------
@@ -36,54 +35,8 @@ Exit codes
     1   Configuration or argument error.
     2   pg_restore, schema upgrade, or smoke-test failure.
 
-Restore procedure (complete step-by-step)
-------------------------------------------
-The following steps constitute the tested restore procedure.  After any real
-disaster-recovery event, record completion of each step in an incident
-postmortem.
-
-1.  **Stop the application** to prevent writes during restore::
-
-        claim-agent serve --stop   # or: docker compose stop claim-agent
-
-2.  **Choose a backup file**::
-
-        python scripts/restore_postgres.py --list
-
-3.  **Create a pre-restore snapshot** (RDS only, optional but recommended)::
-
-        aws rds create-db-snapshot \\
-          --db-instance-identifier claims-db \\
-          --db-snapshot-identifier claims-pre-restore-$(date +%Y%m%d)
-
-4.  **Drop and recreate the target database** to start from a clean state::
-
-        psql -U postgres -c "DROP DATABASE IF EXISTS claims;"
-        psql -U postgres -c "CREATE DATABASE claims OWNER claims;"
-
-5.  **Run this script**::
-
-        DATABASE_URL=postgresql://claims:secret@localhost:5432/claims \\
-          python scripts/restore_postgres.py /path/to/claims_YYYYMMDD_HHMMSS.dump
-
-6.  **Verify row counts** match expectations (e.g., compare against the backup
-    metadata or a pre-failure snapshot).
-
-7.  **Restart the application**::
-
-        claim-agent serve --workers 4
-
-8.  **Run smoke tests**::
-
-        pytest tests/ -m smoke -v
-
-RTO / RPO targets
------------------
-See ``scripts/backup_postgres.py`` and ``docs/database.md`` for the full
-RTO/RPO table.  In summary:
-
-    RPO ≤ 24 hours  (daily backups; PITR WAL archiving reduces to minutes)
-    RTO ≤ 4 hours   (pg_restore + alembic upgrade head + smoke tests)
+Subprocess timeouts (env): ``BACKUP_PG_RESTORE_TIMEOUT``, ``BACKUP_PG_SMOKE_TIMEOUT``,
+``BACKUP_ALEMBIC_TIMEOUT`` (defaults 3600, 60, 600 seconds).
 """
 
 from __future__ import annotations
@@ -95,26 +48,26 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
+
+from _backup_common import (
+    PostgresConnParams,
+    alembic_timeout_seconds,
+    configure_logging,
+    mask_url_password,
+    parse_postgres_url,
+    pg_subprocess_env,
+    resolve_backup_dir,
+    resolve_pg_url,
+    restore_timeout_seconds,
+    smoke_timeout_seconds,
+)
 
 logger = logging.getLogger("restore_postgres")
 
 _DUMP_PREFIX = "claims_"
 _DUMP_EXTS = (".dump", ".sql")
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _configure_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%SZ",
-    )
+_SCRIPTS_PARENT = Path(__file__).resolve().parent.parent
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -139,23 +92,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _resolve_pg_url(cli_url: str | None) -> str:
-    url = cli_url or os.environ.get("DATABASE_URL", "")
-    if not url or not url.strip():
-        raise SystemExit("ERROR: No PostgreSQL URL provided. Set DATABASE_URL or pass --pg-url.")
-    url = url.strip()
-    if not url.startswith("postgresql://") and not url.startswith("postgres://"):
-        raise SystemExit(f"ERROR: URL does not look like a PostgreSQL URL: {url!r}")
-    return url
-
-
 def _resolve_backup_dir(cli_dir: str | None) -> Path:
-    env_dir = os.environ.get("BACKUP_DIR", "").strip()
-    raw = cli_dir or env_dir or "data/backups"
-    path = Path(raw)
-    if not path.is_absolute():
-        path = Path(__file__).resolve().parent.parent / path
-    return path
+    return resolve_backup_dir(cli_dir, _SCRIPTS_PARENT)
 
 
 def _resolve_binary(name: str, cli_path: str | None, env_var: str) -> str:
@@ -166,30 +104,36 @@ def _resolve_binary(name: str, cli_path: str | None, env_var: str) -> str:
     return found
 
 
-def _mask_url_password(url: str) -> str:
-    try:
-        parsed = urlparse(url)
-        if parsed.password:
-            return url.replace(parsed.password, "***", 1)
-    except Exception:
-        pass
-    return url
-
-
 def _resolve_backup_file(backup_file: str, backup_dir: Path) -> Path:
     path = Path(backup_file)
     if path.exists():
         return path.resolve()
-    # Try relative to backup_dir
     candidate = backup_dir / backup_file
     if candidate.exists():
         return candidate.resolve()
     raise SystemExit(f"ERROR: Backup file not found: {backup_file!r}")
 
 
-# ---------------------------------------------------------------------------
-# Core operations
-# ---------------------------------------------------------------------------
+def _psql_base_cmd(pg_psql_bin: str, params: PostgresConnParams) -> list[str]:
+    cmd: list[str] = [pg_psql_bin, "--no-password"]
+    if params.user:
+        cmd.extend(["-U", params.user])
+    cmd.extend(["-h", params.host, "-p", str(params.port), "-d", params.dbname])
+    return cmd
+
+
+def _pg_restore_base_cmd(pg_restore_bin: str, params: PostgresConnParams) -> list[str]:
+    cmd: list[str] = [
+        pg_restore_bin,
+        "--no-password",
+        "--clean",
+        "--if-exists",
+        "--exit-on-error",
+    ]
+    if params.user:
+        cmd.extend(["-U", params.user])
+    cmd.extend(["-h", params.host, "-p", str(params.port), "-d", params.dbname])
+    return cmd
 
 
 def list_backups(backup_dir: Path) -> list[Path]:
@@ -206,44 +150,28 @@ def run_pg_restore(
     pg_restore_bin: str,
     pg_psql_bin: str,
     dry_run: bool = False,
+    timeout: int | None = None,
 ) -> None:
-    """Restore *backup_path* into the database specified by *pg_url*.
-
-    For ``.dump`` (custom format) files this calls ``pg_restore``.
-    For ``.sql`` (plain) files this calls ``psql`` (pipes stdin).
-
-    Args:
-        pg_url: Full PostgreSQL connection URL.
-        backup_path: Path to the dump file.
-        pg_restore_bin: Resolved path to pg_restore.
-        pg_psql_bin: Resolved path to psql.
-        dry_run: Log commands without executing.
-    """
-    safe_url = _mask_url_password(pg_url)
+    """Restore *backup_path* using discrete connection flags and ``PGPASSWORD``."""
+    params = parse_postgres_url(pg_url)
+    env = pg_subprocess_env(params.password)
+    t = timeout if timeout is not None else restore_timeout_seconds()
 
     if backup_path.suffix == ".sql":
-        cmd = [pg_psql_bin, "--no-password", pg_url, "-f", str(backup_path)]
-        safe_cmd = [pg_psql_bin, "--no-password", safe_url, "-f", str(backup_path)]
+        cmd = _psql_base_cmd(pg_psql_bin, params) + ["-f", str(backup_path)]
     else:
-        cmd = [
-            pg_restore_bin,
-            "--no-password",
-            "--clean",
-            "--if-exists",
-            "--exit-on-error",
-            "-d",
-            pg_url,
-            str(backup_path),
-        ]
-        safe_cmd = cmd[:-2] + [safe_url, str(backup_path)]
+        cmd = _pg_restore_base_cmd(pg_restore_bin, params) + [str(backup_path)]
 
-    logger.info("Running: %s", " ".join(safe_cmd))
+    logger.info("Running: %s", " ".join(cmd))
 
     if dry_run:
         logger.info("[dry-run] Skipping actual restore execution.")
         return
 
-    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=t)  # noqa: S603
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"restore timed out after {t}s") from exc
     if result.returncode != 0:
         logger.error("Restore failed (exit %d):\n%s", result.returncode, result.stderr)
         raise RuntimeError(f"Restore exited with code {result.returncode}")
@@ -252,12 +180,8 @@ def run_pg_restore(
         logger.debug("restore stderr: %s", result.stderr.strip())
 
 
-def run_schema_upgrade(dry_run: bool = False) -> None:
-    """Run ``alembic upgrade head`` to apply any pending migrations.
-
-    Args:
-        dry_run: Log the command without running it.
-    """
+def run_schema_upgrade(dry_run: bool = False, timeout: int | None = None) -> None:
+    """Run ``alembic upgrade head`` to apply any pending migrations."""
     alembic_bin = shutil.which("alembic")
     if alembic_bin is None:
         logger.warning("alembic not found on PATH; skipping schema upgrade.")
@@ -269,7 +193,11 @@ def run_schema_upgrade(dry_run: bool = False) -> None:
         logger.info("[dry-run] Skipping alembic upgrade head.")
         return
 
-    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    t = timeout if timeout is not None else alembic_timeout_seconds()
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=t)  # noqa: S603
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"alembic upgrade head timed out after {t}s") from exc
     if result.returncode != 0:
         logger.error("alembic upgrade head failed (exit %d):\n%s", result.returncode, result.stderr)
         raise RuntimeError("alembic upgrade head failed")
@@ -278,26 +206,22 @@ def run_schema_upgrade(dry_run: bool = False) -> None:
         logger.debug("alembic output: %s", result.stdout.strip())
 
 
-def run_smoke_test(pg_url: str, pg_psql_bin: str, dry_run: bool = False) -> None:
-    """Run a minimal SQL query to verify the restored database is accessible.
-
-    Executes ``SELECT count(*) FROM claims`` and logs the result.
-
-    Args:
-        pg_url: Full PostgreSQL connection URL.
-        pg_psql_bin: Resolved path to psql.
-        dry_run: Log the command without running it.
-    """
-    safe_url = _mask_url_password(pg_url)
-    cmd = [pg_psql_bin, "--no-password", "-t", "-c", "SELECT count(*) FROM claims;", pg_url]
-    safe_cmd = cmd[:-2] + [safe_url]
-    logger.info("Running smoke test: %s", " ".join(safe_cmd))
+def run_smoke_test(pg_url: str, pg_psql_bin: str, dry_run: bool = False, timeout: int | None = None) -> None:
+    """Run ``SELECT count(*) FROM claims`` via psql (no password on argv)."""
+    params = parse_postgres_url(pg_url)
+    env = pg_subprocess_env(params.password)
+    cmd = _psql_base_cmd(pg_psql_bin, params) + ["-t", "-c", "SELECT count(*) FROM claims;"]
+    logger.info("Running smoke test: %s", " ".join(cmd))
 
     if dry_run:
         logger.info("[dry-run] Skipping smoke test.")
         return
 
-    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    t = timeout if timeout is not None else smoke_timeout_seconds()
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=t)  # noqa: S603
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"smoke test timed out after {t}s") from exc
     if result.returncode != 0:
         logger.error("Smoke test failed (exit %d):\n%s", result.returncode, result.stderr)
         raise RuntimeError("Smoke test failed")
@@ -305,20 +229,15 @@ def run_smoke_test(pg_url: str, pg_psql_bin: str, dry_run: bool = False) -> None
     logger.info("Smoke test passed — claims table row count: %s", count)
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+_mask_url_password = mask_url_password
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    _configure_logging(args.verbose)
+    configure_logging(args.verbose, "restore_postgres")
 
     backup_dir = _resolve_backup_dir(args.backup_dir)
 
-    # ------------------------------------------------------------------
-    # List mode
-    # ------------------------------------------------------------------
     if args.list:
         if not backup_dir.exists():
             logger.error("Backup directory does not exist: %s", backup_dir)
@@ -333,15 +252,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {f.name}  ({size_mb:.2f} MB)")
         return 0
 
-    # ------------------------------------------------------------------
-    # Resolve inputs
-    # ------------------------------------------------------------------
     if not args.backup_file:
         logger.error("No backup file specified. Use --list to see available backups.")
         return 1
 
     try:
-        pg_url = _resolve_pg_url(args.pg_url)
+        pg_url = resolve_pg_url(args.pg_url)
     except SystemExit as exc:
         logger.error("%s", exc)
         return 1
@@ -359,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", exc)
         return 1
 
-    safe_url = _mask_url_password(pg_url)
+    safe_url = mask_url_password(pg_url)
     logger.info("Restore configuration:")
     logger.info("  backup_file   : %s", backup_path)
     logger.info("  pg_url        : %s", safe_url)
@@ -369,18 +285,12 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("[dry-run] Configuration validated. No restore will be executed.")
         return 0
 
-    # ------------------------------------------------------------------
-    # Perform restore
-    # ------------------------------------------------------------------
     try:
         run_pg_restore(pg_url, backup_path, pg_restore_bin, pg_psql_bin)
     except RuntimeError as exc:
         logger.error("Restore failed: %s", exc)
         return 2
 
-    # ------------------------------------------------------------------
-    # Apply pending migrations
-    # ------------------------------------------------------------------
     if not args.no_schema_upgrade:
         try:
             run_schema_upgrade()
@@ -388,9 +298,6 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("Schema upgrade failed: %s", exc)
             return 2
 
-    # ------------------------------------------------------------------
-    # Smoke test
-    # ------------------------------------------------------------------
     try:
         run_smoke_test(pg_url, pg_psql_bin)
     except RuntimeError as exc:
