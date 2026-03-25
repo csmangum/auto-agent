@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -10,8 +10,9 @@ from sqlalchemy import text
 
 from claim_agent.config import reload_settings
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW, STATUS_PROCESSING
-from claim_agent.db.database import get_connection, get_db_path, init_db
+from claim_agent.db.database import get_connection, init_db
 from claim_agent.db.repository import ClaimRepository
+from claim_agent.models.claim import ClaimInput
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +133,31 @@ class TestGetStuckProcessingClaims:
         result = repo.get_stuck_processing_claims(stuck_after_minutes=30)
         assert any(r["id"] == "CLM-BOUNDARY" for r in result)
 
+    def test_returns_stuck_claim_with_iso8601_updated_at(self, recovery_db):
+        """get_stuck_processing_claims must match .isoformat() updated_at (e.g. from lock)."""
+        repo = ClaimRepository(db_path=recovery_db)
+        inp = ClaimInput(
+            policy_number="POL-ISO",
+            vin="1HGBH41JXMN109099",
+            vehicle_year=2022,
+            vehicle_make="Toyota",
+            vehicle_model="Camry",
+            incident_date=date(2025, 3, 1),
+            incident_description="Test",
+            damage_description="Scratch",
+        )
+        claim_id = repo.create_claim(inp)
+        repo.acquire_processing_lock(claim_id)
+        old_iso = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        with get_connection(recovery_db) as conn:
+            conn.execute(
+                text("UPDATE claims SET updated_at = :ts WHERE id = :id"),
+                {"ts": old_iso, "id": claim_id},
+            )
+
+        result = repo.get_stuck_processing_claims(stuck_after_minutes=30)
+        assert any(r["id"] == claim_id for r in result)
+
     def test_raises_on_invalid_minutes(self, recovery_db):
         repo = ClaimRepository(db_path=recovery_db)
         with pytest.raises(ValueError):
@@ -159,6 +185,23 @@ class TestRecoverStuckProcessingClaims:
         claim = repo.get_claim("CLM-RECOVER-1")
         assert claim is not None
         assert claim["status"] == STATUS_NEEDS_REVIEW
+
+    def test_recovery_writes_audit_trail(self, recovery_db):
+        old_ts = _fmt(datetime.now(timezone.utc) - timedelta(hours=2))
+        with get_connection(recovery_db) as conn:
+            _insert_claim(conn, "CLM-AUDIT", STATUS_PROCESSING, old_ts)
+
+        from claim_agent.api.server import _recover_stuck_processing_claims
+
+        _recover_stuck_processing_claims()
+
+        repo = ClaimRepository(db_path=recovery_db)
+        events, _ = repo.get_claim_history("CLM-AUDIT")
+        assert any(
+            e.get("new_status") == STATUS_NEEDS_REVIEW
+            and "stuck" in (e.get("details") or "").lower()
+            for e in events
+        )
 
     def test_does_not_touch_recent_processing_claim(self, recovery_db):
         recent_ts = _fmt(datetime.now(timezone.utc) - timedelta(minutes=5))

@@ -127,7 +127,7 @@ async def _deliver_one(
                 resp = await client.post(url, content=body, headers=headers)
                 if 200 <= resp.status_code < 300:
                     latency_ms = (time.monotonic() - start) * 1000
-                    logger.info(
+                    logger.debug(
                         "Webhook delivered to %s event=%s claim_id=%s attempt=%d latency_ms=%.1f",
                         url,
                         payload.get("event"),
@@ -175,9 +175,14 @@ async def _deliver_one(
         last_error,
     )
     if dead_letter_path:
-        try:
+        line = json.dumps({"url": url, "payload": payload, "error": str(last_error)}) + "\n"
+
+        def _write_dead_letter() -> None:
             with open(dead_letter_path, "a") as f:
-                f.write(json.dumps({"url": url, "payload": payload, "error": str(last_error)}) + "\n")
+                f.write(line)
+
+        try:
+            await asyncio.to_thread(_write_dead_letter)
         except OSError as e:
             logger.warning("Could not write dead letter to %s: %s", dead_letter_path, e)
 

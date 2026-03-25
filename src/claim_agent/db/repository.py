@@ -78,7 +78,13 @@ from claim_agent.rag.constants import normalize_state
 from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
 from claim_agent.db.state_machine import validate_transition
-from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError, ReserveAuthorityError
+from claim_agent.exceptions import (
+    ClaimAlreadyProcessingError,
+    ClaimNotFoundError,
+    DomainValidationError,
+    InvalidClaimTransitionError,
+    ReserveAuthorityError,
+)
 from claim_agent.utils.sanitization import (
     sanitize_actor_id,
     sanitize_denial_reason,
@@ -1308,10 +1314,9 @@ class ClaimRepository:
             ClaimNotFoundError: if the claim does not exist.
             ClaimAlreadyProcessingError: if the claim is already in ``processing`` status.
             InvalidClaimTransitionError: if the current status cannot transition to
-                ``processing`` according to the state machine.
+                ``processing`` according to the state machine, or if the row was
+                modified concurrently to another status (optimistic lock lost).
         """
-        from claim_agent.exceptions import ClaimAlreadyProcessingError
-
         now = datetime.now(timezone.utc).isoformat()
         with get_connection(self._db_path) as conn:
             row = conn.execute(
@@ -1351,8 +1356,16 @@ class ClaimRepository:
                 ).fetchone()
                 if current_row is not None and current_row[0] == STATUS_PROCESSING:
                     raise ClaimAlreadyProcessingError(claim_id)
-                # Another concurrent modification; treat as a processing conflict.
-                raise ClaimAlreadyProcessingError(claim_id)
+                concurrent = current_row[0] if current_row is not None else None
+                raise InvalidClaimTransitionError(
+                    claim_id,
+                    old_status,
+                    STATUS_PROCESSING,
+                    reason=(
+                        f"claim status changed concurrently to {concurrent!r}; "
+                        "retry the operation"
+                    ),
+                )
 
             conn.execute(
                 text("""
@@ -3190,15 +3203,33 @@ class ClaimRepository:
         if stuck_after_minutes < 1:
             raise ValueError("stuck_after_minutes must be at least 1")
         cutoff_dt = datetime.now(timezone.utc) - timedelta(minutes=stuck_after_minutes)
-        # Use a format compatible with SQLite CURRENT_TIMESTAMP for lexicographic comparison.
-        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
+        cutoff_iso = cutoff_dt.isoformat()
+        cutoff_space = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
         with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text(
-                    "SELECT * FROM claims WHERE status = :status AND updated_at <= :cutoff"
-                ),
-                {"status": STATUS_PROCESSING, "cutoff": cutoff},
-            ).fetchall()
+            if is_postgres_backend():
+                rows = conn.execute(
+                    text(
+                        "SELECT * FROM claims WHERE status = :status AND updated_at <= :cutoff"
+                    ),
+                    {"status": STATUS_PROCESSING, "cutoff": cutoff_iso},
+                ).fetchall()
+            else:
+                # SQLite stores updated_at as TEXT; values may be ISO-8601 (e.g. from
+                # .isoformat()) or space-separated (e.g. datetime('now')). Compare using
+                # the appropriate lexical form so both match the cutoff.
+                rows = conn.execute(
+                    text(
+                        "SELECT * FROM claims WHERE status = :status AND ("
+                        "(instr(COALESCE(updated_at, ''), 'T') > 0 AND updated_at <= :cutoff_iso) OR "
+                        "(instr(COALESCE(updated_at, ''), 'T') = 0 AND updated_at <= :cutoff_space)"
+                        ")"
+                    ),
+                    {
+                        "status": STATUS_PROCESSING,
+                        "cutoff_iso": cutoff_iso,
+                        "cutoff_space": cutoff_space,
+                    },
+                ).fetchall()
         return [row_to_dict(r) for r in rows]
 
     def search_claims(

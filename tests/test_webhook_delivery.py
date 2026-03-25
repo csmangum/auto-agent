@@ -194,7 +194,7 @@ class TestDeliverOneAsync:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with patch("httpx.AsyncClient", return_value=mock_client), caplog.at_level(
-            logging.INFO, logger="claim_agent.notifications.webhook"
+            logging.DEBUG, logger="claim_agent.notifications.webhook"
         ):
             self._run(
                 _deliver_one(

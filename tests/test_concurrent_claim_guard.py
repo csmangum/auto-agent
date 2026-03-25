@@ -3,11 +3,14 @@
 import os
 import tempfile
 import threading
+from contextlib import contextmanager
 from datetime import date
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from claim_agent.db.database import init_db
+from claim_agent.db import repository as repository_module
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.constants import STATUS_PENDING, STATUS_PROCESSING, STATUS_OPEN, STATUS_FAILED, STATUS_ARCHIVED
 from claim_agent.exceptions import (
@@ -175,3 +178,40 @@ class TestAcquireProcessingLock:
         # Claim status must be processing
         claim = repo.get_claim(claim_id)
         assert claim["status"] == STATUS_PROCESSING
+
+    def test_optimistic_lock_lost_to_non_processing_raises_invalid_transition(
+        self, repo, claim_id
+    ):
+        """If UPDATE affects 0 rows and re-read is not processing, raise InvalidClaimTransitionError."""
+        orig_get_connection = repository_module.get_connection
+        select_n = [0]
+
+        @contextmanager
+        def patched_get_connection(path=None):
+            with orig_get_connection(path) as conn:
+                real_execute = conn.execute
+
+                def execute_replace(statement, parameters=None, **kwargs):
+                    sql_u = str(statement).upper().replace("\n", " ")
+                    if "SELECT STATUS FROM CLAIMS" in sql_u:
+                        select_n[0] += 1
+                        if select_n[0] == 1:
+                            return real_execute(statement, parameters, **kwargs)
+                        out = MagicMock()
+                        out.fetchone.return_value = ("open",)
+                        return out
+                    if "UPDATE CLAIMS SET STATUS" in sql_u and "UPDATED_AT" in sql_u:
+                        zero = MagicMock()
+                        zero.rowcount = 0
+                        return zero
+                    return real_execute(statement, parameters, **kwargs)
+
+                conn.execute = execute_replace
+                try:
+                    yield conn
+                finally:
+                    conn.execute = real_execute
+
+        with patch.object(repository_module, "get_connection", patched_get_connection):
+            with pytest.raises(InvalidClaimTransitionError, match="concurrently"):
+                repo.acquire_processing_lock(claim_id)
