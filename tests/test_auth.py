@@ -121,3 +121,78 @@ class TestIsAuthRequired:
         monkeypatch.setenv("JWT_SECRET", "a" * 32)
         reload_settings()
         assert is_auth_required() is True
+
+
+class TestCheckAuthConfiguration:
+    """Tests for the server startup auth guard."""
+
+    def _check(self):
+        from claim_agent.api.server import _check_auth_configuration
+
+        _check_auth_configuration()
+
+    def test_passes_in_dev_environment_without_auth(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        reload_settings()
+        self._check()  # should not raise
+
+    def test_passes_in_dev_shorthand_without_auth(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "dev")
+        reload_settings()
+        self._check()  # should not raise
+
+    def test_passes_in_test_environment_without_auth(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "test")
+        reload_settings()
+        self._check()  # should not raise
+
+    def test_raises_in_production_without_auth(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        reload_settings()
+        with pytest.raises(RuntimeError, match="Authentication is not configured"):
+            self._check()
+
+    def test_raises_in_staging_without_auth(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        reload_settings()
+        with pytest.raises(RuntimeError, match="Authentication is not configured"):
+            self._check()
+
+    def test_passes_in_production_with_api_keys(self, monkeypatch):
+        monkeypatch.setenv("API_KEYS", "sk-prod:admin")
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        reload_settings()
+        self._check()  # should not raise
+
+    def test_passes_in_production_with_jwt_secret(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.setenv("JWT_SECRET", "a" * 32)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        reload_settings()
+        self._check()  # should not raise
+
+    def test_environment_check_is_case_insensitive(self, monkeypatch):
+        monkeypatch.delenv("API_KEYS", raising=False)
+        monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "Development")
+        reload_settings()
+        self._check()  # should not raise
