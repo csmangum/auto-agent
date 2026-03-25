@@ -205,8 +205,8 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.auth.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=settings.auth.cors_methods,
+        allow_headers=settings.auth.cors_headers,
     )
 
     async def _invalid_claim_transition_handler(

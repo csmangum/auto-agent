@@ -715,6 +715,23 @@ _DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
+_DEFAULT_CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+
+_DEFAULT_CORS_HEADERS = [
+    "Authorization",
+    "Content-Type",
+    "Idempotency-Key",
+    "X-API-Key",
+    "X-Claim-Access-Token",
+    "X-Email",
+    "X-Policy-Number",
+    "X-Portal-Token",
+    "X-Repair-Shop-Access-Token",
+    "X-Third-Party-Access-Token",
+    "X-Vin",
+    "X-Webhook-Signature",
+]
+
 
 @dataclass(frozen=True)
 class ApiKeyEntry:
@@ -765,6 +782,8 @@ class AuthConfig(BaseSettings):
         description="Opaque refresh token lifetime in seconds (default 7 days).",
     )
     cors_origins_raw: str = Field(default="", validation_alias="CORS_ORIGINS")
+    cors_methods_raw: str = Field(default="", validation_alias="CORS_METHODS")
+    cors_headers_raw: str = Field(default="", validation_alias="CORS_HEADERS")
     trust_forwarded_for: bool = Field(default=False, validation_alias="TRUST_FORWARDED_FOR")
     enforce_https: bool = Field(
         default=False,
@@ -853,6 +872,20 @@ class AuthConfig(BaseSettings):
         if raw:
             return [o.strip() for o in raw.split(",") if o.strip()]
         return list(_DEFAULT_CORS_ORIGINS)
+
+    @property
+    def cors_methods(self) -> list[str]:
+        raw = self.cors_methods_raw.strip()
+        if raw:
+            return [m.strip().upper() for m in raw.split(",") if m.strip()]
+        return list(_DEFAULT_CORS_METHODS)
+
+    @property
+    def cors_headers(self) -> list[str]:
+        raw = self.cors_headers_raw.strip()
+        if raw:
+            return [h.strip() for h in raw.split(",") if h.strip()]
+        return list(_DEFAULT_CORS_HEADERS)
 
 
 # ---------------------------------------------------------------------------
