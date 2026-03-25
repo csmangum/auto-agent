@@ -40,6 +40,8 @@ RENTAL_ELIGIBLE_COVERAGES = frozenset({"comprehensive", "collision", "full_cover
 # across processes; this cache avoids duplicate work within a single process.
 _IDEMPOTENCY_MAX_ENTRIES = 4096
 _idempotency_cache: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+# Backward compatibility alias for tests
+_IDEMPOTENCY_CACHE = _idempotency_cache
 
 
 def _idempotency_cache_get(key: tuple[str, int, int]) -> str | None:

@@ -130,14 +130,21 @@ def _resolve_backup_dir(cli_dir: str | None) -> Path:
 
 def _resolve_retention_days(cli_days: int | None) -> int:
     if cli_days is not None:
-        return cli_days
-    env_val = os.environ.get("BACKUP_RETENTION_DAYS", "").strip()
-    if env_val:
-        try:
-            return int(env_val)
-        except ValueError:
-            logger.warning("BACKUP_RETENTION_DAYS is not an integer (%r); using default 14.", env_val)
-    return 14
+        days = cli_days
+    else:
+        env_val = os.environ.get("BACKUP_RETENTION_DAYS", "").strip()
+        if env_val:
+            try:
+                days = int(env_val)
+            except ValueError:
+                logger.warning("BACKUP_RETENTION_DAYS is not an integer (%r); using default 14.", env_val)
+                return 14
+        else:
+            return 14
+    if days < 1:
+        logger.warning("Retention days must be >= 1 (got %d); using default 14.", days)
+        return 14
+    return days
 
 
 def _resolve_pg_dump_path(cli_path: str | None) -> str:
@@ -307,7 +314,14 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", exc)
         return 1
 
-    compress = not args.no_compress
+    if args.no_compress:
+        compress = False
+    else:
+        env_val = os.environ.get("BACKUP_COMPRESS", "").strip().lower()
+        if env_val in ("false", "0", "no"):
+            compress = False
+        else:
+            compress = True
     backup_dir = _resolve_backup_dir(args.backup_dir)
     retention_days = _resolve_retention_days(args.retention_days)
     s3_bucket = (args.s3_bucket or os.environ.get("BACKUP_S3_BUCKET", "")).strip()
