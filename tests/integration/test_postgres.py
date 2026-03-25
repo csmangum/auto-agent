@@ -85,6 +85,7 @@ def test_postgres_repository_crud(postgres_db):
     from sqlalchemy import text
 
     from claim_agent.db.database import get_connection
+    from claim_agent.db.constants import STATUS_NEEDS_REVIEW
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
 
@@ -115,11 +116,12 @@ def test_postgres_repository_crud(postgres_db):
         ).fetchall()
     assert len(rows) >= 1
 
-    # Update and re-fetch
-    repo.update_claim(claim_id, {"status": "in_review", "assignee": "adjuster-pg-test"})
+    # Move to review queue, assign adjuster, re-fetch
+    repo.update_claim_status(claim_id, STATUS_NEEDS_REVIEW, details="postgres integration")
+    repo.assign_claim(claim_id, "adjuster-pg-test")
     updated = repo.get_claim(claim_id)
     assert updated is not None
-    assert updated["status"] == "in_review"
+    assert updated["status"] == STATUS_NEEDS_REVIEW
     assert updated["assignee"] == "adjuster-pg-test"
 
     # List claims and confirm our claim appears
@@ -130,6 +132,7 @@ def test_postgres_repository_crud(postgres_db):
 
 def test_postgres_repository_update_status_transitions(postgres_db):
     """Verify status transitions are persisted correctly on PostgreSQL."""
+    from claim_agent.db.constants import STATUS_CLOSED, STATUS_OPEN, STATUS_PROCESSING
     from claim_agent.db.repository import ClaimRepository
     from claim_agent.models.claim import ClaimInput
 
@@ -146,8 +149,24 @@ def test_postgres_repository_update_status_transitions(postgres_db):
     )
     claim_id = repo.create_claim(claim_input)
 
-    for status in ("in_review", "approved", "closed"):
-        repo.update_claim(claim_id, {"status": status})
+    transitions: list[tuple[str, dict]] = [
+        (STATUS_PROCESSING, {}),
+        (STATUS_OPEN, {}),
+        # Close requires payout (close guard). Reserve adequacy may be "block" in CI;
+        # supervisor skip matches production override for intentional test closure.
+        (
+            STATUS_CLOSED,
+            {
+                "payout_amount": 1500.0,
+                "skip_adequacy_check": True,
+                "role": "supervisor",
+            },
+        ),
+    ]
+    for status, kwargs in transitions:
+        repo.update_claim_status(
+            claim_id, status, details=f"postgres transition → {status}", **kwargs
+        )
         claim = repo.get_claim(claim_id)
         assert claim is not None
         assert claim["status"] == status
