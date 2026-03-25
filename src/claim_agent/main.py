@@ -153,6 +153,15 @@ def serve(
         )
         raise SystemExit(1)
 
+    if reload and workers > 1:
+        _serve_logger.error(
+            "--reload is incompatible with --workers > 1: uvicorn ignores (or errors on) "
+            "the workers setting when reload mode is active. "
+            "Use --workers=1 (the default) with --reload for development, or omit --reload "
+            "and use --workers for production."
+        )
+        raise SystemExit(1)
+
     uvicorn.run(
         "claim_agent.api.server:app",
         host=host,

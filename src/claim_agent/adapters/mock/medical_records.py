@@ -1,5 +1,6 @@
 """Mock medical records adapter -- deterministic in-memory implementation for development/testing."""
 
+import hashlib
 from typing import Any
 
 from claim_agent.adapters.base import MedicalRecordsAdapter
@@ -23,8 +24,9 @@ class MockMedicalRecordsAdapter(MedicalRecordsAdapter):
         """Return deterministic mock medical records varied by claim_id hash."""
         if not claim_id or not isinstance(claim_id, str):
             return None
-        # Vary total_charges by claim_id for test realism
-        claim_hash = hash(claim_id) % 1000
+        # Vary total_charges by claim_id using a stable sha256 hash (not Python's hash(),
+        # which is randomized per-process and would break cross-run reproducibility).
+        claim_hash = int(hashlib.sha256(claim_id.encode()).hexdigest(), 16) % 1000
         base_charges = 3500.00
         followup_charges = 250.00 + (claim_hash % 5) * 100
         total_charges = base_charges + followup_charges

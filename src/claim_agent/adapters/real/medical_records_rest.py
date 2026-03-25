@@ -104,6 +104,9 @@ class RestMedicalRecordsAdapter(MedicalRecordsAdapter):
                 return None
             logger.warning("Medical records adapter HTTP error: %s", exc, exc_info=True)
             return None
+        except httpx.RequestError as exc:
+            logger.warning("Medical records adapter request error: %s", exc, exc_info=True)
+            return None
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the HIE/provider portal API for liveness."""
