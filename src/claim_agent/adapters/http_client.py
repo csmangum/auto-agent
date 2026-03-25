@@ -38,6 +38,20 @@ RETRYABLE_EXCEPTIONS = (httpx.ConnectError, httpx.TimeoutException, httpx.Remote
 RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 
+def extract_response_envelope(raw: Any, response_key: str | None) -> Any:
+    """If *raw* is a dict and a non-empty *response_key* is present in it, return that value.
+
+    Otherwise return *raw* unchanged. Used by REST adapters for optional JSON envelopes
+    (e.g. ``{"data": {...}}``).
+    """
+    if not isinstance(raw, dict):
+        return raw
+    key = (response_key or "").strip()
+    if key and key in raw:
+        return raw[key]
+    return raw
+
+
 class CircuitOpenError(Exception):
     """Raised when the circuit breaker is open (too many failures)."""
 
@@ -182,6 +196,47 @@ class AdapterHttpClient:
                     raise
         raise RuntimeError("Retry loop exited without return or exception")
 
+    def _request_multipart(
+        self,
+        path: str,
+        *,
+        files: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """POST multipart with the same retry and circuit-breaker behavior as JSON POST."""
+        self._check_circuit()
+        url = f"{self._base_url}{path}" if path.startswith("/") else f"{self._base_url}/{path}"
+
+        retryer = Retrying(
+            stop=stop_after_attempt(self._max_retries + 1),
+            wait=wait_exponential(multiplier=1.0, min=self._retry_min_wait, max=self._retry_max_wait),
+            retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS)
+            | retry_if_exception(_is_retryable_http_error),
+            reraise=True,
+        )
+
+        for attempt in retryer:
+            with attempt:
+                try:
+                    client = self._get_client()
+                    resp = client.request(
+                        "POST",
+                        url,
+                        headers=self._build_headers(),
+                        params=params,
+                        files=files,
+                    )
+                    if self._is_retryable_response(resp):
+                        self._record_failure()
+                        resp.raise_for_status()
+                    resp.raise_for_status()
+                    self._record_success()
+                    return resp
+                except RETRYABLE_EXCEPTIONS:
+                    self._record_failure()
+                    raise
+        raise RuntimeError("Retry loop exited without return or exception")
+
     def get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
         """GET request with retry and circuit breaker."""
         return self._request("GET", path, params=params)
@@ -195,6 +250,20 @@ class AdapterHttpClient:
     ) -> httpx.Response:
         """POST request with retry and circuit breaker."""
         return self._request("POST", path, params=params, json=json)
+
+    def post_multipart(
+        self,
+        path: str,
+        *,
+        files: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """POST multipart/form-data with retry and circuit breaker.
+
+        Pass *files* as httpx expects, e.g. ``{"file": ("name.pdf", file_bytes)}``.
+        File contents should be bytes (or a fresh file-like) so retries can resend safely.
+        """
+        return self._request_multipart(path, files=files, params=params)
 
     def health_check(self, path: str = "/health") -> tuple[bool, str]:
         """Probe the base URL for liveness. Returns (ok, message)."""
@@ -214,3 +283,10 @@ class AdapterHttpClient:
             return False, f"status={resp.status_code}"
         except Exception as e:
             return False, str(e)
+
+    def health_check_with_fallback(self, primary_path: str = "/health") -> tuple[bool, str]:
+        """Probe *primary_path* (default ``/health``) then ``/`` if the probe returns 404."""
+        ok, msg = self.health_check(path=primary_path)
+        if not ok and "status=404" in msg:
+            ok, msg = self.health_check(path="/")
+        return ok, msg

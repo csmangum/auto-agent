@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 PortalRole = Literal["claimant", "repair_shop", "tpa"]
 
+KNOWN_PORTAL_ROLES: frozenset[str] = frozenset({"claimant", "repair_shop", "tpa"})
+
 VALID_PORTAL_SCOPES: frozenset[str] = frozenset(
     {
         "read_claim",
@@ -165,13 +167,20 @@ def verify_unified_portal_token(
     if row is None:
         return None
     rec = row_to_dict(row)
+    role_str = str(rec.get("role") or "").strip()
+    if role_str not in KNOWN_PORTAL_ROLES:
+        logger.warning(
+            "Rejecting unified portal token with unknown role from database: %r",
+            role_str,
+        )
+        return None
     try:
         scopes: list[str] = json.loads(rec.get("scopes") or "[]")
     except (ValueError, TypeError):
         scopes = []
     return UnifiedTokenRecord(
         token_id=int(rec["id"]),
-        role=str(rec["role"]),  # type: ignore[arg-type]
+        role=role_str,  # type: ignore[arg-type]
         scopes=scopes,
         claim_id=rec.get("claim_id"),
         shop_id=rec.get("shop_id"),

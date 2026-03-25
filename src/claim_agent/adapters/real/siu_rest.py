@@ -23,7 +23,11 @@ from urllib.parse import quote
 import httpx
 
 from claim_agent.adapters.base import SIUAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+from claim_agent.adapters.http_client import (
+    AdapterHttpClient,
+    CircuitOpenError,
+    extract_response_envelope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +41,8 @@ class RestSIUAdapter(SIUAdapter):
       ``case_id`` (or ``id`` / ``caseId``).
     * ``GET {cases_path}/{case_id}`` → 200 JSON for case details, 404 when not found.
     * ``POST {notes_path_template}`` with JSON ``{note, category}`` → 200/201 on success.
-    * ``PUT/PATCH {status_path_template}`` with JSON ``{status}`` → 200 on success.
+    * ``POST {status_path_template}`` with JSON ``{status}`` → 200 on success (some gateways
+      use PUT/PATCH instead; configure paths accordingly).
     """
 
     def __init__(
@@ -63,16 +68,9 @@ class RestSIUAdapter(SIUAdapter):
         self._status_path_template = status_path_template.strip()
         self._response_key = (response_key or "").strip() or None
 
-    def _extract(self, raw: Any) -> Any:
-        if not isinstance(raw, dict):
-            return raw
-        if self._response_key and self._response_key in raw:
-            return raw[self._response_key]
-        return raw
-
     def _extract_case_id(self, raw: Any) -> str:
         """Pull case_id from the API create-case response."""
-        data = self._extract(raw)
+        data = extract_response_envelope(raw, self._response_key)
         if isinstance(data, dict):
             for key in ("case_id", "id", "caseId", "siu_case_id"):
                 val = data.get(key)
@@ -99,7 +97,7 @@ class RestSIUAdapter(SIUAdapter):
             if exc.response is not None and exc.response.status_code == 404:
                 return None
             raise
-        raw = self._extract(resp.json())
+        raw = extract_response_envelope(resp.json(), self._response_key)
         return raw if isinstance(raw, dict) else None
 
     def add_investigation_note(self, case_id: str, note: str, category: str = "general") -> bool:
@@ -126,10 +124,7 @@ class RestSIUAdapter(SIUAdapter):
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the SIU API for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_siu_adapter() -> RestSIUAdapter:

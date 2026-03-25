@@ -13,13 +13,10 @@ Configure via environment variables:
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from claim_agent.adapters.base import CMSReportingAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient
-
-logger = logging.getLogger(__name__)
+from claim_agent.adapters.http_client import AdapterHttpClient, extract_response_envelope
 
 # Default reporting threshold for MMSEA Section 111 (matches mock default)
 _DEFAULT_REPORTING_THRESHOLD = 750.0
@@ -56,13 +53,6 @@ class RestCMSReportingAdapter(CMSReportingAdapter):
         self._evaluate_path = evaluate_path
         self._response_key = (response_key or "").strip() or None
 
-    def _extract(self, raw: Any) -> Any:
-        if not isinstance(raw, dict):
-            return raw
-        if self._response_key and self._response_key in raw:
-            return raw[self._response_key]
-        return raw
-
     def evaluate_settlement_reporting(
         self,
         *,
@@ -76,7 +66,7 @@ class RestCMSReportingAdapter(CMSReportingAdapter):
             "claimant_medicare_eligible": claimant_medicare_eligible,
         }
         resp = self._client.post(self._evaluate_path, json=body)
-        data = self._extract(resp.json())
+        data = extract_response_envelope(resp.json(), self._response_key)
         if not isinstance(data, dict):
             raise ValueError(
                 f"CMS REST API returned unexpected response type: {type(data).__name__}"
@@ -97,10 +87,7 @@ class RestCMSReportingAdapter(CMSReportingAdapter):
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the CMS gateway for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_cms_reporting_adapter() -> RestCMSReportingAdapter:

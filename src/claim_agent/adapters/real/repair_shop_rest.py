@@ -22,7 +22,11 @@ from urllib.parse import quote
 import httpx
 
 from claim_agent.adapters.base import RepairShopAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+from claim_agent.adapters.http_client import (
+    AdapterHttpClient,
+    CircuitOpenError,
+    extract_response_envelope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +67,6 @@ class RestRepairShopAdapter(RepairShopAdapter):
         self._labor_path = labor_path
         self._response_key = (response_key or "").strip() or None
 
-    def _extract(self, raw: Any) -> Any:
-        """Unwrap optional response envelope key."""
-        if not isinstance(raw, dict):
-            return raw
-        if self._response_key and self._response_key in raw:
-            return raw[self._response_key]
-        return raw
-
     def _to_shop_dict(self, raw: Any) -> dict[str, dict[str, Any]]:
         """Normalize list or dict API responses to ``{shop_id: shop_data}`` format."""
         if isinstance(raw, dict):
@@ -109,10 +105,11 @@ class RestRepairShopAdapter(RepairShopAdapter):
         except CircuitOpenError:
             logger.warning("RepairShop adapter circuit breaker open; returning empty shops")
             return {}
-        except httpx.HTTPStatusError:
-            logger.warning("RepairShop adapter failed to fetch shops", exc_info=True)
-            return {}
-        raw = self._extract(resp.json())
+        except httpx.HTTPStatusError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                return {}
+            raise
+        raw = extract_response_envelope(resp.json(), self._response_key)
         return self._to_shop_dict(raw)
 
     def get_shop(self, shop_id: str) -> dict[str, Any] | None:
@@ -127,9 +124,7 @@ class RestRepairShopAdapter(RepairShopAdapter):
             if exc.response is not None and exc.response.status_code == 404:
                 return None
             raise
-        if not resp.is_success:
-            resp.raise_for_status()
-        raw = self._extract(resp.json())
+        raw = extract_response_envelope(resp.json(), self._response_key)
         return raw if isinstance(raw, dict) else None
 
     def get_labor_operations(self) -> dict[str, dict[str, Any]]:
@@ -138,18 +133,16 @@ class RestRepairShopAdapter(RepairShopAdapter):
         except CircuitOpenError:
             logger.warning("RepairShop adapter circuit breaker open; returning empty labor ops")
             return {}
-        except httpx.HTTPStatusError:
-            logger.warning("RepairShop adapter failed to fetch labor operations", exc_info=True)
-            return {}
-        raw = self._extract(resp.json())
+        except httpx.HTTPStatusError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                return {}
+            raise
+        raw = extract_response_envelope(resp.json(), self._response_key)
         return self._to_catalog_dict(raw)
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the shop API for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_repair_shop_adapter() -> RestRepairShopAdapter:

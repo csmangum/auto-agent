@@ -18,7 +18,11 @@ from typing import Any
 import httpx
 
 from claim_agent.adapters.base import PartsAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+from claim_agent.adapters.http_client import (
+    AdapterHttpClient,
+    CircuitOpenError,
+    extract_response_envelope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +56,6 @@ class RestPartsAdapter(PartsAdapter):
         self._catalog_path = catalog_path
         self._response_key = (response_key or "").strip() or None
 
-    def _extract(self, raw: Any) -> Any:
-        """Unwrap optional response envelope key."""
-        if not isinstance(raw, dict):
-            return raw
-        if self._response_key and self._response_key in raw:
-            return raw[self._response_key]
-        return raw
-
     def _to_catalog_dict(self, raw: Any) -> dict[str, dict[str, Any]]:
         """Normalize list or dict API responses to ``{part_id: part_data}`` format."""
         if isinstance(raw, dict):
@@ -82,18 +78,16 @@ class RestPartsAdapter(PartsAdapter):
         except CircuitOpenError:
             logger.warning("Parts adapter circuit breaker open; returning empty catalog")
             return {}
-        except httpx.HTTPStatusError:
-            logger.warning("Parts adapter failed to fetch catalog", exc_info=True)
-            return {}
-        raw = self._extract(resp.json())
+        except httpx.HTTPStatusError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                return {}
+            raise
+        raw = extract_response_envelope(resp.json(), self._response_key)
         return self._to_catalog_dict(raw)
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the parts API for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_parts_adapter() -> RestPartsAdapter:

@@ -19,7 +19,11 @@ from typing import Any
 import httpx
 
 from claim_agent.adapters.base import OCRAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+from claim_agent.adapters.http_client import (
+    AdapterHttpClient,
+    CircuitOpenError,
+    extract_response_envelope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,19 +58,11 @@ class RestOCRAdapter(OCRAdapter):
         )
         self._extract_path = extract_path
         self._response_key = (response_key or "").strip() or None
-        self._base_url = base_url.rstrip("/")
-        self._auth_header = auth_header
-        self._auth_value = auth_value
-        self._timeout = timeout
 
-    def _extract_data(self, raw: Any) -> dict[str, Any] | None:
+    def _unwrap_payload(self, raw: Any) -> dict[str, Any] | None:
         """Unwrap optional response envelope key and validate the data dict."""
-        if isinstance(raw, dict):
-            if self._response_key and self._response_key in raw:
-                inner = raw[self._response_key]
-                return inner if isinstance(inner, dict) else None
-            return raw
-        return None
+        inner = extract_response_envelope(raw, self._response_key)
+        return inner if isinstance(inner, dict) else None
 
     def extract_structured_data(self, file_path: Path, document_type: str) -> dict[str, Any] | None:
         """Call the OCR REST API with the given file and return structured extraction.
@@ -75,24 +71,17 @@ class RestOCRAdapter(OCRAdapter):
         a query parameter so the backend can apply the appropriate extraction model.
         """
         try:
-            url = f"{self._base_url}{self._extract_path}"
-            headers: dict[str, str] = {"Accept": "application/json"}
-            if self._auth_value:
-                headers[self._auth_header] = self._auth_value
-
             with open(file_path, "rb") as fh:
-                files = {"file": (file_path.name, fh)}
-                with httpx.Client(timeout=self._timeout) as client:
-                    resp = client.post(
-                        url,
-                        headers=headers,
-                        files=files,
-                        params={"document_type": document_type},
-                    )
+                file_bytes = fh.read()
+            files = {"file": (file_path.name, file_bytes)}
+            resp = self._client.post_multipart(
+                self._extract_path,
+                files=files,
+                params={"document_type": document_type},
+            )
             if resp.status_code == 404:
                 return None
-            resp.raise_for_status()
-            return self._extract_data(resp.json())
+            return self._unwrap_payload(resp.json())
         except CircuitOpenError:
             logger.warning("OCR adapter circuit breaker open; returning None")
             return None
@@ -107,10 +96,7 @@ class RestOCRAdapter(OCRAdapter):
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the OCR API for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_ocr_adapter() -> RestOCRAdapter:

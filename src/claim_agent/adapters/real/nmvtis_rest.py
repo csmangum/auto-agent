@@ -16,13 +16,10 @@ Configure via environment variables:
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from claim_agent.adapters.base import NMVTISAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient
-
-logger = logging.getLogger(__name__)
+from claim_agent.adapters.http_client import AdapterHttpClient, extract_response_envelope
 
 
 class RestNMVTISAdapter(NMVTISAdapter):
@@ -54,13 +51,6 @@ class RestNMVTISAdapter(NMVTISAdapter):
         self._report_path = report_path
         self._response_key = (response_key or "").strip() or None
 
-    def _extract(self, raw: Any) -> Any:
-        if not isinstance(raw, dict):
-            return raw
-        if self._response_key and self._response_key in raw:
-            return raw[self._response_key]
-        return raw
-
     def submit_total_loss_report(
         self,
         *,
@@ -86,7 +76,7 @@ class RestNMVTISAdapter(NMVTISAdapter):
             body["dmv_reference"] = dmv_reference
 
         resp = self._client.post(self._report_path, json=body)
-        data = self._extract(resp.json())
+        data = extract_response_envelope(resp.json(), self._response_key)
         if not isinstance(data, dict):
             raise ValueError(
                 f"NMVTIS REST API returned unexpected response type: {type(data).__name__}"
@@ -101,10 +91,7 @@ class RestNMVTISAdapter(NMVTISAdapter):
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the NMVTIS gateway for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_nmvtis_adapter() -> RestNMVTISAdapter:

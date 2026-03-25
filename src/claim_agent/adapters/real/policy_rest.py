@@ -86,7 +86,4 @@ class RestPolicyAdapter(PolicyAdapter):
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the PAS API for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()

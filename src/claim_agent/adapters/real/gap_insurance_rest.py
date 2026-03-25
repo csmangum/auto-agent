@@ -21,7 +21,11 @@ from urllib.parse import quote
 import httpx
 
 from claim_agent.adapters.base import GapInsuranceAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+from claim_agent.adapters.http_client import (
+    AdapterHttpClient,
+    CircuitOpenError,
+    extract_response_envelope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +63,6 @@ class RestGapInsuranceAdapter(GapInsuranceAdapter):
         self._status_path_template = status_path_template.strip()
         self._response_key = (response_key or "").strip() or None
 
-    def _extract(self, raw: Any) -> Any:
-        if not isinstance(raw, dict):
-            return raw
-        if self._response_key and self._response_key in raw:
-            return raw[self._response_key]
-        return raw
-
     def submit_shortfall_claim(
         self,
         *,
@@ -87,7 +84,7 @@ class RestGapInsuranceAdapter(GapInsuranceAdapter):
             body["vin"] = vin
 
         resp = self._client.post(self._submit_path, json=body)
-        data = self._extract(resp.json())
+        data = extract_response_envelope(resp.json(), self._response_key)
         if not isinstance(data, dict):
             raise ValueError(
                 f"Gap insurance REST API returned unexpected response type: {type(data).__name__}"
@@ -115,15 +112,12 @@ class RestGapInsuranceAdapter(GapInsuranceAdapter):
             if exc.response is not None and exc.response.status_code == 404:
                 return None
             raise
-        data = self._extract(resp.json())
+        data = extract_response_envelope(resp.json(), self._response_key)
         return data if isinstance(data, dict) else None
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the gap carrier API for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_gap_insurance_adapter() -> RestGapInsuranceAdapter:

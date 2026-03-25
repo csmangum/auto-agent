@@ -240,7 +240,7 @@ def process_erp_webhook_payload(parsed: ERPWebhookPayload) -> dict[str, str | bo
             extra={"erp_event_id": parsed.erp_event_id},
         )
 
-    if parsed.event_type in ("estimate_approved", "parts_delayed"):
+    if parsed.event_type in VALID_ERP_EVENT_TYPES:
         if claim.get("claim_type") != "partial_loss":
             raise ERPWebhookProcessingError(
                 status_code=400,
@@ -322,6 +322,28 @@ def process_erp_webhook_payload(parsed: ERPWebhookPayload) -> dict[str, str | bo
             ) from e
 
     elif parsed.event_type == "supplement_requested":
+        try:
+            note = f"ERP supplement requested; erp_event_id={parsed.erp_event_id}"
+            if parsed.supplement_amount is not None:
+                note += f"; amount={parsed.supplement_amount}"
+            if parsed.description:
+                note += f"; description={parsed.description[:500]}"
+            status_repo.insert_repair_status(
+                claim_id=parsed.claim_id,
+                shop_id=parsed.shop_id,
+                status="paused_supplement",
+                authorization_id=parsed.authorization_id,
+                notes=note,
+            )
+        except Exception as e:
+            logger.exception(
+                "ERP webhook: failed to record repair status for supplement_requested: %s", e
+            )
+            raise ERPWebhookProcessingError(
+                status_code=500,
+                detail="Failed to record repair status",
+                extra={"erp_event_id": parsed.erp_event_id},
+            ) from e
         logger.info(
             "ERP webhook: supplement_requested claim_id=%s shop_id=%s "
             "supplement_amount=%s erp_event_id=%s",

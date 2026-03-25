@@ -67,10 +67,6 @@ class RestReverseImageAdapter(ReverseImageAdapter):
         )
         self._match_path = match_path
         self._response_key = (response_key or "").strip() or None
-        self._base_url = base_url.rstrip("/")
-        self._auth_header = auth_header
-        self._auth_value = auth_value
-        self._timeout = timeout
 
     def _extract_matches(self, raw: Any) -> list[dict[str, Any]]:
         """Normalise the API response to a list of match dicts."""
@@ -93,11 +89,6 @@ class RestReverseImageAdapter(ReverseImageAdapter):
     def match_web_occurrences(self, image: bytes | Path) -> list[dict[str, Any]]:
         """Submit *image* to the provider and return normalised match list."""
         try:
-            url = f"{self._base_url}{self._match_path}"
-            headers: dict[str, str] = {"Accept": "application/json"}
-            if self._auth_value:
-                headers[self._auth_header] = self._auth_value
-
             if isinstance(image, Path):
                 with open(image, "rb") as fh:
                     raw_bytes = fh.read()
@@ -107,9 +98,7 @@ class RestReverseImageAdapter(ReverseImageAdapter):
                 filename = "image.jpg"
 
             files = {"image": (filename, raw_bytes)}
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.post(url, headers=headers, files=files)
-            resp.raise_for_status()
+            resp = self._client.post_multipart(self._match_path, files=files)
             return self._extract_matches(resp.json())
         except CircuitOpenError:
             logger.warning("Reverse-image adapter circuit breaker open; returning empty")
@@ -120,10 +109,7 @@ class RestReverseImageAdapter(ReverseImageAdapter):
 
     def health_check(self) -> tuple[bool, str]:
         """Probe the image search provider for liveness."""
-        ok, msg = self._client.health_check(path="/health")
-        if not ok and "status=404" in msg:
-            ok, msg = self._client.health_check(path="/")
-        return ok, msg
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_reverse_image_adapter() -> RestReverseImageAdapter:
