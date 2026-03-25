@@ -456,7 +456,7 @@ def list_claims(
     search: Optional[str] = Query(
         None, description="Free-text search across claim id, policy_number, and vin", max_length=200
     ),
-    sort_by: str = Query("created_at", description=f"Field to sort by. One of: {sorted(_ALLOWED_SORT_FIELDS)}"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort direction: asc or desc"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),

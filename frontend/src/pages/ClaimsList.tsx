@@ -58,10 +58,9 @@ export default function ClaimsList() {
   // Debounce: update URL search param 300 ms after user stops typing
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (searchInput === search) return; // already in sync – skip URL update
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
-        const current = next.get('search') ?? '';
-        if (searchInput === current) return prev;
         if (searchInput) next.set('search', searchInput);
         else next.delete('search');
         next.delete('page');
@@ -69,7 +68,7 @@ export default function ClaimsList() {
       }, { replace: true });
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchInput, setSearchParams]);
+  }, [searchInput, search, setSearchParams]);
 
   // Generic helper: update a single URL param and reset page
   const updateParam = useCallback(
@@ -110,7 +109,7 @@ export default function ClaimsList() {
 
   const hasActiveFilters =
     !!(statusFilter || typeFilter || includeArchived || includePurged || search ||
-      sortBy !== DEFAULT_SORT_BY || sortOrder !== DEFAULT_SORT_ORDER || page > 1);
+      sortBy !== DEFAULT_SORT_BY || sortOrder !== DEFAULT_SORT_ORDER);
 
   const clearAllFilters = useCallback(() => {
     setSearchInput('');
