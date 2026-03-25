@@ -5,7 +5,7 @@ for *any* external-portal role (claimant, repair_shop, tpa, …).  Each token
 carries:
 - ``role``     – the portal role granted (e.g. ``claimant``, ``repair_shop``)
 - ``scopes``   – JSON array of fine-grained permissions (e.g. ``["read_claim", "upload_doc"]``)
-- ``claim_id`` – optional; NULL means the token covers all claims the shop is assigned to
+- ``claim_id`` – required for session resolution (API rejects unified tokens without it)
 - ``shop_id``  – set for repair_shop tokens issued via shop-level registration
 - ``revoked_at`` – NULL while the token is valid; set to revoke without deletion
 
@@ -30,10 +30,6 @@ EXTERNAL_PORTAL_TOKENS_TABLE_SQLITE = """CREATE TABLE IF NOT EXISTS external_por
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 )"""
 
-IDX_EPT_TOKEN_HASH = (
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_external_portal_tokens_hash "
-    "ON external_portal_tokens(token_hash)"
-)
 IDX_EPT_ROLE = (
     "CREATE INDEX IF NOT EXISTS idx_external_portal_tokens_role "
     "ON external_portal_tokens(role)"

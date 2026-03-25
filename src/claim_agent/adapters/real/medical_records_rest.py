@@ -25,6 +25,7 @@ from claim_agent.adapters.http_client import (
     AdapterHttpClient,
     CircuitOpenError,
     extract_response_envelope,
+    safe_adapter_json_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,10 @@ class RestMedicalRecordsAdapter(MedicalRecordsAdapter):
             body["date_range"] = {"start": date_range[0], "end": date_range[1]}
         try:
             resp = self._client.post(self._query_path, json=body)
-            data = extract_response_envelope(resp.json(), self._response_key)
+            parsed = safe_adapter_json_dict(resp, log_label="medical_records_rest")
+            if parsed is None:
+                return None
+            data = extract_response_envelope(parsed, self._response_key)
             if not isinstance(data, dict):
                 logger.warning(
                     "Medical records REST API returned unexpected type: %s",

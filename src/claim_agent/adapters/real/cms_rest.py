@@ -13,10 +13,18 @@ Configure via environment variables:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from claim_agent.adapters.base import CMSReportingAdapter
-from claim_agent.adapters.http_client import AdapterHttpClient, extract_response_envelope
+from claim_agent.adapters.http_client import (
+    AdapterHttpClient,
+    CircuitOpenError,
+    extract_response_envelope,
+    safe_adapter_json_dict,
+)
+
+logger = logging.getLogger(__name__)
 
 # Default reporting threshold for MMSEA Section 111 (matches mock default)
 _DEFAULT_REPORTING_THRESHOLD = 750.0
@@ -65,8 +73,23 @@ class RestCMSReportingAdapter(CMSReportingAdapter):
             "settlement_amount": settlement_amount,
             "claimant_medicare_eligible": claimant_medicare_eligible,
         }
-        resp = self._client.post(self._evaluate_path, json=body)
-        data = extract_response_envelope(resp.json(), self._response_key)
+        try:
+            resp = self._client.post(self._evaluate_path, json=body)
+        except CircuitOpenError:
+            logger.warning("CMS adapter circuit breaker open; returning conservative defaults")
+            return {
+                "settlement_amount": settlement_amount,
+                "claimant_medicare_eligible": claimant_medicare_eligible,
+                "reporting_threshold": _DEFAULT_REPORTING_THRESHOLD,
+                "reporting_required": False,
+                "conditional_payment_amount": None,
+                "msa_required": False,
+                "notes": "",
+            }
+        parsed = safe_adapter_json_dict(resp, log_label="cms_rest")
+        if parsed is None:
+            raise ValueError("CMS REST API returned invalid or non-object JSON")
+        data = extract_response_envelope(parsed, self._response_key)
         if not isinstance(data, dict):
             raise ValueError(
                 f"CMS REST API returned unexpected response type: {type(data).__name__}"

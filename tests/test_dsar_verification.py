@@ -112,6 +112,13 @@ class TestOTPHelpers:
 
 
 class TestRequestOTP:
+    def test_request_otp_fails_without_server_secret(self, otp_db, monkeypatch):
+        monkeypatch.delenv("OTP_PEPPER", raising=False)
+        monkeypatch.setenv("JWT_SECRET", "")
+        reload_settings()
+        with pytest.raises(PermissionError, match="OTP_PEPPER or JWT_SECRET"):
+            request_otp("user@example.com", CHANNEL_EMAIL, db_path=otp_db)
+
     def test_request_otp_email_returns_verification_id(self, otp_db, monkeypatch):
         monkeypatch.setattr(
             "claim_agent.services.dsar_verification._deliver_otp",

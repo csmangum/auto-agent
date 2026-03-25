@@ -184,6 +184,13 @@ def request_otp(
     if not privacy.otp_enabled:
         raise PermissionError("DSAR self-service OTP flow is disabled by configuration.")
 
+    # Require a server-side secret so OTP hashes are not keyed only with per-row salt (weak).
+    if not privacy.otp_pepper.get_secret_value().strip() and not settings.auth.jwt_secret:
+        raise PermissionError(
+            "DSAR OTP cannot be issued: configure OTP_PEPPER or JWT_SECRET so OTP hashes "
+            "use a server-side secret."
+        )
+
     path = db_path or get_db_path()
     now = datetime.now(timezone.utc)
 

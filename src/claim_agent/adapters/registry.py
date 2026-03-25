@@ -5,7 +5,7 @@ corresponding ``*_ADAPTER`` env var (default: ``mock``).
 
 Supported values: ``mock``, ``stub``, ``rest`` (policy, fraud_reporting, state_bureau,
 claim_search, erp, repair_shop, parts, siu, nmvtis, gap_insurance, ocr, cms,
-reverse_image). Valuation also supports ``ccc``, ``mitchell``, ``audatex`` with
+reverse_image, medical_records). Valuation also supports ``ccc``, ``mitchell``, ``audatex`` with
 ``VALUATION_REST_*`` settings.
 Unknown values raise ValueError.
 """

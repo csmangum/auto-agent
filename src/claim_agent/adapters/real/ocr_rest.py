@@ -23,6 +23,7 @@ from claim_agent.adapters.http_client import (
     AdapterHttpClient,
     CircuitOpenError,
     extract_response_envelope,
+    safe_adapter_json_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,10 @@ class RestOCRAdapter(OCRAdapter):
                 files=files,
                 params={"document_type": document_type},
             )
-            return self._unwrap_payload(resp.json())
+            parsed = safe_adapter_json_dict(resp, log_label="ocr_rest")
+            if parsed is None:
+                return None
+            return self._unwrap_payload(parsed)
         except CircuitOpenError:
             logger.warning("OCR adapter circuit breaker open; returning None")
             return None
@@ -87,6 +91,9 @@ class RestOCRAdapter(OCRAdapter):
             if exc.response is not None and exc.response.status_code == 404:
                 return None
             logger.warning("OCR adapter HTTP error: %s", exc, exc_info=True)
+            return None
+        except httpx.RequestError as exc:
+            logger.warning("OCR adapter request error: %s", exc, exc_info=True)
             return None
         except (OSError, ValueError):
             logger.warning("OCR adapter file or parse error", exc_info=True)

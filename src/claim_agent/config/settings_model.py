@@ -634,7 +634,10 @@ class LLMConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    api_key: SecretStr = Field(default_factory=lambda: SecretStr(""), validation_alias="OPENAI_API_KEY")
+    api_key: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        validation_alias="OPENAI_API_KEY",
+    )
     api_base: str = Field(default="", validation_alias="OPENAI_API_BASE")
     model_name: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_MODEL_NAME")
     vision_model: str = Field(default="gpt-4o", validation_alias="OPENAI_VISION_MODEL")
@@ -1982,7 +1985,9 @@ class Settings(BaseSettings):
         validation_alias="CLAIM_WORKFLOW_TIMEOUT_SECONDS",
         description=(
             "Wall-clock timeout (seconds) for run_claim_workflow(). "
-            "Claim is marked failed and a webhook is fired when exceeded. "
+            "Checked only between workflow stages (not mid-stage); a single slow stage can "
+            "exceed this until it finishes. Use LLM_CALL_TIMEOUT_SECONDS to cap individual LLM "
+            "calls. When exceeded, the claim is marked failed and a claim.timeout webhook fires. "
             "Default 600 (10 minutes). Minimum 30."
         ),
     )

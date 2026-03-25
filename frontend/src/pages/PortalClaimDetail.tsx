@@ -22,17 +22,6 @@ const CUSTOMER_VISIBLE_ACTIONS = new Set([
   'payout_issued',
 ]);
 
-const REPAIR_STATUS_ORDER = [
-  'received',
-  'disassembly',
-  'parts_ordered',
-  'repair',
-  'paint',
-  'reassembly',
-  'qa',
-  'ready',
-] as const;
-
 /** Matches DocumentType on backend (loss-of-use / rental document requests). */
 const RENTAL_DOCUMENT_TYPES = new Set(['rental_receipt', 'rental_agreement']);
 

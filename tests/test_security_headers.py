@@ -265,6 +265,7 @@ class TestSecurityHeadersOnShortCircuitResponses:
         assert resp.headers.get("x-content-type-options") == "nosniff"
         assert resp.headers.get("x-frame-options") == "DENY"
         assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+        assert resp.headers.get("cache-control") == "no-store"
         csp = resp.headers.get("content-security-policy", "")
         assert "default-src 'self'" in csp
 
@@ -299,5 +300,6 @@ class TestSecurityHeadersOnShortCircuitResponses:
         assert resp.headers.get("x-content-type-options") == "nosniff"
         assert resp.headers.get("x-frame-options") == "DENY"
         assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+        assert resp.headers.get("cache-control") == "no-store"
         csp = resp.headers.get("content-security-policy", "")
         assert "default-src 'self'" in csp

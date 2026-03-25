@@ -27,6 +27,7 @@ from claim_agent.adapters.http_client import (
     AdapterHttpClient,
     CircuitOpenError,
     extract_response_envelope,
+    safe_adapter_json_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,15 @@ class RestSIUAdapter(SIUAdapter):
 
     def create_case(self, claim_id: str, indicators: list[str]) -> str:
         body: dict[str, Any] = {"claim_id": claim_id, "indicators": indicators}
-        resp = self._client.post(self._cases_path, json=body)
-        return self._extract_case_id(resp.json())
+        try:
+            resp = self._client.post(self._cases_path, json=body)
+        except CircuitOpenError:
+            logger.warning("SIU adapter circuit breaker open on create_case")
+            raise ValueError("SIU REST unavailable: circuit breaker open") from None
+        parsed = safe_adapter_json_dict(resp, log_label="siu_rest")
+        if parsed is None:
+            raise ValueError("SIU REST API returned invalid or non-object JSON")
+        return self._extract_case_id(parsed)
 
     def get_case(self, case_id: str) -> dict[str, Any] | None:
         encoded = quote(case_id, safe="")
@@ -97,7 +105,10 @@ class RestSIUAdapter(SIUAdapter):
             if exc.response is not None and exc.response.status_code == 404:
                 return None
             raise
-        raw = extract_response_envelope(resp.json(), self._response_key)
+        parsed = safe_adapter_json_dict(resp, log_label="siu_rest")
+        if parsed is None:
+            return None
+        raw = extract_response_envelope(parsed, self._response_key)
         return raw if isinstance(raw, dict) else None
 
     def add_investigation_note(self, case_id: str, note: str, category: str = "general") -> bool:

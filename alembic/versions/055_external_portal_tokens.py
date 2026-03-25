@@ -28,7 +28,6 @@ from claim_agent.db.schema_unified_portal_sqlite import (
     IDX_EPT_CLAIM_ID,
     IDX_EPT_EXPIRES_AT,
     IDX_EPT_ROLE,
-    IDX_EPT_TOKEN_HASH,
 )
 
 revision = "055"
@@ -60,9 +59,7 @@ def upgrade() -> None:
     else:
         op.execute(_PG_EXTERNAL_PORTAL_TOKENS)
 
-    # IDX_EPT_TOKEN_HASH is a UNIQUE index – duplicate of the inline UNIQUE
-    # constraint; harmless on SQLite, ensures named index on PostgreSQL.
-    op.execute(IDX_EPT_TOKEN_HASH)
+    # token_hash is already UNIQUE in the table DDL; no separate duplicate index.
     op.execute(IDX_EPT_ROLE)
     op.execute(IDX_EPT_CLAIM_ID)
     op.execute(IDX_EPT_EXPIRES_AT)

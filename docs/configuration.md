@@ -33,6 +33,8 @@ cp .env.example .env
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
 | `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM` | `50` | Max LLM API calls per claim |
+| `CLAIM_WORKFLOW_TIMEOUT_SECONDS` | `600` | Workflow wall-clock limit (seconds). Enforced **between** stages only; pair with `LLM_CALL_TIMEOUT_SECONDS` for per-call caps. |
+| `LLM_CALL_TIMEOUT_SECONDS` | `120` | Per-LLM-call timeout passed to the LLM client (seconds). |
 | `IDEMPOTENCY_TTL_SECONDS` | `86400` | Time-to-live (seconds) for API idempotency keys (default 24h). Expired rows are purged periodically while the API server runs. |
 | `REDIS_URL` | (unset) | Redis URL for **shared API rate limiting** across multiple app instances or workers (e.g. `redis://localhost:6379/0`). Requires `pip install -e '.[redis]'`. When unset, rate limits use an in-process store (not shared). |
 | `SCHEDULER_ENABLED` | `false` | Enable optional in-process scheduler for recurring operational jobs |

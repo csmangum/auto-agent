@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 from tenacity import (
     Retrying,
+    RetryError,
     retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
@@ -36,6 +37,24 @@ logger = logging.getLogger(__name__)
 RETRYABLE_EXCEPTIONS = (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError)
 # HTTP status codes that indicate transient failures
 RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+
+
+def safe_adapter_json_dict(resp: httpx.Response, *, log_label: str = "adapter") -> dict[str, Any] | None:
+    """Parse JSON body; return ``None`` if missing, invalid, or not a JSON object."""
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.warning("%s: response body is not valid JSON (status=%s)", log_label, resp.status_code)
+        return None
+    if not isinstance(data, dict):
+        logger.warning(
+            "%s: JSON root is not an object (status=%s, type=%s)",
+            log_label,
+            resp.status_code,
+            type(data).__name__,
+        )
+        return None
+    return data
 
 
 def extract_response_envelope(raw: Any, response_key: str | None) -> Any:
@@ -171,12 +190,13 @@ class AdapterHttpClient:
             wait=wait_exponential(multiplier=1.0, min=self._retry_min_wait, max=self._retry_max_wait),
             retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS)
             | retry_if_exception(_is_retryable_http_error),
-            reraise=True,
+            # reraise=False so exhaustion raises RetryError; we record one circuit failure then re-raise.
+            reraise=False,
         )
         
-        for attempt in retryer:
-            with attempt:
-                try:
+        try:
+            for attempt in retryer:
+                with attempt:
                     client = self._get_client()
                     resp = client.request(
                         method,
@@ -186,14 +206,17 @@ class AdapterHttpClient:
                         json=json,
                     )
                     if self._is_retryable_response(resp):
-                        self._record_failure()
                         resp.raise_for_status()
                     resp.raise_for_status()
                     self._record_success()
                     return resp
-                except RETRYABLE_EXCEPTIONS:
-                    self._record_failure()
-                    raise
+        except RetryError as re:
+            # One failure tick per logical request after all retries are exhausted (not per attempt).
+            self._record_failure()
+            last_exc = re.last_attempt.exception()
+            if last_exc is not None:
+                raise last_exc from re
+            raise RuntimeError("Retry loop exited without return or exception") from re
         raise RuntimeError("Retry loop exited without return or exception")
 
     def _request_multipart(
@@ -212,12 +235,13 @@ class AdapterHttpClient:
             wait=wait_exponential(multiplier=1.0, min=self._retry_min_wait, max=self._retry_max_wait),
             retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS)
             | retry_if_exception(_is_retryable_http_error),
-            reraise=True,
+            # reraise=False so exhaustion raises RetryError; we record one circuit failure then re-raise.
+            reraise=False,
         )
 
-        for attempt in retryer:
-            with attempt:
-                try:
+        try:
+            for attempt in retryer:
+                with attempt:
                     client = self._get_client()
                     resp = client.request(
                         "POST",
@@ -227,14 +251,16 @@ class AdapterHttpClient:
                         files=files,
                     )
                     if self._is_retryable_response(resp):
-                        self._record_failure()
                         resp.raise_for_status()
                     resp.raise_for_status()
                     self._record_success()
                     return resp
-                except RETRYABLE_EXCEPTIONS:
-                    self._record_failure()
-                    raise
+        except RetryError as re:
+            self._record_failure()
+            last_exc = re.last_attempt.exception()
+            if last_exc is not None:
+                raise last_exc from re
+            raise RuntimeError("Retry loop exited without return or exception") from re
         raise RuntimeError("Retry loop exited without return or exception")
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:

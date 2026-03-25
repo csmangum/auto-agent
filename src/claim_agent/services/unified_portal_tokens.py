@@ -83,7 +83,7 @@ def create_unified_portal_token(
 
     Args:
         role: The portal role this token grants (``claimant``, ``repair_shop``, ``tpa``).
-        scopes: Optional list of fine-grained permission strings.
+        scopes: Non-empty list of fine-grained permission strings (see ``VALID_PORTAL_SCOPES``).
         claim_id: Required for all roles; session code resolves access from this claim.
         shop_id: Required when ``role == "repair_shop"`` to identify the shop.
         db_path: Override DB path (for testing).
@@ -92,13 +92,15 @@ def create_unified_portal_token(
         The raw token string.  Only returned once – not stored in plaintext.
 
     Raises:
-        ValueError: If any scope string is not in ``VALID_PORTAL_SCOPES``, or
+        ValueError: If scopes are empty, any scope string is not in ``VALID_PORTAL_SCOPES``, or
             required fields for the role are missing.
     """
-    if scopes:
-        invalid = set(scopes) - VALID_PORTAL_SCOPES
-        if invalid:
-            raise ValueError(f"Invalid portal scopes: {sorted(invalid)}")
+    scopes_list = list(scopes) if scopes is not None else []
+    if len(scopes_list) < 1:
+        raise ValueError("At least one portal scope is required for unified portal tokens")
+    invalid = set(scopes_list) - VALID_PORTAL_SCOPES
+    if invalid:
+        raise ValueError(f"Invalid portal scopes: {sorted(invalid)}")
     if not claim_id or not str(claim_id).strip():
         raise ValueError("claim_id is required for unified portal tokens")
     if role == "repair_shop" and not (shop_id and str(shop_id).strip()):
@@ -117,7 +119,7 @@ def create_unified_portal_token(
     expires_at: datetime | str = (
         expires_at_dt if is_postgres_backend() else _ts(expires_at_dt)
     )
-    scopes_json = json.dumps(scopes or [])
+    scopes_json = json.dumps(scopes_list)
     path = db_path or get_db_path()
     with get_connection(path) as conn:
         conn.execute(
@@ -136,7 +138,6 @@ def create_unified_portal_token(
                 "expires_at": expires_at,
             },
         )
-        conn.commit()
     logger.info("Created unified portal token role=%s claim_id=%s", role, claim_id)
     return raw
 
@@ -208,5 +209,4 @@ def revoke_unified_portal_token(
             """),
             {"token_hash": token_hash, "now": now_param},
         )
-        conn.commit()
         return (result.rowcount or 0) > 0

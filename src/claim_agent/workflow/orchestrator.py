@@ -265,6 +265,7 @@ def run_claim_workflow(
             prev_litellm_callbacks = list(getattr(litellm, "callbacks", None) or [])
             litellm.callbacks = prev_litellm_callbacks + [litellm_callback]
 
+        wf_ctx: _WorkflowCtx | None = None
         try:
             if from_stage and not resume_run_id:
                 logger.warning(
@@ -437,13 +438,14 @@ def run_claim_workflow(
                         extra={"claim_id": claim_id},
                     )
 
-            _record_crew_usage_delta(
-                claim_id=claim_id,
-                llm=ctx.llm,
-                metrics=metrics,
-                crew="residual",
-                claim_type=getattr(wf_ctx, "claim_type", None) or None,
-            )
+            if wf_ctx is not None:
+                _record_crew_usage_delta(
+                    claim_id=claim_id,
+                    llm=ctx.llm,
+                    metrics=metrics,
+                    crew="residual",
+                    claim_type=wf_ctx.claim_type or None,
+                )
 
             metrics.end_claim(claim_id, status="error")
             record_claim_outcome(claim_id, "error", (time.time() - workflow_start_time))

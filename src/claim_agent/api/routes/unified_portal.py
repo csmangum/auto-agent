@@ -129,7 +129,10 @@ def unified_shop_login(body: ShopLoginBody):
 
 class IssueUnifiedTokenBody(BaseModel):
     role: Literal["claimant", "repair_shop", "tpa"]
-    scopes: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(
+        min_length=1,
+        description="At least one scope from VALID_PORTAL_SCOPES (empty scopes are not allowed).",
+    )
     claim_id: str | None = Field(default=None)
     shop_id: str | None = Field(default=None)
 

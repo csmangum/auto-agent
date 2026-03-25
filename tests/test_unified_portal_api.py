@@ -8,7 +8,10 @@ Covers:
 - Unified token (external_portal_tokens) round-trip
 """
 
+import asyncio
+
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from claim_agent.config import reload_settings
@@ -150,7 +153,7 @@ class TestDetectPortalRole:
     def test_unified_token_503_when_claimant_portal_disabled(self, client, monkeypatch):
         monkeypatch.setenv("CLAIMANT_PORTAL_ENABLED", "false")
         reload_settings()
-        raw = create_unified_portal_token("claimant", claim_id="CLM-TEST001")
+        raw = create_unified_portal_token("claimant", scopes=["read_claim"], claim_id="CLM-TEST001")
         resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
         assert resp.status_code == 503
 
@@ -159,6 +162,7 @@ class TestDetectPortalRole:
         reload_settings()
         raw = create_unified_portal_token(
             "repair_shop",
+            scopes=["read_claim"],
             claim_id="CLM-TEST005",
             shop_id="SHOP-X",
         )
@@ -168,7 +172,7 @@ class TestDetectPortalRole:
     def test_unified_token_503_when_third_party_portal_disabled(self, client, monkeypatch):
         monkeypatch.setenv("THIRD_PARTY_PORTAL_ENABLED", "false")
         reload_settings()
-        raw = create_unified_portal_token("tpa", claim_id="CLM-TEST001")
+        raw = create_unified_portal_token("tpa", scopes=["read_claim"], claim_id="CLM-TEST001")
         resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
         assert resp.status_code == 503
 
@@ -225,6 +229,7 @@ class TestCrossPrivilegeIsolation:
         """A unified claimant token should NOT satisfy repair-shop auth."""
         raw = create_unified_portal_token(
             "claimant",
+            scopes=["read_claim"],
             claim_id="CLM-TEST005",
         )
         resp = client.get(
@@ -239,6 +244,7 @@ class TestCrossPrivilegeIsolation:
         for a different claim when queried via the unified session dep."""
         raw = create_unified_portal_token(
             "repair_shop",
+            scopes=["read_claim"],
             claim_id="CLM-TEST005",
             shop_id="SHOP-X",
         )
@@ -361,6 +367,7 @@ class TestTokenRevocation:
         """Revoking an already-revoked token should return False."""
         raw = create_unified_portal_token(
             "claimant",
+            scopes=["read_claim"],
             claim_id="CLM-TEST001",
         )
         assert revoke_unified_portal_token(raw) is True
@@ -408,11 +415,19 @@ class TestScopeValidation:
 
     def test_create_requires_claim_id(self):
         with pytest.raises(ValueError, match="claim_id is required"):
-            create_unified_portal_token("claimant")
+            create_unified_portal_token("claimant", scopes=["read_claim"])
+
+    def test_create_requires_at_least_one_scope(self):
+        with pytest.raises(ValueError, match="At least one portal scope"):
+            create_unified_portal_token("claimant", scopes=[], claim_id="CLM-TEST001")
 
     def test_create_repair_shop_requires_shop_id(self):
         with pytest.raises(ValueError, match="shop_id is required"):
-            create_unified_portal_token("repair_shop", claim_id="CLM-TEST005")
+            create_unified_portal_token(
+                "repair_shop",
+                scopes=["read_claim"],
+                claim_id="CLM-TEST005",
+            )
 
     def test_issue_token_requires_bearer_and_adjuster_role(self, client, monkeypatch):
         """POST /api/portal/auth/issue-token uses CLAIMS_API_KEY auth and RBAC."""
@@ -450,7 +465,63 @@ class TestScopeValidation:
         reload_settings()
         resp = client.post(
             "/api/portal/auth/issue-token",
-            json={"role": "claimant", "claim_id": "CLM-TEST001"},
+            json={"role": "claimant", "claim_id": "CLM-TEST001", "scopes": ["read_claim"]},
             headers={"Authorization": "Bearer lowpriv"},
         )
         assert resp.status_code == 403
+
+    def test_issue_token_rejects_empty_scopes(self, client, monkeypatch):
+        monkeypatch.setenv("CLAIMS_API_KEY", "issuer-key")
+        monkeypatch.setenv("API_KEYS", "")
+        monkeypatch.setenv("JWT_SECRET", "")
+        reload_settings()
+        resp = client.post(
+            "/api/portal/auth/issue-token",
+            json={"role": "claimant", "claim_id": "CLM-TEST001", "scopes": []},
+            headers={"Authorization": "Bearer issuer-key"},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# require_portal_scopes dependency
+# ---------------------------------------------------------------------------
+
+
+class TestRequirePortalScopes:
+    def test_missing_scope_returns_403(self):
+        from claim_agent.api.unified_portal_deps import UnifiedPortalSession, require_portal_scopes
+
+        _dep = require_portal_scopes("upload_doc")
+        session = UnifiedPortalSession(
+            role="claimant",
+            claim_ids=["c1"],
+            shop_id=None,
+            scopes=["read_claim"],
+            identity="t",
+        )
+
+        async def _run() -> None:
+            await _dep(session=session)
+
+        with pytest.raises(HTTPException) as ei:
+            asyncio.run(_run())
+        assert ei.value.status_code == 403
+
+    def test_empty_scopes_passes_through(self):
+        """Legacy / full-access sessions use empty scopes; dependency does not restrict."""
+        from claim_agent.api.unified_portal_deps import UnifiedPortalSession, require_portal_scopes
+
+        _dep = require_portal_scopes("upload_doc")
+        session = UnifiedPortalSession(
+            role="claimant",
+            claim_ids=["c1"],
+            shop_id=None,
+            scopes=[],
+            identity="t",
+        )
+
+        async def _run() -> UnifiedPortalSession:
+            return await _dep(session=session)
+
+        assert asyncio.run(_run()) is session

@@ -66,6 +66,17 @@ CREATE TABLE external_portal_tokens (
 Legacy tables (`claim_access_tokens`, `repair_shop_access_tokens`,
 `third_party_access_tokens`) remain unchanged.
 
+### Scopes
+
+- **Issuance:** `POST /api/portal/auth/issue-token` requires a **non-empty** `scopes`
+  array; every value must be in the server’s allowed scope set (see
+  `VALID_PORTAL_SCOPES` in code).
+- **Verification:** `require_portal_scopes(...)` treats **empty** `scopes` on a unified
+  token as **full legacy access** for that role (same as claimant/repair headers without
+  fine-grained scopes). Tokens with a non-empty `scopes` list must hold every scope
+  required by the route. A warning is logged when a stored unified token has empty
+  scopes so operators can migrate to explicit permissions.
+
 ## Security considerations
 
 ### Timing oracle (informational)

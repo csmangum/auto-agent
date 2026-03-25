@@ -24,6 +24,7 @@ without having to inspect which legacy headers were sent.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from fastapi import Depends, HTTPException, Request
@@ -32,6 +33,8 @@ from claim_agent.config import get_settings
 from claim_agent.services.portal_verification import get_claim_ids_for_claimant
 from claim_agent.services.repair_shop_portal_tokens import verify_repair_shop_token
 from claim_agent.services.unified_portal_tokens import verify_unified_portal_token
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,6 +92,13 @@ async def require_unified_portal_session(request: Request) -> UnifiedPortalSessi
             raise HTTPException(
                 status_code=401,
                 detail="Unified portal tokens must specify a claim_id.",
+            )
+        if not rec.scopes:
+            logger.warning(
+                "Unified portal token id=%s has empty scopes; treating as full legacy access "
+                "for role=%s. Prefer issuing tokens with explicit scopes.",
+                rec.token_id,
+                rec.role,
             )
         claim_ids = [rec.claim_id]
         return UnifiedPortalSession(
