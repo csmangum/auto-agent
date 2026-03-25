@@ -34,7 +34,6 @@ from claim_agent.exceptions import (
     ClaimNotFoundError,
     ClaimWorkflowTimeoutError,
     DomainValidationError,
-    InvalidClaimTransitionError,
 )
 from claim_agent.db.constants import STATUS_FAILED, STATUS_NEEDS_REVIEW, STATUS_PROCESSING
 from claim_agent.models.claim import ClaimInput
@@ -435,7 +434,7 @@ def run_claim_workflow(
         except ClaimAlreadyProcessingError:
             raise
         except Exception as e:
-            if isinstance(e, InvalidClaimTransitionError) and not processing_lock_held:
+            if not processing_lock_held:
                 raise
             details = str(e)
             if len(details) > 500:
