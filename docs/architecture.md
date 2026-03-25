@@ -44,7 +44,7 @@ flowchart TB
     end
 
     subgraph Data["Data Layer"]
-        SQLite[(SQLite DB)]
+        DB[(Claims DB)]
         MockDB[(Mock Data)]
     end
 
@@ -61,7 +61,7 @@ flowchart TB
     Adapters --> Data
 ```
 
-**Data Layer:** SQLite stores claims, audit logs, and workflow runs. Mock Data provides reference data (policies, vehicle values, fraud indicators) for tool lookups; it is supplementary, not an alternative to SQLite. Additional tool groups: Document, Vision.
+**Data Layer:** The claims database is **SQLite by default** (`data/claims.db`) or **PostgreSQL** when `DATABASE_URL` is set (same schema via Alembic). Mock Data (`MOCK_DB_PATH`, e.g. `data/mock_db.json`) provides reference data (policies, vehicle values, fraud indicators) for tool lookups; it is supplementary, not a replacement for the claims database. Additional tool groups: Document, Vision.
 
 ## Core Architectural Patterns
 
@@ -108,14 +108,14 @@ See [Agent Flow - Escalation](agent-flow.md#4-escalation-check-hitl) for details
 
 ### Data Flow
 
-Claim data flows through the system as follows. The Router Crew receives a `ClaimInput` (from `models/claim.py`) and classifies the claim; it passes the validated claim data and classification to the selected workflow crew. Within each crew, context is shared between tasks (see Agent Composition below for details on the context mechanism). Persistent state (claim records, workflow runs) is stored in the SQLite database via the repository layer. The final output is a `ClaimOutput` (or `EscalationOutput` for escalated claims) containing `claim_id`, `status`, `actions_taken`, and optional `payout_amount`.
+Claim data flows through the system as follows. The Router Crew receives a `ClaimInput` (from `models/claim.py`) and classifies the claim; it passes the validated claim data and classification to the selected workflow crew. Within each crew, context is shared between tasks (see Agent Composition below for details on the context mechanism). Persistent state (claim records, workflow runs) is stored in the configured SQL database via the repository layer. The final output is a `ClaimOutput` (or `EscalationOutput` for escalated claims) containing `claim_id`, `status`, `actions_taken`, and optional `payout_amount`.
 
 ```mermaid
 flowchart LR
     ClaimInput[ClaimInput] --> Router[Router Crew]
     Router --> Crew[Workflow Crew]
     Crew --> Repo[Repository]
-    Repo --> DB[(SQLite)]
+    Repo --> DB[(SQL DB)]
     Crew --> Out["ClaimOutput or EscalationOutput"]
 ```
 
