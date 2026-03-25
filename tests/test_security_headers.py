@@ -279,7 +279,8 @@ class TestSecurityHeadersOnShortCircuitResponses:
         monkeypatch.delenv("JWT_SECRET", raising=False)
         reload_settings()
 
-        # Exhaust rate limit for a known IP using the in-process helper.
+        # Exhaust rate limit for a known IP: is_rate_limited() both checks AND increments
+        # the counter, so calling it _MAX_REQUESTS times brings the IP to the limit.
         test_ip = "10.99.99.99"
         clear_rate_limit_buckets()
         from claim_agent.api.rate_limit import _MAX_REQUESTS
