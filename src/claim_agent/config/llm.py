@@ -75,7 +75,7 @@ def ensure_openrouter_api_key() -> None:
     """
     env_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     if not env_key or env_key in _PLACEHOLDER_KEYS:
-        api_key = (get_settings().llm.api_key or "").strip()
+        api_key = (get_settings().llm.api_key.get_secret_value() or "").strip()
         if api_key and api_key not in _PLACEHOLDER_KEYS:
             os.environ["OPENROUTER_API_KEY"] = api_key
 
@@ -129,7 +129,7 @@ def get_llm(model_name: str | None = None):
         return None
 
     llm_cfg = get_settings().llm
-    api_key = llm_cfg.api_key.strip()
+    api_key = llm_cfg.api_key.get_secret_value().strip()
     base = llm_cfg.api_base.strip()
 
     # When using OpenRouter, accept OPENROUTER_API_KEY as fallback
@@ -185,7 +185,7 @@ def has_valid_llm_config() -> bool:
     Use this to skip tests that require a live LLM when only placeholders are set.
     """
     llm_cfg = get_settings().llm
-    api_key = llm_cfg.api_key.strip()
+    api_key = llm_cfg.api_key.get_secret_value().strip()
     base = llm_cfg.api_base.strip()
     if (not api_key or api_key in _PLACEHOLDER_KEYS) and base and "openrouter" in base.lower():
         api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()

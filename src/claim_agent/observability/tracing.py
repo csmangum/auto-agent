@@ -38,7 +38,7 @@ class TracingConfig:
         t = get_settings().tracing
         return cls(
             langsmith_enabled=t.langsmith_enabled,
-            langsmith_api_key=t.langsmith_api_key,
+            langsmith_api_key=t.langsmith_api_key.get_secret_value(),
             langsmith_project=t.langsmith_project,
             langsmith_endpoint=t.langsmith_endpoint,
             trace_llm_calls=t.trace_llm_calls,
@@ -279,13 +279,13 @@ def setup_langsmith() -> bool:
         logger.debug("LangSmith tracing is disabled")
         return False
 
-    if not config.langsmith_api_key:
+    if not config.langsmith_api_key.get_secret_value():
         logger.warning("LANGSMITH_API_KEY not set, LangSmith tracing disabled")
         return False
 
     # Set environment variables for LangSmith/LangChain integration
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_API_KEY"] = config.langsmith_api_key
+    os.environ["LANGCHAIN_API_KEY"] = config.langsmith_api_key.get_secret_value()
     os.environ["LANGCHAIN_PROJECT"] = config.langsmith_project
     os.environ["LANGCHAIN_ENDPOINT"] = config.langsmith_endpoint
 

@@ -96,10 +96,10 @@ def _hash_otp(otp: str, salt: str) -> str:
     cannot brute-force 6-digit OTPs offline without also knowing the pepper.
     """
     settings = get_settings()
-    pepper = settings.privacy.otp_pepper.strip()
+    pepper = settings.privacy.otp_pepper.get_secret_value().strip()
     if not pepper:
         # Fallback to JWT secret so existing deployments without OTP_PEPPER still work.
-        pepper = settings.auth.jwt_secret_raw.strip()
+        pepper = settings.auth.jwt_secret or ""
     if not pepper:
         # Last-resort: use the salt itself (no server secret available).  Log a warning
         # so operators notice and configure OTP_PEPPER.
