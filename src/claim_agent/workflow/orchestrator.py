@@ -308,6 +308,7 @@ def run_claim_workflow(
                 is_resume_run=resume_run_id is not None,
             )
 
+            _timeout_seconds = get_settings().claim_workflow_timeout_seconds
             for stage_fn in (
                 _stage_coverage_verification,
                 _stage_economic_analysis,
@@ -324,7 +325,6 @@ def run_claim_workflow(
                 _stage_salvage,
                 _stage_after_action,
             ):
-                _timeout_seconds = get_settings().claim_workflow_timeout_seconds
                 _elapsed = time.time() - workflow_start_time
                 if _elapsed >= _timeout_seconds:
                     raise ClaimWorkflowTimeoutError(claim_id, _elapsed, _timeout_seconds)

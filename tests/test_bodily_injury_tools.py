@@ -3,8 +3,6 @@
 import json
 from unittest.mock import patch
 
-import pytest
-
 from claim_agent.tools.bodily_injury_logic import (
     assess_injury_severity_impl,
     audit_medical_bills_impl,

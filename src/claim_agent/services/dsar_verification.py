@@ -91,7 +91,7 @@ def _hash_otp(otp: str, salt: str) -> str:
     """Return HMAC-SHA256 of *salt*:*otp* keyed with a server-side pepper (hex digest).
 
     The pepper is read from ``PrivacyConfig.otp_pepper`` (env: ``OTP_PEPPER``), falling
-    back to ``AuthConfig.jwt_secret_raw`` when the dedicated pepper is not set.  Using a
+    back to ``settings.auth.jwt_secret`` when the dedicated pepper is not set.  Using a
     server-side secret means that even if the database is fully compromised an attacker
     cannot brute-force 6-digit OTPs offline without also knowing the pepper.
     """
