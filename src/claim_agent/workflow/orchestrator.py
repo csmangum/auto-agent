@@ -250,7 +250,7 @@ def run_claim_workflow(
         incident_latitude=claim_data.get("incident_latitude"),
         incident_longitude=claim_data.get("incident_longitude"),
     ):
-        repo.update_claim_status(claim_id, STATUS_PROCESSING, actor_id=_actor)
+        repo.acquire_processing_lock(claim_id, actor_id=_actor)
         logger.log_event("workflow_started", status=STATUS_PROCESSING)
         
         db_parties = repo.get_claim_parties(claim_id)
