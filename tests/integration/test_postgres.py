@@ -124,8 +124,8 @@ def test_postgres_repository_crud(postgres_db):
     assert updated["status"] == STATUS_NEEDS_REVIEW
     assert updated["assignee"] == "adjuster-pg-test"
 
-    # List claims and confirm our claim appears
-    claims = repo.list_claims(limit=200)
+    # Review queue listing (claim was moved to needs_review above)
+    claims, _ = repo.list_claims_needing_review(limit=200)
     ids = [c["id"] for c in claims]
     assert claim_id in ids
 
