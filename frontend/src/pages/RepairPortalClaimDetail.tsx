@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepairPortal } from '../context/useRepairPortal';
 import { repairPortalApi } from '../api/repairPortalClient';
@@ -8,6 +9,7 @@ import EmptyState from '../components/EmptyState';
 import MessagesTab from '../components/MessagesTab';
 import { formatDateTime } from '../utils/date';
 import type { Claim, FollowUpMessage } from '../api/types';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const REPAIR_STATUS_ORDER = [
   'received',
@@ -254,7 +256,6 @@ function RepairProgressTab({
     queryFn: () => repairPortalApi.getRepairStatus(claimId),
   });
   const [pending, setPending] = useState(false);
-  const [postErr, setPostErr] = useState<string | null>(null);
 
   const latest = data?.latest ?? null;
   const history = data?.history ?? [];
@@ -265,13 +266,13 @@ function RepairProgressTab({
 
   async function handleStatusChange(status: string) {
     if (!canUpdate || pending) return;
-    setPostErr(null);
     setPending(true);
     try {
       await repairPortalApi.postRepairStatus(claimId, { status });
       onStatusPosted();
+      toast.success('Repair status updated');
     } catch (e) {
-      setPostErr(e instanceof Error ? e.message : 'Failed to update');
+      toast.error(getErrorMessage(e, 'Failed to update status'));
     } finally {
       setPending(false);
     }
@@ -326,7 +327,6 @@ function RepairProgressTab({
             );
           })}
         </div>
-        {postErr && <p className="text-sm text-red-400 mb-2">{postErr}</p>}
         {latest && (
           <div className="text-xs text-gray-500">
             Current:{' '}
@@ -382,24 +382,25 @@ function SupplementalTab({
 }) {
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!description.trim()) return;
     setSubmitting(true);
-    setResult(null);
     try {
       const data = await repairPortalApi.postSupplemental(claimId, {
         supplemental_damage_description: description.trim(),
       });
-      setResult(
-        `Supplemental filed. Amount: $${data.supplemental_amount?.toLocaleString() ?? 'TBD'} — ${data.summary ?? ''}`
-      );
+      const amountLabel = data.supplemental_amount != null
+        ? `$${data.supplemental_amount.toLocaleString()}`
+        : 'TBD';
+      toast.success('Supplemental filed', {
+        description: `Amount: ${amountLabel}${data.summary ? ` — ${data.summary}` : ''}`,
+      });
       setDescription('');
       onSuccess();
     } catch (err) {
-      setResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(getErrorMessage(err, 'Failed to submit supplemental'));
     } finally {
       setSubmitting(false);
     }
@@ -424,17 +425,6 @@ function SupplementalTab({
         Report additional damage found during teardown or repair that was not on the original
         estimate.
       </p>
-      {result && (
-        <div
-          className={`text-sm px-4 py-2 rounded-lg mb-4 ${
-            result.startsWith('Error')
-              ? 'bg-red-500/10 text-red-400'
-              : 'bg-amber-500/10 text-amber-400'
-          }`}
-        >
-          {result}
-        </div>
-      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <textarea
           value={description}

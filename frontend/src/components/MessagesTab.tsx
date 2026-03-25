@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import EmptyState from './EmptyState';
 import { formatDateTime } from '../utils/date';
 import { queryKeys } from '../api/queries';
 import type { FollowUpMessage } from '../api/types';
 import { postClaimFollowUpResponse } from '../api/client';
 import { MESSAGES_TAB_COLORS, type SimulationAccent } from '../utils/theme';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface MessagesTabProps {
   followUps: FollowUpMessage[];
@@ -30,7 +32,6 @@ export default function MessagesTab({
   const [responseText, setResponseText] = useState('');
   const [respondingTo, setRespondingTo] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const colors = MESSAGES_TAB_COLORS[accentColor];
@@ -38,7 +39,6 @@ export default function MessagesTab({
   async function handleRespond(messageId: number) {
     if (!responseText.trim()) return;
     setSubmitting(true);
-    setSubmitResult(null);
     try {
       if (customRespond) {
         await customRespond(messageId, responseText.trim());
@@ -50,11 +50,11 @@ export default function MessagesTab({
         await queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
         await queryClient.invalidateQueries({ queryKey: queryKeys.claimHistory(claimId) });
       }
-      setSubmitResult('Response submitted');
+      toast.success('Response sent');
       setResponseText('');
       setRespondingTo(null);
     } catch (err) {
-      setSubmitResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(getErrorMessage(err, 'Failed to send response'));
     } finally {
       setSubmitting(false);
     }
@@ -62,14 +62,6 @@ export default function MessagesTab({
 
   return (
     <div className="space-y-4">
-      {submitResult && (
-        <div className={`text-sm px-4 py-2 rounded-lg ${
-          submitResult.startsWith('Error') ? 'bg-red-500/10 text-red-400' : `${colors.resultBg} ${colors.resultText}`
-        }`}>
-          {submitResult}
-        </div>
-      )}
-
       {followUps.length === 0 ? (
         <EmptyState
           icon="✉️"

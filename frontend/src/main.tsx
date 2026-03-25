@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { RoleSimulationProvider } from './context/RoleSimulationContext';
+import { Toaster } from 'sonner';
 import './index.css';
 import App from './App';
 
@@ -23,6 +24,7 @@ createRoot(root).render(
         <RoleSimulationProvider>
           <BrowserRouter>
             <App />
+            <Toaster theme="dark" position="top-right" richColors closeButton />
           </BrowserRouter>
         </RoleSimulationProvider>
       </AuthProvider>

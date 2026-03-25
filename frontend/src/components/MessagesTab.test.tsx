@@ -4,6 +4,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MessagesTab from './MessagesTab';
 import * as client from '../api/client';
 
+const { toastSuccess, toastError } = vi.hoisted(() => ({
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: toastSuccess,
+    error: toastError,
+  },
+}));
+
 vi.mock('../api/client', () => ({
   postClaimFollowUpResponse: vi.fn(),
 }));
@@ -47,6 +59,8 @@ function renderMessagesTab(props: {
 describe('MessagesTab', () => {
   beforeEach(() => {
     mockPostClaimFollowUpResponse.mockReset();
+    toastSuccess.mockReset();
+    toastError.mockReset();
   });
 
   it('shows empty state when no messages', () => {
@@ -140,7 +154,7 @@ describe('MessagesTab', () => {
         response_content: 'Here is my response.',
       });
     });
-    expect(screen.getByText('Response submitted')).toBeInTheDocument();
+    expect(toastSuccess).toHaveBeenCalledWith('Response sent');
   });
 
   it('shows error when submit fails', async () => {
@@ -163,7 +177,7 @@ describe('MessagesTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send Response' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Error: Network error/)).toBeInTheDocument();
+      expect(toastError).toHaveBeenCalledWith('Network error');
     });
   });
 

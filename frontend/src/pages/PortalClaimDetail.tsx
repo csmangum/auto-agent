@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { getPortalSession, portalApi } from '../api/portalClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import StatusBadge from '../components/StatusBadge';
@@ -8,6 +9,7 @@ import MessagesTab from '../components/MessagesTab';
 import { formatDateTime } from '../utils/date';
 import { usePortal } from '../context/usePortal';
 import type { FollowUpMessage } from '../api/types';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const CUSTOMER_VISIBLE_ACTIONS = new Set([
   'status_change',
@@ -58,7 +60,6 @@ export default function PortalClaimDetail() {
     'status' | 'documents' | 'messages' | 'repair' | 'payments' | 'rental' | 'dispute'
   >('status');
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { data: claimData, isLoading, error, isSuccess: claimQuerySuccess } = useQuery({
     queryKey: ['portal', 'claim', claimId],
@@ -177,12 +178,12 @@ export default function PortalClaimDetail() {
     const file = e.target.files?.[0];
     if (!file || !claimId) return;
     setUploading(true);
-    setUploadError(null);
     try {
       await portalApi.uploadDocument(claimId, file);
       invalidateClaim();
+      toast.success(`Uploaded ${file.name}`);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(getErrorMessage(err, 'Upload failed'));
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -319,7 +320,6 @@ export default function PortalClaimDetail() {
               claimId={claimId}
               documents={documents}
               uploading={uploading}
-              uploadError={uploadError}
               onUploadClick={() => fileInputRef.current?.click()}
               onFileChange={handleFileUpload}
               fileInputRef={fileInputRef}
@@ -466,7 +466,6 @@ function DocumentsTab({
   claimId,
   documents,
   uploading,
-  uploadError,
   onUploadClick,
   onFileChange,
   fileInputRef,
@@ -480,7 +479,6 @@ function DocumentsTab({
     storage_key?: string;
   }>;
   uploading: boolean;
-  uploadError: string | null;
   onUploadClick: () => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -507,11 +505,6 @@ function DocumentsTab({
           </p>
         )}
       </div>
-      {uploadError && (
-        <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">
-          {uploadError}
-        </div>
-      )}
       {documents.length === 0 ? (
         <EmptyState
           icon="📎"
@@ -919,22 +912,20 @@ function DisputeTab({
     policyholder_evidence: '',
   });
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.dispute_description.trim()) return;
     setSubmitting(true);
-    setResult(null);
     try {
       const data = await portalApi.fileDispute(claimId, {
         dispute_type: form.dispute_type,
         dispute_description: form.dispute_description.trim(),
         policyholder_evidence: form.policyholder_evidence.trim() || undefined,
       });
-      setResult(
-        `Dispute filed. ${(data as { summary?: string }).summary ?? 'Your adjuster will review.'}`
-      );
+      const summary =
+        (data as { summary?: string }).summary ?? 'Your adjuster will review.';
+      toast.success('Dispute filed', { description: summary });
       setForm({
         dispute_type: 'valuation_disagreement',
         dispute_description: '',
@@ -942,7 +933,7 @@ function DisputeTab({
       });
       onSuccess();
     } catch (err) {
-      setResult(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(getErrorMessage(err, 'Failed to file dispute'));
     } finally {
       setSubmitting(false);
     }
@@ -967,17 +958,6 @@ function DisputeTab({
         If you disagree with the settlement amount, valuation, or repair
         estimate, you can file a dispute.
       </p>
-      {result && (
-        <div
-          className={`text-sm px-4 py-2 rounded-lg mb-4 ${
-            result.startsWith('Error')
-              ? 'bg-red-500/10 text-red-400'
-              : 'bg-emerald-500/10 text-emerald-400'
-          }`}
-        >
-          {result}
-        </div>
-      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs text-gray-400 mb-1.5">

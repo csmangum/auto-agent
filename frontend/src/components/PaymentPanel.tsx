@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
   useClaimPayments,
   useCreatePayment,
@@ -9,6 +10,7 @@ import {
 import { formatDateTime } from '../utils/date';
 import EmptyState from './EmptyState';
 import type { ClaimPayment, PayeeType, PaymentMethod, PaymentStatusType } from '../api/types';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const PAYEE_TYPES: { value: PayeeType; label: string }[] = [
   { value: 'claimant', label: 'Claimant' },
@@ -80,6 +82,10 @@ function CreatePaymentForm({ claimId, onDone }: { claimId: string; onDone: () =>
           setCheckNumber('');
           setPayeeSecondary('');
           onDone();
+          toast.success('Payment created');
+        },
+        onError: (err) => {
+          toast.error(getErrorMessage(err, 'Failed to create payment'));
         },
       }
     );
@@ -192,11 +198,6 @@ function CreatePaymentForm({ claimId, onDone }: { claimId: string; onDone: () =>
           {createMutation.isPending ? 'Creating…' : 'Create Payment'}
         </button>
       </div>
-      {createMutation.isError && (
-        <p className="text-xs text-red-400">
-          {createMutation.error instanceof Error ? createMutation.error.message : 'Failed to create payment'}
-        </p>
-      )}
     </form>
   );
 }
@@ -217,7 +218,19 @@ function PaymentActions({ payment, claimId }: { payment: ClaimPayment; claimId: 
     <div className="flex items-center gap-2 flex-wrap">
       {payment.status === 'authorized' && (
         <button
-          onClick={() => issueMutation.mutate({ paymentId: payment.id })}
+          onClick={() =>
+            issueMutation.mutate(
+              { paymentId: payment.id },
+              {
+                onSuccess: () => {
+                  toast.success('Payment issued');
+                },
+                onError: (err) => {
+                  toast.error(getErrorMessage(err, 'Failed to issue payment'));
+                },
+              }
+            )
+          }
           disabled={loading}
           className="px-2.5 py-1 text-xs bg-yellow-600/80 text-white rounded hover:bg-yellow-500 disabled:opacity-50 transition-colors"
         >
@@ -226,7 +239,16 @@ function PaymentActions({ payment, claimId }: { payment: ClaimPayment; claimId: 
       )}
       {payment.status === 'issued' && (
         <button
-          onClick={() => clearMutation.mutate(payment.id)}
+          onClick={() =>
+            clearMutation.mutate(payment.id, {
+              onSuccess: () => {
+                toast.success('Payment cleared');
+              },
+              onError: (err) => {
+                toast.error(getErrorMessage(err, 'Failed to clear payment'));
+              },
+            })
+          }
           disabled={loading}
           className="px-2.5 py-1 text-xs bg-emerald-600/80 text-white rounded hover:bg-emerald-500 disabled:opacity-50 transition-colors"
         >
@@ -248,7 +270,16 @@ function PaymentActions({ payment, claimId }: { payment: ClaimPayment; claimId: 
               onClick={() => {
                 voidMutation.mutate(
                   { paymentId: payment.id, reason: voidReason || undefined },
-                  { onSuccess: () => { setShowVoid(false); setVoidReason(''); } }
+                  {
+                    onSuccess: () => {
+                      setShowVoid(false);
+                      setVoidReason('');
+                      toast.success('Payment voided');
+                    },
+                    onError: (err) => {
+                      toast.error(getErrorMessage(err, 'Failed to void payment'));
+                    },
+                  }
                 );
               }}
               disabled={loading}

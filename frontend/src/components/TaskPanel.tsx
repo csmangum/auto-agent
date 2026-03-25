@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { createClaimTask, updateTask } from '../api/client';
 import type { CreateTaskPayload, UpdateTaskPayload } from '../api/client';
 import type { ClaimTask, TaskStatus, TaskPriority, TaskType } from '../api/types';
 import { queryKeys } from '../api/queries';
 import { formatDateTime } from '../utils/date';
 import EmptyState from './EmptyState';
+import { getErrorMessage } from '../utils/errorMessage';
+
+function isTaskTitleValidationMessage(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return m.includes('title') || m.includes('empty');
+}
 
 const TASK_TYPE_LABELS: Record<TaskType, string> = {
   gather_information: 'Gather Information',
@@ -100,6 +107,13 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
       setAssignedTo('');
       setDueDate('');
       onDone();
+      toast.success('Task created');
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : '';
+      if (!isTaskTitleValidationMessage(msg)) {
+        toast.error(getErrorMessage(err, 'Failed to create task'));
+      }
     },
   });
 
@@ -221,11 +235,6 @@ function CreateTaskForm({ claimId, onDone }: { claimId: string; onDone: () => vo
           {mutation.isPending ? 'Creating...' : 'Create Task'}
         </button>
       </div>
-      {mutation.isError && !isTitleError && (
-        <p className="text-xs text-red-400">
-          {errorMsg || 'Failed to create task'}
-        </p>
-      )}
     </form>
   );
 }
@@ -240,6 +249,10 @@ function TaskCard({ task, claimId }: { task: ClaimTask; claimId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.claim(claimId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.claimTasks(claimId) });
+      toast.success('Task updated');
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err, 'Failed to update task'));
     },
   });
 

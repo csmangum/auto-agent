@@ -7,7 +7,7 @@ test.describe('Smoke tests', () => {
   });
 
   test('Dashboard loads', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await expect(page.locator('main').getByRole('heading', { name: /Dashboard|Error/ })).toBeVisible({ timeout: 5000 });
   });
 
