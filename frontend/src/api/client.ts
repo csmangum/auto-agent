@@ -132,6 +132,19 @@ async function deleteJSON(url: string, retries = 1): Promise<void> {
 export const getClaimsStats = (): Promise<ClaimsStats> =>
   fetchJSON<ClaimsStats>('/claims/stats');
 
+/** Allowed values for GET /claims sort_by (see API allowlist). */
+export type ClaimsSortBy =
+  | 'created_at'
+  | 'updated_at'
+  | 'incident_date'
+  | 'estimated_damage'
+  | 'payout_amount'
+  | 'status'
+  | 'claim_type'
+  | 'policy_number';
+
+export type ClaimsSortOrder = 'asc' | 'desc';
+
 export interface GetClaimsParams {
   status?: string;
   claim_type?: string;
@@ -140,9 +153,9 @@ export interface GetClaimsParams {
   /** Free-text search across claim id, policy_number, and vin */
   search?: string;
   /** Field to sort by (default: created_at) */
-  sort_by?: string;
-  /** Sort direction: 'asc' or 'desc' (default: desc) */
-  sort_order?: string;
+  sort_by?: ClaimsSortBy;
+  /** Sort direction (default: desc) */
+  sort_order?: ClaimsSortOrder;
   limit?: number;
   offset?: number;
 }

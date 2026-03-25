@@ -463,7 +463,11 @@ def list_claims(
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
-    """List claims with optional filtering, search, and sorting. Archived and purged claims are excluded by default."""
+    """List claims with optional filtering, search, and sorting. Archived and purged claims are excluded by default.
+
+    Search uses SQL LIKE with wildcards on id, policy_number, and vin; large tables may need FTS
+    or prefix-style matching for performance.
+    """
     if sort_by not in _ALLOWED_SORT_FIELDS:
         raise HTTPException(
             status_code=400,

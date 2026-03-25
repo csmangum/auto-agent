@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 /**
@@ -16,6 +16,20 @@ export function useTabs<T extends string>(
   const raw = searchParams.get('tab') as T | null;
   const activeTab: T =
     raw !== null && (validTabs as readonly string[]).includes(raw) ? raw : defaultTab;
+
+  // Drop invalid `tab` so the URL matches the rendered panel (default when unknown).
+  useEffect(() => {
+    if (raw === null) return;
+    if ((validTabs as readonly string[]).includes(raw)) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('tab');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [raw, setSearchParams, validTabs]);
 
   const setActiveTab = useCallback(
     (tab: T) => {

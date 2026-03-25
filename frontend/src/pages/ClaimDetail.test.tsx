@@ -1,6 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useSearchParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ClaimDetail from './ClaimDetail';
 
@@ -84,7 +84,11 @@ function createWrapper(initialPath = '/claims/CLM-001') {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/claims/:claimId" element={children} />
+          </Routes>
+        </MemoryRouter>
       </QueryClientProvider>
     );
   };
@@ -766,15 +770,25 @@ describe('ClaimDetail', () => {
     expect(screen.getByRole('tab', { name: /audit/i })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('falls back to overview for an invalid ?tab= value', () => {
+  it('falls back to overview for an invalid ?tab= value', async () => {
+    function TabParamProbe() {
+      const [sp] = useSearchParams();
+      return <span data-testid="tab-param">{sp.get('tab') ?? ''}</span>;
+    }
     const WrapperWithParam = createWrapper('/claims/CLM-001?tab=nonexistent');
     render(
       <WrapperWithParam>
-        <ClaimDetail />
+        <>
+          <ClaimDetail />
+          <TabParamProbe />
+        </>
       </WrapperWithParam>
     );
     expect(screen.getByRole('tab', { name: /overview/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('Claim Details')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('tab-param')).toHaveTextContent('');
+    });
   });
 
   it('tab buttons have correct WAI-ARIA attributes', () => {

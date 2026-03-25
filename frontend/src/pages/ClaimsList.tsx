@@ -174,7 +174,11 @@ export default function ClaimsList() {
           className="border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors min-w-[200px]"
         />
 
+        <label htmlFor="claims-filter-status" className="sr-only">
+          Filter by status
+        </label>
         <select
+          id="claims-filter-status"
           value={statusFilter}
           onChange={(e) => setFilter('status', e.target.value)}
           className={selectClasses}
@@ -187,7 +191,11 @@ export default function ClaimsList() {
           ))}
         </select>
 
+        <label htmlFor="claims-filter-type" className="sr-only">
+          Filter by claim type
+        </label>
         <select
+          id="claims-filter-type"
           value={typeFilter}
           onChange={(e) => setFilter('type', e.target.value)}
           className={selectClasses}
@@ -224,7 +232,11 @@ export default function ClaimsList() {
           <option value="asc">Ascending</option>
         </select>
 
+        <label htmlFor="claims-page-size" className="sr-only">
+          Rows per page
+        </label>
         <select
+          id="claims-page-size"
           value={pageSize}
           onChange={(e) => {
             const params = new URLSearchParams(searchParams);
