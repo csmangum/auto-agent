@@ -107,9 +107,11 @@ export default function ClaimsList() {
     [searchParams, setSearchParams],
   );
 
+  const hasDataFilters =
+    !!(statusFilter || typeFilter || includeArchived || includePurged || search);
+
   const hasActiveFilters =
-    !!(statusFilter || typeFilter || includeArchived || includePurged || search ||
-      sortBy !== DEFAULT_SORT_BY || sortOrder !== DEFAULT_SORT_ORDER);
+    hasDataFilters || sortBy !== DEFAULT_SORT_BY || sortOrder !== DEFAULT_SORT_ORDER;
 
   const clearAllFilters = useCallback(() => {
     setSearchInput('');
@@ -305,7 +307,7 @@ export default function ClaimsList() {
             </div>
           </div>
         ) : (
-          <ClaimTable claims={claims} hasFilters={hasActiveFilters} />
+          <ClaimTable claims={claims} hasFilters={hasDataFilters} />
         )}
       </div>
 
