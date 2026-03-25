@@ -433,18 +433,48 @@ def get_claims_stats(auth: AuthContext = RequireAdjuster):
     }
 
 
+_ALLOWED_SORT_FIELDS: frozenset[str] = frozenset(
+    {
+        "created_at",
+        "updated_at",
+        "incident_date",
+        "estimated_damage",
+        "payout_amount",
+        "status",
+        "claim_type",
+        "policy_number",
+    }
+)
+
+
 @router.get("/claims", dependencies=[RequireAdjuster])
 def list_claims(
     status: Optional[str] = Query(None, description="Filter by status"),
     claim_type: Optional[str] = Query(None, description="Filter by claim type"),
     include_archived: bool = Query(False, description="Include archived claims (retention)"),
     include_purged: bool = Query(False, description="Include purged claims (retention)"),
+    search: Optional[str] = Query(
+        None, description="Free-text search across claim id, policy_number, and vin", max_length=200
+    ),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort direction: asc or desc"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
-    """List claims with optional filtering. Archived and purged claims are excluded by default."""
+    """List claims with optional filtering, search, and sorting. Archived and purged claims are excluded by default."""
+    if sort_by not in _ALLOWED_SORT_FIELDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid sort_by '{sort_by}'. Must be one of: {sorted(_ALLOWED_SORT_FIELDS)}",
+        )
+    if sort_order not in ("asc", "desc"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid sort_order. Must be 'asc' or 'desc'.",
+        )
+
     conditions = []
     params: dict[str, Any] = {}
 
@@ -460,6 +490,11 @@ def list_claims(
     if claim_type:
         conditions.append("claim_type = :claim_type")
         params["claim_type"] = claim_type
+    if search:
+        conditions.append(
+            "(id LIKE :search OR policy_number LIKE :search OR vin LIKE :search)"
+        )
+        params["search"] = f"%{search}%"
 
     _apply_adjuster_claim_filter(auth, conditions, params)
 
@@ -471,6 +506,9 @@ def list_claims(
     params["offset"] = offset
     count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
 
+    # sort_by and sort_order are validated against the allowlist above; safe to interpolate
+    order_clause = f"{sort_by} {sort_order.upper()}"
+
     with get_connection() as conn:
         count_row = conn.execute(
             text(f"SELECT COUNT(*) as cnt FROM claims {where}"),
@@ -479,7 +517,7 @@ def list_claims(
         total = count_row[0] if count_row else 0
 
         rows = conn.execute(
-            text(f"SELECT * FROM claims {where} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"),
+            text(f"SELECT * FROM claims {where} ORDER BY {order_clause} LIMIT :limit OFFSET :offset"),
             params,
         ).fetchall()
 

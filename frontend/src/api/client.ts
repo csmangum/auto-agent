@@ -137,6 +137,12 @@ export interface GetClaimsParams {
   claim_type?: string;
   include_archived?: boolean;
   include_purged?: boolean;
+  /** Free-text search across claim id, policy_number, and vin */
+  search?: string;
+  /** Field to sort by (default: created_at) */
+  sort_by?: string;
+  /** Sort direction: 'asc' or 'desc' (default: desc) */
+  sort_order?: string;
   limit?: number;
   offset?: number;
 }
@@ -147,6 +153,9 @@ export const getClaims = (params: GetClaimsParams = {}): Promise<ClaimsListRespo
   if (params.claim_type) qs.set('claim_type', params.claim_type);
   if (params.include_archived === true) qs.set('include_archived', 'true');
   if (params.include_purged === true) qs.set('include_purged', 'true');
+  if (params.search) qs.set('search', params.search);
+  if (params.sort_by) qs.set('sort_by', params.sort_by);
+  if (params.sort_order) qs.set('sort_order', params.sort_order);
   if (params.limit != null) qs.set('limit', String(params.limit));
   if (params.offset != null) qs.set('offset', String(params.offset));
   const q = qs.toString();

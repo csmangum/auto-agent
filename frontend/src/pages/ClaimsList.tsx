@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import ClaimTable from '../components/ClaimTable';
@@ -18,61 +18,117 @@ const TYPES = [
 
 const PAGE_SIZES = [25, 50, 100];
 
+const SORT_OPTIONS = [
+  { value: 'created_at', label: 'Date Created' },
+  { value: 'incident_date', label: 'Incident Date' },
+  { value: 'estimated_damage', label: 'Estimated Damage' },
+  { value: 'payout_amount', label: 'Payout Amount' },
+  { value: 'status', label: 'Status' },
+  { value: 'policy_number', label: 'Policy Number' },
+];
+
+const DEFAULT_SORT_BY = 'created_at';
+const DEFAULT_SORT_ORDER = 'desc';
+
 const selectClasses =
   'border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors';
 
 export default function ClaimsList() {
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // All list controls are URL-synced for shareable / refresh-stable links
   const statusFilter = searchParams.get('status') ?? '';
   const typeFilter = searchParams.get('type') ?? '';
   const includeArchived = searchParams.get('include_archived') === 'true';
   const includePurged = searchParams.get('include_purged') === 'true';
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const search = searchParams.get('search') ?? '';
+  const sortBy = searchParams.get('sort_by') ?? DEFAULT_SORT_BY;
+  const sortOrder = searchParams.get('sort_order') ?? DEFAULT_SORT_ORDER;
+  const page = Math.max(1, Number(searchParams.get('page') ?? '1'));
+  const pageSize = Number(searchParams.get('page_size') ?? '25');
 
-  const setFilter = useCallback((key: string, value: string) => {
-    const params = new URLSearchParams(searchParams);
-    if (value) {
-      params.set(key, value);
-    } else {
-      params.delete(key);
-    }
-    setSearchParams(params, { replace: true });
-    setPage(1);
-  }, [searchParams, setSearchParams]);
+  // Local search input state so we can debounce URL updates
+  const [searchInput, setSearchInput] = useState(search);
 
-  const setIncludeArchived = useCallback((checked: boolean) => {
-    const params = new URLSearchParams(searchParams);
-    if (checked) {
-      params.set('include_archived', 'true');
-    } else {
-      params.delete('include_archived');
-    }
-    setSearchParams(params, { replace: true });
-    setPage(1);
-  }, [searchParams, setSearchParams]);
+  // Keep local input in sync when URL changes externally (e.g., "Clear filters")
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
-  const setIncludePurged = useCallback((checked: boolean) => {
-    const params = new URLSearchParams(searchParams);
-    if (checked) {
-      params.set('include_purged', 'true');
-    } else {
-      params.delete('include_purged');
-    }
-    setSearchParams(params, { replace: true });
-    setPage(1);
-  }, [searchParams, setSearchParams]);
+  // Debounce: update URL search param 300 ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput === search) return; // already in sync – skip URL update
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (searchInput) next.set('search', searchInput);
+        else next.delete('search');
+        next.delete('page');
+        return next;
+      }, { replace: true });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput, search, setSearchParams]);
+
+  // Generic helper: update a single URL param and reset page
+  const updateParam = useCallback(
+    (key: string, value: string | null) => {
+      const params = new URLSearchParams(searchParams);
+      if (value) params.set(key, value);
+      else params.delete(key);
+      params.delete('page');
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const setFilter = useCallback(
+    (key: string, value: string) => updateParam(key, value || null),
+    [updateParam],
+  );
+
+  const setIncludeArchived = useCallback(
+    (checked: boolean) => updateParam('include_archived', checked ? 'true' : null),
+    [updateParam],
+  );
+
+  const setIncludePurged = useCallback(
+    (checked: boolean) => updateParam('include_purged', checked ? 'true' : null),
+    [updateParam],
+  );
+
+  const setPage = useCallback(
+    (p: number) => {
+      const params = new URLSearchParams(searchParams);
+      if (p <= 1) params.delete('page');
+      else params.set('page', String(p));
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const hasActiveFilters =
+    !!(statusFilter || typeFilter || includeArchived || includePurged || search ||
+      sortBy !== DEFAULT_SORT_BY || sortOrder !== DEFAULT_SORT_ORDER);
+
+  const clearAllFilters = useCallback(() => {
+    setSearchInput('');
+    setSearchParams({}, { replace: true });
+  }, [setSearchParams]);
 
   const offset = (page - 1) * pageSize;
-  const params = {
+  const queryParams = {
     limit: pageSize,
     offset,
+    sort_by: sortBy,
+    sort_order: sortOrder,
     ...(statusFilter && { status: statusFilter }),
     ...(typeFilter && { claim_type: typeFilter }),
+    ...(search && { search }),
     ...(includeArchived && { include_archived: true }),
     ...(includePurged && { include_purged: true }),
   };
-  const { data, isLoading, error } = useClaims(params);
+  const { data, isLoading, error } = useClaims(queryParams);
   const claims = data?.claims ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -108,6 +164,16 @@ export default function ClaimsList() {
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
+        {/* Free-text search */}
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search by ID, policy, or VIN…"
+          aria-label="Search claims"
+          className="border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-colors min-w-[200px]"
+        />
+
         <select
           value={statusFilter}
           onChange={(e) => setFilter('status', e.target.value)}
@@ -134,9 +200,40 @@ export default function ClaimsList() {
           ))}
         </select>
 
+        {/* Sort controls */}
+        <select
+          value={sortBy}
+          onChange={(e) => updateParam('sort_by', e.target.value)}
+          className={selectClasses}
+          aria-label="Sort by"
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={sortOrder}
+          onChange={(e) => updateParam('sort_order', e.target.value)}
+          className={selectClasses}
+          aria-label="Sort order"
+        >
+          <option value="desc">Descending</option>
+          <option value="asc">Ascending</option>
+        </select>
+
         <select
           value={pageSize}
-          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+          onChange={(e) => {
+            const params = new URLSearchParams(searchParams);
+            const size = Number(e.target.value);
+            if (size === 25) params.delete('page_size');
+            else params.set('page_size', String(size));
+            params.delete('page');
+            setSearchParams(params, { replace: true });
+          }}
           className={selectClasses}
         >
           {PAGE_SIZES.map((size) => (
@@ -166,10 +263,10 @@ export default function ClaimsList() {
           <span className="text-sm text-gray-300">Include purged</span>
         </label>
 
-        {(statusFilter || typeFilter) && (
+        {hasActiveFilters && (
           <button
             type="button"
-            onClick={() => { setFilter('status', ''); setFilter('type', ''); }}
+            onClick={clearAllFilters}
             className="text-xs text-gray-400 hover:text-gray-200 px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
           >
             Clear filters
@@ -196,7 +293,7 @@ export default function ClaimsList() {
             </div>
           </div>
         ) : (
-          <ClaimTable claims={claims} hasFilters={!!(statusFilter || typeFilter)} />
+          <ClaimTable claims={claims} hasFilters={hasActiveFilters} />
         )}
       </div>
 
@@ -209,7 +306,7 @@ export default function ClaimsList() {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => setPage(Math.max(1, page - 1))}
               disabled={page <= 1}
               aria-label="Previous page"
               className="px-3 py-1.5 text-sm border border-gray-700 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -238,7 +335,7 @@ export default function ClaimsList() {
             )}
             <button
               type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
               disabled={page >= totalPages}
               aria-label="Next page"
               className="px-3 py-1.5 text-sm border border-gray-700 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
