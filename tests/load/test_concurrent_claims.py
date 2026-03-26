@@ -120,7 +120,7 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
     print(f"  Throughput:         {report['throughput_claims_per_sec']} claims/sec")
     print(f"  Latency p50:        {report['latency_p50_sec']}s  (SLA < {SLA_P50_SEC}s)")
     print(f"  Latency p99:        {report['latency_p99_sec']}s  (SLA < {SLA_P99_SEC}s)")
-    print(f"  Error rate:         {report['error_rate']:.2%}  (SLA < {SLA_ERROR_RATE:.2%})")
+    print(f"  Error rate:         {report['error_rate']:.2%}  (SLA <= {SLA_ERROR_RATE:.2%})")
     print(f"  Errors:             {report['errors']}")
     print(f"  Status codes:       {report['status_code_counts']}")
     print("=" * 50)
