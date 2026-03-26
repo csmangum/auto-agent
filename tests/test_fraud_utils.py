@@ -41,7 +41,9 @@ def test_extract_provider_names_repo_failure_is_ignored(caplog):
     repo = MagicMock()
     repo.get_claim_parties.side_effect = RuntimeError("db down")
     claim = {"claim_id": "CLM-2", "doctor_name": "Dr. Z"}
-    with caplog.at_level("DEBUG"):
+    # Scope to this module's logger: if ``claim_agent`` was configured to INFO by
+    # another test (e.g. CLI), root-level DEBUG in caplog does not override it.
+    with caplog.at_level("DEBUG", logger=fraud_utils.logger.name):
         names = fraud_utils.extract_provider_names(claim, repo)
     assert names == ["Dr. Z"]
     assert "Unable to load provider parties" in caplog.text
