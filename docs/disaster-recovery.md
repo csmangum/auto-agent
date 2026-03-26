@@ -78,7 +78,7 @@ These platforms provide automated failover and point-in-time recovery (PITR) out
 **Steps when automated failover occurs:**
 1. The managed platform promotes the standby automatically.
 2. The DNS endpoint (`DATABASE_URL` host) is updated by the platform — no `DATABASE_URL` change required.
-3. `claim-agent` pods reconnect automatically due to SQLAlchemy's connection pool health checks. If connections are not re-established within 30 s, restart the pods:
+3. `claim-agent` pods attempt to reconnect using existing SQLAlchemy connections. Because the connection pool is not configured with connection health checks (e.g. `pool_pre_ping`), some requests may continue to fail until new connections are created. If connections are not re-established within 30 s, restart the pods:
    ```bash
    kubectl -n claim-agent rollout restart deployment/claim-agent
    ```
@@ -100,9 +100,10 @@ aws rds restore-db-instance-to-point-in-time \
   --target-db-instance-identifier claims-restored \
   --restore-time 2025-01-31T12:00:00Z
 
-# After restore, update DATABASE_URL to point to the new instance
-# and re-import any transactions from the WAL that occurred after
-# the restore point using the export procedure in §5.
+# After restore, update DATABASE_URL to point to the new instance.
+# If you need to preserve data newer than the restore point, export it
+# from the original instance (see §5) before cutover and reconcile or
+# re-apply it at the application/data level on the restored instance.
 ```
 
 **Google Cloud SQL PITR:**
@@ -213,7 +214,7 @@ kubectl -n claim-agent rollout status deployment/claim-agent
 curl https://<your-domain>/health
 ```
 
-The `minReadySeconds` and readiness probe in `k8s/deployment.yaml` prevent new pods from receiving traffic until they pass the `/health` check, limiting blast radius.
+The readiness probe and rolling update settings (for example, `maxUnavailable: 0`) in `k8s/deployment.yaml` prevent new pods from receiving traffic until they pass the `/health` check, limiting blast radius.
 
 ### 4.3 Multi-region / active-passive failover
 
@@ -323,11 +324,17 @@ aws s3api put-bucket-versioning \
   --bucket your-attachments-bucket \
   --versioning-configuration Status=Enabled
 
-# Restore a deleted or overwritten object
-aws s3api restore-object \
+# Restore a deleted or overwritten object using S3 versioning
+# 1) List versions for the object to find the desired VersionId
+aws s3api list-object-versions \
+  --bucket your-attachments-bucket \
+  --prefix attachments/<claim_id>/<filename>
+
+# 2) Restore a specific version by copying it over the current key
+aws s3api copy-object \
   --bucket your-attachments-bucket \
   --key attachments/<claim_id>/<filename> \
-  --restore-request Days=7
+  --copy-source "your-attachments-bucket/attachments/<claim_id>/<filename>?versionId=<VersionId>"
 ```
 
 ---
