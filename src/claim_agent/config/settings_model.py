@@ -590,6 +590,16 @@ class PathsConfig(BaseSettings):
         default=False,
         validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
     )
+    fresh_claims_db_non_dev_override: bool = Field(
+        default=False,
+        validation_alias="FRESH_CLAIMS_DB_NON_DEV_OVERRIDE",
+        description=(
+            "Explicit override that allows FRESH_CLAIMS_DB_ON_STARTUP=true outside of "
+            "dev/development/test/testing environments. Setting this to true in a "
+            "non-dev environment is dangerous — ALL claim data will be wiped on every "
+            "server restart. Only set this if you fully understand the consequences."
+        ),
+    )
     run_migrations_on_startup: bool = Field(
         default=True,
         validation_alias="RUN_MIGRATIONS_ON_STARTUP",
@@ -617,7 +627,7 @@ class PathsConfig(BaseSettings):
         description="SQLAlchemy max overflow connections beyond pool_size when using PostgreSQL.",
     )
 
-    @field_validator("fresh_claims_db_on_startup", "run_migrations_on_startup", mode="before")
+    @field_validator("fresh_claims_db_on_startup", "fresh_claims_db_non_dev_override", "run_migrations_on_startup", mode="before")
     @classmethod
     def _parse_bool_env(cls, v: Any) -> bool:
         if isinstance(v, bool):
