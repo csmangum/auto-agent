@@ -1311,6 +1311,16 @@ class PrivacyConfig(BaseSettings):
             "'bcr', 'legitimate_interests', or 'none'."
         ),
     )
+    scc_document_ref: str = Field(
+        default="",
+        validation_alias="SCC_DOCUMENT_REF",
+        description=(
+            "File path or reference identifier for the executed Standard Contractual Clauses "
+            "(SCCs) with the LLM provider (e.g. 'contracts/openai-dpa-2024.pdf'). "
+            "Required when LLM_TRANSFER_MECHANISM=scc and DATA_REGION=eu. "
+            "Used by validate_scc_configuration() to confirm SCCs are on file."
+        ),
+    )
     otp_enabled: bool = Field(
         default=False,
         validation_alias="OTP_ENABLED",

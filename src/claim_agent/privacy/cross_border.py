@@ -800,6 +800,112 @@ def list_transfer_log(
 
 
 # ---------------------------------------------------------------------------
+# SCC configuration validation
+# ---------------------------------------------------------------------------
+
+def validate_scc_configuration(*, db_path: str | None = None) -> dict[str, Any]:
+    """Validate that Standard Contractual Clauses are documented when mechanism is ``scc``.
+
+    Checks two things:
+
+    1. A non-empty ``SCC_DOCUMENT_REF`` is configured in ``PrivacyConfig`` (i.e. a file
+       path or reference to the executed SCC document exists on the system).
+    2. At least one active DPA registry entry with ``mechanism='scc'`` and
+       ``service_type='llm'`` is present in the database.
+
+    This function is a **read-only** diagnostic.  It never blocks transfers; use it
+    at startup or during compliance audits to surface gaps before they reach production
+    traffic.
+
+    Args:
+        db_path: Optional DB path override (uses default when ``None``).
+
+    Returns:
+        A dict with keys:
+
+        * ``mechanism`` (str) – the configured ``LLM_TRANSFER_MECHANISM`` value.
+        * ``scc_document_ref`` (str) – the configured ``SCC_DOCUMENT_REF`` value
+          (empty string when not set).
+        * ``dpa_entries_found`` (int) – number of active SCC DPA registry entries.
+        * ``validated`` (bool) – ``True`` when both the document ref and a DPA entry
+          are present; ``False`` otherwise.
+        * ``warnings`` (list[str]) – human-readable descriptions of each gap found.
+    """
+    from claim_agent.config import get_settings
+
+    settings = get_settings()
+    privacy = settings.privacy
+
+    mechanism: str = getattr(privacy, "llm_transfer_mechanism", "scc")
+    scc_ref: str = getattr(privacy, "scc_document_ref", "")
+
+    warnings: list[str] = []
+    dpa_count = 0
+
+    if mechanism != TransferMechanism.SCC.value:
+        # No SCC validation needed for other mechanisms
+        return {
+            "mechanism": mechanism,
+            "scc_document_ref": scc_ref,
+            "dpa_entries_found": 0,
+            "validated": True,
+            "warnings": [],
+        }
+
+    # --- Check 1: SCC_DOCUMENT_REF is set ---------------------------------
+    if not scc_ref:
+        warnings.append(
+            "SCC_DOCUMENT_REF is not configured. "
+            "Set SCC_DOCUMENT_REF to the file path or reference of the executed "
+            "Standard Contractual Clauses (SCCs) with the LLM provider "
+            "(e.g. 'contracts/openai-dpa-2024.pdf')."
+        )
+    else:
+        logger.debug("cross_border: SCC document reference on file: %s", scc_ref)
+
+    # --- Check 2: DPA registry entry with mechanism=scc for LLM ----------
+    try:
+        from claim_agent.privacy.dpa_registry import list_dpas
+
+        llm_dpas, dpa_count = list_dpas(
+            active_only=True,
+            service_type="llm",
+            mechanism=TransferMechanism.SCC.value,
+            db_path=db_path,
+        )
+        if dpa_count == 0:
+            warnings.append(
+                "No active DPA registry entry found with mechanism='scc' and "
+                "service_type='llm'. "
+                "Register the executed DPA/SCC using dpa_registry.register_dpa() "
+                "with mechanism='scc', service_type='llm', and a valid "
+                "dpa_document_ref to confirm legal compliance."
+            )
+        else:
+            logger.debug(
+                "cross_border: %d active SCC DPA registry entry/entries found for LLM.",
+                dpa_count,
+            )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("cross_border: could not query DPA registry for SCC validation: %s", exc)
+        warnings.append(
+            f"DPA registry query failed ({exc}); cannot confirm SCC entry is on file."
+        )
+
+    for w in warnings:
+        logger.warning("cross_border: SCC validation: %s", w)
+
+    validated = len(warnings) == 0
+    return {
+        "mechanism": mechanism,
+        "scc_document_ref": scc_ref,
+        "dpa_entries_found": dpa_count,
+        "validated": validated,
+        "warnings": warnings,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Convenience: check and log LLM transfer from claim data
 # ---------------------------------------------------------------------------
 
@@ -854,6 +960,14 @@ def check_and_log_llm_transfer(
         destination_provider=provider,
         data_categories=data_categories,
     )
+
+    # When the configured mechanism is SCC, validate that the SCC is documented.
+    # This is a non-blocking advisory check; warnings are merged into the result.
+    configured_mechanism = getattr(privacy, "llm_transfer_mechanism", "")
+    if configured_mechanism == TransferMechanism.SCC.value:
+        scc_check = validate_scc_configuration(db_path=db_path)
+        if not scc_check["validated"]:
+            result["warnings"] = list(result.get("warnings", [])) + scc_check["warnings"]
 
     # Log the transfer (non-blocking – failures are swallowed by log_transfer)
     _cid = claim_id or (claim_data or {}).get("claim_id")
