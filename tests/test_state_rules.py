@@ -72,6 +72,39 @@ class TestGetStateRules:
         assert rules is not None
         assert rules.nicb_deadline_days_theft == 3
 
+    def test_pennsylvania_rules(self):
+        rules = get_state_rules("Pennsylvania")
+        assert rules is not None
+        assert rules.state == "Pennsylvania"
+        assert rules.prompt_payment_days == 30
+        assert rules.total_loss_threshold == 0.75
+        assert rules.acknowledgment_days == 14
+        assert rules.investigation_days == 30
+        assert rules.comparative_fault_type == "modified_comparative_51"
+        assert rules.comparative_fault_bar == 51.0
+
+    def test_illinois_rules(self):
+        rules = get_state_rules("Illinois")
+        assert rules is not None
+        assert rules.state == "Illinois"
+        assert rules.prompt_payment_days == 30
+        assert rules.total_loss_threshold == 0.80
+        assert rules.acknowledgment_days == 14
+        assert rules.investigation_days == 45
+        assert rules.communication_response_days == 14
+        assert rules.comparative_fault_type == "modified_comparative_51"
+        assert rules.comparative_fault_bar == 51.0
+
+    def test_pennsylvania_abbreviation(self):
+        rules = get_state_rules("PA")
+        assert rules is not None
+        assert rules.state == "Pennsylvania"
+
+    def test_illinois_abbreviation(self):
+        rules = get_state_rules("IL")
+        assert rules is not None
+        assert rules.state == "Illinois"
+
 
 class TestGetTotalLossThreshold:
     def test_california_75_percent(self):
@@ -87,6 +120,12 @@ class TestGetTotalLossThreshold:
         """Unknown jurisdiction: same threshold path as missing state (settings default)."""
         assert get_total_loss_threshold("Alaska") == get_total_loss_threshold(None)
 
+    def test_pennsylvania_75_percent(self):
+        assert get_total_loss_threshold("Pennsylvania") == 0.75
+
+    def test_illinois_80_percent(self):
+        assert get_total_loss_threshold("Illinois") == 0.80
+
 
 class TestGetPromptPaymentDays:
     def test_california_30_days(self):
@@ -97,6 +136,12 @@ class TestGetPromptPaymentDays:
 
     def test_unknown_defaults_to_30(self):
         assert get_prompt_payment_days(None) == 30
+
+    def test_pennsylvania_30_days(self):
+        assert get_prompt_payment_days("Pennsylvania") == 30
+
+    def test_illinois_30_days(self):
+        assert get_prompt_payment_days("Illinois") == 30
 
 
 class TestGetComplianceDueDate:
@@ -170,6 +215,18 @@ class TestGetComparativeFaultRules:
         assert rules is not None
         assert rules["state"] == "California"
 
+    def test_pennsylvania_modified_51(self):
+        rules = get_comparative_fault_rules("Pennsylvania")
+        assert rules["comparative_fault_type"] == "modified_comparative_51"
+        assert rules["comparative_fault_bar"] == 51.0
+        assert rules["state"] == "Pennsylvania"
+
+    def test_illinois_modified_51(self):
+        rules = get_comparative_fault_rules("Illinois")
+        assert rules["comparative_fault_type"] == "modified_comparative_51"
+        assert rules["comparative_fault_bar"] == 51.0
+        assert rules["state"] == "Illinois"
+
 
 class TestIsRecoveryEligible:
     def test_pure_comparative_always_eligible(self):
@@ -224,5 +281,5 @@ class TestGetNicbDeadlineDays:
 
     def test_salvage_type_falls_back_to_30_when_not_set(self):
         """States without explicit salvage rules fall back to 30 days."""
-        for state in ("Florida", "Texas", "New York", "Georgia"):
+        for state in ("Florida", "Texas", "New York", "Georgia", "Pennsylvania", "Illinois"):
             assert get_nicb_deadline_days(state, "salvage") == 30
