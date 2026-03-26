@@ -83,6 +83,11 @@ from claim_agent.db.schema_rental_sqlite import (
     IDX_RENTAL_AUTH_CLAIM_ID,
     IDX_RENTAL_AUTH_REIMBURSEMENT_ID,
 )
+from claim_agent.db.schema_fraud_report_filings_sqlite import (
+    FRAUD_REPORT_FILINGS_TABLE_SQLITE,
+    IDX_FRAUD_FILINGS_CLAIM_ID,
+    IDX_FRAUD_FILINGS_FILING_TYPE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -586,6 +591,15 @@ CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_acce
 
 SCHEMA_SQL += (
     """
+-- Fraud report filings: state bureau, NICB, NISS audit trail (SIU compliance)
+"""
+    + FRAUD_REPORT_FILINGS_TABLE_SQLITE
+    + ";\n"
+    + IDX_FRAUD_FILINGS_CLAIM_ID
+    + ";\n"
+    + IDX_FRAUD_FILINGS_FILING_TYPE
+    + ";\n"
+    + """
 -- Rental authorizations: structured rental arrangements persisted when rental crew completes
 """
     + RENTAL_AUTHORIZATIONS_TABLE_SQLITE
