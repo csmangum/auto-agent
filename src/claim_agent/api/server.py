@@ -119,6 +119,37 @@ def _check_rate_limit_configuration() -> None:
         )
 
 
+def _check_fresh_db_configuration() -> None:
+    """Refuse to start if FRESH_CLAIMS_DB_ON_STARTUP=true in a non-development environment.
+
+    Wiping the database on every restart is catastrophic in production. When
+    CLAIM_AGENT_ENVIRONMENT is not one of dev/development/test/testing and
+    FRESH_CLAIMS_DB_ON_STARTUP=true, the server refuses to start unless the operator
+    explicitly sets FRESH_CLAIMS_DB_NON_DEV_OVERRIDE=true to acknowledge the risk.
+    """
+    if not get_settings().paths.fresh_claims_db_on_startup:
+        return
+    env = get_settings().auth.environment.strip().lower()
+    if env in _DEV_ENVIRONMENTS:
+        return
+    if get_settings().paths.fresh_claims_db_non_dev_override:
+        _server_logger.warning(
+            "FRESH_CLAIMS_DB_ON_STARTUP=true is active in a non-development environment "
+            f"(CLAIM_AGENT_ENVIRONMENT='{get_settings().auth.environment}'). "
+            "ALL claim data will be wiped on every server restart. "
+            "This is allowed because FRESH_CLAIMS_DB_NON_DEV_OVERRIDE=true is set."
+        )
+        return
+    raise RuntimeError(
+        f"FRESH_CLAIMS_DB_ON_STARTUP=true is not allowed when "
+        f"CLAIM_AGENT_ENVIRONMENT is set to '{get_settings().auth.environment}'. "
+        "Enabling this flag in a non-development environment will wipe ALL claim data "
+        "on every server restart. "
+        "Set CLAIM_AGENT_ENVIRONMENT to 'dev', 'development', 'test', or 'testing', or "
+        "set FRESH_CLAIMS_DB_NON_DEV_OVERRIDE=true only if you fully understand the consequences."
+    )
+
+
 def _recover_stuck_processing_claims() -> None:
     """Mark claims stuck in 'processing' as 'needs_review' on startup.
 
@@ -283,6 +314,7 @@ async def lifespan(_app: FastAPI):
                 "string and run 'alembic upgrade head' before going to production. "
                 "See docs/database.md for details."
             )
+        _check_fresh_db_configuration()
         ensure_fresh_db_on_startup()
     from claim_agent.notifications.claimant import check_notification_readiness
 
