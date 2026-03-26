@@ -84,6 +84,12 @@ services:
     depends_on:
       claim-agent:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   alertmanager:
@@ -97,6 +103,12 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9093/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   grafana:
@@ -113,7 +125,14 @@ services:
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
 
 volumes:

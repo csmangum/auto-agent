@@ -86,6 +86,7 @@ include = ["/src/claim_agent"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "scripts"]
+asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow (may take longer due to model loading or heavy computation)",
     "integration: marks tests as integration tests (test component interactions)",

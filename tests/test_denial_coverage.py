@@ -354,6 +354,19 @@ class TestStateDenialTemplates:
         )
         assert "bad faith" in result.lower() or "§33-4-6" in result
 
+    def test_render_denial_letter_state_appends_explicit_appeal_deadline(self):
+        from claim_agent.compliance.denial_templates import render_denial_letter
+
+        result = render_denial_letter(
+            claim_id="CLM-CA-002",
+            denial_reason="Excluded",
+            policy_provision="Sec 2",
+            state="California",
+            appeal_deadline="2026-01-15",
+        )
+        assert "APPEAL DEADLINE" in result
+        assert "2026-01-15" in result
+
 
 
 # ---------------------------------------------------------------------------

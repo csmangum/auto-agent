@@ -223,7 +223,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "claims_in_progress >= 0",
+          "expr": "claims_in_progress >= bool 0",
           "legendFormat": "DB",
           "refId": "A"
         }

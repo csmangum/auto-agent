@@ -35,6 +35,8 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=80
 
+      # Single --include: comma-separated patterns (coverage merges them). Repeated
+      # --include flags override each other; only the last pattern would apply.
       - name: Check coverage for critical modules
         run: |
           coverage report \

@@ -83,6 +83,10 @@ class TestGetTotalLossThreshold:
     def test_unknown_defaults_to_75(self):
         assert get_total_loss_threshold(None) == 0.75
 
+    def test_unsupported_state_string_uses_settings_fallback(self):
+        """Unknown jurisdiction: same threshold path as missing state (settings default)."""
+        assert get_total_loss_threshold("Alaska") == get_total_loss_threshold(None)
+
 
 class TestGetPromptPaymentDays:
     def test_california_30_days(self):
@@ -113,6 +117,16 @@ class TestGetComplianceDueDate:
 
     def test_unknown_deadline_type_returns_none(self):
         assert get_compliance_due_date(date(2025, 1, 1), "unknown", "California") is None
+
+    def test_communication_response(self):
+        base = date(2025, 1, 1)
+        due = get_compliance_due_date(base, "communication_response", "California")
+        assert due == date(2025, 1, 16)
+
+    def test_communication_response_unknown_state_default(self):
+        base = date(2025, 6, 1)
+        due = get_compliance_due_date(base, "communication_response", "Nope")
+        assert due == date(2025, 6, 16)
 
 
 class TestGetSiuReferralThreshold:
