@@ -590,6 +590,16 @@ class PathsConfig(BaseSettings):
         default=False,
         validation_alias="FRESH_CLAIMS_DB_ON_STARTUP",
     )
+    fresh_claims_db_non_dev_override: bool = Field(
+        default=False,
+        validation_alias="FRESH_CLAIMS_DB_NON_DEV_OVERRIDE",
+        description=(
+            "Explicit override that allows FRESH_CLAIMS_DB_ON_STARTUP=true outside of "
+            "dev/development/test/testing environments. Setting this to true in a "
+            "non-dev environment is dangerous — ALL claim data will be wiped on every "
+            "server restart. Only set this if you fully understand the consequences."
+        ),
+    )
     run_migrations_on_startup: bool = Field(
         default=True,
         validation_alias="RUN_MIGRATIONS_ON_STARTUP",
@@ -617,7 +627,7 @@ class PathsConfig(BaseSettings):
         description="SQLAlchemy max overflow connections beyond pool_size when using PostgreSQL.",
     )
 
-    @field_validator("fresh_claims_db_on_startup", "run_migrations_on_startup", mode="before")
+    @field_validator("fresh_claims_db_on_startup", "fresh_claims_db_non_dev_override", "run_migrations_on_startup", mode="before")
     @classmethod
     def _parse_bool_env(cls, v: Any) -> bool:
         if isinstance(v, bool):
@@ -1470,7 +1480,20 @@ VALUATION_PROVIDER_BACKENDS: frozenset[str] = frozenset({"ccc", "mitchell", "aud
 STATE_BUREAU_SUPPORTED_CODES: tuple[str, ...] = ("CA", "TX", "FL", "NY", "GA")
 
 
-class PolicyRestConfig(BaseSettings):
+class _CircuitBreakerFields(BaseSettings):
+    """Shared circuit breaker settings inherited by all REST adapter configs."""
+
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100,
+        description="Circuit breaker: failures before opening the circuit",
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0, ge=1.0, le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
+
+
+class PolicyRestConfig(_CircuitBreakerFields):
     """REST policy adapter configuration (POLICY_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1491,7 +1514,7 @@ class PolicyRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class ValuationRestConfig(BaseSettings):
+class ValuationRestConfig(_CircuitBreakerFields):
     """REST valuation gateway (VALUATION_ADAPTER=ccc|mitchell|audatex)."""
 
     model_config = SettingsConfigDict(
@@ -1515,7 +1538,7 @@ class ValuationRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class FraudReportingRestConfig(BaseSettings):
+class FraudReportingRestConfig(_CircuitBreakerFields):
     """REST fraud reporting adapter configuration (FRAUD_REPORTING_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1535,7 +1558,7 @@ class FraudReportingRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class StateBureauConfig(BaseSettings):
+class StateBureauConfig(_CircuitBreakerFields):
     """Per-state bureau REST adapter configuration (STATE_BUREAU_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1567,7 +1590,7 @@ class StateBureauConfig(BaseSettings):
         return endpoints
 
 
-class ClaimSearchRestConfig(BaseSettings):
+class ClaimSearchRestConfig(_CircuitBreakerFields):
     """REST ClaimSearch adapter configuration (CLAIM_SEARCH_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1591,7 +1614,7 @@ class ClaimSearchRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class ERPRestConfig(BaseSettings):
+class ERPRestConfig(_CircuitBreakerFields):
     """REST ERP adapter configuration (ERP_ADAPTER=rest).
 
     Connects to an external repair/shop management system (e.g. Mitchell
@@ -1648,7 +1671,7 @@ class ERPRestConfig(BaseSettings):
         return result
 
 
-class RepairShopRestConfig(BaseSettings):
+class RepairShopRestConfig(_CircuitBreakerFields):
     """REST repair-shop adapter configuration (REPAIR_SHOP_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1674,7 +1697,7 @@ class RepairShopRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class PartsRestConfig(BaseSettings):
+class PartsRestConfig(_CircuitBreakerFields):
     """REST parts-catalog adapter configuration (PARTS_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1692,7 +1715,7 @@ class PartsRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class SIURestConfig(BaseSettings):
+class SIURestConfig(_CircuitBreakerFields):
     """REST SIU case-management adapter configuration (SIU_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1718,7 +1741,7 @@ class SIURestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class NMVTISRestConfig(BaseSettings):
+class NMVTISRestConfig(_CircuitBreakerFields):
     """REST NMVTIS reporting gateway adapter configuration (NMVTIS_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1739,7 +1762,7 @@ class NMVTISRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class GapInsuranceRestConfig(BaseSettings):
+class GapInsuranceRestConfig(_CircuitBreakerFields):
     """REST gap-insurance carrier adapter configuration (GAP_INSURANCE_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1764,7 +1787,7 @@ class GapInsuranceRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class OCRRestConfig(BaseSettings):
+class OCRRestConfig(_CircuitBreakerFields):
     """REST OCR extraction adapter configuration (OCR_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1793,7 +1816,7 @@ class OCRRestConfig(BaseSettings):
     )
 
 
-class MedicalRecordsRestConfig(BaseSettings):
+class MedicalRecordsRestConfig(_CircuitBreakerFields):
     """REST medical records adapter configuration (MEDICAL_RECORDS_ADAPTER=rest).
 
     Connects to an HIE, provider portal, or equivalent medical records system.
@@ -1826,7 +1849,7 @@ class MedicalRecordsRestConfig(BaseSettings):
     )
 
 
-class CMSRestConfig(BaseSettings):
+class CMSRestConfig(_CircuitBreakerFields):
     """REST CMS/Medicare reporting adapter configuration (CMS_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(
@@ -1847,7 +1870,7 @@ class CMSRestConfig(BaseSettings):
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
 
 
-class ReverseImageRestConfig(BaseSettings):
+class ReverseImageRestConfig(_CircuitBreakerFields):
     """REST reverse-image search adapter configuration (REVERSE_IMAGE_ADAPTER=rest)."""
 
     model_config = SettingsConfigDict(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +13,8 @@ from claim_agent.config import get_settings
 from claim_agent.config.settings import get_jwt_secret
 from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
 from claim_agent.services.repair_shop_portal_tokens import verify_repair_shop_token
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -55,6 +58,7 @@ def _verify_shop_jwt(token: str) -> dict[str, Any] | None:
             return None
         return payload
     except Exception:
+        logger.debug("Shop user JWT decode/validation failed", exc_info=True)
         return None
 
 

@@ -59,12 +59,16 @@ class RestERPAdapter(ERPAdapter):
         estimate_path: str = "/repairs/estimate",
         status_path: str = "/repairs/status",
         events_path: str = "/repairs/events",
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         self._shop_id_map: dict[str, str] = dict(shop_id_map or {})
         self._assignment_path = assignment_path
@@ -208,4 +212,6 @@ def create_rest_erp_adapter() -> RestERPAdapter:
         estimate_path=cfg.estimate_path,
         status_path=cfg.status_path,
         events_path=cfg.events_path,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )

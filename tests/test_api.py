@@ -510,7 +510,9 @@ class TestClaimNotes:
         )
         assert resp.status_code == 422
         body = resp.json()
-        assert any("blank" in str(e.get("msg", "")).lower() for e in body.get("detail", []))
+        errors = body.get("detail", [])
+        assert isinstance(errors, list)
+        assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
 
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
@@ -518,7 +520,9 @@ class TestClaimNotes:
         )
         assert resp.status_code == 422
         body = resp.json()
-        assert any("blank" in str(e.get("msg", "")).lower() for e in body.get("detail", []))
+        errors = body.get("detail", [])
+        assert isinstance(errors, list)
+        assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
 
     def test_add_note_actor_id_max_length_rejected(self, client):
         """actor_id longer than 128 chars is rejected with 422."""
@@ -3889,10 +3893,12 @@ class TestInvalidClaimTransitionErrorHandler:
         resp = tc.get("/__test_invalid_claim_transition")
         assert resp.status_code == 409
         data = resp.json()
-        assert data["claim_id"] == "CLM-T"
-        assert data["from_status"] == "open"
-        assert data["to_status"] == "closed"
-        assert data["reason"] == "Cannot close claim without payout recorded"
+        # Structured error schema: error_code at top level, transition fields in details
+        assert data["error_code"] == "INVALID_CLAIM_TRANSITION"
+        assert data["details"]["claim_id"] == "CLM-T"
+        assert data["details"]["from_status"] == "open"
+        assert data["details"]["to_status"] == "closed"
+        assert data["details"]["reason"] == "Cannot close claim without payout recorded"
         assert "CLM-T" in data["detail"]
         assert "open" in data["detail"]
         assert "closed" in data["detail"]

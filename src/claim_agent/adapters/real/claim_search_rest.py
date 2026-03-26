@@ -34,12 +34,16 @@ class RestClaimSearchAdapter(ClaimSearchAdapter):
         search_path: str = "/claims/search",
         response_key: str | None = None,
         timeout: float = 15.0,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         self._search_path = search_path
         self._response_key = (response_key or "").strip() or None
@@ -122,4 +126,6 @@ def create_rest_claim_search_adapter() -> RestClaimSearchAdapter:
         search_path=cfg.search_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )

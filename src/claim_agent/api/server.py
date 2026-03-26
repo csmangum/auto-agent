@@ -60,7 +60,7 @@ from claim_agent.db.database import ensure_fresh_db_on_startup, get_db_path, is_
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
-from claim_agent.exceptions import InvalidClaimTransitionError
+from claim_agent.api.error_handlers import register_exception_handlers
 from claim_agent.config.settings_model import SchedulerConfig
 
 import logging
@@ -76,6 +76,11 @@ _BODY_LENGTH_REQUIRED_METHODS = frozenset({"POST", "PUT", "PATCH"})
 _DEV_ENVIRONMENTS = frozenset({"dev", "development", "test", "testing"})
 
 
+def _is_dev_environment() -> bool:
+    """True when the configured CLAIM_AGENT_ENVIRONMENT is a development/testing value."""
+    return get_settings().auth.environment.strip().lower() in _DEV_ENVIRONMENTS
+
+
 def _check_auth_configuration() -> None:
     """Refuse to start in non-development environments when no auth is configured.
 
@@ -86,8 +91,7 @@ def _check_auth_configuration() -> None:
     """
     if is_auth_required():
         return
-    env = get_settings().auth.environment.strip().lower()
-    if env not in _DEV_ENVIRONMENTS:
+    if not _is_dev_environment():
         raise RuntimeError(
             f"Authentication is not configured (API_KEYS, CLAIMS_API_KEY, and JWT_SECRET "
             f"are all unset) but CLAIM_AGENT_ENVIRONMENT is set to "
@@ -108,8 +112,7 @@ def _check_rate_limit_configuration() -> None:
     """
     if get_settings().paths.redis_url:
         return
-    env = get_settings().auth.environment.strip().lower()
-    if env not in _DEV_ENVIRONMENTS:
+    if not _is_dev_environment():
         _server_logger.warning(
             "Rate limiting uses in-memory storage (REDIS_URL not set). "
             "Not shared across workers — each uvicorn worker enforces its own limit, "
@@ -117,6 +120,36 @@ def _check_rate_limit_configuration() -> None:
             "For production, set REDIS_URL and install the redis extra: "
             "pip install -e '.[redis]'."
         )
+
+
+def _check_fresh_db_configuration() -> None:
+    """Refuse to start if FRESH_CLAIMS_DB_ON_STARTUP=true in a non-development environment.
+
+    Wiping the database on every restart is catastrophic in production. When
+    CLAIM_AGENT_ENVIRONMENT is not one of dev/development/test/testing and
+    FRESH_CLAIMS_DB_ON_STARTUP=true, the server refuses to start unless the operator
+    explicitly sets FRESH_CLAIMS_DB_NON_DEV_OVERRIDE=true to acknowledge the risk.
+    """
+    if not get_settings().paths.fresh_claims_db_on_startup:
+        return
+    if _is_dev_environment():
+        return
+    if get_settings().paths.fresh_claims_db_non_dev_override:
+        _server_logger.warning(
+            "FRESH_CLAIMS_DB_ON_STARTUP=true is active in a non-development environment "
+            f"(CLAIM_AGENT_ENVIRONMENT='{get_settings().auth.environment}'). "
+            "ALL claim data will be wiped on every server restart. "
+            "This is allowed because FRESH_CLAIMS_DB_NON_DEV_OVERRIDE=true is set."
+        )
+        return
+    raise RuntimeError(
+        f"FRESH_CLAIMS_DB_ON_STARTUP=true is not allowed when "
+        f"CLAIM_AGENT_ENVIRONMENT is set to '{get_settings().auth.environment}'. "
+        "Enabling this flag in a non-development environment will wipe ALL claim data "
+        "on every server restart. "
+        "Set CLAIM_AGENT_ENVIRONMENT to 'dev', 'development', 'test', or 'testing', or "
+        "set FRESH_CLAIMS_DB_NON_DEV_OVERRIDE=true only if you fully understand the consequences."
+    )
 
 
 def _recover_stuck_processing_claims() -> None:
@@ -235,7 +268,7 @@ async def _shutdown_background_tasks_with_grace(grace_seconds: int) -> None:
 
     _server_logger.warning(
         "Graceful shutdown: %d claim task(s) did not finish within %d s grace period; "
-        "cancelling and marking claims as failed (recoverable).",
+        "cancelling — claims will remain in 'processing' for recovery on next startup.",
         len(pending),
         grace_seconds,
     )
@@ -272,8 +305,7 @@ async def lifespan(_app: FastAPI):
         alembic_cfg = Config(Path(__file__).resolve().parent.parent.parent.parent / "alembic.ini")
         command.upgrade(alembic_cfg, "head")
     elif not is_postgres_backend():
-        env = get_settings().auth.environment.strip().lower()
-        if env not in _DEV_ENVIRONMENTS:
+        if not _is_dev_environment():
             _server_logger.warning(
                 "SQLite is configured as the database backend "
                 "(DATABASE_URL is not set). SQLite does not support concurrent writes "
@@ -283,6 +315,7 @@ async def lifespan(_app: FastAPI):
                 "string and run 'alembic upgrade head' before going to production. "
                 "See docs/database.md for details."
             )
+        _check_fresh_db_configuration()
         ensure_fresh_db_on_startup()
     from claim_agent.notifications.claimant import check_notification_readiness
 
@@ -374,22 +407,7 @@ def create_app() -> FastAPI:
         allow_headers=settings.auth.cors_headers,
     )
 
-    async def _invalid_claim_transition_handler(
-        _request: Request, exc: Exception
-    ) -> JSONResponse:
-        assert isinstance(exc, InvalidClaimTransitionError)
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={
-                "detail": str(exc),
-                "claim_id": exc.claim_id,
-                "from_status": exc.from_status,
-                "to_status": exc.to_status,
-                "reason": exc.reason,
-            },
-        )
-
-    _app.add_exception_handler(InvalidClaimTransitionError, _invalid_claim_transition_handler)
+    register_exception_handlers(_app)
 
     return _app
 
@@ -535,7 +553,7 @@ async def auth_middleware(request: Request, call_next):
         return _secured_api_json_response(
             request,
             401,
-            {"detail": "Invalid or missing API key"},
+            {"error_code": "UNAUTHORIZED", "detail": "Invalid or missing API key"},
         )
 
     ctx = verify_token(token)
@@ -543,7 +561,7 @@ async def auth_middleware(request: Request, call_next):
         return _secured_api_json_response(
             request,
             401,
-            {"detail": "Invalid or expired token"},
+            {"error_code": "UNAUTHORIZED", "detail": "Invalid or expired token"},
         )
 
     request.state.auth = ctx
@@ -566,7 +584,7 @@ async def rate_limit_middleware(request: Request, call_next):
             return _secured_api_json_response(
                 request,
                 429,
-                {"detail": "Rate limit exceeded. Try again later."},
+                {"error_code": "RATE_LIMIT_EXCEEDED", "detail": "Rate limit exceeded. Try again later."},
             )
     return await call_next(request)
 
@@ -597,7 +615,7 @@ async def request_body_size_limit_middleware(request: Request, call_next):
         return _secured_api_json_response(
             request,
             status.HTTP_411_LENGTH_REQUIRED,
-            {"detail": "Content-Length required"},
+            {"error_code": "LENGTH_REQUIRED", "detail": "Content-Length required"},
         )
 
     if content_length_header is not None:
@@ -607,14 +625,14 @@ async def request_body_size_limit_middleware(request: Request, call_next):
             return _secured_api_json_response(
                 request,
                 400,
-                {"detail": "Invalid Content-Length header"},
+                {"error_code": "BAD_REQUEST", "detail": "Invalid Content-Length header"},
             )
 
         if content_length < 0:
             return _secured_api_json_response(
                 request,
                 400,
-                {"detail": "Invalid Content-Length header"},
+                {"error_code": "BAD_REQUEST", "detail": "Invalid Content-Length header"},
             )
 
         settings = get_settings()
@@ -628,7 +646,7 @@ async def request_body_size_limit_middleware(request: Request, call_next):
             return _secured_api_json_response(
                 request,
                 413,
-                {"detail": "Request body too large"},
+                {"error_code": "REQUEST_TOO_LARGE", "detail": "Request body too large"},
             )
     return await call_next(request)
 
@@ -693,10 +711,12 @@ async def api_version_redirect_middleware(request: Request, call_next):
     if path.startswith("/api/") and not path.startswith("/api/v1/"):
         versioned = "/api/v1" + path[len("/api"):]
         new_url = request.url.replace(path=versioned)
-        return Response(status_code=308, headers={"Location": str(new_url)})
+        headers = {"Location": str(new_url), **_base_security_response_headers()}
+        return Response(status_code=308, headers=headers)
     if path == "/api":
         new_url = request.url.replace(path="/api/v1")
-        return Response(status_code=308, headers={"Location": str(new_url)})
+        headers = {"Location": str(new_url), **_base_security_response_headers()}
+        return Response(status_code=308, headers=headers)
     return await call_next(request)
 
 
