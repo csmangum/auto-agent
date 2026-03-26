@@ -212,7 +212,6 @@ jobs:
 
   load:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -231,6 +230,9 @@ jobs:
         env:
           LOAD_TEST_CONCURRENCY: "2"
           LOAD_TEST_OUTPUT: load_test_report.json
+          LOAD_TEST_SLA_P50_SEC: "2.0"
+          LOAD_TEST_SLA_P99_SEC: "5.0"
+          LOAD_TEST_SLA_ERROR_RATE: "0.01"
         run: |
           pytest tests/load/ -v -m load
 
