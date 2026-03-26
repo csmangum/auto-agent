@@ -26,7 +26,7 @@ function parseAcceptList(accept: string): { mimePrefixes: string[]; extensions: 
     if (part.startsWith('.')) {
       extensions.add(part.toLowerCase());
     } else if (part.endsWith('/*')) {
-      mimePrefixes.push(part.slice(0, -2).toLowerCase());
+      mimePrefixes.push(part.toLowerCase());
     } else if (part.includes('/')) {
       mimePrefixes.push(part.toLowerCase());
     }
