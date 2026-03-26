@@ -71,9 +71,8 @@ def verify_token(token: str) -> AuthContext | None:
             if sub:
                 return AuthContext(identity=str(sub), role=role)
         except Exception:
+            logger.debug("JWT decode/validation failed", exc_info=True)
             return None
-
-    return None
 
 
 def is_auth_required() -> bool:

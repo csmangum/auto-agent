@@ -5,9 +5,12 @@ a short "[...abridged...]" placeholder.
 """
 
 import hashlib
+import logging
 import sys
 from contextlib import contextmanager
 from typing import TextIO
+
+logger = logging.getLogger(__name__)
 
 _PROMPT_BLOCK_MARKERS = ("CLAIM DATA", "CLASSIFICATION RULES", "Reply with a JSON")
 _ABRIDGED_PLACEHOLDER = "\n[...abridged: claim data and classification rules (see above)]\n"
@@ -77,6 +80,7 @@ def abridge_crew_output():
             yield
             return
     except Exception:
+        logger.debug("Could not read crew_verbose setting; skipping output abridging", exc_info=True)
         yield
         return
 

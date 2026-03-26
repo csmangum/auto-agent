@@ -159,6 +159,7 @@ def _check_database() -> bool:
             conn.execute(text("SELECT 1")).fetchone()
         return True
     except Exception:
+        logger.debug("Database connectivity check failed", exc_info=True)
         return False
 
 
@@ -169,6 +170,7 @@ def _check_replica_database() -> bool:
             conn.execute(text("SELECT 1")).fetchone()
         return True
     except Exception:
+        logger.debug("Read-replica connectivity check failed", exc_info=True)
         return False
 
 
@@ -178,4 +180,5 @@ def _check_llm() -> bool:
         llm = get_llm()
         return llm is not None
     except Exception:
+        logger.debug("LLM configuration check failed", exc_info=True)
         return False
