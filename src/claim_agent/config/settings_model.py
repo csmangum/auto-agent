@@ -2182,8 +2182,10 @@ class Settings(BaseSettings):
         description=(
             "Seconds to wait for in-flight background claim-processing tasks to finish "
             "before cancelling them on server shutdown. Claims still running after this "
-            "period are cancelled and marked 'failed' with a recoverable flag so the "
-            "startup recovery scan can re-queue them. Default: 30."
+            "period will have their background tasks cancelled; any such claims that "
+            "remain in 'processing' will be handled by the startup task-recovery scan "
+            "(if enabled), which marks long-running 'processing' claims as 'needs_review' "
+            "for manual retry. Default: 30."
         ),
     )
     idempotency_ttl_seconds: int = Field(
