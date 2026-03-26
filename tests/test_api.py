@@ -510,8 +510,9 @@ class TestClaimNotes:
         )
         assert resp.status_code == 422
         body = resp.json()
-        errors = body.get("details", {}).get("errors", body.get("detail", []))
-        assert any("blank" in str(e.get("msg", "")).lower() for e in errors) or "blank" in body.get("detail", "").lower()
+        errors = body.get("detail", [])
+        assert isinstance(errors, list)
+        assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
 
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
@@ -519,8 +520,9 @@ class TestClaimNotes:
         )
         assert resp.status_code == 422
         body = resp.json()
-        errors = body.get("details", {}).get("errors", body.get("detail", []))
-        assert any("blank" in str(e.get("msg", "")).lower() for e in errors) or "blank" in body.get("detail", "").lower()
+        errors = body.get("detail", [])
+        assert isinstance(errors, list)
+        assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
 
     def test_add_note_actor_id_max_length_rejected(self, client):
         """actor_id longer than 128 chars is rejected with 422."""

@@ -13,12 +13,13 @@ class ErrorResponse(BaseModel):
     Attributes:
         error_code: Machine-readable identifier for the error type
                     (e.g. ``"CLAIM_NOT_FOUND"``, ``"VALIDATION_ERROR"``).
-        detail:     Human-readable error message (mirrors FastAPI's default
-                    ``{"detail": "..."}`` so existing clients keep working).
+        detail:     Human-readable error message for most errors, or a list
+                    of validation error dicts for 422 responses (mirrors
+                    FastAPI's defaults so existing clients keep working).
         details:    Optional dict of structured context specific to the error
                     (e.g. ``claim_id``, ``from_status``, ``to_status``).
     """
 
     error_code: str
-    detail: str
+    detail: str | list[dict[str, Any]]
     details: dict[str, Any] | None = None

@@ -6,12 +6,14 @@ FastAPI's own validation machinery — follows the same schema::
 
     {
       "error_code": "<MACHINE_READABLE_CODE>",
-      "detail":     "<human-readable message>",
+      "detail":     "<human-readable message>" or [...],  // list for 422
       "details":    { ... }   // optional, present for rich domain exceptions
     }
 
 The ``detail`` key is intentionally kept so that existing clients that read
-``response.json()["detail"]`` continue to work without modification.
+``response.json()["detail"]`` continue to work without modification. For 422
+validation errors, ``detail`` remains a list of error dicts (matching FastAPI's
+default) to preserve backward compatibility for clients that iterate over it.
 """
 
 from __future__ import annotations
@@ -69,7 +71,7 @@ def _error_code_for_status(status_code: int) -> str:
 def _json(
     status_code: int,
     error_code: str,
-    detail: str,
+    detail: str | list[dict[str, Any]],
     details: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
@@ -109,15 +111,10 @@ async def request_validation_exception_handler(request: Request, exc: Exception)
         }
         for e in raw_errors
     ]
-    detail = "; ".join(
-        f"{' -> '.join(str(loc) for loc in e.get('loc', []))}: {e.get('msg', '')}"
-        for e in raw_errors
-    ) or "Request validation failed"
     return _json(
         status.HTTP_422_UNPROCESSABLE_ENTITY,
         "VALIDATION_ERROR",
-        detail,
-        details={"errors": safe_errors},
+        safe_errors,
     )
 
 

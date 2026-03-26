@@ -137,11 +137,15 @@ class TestValidationErrors:
         assert resp.status_code == 422
         body = resp.json()
         _assert_error_schema(body, error_code="VALIDATION_ERROR")
-        # FastAPI puts per-field errors in details.errors
-        assert "details" in body
-        assert "errors" in body["details"]
-        assert isinstance(body["details"]["errors"], list)
-        assert len(body["details"]["errors"]) > 0
+        # Validation errors return the error list in detail (matching FastAPI default)
+        assert "detail" in body
+        assert isinstance(body["detail"], list)
+        assert len(body["detail"]) > 0
+        # Each error has loc, msg, type
+        for err in body["detail"]:
+            assert "loc" in err
+            assert "msg" in err
+            assert "type" in err
 
     def test_invalid_json_type_returns_validation_error(self, client):
         """Pydantic validates field types before the route runs, so a wrong type returns 422."""
@@ -321,7 +325,7 @@ class TestGlobalDomainExceptionHandlers:
         _assert_error_schema(body, error_code="NOT_FOUND")
 
     def test_request_validation_error_has_error_code(self, mini_client):
-        """RequestValidationError gets error_code=VALIDATION_ERROR and details.errors list."""
+        """RequestValidationError gets error_code=VALIDATION_ERROR and detail as error list."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from pydantic import BaseModel
@@ -344,10 +348,14 @@ class TestGlobalDomainExceptionHandlers:
         assert resp.status_code == 422
         body = resp.json()
         _assert_error_schema(body, error_code="VALIDATION_ERROR")
-        assert "details" in body
-        assert "errors" in body["details"]
-        assert isinstance(body["details"]["errors"], list)
-        assert len(body["details"]["errors"]) >= 1
+        assert "detail" in body
+        assert isinstance(body["detail"], list)
+        assert len(body["detail"]) >= 1
+        # Verify structure matches FastAPI default
+        for err in body["detail"]:
+            assert "loc" in err
+            assert "msg" in err
+            assert "type" in err
 
 
 # ---------------------------------------------------------------------------
