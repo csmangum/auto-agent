@@ -43,6 +43,12 @@ CLAIMS_TABLE_SQLITE = """CREATE TABLE IF NOT EXISTS claims (
     purged_at TEXT,
     cold_storage_exported_at TEXT,
     cold_storage_export_key TEXT,
+    incident_latitude REAL,
+    incident_longitude REAL,
+    acknowledgment_due TEXT,
+    investigation_due TEXT,
+    payment_due TEXT,
+    settlement_agreed_at TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 )"""

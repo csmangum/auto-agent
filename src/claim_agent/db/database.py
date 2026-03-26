@@ -839,22 +839,27 @@ def _find_alembic_dir() -> Path | None:
     return None
 
 
-def _run_alembic_migrations(db_path: str) -> None:
+def _run_alembic_migrations(db_path: str, is_legacy: bool = False) -> None:
     """Apply pending Alembic migrations to a SQLite database.
 
     Uses Alembic as the single source of truth for schema evolution, replacing
     the previous inline ``_run_migrations()`` approach.
 
-    * **New databases** (``alembic_version`` table absent): the full schema has
-      already been created by :func:`_run_schema` via ``SCHEMA_SQL``.  The head
-      revision is *stamped* so that future ``alembic upgrade head`` calls are
-      no-ops without re-running every migration.
+    * **New databases** (``alembic_version`` table absent, ``is_legacy=False``): the
+      full schema has already been created by :func:`_run_schema` via ``SCHEMA_SQL``.
+      The head revision is *stamped* so that future ``alembic upgrade head`` calls
+      are no-ops without re-running every migration.
     * **Existing databases** (``alembic_version`` table present): ``upgrade head``
       is run to apply any pending migrations in revision order.
-    * **Legacy databases** (tables exist but no ``alembic_version``): all
-      Alembic migrations are idempotent for SQLite (they use ``IF NOT EXISTS``
-      guards and ``PRAGMA table_info`` checks), so ``upgrade head`` applies
-      safely from revision 001 onward.
+    * **Legacy databases** (tables exist but no ``alembic_version``, ``is_legacy=True``):
+      ``upgrade head`` is run to apply missing column additions and other schema
+      changes. Note that some early migrations create tables without ``IF NOT EXISTS``
+      guards; legacy detection ensures these are only run when needed.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        is_legacy: If True, indicates this is a legacy database (tables existed
+            before _run_schema was called). If False, indicates a fresh database.
 
     If the Alembic scripts directory cannot be located (e.g. a non-editable
     package install without the source tree), a warning is emitted and the
@@ -891,9 +896,16 @@ def _run_alembic_migrations(db_path: str) -> None:
                 has_version_table = False
 
         if has_version_table:
+            # Database already has Alembic version tracking: run pending migrations.
+            command.upgrade(cfg, "head")
+        elif is_legacy:
+            # Legacy database: tables exist but no alembic_version. Run upgrade to
+            # apply missing column additions and other schema changes.
             command.upgrade(cfg, "head")
         else:
             # Fresh database: schema already created via SCHEMA_SQL; stamp only.
+            # Migrations are NOT fully idempotent (some use CREATE TABLE without
+            # IF NOT EXISTS), so we must avoid running them on fresh databases.
             command.stamp(cfg, "head")
     except Exception:
         # Log and continue: the schema was already created via SCHEMA_SQL so the
@@ -939,9 +951,21 @@ def _run_schema(db_path: str) -> None:
         return  # PostgreSQL uses Alembic only
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Check if claims table exists BEFORE running SCHEMA_SQL to distinguish
+    # fresh databases from legacy (pre-Alembic) databases.
+    had_claims_table = False
+    if p.exists():
+        with sqlite3.connect(db_path) as conn:
+            try:
+                conn.execute("SELECT 1 FROM claims LIMIT 1")
+                had_claims_table = True
+            except sqlite3.OperationalError:
+                had_claims_table = False
+    
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
-    _run_alembic_migrations(db_path)
+    _run_alembic_migrations(db_path, is_legacy=had_claims_table)
 
 
 def init_db(path: str | None = None) -> None:

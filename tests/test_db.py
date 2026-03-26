@@ -15,7 +15,13 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_SIU_CASE_CREATED,
 )
 from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING, STATUS_SETTLED
-from claim_agent.db.database import _run_alembic_migrations, get_connection, get_db_path, row_to_dict
+from claim_agent.db.database import (
+    SCHEMA_SQL,
+    _run_alembic_migrations,
+    get_connection,
+    get_db_path,
+    row_to_dict,
+)
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError, InvalidClaimTransitionError
 from claim_agent.models.claim import ClaimInput
@@ -62,21 +68,21 @@ def test_init_db_follow_up_messages_has_topic_column(temp_db):
 
 
 def test_alembic_migrations_stamps_head_on_fresh_db():
-    """_run_alembic_migrations stamps the head Alembic revision on a fresh database."""
+    """_run_alembic_migrations runs upgrade on a fresh database (idempotent migrations)."""
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
-        # Simulate what _run_schema does: create the full schema first.
+        # Simulate what _run_schema does: create the full schema first via SCHEMA_SQL.
         conn = sqlite3.connect(path)
-        conn.execute("CREATE TABLE claims (id TEXT PRIMARY KEY)")
+        conn.executescript(SCHEMA_SQL)
         conn.commit()
         conn.close()
-        # No alembic_version table yet — expect a stamp, not a full migration run.
+        # No alembic_version table yet — expect upgrade to run (safe due to idempotent migrations).
         _run_alembic_migrations(path)
         conn = sqlite3.connect(path)
         rows = conn.execute("SELECT version_num FROM alembic_version").fetchall()
         conn.close()
-        assert len(rows) == 1, "Expected exactly one alembic_version row after stamp"
+        assert len(rows) == 1, "Expected exactly one alembic_version row after upgrade"
     finally:
         os.unlink(path)
 
