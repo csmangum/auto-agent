@@ -1548,7 +1548,10 @@ class PolicyRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="PAS API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     path_template: str = Field(
         default="/policies/{policy_number}",
         description="Path template; {policy_number} placeholder",
@@ -1569,7 +1572,10 @@ class ValuationRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="Valuation gateway base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     path_template: str = Field(
         default="",
         description="Path with {vin},{year},{make},{model} placeholders; empty = provider default",
@@ -1593,7 +1599,10 @@ class FraudReportingRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="Fraud filing gateway base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     state_bureau_path: str = Field(default="/fraud/state-bureau")
     nicb_path: str = Field(default="/fraud/nicb")
     niss_path: str = Field(default="/fraud/niss")
@@ -1612,7 +1621,10 @@ class StateBureauConfig(_CircuitBreakerFields):
     )
 
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
     supported_state_codes: tuple[str, ...] = Field(
         default=STATE_BUREAU_SUPPORTED_CODES,
@@ -1645,7 +1657,10 @@ class ClaimSearchRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="ClaimSearch API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     search_path: str = Field(
         default="/claims/search",
         description="Search endpoint path on the ClaimSearch API",
@@ -1673,7 +1688,10 @@ class ERPRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="ERP API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
     assignment_path: str = Field(
         default="/repairs/assignment",
@@ -1726,7 +1744,10 @@ class RepairShopRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="Shop management API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     shops_path: str = Field(default="/shops", description="Path for listing all shops")
     shop_path_template: str = Field(
         default="/shops/{shop_id}",
@@ -1752,7 +1773,10 @@ class PartsRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="Parts management API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     catalog_path: str = Field(default="/parts/catalog", description="Path for the parts catalog")
     response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
@@ -1770,7 +1794,10 @@ class SIURestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="SIU case management API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     cases_path: str = Field(default="/siu/cases", description="Path for creating/getting cases")
     notes_path_template: str = Field(
         default="/siu/cases/{case_id}/notes",
@@ -1796,7 +1823,10 @@ class NMVTISRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="NMVTIS gateway API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     report_path: str = Field(
         default="/nmvtis/reports",
         description="Path for submitting total-loss / salvage reports",
@@ -1817,7 +1847,10 @@ class GapInsuranceRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="Gap carrier API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     submit_path: str = Field(
         default="/gap/claims",
         description="Path for submitting shortfall claims",
@@ -1842,7 +1875,10 @@ class OCRRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="OCR API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     extract_path: str = Field(
         default="/ocr/extract",
         description="Path for document extraction endpoint",
@@ -1875,7 +1911,10 @@ class MedicalRecordsRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="HIE or provider portal base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     query_path: str = Field(
         default="/medical-records/query",
         description="Path for the records query endpoint",
@@ -1904,7 +1943,10 @@ class CMSRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="CMS reporting gateway base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     evaluate_path: str = Field(
         default="/cms/evaluate",
         description="Path for settlement reporting evaluation endpoint",
@@ -1925,7 +1967,10 @@ class ReverseImageRestConfig(_CircuitBreakerFields):
 
     base_url: str = Field(default="", description="Reverse-image provider API base URL")
     auth_header: str = Field(default="Authorization", description="Auth header name")
-    auth_value: SecretStr = Field(default=SecretStr(""), description="Bearer token or API key")
+    auth_value: SecretStr = Field(
+        default_factory=lambda: SecretStr(""),
+        description="Bearer token or API key",
+    )
     match_path: str = Field(
         default="/images/match",
         description="Path for image matching endpoint",
