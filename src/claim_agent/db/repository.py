@@ -286,16 +286,16 @@ class ClaimRepository:
     """
 
     def __init__(self, db_path: str | None = None):
-        self._db_path = db_path
-        # Focused sub-repositories (lazy composition via delegation)
-        self._note_repo = NoteRepository(db_path)
-        self._follow_up_repo = FollowUpRepository(db_path)
-        self._task_repo = TaskRepository(db_path)
-        self._subrogation_repo = SubrogationRepository(db_path)
-        self._workflow_repo = WorkflowRepository(db_path)
-        self._party_repo = ClaimPartyRepository(db_path)
-        self._search_repo = ClaimSearchRepository(db_path)
-        self._retention_repo = ClaimRetentionRepository(db_path)
+    self._db_path = db_path
+    # Focused sub-repositories composed via delegation
+    self._note_repo = NoteRepository(db_path)
+    self._follow_up_repo = FollowUpRepository(db_path)
+    self._task_repo = TaskRepository(db_path)
+    self._subrogation_repo = SubrogationRepository(db_path)
+    self._workflow_repo = WorkflowRepository(db_path)
+    self._party_repo = ClaimPartyRepository(db_path)
+    self._search_repo = ClaimSearchRepository(db_path)
+    self._retention_repo = ClaimRetentionRepository(db_path)
 
     @property
     def db_path(self) -> str | None:
