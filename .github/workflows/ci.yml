@@ -25,7 +25,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          pytest tests/ -v \
+          pytest tests/ -v -n auto \
             --ignore=tests/integration \
             --ignore=tests/e2e \
             --ignore=tests/load \

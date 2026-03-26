@@ -4,8 +4,10 @@ import os
 import sqlite3
 import tempfile
 from datetime import date
+from unittest import mock
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -17,6 +19,7 @@ from claim_agent.db.audit_events import (
 from claim_agent.db.constants import STATUS_OPEN, STATUS_PROCESSING, STATUS_SETTLED
 from claim_agent.db.database import (
     SCHEMA_SQL,
+    _find_alembic_dir,
     _run_alembic_migrations,
     get_connection,
     get_db_path,
@@ -25,6 +28,13 @@ from claim_agent.db.database import (
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError, InvalidClaimTransitionError
 from claim_agent.models.claim import ClaimInput
+
+
+def _sqlite_alembic_head_revision() -> str:
+    script = ScriptDirectory(str(_find_alembic_dir()))
+    heads = script.get_heads()
+    assert len(heads) == 1, heads
+    return heads[0]
 
 
 def test_get_db_path_default():
@@ -83,6 +93,7 @@ def test_alembic_migrations_stamps_head_on_fresh_db():
         rows = conn.execute("SELECT version_num FROM alembic_version").fetchall()
         conn.close()
         assert len(rows) == 1, "Expected exactly one alembic_version row after stamp"
+        assert rows[0][0] == _sqlite_alembic_head_revision()
     finally:
         os.unlink(path)
 
@@ -131,9 +142,41 @@ def test_alembic_migrations_add_follow_up_messages_topic_on_legacy_db():
         conn.close()
         assert "topic" in cols, "Migration 057 should have added the topic column"
         assert len(version_rows) == 1, f"Expected exactly one alembic_version row, got {len(version_rows)}"
-        assert version_rows[0][0] == "057", (
-            f"Expected alembic_version 057 after upgrade, got {version_rows[0][0]}"
-        )
+        assert version_rows[0][0] == _sqlite_alembic_head_revision()
+    finally:
+        os.unlink(path)
+
+
+def test_alembic_migrations_is_legacy_true_invokes_upgrade_when_no_version_table():
+    """No ``alembic_version`` row + ``is_legacy=True`` must call ``upgrade``, not ``stamp``."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        with (
+            mock.patch("alembic.command.upgrade") as mock_upgrade,
+            mock.patch("alembic.command.stamp") as mock_stamp,
+        ):
+            _run_alembic_migrations(path, is_legacy=True)
+        mock_upgrade.assert_called_once()
+        mock_upgrade.assert_called_with(mock.ANY, "head")
+        mock_stamp.assert_not_called()
+    finally:
+        os.unlink(path)
+
+
+def test_alembic_migrations_fresh_invokes_stamp_when_no_version_table():
+    """No ``alembic_version`` row + ``is_legacy=False`` stamps head (schema from ``SCHEMA_SQL``)."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        with (
+            mock.patch("alembic.command.upgrade") as mock_upgrade,
+            mock.patch("alembic.command.stamp") as mock_stamp,
+        ):
+            _run_alembic_migrations(path, is_legacy=False)
+        mock_stamp.assert_called_once()
+        mock_stamp.assert_called_with(mock.ANY, "head")
+        mock_upgrade.assert_not_called()
     finally:
         os.unlink(path)
 

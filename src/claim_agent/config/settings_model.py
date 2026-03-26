@@ -2175,6 +2175,17 @@ class Settings(BaseSettings):
             "considered stuck on startup recovery. Default: 30."
         ),
     )
+    shutdown_grace_period_seconds: int = Field(
+        default=30,
+        ge=0,
+        validation_alias="CLAIM_AGENT_SHUTDOWN_GRACE_SECONDS",
+        description=(
+            "Seconds to wait for in-flight background claim-processing tasks to finish "
+            "before cancelling them on server shutdown. Claims still running after this "
+            "period are cancelled and marked 'failed' with a recoverable flag so the "
+            "startup recovery scan can re-queue them. Default: 30."
+        ),
+    )
     idempotency_ttl_seconds: int = Field(
         default=86400,
         validation_alias="IDEMPOTENCY_TTL_SECONDS",

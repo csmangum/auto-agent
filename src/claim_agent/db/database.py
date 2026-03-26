@@ -83,6 +83,11 @@ from claim_agent.db.schema_rental_sqlite import (
     IDX_RENTAL_AUTH_CLAIM_ID,
     IDX_RENTAL_AUTH_REIMBURSEMENT_ID,
 )
+from claim_agent.db.schema_fraud_report_filings_sqlite import (
+    FRAUD_REPORT_FILINGS_TABLE_SQLITE,
+    IDX_FRAUD_FILINGS_CLAIM_ID,
+    IDX_FRAUD_FILINGS_FILING_TYPE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +390,7 @@ CREATE TABLE IF NOT EXISTS subrogation_cases (
     claim_id TEXT NOT NULL,
     case_id TEXT NOT NULL UNIQUE,
     amount_sought REAL NOT NULL,
+    recovery_amount REAL,
     opposing_carrier TEXT,
     status TEXT DEFAULT 'pending',
     arbitration_status TEXT,
@@ -397,6 +403,17 @@ CREATE TABLE IF NOT EXISTS subrogation_cases (
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_subrogation_cases_claim_id ON subrogation_cases(claim_id);
+
+-- Idempotency: duplicate request prevention for claim submission (revisions 024–025)
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    idempotency_key TEXT PRIMARY KEY,
+    response_status INTEGER NOT NULL,
+    response_body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed'
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
 
 -- Repair status: partial loss repair progress (received -> disassembly -> ... -> ready)
 CREATE TABLE IF NOT EXISTS repair_status (
@@ -586,6 +603,15 @@ CREATE INDEX IF NOT EXISTS idx_third_party_tokens_expires_at ON third_party_acce
 
 SCHEMA_SQL += (
     """
+-- Fraud report filings: state bureau, NICB, NISS audit trail (SIU compliance)
+"""
+    + FRAUD_REPORT_FILINGS_TABLE_SQLITE
+    + ";\n"
+    + IDX_FRAUD_FILINGS_CLAIM_ID
+    + ";\n"
+    + IDX_FRAUD_FILINGS_FILING_TYPE
+    + ";\n"
+    + """
 -- Rental authorizations: structured rental arrangements persisted when rental crew completes
 """
     + RENTAL_AUTHORIZATIONS_TABLE_SQLITE

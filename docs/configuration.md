@@ -428,6 +428,192 @@ Fraud variables: `FRAUD_MULTIPLE_CLAIMS_DAYS`, `FRAUD_MULTIPLE_CLAIMS_THRESHOLD`
 
 Valuation/partial loss: `VALUATION_*`, `PARTIAL_LOSS_*`. See `.env.example` for all variable names and defaults.
 
+## Secret Management
+
+### Overview
+
+By default, all secrets (API keys, JWT secret, database passwords, webhook
+secrets, etc.) are read from environment variables / the `.env` file.  For
+pilot and production deployments, **integrate with a centralized secret store**
+to enable rotation, audit trails, and access control without redeploying the
+application.
+
+The backend is selected by the `SECRET_PROVIDER` environment variable
+(default: `env`).  Secrets fetched from the external store are injected into
+the process environment **before** Pydantic Settings initialises, so the rest
+of the application is unaware of the source.  An existing environment variable
+always takes precedence over the value from the store (hard-wired overrides
+win).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRET_PROVIDER` | `env` | Secret backend: `env`, `aws_secrets_manager`, or `hashicorp_vault` |
+
+### Secrets managed by the provider
+
+The following application variables are expected as keys in the external secret
+store's JSON object.  Variables that are absent from the fetched secret fall
+back to the environment (or their Pydantic default):
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | LLM provider API key |
+| `JWT_SECRET` | JWT signing secret (≥ 32 chars) |
+| `API_KEYS` | Comma-separated `key:role[:user_id]` entries |
+| `CLAIMS_API_KEY` | Single legacy API key |
+| `WEBHOOK_SECRET` | HMAC-SHA256 signing secret for outbound webhooks |
+| `SENDGRID_API_KEY` | SendGrid email API key |
+| `TWILIO_AUTH_TOKEN` | Twilio SMS auth token |
+| `LANGSMITH_API_KEY` | LangSmith tracing key |
+| `OTP_PEPPER` | Server-side HMAC pepper for OTP codes |
+| `DATABASE_URL` | PostgreSQL primary connection URL |
+| `READ_REPLICA_DATABASE_URL` | PostgreSQL read-replica URL |
+
+### AWS Secrets Manager
+
+Store all secrets as a single JSON-valued secret:
+
+```json
+{
+  "OPENAI_API_KEY": "sk-or-v1-...",
+  "JWT_SECRET": "change-me-to-a-long-random-string-in-production",
+  "WEBHOOK_SECRET": "...",
+  "DATABASE_URL": "postgresql://user:pass@rds.example.com:5432/claims"
+}
+```
+
+Required configuration:
+
+```bash
+SECRET_PROVIDER=aws_secrets_manager
+AWS_SECRET_NAME=claim-agent/production   # ARN or friendly name
+AWS_REGION=us-east-1                    # Falls back to SDK region chain
+```
+
+Optional:
+
+```bash
+AWS_SECRET_VERSION_ID=        # Pin to a specific version UUID
+AWS_SECRET_VERSION_STAGE=     # Pin to a staging label (default: AWSCURRENT)
+```
+
+The AWS SDK authenticates via the standard credential chain (instance role,
+`~/.aws/credentials`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars).
+Install `boto3` with `pip install -e '.[s3]'`.
+
+#### IAM policy (least privilege)
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue"],
+      "Resource": "arn:aws:secretsmanager:us-east-1:ACCOUNT:secret:claim-agent/*"
+    }
+  ]
+}
+```
+
+### HashiCorp Vault
+
+Store secrets as a KV v2 (or v1) secret whose keys match the variable names above.
+
+```bash
+SECRET_PROVIDER=hashicorp_vault
+VAULT_ADDR=https://vault.example.com:8200
+VAULT_PATH=claim-agent/production        # KV path (no kv/data prefix)
+VAULT_KV_VERSION=2                       # default: 2
+```
+
+**Token auth (dev / CI):**
+
+```bash
+VAULT_TOKEN=s.XXXXXXXXXXXX
+```
+
+**AppRole auth (production — recommended):**
+
+```bash
+VAULT_ROLE_ID=<role-id>
+VAULT_SECRET_ID=<secret-id>
+```
+
+**TLS options:**
+
+```bash
+VAULT_CA_CERT=/etc/ssl/certs/vault-ca.pem   # Custom CA bundle
+VAULT_NAMESPACE=admin/                        # Vault Enterprise namespace
+VAULT_SKIP_VERIFY=false                       # Never true in production
+```
+
+Install the `hvac` client with `pip install hvac`.
+
+### Secret rotation procedures
+
+**Principle:** rotate secrets regularly and avoid downtime by staging a new
+secret value alongside the old one until all consumers have picked it up.
+
+#### API keys (`API_KEYS` / `CLAIMS_API_KEY`)
+
+1. Add the new key to `API_KEYS` alongside the old one (comma-separated).
+2. Distribute the new key to all consumers.
+3. After confirming consumers use the new key, remove the old entry from
+   `API_KEYS`.
+4. For AWS Secrets Manager: update the secret value and let the next pod
+   restart (or a SIGHUP / rolling deploy) pick it up.  For zero-downtime,
+   keep both keys in `API_KEYS` during the transition.
+
+#### JWT secret (`JWT_SECRET`)
+
+Changing `JWT_SECRET` immediately invalidates **all** existing access tokens
+(users must re-authenticate).  Rotate during a maintenance window, or
+implement a two-key verification window (verify with old key if new fails)
+outside of this codebase.
+
+1. Generate a new secret: `python -c "import secrets; print(secrets.token_hex(32))"`.
+2. Update the secret store with the new value.
+3. Trigger a rolling restart (Kubernetes: `kubectl rollout restart deployment/claim-agent`).
+
+#### Database password (`DATABASE_URL`)
+
+1. Create a new database user / rotate the existing password in your RDS /
+   Cloud SQL console or Vault database secrets engine.
+2. Update the secret in the store.
+3. Restart the application (rolling deploy); the new pool will use the new URL.
+4. Revoke or drop the old credentials after the rollout completes.
+
+#### Webhook secret (`WEBHOOK_SECRET`)
+
+1. Update the secret in the store.
+2. Coordinate with the receiving endpoint to accept the new signature (if
+   possible, keep the old secret active briefly for in-flight requests).
+3. Restart the application.
+
+#### SendGrid / Twilio keys
+
+1. Generate a new key in the provider's dashboard.
+2. Update the secret in the store.
+3. Restart the application.
+4. Revoke the old key in the provider's dashboard.
+
+#### Rotation schedule recommendations
+
+| Secret | Recommended cadence |
+|--------|---------------------|
+| API keys | 90 days or on personnel change |
+| JWT secret | 180 days |
+| Database password | 90 days |
+| Webhook secret | 180 days |
+| LLM provider key | On compromise or annually |
+
+#### Audit trail
+
+AWS Secrets Manager emits CloudTrail events for every `GetSecretValue` call.
+HashiCorp Vault's audit device logs every request.  Enable these in production
+to maintain a full access audit trail.
+
 ## LLM Configuration Code
 
 The module uses `load_dotenv()` and sets up observability (e.g. LangSmith) on first LLM use:

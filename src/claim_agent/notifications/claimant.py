@@ -139,7 +139,13 @@ def _report_delivery_failure(
                     response.status_code,
                 )
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to dispatch delivery-failure webhook: %s", exc)
+        if event in UCSPA_REQUIRED_EVENTS:
+            logger.error(
+                "Failed to dispatch delivery-failure webhook (UCSPA-related event): %s",
+                exc,
+            )
+        else:
+            logger.warning("Failed to dispatch delivery-failure webhook: %s", exc)
 
 
 def send_otp_notification(
