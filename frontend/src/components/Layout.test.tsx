@@ -1,29 +1,42 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
 import { RoleSimulationProvider } from '../context/RoleSimulationContext';
+import { ThemeProvider } from '../context/ThemeContext';
 import Layout from './Layout';
 
 describe('Layout', () => {
   beforeEach(() => {
     localStorage.clear();
+    document.documentElement.classList.remove('dark');
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
   });
 
   function renderLayout(initialPath = '/') {
     return render(
-      <AuthProvider>
-        <RoleSimulationProvider>
-          <MemoryRouter initialEntries={[initialPath]}>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route path="/" element={<div>Dashboard content</div>} />
-                <Route path="/claims" element={<div>Claims content</div>} />
-              </Route>
-            </Routes>
-          </MemoryRouter>
-        </RoleSimulationProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <RoleSimulationProvider>
+            <MemoryRouter initialEntries={[initialPath]}>
+              <Routes>
+                <Route element={<Layout />}>
+                  <Route path="/" element={<div>Dashboard content</div>} />
+                  <Route path="/claims" element={<div>Claims content</div>} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </RoleSimulationProvider>
+        </AuthProvider>
+      </ThemeProvider>
     );
   }
 
@@ -59,5 +72,12 @@ describe('Layout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     fireEvent.click(screen.getByTestId('sidebar-overlay'));
     expect(screen.getByRole('button', { name: 'Open menu' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('renders theme toggle in sidebar footer', () => {
+    renderLayout();
+    expect(screen.getByRole('button', { name: 'Light theme' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'System theme' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dark theme' })).toBeInTheDocument();
   });
 });

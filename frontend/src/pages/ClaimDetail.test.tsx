@@ -1,6 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useSearchParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ClaimDetail from './ClaimDetail';
 
@@ -84,7 +84,11 @@ function createWrapper(initialPath = '/claims/CLM-001') {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/claims/:claimId" element={children} />
+          </Routes>
+        </MemoryRouter>
       </QueryClientProvider>
     );
   };
@@ -269,7 +273,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /audit/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /audit/i }));
     expect(screen.getByText('Audit History')).toBeInTheDocument();
   });
 
@@ -279,7 +283,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /workflows/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /workflows/i }));
     expect(screen.getByText('No workflow runs')).toBeInTheDocument();
   });
 
@@ -289,7 +293,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /documents/i }));
     expect(screen.getByText('Upload Document')).toBeInTheDocument();
     expect(screen.getByText('No documents')).toBeInTheDocument();
   });
@@ -300,10 +304,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    // Tab button text: "📝 Notes (0)"
-    const notesTab = screen.getAllByRole('button').find(b => b.textContent?.includes('Notes ('));
-    expect(notesTab).toBeTruthy();
-    fireEvent.click(notesTab!);
+    fireEvent.click(screen.getByRole('tab', { name: /notes/i }));
     expect(screen.getByText('Quick Templates')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter your note...')).toBeInTheDocument();
   });
@@ -314,7 +315,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /payments/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /payments/i }));
     expect(screen.getByText('No payments')).toBeInTheDocument();
   });
 
@@ -324,7 +325,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /comms log/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /comms log/i }));
     expect(screen.getByText('Communication Log')).toBeInTheDocument();
   });
 
@@ -334,7 +335,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /coverage/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /coverage/i }));
     expect(screen.getByText('Policy not found')).toBeInTheDocument();
   });
 
@@ -344,7 +345,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /reserve/i }));
     expect(screen.getByText('Adjust Reserve')).toBeInTheDocument();
     expect(screen.getByLabelText(/amount/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Update Reserve' })).toBeInTheDocument();
@@ -356,7 +357,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /reserve/i }));
     
     const amountInput = screen.getByLabelText(/amount/i);
     const reasonInput = screen.getByLabelText(/reason/i);
@@ -386,7 +387,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /reserve/i }));
 
     const amountInput = screen.getByLabelText(/amount/i);
     const reasonInput = screen.getByLabelText(/reason/i);
@@ -414,7 +415,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /reserve/i }));
     expect(screen.getByText('⚠ Needs attention')).toBeInTheDocument();
     expect(screen.getByText('Reserve is below estimated damage')).toBeInTheDocument();
   });
@@ -445,7 +446,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /reserve/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /reserve/i }));
     expect(screen.getByText('Supplemental estimate')).toBeInTheDocument();
     expect(screen.getByText('user@example.com')).toBeInTheDocument();
   });
@@ -474,7 +475,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    fireEvent.click(screen.getByRole('button', { name: /workflows/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /workflows/i }));
     expect(screen.getByText('Run #1')).toBeInTheDocument();
     expect(screen.getByText('routed')).toBeInTheDocument();
     expect(screen.getByText('done')).toBeInTheDocument();
@@ -664,7 +665,7 @@ describe('ClaimDetail', () => {
       </Wrapper>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /documents/i }));
     const docHeadings = screen.getAllByText('Documents (1)');
     expect(docHeadings.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('estimate_v1.pdf')).toBeInTheDocument();
@@ -704,9 +705,7 @@ describe('ClaimDetail', () => {
       </Wrapper>
     );
 
-    const notesTab = screen.getAllByRole('button').find(b => b.textContent?.includes('Notes ('));
-    expect(notesTab).toBeTruthy();
-    fireEvent.click(notesTab!);
+    fireEvent.click(screen.getByRole('tab', { name: /notes/i }));
     expect(screen.getByText('Contacted claimant')).toBeInTheDocument();
     expect(screen.getByText('Please update me')).toBeInTheDocument();
   });
@@ -739,8 +738,66 @@ describe('ClaimDetail', () => {
       </Wrapper>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /documents/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /documents/i }));
     expect(screen.getByText('Document Requests (1)')).toBeInTheDocument();
     expect(screen.getByText(/From: police dept/)).toBeInTheDocument();
+  });
+
+  it('reads active tab from ?tab= search param', () => {
+    const WrapperWithParam = createWrapper('/claims/CLM-001?tab=audit');
+    vi.mocked(useClaimHistory).mockReturnValue({
+      data: {
+        claim_id: 'CLM-001',
+        history: [{ action: 'created', created_at: '2025-01-15 10:00:00' }],
+        total: 1,
+        limit: null,
+        offset: 0,
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+    render(
+      <WrapperWithParam>
+        <ClaimDetail />
+      </WrapperWithParam>
+    );
+    expect(screen.getByText('Audit History')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /audit/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('falls back to overview for an invalid ?tab= value', async () => {
+    function TabParamProbe() {
+      const [sp] = useSearchParams();
+      return <span data-testid="tab-param">{sp.get('tab') ?? ''}</span>;
+    }
+    const WrapperWithParam = createWrapper('/claims/CLM-001?tab=nonexistent');
+    render(
+      <WrapperWithParam>
+        <>
+          <ClaimDetail />
+          <TabParamProbe />
+        </>
+      </WrapperWithParam>
+    );
+    expect(screen.getByRole('tab', { name: /overview/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Claim Details')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('tab-param')).toHaveTextContent('');
+    });
+  });
+
+  it('tab buttons have correct WAI-ARIA attributes', () => {
+    render(
+      <Wrapper>
+        <ClaimDetail />
+      </Wrapper>
+    );
+    const tablist = screen.getByRole('tablist');
+    expect(tablist).toBeInTheDocument();
+    const overviewTab = screen.getByRole('tab', { name: /overview/i });
+    expect(overviewTab).toHaveAttribute('aria-selected', 'true');
+    expect(overviewTab).toHaveAttribute('aria-controls', 'claim-panel-overview');
+    const tabpanel = screen.getByRole('tabpanel');
+    expect(tabpanel).toHaveAttribute('aria-labelledby', 'claim-tab-overview');
   });
 });
