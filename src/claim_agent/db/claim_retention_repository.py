@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
+    ACTOR_WORKFLOW,
     AUDIT_EVENT_LITIGATION_HOLD,
     AUDIT_EVENT_RETENTION,
     AUDIT_EVENT_RETENTION_PURGED,
@@ -279,7 +280,7 @@ class ClaimRetentionRepository:
         claim_id: str,
         litigation_hold: bool,
         *,
-        actor_id: str = ACTOR_RETENTION,
+        actor_id: str = ACTOR_WORKFLOW,
     ) -> None:
         """Set or clear litigation hold on a claim. Logs to audit."""
         with get_connection(self._db_path) as conn:
