@@ -467,6 +467,13 @@ def _normalize_path(path: str) -> str:
 
 def _base_security_response_headers() -> dict[str, str]:
     """Headers applied to normal and redirect responses (browser hardening)."""
+    import os
+    # Only include Sentry ingest endpoint when VITE_SENTRY_DSN is configured
+    sentry_dsn = os.getenv("VITE_SENTRY_DSN", "").strip()
+    connect_src = "'self'"
+    if sentry_dsn:
+        connect_src += " https://*.ingest.sentry.io"
+    
     return {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
@@ -479,14 +486,14 @@ def _base_security_response_headers() -> dict[str, str]:
         # 'unsafe-inline' is retained for style-src because React components may apply
         # inline style attributes and Tailwind v4 injects CSS in dev mode.
         # Keep this policy string in sync with frontend/vite.config.ts (document CSP).
-        # connect-src includes Sentry ingest when VITE_SENTRY_DSN is used on the dashboard.
+        # connect-src includes Sentry ingest when VITE_SENTRY_DSN is configured.
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "font-src 'self' data:; "
-            "connect-src 'self' https://*.ingest.sentry.io; "
+            f"connect-src {connect_src}; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "frame-ancestors 'none'"

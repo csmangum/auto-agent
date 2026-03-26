@@ -7,13 +7,22 @@ import tailwindcss from '@tailwindcss/vite';
 // gets the same policy as API hardening comments describe.
 // https://*.ingest.sentry.io is added to connect-src to allow Sentry error
 // reporting when VITE_SENTRY_DSN is configured.
+const buildConnectSrc = (): string => {
+  const sentryDsn = process.env.VITE_SENTRY_DSN?.trim();
+  let connectSrc = "'self'";
+  if (sentryDsn) {
+    connectSrc += " https://*.ingest.sentry.io";
+  }
+  return connectSrc;
+};
+
 const documentCsp =
   "default-src 'self'; " +
   "script-src 'self'; " +
   "style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' data: blob:; " +
   "font-src 'self' data:; " +
-  "connect-src 'self' https://*.ingest.sentry.io; " +
+  `connect-src ${buildConnectSrc()}; ` +
   "object-src 'none'; " +
   "base-uri 'self'; " +
   "frame-ancestors 'none'";
