@@ -212,6 +212,7 @@ def get_notification_config() -> dict:
         "twilio_account_sid": s.twilio_account_sid,
         "twilio_auth_token": s.twilio_auth_token.get_secret_value(),
         "twilio_from_phone": s.twilio_from_phone,
+        "failure_webhook_url": s.failure_webhook_url,
     }
 
 
