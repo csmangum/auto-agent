@@ -14,6 +14,7 @@ from claim_agent.privacy.cross_border import (
     get_known_data_flows,
     list_transfer_log,
     log_transfer,
+    validate_scc_configuration,
 )
 from claim_agent.privacy.dpa_registry import (
     deactivate_dpa,
@@ -500,3 +501,171 @@ class TestPrivacySettings:
 
         s = reload_settings()
         assert s.privacy.data_region == "eu"
+
+    def test_scc_document_ref_field_exists(self):
+        from claim_agent.config import get_settings
+
+        settings = get_settings()
+        assert hasattr(settings.privacy, "scc_document_ref")
+
+    def test_env_override_scc_document_ref(self, monkeypatch):
+        monkeypatch.setenv("SCC_DOCUMENT_REF", "contracts/openai-dpa-2024.pdf")
+        from claim_agent.config import reload_settings
+
+        s = reload_settings()
+        assert s.privacy.scc_document_ref == "contracts/openai-dpa-2024.pdf"
+
+
+# ---------------------------------------------------------------------------
+# validate_scc_configuration
+# ---------------------------------------------------------------------------
+
+
+class TestValidateSccConfiguration:
+    def test_non_scc_mechanism_is_always_validated(self, monkeypatch):
+        """Non-SCC mechanisms do not require SCC document or DPA entry."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "legitimate_interests")
+        from claim_agent.config import reload_settings
+        reload_settings()
+        result = validate_scc_configuration()
+        assert result["validated"] is True
+        assert result["warnings"] == []
+        assert result["mechanism"] == "legitimate_interests"
+
+    def test_scc_mechanism_no_ref_no_dpa_fails(self, cb_db, monkeypatch):
+        """SCC mechanism with no document ref and no DPA registry entry → not validated."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "scc")
+        monkeypatch.delenv("SCC_DOCUMENT_REF", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        result = validate_scc_configuration(db_path=cb_db)
+        assert result["validated"] is False
+        assert result["dpa_entries_found"] == 0
+        # Expect exactly 2 warnings: one for missing SCC_DOCUMENT_REF, one for missing DPA entry
+        assert len(result["warnings"]) == 2
+        assert any("SCC_DOCUMENT_REF" in w for w in result["warnings"])
+        assert any("DPA registry" in w for w in result["warnings"])
+
+    def test_scc_mechanism_with_ref_no_dpa_still_fails(self, cb_db, monkeypatch):
+        """SCC document ref set but no DPA registry entry → not validated."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "scc")
+        monkeypatch.setenv("SCC_DOCUMENT_REF", "contracts/openai-dpa.pdf")
+        from claim_agent.config import reload_settings
+        reload_settings()
+        result = validate_scc_configuration(db_path=cb_db)
+        assert result["validated"] is False
+        assert result["dpa_entries_found"] == 0
+        assert result["scc_document_ref"] == "contracts/openai-dpa.pdf"
+        # Should have exactly 1 warning (missing DPA entry; ref is present)
+        assert len(result["warnings"]) == 1
+        assert "DPA registry" in result["warnings"][0]
+
+    def test_scc_mechanism_with_dpa_no_ref_still_fails(self, cb_db, monkeypatch):
+        """DPA entry registered but SCC_DOCUMENT_REF not set → not validated."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "scc")
+        monkeypatch.delenv("SCC_DOCUMENT_REF", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        register_dpa(
+            subprocessor_name="OpenAI",
+            service_type="llm",
+            data_categories=["claim_data"],
+            purpose="Automated claims processing",
+            destination_country="US",
+            mechanism="scc",
+            legal_basis="GDPR Art. 46(2)(c)",
+            dpa_document_ref="contracts/openai-dpa.pdf",
+            db_path=cb_db,
+        )
+        result = validate_scc_configuration(db_path=cb_db)
+        assert result["validated"] is False
+        assert result["dpa_entries_found"] == 1
+        # Warning should be only about missing SCC_DOCUMENT_REF
+        assert len(result["warnings"]) == 1
+        assert "SCC_DOCUMENT_REF" in result["warnings"][0]
+
+    def test_scc_fully_documented_is_validated(self, cb_db, monkeypatch):
+        """Both SCC_DOCUMENT_REF and a DPA registry entry present → validated."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "scc")
+        monkeypatch.setenv("SCC_DOCUMENT_REF", "contracts/openai-dpa-2024.pdf")
+        from claim_agent.config import reload_settings
+        reload_settings()
+        register_dpa(
+            subprocessor_name="OpenAI",
+            service_type="llm",
+            data_categories=["claim_data", "incident_description"],
+            purpose="Automated claims processing",
+            destination_country="US",
+            mechanism="scc",
+            legal_basis="GDPR Art. 46(2)(c) SCCs (EC 2021/914 Module 2)",
+            dpa_signed_date="2024-01-15",
+            dpa_document_ref="contracts/openai-dpa-2024.pdf",
+            supplementary_measures=["PII minimization", "TLS 1.2+"],
+            db_path=cb_db,
+        )
+        result = validate_scc_configuration(db_path=cb_db)
+        assert result["validated"] is True
+        assert result["warnings"] == []
+        assert result["dpa_entries_found"] == 1
+        assert result["scc_document_ref"] == "contracts/openai-dpa-2024.pdf"
+        assert result["mechanism"] == "scc"
+
+    def test_deactivated_dpa_not_counted(self, cb_db, monkeypatch):
+        """A deactivated DPA entry is not counted; validation still fails."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "scc")
+        monkeypatch.setenv("SCC_DOCUMENT_REF", "contracts/openai-dpa-2024.pdf")
+        from claim_agent.config import reload_settings
+        reload_settings()
+        dpa_id = register_dpa(
+            subprocessor_name="OpenAI",
+            service_type="llm",
+            data_categories=["claim_data"],
+            purpose="LLM processing",
+            destination_country="US",
+            mechanism="scc",
+            db_path=cb_db,
+        )
+        from claim_agent.privacy.dpa_registry import deactivate_dpa
+        deactivate_dpa(dpa_id, db_path=cb_db)
+
+        result = validate_scc_configuration(db_path=cb_db)
+        assert result["validated"] is False
+        assert result["dpa_entries_found"] == 0
+
+    def test_check_and_log_adds_scc_warnings_when_undocumented(self, cb_db, monkeypatch):
+        """check_and_log_llm_transfer surfaces SCC validation warnings when undocumented."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "scc")
+        monkeypatch.setenv("CROSS_BORDER_POLICY", "allow")
+        monkeypatch.delenv("SCC_DOCUMENT_REF", raising=False)
+        from claim_agent.config import reload_settings
+        reload_settings()
+        claim = {"claim_id": "CLM-SCC-WARN", "loss_state": "California"}
+        result = check_and_log_llm_transfer(claim, db_path=cb_db)
+        # Transfer is still permitted (allow policy), but warnings are surfaced
+        assert result["permitted"] is True
+        assert any("SCC_DOCUMENT_REF" in w or "No active DPA registry entry" in w for w in result["warnings"])
+
+    def test_check_and_log_no_extra_warnings_when_scc_documented(self, cb_db, monkeypatch):
+        """check_and_log_llm_transfer emits no SCC warnings when fully documented."""
+        monkeypatch.setenv("LLM_TRANSFER_MECHANISM", "scc")
+        monkeypatch.setenv("CROSS_BORDER_POLICY", "allow")
+        monkeypatch.setenv("SCC_DOCUMENT_REF", "contracts/openai-dpa-2024.pdf")
+        from claim_agent.config import reload_settings
+        reload_settings()
+        register_dpa(
+            subprocessor_name="OpenAI",
+            service_type="llm",
+            data_categories=["claim_data"],
+            purpose="LLM processing",
+            destination_country="US",
+            mechanism="scc",
+            dpa_document_ref="contracts/openai-dpa-2024.pdf",
+            db_path=cb_db,
+        )
+        claim = {"claim_id": "CLM-SCC-OK", "loss_state": "California"}
+        result = check_and_log_llm_transfer(claim, db_path=cb_db)
+        assert result["permitted"] is True
+        # No SCC-related warnings should be present
+        scc_warnings = [w for w in result.get("warnings", []) if "SCC_DOCUMENT_REF" in w or "No active DPA registry entry" in w]
+        assert scc_warnings == []
+
