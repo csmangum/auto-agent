@@ -49,7 +49,7 @@ def _submit_one(client, index: int) -> tuple[float, bool, int]:
 @pytest.mark.load
 @pytest.mark.slow
 def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
-    """Run concurrent POST /api/claims and report throughput, latency, error rate.
+    """Run concurrent POST /api/v1/claims and report throughput, latency, error rate.
 
     Concurrency is configurable via LOAD_TEST_CONCURRENCY (default 10).
     Each worker uses its own TestClient to avoid sharing a non-thread-safe client.

@@ -60,7 +60,7 @@ If the agent runs behind a reverse proxy or on a different port, adjust `targets
 
 ## Alertmanager Integration
 
-Edit `monitoring/alertmanager.yml` to add your receivers. Example for a Slack webhook:
+Routes with `job="claim-agent"` use the `claims-team` receiver only (they are not duplicated to `default`). Edit `monitoring/alertmanager.yml` to add your receivers. Example for a Slack webhook:
 
 ```yaml
 receivers:
