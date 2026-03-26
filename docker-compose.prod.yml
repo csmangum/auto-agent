@@ -16,7 +16,7 @@
 #   OPENAI_API_BASE     — LLM base URL (e.g. https://openrouter.ai/api/v1)
 #   OPENAI_MODEL_NAME   — LLM model name (default: gpt-4o-mini)
 #   RUN_MIGRATIONS_ON_STARTUP — Apply Alembic migrations at startup (default: true)
-#   GRAFANA_ADMIN_PASSWORD    — Grafana admin password (default: admin; MUST be changed before going live)
+#   GRAFANA_ADMIN_PASSWORD    — Grafana admin password (required when using the monitoring profile)
 #
 # TLS certificates:
 #   Mount your certificate chain and private key at the paths specified by
@@ -157,9 +157,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # WARNING: Change GRAFANA_ADMIN_PASSWORD before exposing Grafana publicly.
-      # The default 'admin' password must be replaced for any internet-facing deployment.
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Required when the monitoring profile is enabled (no insecure default).
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD when using the monitoring profile}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=https://${DOMAIN:-localhost}/grafana
     volumes:

@@ -853,7 +853,7 @@ class TestRepositoryWebhookIntegration:
                     {"id": claim_id},
                 )
 
-            with patch("claim_agent.db.repository.emit_claim_event") as mock:
+            with patch("claim_agent.db.claim_retention_repository.emit_claim_event") as mock:
                 repo.archive_claim(claim_id)
                 mock.assert_called_once()
                 event = mock.call_args[0][0]
@@ -901,7 +901,7 @@ class TestRepositoryWebhookIntegration:
                     ),
                     {"id": claim_id},
                 )
-            with patch("claim_agent.db.repository.emit_claim_event") as mock:
+            with patch("claim_agent.db.claim_retention_repository.emit_claim_event") as mock:
                 repo.purge_claim(claim_id)
                 mock.assert_called_once()
                 event = mock.call_args[0][0]

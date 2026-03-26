@@ -149,7 +149,7 @@ class TestKnownDataFlows:
 
 
 class TestCheckTransferPermitted:
-    def test_us_to_us_always_allowed(self, monkeypatch):
+    def test_us_to_us_always_allowed(self):
         result = check_transfer_permitted(
             source_jurisdiction="California",
             destination_provider="openai",

@@ -1,5 +1,7 @@
 claim-agent has been deployed.
 
+Do not also apply the flat manifests under `k8s/` into the same namespace — use either Helm or `k8s/`, not both.
+
 Release: {{ .Release.Name }}  Namespace: {{ .Release.Namespace }}
 
 - Service: {{ include "claim-agent.fullname" . }} ({{ .Values.service.type }})

@@ -27,6 +27,7 @@ from claim_agent.api.routes.claims import (
     _upload_file_size_exceeded_detail,
 )
 from claim_agent.context import ClaimContext
+from claim_agent.exceptions import DomainValidationError
 from claim_agent.db.constants import DISPUTABLE_STATUSES
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.payment_repository import PaymentRepository
@@ -455,6 +456,11 @@ def record_portal_follow_up_response(
             expected_claim_id=claim_id,
         )
         return {"success": True, "message": "Response recorded"}
+    except DomainValidationError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

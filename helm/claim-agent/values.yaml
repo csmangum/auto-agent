@@ -118,8 +118,9 @@ resources:
     memory: "1Gi"
 
 # ── Autoscaling ───────────────────────────────────────────────────────────────
+# Enabled by default to align with raw manifests in k8s/hpa.yaml; disable for minimal dev installs.
 autoscaling:
-  enabled: false
+  enabled: true
   minReplicas: 2
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
@@ -131,8 +132,9 @@ podDisruptionBudget:
   minAvailable: 1
 
 # ── Network Policy ────────────────────────────────────────────────────────────
+# Enabled by default to align with raw manifests in k8s/networkpolicy.yaml; disable if your CNI does not support NetworkPolicy.
 networkPolicy:
-  enabled: false
+  enabled: true
   # -- Namespace label for the ingress controller (used to scope ingress traffic).
   ingressControllerNamespace: "ingress-nginx"
   # -- Egress destination CIDRs (0.0.0.0/0 allows any; tighten for production).

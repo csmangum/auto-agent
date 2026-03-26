@@ -6,7 +6,7 @@ import logging
 from crewai.tools import tool
 
 from claim_agent.db.repository import ClaimRepository
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.models.user import UserType
 from claim_agent.notifications.user import notify_user
 
@@ -143,6 +143,8 @@ def send_user_message(
         )
     except ClaimNotFoundError:
         return json.dumps({"success": False, "message": f"Claim not found: {claim_id}"})
+    except DomainValidationError as e:
+        return json.dumps({"success": False, "message": str(e)})
     except Exception:
         logger.exception("Unexpected error sending follow-up for claim %s", claim_id)
         return json.dumps(
@@ -199,6 +201,8 @@ def record_user_response(
         return json.dumps(
             {"success": True, "message": "Response recorded"}
         )
+    except DomainValidationError as e:
+        return json.dumps({"success": False, "message": str(e)})
     except ValueError as e:
         return json.dumps({"success": False, "message": str(e)})
     except Exception:

@@ -80,7 +80,9 @@ class TestTaskRepository:
     def test_update_task_not_found_raises(self, seeded_temp_db):
         from claim_agent.db.repository import ClaimRepository
         repo = ClaimRepository()
-        with pytest.raises(ValueError, match="Task not found"):
+        from claim_agent.exceptions import DomainValidationError
+
+        with pytest.raises(DomainValidationError, match="Task not found"):
             repo.update_task(99999, status="completed")
 
     def test_get_tasks_for_claim_returns_list(self, seeded_temp_db):
@@ -198,11 +200,13 @@ class TestTaskRepository:
         assert len(updated["resolution_notes"]) <= 5000
 
     def test_update_task_empty_title_repo(self, seeded_temp_db):
-        """update_task raises ValueError when title sanitizes to empty."""
+        """update_task raises DomainValidationError when title sanitizes to empty."""
         from claim_agent.db.repository import ClaimRepository
+        from claim_agent.exceptions import DomainValidationError
+
         repo = ClaimRepository()
         task_id = repo.create_task("CLM-TEST001", "T", "other")
-        with pytest.raises(ValueError, match="empty"):
+        with pytest.raises(DomainValidationError, match="empty"):
             repo.update_task(task_id, title="   ")
 
     def test_create_task_audit_log_entry(self, seeded_temp_db):

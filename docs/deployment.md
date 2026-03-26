@@ -2,6 +2,15 @@
 
 This document covers how to deploy claim-agent to a production Kubernetes cluster using either raw manifests or the bundled Helm chart. It also includes notes on AWS ECS deployment.
 
+## Kubernetes: pick one path (`k8s/` **or** Helm)
+
+The **`k8s/`** directory and the **`helm/claim-agent/`** chart are **alternatives**. They are **not** meant to be applied together in the same namespace: you would get duplicate Deployments, Services, or conflicting resource names.
+
+- Use **`kubectl apply -f k8s/`** when you want fixed resource names and manifests that always include NetworkPolicy and HPA (as checked into the repo).
+- Use **`helm install|upgrade`** when you want templated values, checksum-based rollouts, and optional components toggled via `values.yaml`.
+
+Default **Helm** values now match the raw manifests for **autoscaling** and **network policy** (both enabled). For **Pod Security** labels on the namespace, either apply [`k8s/namespace.yaml`](k8s/namespace.yaml) before Helm, or pre-create the namespace with equivalent `pod-security.kubernetes.io/*` labels—`helm install --create-namespace` alone does not add those labels.
+
 ## Prerequisites
 
 - A container image built from the repository `Dockerfile` and pushed to a registry accessible from your cluster.
@@ -205,9 +214,9 @@ helm upgrade --install claim-agent ./helm/claim-agent \
 | `secrets.apiKeys` | — | Comma-separated `key:role` pairs |
 | `secrets.jwtSecret` | — | JWT signing secret |
 | `ingress.enabled` | `false` | Create an Ingress resource |
-| `autoscaling.enabled` | `false` | Enable HorizontalPodAutoscaler |
+| `autoscaling.enabled` | `true` | Enable HorizontalPodAutoscaler (matches raw `k8s/hpa.yaml`; set `false` for minimal dev) |
 | `podDisruptionBudget.enabled` | `true` | Enable PodDisruptionBudget |
-| `networkPolicy.enabled` | `false` | Enable NetworkPolicy |
+| `networkPolicy.enabled` | `true` | Enable NetworkPolicy (matches raw `k8s/networkpolicy.yaml`; set `false` if CNI unsupported) |
 | `networkPolicy.egress.*` | `0.0.0.0/0` CIDRs | Egress `to:` scoping (tighten for production) |
 | `existingSecret` | `""` | Use a pre-existing Secret instead of creating one |
 
@@ -352,7 +361,7 @@ See `.env.example` for the full list of supported environment variables. The mos
 
 - [ ] Replace all `CHANGE_ME` placeholder values in `k8s/secret.yaml` before applying.
 - [ ] Use an external secrets manager (AWS Secrets Manager, Vault, Sealed Secrets) in production — do not commit plaintext credentials to Git.
-- [ ] Enable `networkPolicy.enabled: true` in Helm values to restrict pod-level network traffic.
+- [ ] Confirm NetworkPolicy matches your cluster (Helm defaults to `networkPolicy.enabled: true`; disable only if your CNI does not support it).
 - [ ] Set `readOnlyRootFilesystem: true` — the manifests already include ephemeral `emptyDir` volumes for `/tmp` and `/app/data`.
 - [ ] Pin image tags — avoid `latest` in production; use explicit version tags.
 - [ ] Configure IRSA (EKS) or Workload Identity (GKE) on the ServiceAccount instead of long-lived AWS credentials.
