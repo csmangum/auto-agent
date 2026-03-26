@@ -192,6 +192,9 @@ PRIORITY_VALUES = ("critical", "high", "medium", "low")
 
 _background_tasks: set[asyncio.Task] = set()
 _background_tasks_lock = asyncio.Lock()
+# Maps each in-flight background task to the claim_id it is processing.
+# Used by the graceful-shutdown handler to mark interrupted claims as failed.
+_task_claim_ids: dict[asyncio.Task, str] = {}
 
 # Per-claim locks to prevent concurrent approve requests from racing (same claim_id).
 # Note: In multi-process deployments, use a distributed lock (e.g. Redis) instead.
@@ -277,7 +280,13 @@ def _run_workflow_background(
 
     task = asyncio.create_task(run_in_thread())
     _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    _task_claim_ids[task] = claim_id
+
+    def _on_done(t: asyncio.Task) -> None:
+        _background_tasks.discard(t)
+        _task_claim_ids.pop(t, None)
+
+    task.add_done_callback(_on_done)
     return task
 
 
