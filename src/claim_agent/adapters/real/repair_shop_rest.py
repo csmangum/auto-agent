@@ -55,12 +55,16 @@ class RestRepairShopAdapter(RepairShopAdapter):
         labor_path: str = "/shops/labor-operations",
         response_key: str | None = None,
         timeout: float = 15.0,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         self._shops_path = shops_path
         self._shop_path_template = shop_path_template.strip()
@@ -164,4 +168,6 @@ def create_rest_repair_shop_adapter() -> RestRepairShopAdapter:
         labor_path=cfg.labor_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )

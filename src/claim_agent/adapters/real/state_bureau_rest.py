@@ -23,10 +23,14 @@ class RestStateBureauAdapter(StateBureauAdapter):
         auth_value: str = "",
         timeout: float = 15.0,
         state_endpoints: dict[str, str] | None = None,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._auth_header = auth_header
         self._auth_value = auth_value
         self._timeout = timeout
+        self._circuit_failure_threshold = circuit_failure_threshold
+        self._circuit_recovery_timeout = circuit_recovery_timeout
         self._state_endpoints = {
             k.strip().upper(): (v or "").strip()
             for k, v in (state_endpoints or {}).items()
@@ -48,6 +52,8 @@ class RestStateBureauAdapter(StateBureauAdapter):
                 auth_header=self._auth_header,
                 auth_value=self._auth_value,
                 timeout=self._timeout,
+                circuit_failure_threshold=self._circuit_failure_threshold,
+                circuit_recovery_timeout=self._circuit_recovery_timeout,
             )
             self._clients[state_code] = client
         return client

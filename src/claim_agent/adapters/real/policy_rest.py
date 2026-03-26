@@ -47,12 +47,16 @@ class RestPolicyAdapter(PolicyAdapter):
         path_template: str | None = None,
         response_key: str | None = None,
         timeout: float = 15.0,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         self._path_template = (path_template or _default_path_template()).strip()
         self._response_key = (response_key or "").strip() or None

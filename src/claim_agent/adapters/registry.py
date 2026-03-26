@@ -109,6 +109,8 @@ def _policy_rest_factory() -> PolicyAdapter:
         path_template=cfg.path_template or None,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )
 
 
@@ -128,6 +130,8 @@ def _state_bureau_rest_factory() -> StateBureauAdapter:
         auth_value=cfg.auth_value,
         timeout=cfg.timeout,
         state_endpoints=endpoints,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )
 
 

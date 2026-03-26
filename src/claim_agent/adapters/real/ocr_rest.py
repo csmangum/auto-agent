@@ -50,12 +50,16 @@ class RestOCRAdapter(OCRAdapter):
         extract_path: str = "/ocr/extract",
         response_key: str | None = None,
         timeout: float = 30.0,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         self._extract_path = extract_path
         self._response_key = (response_key or "").strip() or None
@@ -121,4 +125,6 @@ def create_rest_ocr_adapter() -> RestOCRAdapter:
         extract_path=cfg.extract_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )

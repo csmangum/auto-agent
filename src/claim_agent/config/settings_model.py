@@ -1489,6 +1489,15 @@ class PolicyRestConfig(BaseSettings):
     )
     response_key: str = Field(default="", description="JSON key for policy (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class ValuationRestConfig(BaseSettings):
@@ -1513,6 +1522,15 @@ class ValuationRestConfig(BaseSettings):
         description="Optional JSON envelope key (e.g. data) before normalization",
     )
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class FraudReportingRestConfig(BaseSettings):
@@ -1533,6 +1551,15 @@ class FraudReportingRestConfig(BaseSettings):
     niss_path: str = Field(default="/fraud/niss")
     response_key: str = Field(default="", description="Optional envelope JSON key")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class StateBureauConfig(BaseSettings):
@@ -1548,6 +1575,15 @@ class StateBureauConfig(BaseSettings):
     auth_header: str = Field(default="Authorization", description="Auth header name")
     auth_value: str = Field(default="", description="Bearer token or API key")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
     supported_state_codes: tuple[str, ...] = Field(
         default=STATE_BUREAU_SUPPORTED_CODES,
         description="Supported state bureau endpoint codes for configuration mapping.",
@@ -1589,6 +1625,15 @@ class ClaimSearchRestConfig(BaseSettings):
         description="Optional JSON envelope key containing the results list (e.g. 'results')",
     )
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class ERPRestConfig(BaseSettings):
@@ -1609,6 +1654,15 @@ class ERPRestConfig(BaseSettings):
     auth_header: str = Field(default="Authorization", description="Auth header name")
     auth_value: str = Field(default="", description="Bearer token or API key")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
     assignment_path: str = Field(
         default="/repairs/assignment",
         description="API path for repair assignment notifications",
@@ -1672,6 +1726,15 @@ class RepairShopRestConfig(BaseSettings):
     )
     response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class PartsRestConfig(BaseSettings):
@@ -1690,6 +1753,15 @@ class PartsRestConfig(BaseSettings):
     catalog_path: str = Field(default="/parts/catalog", description="Path for the parts catalog")
     response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class SIURestConfig(BaseSettings):
@@ -1716,6 +1788,15 @@ class SIURestConfig(BaseSettings):
     )
     response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class NMVTISRestConfig(BaseSettings):
@@ -1737,6 +1818,15 @@ class NMVTISRestConfig(BaseSettings):
     )
     response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class GapInsuranceRestConfig(BaseSettings):
@@ -1762,6 +1852,15 @@ class GapInsuranceRestConfig(BaseSettings):
     )
     response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class OCRRestConfig(BaseSettings):
@@ -1790,6 +1889,15 @@ class OCRRestConfig(BaseSettings):
         ge=1.0,
         le=300.0,
         description="Request timeout seconds (larger for OCR processing)",
+    )
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
     )
 
 
@@ -1824,6 +1932,15 @@ class MedicalRecordsRestConfig(BaseSettings):
         le=300.0,
         description="Request timeout seconds",
     )
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class CMSRestConfig(BaseSettings):
@@ -1845,6 +1962,15 @@ class CMSRestConfig(BaseSettings):
     )
     response_key: str = Field(default="", description="Optional JSON envelope key (e.g. data)")
     timeout: float = Field(default=15.0, ge=1.0, le=120.0, description="Request timeout seconds")
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
+    )
 
 
 class ReverseImageRestConfig(BaseSettings):
@@ -1873,6 +1999,15 @@ class ReverseImageRestConfig(BaseSettings):
         ge=1.0,
         le=300.0,
         description="Request timeout seconds (larger for image upload and processing)",
+    )
+    circuit_failure_threshold: int = Field(
+        default=5, ge=1, le=100, description="Circuit breaker: failures before opening the circuit"
+    )
+    circuit_recovery_timeout: float = Field(
+        default=60.0,
+        ge=1.0,
+        le=600.0,
+        description="Circuit breaker: seconds before half-open recovery attempt",
     )
 
 
