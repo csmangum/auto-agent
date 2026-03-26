@@ -147,17 +147,22 @@ def verify_unified_portal_token(
     *,
     db_path: str | None = None,
 ) -> UnifiedTokenRecord | None:
-    """Return record if token is valid and not expired/revoked; None otherwise."""
+    """Return record if token is valid, not expired/revoked, and not inactive; None otherwise.
+
+    On success the token's ``last_used_at`` timestamp is updated to enforce the
+    inactivity timeout on subsequent calls.
+    """
     if not raw_token or not raw_token.strip():
         return None
     token_hash = _hash_token(raw_token.strip())
     now = datetime.now(timezone.utc)
+    settings = get_settings()
     path = db_path or get_db_path()
     now_param: datetime | str = now if is_postgres_backend() else _ts(now)
     with get_connection(path) as conn:
         row = conn.execute(
             text("""
-                SELECT id, role, scopes, claim_id, shop_id
+                SELECT id, role, scopes, claim_id, shop_id, last_used_at
                 FROM external_portal_tokens
                 WHERE token_hash = :token_hash
                   AND expires_at > :now
@@ -165,31 +170,65 @@ def verify_unified_portal_token(
             """),
             {"token_hash": token_hash, "now": now_param},
         ).fetchone()
-    if row is None:
-        return None
-    rec = row_to_dict(row)
-    role_str = str(rec.get("role") or "").strip()
-    if role_str not in KNOWN_PORTAL_ROLES:
-        logger.warning(
-            "Rejecting unified portal token with unknown role from database: %r",
-            role_str,
+        if row is None:
+            return None
+        rec = row_to_dict(row)
+        role_str = str(rec.get("role") or "").strip()
+        if role_str not in KNOWN_PORTAL_ROLES:
+            logger.warning(
+                "Rejecting unified portal token with unknown role from database: %r",
+                role_str,
+            )
+            return None
+        # Determine inactivity timeout based on role
+        if role_str == "repair_shop":
+            inactivity_days = settings.repair_shop_portal.inactivity_timeout_days
+        elif role_str == "tpa":
+            inactivity_days = settings.third_party_portal.inactivity_timeout_days
+        else:
+            inactivity_days = settings.portal.inactivity_timeout_days
+        inactivity_cutoff = now - timedelta(days=inactivity_days)
+        # Enforce inactivity timeout
+        last_used = rec.get("last_used_at")
+        if last_used is not None:
+            try:
+                last_used_dt = datetime.fromisoformat(str(last_used).replace("Z", "+00:00"))
+                if last_used_dt.tzinfo is None:
+                    last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
+                if last_used_dt < inactivity_cutoff:
+                    logger.info(
+                        "Rejecting inactive unified portal token id=%s role=%s",
+                        rec.get("id"),
+                        role_str,
+                    )
+                    return None
+            except (ValueError, TypeError):
+                pass
+        raw_scopes = rec.get("scopes")
+        try:
+            scopes = json.loads(raw_scopes or "[]")
+        except (ValueError, TypeError):
+            logger.warning(
+                "Rejecting unified portal token id=%s: invalid scopes JSON in database",
+                rec.get("id"),
+            )
+            return None
+        if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
+            logger.warning(
+                "Rejecting unified portal token id=%s: scopes must be a JSON array of strings",
+                rec.get("id"),
+            )
+            return None
+        # Update last_used_at
+        conn.execute(
+            text("""
+                UPDATE external_portal_tokens
+                SET last_used_at = :now
+                WHERE id = :token_id
+            """),
+            {"now": now_param, "token_id": rec["id"]},
         )
-        return None
-    raw_scopes = rec.get("scopes")
-    try:
-        scopes = json.loads(raw_scopes or "[]")
-    except (ValueError, TypeError):
-        logger.warning(
-            "Rejecting unified portal token id=%s: invalid scopes JSON in database",
-            rec.get("id"),
-        )
-        return None
-    if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
-        logger.warning(
-            "Rejecting unified portal token id=%s: scopes must be a JSON array of strings",
-            rec.get("id"),
-        )
-        return None
+        conn.commit()
     return UnifiedTokenRecord(
         token_id=int(rec["id"]),
         role=role_str,  # type: ignore[arg-type]

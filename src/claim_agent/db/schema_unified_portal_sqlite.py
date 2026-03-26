@@ -26,6 +26,7 @@ EXTERNAL_PORTAL_TOKENS_TABLE_SQLITE = """CREATE TABLE IF NOT EXISTS external_por
     shop_id TEXT,
     expires_at TEXT NOT NULL,
     revoked_at TEXT,
+    last_used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 )"""

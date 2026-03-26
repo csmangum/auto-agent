@@ -478,6 +478,7 @@ CREATE TABLE IF NOT EXISTS claim_access_tokens (
     party_id INTEGER,
     email TEXT,
     expires_at TEXT NOT NULL,
+    last_used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id),
     FOREIGN KEY (party_id) REFERENCES claim_parties(id)
@@ -493,6 +494,7 @@ CREATE TABLE IF NOT EXISTS repair_shop_access_tokens (
     token_hash TEXT NOT NULL,
     shop_id TEXT,
     expires_at TEXT NOT NULL,
+    last_used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
@@ -507,6 +509,7 @@ CREATE TABLE IF NOT EXISTS third_party_access_tokens (
     token_hash TEXT NOT NULL,
     party_id INTEGER,
     expires_at TEXT NOT NULL,
+    last_used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (claim_id) REFERENCES claims(id),
     FOREIGN KEY (party_id) REFERENCES claim_parties(id)
