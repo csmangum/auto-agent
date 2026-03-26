@@ -2,7 +2,7 @@
 
 Used by ``database.py`` (``SCHEMA_SQL``) and serves as the canonical column-set
 reference for parity tests against ``alembic/versions/023_postgres_full_schema.py``
-plus the later ADD-COLUMN migrations (029, 033, 034, 050).
+plus the later ADD-COLUMN migrations (026, 029, 033, 034, 042, 043, 044, 050).
 
 PostgreSQL equivalents live in the Alembic migrations; keep column names and
 nullability logically aligned when changing either side.
@@ -45,9 +45,15 @@ CLAIMS_TABLE_SQLITE = """CREATE TABLE IF NOT EXISTS claims (
     cold_storage_export_key TEXT,
     incident_latitude REAL,
     incident_longitude REAL,
+    acknowledged_at TEXT,
     acknowledgment_due TEXT,
     investigation_due TEXT,
     payment_due TEXT,
+    denial_reason TEXT,
+    denial_letter_sent_at TEXT,
+    denial_letter_body TEXT,
+    last_claimant_communication_at TEXT,
+    communication_response_due TEXT,
     settlement_agreed_at TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))

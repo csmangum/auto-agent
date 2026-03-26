@@ -4,10 +4,15 @@ Verifies that ``CLAIMS_TABLE_SQLITE`` and ``CLAIM_AUDIT_LOG_TABLE_SQLITE`` in
 ``schema_core_sqlite.py`` stay aligned with the PostgreSQL schema built from:
 
   - ``023_postgres_full_schema.py`` – initial CREATE TABLE definitions
+  - ``026_ucspa_compliance.py`` – UCSPA deadline and denial columns on ``claims``
   - ``029_litigation_hold_and_dsar_deletion.py`` – adds ``litigation_hold``
   - ``033_settlement_workflow_flags.py`` – adds ``repair_ready_for_settlement``,
     ``total_loss_settlement_authorized``
   - ``034_retention_tier_and_purge.py`` – adds ``retention_tier``, ``purged_at``
+  - ``042_settlement_agreed_at.py`` – adds ``settlement_agreed_at``
+  - ``043_incident_coordinates.py`` – adds ``incident_latitude``, ``incident_longitude``
+  - ``044_communication_response_deadline.py`` – adds ``last_claimant_communication_at``,
+    ``communication_response_due``
   - ``050_cold_storage_export.py`` – adds ``cold_storage_exported_at``,
     ``cold_storage_export_key``
 
@@ -118,16 +123,31 @@ def _postgres_branch(source: str) -> str:
     return source[else_pos:end]
 
 
+# Columns added in 026's postgres branch via f-string SQL; regex cannot expand ``{col}``.
+_UCSPA_026_POSTGRES_CLAIM_COLUMNS = frozenset(
+    {
+        "acknowledged_at",
+        "acknowledgment_due",
+        "investigation_due",
+        "payment_due",
+        "denial_reason",
+        "denial_letter_sent_at",
+        "denial_letter_body",
+    }
+)
+
+
 def _postgres_claims_columns() -> set[str]:
     """Build the full postgres ``claims`` column set.
 
     Combines the initial CREATE TABLE from revision 023 with the ADD COLUMN
     statements from later migrations that have a postgres-specific path
-    (029, 033, 034, 050).  Migrations 014 and 016 return early for postgres
+    (026, 029, 033, 034, 042, 043, 044, 050).  Migrations 014 and 016 return early for postgres
     because those columns were already included in 023.
     """
     pg023 = _migration_text("023_postgres_full_schema.py")
     cols = _physical_column_names(_table_body_from_create(pg023, "claims"))
+    cols.update(_UCSPA_026_POSTGRES_CLAIM_COLUMNS)
 
     # Each of these migrations has an ``else`` / postgres-specific branch that
     # issues ``ALTER TABLE claims ADD COLUMN [IF NOT EXISTS] ...``.
@@ -135,12 +155,19 @@ def _postgres_claims_columns() -> set[str]:
         "029_litigation_hold_and_dsar_deletion.py",
         "033_settlement_workflow_flags.py",
         "034_retention_tier_and_purge.py",
+        "042_settlement_agreed_at.py",
+        "043_incident_coordinates.py",
+        "044_communication_response_deadline.py",
         "050_cold_storage_export.py",
     ):
         raw = _migration_text(filename)
         normalized = _normalize_source(_postgres_branch(raw))
         for m in _ADD_COLUMN_RE.finditer(normalized):
-            cols.add(m.group(1).lower())
+            name = m.group(1).lower()
+            # f-string migrations (026) can leave ``IF NOT EXISTS {col}`` unparsed; skip false match.
+            if name in {"if", "not", "exists"}:
+                continue
+            cols.add(name)
 
     return cols
 

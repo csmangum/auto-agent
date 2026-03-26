@@ -71,6 +71,7 @@ class TestGetLoop:
     def test_loop_runs_in_daemon_thread(self):
         import claim_agent.notifications.webhook as wh_module
 
+        _get_loop()  # Order-independent under pytest-xdist (no prior test may have started the loop).
         assert wh_module._loop_thread is not None
         assert wh_module._loop_thread.daemon is True
         assert wh_module._loop_thread.is_alive()

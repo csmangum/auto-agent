@@ -35,6 +35,7 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
     "hypothesis>=6.0.0",
     "PyJWT>=2.0.0",
     "ruff>=0.8.0",
@@ -91,8 +92,8 @@ markers = [
     "e2e: marks tests as end-to-end tests (full workflow tests)",
     "load: marks tests as load tests (concurrent submissions, throughput, latency)",
 ]
-# Default addopts: exclude LLM tests for fast runs; use pytest -m llm for full coverage
-addopts = "-v --tb=short -m \"not llm\""
+# Default addopts: exclude LLM and slow tests for fast runs; use pytest -m "not llm" for slow-only
+addopts = "-v --tb=short -m \"not llm and not slow\""
 
 [tool.coverage.run]
 source = ["src/claim_agent"]
