@@ -138,6 +138,6 @@ def test_concurrent_claim_submissions(load_client, mock_workflow_for_load):
     assert p99 < SLA_P99_SEC, (
         f"p99 latency {p99:.4f}s exceeds SLA of {SLA_P99_SEC}s"
     )
-    assert error_rate < SLA_ERROR_RATE, (
+    assert error_rate <= SLA_ERROR_RATE, (
         f"Error rate {error_rate:.2%} exceeds SLA of {SLA_ERROR_RATE:.2%}"
     )

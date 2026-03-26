@@ -224,6 +224,22 @@ class TestPrometheus:
         output = generate_metrics().decode()
         assert "llm_cost_usd_total" in output
 
+    def test_record_llm_cost_negative_logs_and_ignores(self, caplog):
+        """record_llm_cost does not increment for negative cost; logs a warning."""
+
+        def _extract_cost(text: str) -> str | None:
+            for line in text.splitlines():
+                if line.startswith("llm_cost_usd_total") and not line.startswith("#"):
+                    return line.split()[-1]
+            return None
+
+        before = generate_metrics().decode()
+        with caplog.at_level("WARNING"):
+            record_llm_cost(-0.01)
+        after = generate_metrics().decode()
+        assert _extract_cost(before) == _extract_cost(after)
+        assert any("negative cost_usd" in r.message for r in caplog.records)
+
     def test_record_llm_cost_zero_is_ignored(self):
         """record_llm_cost does not increment for zero cost."""
 

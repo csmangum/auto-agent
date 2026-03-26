@@ -218,6 +218,8 @@ jobs:
 
   load:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [unit, lint]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

@@ -51,7 +51,7 @@ If the agent runs behind a reverse proxy or on a different port, adjust `targets
 | Alert | Severity | Condition |
 |-------|----------|-----------|
 | `ClaimAgentDown` | critical | Service unreachable for 1 min |
-| `ClaimAgentHighErrorRate` | warning | Error rate > 5% over 5 min |
+| `ClaimAgentHighErrorRate` | warning | Error rate > 5% over 5 min (failed / processed + failed + escalated) |
 | `ClaimAgentHighLatency` | warning | P99 latency > 120 s |
 | `ClaimAgentEscalationSpike` | info | > 10 escalations in 1 h |
 | `ClaimAgentReviewQueueBacklog` | warning | Queue > 50 for 30+ min |
@@ -112,7 +112,7 @@ Adjust the alert thresholds in `monitoring/alert_rules.yml` to match your SLOs:
 
 | Alert | Default | Tune for |
 |-------|--------|----------|
-| High error rate | 5% | Expected failure rate; increase for noisier environments |
+| High error rate | 5% | Failed claims as a share of processed + failed + escalated; tune for your mix |
 | P99 latency | 120 s | Typical claim processing time; lower for faster workflows |
 | Escalation spike | 10/hour | Normal escalation volume; raise for high-throughput deployments |
 | Review queue | 50 | Adjuster capacity; lower if team is small |

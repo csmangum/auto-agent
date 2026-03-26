@@ -14,16 +14,19 @@
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
       "targets": [
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(claims_processed_total[5m])",
           "legendFormat": "Processed",
           "refId": "A"
         },
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(claims_failed_total[5m])",
           "legendFormat": "Failed",
           "refId": "B"
         },
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(claims_escalated_total[5m])",
           "legendFormat": "Escalated",
           "refId": "C"
@@ -43,7 +46,8 @@
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "100 * rate(claims_failed_total[5m]) / (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]) > 0 or vector(1e-9))",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 * rate(claims_failed_total[5m]) / (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]) + rate(claims_escalated_total[5m]) + 1e-9)",
           "legendFormat": "Error Rate",
           "refId": "A"
         }
@@ -70,16 +74,19 @@
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
       "targets": [
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.50, rate(claim_processing_duration_seconds_bucket[5m]))",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.95, rate(claim_processing_duration_seconds_bucket[5m]))",
           "legendFormat": "P95",
           "refId": "B"
         },
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.99, rate(claim_processing_duration_seconds_bucket[5m]))",
           "legendFormat": "P99",
           "refId": "C"
@@ -107,11 +114,13 @@
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "targets": [
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "claims_in_progress",
           "legendFormat": "In Progress",
           "refId": "A"
         },
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "review_queue_size",
           "legendFormat": "Needs Review",
           "refId": "B"
@@ -131,11 +140,13 @@
       "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
       "targets": [
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(llm_tokens_total{type=\"input\"}[5m])",
           "legendFormat": "Input tokens/s",
           "refId": "A"
         },
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(llm_tokens_total{type=\"output\"}[5m])",
           "legendFormat": "Output tokens/s",
           "refId": "B"
@@ -155,6 +166,7 @@
       "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
       "targets": [
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "increase(llm_cost_usd_total[1h])",
           "legendFormat": "USD / hour",
           "refId": "A"
@@ -182,6 +194,7 @@
       "gridPos": { "x": 0, "y": 24, "w": 6, "h": 4 },
       "targets": [
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "up{job=\"claim-agent\"}",
           "legendFormat": "Claim Agent",
           "refId": "A"
@@ -209,6 +222,7 @@
       "gridPos": { "x": 6, "y": 24, "w": 6, "h": 4 },
       "targets": [
         {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "claims_in_progress >= 0",
           "legendFormat": "DB",
           "refId": "A"

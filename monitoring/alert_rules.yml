@@ -17,7 +17,12 @@ groups:
           (
             rate(claims_failed_total[5m])
             /
-            (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]) + 1e-9)
+            (
+              rate(claims_processed_total[5m])
+              + rate(claims_failed_total[5m])
+              + rate(claims_escalated_total[5m])
+              + 1e-9
+            )
           ) > 0.05
         for: 5m
         labels:

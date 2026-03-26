@@ -10,7 +10,6 @@ route:
     - matchers:
         - job="claim-agent"
       receiver: claims-team
-      continue: true
 
 receivers:
   - name: default

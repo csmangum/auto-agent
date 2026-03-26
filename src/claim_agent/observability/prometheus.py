@@ -155,6 +155,9 @@ def record_llm_cost(cost_usd: float) -> None:
     if _llm_cost_usd_total is None:
         return
 
+    if cost_usd < 0:
+        logger.warning("record_llm_cost received negative cost_usd=%s; ignoring", cost_usd)
+        return
     if cost_usd > 0:
         _llm_cost_usd_total.inc(cost_usd)
 
