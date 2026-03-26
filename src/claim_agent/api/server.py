@@ -60,7 +60,7 @@ from claim_agent.db.database import ensure_fresh_db_on_startup, get_db_path, is_
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
-from claim_agent.exceptions import InvalidClaimTransitionError
+from claim_agent.api.error_handlers import register_exception_handlers
 from claim_agent.config.settings_model import SchedulerConfig
 
 import logging
@@ -406,22 +406,7 @@ def create_app() -> FastAPI:
         allow_headers=settings.auth.cors_headers,
     )
 
-    async def _invalid_claim_transition_handler(
-        _request: Request, exc: Exception
-    ) -> JSONResponse:
-        assert isinstance(exc, InvalidClaimTransitionError)
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={
-                "detail": str(exc),
-                "claim_id": exc.claim_id,
-                "from_status": exc.from_status,
-                "to_status": exc.to_status,
-                "reason": exc.reason,
-            },
-        )
-
-    _app.add_exception_handler(InvalidClaimTransitionError, _invalid_claim_transition_handler)
+    register_exception_handlers(_app)
 
     return _app
 
@@ -567,7 +552,7 @@ async def auth_middleware(request: Request, call_next):
         return _secured_api_json_response(
             request,
             401,
-            {"detail": "Invalid or missing API key"},
+            {"error_code": "UNAUTHORIZED", "detail": "Invalid or missing API key"},
         )
 
     ctx = verify_token(token)
@@ -575,7 +560,7 @@ async def auth_middleware(request: Request, call_next):
         return _secured_api_json_response(
             request,
             401,
-            {"detail": "Invalid or expired token"},
+            {"error_code": "UNAUTHORIZED", "detail": "Invalid or expired token"},
         )
 
     request.state.auth = ctx
@@ -598,7 +583,7 @@ async def rate_limit_middleware(request: Request, call_next):
             return _secured_api_json_response(
                 request,
                 429,
-                {"detail": "Rate limit exceeded. Try again later."},
+                {"error_code": "RATE_LIMIT_EXCEEDED", "detail": "Rate limit exceeded. Try again later."},
             )
     return await call_next(request)
 
@@ -629,7 +614,7 @@ async def request_body_size_limit_middleware(request: Request, call_next):
         return _secured_api_json_response(
             request,
             status.HTTP_411_LENGTH_REQUIRED,
-            {"detail": "Content-Length required"},
+            {"error_code": "LENGTH_REQUIRED", "detail": "Content-Length required"},
         )
 
     if content_length_header is not None:
@@ -639,14 +624,14 @@ async def request_body_size_limit_middleware(request: Request, call_next):
             return _secured_api_json_response(
                 request,
                 400,
-                {"detail": "Invalid Content-Length header"},
+                {"error_code": "BAD_REQUEST", "detail": "Invalid Content-Length header"},
             )
 
         if content_length < 0:
             return _secured_api_json_response(
                 request,
                 400,
-                {"detail": "Invalid Content-Length header"},
+                {"error_code": "BAD_REQUEST", "detail": "Invalid Content-Length header"},
             )
 
         settings = get_settings()
@@ -660,7 +645,7 @@ async def request_body_size_limit_middleware(request: Request, call_next):
             return _secured_api_json_response(
                 request,
                 413,
-                {"detail": "Request body too large"},
+                {"error_code": "REQUEST_TOO_LARGE", "detail": "Request body too large"},
             )
     return await call_next(request)
 
