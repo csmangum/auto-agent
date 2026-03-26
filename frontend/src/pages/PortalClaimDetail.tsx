@@ -1117,6 +1117,7 @@ function DocumentDownloadLink({
   const isExternalUrl =
     docUrl.startsWith('http://') || docUrl.startsWith('https://');
   const handleClick = async () => {
+    if (loading) return;
     setLoading(true);
     setLastError(null);
     try {
@@ -1169,7 +1170,8 @@ function DocumentDownloadLink({
         <button
           type="button"
           onClick={handleClick}
-          className="text-[10px] text-red-400 hover:text-red-300 underline"
+          disabled={loading}
+          className="text-[10px] text-red-400 hover:text-red-300 underline disabled:opacity-50"
         >
           Retry
         </button>

@@ -183,7 +183,7 @@ function filterDailyEntries(
   const days = preset === '30' ? 30 : 60;
   const cutoff = new Date();
   cutoff.setUTCHours(0, 0, 0, 0);
-  cutoff.setUTCDate(cutoff.getUTCDate() - days);
+  cutoff.setUTCDate(cutoff.getUTCDate() - (days - 1));
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   return entries.filter(([d]) => d >= cutoffStr);
 }
