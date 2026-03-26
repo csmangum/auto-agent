@@ -1,0 +1,175 @@
+# Default values for the claim-agent Helm chart.
+# Override any value with --set or a custom values file (e.g. values.production.yaml).
+
+# -- Number of pod replicas.
+replicaCount: 2
+
+image:
+  # -- Container image repository.
+  repository: ghcr.io/csmangum/auto-agent
+  # -- Image pull policy.
+  pullPolicy: Always
+  # -- Image tag. Defaults to the chart appVersion.
+  tag: ""
+
+# -- Image pull secrets for private registries.
+imagePullSecrets: []
+
+serviceAccount:
+  # -- Create a ServiceAccount for the pods.
+  create: true
+  # -- Annotations to add to the ServiceAccount (e.g. IRSA role ARN on EKS).
+  annotations: {}
+  # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/claim-agent-role
+
+# -- Extra labels to add to all resources.
+commonLabels: {}
+
+# -- Extra annotations to add to all resources.
+commonAnnotations: {}
+
+# ── Application configuration ─────────────────────────────────────────────────
+config:
+  # -- LLM model name.
+  openaiModelName: "gpt-4o-mini"
+  # -- LLM API base URL (leave empty for OpenAI default; set for OpenRouter etc.).
+  openaiApiBase: ""
+  # -- Log format: "json" for production, "human" for development.
+  logFormat: "json"
+  # -- Log level.
+  logLevel: "INFO"
+  # -- Application environment tag.
+  environment: "production"
+  # -- Run Alembic migrations automatically on startup.
+  runMigrationsOnStartup: "true"
+  # -- Enforce HTTPS redirect (set true when ingress does not handle it).
+  enforceHttps: "false"
+  # -- Trust X-Forwarded-Proto and X-Forwarded-For headers from the ingress.
+  trustForwardedFor: "true"
+  # -- HSTS max-age in seconds.
+  hstsMaxAge: "31536000"
+  # -- Enable webhook processing.
+  webhookEnabled: "true"
+  # -- Enable OpenTelemetry tracing.
+  otelTracing: "false"
+  # -- OTEL service name.
+  otelServiceName: "claim-agent"
+  # -- OTLP collector endpoint.
+  otelExporterOtlpEndpoint: ""
+  # -- Secret provider backend: env | aws_secrets_manager | hashicorp_vault.
+  secretProvider: "env"
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# These values are stored in a Kubernetes Secret.
+# For production use an external secrets manager (AWS Secrets Manager,
+# HashiCorp Vault, Sealed Secrets, etc.) and leave these empty.
+secrets:
+  # -- PostgreSQL connection string (required for production).
+  databaseUrl: "postgresql://claim_user:CHANGE_ME@postgres-host:5432/claims"
+  # -- Optional read-replica URL.
+  readReplicaDatabaseUrl: ""
+  # -- OpenAI / OpenRouter API key.
+  openaiApiKey: "CHANGE_ME"
+  # -- API keys: comma-separated key:role or key:role:user_id pairs.
+  apiKeys: "CHANGE_ME:admin"
+  # -- JWT signing secret.
+  jwtSecret: "CHANGE_ME"
+  # -- Webhook HMAC signing secret.
+  webhookSecret: "CHANGE_ME"
+  # -- Comma-separated CORS allowed origins.
+  corsOrigins: "https://your-domain.example.com"
+
+# -- Reference an existing Secret instead of creating one from values above.
+existingSecret: ""
+
+# ── Service ──────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  # -- Ingress class name (e.g. nginx, alb, gce).
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: your-domain.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: claim-agent-tls
+      hosts:
+        - your-domain.example.com
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+# ── Autoscaling ───────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ── Pod Disruption Budget ─────────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ── Network Policy ────────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: false
+  # -- Namespace label for the ingress controller (used to scope ingress traffic).
+  ingressControllerNamespace: "ingress-nginx"
+
+# ── Pod-level settings ────────────────────────────────────────────────────────
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- Node selector constraints.
+nodeSelector: {}
+
+# -- Tolerations for node taints.
+tolerations: []
+
+# -- Affinity rules (topology spread constraints are configured separately).
+affinity: {}
+
+# -- Spread replicas across nodes and zones.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+
+# -- Seconds to wait before forcibly terminating a pod.
+terminationGracePeriodSeconds: 30

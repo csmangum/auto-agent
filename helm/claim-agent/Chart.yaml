@@ -1,0 +1,17 @@
+apiVersion: v2
+name: claim-agent
+description: Agentic Claim Representative — AI-powered auto insurance claims processing
+type: application
+version: 0.1.0
+# appVersion must match the container image tag deployed by this chart.
+appVersion: "latest"
+keywords:
+  - insurance
+  - claims
+  - ai
+  - crewai
+home: https://github.com/csmangum/auto-agent
+sources:
+  - https://github.com/csmangum/auto-agent
+maintainers:
+  - name: claim-agent-maintainers

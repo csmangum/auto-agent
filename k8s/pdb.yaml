@@ -1,0 +1,16 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: claim-agent
+  namespace: claim-agent
+  labels:
+    app.kubernetes.io/name: claim-agent
+    app.kubernetes.io/component: backend
+spec:
+  # Ensure at least one replica is always available during voluntary disruptions
+  # (node drains, cluster upgrades, etc.).
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: claim-agent
+      app.kubernetes.io/component: backend

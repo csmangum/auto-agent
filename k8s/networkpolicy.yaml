@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: claim-agent
+  namespace: claim-agent
+  labels:
+    app.kubernetes.io/name: claim-agent
+    app.kubernetes.io/component: backend
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: claim-agent
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Allow inbound traffic only from the ingress controller namespace.
+    # Adjust the namespaceSelector if your ingress controller is in a different namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+
+  egress:
+    # Allow DNS resolution.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow outbound to PostgreSQL (default port 5432).
+    # Adjust the namespaceSelector / ipBlock to match your database location.
+    - ports:
+        - protocol: TCP
+          port: 5432
+
+    # Allow outbound HTTPS for LLM APIs (OpenAI / OpenRouter), webhooks, and other external calls.
+    - ports:
+        - protocol: TCP
+          port: 443
+
+    # Allow outbound to OTEL collector (gRPC 4317 / HTTP 4318).
+    - ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
