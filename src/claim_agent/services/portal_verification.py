@@ -8,16 +8,19 @@ Verifies that a claimant has access to a claim via:
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.services.portal_token_utils import (
+    hash_portal_token,
+    portal_token_last_used_rejects,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +31,6 @@ class ClaimantContext:
 
     claim_id: str
     identity: str  # email, party_id, or token prefix for audit
-
-
-def _hash_token(token: str) -> str:
-    """SHA-256 hash of token for storage comparison."""
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def verify_claimant_access(
@@ -70,7 +68,7 @@ def verify_claimant_access(
         if mode == "token":
             if not token or not token.strip():
                 return None
-            token_hash = _hash_token(token.strip())
+            token_hash = hash_portal_token(token.strip())
             now = datetime.now(timezone.utc)
             inactivity_cutoff = now - timedelta(
                 days=settings.portal.inactivity_timeout_days
@@ -91,22 +89,15 @@ def verify_claimant_access(
             if row is None:
                 return None
             rec = row_to_dict(row)
-            # Enforce inactivity timeout
-            last_used = rec.get("last_used_at")
-            if last_used is not None:
-                try:
-                    last_used_dt = datetime.fromisoformat(
-                        str(last_used).replace("Z", "+00:00")
-                    )
-                    if last_used_dt.tzinfo is None:
-                        last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
-                    if last_used_dt < inactivity_cutoff:
-                        logger.info(
-                            "Rejecting inactive claimant token for claim_id=%s", claim_id
-                        )
-                        return None
-                except (ValueError, TypeError):
-                    pass
+            if portal_token_last_used_rejects(
+                rec.get("last_used_at"),
+                inactivity_cutoff,
+                logger=logger,
+                inactive_log="Rejecting inactive claimant token for claim_id=%s",
+                inactive_args=(claim_id,),
+                token_id=rec.get("id"),
+            ):
+                return None
             # Update last_used_at
             conn.execute(
                 text("""
@@ -167,7 +158,7 @@ def create_claim_access_token(
     Caller must store/send the returned token; it is not stored in plaintext.
     """
     raw_token = secrets.token_urlsafe(32)
-    token_hash = _hash_token(raw_token)
+    token_hash = hash_portal_token(raw_token)
     settings = get_settings()
     expiry_days = settings.portal.token_expiry_days
     expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
@@ -218,7 +209,7 @@ def get_claim_ids_for_claimant(
 
     with get_connection(path) as conn:
         if mode == "token" and token and token.strip():
-            token_hash = _hash_token(token.strip())
+            token_hash = hash_portal_token(token.strip())
             now = datetime.now(timezone.utc)
             inactivity_cutoff = now - timedelta(
                 days=settings.portal.inactivity_timeout_days
@@ -233,30 +224,30 @@ def get_claim_ids_for_claimant(
             active_ids: list[int] = []
             for r in rows:
                 rec = row_to_dict(r)
-                last_used = rec.get("last_used_at")
-                if last_used is not None:
-                    try:
-                        last_used_dt = datetime.fromisoformat(
-                            str(last_used).replace("Z", "+00:00")
-                        )
-                        if last_used_dt.tzinfo is None:
-                            last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
-                        if last_used_dt < inactivity_cutoff:
-                            continue
-                    except (ValueError, TypeError):
-                        pass
+                if portal_token_last_used_rejects(
+                    rec.get("last_used_at"),
+                    inactivity_cutoff,
+                    logger=logger,
+                    inactive_log=None,
+                    inactive_args=(),
+                    token_id=rec.get("id"),
+                ):
+                    continue
                 cid = str(rec["claim_id"])
                 seen.add(cid)
                 active_ids.append(int(rec["id"]))
             # Bulk-update last_used_at for all active matching rows
             if active_ids:
-                placeholders = ",".join(str(tid) for tid in active_ids)
+                id_placeholders = ", ".join(f":id_{i}" for i in range(len(active_ids)))
+                params: dict[str, object] = {"now": now}
+                for i, tid in enumerate(active_ids):
+                    params[f"id_{i}"] = tid
                 conn.execute(
                     text(
-                        f"UPDATE claim_access_tokens SET last_used_at = :now"  # noqa: S608
-                        f" WHERE id IN ({placeholders})"
+                        "UPDATE claim_access_tokens SET last_used_at = :now "
+                        f"WHERE id IN ({id_placeholders})"
                     ),
-                    {"now": now},
+                    params,
                 )
                 conn.commit()
 

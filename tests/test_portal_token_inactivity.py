@@ -6,6 +6,7 @@ Validates that all four portal token verification functions:
 3. Update ``last_used_at`` on each successful verification.
 4. Accept tokens that have never been used (NULL last_used_at) regardless of age,
    since there is no evidence of inactivity yet — the token may simply be new.
+5. Reject tokens when ``last_used_at`` is present but unparseable (fail closed).
 """
 
 from __future__ import annotations
@@ -53,6 +54,13 @@ def _get_last_used(db_path: str, table: str) -> str | None:
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(f"SELECT last_used_at FROM {table}").fetchone()  # noqa: S608
     return row[0] if row else None
+
+
+def _set_last_used_raw(db_path: str, table: str, value: str) -> None:
+    """Set last_used_at to an arbitrary string (for malformed-value tests)."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(f"UPDATE {table} SET last_used_at = ?", (value,))  # noqa: S608
+        conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -286,3 +294,43 @@ class TestUnifiedPortalInactivity:
         _set_last_used(seeded_temp_db, "external_portal_tokens", days_ago=4)
         result = verify_unified_portal_token(raw, db_path=seeded_temp_db)
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Malformed last_used_at (fail closed)
+# ---------------------------------------------------------------------------
+
+
+class TestMalformedLastUsedAt:
+    def test_claimant_verify_rejects(self, seeded_temp_db):
+        raw = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        _set_last_used_raw(seeded_temp_db, "claim_access_tokens", "not-a-date")
+        assert (
+            verify_claimant_access("CLM-TEST001", token=raw, db_path=seeded_temp_db)
+            is None
+        )
+
+    def test_claimant_list_claim_ids_empty(self, seeded_temp_db):
+        raw = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        _set_last_used_raw(seeded_temp_db, "claim_access_tokens", "bogus")
+        assert get_claim_ids_for_claimant(token=raw, db_path=seeded_temp_db) == []
+
+    def test_repair_shop_rejects(self, seeded_temp_db):
+        raw = create_repair_shop_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        _set_last_used_raw(seeded_temp_db, "repair_shop_access_tokens", "x")
+        assert verify_repair_shop_token("CLM-TEST001", raw, db_path=seeded_temp_db) is None
+
+    def test_third_party_rejects(self, seeded_temp_db):
+        raw = create_third_party_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        _set_last_used_raw(seeded_temp_db, "third_party_access_tokens", "x")
+        assert verify_third_party_token("CLM-TEST001", raw, db_path=seeded_temp_db) is None
+
+    def test_unified_claimant_rejects(self, seeded_temp_db):
+        raw = create_unified_portal_token(
+            "claimant",
+            scopes=["read_claim"],
+            claim_id="CLM-TEST001",
+            db_path=seeded_temp_db,
+        )
+        _set_last_used_raw(seeded_temp_db, "external_portal_tokens", "nope")
+        assert verify_unified_portal_token(raw, db_path=seeded_temp_db) is None

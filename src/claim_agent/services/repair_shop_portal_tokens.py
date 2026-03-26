@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 from dataclasses import dataclass
@@ -12,12 +11,12 @@ from sqlalchemy import text
 
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.services.portal_token_utils import (
+    hash_portal_token,
+    portal_token_last_used_rejects,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 @dataclass
@@ -37,7 +36,7 @@ def create_repair_shop_access_token(
 ) -> str:
     """Insert a hashed token; return raw token once for the adjuster to send to the shop."""
     raw = secrets.token_urlsafe(32)
-    token_hash = _hash_token(raw)
+    token_hash = hash_portal_token(raw)
     settings = get_settings()
     expiry_days = settings.repair_shop_portal.token_expiry_days
     expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
@@ -70,7 +69,7 @@ def verify_repair_shop_token(
     """Return record if token is valid for this claim, not expired, and not inactive."""
     if not raw_token or not raw_token.strip():
         return None
-    token_hash = _hash_token(raw_token.strip())
+    token_hash = hash_portal_token(raw_token.strip())
     now = datetime.now(timezone.utc)
     settings = get_settings()
     inactivity_cutoff = now - timedelta(days=settings.repair_shop_portal.inactivity_timeout_days)
@@ -87,20 +86,15 @@ def verify_repair_shop_token(
         if row is None:
             return None
         rec = row_to_dict(row)
-        # Enforce inactivity timeout
-        last_used = rec.get("last_used_at")
-        if last_used is not None:
-            try:
-                last_used_dt = datetime.fromisoformat(str(last_used).replace("Z", "+00:00"))
-                if last_used_dt.tzinfo is None:
-                    last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
-                if last_used_dt < inactivity_cutoff:
-                    logger.info(
-                        "Rejecting inactive repair shop token for claim_id=%s", claim_id
-                    )
-                    return None
-            except (ValueError, TypeError):
-                pass
+        if portal_token_last_used_rejects(
+            rec.get("last_used_at"),
+            inactivity_cutoff,
+            logger=logger,
+            inactive_log="Rejecting inactive repair shop token for claim_id=%s",
+            inactive_args=(claim_id,),
+            token_id=rec.get("id"),
+        ):
+            return None
         # Update last_used_at
         conn.execute(
             text("""

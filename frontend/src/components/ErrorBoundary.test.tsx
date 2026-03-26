@@ -65,6 +65,13 @@ describe('ErrorBoundary', () => {
     );
     expect(screen.getByText('Custom fallback')).toBeInTheDocument();
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+    expect(mockCaptureException).toHaveBeenCalledOnce();
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Test error' }),
+      expect.objectContaining({
+        extra: expect.objectContaining({ componentStack: expect.any(String) }),
+      }),
+    );
   });
 
   it('retry button resets state and remounts children', () => {

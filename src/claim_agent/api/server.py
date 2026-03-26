@@ -479,13 +479,14 @@ def _base_security_response_headers() -> dict[str, str]:
         # 'unsafe-inline' is retained for style-src because React components may apply
         # inline style attributes and Tailwind v4 injects CSS in dev mode.
         # Keep this policy string in sync with frontend/vite.config.ts (document CSP).
+        # connect-src includes Sentry ingest when VITE_SENTRY_DSN is used on the dashboard.
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "font-src 'self' data:; "
-            "connect-src 'self'; "
+            "connect-src 'self' https://*.ingest.sentry.io; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "frame-ancestors 'none'"

@@ -14,7 +14,6 @@ avoid that class of ambiguity.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import secrets
@@ -26,6 +25,10 @@ from sqlalchemy import text
 
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, is_postgres_backend, row_to_dict
+from claim_agent.services.portal_token_utils import (
+    hash_portal_token,
+    portal_token_last_used_rejects,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +46,6 @@ VALID_PORTAL_SCOPES: frozenset[str] = frozenset(
         "respond_followup",
     }
 )
-
-
-def _hash_token(token: str) -> str:
-    """SHA-256 hash of token for storage comparison."""
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def _ts(dt: datetime) -> str:
@@ -106,7 +104,7 @@ def create_unified_portal_token(
     if role == "repair_shop" and not (shop_id and str(shop_id).strip()):
         raise ValueError("shop_id is required when role is repair_shop")
     raw = secrets.token_urlsafe(32)
-    token_hash = _hash_token(raw)
+    token_hash = hash_portal_token(raw)
     settings = get_settings()
     if role == "repair_shop":
         expiry_days = settings.repair_shop_portal.token_expiry_days
@@ -154,7 +152,7 @@ def verify_unified_portal_token(
     """
     if not raw_token or not raw_token.strip():
         return None
-    token_hash = _hash_token(raw_token.strip())
+    token_hash = hash_portal_token(raw_token.strip())
     now = datetime.now(timezone.utc)
     settings = get_settings()
     path = db_path or get_db_path()
@@ -188,22 +186,17 @@ def verify_unified_portal_token(
         else:
             inactivity_days = settings.portal.inactivity_timeout_days
         inactivity_cutoff = now - timedelta(days=inactivity_days)
-        # Enforce inactivity timeout
-        last_used = rec.get("last_used_at")
-        if last_used is not None:
-            try:
-                last_used_dt = datetime.fromisoformat(str(last_used).replace("Z", "+00:00"))
-                if last_used_dt.tzinfo is None:
-                    last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
-                if last_used_dt < inactivity_cutoff:
-                    logger.info(
-                        "Rejecting inactive unified portal token id=%s role=%s",
-                        rec.get("id"),
-                        role_str,
-                    )
-                    return None
-            except (ValueError, TypeError):
-                pass
+        if portal_token_last_used_rejects(
+            rec.get("last_used_at"),
+            inactivity_cutoff,
+            logger=logger,
+            inactive_log=(
+                "Rejecting inactive unified portal token id=%s role=%s"
+            ),
+            inactive_args=(rec.get("id"), role_str),
+            token_id=rec.get("id"),
+        ):
+            return None
         raw_scopes = rec.get("scopes")
         try:
             scopes = json.loads(raw_scopes or "[]")
@@ -246,7 +239,7 @@ def revoke_unified_portal_token(
     """Mark a token as revoked. Returns True if a token was found and revoked."""
     if not raw_token or not raw_token.strip():
         return False
-    token_hash = _hash_token(raw_token.strip())
+    token_hash = hash_portal_token(raw_token.strip())
     now = datetime.now(timezone.utc)
     path = db_path or get_db_path()
     now_param: datetime | str = now if is_postgres_backend() else _ts(now)
