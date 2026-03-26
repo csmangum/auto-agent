@@ -1,5 +1,6 @@
 """Tests for optional in-process scheduler."""
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -80,3 +81,42 @@ def test_run_ucspa_deadline_job_dispatches_webhooks():
                     "2026-03-23",
                     "California",
                 )
+
+
+def test_api_server_does_not_auto_start_scheduler():
+    """API server module must not expose ensure_scheduler_running in its namespace."""
+    import claim_agent.api.server as server_mod
+
+    # ensure_scheduler_running must not have been imported into server.py's namespace
+    assert not hasattr(server_mod, "ensure_scheduler_running"), (
+        "server.py must not import ensure_scheduler_running; "
+        "the API server no longer auto-starts the scheduler."
+    )
+
+
+def test_api_server_warns_when_scheduler_enabled(caplog):
+    """API server emits a warning when SCHEDULER_ENABLED=true is detected."""
+    from claim_agent.api.server import _warn_if_scheduler_enabled_on_api
+
+    # Patch SchedulerConfig (the class) so that calling SchedulerConfig() returns fake_cfg.
+    fake_cfg = SimpleNamespace(enabled=True)
+    with patch("claim_agent.api.server.SchedulerConfig", return_value=fake_cfg):
+        with caplog.at_level(logging.WARNING, logger="claim_agent.api.server"):
+            _warn_if_scheduler_enabled_on_api()
+
+    assert any("run-scheduler" in r.message for r in caplog.records), (
+        "Expected a warning mentioning 'claim-agent run-scheduler'"
+    )
+
+
+def test_api_server_no_warning_when_scheduler_disabled(caplog):
+    """API server emits no warning when SCHEDULER_ENABLED=false (the default)."""
+    from claim_agent.api.server import _warn_if_scheduler_enabled_on_api
+
+    # Patch SchedulerConfig (the class) so that calling SchedulerConfig() returns fake_cfg.
+    fake_cfg = SimpleNamespace(enabled=False)
+    with patch("claim_agent.api.server.SchedulerConfig", return_value=fake_cfg):
+        with caplog.at_level(logging.WARNING, logger="claim_agent.api.server"):
+            _warn_if_scheduler_enabled_on_api()
+
+    assert not caplog.records, "Expected no warnings when scheduler is disabled"

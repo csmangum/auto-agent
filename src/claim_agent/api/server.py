@@ -59,7 +59,7 @@ from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
 from claim_agent.exceptions import InvalidClaimTransitionError
-from claim_agent.scheduler import ensure_scheduler_running, stop_scheduler
+from claim_agent.config.settings_model import SchedulerConfig
 
 import logging
 
@@ -173,6 +173,27 @@ def _recover_stuck_processing_claims() -> None:
             )
 
 
+def _warn_if_scheduler_enabled_on_api() -> None:
+    """Warn when SCHEDULER_ENABLED=true is set on the API server.
+
+    The in-process APScheduler is not safe for multi-worker deployments:
+    each Uvicorn/Gunicorn worker or replica pod would run its own copy of
+    every cron job, duplicating diary escalations, UCSPA sweeps, and ERP
+    polls.  The scheduler should run as a single dedicated process via
+    ``claim-agent run-scheduler``.  The API server no longer auto-starts the
+    scheduler.
+    """
+    scheduler_cfg = SchedulerConfig()
+    if scheduler_cfg.enabled:
+        _server_logger.warning(
+            "SCHEDULER_ENABLED=true is set but the API server no longer starts the "
+            "in-process scheduler. Run 'claim-agent run-scheduler' as a separate "
+            "single-instance process instead. This prevents cron jobs from running "
+            "once per API worker in multi-worker deployments. "
+            "See docs/configuration.md for details."
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _check_auth_configuration()
@@ -210,7 +231,7 @@ async def lifespan(_app: FastAPI):
     _recover_stuck_processing_claims()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
-    ensure_scheduler_running()
+    _warn_if_scheduler_enabled_on_api()
     _check_rate_limit_configuration()
 
     _idempotency_cleanup_task: asyncio.Task | None = None
@@ -254,8 +275,6 @@ async def lifespan(_app: FastAPI):
 
     if claim_background_tasks:
         await asyncio.gather(*claim_background_tasks)
-
-    await stop_scheduler()
 
     if _otel_enabled:
         try:

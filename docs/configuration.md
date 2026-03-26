@@ -42,7 +42,7 @@ cp .env.example .env
 | `LLM_CALL_TIMEOUT_SECONDS` | `120` | Per-LLM-call timeout passed to the LLM client (seconds). |
 | `IDEMPOTENCY_TTL_SECONDS` | `86400` | Time-to-live (seconds) for API idempotency keys (default 24h). Expired rows are purged periodically while the API server runs. |
 | `REDIS_URL` | (unset) | Redis URL for **shared API rate limiting** across multiple app instances or workers (e.g. `redis://localhost:6379/0`). Requires `pip install -e '.[redis]'`. When unset, rate limits use an in-process store (not shared). |
-| `SCHEDULER_ENABLED` | `false` | Enable optional in-process scheduler for recurring operational jobs |
+| `SCHEDULER_ENABLED` | `false` | Enable the dedicated scheduler process (`claim-agent run-scheduler`). Not used by the API server. |
 | `SCHEDULER_TIMEZONE` | `UTC` | Timezone for scheduler cron expressions |
 | `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` | `0 9 * * *` | Daily UCSPA deadline alert sweep schedule (cron) |
 | `SCHEDULER_DIARY_ESCALATE_CRON` | `0 * * * *` | Diary overdue/escalation sweep schedule (cron) |
@@ -99,20 +99,21 @@ The HTTP API applies a **per-client-IP sliding window** (100 requests per 60 sec
 
 ### Scheduler vs. external cron
 
-You can run recurring compliance/operations jobs either with the built-in in-process scheduler **or** external cron.
+Recurring compliance/operations jobs run in a **dedicated single-instance process** or via external cron. The API server (`claim-agent serve`) does **not** start the scheduler — scheduling is intentionally decoupled to prevent duplicate job execution when multiple API workers or replicas are deployed.
 
-- **Built-in scheduler (optional):** set `SCHEDULER_ENABLED=true` and run the API (`claim-agent serve`) or foreground scheduler (`claim-agent run-scheduler`).
-  - `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` controls automatic `ucspa-deadlines` behavior (with webhook dispatch).
-  - `SCHEDULER_DIARY_ESCALATE_CRON` controls automatic `diary-escalate` behavior.
-  - `SCHEDULER_ERP_POLL_CRON` controls inbound ERP event polling when ERP integration is enabled (default every 15 minutes in `.env.example`).
-- **External cron (fallback / preferred in some deployments):** leave `SCHEDULER_ENABLED=false` and schedule CLI commands externally.
+**Option 1 — Dedicated scheduler process (recommended for pilot):**
 
-**Multi-worker and multi-replica deployments:** The scheduler is **in-process**. Each API process (each Uvicorn/Gunicorn **worker**, or each replica pod) that starts with `SCHEDULER_ENABLED=true` runs its **own** copy of the same cron jobs. That duplicates diary escalations, UCSPA sweeps, and webhook volume. Recommended patterns:
+```bash
+SCHEDULER_ENABLED=true claim-agent run-scheduler
+```
 
-- Run the HTTP API with **`SCHEDULER_ENABLED=false`** and use **external cron** or a **single dedicated** `claim-agent run-scheduler` process (with `SCHEDULER_ENABLED=true`) for scheduled work; or
-- Use **a single API worker** only if you enable the scheduler on the API process.
+- Runs as a single foreground process (wrap in systemd, a Kubernetes `Deployment` with `replicas: 1`, or Docker Compose service).
+- `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` controls automatic `ucspa-deadlines` behavior (with webhook dispatch).
+- `SCHEDULER_DIARY_ESCALATE_CRON` controls automatic `diary-escalate` behavior.
+- `SCHEDULER_ERP_POLL_CRON` controls inbound ERP event polling when ERP integration is enabled (default every 15 minutes).
+- Keep the API server at `SCHEDULER_ENABLED=false` (default); the API ignores this flag and will emit a warning if it is set to `true`.
 
-Example external cron:
+**Option 2 — External cron (alternative / cloud-native):** leave `SCHEDULER_ENABLED=false` and schedule CLI commands externally.
 
 ```cron
 # Daily UCSPA approaching-deadline alerts at 09:00
@@ -121,6 +122,9 @@ Example external cron:
 # Hourly diary escalation sweep
 0 * * * * /path/to/claim-agent diary-escalate
 ```
+
+> **Why not run the scheduler inside the API server?**
+> APScheduler runs in-process. Each Uvicorn/Gunicorn worker or Kubernetes replica pod that started the scheduler would execute every cron job independently, duplicating diary escalations, UCSPA sweeps, and ERP polls proportional to the replica count. Running it as a single external process eliminates this hazard entirely.
 
 ### Adapter Backends
 
