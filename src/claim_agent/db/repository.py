@@ -4,9 +4,20 @@ This repository treats claim_audit_log as append-only for updates: it only
 inserts new audit entries and does not UPDATE rows. DELETE is used only by
 purge_audit_log_for_claims when AUDIT_LOG_PURGE_ENABLED is true (after DB
 migration removing the delete trigger).
+
+The focused sub-repositories below handle specific concerns and are composed
+by ClaimRepository to maintain backward-compatible delegation:
+
+- NoteRepository          – claim_notes CRUD
+- FollowUpRepository      – follow_up_messages CRUD
+- TaskRepository          – claim_tasks CRUD
+- SubrogationRepository   – subrogation_cases CRUD
+- WorkflowRepository      – workflow_runs + task_checkpoints
+- ClaimPartyRepository    – claim_parties + claim_party_relationships
+- ClaimSearchRepository   – search and fraud-detection relationship graph
+- ClaimRetentionRepository– retention lifecycle (archive / purge / cold-storage)
 """
 
-import calendar
 import json
 import logging
 import uuid
@@ -14,7 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, cast
 
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from claim_agent.models.claim import Attachment
 
@@ -40,43 +51,30 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_DOCUMENT_DOWNLOADED,
     AUDIT_EVENT_DENIAL_LETTER,
     AUDIT_EVENT_ESCALATE_TO_SIU,
-    AUDIT_EVENT_FOLLOW_UP_RESPONSE,
-    AUDIT_EVENT_FOLLOW_UP_SENT,
     AUDIT_EVENT_REJECTION,
     AUDIT_EVENT_REQUEST_INFO,
     AUDIT_EVENT_RESERVE_ADJUSTED,
     AUDIT_EVENT_RESERVE_ADEQUACY_GATE,
     AUDIT_EVENT_RESERVE_SET,
-    AUDIT_EVENT_LITIGATION_HOLD,
-    AUDIT_EVENT_RETENTION,
-    AUDIT_EVENT_RETENTION_PURGED,
     AUDIT_EVENT_SIU_CASE_CREATED,
     AUDIT_EVENT_STATUS_CHANGE,
-    AUDIT_EVENT_TASK_CREATED,
     AUDIT_EVENT_TASK_UPDATED,
 )
 from claim_agent.db.constants import (
     RETENTION_TIER_ACTIVE,
-    RETENTION_TIER_ARCHIVED,
     RETENTION_TIER_COLD,
-    RETENTION_TIER_PURGED,
-    STATUS_ARCHIVED,
     STATUS_CLOSED,
     STATUS_DENIED,
     STATUS_NEEDS_REVIEW,
     STATUS_PENDING,
     STATUS_PENDING_INFO,
     STATUS_PROCESSING,
-    STATUS_PURGED,
     STATUS_SETTLED,
     STATUS_UNDER_INVESTIGATION,
 )
 from claim_agent.db.reserve_adequacy import compute_reserve_adequacy_details
 from claim_agent.config.settings import get_reserve_config
-from claim_agent.config import get_settings
-from claim_agent.rag.constants import normalize_state
 from claim_agent.db.database import get_connection, is_postgres_backend, row_to_dict
-from claim_agent.db.pii_redaction import anonymize_claim_pii
 from claim_agent.db.state_machine import validate_transition
 from claim_agent.exceptions import (
     ClaimAlreadyProcessingError,
@@ -89,33 +87,46 @@ from claim_agent.utils.sanitization import (
     sanitize_actor_id,
     sanitize_denial_reason,
     sanitize_note,
-    sanitize_resolution_notes,
-    sanitize_task_description,
-    sanitize_task_title,
     truncate_audit_json,
 )
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.models.claim import ClaimInput
-from claim_agent.models.party import ClaimPartyInput, PartyRelationshipType
+from claim_agent.models.party import ClaimPartyInput
 from claim_agent.notifications.claimant import notify_claimant
-from claim_agent.utils.graph_contact_normalize import (
-    normalize_party_email_for_graph,
-    normalize_party_phone_for_graph,
-    sql_expr_phone_normalized_postgres,
+
+# ---------------------------------------------------------------------------
+# Focused sub-repositories (imported for composition inside ClaimRepository)
+# ---------------------------------------------------------------------------
+from claim_agent.db.note_repository import NoteRepository
+from claim_agent.db.follow_up_repository import FollowUpRepository
+from claim_agent.db.task_repository import TaskRepository
+from claim_agent.db.subrogation_repository import SubrogationRepository
+from claim_agent.db.workflow_repository import WorkflowRepository
+from claim_agent.db.claim_party_repository import ClaimPartyRepository
+from claim_agent.db.claim_search_repository import (
+    ClaimSearchRepository,
+    # Re-export RELATION_SHARED_* constants for backward compatibility  # noqa: F401
+    RELATION_SHARED_VIN,  # noqa: F401
+    RELATION_SHARED_ADDRESS,  # noqa: F401
+    RELATION_SHARED_PROVIDER,  # noqa: F401
+    RELATION_SHARED_PHONE,  # noqa: F401
+    RELATION_SHARED_EMAIL,  # noqa: F401
+    _HIGH_RISK_RELATIONS,  # noqa: F401
+    resolve_edge_relations as _resolve_edge_relations_fn,
+)
+from claim_agent.db.claim_retention_repository import (
+    ClaimRetentionRepository,
+    # Re-export helper functions for backward compatibility  # noqa: F401
+    _add_calendar_years,  # noqa: F401
+    _is_claim_past_retention,  # noqa: F401
+    _is_archived_past_purge_period,  # noqa: F401
+    _is_purged_past_audit_retention_period,  # noqa: F401
+    _sql_in_params,  # noqa: F401
 )
 
-# Relation types for build_relationship_snapshot edges
-RELATION_SHARED_VIN = "shared_vin"
-RELATION_SHARED_ADDRESS = "shared_address"
-RELATION_SHARED_PROVIDER = "shared_provider"
-RELATION_SHARED_PHONE = "shared_phone"
-RELATION_SHARED_EMAIL = "shared_email"
 
-_HIGH_RISK_RELATIONS = frozenset(
-    {RELATION_SHARED_PROVIDER, RELATION_SHARED_ADDRESS, RELATION_SHARED_PHONE, RELATION_SHARED_EMAIL}
-)
-
-
+# _resolve_edge_relations is now provided by ClaimSearchRepository (see resolve_edge_relations).
+# Keep a module-level alias for backward compatibility with any code that references it directly.
 def _resolve_edge_relations(
     src_vins: list[str],
     src_addresses: list[str],
@@ -125,48 +136,10 @@ def _resolve_edge_relations(
     tgt_claim: dict[str, Any],
     tgt_parties: list[dict[str, Any]],
 ) -> list[str]:
-    """Compute shared link-key relation types between a source and a target claim.
-
-    Returns a list of ``RELATION_SHARED_*`` constants (insertion order) that
-    explain how the source and target are connected. Edges in
-    ``build_relationship_snapshot`` sort and de-duplicate these for output. An
-    empty list means no shared link keys.
-    """
-    rtypes: list[str] = []
-    tgt_vin = str(tgt_claim.get("vin") or "").strip()
-    if tgt_vin and src_vins and tgt_vin in src_vins:
-        rtypes.append(RELATION_SHARED_VIN)
-    tgt_addresses = {
-        str(p.get("address")).strip().lower()
-        for p in tgt_parties
-        if isinstance(p.get("address"), str) and str(p.get("address")).strip()
-    }
-    tgt_providers = {
-        str(p.get("name")).strip().lower()
-        for p in tgt_parties
-        if str(p.get("party_type") or "").strip() == "provider"
-        and isinstance(p.get("name"), str)
-        and str(p.get("name")).strip()
-    }
-    tgt_phones = {
-        n
-        for p in tgt_parties
-        if (n := normalize_party_phone_for_graph(p.get("phone"))) is not None
-    }
-    tgt_emails = {
-        n
-        for p in tgt_parties
-        if (n := normalize_party_email_for_graph(p.get("email"))) is not None
-    }
-    if set(src_addresses) & tgt_addresses:
-        rtypes.append(RELATION_SHARED_ADDRESS)
-    if set(src_providers) & tgt_providers:
-        rtypes.append(RELATION_SHARED_PROVIDER)
-    if set(src_phones) & tgt_phones:
-        rtypes.append(RELATION_SHARED_PHONE)
-    if set(src_emails) & tgt_emails:
-        rtypes.append(RELATION_SHARED_EMAIL)
-    return rtypes
+    """Delegate to ClaimSearchRepository.resolve_edge_relations (backward-compat alias)."""
+    return _resolve_edge_relations_fn(
+        src_vins, src_addresses, src_providers, src_phones, src_emails, tgt_claim, tgt_parties
+    )
 
 
 # Matches ``auto_created_from`` for FNOL UCSPA prompt-payment tasks (see ucspa.create_ucspa_compliance_tasks).
@@ -293,169 +266,36 @@ def _reserve_audit_reason(
     return core
 
 
-def _is_claim_past_retention(
-    row_d: dict[str, Any],
-    now: datetime,
-    retention_period_years: int,
-    retention_by_state: dict[str, int],
-) -> bool:
-    """Return True if claim's created_at is past its retention cutoff.
-
-    Uses loss_state to pick per-state retention when retention_by_state is non-empty;
-    falls back to retention_period_years when state is missing or not in map.
-    """
-    raw_state = (row_d.get("loss_state") or "").strip()
-    lookup_state: str | None = None
-    if raw_state:
-        try:
-            lookup_state = normalize_state(raw_state)
-        except ValueError:
-            pass
-    state_years = retention_by_state.get(lookup_state) if lookup_state else None
-    years = retention_period_years if state_years is None else state_years
-    cutoff_dt = now - timedelta(days=years * 365)
-    created_raw = row_d.get("created_at")
-    if not created_raw:
-        return True
-    created_dt: datetime
-    if isinstance(created_raw, datetime):
-        created_dt = created_raw
-    elif isinstance(created_raw, str):
-        try:
-            created_dt = datetime.fromisoformat(created_raw)
-        except ValueError:
-            try:
-                created_dt = datetime.strptime(created_raw, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return True
-    else:
-        return True
-
-    def _to_utc_aware(dt: datetime) -> datetime:
-        if dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-
-    cutoff_norm = _to_utc_aware(cutoff_dt)
-    created_norm = _to_utc_aware(created_dt)
-    return created_norm <= cutoff_norm
-
-
-def _add_calendar_years(dt: datetime, years: int) -> datetime:
-    """Return ``dt`` plus ``years`` calendar years (clamp day for short months, e.g. Feb 29)."""
-    new_year = dt.year + years
-    month = dt.month
-    last_day = calendar.monthrange(new_year, month)[1]
-    new_day = min(dt.day, last_day)
-    return dt.replace(year=new_year, month=month, day=new_day)
-
-
-def _is_archived_past_purge_period(
-    row_d: dict[str, Any],
-    now: datetime,
-    purge_after_archive_years: int,
-    purge_by_state: dict[str, int] | None = None,
-) -> bool:
-    """True if ``now`` is on or after the calendar anniversary of archived_at + N years.
-
-    When ``purge_by_state`` is set, uses the entry for the normalized ``loss_state`` if present;
-    otherwise uses ``purge_after_archive_years``. A non-empty map does not override unknown states.
-    """
-    if purge_after_archive_years < 0:
-        raise ValueError("purge_after_archive_years must be non-negative")
-    archived_raw = row_d.get("archived_at")
-    if not archived_raw:
-        return False
-
-    state_map = purge_by_state or {}
-    raw_state = (row_d.get("loss_state") or "").strip()
-    lookup_state: str | None = None
-    if raw_state:
-        try:
-            lookup_state = normalize_state(raw_state)
-        except ValueError:
-            pass
-    state_years = state_map.get(lookup_state) if lookup_state else None
-    if state_years is not None and state_years < 0:
-        raise ValueError("per-state purge_after_archive years must be non-negative")
-    years = purge_after_archive_years if state_years is None else state_years
-
-    def _to_utc_aware(dt: datetime) -> datetime:
-        if dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-
-    archived_dt: datetime
-    if isinstance(archived_raw, datetime):
-        archived_dt = archived_raw
-    elif isinstance(archived_raw, str):
-        try:
-            archived_dt = datetime.fromisoformat(archived_raw)
-        except ValueError:
-            try:
-                archived_dt = datetime.strptime(archived_raw, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return False
-    else:
-        return False
-
-    cutoff = _add_calendar_years(_to_utc_aware(archived_dt), years)
-    return _to_utc_aware(now) >= cutoff
-
-
-def _is_purged_past_audit_retention_period(
-    row_d: dict[str, Any],
-    now: datetime,
-    audit_retention_years_after_purge: int,
-) -> bool:
-    """True if ``now`` is on or after purged_at + N calendar years (claim must be purged)."""
-    if audit_retention_years_after_purge < 0:
-        raise ValueError("audit_retention_years_after_purge must be non-negative")
-    purged_raw = row_d.get("purged_at")
-    if not purged_raw:
-        return False
-
-    def _to_utc_aware(dt: datetime) -> datetime:
-        if dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-
-    purged_dt: datetime
-    if isinstance(purged_raw, datetime):
-        purged_dt = purged_raw
-    elif isinstance(purged_raw, str):
-        try:
-            purged_dt = datetime.fromisoformat(purged_raw)
-        except ValueError:
-            try:
-                purged_dt = datetime.strptime(purged_raw, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return False
-    else:
-        return False
-
-    cutoff = _add_calendar_years(_to_utc_aware(purged_dt), audit_retention_years_after_purge)
-    return _to_utc_aware(now) >= cutoff
-
-
-def _sql_in_params(prefix: str, ids: list[str]) -> tuple[str, dict[str, Any]]:
-    """Build ``IN (:p0,:p1,...)`` fragment and param dict."""
-    if not ids:
-        return "", {}
-    keys = [f"{prefix}{i}" for i in range(len(ids))]
-    placeholders = ",".join(f":{k}" for k in keys)
-    params = dict(zip(keys, ids, strict=True))
-    return placeholders, params
-
+# ---------------------------------------------------------------------------
+# The helper functions _is_claim_past_retention, _add_calendar_years,
+# _is_archived_past_purge_period, _is_purged_past_audit_retention_period,
+# and _sql_in_params are now defined in claim_retention_repository and
+# imported above for backward compatibility.
+# ---------------------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
 
 
 class ClaimRepository:
-    """Repository for claim persistence and audit logging."""
+    """Repository for claim persistence and audit logging.
+
+    Composes focused sub-repositories for specific concerns while preserving
+    the original public API via delegation methods.  New code should prefer
+    importing the focused repository directly (e.g. TaskRepository) rather
+    than going through this class.
+    """
 
     def __init__(self, db_path: str | None = None):
         self._db_path = db_path
+        # Focused sub-repositories (lazy composition via delegation)
+        self._note_repo = NoteRepository(db_path)
+        self._follow_up_repo = FollowUpRepository(db_path)
+        self._task_repo = TaskRepository(db_path)
+        self._subrogation_repo = SubrogationRepository(db_path)
+        self._workflow_repo = WorkflowRepository(db_path)
+        self._party_repo = ClaimPartyRepository(db_path)
+        self._search_repo = ClaimSearchRepository(db_path)
+        self._retention_repo = ClaimRetentionRepository(db_path)
 
     @property
     def db_path(self) -> str | None:
@@ -632,35 +472,16 @@ class ClaimRepository:
             claim_input.parties, policy
         )
         for p in effective_parties:
-            self._add_claim_party_core(conn, claim_id, p)
+            self._party_repo.add_claim_party_core(conn, claim_id, p)
 
         return claim_id
 
     def _add_claim_party_core(self, conn: Any, claim_id: str, party: ClaimPartyInput) -> int:
-        """Insert a claim party using an existing connection. Does not commit."""
-        result = conn.execute(
-            text("""
-            INSERT INTO claim_parties (
-                claim_id, party_type, name, email, phone, address, role,
-                consent_status, authorization_status
-            ) VALUES (:claim_id, :party_type, :name, :email, :phone, :address, :role,
-                     :consent_status, :authorization_status)
-            RETURNING id
-            """),
-            {
-                "claim_id": claim_id,
-                "party_type": party.party_type,
-                "name": party.name,
-                "email": party.email,
-                "phone": party.phone,
-                "address": party.address,
-                "role": party.role,
-                "consent_status": party.consent_status or "pending",
-                "authorization_status": party.authorization_status or "pending",
-            },
-        )
-        rid = result.fetchone()
-        return int(rid[0]) if rid else 0
+        """Insert a claim party using an existing connection. Does not commit.
+
+        Delegates to ClaimPartyRepository.add_claim_party_core.
+        """
+        return self._party_repo.add_claim_party_core(conn, claim_id, party)
 
     def create_claim(
         self,
@@ -709,8 +530,7 @@ class ClaimRepository:
 
     def add_claim_party(self, claim_id: str, party: ClaimPartyInput) -> int:
         """Insert a claim party. Returns party id."""
-        with get_connection(self._db_path) as conn:
-            return self._add_claim_party_core(conn, claim_id, party)
+        return self._party_repo.add_claim_party(claim_id, party)
 
     def add_claim_party_relationship(
         self,
@@ -723,63 +543,13 @@ class ClaimRepository:
 
         Returns new relationship row id.
         """
-        # Extract .value if it's an enum, otherwise treat as string
-        rt_value = getattr(relationship_type, "value", relationship_type)
-        rt = str(rt_value).strip().lower()
-        allowed = {e.value for e in PartyRelationshipType}
-        if rt not in allowed:
-            raise DomainValidationError(
-                f"Invalid relationship_type {relationship_type!r}; expected one of {sorted(allowed)}"
-            )
-        if from_party_id == to_party_id:
-            raise DomainValidationError("from_party_id and to_party_id must differ")
-
-        with get_connection(self._db_path) as conn:
-            fr = conn.execute(
-                text("SELECT id, claim_id FROM claim_parties WHERE id = :id"),
-                {"id": from_party_id},
-            ).fetchone()
-            to = conn.execute(
-                text("SELECT id, claim_id FROM claim_parties WHERE id = :id"),
-                {"id": to_party_id},
-            ).fetchone()
-            if fr is None or to is None:
-                raise DomainValidationError("One or both party IDs do not exist")
-            fr_d, to_d = row_to_dict(fr), row_to_dict(to)
-            if fr_d.get("claim_id") != claim_id or to_d.get("claim_id") != claim_id:
-                raise DomainValidationError("Parties must belong to the same claim")
-
-            try:
-                result = conn.execute(
-                    text("""
-                    INSERT INTO claim_party_relationships (
-                        from_party_id, to_party_id, relationship_type
-                    ) VALUES (:from_id, :to_id, :rtype)
-                    RETURNING id
-                    """),
-                    {"from_id": from_party_id, "to_id": to_party_id, "rtype": rt},
-                )
-            except IntegrityError as e:
-                raise DomainValidationError(
-                    "Duplicate party relationship for this from_party_id, to_party_id, "
-                    "and relationship_type"
-                ) from e
-            row = result.fetchone()
-            return int(row[0]) if row else 0
+        return self._party_repo.add_claim_party_relationship(
+            claim_id, from_party_id, to_party_id, relationship_type
+        )
 
     def delete_claim_party_relationship(self, claim_id: str, relationship_id: int) -> bool:
         """Delete a party edge if it exists and both endpoints belong to claim_id."""
-        with get_connection(self._db_path) as conn:
-            result = conn.execute(
-                text("""
-                DELETE FROM claim_party_relationships
-                WHERE id = :rid
-                  AND from_party_id IN (SELECT id FROM claim_parties WHERE claim_id = :cid)
-                  AND to_party_id IN (SELECT id FROM claim_parties WHERE claim_id = :cid)
-                """),
-                {"rid": relationship_id, "cid": claim_id},
-            )
-            return bool(result.rowcount and result.rowcount > 0)
+        return self._party_repo.delete_claim_party_relationship(claim_id, relationship_id)
 
     def get_claim_parties(
         self, claim_id: str, party_type: str | None = None
@@ -789,78 +559,15 @@ class ClaimRepository:
         Each party dict includes ``relationships``: outgoing edges from claim_party_relationships
         (ordered by relationship id ascending; first ``represented_by`` wins for contact routing).
         """
-        with get_connection(self._db_path) as conn:
-            if party_type:
-                rows = conn.execute(
-                    text(
-                        "SELECT * FROM claim_parties WHERE claim_id = :claim_id AND party_type = :party_type"
-                    ),
-                    {"claim_id": claim_id, "party_type": party_type},
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    text("SELECT * FROM claim_parties WHERE claim_id = :claim_id"),
-                    {"claim_id": claim_id},
-                ).fetchall()
-            parties = [row_to_dict(r) for r in rows]
-            # Strip legacy column that older SQLite schemas may still expose.
-            for p in parties:
-                p.pop("represented_by_id", None)
-            if not parties:
-                return []
-            party_ids = [int(p["id"]) for p in parties]
-            placeholders = ", ".join(f":pid{i}" for i in range(len(party_ids)))
-            params: dict[str, Any] = {f"pid{i}": pid for i, pid in enumerate(party_ids)}
-            rel_rows = conn.execute(
-                text(
-                    f"SELECT * FROM claim_party_relationships WHERE from_party_id IN ({placeholders}) "
-                    "ORDER BY id ASC"
-                ),
-                params,
-            ).fetchall()
-        by_from: dict[int, list[dict[str, Any]]] = {}
-        for r in rel_rows:
-            d = row_to_dict(r)
-            fid = int(d["from_party_id"])
-            by_from.setdefault(fid, []).append(
-                {
-                    "id": d["id"],
-                    "to_party_id": d["to_party_id"],
-                    "relationship_type": d["relationship_type"],
-                    "created_at": d.get("created_at"),
-                }
-            )
-        for p in parties:
-            p["relationships"] = by_from.get(int(p["id"]), [])
-        return parties
+        return self._party_repo.get_claim_parties(claim_id, party_type)
 
     def get_claim_party_by_type(self, claim_id: str, party_type: str) -> dict[str, Any] | None:
         """Get first party of given type for a claim."""
-        parties = self.get_claim_parties(claim_id, party_type=party_type)
-        return parties[0] if parties else None
+        return self._party_repo.get_claim_party_by_type(claim_id, party_type)
 
     def update_claim_party(self, party_id: int, updates: dict[str, Any]) -> None:
         """Update a claim party by id. Only provided keys are updated."""
-        allowed = {
-            "name",
-            "email",
-            "phone",
-            "address",
-            "role",
-            "consent_status",
-            "authorization_status",
-        }
-        to_set = {k: v for k, v in updates.items() if k in allowed and v is not None}
-        if not to_set:
-            return
-        now = datetime.now(timezone.utc).isoformat()
-        set_parts = [f"{k} = :{k}" for k in to_set] + ["updated_at = :now"]
-        set_clause = ", ".join(set_parts)
-        params: dict[str, Any] = dict(to_set)
-        params["now"] = now
-        params["id"] = party_id
-        with get_connection(self._db_path) as conn:
-            conn.execute(text(f"UPDATE claim_parties SET {set_clause} WHERE id = :id"), params)
+        return self._party_repo.update_claim_party(party_id, updates)
 
     def get_primary_contact_for_user_type(
         self, claim_id: str, user_type: str
@@ -868,51 +575,7 @@ class ClaimRepository:
         """Resolve contact for user_type. If claimant has attorney, return attorney.
         Maps: claimant->claimant or attorney; policyholder->policyholder.
         repair_shop/siu/adjuster/other: no party record, return None."""
-        user_type = str(user_type).strip().lower()
-        if user_type == "claimant":
-            claimant = self.get_claim_party_by_type(claim_id, "claimant")
-            if claimant:
-                cid = int(claimant["id"])
-                with get_connection(self._db_path) as conn:
-                    row = conn.execute(
-                        text("""
-                        SELECT cp.* FROM claim_party_relationships r
-                        JOIN claim_parties cp ON cp.id = r.to_party_id
-                        WHERE r.from_party_id = :from_id
-                          AND r.relationship_type = :rtype
-                          AND cp.claim_id = :claim_id
-                        ORDER BY r.id ASC
-                        LIMIT 1
-                        """),
-                        {
-                            "from_id": cid,
-                            "rtype": PartyRelationshipType.REPRESENTED_BY.value,
-                            "claim_id": claim_id,
-                        },
-                    ).fetchone()
-                if row:
-                    attorney = row_to_dict(row)
-                    if attorney.get("email") or attorney.get("phone"):
-                        return attorney
-            return (
-                claimant
-                if (claimant and (claimant.get("email") or claimant.get("phone")))
-                else None
-            )
-        if user_type == "policyholder":
-            ph = self.get_claim_party_by_type(claim_id, "policyholder")
-            return ph if (ph and (ph.get("email") or ph.get("phone"))) else None
-        if user_type == "attorney":
-            for row in self.get_claim_parties(claim_id, party_type="attorney"):
-                if row.get("email") or row.get("phone"):
-                    return row
-            return None
-        if user_type == "witness":
-            for row in self.get_claim_parties(claim_id, party_type="witness"):
-                if row.get("email") or row.get("phone"):
-                    return row
-            return None
-        return None
+        return self._party_repo.get_primary_contact_for_user_type(claim_id, user_type)
 
     def get_claim(self, claim_id: str) -> dict[str, Any] | None:
         """Fetch claim by ID."""
@@ -1404,19 +1067,9 @@ class ClaimRepository:
         workflow_output: str,
     ) -> None:
         """Save workflow run result to workflow_runs."""
-        with get_connection(self._db_path) as conn:
-            conn.execute(
-                text("""
-                INSERT INTO workflow_runs (claim_id, claim_type, router_output, workflow_output)
-                VALUES (:claim_id, :claim_type, :router_output, :workflow_output)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "claim_type": claim_type,
-                    "router_output": router_output,
-                    "workflow_output": workflow_output,
-                },
-            )
+        return self._workflow_repo.save_workflow_result(
+            claim_id, claim_type, router_output, workflow_output
+        )
 
     def get_workflow_runs(
         self,
@@ -1424,18 +1077,7 @@ class ClaimRepository:
         limit: int = 5,
     ) -> list[dict[str, Any]]:
         """Fetch workflow run records for a claim, most recent first."""
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT claim_type, router_output, workflow_output, created_at
-                FROM workflow_runs
-                WHERE claim_id = :claim_id
-                ORDER BY created_at DESC
-                LIMIT :limit
-                """),
-                {"claim_id": claim_id, "limit": limit},
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._workflow_repo.get_workflow_runs(claim_id, limit)
 
     def save_task_checkpoint(
         self,
@@ -1445,21 +1087,9 @@ class ClaimRepository:
         output: str,
     ) -> None:
         """Persist a stage checkpoint. Replaces any existing checkpoint for the same key."""
-        with get_connection(self._db_path) as conn:
-            conn.execute(
-                text("""
-                INSERT INTO task_checkpoints (claim_id, workflow_run_id, stage_key, output)
-                VALUES (:claim_id, :workflow_run_id, :stage_key, :output)
-                ON CONFLICT (claim_id, workflow_run_id, stage_key)
-                DO UPDATE SET output = EXCLUDED.output
-                """),
-                {
-                    "claim_id": claim_id,
-                    "workflow_run_id": workflow_run_id,
-                    "stage_key": stage_key,
-                    "output": output,
-                },
-            )
+        return self._workflow_repo.save_task_checkpoint(
+            claim_id, workflow_run_id, stage_key, output
+        )
 
     def get_task_checkpoints(
         self,
@@ -1467,15 +1097,7 @@ class ClaimRepository:
         workflow_run_id: str,
     ) -> dict[str, str]:
         """Load all checkpoints for a workflow run. Returns {stage_key: output_json}."""
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT stage_key, output FROM task_checkpoints
-                WHERE claim_id = :claim_id AND workflow_run_id = :workflow_run_id
-                """),
-                {"claim_id": claim_id, "workflow_run_id": workflow_run_id},
-            ).fetchall()
-        return {(d := row_to_dict(r))["stage_key"]: d["output"] for r in rows}
+        return self._workflow_repo.get_task_checkpoints(claim_id, workflow_run_id)
 
     def delete_task_checkpoints(
         self,
@@ -1485,47 +1107,11 @@ class ClaimRepository:
     ) -> None:
         """Delete checkpoints. If stage_keys given, only those; if None, all for the run.
         Empty list deletes nothing."""
-        if stage_keys is not None and not stage_keys:
-            return
-        with get_connection(self._db_path) as conn:
-            if stage_keys is not None:
-                params: dict[str, Any] = {
-                    "claim_id": claim_id,
-                    "workflow_run_id": workflow_run_id,
-                }
-                for i, sk in enumerate(stage_keys):
-                    params[f"sk{i}"] = sk
-                placeholders = ", ".join(f":sk{i}" for i in range(len(stage_keys)))
-                conn.execute(
-                    text(f"""
-                    DELETE FROM task_checkpoints
-                    WHERE claim_id = :claim_id AND workflow_run_id = :workflow_run_id
-                    AND stage_key IN ({placeholders})
-                    """),
-                    params,
-                )
-            else:
-                conn.execute(
-                    text("""
-                    DELETE FROM task_checkpoints
-                    WHERE claim_id = :claim_id AND workflow_run_id = :workflow_run_id
-                    """),
-                    {"claim_id": claim_id, "workflow_run_id": workflow_run_id},
-                )
+        return self._workflow_repo.delete_task_checkpoints(claim_id, workflow_run_id, stage_keys)
 
     def get_latest_checkpointed_run_id(self, claim_id: str) -> str | None:
         """Return the most recent workflow_run_id that has checkpoints for this claim."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("""
-                SELECT workflow_run_id FROM task_checkpoints
-                WHERE claim_id = :claim_id
-                ORDER BY id DESC
-                LIMIT 1
-                """),
-                {"claim_id": claim_id},
-            ).fetchone()
-        return row_to_dict(row)["workflow_run_id"] if row else None
+        return self._workflow_repo.get_latest_checkpointed_run_id(claim_id)
 
     def update_claim_attachments(
         self,
@@ -1856,44 +1442,11 @@ class ClaimRepository:
         actor_id: str,
     ) -> None:
         """Append a note to a claim. Raises ClaimNotFoundError if claim does not exist."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT id FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            conn.execute(
-                text("""
-                INSERT INTO claim_notes (claim_id, note, actor_id)
-                VALUES (:claim_id, :note, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "note": sanitize_note(note),
-                    "actor_id": sanitize_actor_id(actor_id),
-                },
-            )
+        return self._note_repo.add_note(claim_id, note, actor_id)
 
     def get_notes(self, claim_id: str) -> list[dict[str, Any]]:
         """Get all notes for a claim, ordered by created_at ascending. Raises ClaimNotFoundError if claim does not exist."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT id FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            rows = conn.execute(
-                text("""
-                SELECT id, claim_id, note, actor_id, created_at
-                FROM claim_notes
-                WHERE claim_id = :claim_id
-                ORDER BY created_at ASC
-                """),
-                {"claim_id": claim_id},
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._note_repo.get_notes(claim_id)
 
     def create_follow_up_message(
         self,
@@ -1905,63 +1458,13 @@ class ClaimRepository:
         topic: str | None = None,
     ) -> int:
         """Create a follow-up message record. Returns the message id. Raises ClaimNotFoundError if claim does not exist."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT id FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            result = conn.execute(
-                text("""
-                INSERT INTO follow_up_messages (claim_id, user_type, message_content, status, actor_id, topic)
-                VALUES (:claim_id, :user_type, :message_content, 'pending', :actor_id, :topic)
-                RETURNING id
-                """),
-                {
-                    "claim_id": claim_id,
-                    "user_type": user_type,
-                    "message_content": sanitize_note(message_content),
-                    "actor_id": actor_id,
-                    "topic": topic,
-                },
-            )
-            row = result.fetchone()
-            msg_id = row[0] if row else 0
-        return int(msg_id)
+        return self._follow_up_repo.create_follow_up_message(
+            claim_id, user_type, message_content, actor_id=actor_id, topic=topic
+        )
 
     def mark_follow_up_sent(self, message_id: int) -> None:
         """Mark a follow-up message as sent (status=sent) and log audit."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text(
-                    "SELECT claim_id, user_type, actor_id FROM follow_up_messages WHERE id = :message_id"
-                ),
-                {"message_id": message_id},
-            ).fetchone()
-            if row is None:
-                raise ValueError(f"Follow-up message not found: {message_id}")
-            row_d = row_to_dict(row)
-            claim_id = row_d["claim_id"]
-            user_type = row_d["user_type"]
-            actor_id = row_d["actor_id"]
-            conn.execute(
-                text("UPDATE follow_up_messages SET status = 'sent' WHERE id = :message_id"),
-                {"message_id": message_id},
-            )
-            details = json.dumps({"user_type": user_type, "message_id": message_id})
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (:claim_id, :action, :details, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_FOLLOW_UP_SENT,
-                    "details": details,
-                    "actor_id": actor_id,
-                },
-            )
+        return self._follow_up_repo.mark_follow_up_sent(message_id)
 
     def record_follow_up_response(
         self,
@@ -1980,41 +1483,9 @@ class ClaimRepository:
             expected_claim_id: If provided, raises ValueError when the message belongs to a
                 different claim (prevents cross-claim response injection).
         """
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT claim_id, user_type FROM follow_up_messages WHERE id = :message_id"),
-                {"message_id": message_id},
-            ).fetchone()
-            if row is None:
-                raise ValueError(f"Follow-up message not found: {message_id}")
-            row_d = row_to_dict(row)
-            claim_id = row_d["claim_id"]
-            user_type = row_d["user_type"]
-            if expected_claim_id is not None and claim_id != expected_claim_id:
-                raise ValueError(
-                    f"Follow-up message {message_id} does not belong to claim {expected_claim_id}"
-                )
-            conn.execute(
-                text("""
-                UPDATE follow_up_messages
-                SET status = 'responded', response_content = :response_content, responded_at = CURRENT_TIMESTAMP
-                WHERE id = :message_id
-                """),
-                {"response_content": sanitize_note(response_content), "message_id": message_id},
-            )
-            details = json.dumps({"user_type": user_type, "message_id": message_id})
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (:claim_id, :action, :details, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_FOLLOW_UP_RESPONSE,
-                    "details": details,
-                    "actor_id": actor_id,
-                },
-            )
+        return self._follow_up_repo.record_follow_up_response(
+            message_id, response_content, actor_id=actor_id, expected_claim_id=expected_claim_id
+        )
 
     def get_pending_follow_ups(
         self,
@@ -2023,67 +1494,15 @@ class ClaimRepository:
         user_type: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get pending or sent (not yet responded) follow-up messages for a claim."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT id FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            if user_type:
-                rows = conn.execute(
-                    text("""
-                    SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
-                    FROM follow_up_messages
-                    WHERE claim_id = :claim_id AND user_type = :user_type AND status IN ('pending', 'sent')
-                    ORDER BY created_at DESC
-                    """),
-                    {"claim_id": claim_id, "user_type": user_type},
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    text("""
-                    SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
-                    FROM follow_up_messages
-                    WHERE claim_id = :claim_id AND status IN ('pending', 'sent')
-                    ORDER BY created_at DESC
-                    """),
-                    {"claim_id": claim_id},
-                ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._follow_up_repo.get_pending_follow_ups(claim_id, user_type=user_type)
 
     def get_follow_up_messages(self, claim_id: str) -> list[dict[str, Any]]:
         """Get all follow-up messages for a claim."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT id FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            rows = conn.execute(
-                text("""
-                SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
-                FROM follow_up_messages
-                WHERE claim_id = :claim_id
-                ORDER BY created_at DESC
-                """),
-                {"claim_id": claim_id},
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._follow_up_repo.get_follow_up_messages(claim_id)
 
     def get_follow_up_message_by_id(self, message_id: int) -> dict[str, Any] | None:
         """Return a single follow-up message row by id, or None if missing."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("""
-                SELECT id, claim_id, user_type, message_content, status, response_content, created_at, responded_at, topic
-                FROM follow_up_messages
-                WHERE id = :message_id
-                """),
-                {"message_id": message_id},
-            ).fetchone()
-        return row_to_dict(row) if row else None
+        return self._follow_up_repo.get_follow_up_message_by_id(message_id)
 
     def insert_audit_entry(
         self,
@@ -2378,29 +1797,14 @@ class ClaimRepository:
         liability_basis: str | None = None,
     ) -> dict[str, Any]:
         """Create a subrogation case record. Returns the created row as dict."""
-        with get_connection(self._db_path) as conn:
-            conn.execute(
-                text("""
-                INSERT INTO subrogation_cases
-                    (claim_id, case_id, amount_sought, opposing_carrier,
-                     liability_percentage, liability_basis, status)
-                VALUES (:claim_id, :case_id, :amount_sought, :opposing_carrier,
-                        :liability_percentage, :liability_basis, 'pending')
-                """),
-                {
-                    "claim_id": claim_id,
-                    "case_id": case_id,
-                    "amount_sought": amount_sought,
-                    "opposing_carrier": opposing_carrier,
-                    "liability_percentage": liability_percentage,
-                    "liability_basis": liability_basis,
-                },
-            )
-            row = conn.execute(
-                text("SELECT * FROM subrogation_cases WHERE case_id = :case_id"),
-                {"case_id": case_id},
-            ).fetchone()
-        return row_to_dict(row) if row else {}
+        return self._subrogation_repo.create_subrogation_case(
+            claim_id,
+            case_id,
+            amount_sought,
+            opposing_carrier=opposing_carrier,
+            liability_percentage=liability_percentage,
+            liability_basis=liability_basis,
+        )
 
     def update_subrogation_case(
         self,
@@ -2414,50 +1818,19 @@ class ClaimRepository:
         recovery_amount: float | None = None,
     ) -> None:
         """Update subrogation case arbitration/metadata/recovery fields."""
-        set_parts: list[str] = ["updated_at = CURRENT_TIMESTAMP"]
-        params: dict[str, Any] = {"case_id": case_id}
-        if arbitration_status is not None:
-            set_parts.append("arbitration_status = :arbitration_status")
-            params["arbitration_status"] = arbitration_status
-        if arbitration_forum is not None:
-            set_parts.append("arbitration_forum = :arbitration_forum")
-            params["arbitration_forum"] = arbitration_forum
-        if dispute_date is not None:
-            set_parts.append("dispute_date = :dispute_date")
-            params["dispute_date"] = dispute_date
-        if opposing_carrier is not None:
-            set_parts.append("opposing_carrier = :opposing_carrier")
-            params["opposing_carrier"] = opposing_carrier
-        if status is not None:
-            set_parts.append("status = :status")
-            params["status"] = status
-        if recovery_amount is not None:
-            set_parts.append("recovery_amount = :recovery_amount")
-            params["recovery_amount"] = recovery_amount
-        if len(params) <= 1:
-            return
-        with get_connection(self._db_path) as conn:
-            cursor = conn.execute(
-                text(
-                    f"UPDATE subrogation_cases SET {', '.join(set_parts)} WHERE case_id = :case_id"
-                ),
-                params,
-            )
-            if cursor.rowcount == 0:
-                raise DomainValidationError(f"Subrogation case not found for case_id={case_id}")
+        return self._subrogation_repo.update_subrogation_case(
+            case_id,
+            arbitration_status=arbitration_status,
+            arbitration_forum=arbitration_forum,
+            dispute_date=dispute_date,
+            opposing_carrier=opposing_carrier,
+            status=status,
+            recovery_amount=recovery_amount,
+        )
 
     def get_subrogation_cases_by_claim(self, claim_id: str) -> list[dict[str, Any]]:
         """Fetch all subrogation cases for a claim."""
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT * FROM subrogation_cases
-                WHERE claim_id = :claim_id
-                ORDER BY created_at DESC
-                """),
-                {"claim_id": claim_id},
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._subrogation_repo.get_subrogation_cases_by_claim(claim_id)
 
     def assign_claim(
         self,
@@ -3239,29 +2612,7 @@ class ClaimRepository:
         policy_number: str | None = None,
     ) -> list[dict[str, Any]]:
         """Search claims by VIN, policy_number and/or incident_date. All optional; if all None, returns []."""
-        vin = None if vin is None else str(vin).strip()
-        incident_date = None if incident_date is None else str(incident_date).strip()
-        policy_number = None if policy_number is None else str(policy_number).strip()
-        if not vin and not incident_date and not policy_number:
-            return []
-        with get_connection(self._db_path) as conn:
-            conditions = []
-            params: dict[str, Any] = {}
-            if vin:
-                conditions.append("vin = :vin")
-                params["vin"] = vin
-            if incident_date:
-                conditions.append("incident_date = :incident_date")
-                params["incident_date"] = incident_date
-            if policy_number:
-                conditions.append("policy_number = :policy_number")
-                params["policy_number"] = policy_number
-            where_clause = " AND ".join(conditions)
-            rows = conn.execute(
-                text(f"SELECT * FROM claims WHERE {where_clause}"),
-                params,
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._search_repo.search_claims(vin, incident_date, policy_number)
 
     def get_claims_by_party_address(
         self,
@@ -3270,22 +2621,7 @@ class ClaimRepository:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Return claims linked to parties at a matching address."""
-        addr = str(address).strip()
-        if not addr:
-            return []
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT DISTINCT c.*
-                FROM claim_parties cp
-                JOIN claims c ON c.id = cp.claim_id
-                WHERE lower(trim(cp.address)) = lower(trim(:addr))
-                ORDER BY c.created_at DESC
-                LIMIT :limit
-                """),
-                {"addr": addr, "limit": limit},
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._search_repo.get_claims_by_party_address(address, limit=limit)
 
     def get_claims_by_provider_name(
         self,
@@ -3294,67 +2630,15 @@ class ClaimRepository:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Return claims linked to provider parties with matching name."""
-        name = str(provider_name).strip()
-        if not name:
-            return []
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT DISTINCT c.*
-                FROM claim_parties cp
-                JOIN claims c ON c.id = cp.claim_id
-                WHERE cp.party_type = 'provider'
-                  AND lower(trim(cp.name)) = lower(trim(:name))
-                ORDER BY c.created_at DESC
-                LIMIT :limit
-                """),
-                {"name": name, "limit": limit},
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        return self._search_repo.get_claims_by_provider_name(provider_name, limit=limit)
 
     def _extract_graph_link_keys(
         self,
         claim: dict[str, Any],
         parties: list[dict[str, Any]],
     ) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
-        """Extract (vins, addresses, provider_names, phones, emails) link keys from a claim.
-
-        Returns five lists suitable for passing directly to ``_query_related_ids_on_conn``.
-        Each list is de-duplicated and normalized.
-        """
-        vin = str(claim.get("vin") or "").strip()
-        vins = [vin] if vin else []
-        addresses = list(
-            dict.fromkeys(
-                str(p.get("address")).strip().lower()
-                for p in parties
-                if isinstance(p.get("address"), str) and str(p.get("address")).strip()
-            )
-        )
-        provider_names = list(
-            dict.fromkeys(
-                str(p.get("name")).strip().lower()
-                for p in parties
-                if str(p.get("party_type") or "").strip() == "provider"
-                and isinstance(p.get("name"), str)
-                and str(p.get("name")).strip()
-            )
-        )
-        phones = list(
-            dict.fromkeys(
-                n
-                for p in parties
-                if (n := normalize_party_phone_for_graph(p.get("phone"))) is not None
-            )
-        )
-        emails = list(
-            dict.fromkeys(
-                n
-                for p in parties
-                if (n := normalize_party_email_for_graph(p.get("email"))) is not None
-            )
-        )
-        return vins, addresses, provider_names, phones, emails
+        """Extract (vins, addresses, provider_names, phones, emails) link keys from a claim."""
+        return self._search_repo._extract_graph_link_keys(claim, parties)
 
     def _query_related_ids_on_conn(
         self,
@@ -3368,121 +2652,17 @@ class ClaimRepository:
         exclude_ids: set[str],
         limit: int,
     ) -> set[str]:
-        """Batch-query claim IDs related by any shared link key on the given connection.
-
-        All sub-queries run on ``conn`` to avoid opening extra connections (no N+1
-        connection storms). Returned IDs exclude any ID present in ``exclude_ids``.
-        Each sub-query is individually bounded by ``limit``.
-        """
-        related: set[str] = set()
-
-        if vins:
-            v_params: dict[str, Any] = {"limit": limit}
-            for i, v in enumerate(vins):
-                v_params[f"v{i}"] = v
-            v_in = ", ".join(f":v{i}" for i in range(len(vins)))
-            rows = conn.execute(
-                text(
-                    f"SELECT DISTINCT id FROM claims WHERE vin IN ({v_in}) ORDER BY id LIMIT :limit"
-                ),
-                v_params,
-            ).fetchall()
-            for r in rows:
-                rid = str(r[0] if r else "").strip()
-                if rid and rid not in exclude_ids:
-                    related.add(rid)
-
-        if addresses:
-            params: dict[str, Any] = {"limit": limit}
-            for i, addr in enumerate(addresses):
-                params[f"addr{i}"] = addr
-            placeholders = ", ".join(f":addr{i}" for i in range(len(addresses)))
-            rows = conn.execute(
-                text(f"""
-                SELECT DISTINCT c.id
-                FROM claim_parties cp
-                JOIN claims c ON c.id = cp.claim_id
-                WHERE lower(trim(cp.address)) IN ({placeholders})
-                ORDER BY c.id
-                LIMIT :limit
-                """),
-                params,
-            ).fetchall()
-            for r in rows:
-                rid = str(r[0] if r else "").strip()
-                if rid and rid not in exclude_ids:
-                    related.add(rid)
-
-        if provider_names:
-            params = {"limit": limit}
-            for i, pn in enumerate(provider_names):
-                params[f"pn{i}"] = pn
-            placeholders = ", ".join(f":pn{i}" for i in range(len(provider_names)))
-            rows = conn.execute(
-                text(f"""
-                SELECT DISTINCT c.id
-                FROM claim_parties cp
-                JOIN claims c ON c.id = cp.claim_id
-                WHERE cp.party_type = 'provider'
-                  AND lower(trim(cp.name)) IN ({placeholders})
-                ORDER BY c.id
-                LIMIT :limit
-                """),
-                params,
-            ).fetchall()
-            for r in rows:
-                rid = str(r[0] if r else "").strip()
-                if rid and rid not in exclude_ids:
-                    related.add(rid)
-
-        if emails_unique:
-            params = {"limit": limit}
-            for i, em in enumerate(emails_unique):
-                params[f"em{i}"] = em
-            placeholders = ", ".join(f":em{i}" for i in range(len(emails_unique)))
-            rows = conn.execute(
-                text(f"""
-                SELECT DISTINCT c.id
-                FROM claim_parties cp
-                JOIN claims c ON c.id = cp.claim_id
-                WHERE lower(trim(cp.email)) IN ({placeholders})
-                ORDER BY c.id
-                LIMIT :limit
-                """),
-                params,
-            ).fetchall()
-            for r in rows:
-                rid = str(r[0] if r else "").strip()
-                if rid and rid not in exclude_ids:
-                    related.add(rid)
-
-        if phones_unique:
-            phone_expr = (
-                sql_expr_phone_normalized_postgres()
-                if is_postgres_backend()
-                else "graph_phone_digits(cp.phone)"
-            )
-            params = {"limit": limit}
-            for i, ph in enumerate(phones_unique):
-                params[f"ph{i}"] = ph
-            placeholders = ", ".join(f":ph{i}" for i in range(len(phones_unique)))
-            rows = conn.execute(
-                text(f"""
-                SELECT DISTINCT c.id
-                FROM claim_parties cp
-                JOIN claims c ON c.id = cp.claim_id
-                WHERE {phone_expr} IN ({placeholders})
-                ORDER BY c.id
-                LIMIT :limit
-                """),
-                params,
-            ).fetchall()
-            for r in rows:
-                rid = str(r[0] if r else "").strip()
-                if rid and rid not in exclude_ids:
-                    related.add(rid)
-
-        return related
+        """Batch-query claim IDs related by any shared link key on the given connection."""
+        return self._search_repo._query_related_ids_on_conn(
+            conn,
+            vins=vins,
+            addresses=addresses,
+            provider_names=provider_names,
+            phones_unique=phones_unique,
+            emails_unique=emails_unique,
+            exclude_ids=exclude_ids,
+            limit=limit,
+        )
 
     def build_relationship_snapshot(
         self,
@@ -3504,252 +2684,10 @@ class ClaimRepository:
 
         This is a migration-ready compatibility layer. It derives graph signals from
         existing tables without requiring dedicated graph persistence.
-
-        Args:
-            claim_id: Root claim ID.
-            max_nodes: Budget for *related* claim nodes (does not include the root node
-                itself, so ``node_count`` in the result can be at most ``max_nodes + 1``).
-                The budget is shared across all hops; when the budget would be exceeded,
-                nodes are selected deterministically by ascending claim ID.
-            max_depth: Graph traversal depth. 1 returns direct (1-hop) neighbors only.
-                2 also expands from each 1-hop neighbor. Values > 2 are capped to 2.
         """
-        logger = logging.getLogger(__name__)
-        effective_depth = min(max(max_depth, 1), 2)
-        if max_depth > 2:
-            logger.debug(
-                "build_relationship_snapshot max_depth=%s > 2; capping to 2",
-                max_depth,
-            )
-        elif max_depth == 2:
-            logger.debug("build_relationship_snapshot max_depth=2; performing 2-hop BFS")
-
-        root_claim = self.get_claim(claim_id)
-        if root_claim is None:
-            return {
-                "claim_id": claim_id,
-                "max_nodes": max_nodes,
-                "node_count": 0,
-                "edge_count": 0,
-                "high_risk_link_count": 0,
-                "dense_cluster_detected": False,
-                "signals": [],
-                "nodes": [],
-                "edges": [],
-            }
-
-        root_parties = self.get_claim_parties(claim_id)
-        root_vins, root_addresses, root_providers, root_phones, root_emails = (
-            self._extract_graph_link_keys(root_claim, root_parties)
+        return self._search_repo.build_relationship_snapshot(
+            claim_id=claim_id, max_nodes=max_nodes, max_depth=max_depth
         )
-
-        hop1_ids: set[str] = set()
-        hop2_ids: set[str] = set()
-        hop1_claims_by_id: dict[str, dict[str, Any]] = {}
-        hop1_parties_by_id: dict[str, list[dict[str, Any]]] = {}
-        hop2_claims_by_id: dict[str, dict[str, Any]] = {}
-        hop2_parties_by_id: dict[str, list[dict[str, Any]]] = {}
-
-        with get_connection(self._db_path) as conn:
-            # ── Hop 1: find claims directly related to the root ────────────────
-            hop1_ids = self._query_related_ids_on_conn(
-                conn,
-                vins=root_vins,
-                addresses=root_addresses,
-                provider_names=root_providers,
-                phones_unique=root_phones,
-                emails_unique=root_emails,
-                exclude_ids={claim_id},
-                # Over-fetch (×5) to account for duplicates across link-key types before
-                # the final deduplication and budget trim below.
-                limit=max_nodes * 5,
-            )
-            if len(hop1_ids) > max_nodes:
-                hop1_ids = set(sorted(hop1_ids)[:max_nodes])
-
-            if hop1_ids:
-                sorted_hop1 = sorted(hop1_ids)
-                h1_params: dict[str, Any] = {
-                    f"id{i}": hid for i, hid in enumerate(sorted_hop1)
-                }
-                h1_in = ", ".join(f":id{i}" for i in range(len(sorted_hop1)))
-                for row in conn.execute(
-                    text(f"SELECT * FROM claims WHERE id IN ({h1_in})"), h1_params
-                ).fetchall():
-                    d = row_to_dict(row)
-                    hop1_claims_by_id[d["id"]] = d
-                for row in conn.execute(
-                    text(f"SELECT * FROM claim_parties WHERE claim_id IN ({h1_in})"),
-                    h1_params,
-                ).fetchall():
-                    p = row_to_dict(row)
-                    hop1_parties_by_id.setdefault(p["claim_id"], []).append(p)
-
-                # ── Hop 2: expand from each 1-hop neighbor ─────────────────────
-                if effective_depth >= 2:
-                    remaining = max_nodes - len(hop1_ids)
-                    if remaining > 0:
-                        # Aggregate link keys from all hop1 nodes for bulk queries.
-                        agg_vins: list[str] = []
-                        agg_addresses: list[str] = []
-                        agg_providers: list[str] = []
-                        agg_phones: list[str] = []
-                        agg_emails: list[str] = []
-                        seen_v: set[str] = set()
-                        seen_a: set[str] = set()
-                        seen_p: set[str] = set()
-                        seen_ph: set[str] = set()
-                        seen_em: set[str] = set()
-                        for hid in sorted_hop1:
-                            h_vins, h_addrs, h_provs, h_phones, h_emails = (
-                                self._extract_graph_link_keys(
-                                    hop1_claims_by_id.get(hid, {}),
-                                    hop1_parties_by_id.get(hid, []),
-                                )
-                            )
-                            for v in h_vins:
-                                if v not in seen_v:
-                                    agg_vins.append(v)
-                                    seen_v.add(v)
-                            for a in h_addrs:
-                                if a not in seen_a:
-                                    agg_addresses.append(a)
-                                    seen_a.add(a)
-                            for prov in h_provs:
-                                if prov not in seen_p:
-                                    agg_providers.append(prov)
-                                    seen_p.add(prov)
-                            for ph in h_phones:
-                                if ph not in seen_ph:
-                                    agg_phones.append(ph)
-                                    seen_ph.add(ph)
-                            for em in h_emails:
-                                if em not in seen_em:
-                                    agg_emails.append(em)
-                                    seen_em.add(em)
-
-                        hop2_ids = self._query_related_ids_on_conn(
-                            conn,
-                            vins=agg_vins,
-                            addresses=agg_addresses,
-                            provider_names=agg_providers,
-                            phones_unique=agg_phones,
-                            emails_unique=agg_emails,
-                            exclude_ids={claim_id} | hop1_ids,
-                            # Over-fetch (×5) to account for duplicates across link-key
-                            # types before the final deduplication and budget trim below.
-                            limit=remaining * 5,
-                        )
-                        if len(hop2_ids) > remaining:
-                            hop2_ids = set(sorted(hop2_ids)[:remaining])
-
-                        if hop2_ids:
-                            sorted_hop2 = sorted(hop2_ids)
-                            h2_params: dict[str, Any] = {
-                                f"id{i}": hid for i, hid in enumerate(sorted_hop2)
-                            }
-                            h2_in = ", ".join(f":id{i}" for i in range(len(sorted_hop2)))
-                            for row in conn.execute(
-                                text(f"SELECT * FROM claims WHERE id IN ({h2_in})"),
-                                h2_params,
-                            ).fetchall():
-                                d = row_to_dict(row)
-                                hop2_claims_by_id[d["id"]] = d
-                            for row in conn.execute(
-                                text(
-                                    f"SELECT * FROM claim_parties WHERE claim_id IN ({h2_in})"
-                                ),
-                                h2_params,
-                            ).fetchall():
-                                p = row_to_dict(row)
-                                hop2_parties_by_id.setdefault(p["claim_id"], []).append(p)
-
-        # ── Build graph nodes and edges in-memory ──────────────────────────────
-        nodes: list[dict[str, Any]] = [{"id": claim_id, "type": "claim"}]
-        edges: list[dict[str, Any]] = []
-        high_risk_link_count = 0
-
-        # Hop-1 edges: root → hop1
-        for h1_id in sorted(hop1_ids):
-            h1_claim = hop1_claims_by_id.get(h1_id)
-            if h1_claim is None:
-                continue
-            rtypes = _resolve_edge_relations(
-                root_vins,
-                root_addresses,
-                root_providers,
-                root_phones,
-                root_emails,
-                h1_claim,
-                hop1_parties_by_id.get(h1_id, []),
-            )
-            if not rtypes:
-                continue
-            nodes.append({"id": h1_id, "type": "claim"})
-            edges.append({"from": claim_id, "to": h1_id, "relations": sorted(set(rtypes))})
-            if _HIGH_RISK_RELATIONS & set(rtypes):
-                high_risk_link_count += 1
-
-        # Hop-2 edges: hop1 → hop2
-        if effective_depth >= 2:
-            added_hop2_edges: set[tuple[str, str]] = set()
-            added_hop2_nodes: set[str] = set()
-            for h2_id in sorted(hop2_ids):
-                h2_claim = hop2_claims_by_id.get(h2_id)
-                if h2_claim is None:
-                    continue
-                h2_parties = hop2_parties_by_id.get(h2_id, [])
-                for h1_id in sorted(hop1_ids):
-                    if (h1_id, h2_id) in added_hop2_edges:
-                        continue
-                    h1_claim = hop1_claims_by_id.get(h1_id)
-                    if h1_claim is None:
-                        continue
-                    h1_vins, h1_addrs, h1_provs, h1_phones, h1_emails = (
-                        self._extract_graph_link_keys(
-                            h1_claim, hop1_parties_by_id.get(h1_id, [])
-                        )
-                    )
-                    rtypes = _resolve_edge_relations(
-                        h1_vins,
-                        h1_addrs,
-                        h1_provs,
-                        h1_phones,
-                        h1_emails,
-                        h2_claim,
-                        h2_parties,
-                    )
-                    if not rtypes:
-                        continue
-                    if h2_id not in added_hop2_nodes:
-                        nodes.append({"id": h2_id, "type": "claim"})
-                        added_hop2_nodes.add(h2_id)
-                    edges.append(
-                        {"from": h1_id, "to": h2_id, "relations": sorted(set(rtypes))}
-                    )
-                    added_hop2_edges.add((h1_id, h2_id))
-                    if _HIGH_RISK_RELATIONS & set(rtypes):
-                        high_risk_link_count += 1
-
-        edge_count = len(edges)
-        node_count = len(nodes)
-        dense_cluster_detected = edge_count >= 3 or high_risk_link_count >= 2
-        signals: list[str] = []
-        if dense_cluster_detected:
-            signals.append("dense_cluster_detected")
-        if high_risk_link_count >= 2:
-            signals.append("high_risk_links")
-        return {
-            "claim_id": claim_id,
-            "max_nodes": max_nodes,
-            "node_count": node_count,
-            "edge_count": edge_count,
-            "high_risk_link_count": high_risk_link_count,
-            "dense_cluster_detected": dense_cluster_detected,
-            "signals": signals,
-            "nodes": nodes,
-            "edges": edges,
-        }
 
     def get_relationship_index_snapshot(self, *, claim_id: str) -> dict[str, Any]:
         """Placeholder for future durable graph index implementation.
@@ -3757,11 +2695,7 @@ class ClaimRepository:
         Returns a migration-ready shape while current implementation derives data
         from normalized claims/parties tables.
         """
-        return {
-            "claim_id": claim_id,
-            "source": "derived_from_claims_and_parties",
-            "status": "not_materialized",
-        }
+        return self._search_repo.get_relationship_index_snapshot(claim_id=claim_id)
 
     def list_claims_for_retention(
         self,
@@ -3770,75 +2704,8 @@ class ClaimRepository:
         retention_by_state: dict[str, int] | None = None,
         exclude_litigation_hold: bool = True,
     ) -> list[dict[str, Any]]:
-        """List closed claims older than retention period that are not yet archived.
-
-        Uses created_at for cutoff. Only returns claims with status closed
-        (archiving requires closed->archived transition). Excludes claims
-        with status archived or a non-null archived_at.
-
-        When exclude_litigation_hold is True (default), claims with
-        litigation_hold=1 are excluded (retention suspended for litigation).
-
-        When retention_by_state is provided, uses loss_state to pick per-claim
-        retention; falls back to retention_period_years when state is missing
-        or not in the map.
-        """
-        if retention_period_years < 0:
-            raise ValueError("retention_period_years must be non-negative")
-        state_map = retention_by_state or {}
-        now = datetime.now(timezone.utc)
-        cutoff_dt = now - timedelta(days=retention_period_years * 365)
-        cutoff = cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-        if state_map:
-            min_state_years = min(state_map.values())
-            min_retention_years = min(retention_period_years, min_state_years)
-            coarse_cutoff_dt = now - timedelta(days=min_retention_years * 365)
-            coarse_cutoff = coarse_cutoff_dt.strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            coarse_cutoff = cutoff
-
-        with get_connection(self._db_path) as conn:
-            if not state_map:
-                rows = conn.execute(
-                    text("""
-                    SELECT * FROM claims
-                    WHERE archived_at IS NULL
-                      AND status = :status
-                      AND created_at <= :cutoff
-                      AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
-                    ORDER BY created_at ASC
-                    """),
-                    {
-                        "status": STATUS_CLOSED,
-                        "cutoff": cutoff,
-                        "include_hold": 1 if not exclude_litigation_hold else 0,
-                    },
-                ).fetchall()
-                return [row_to_dict(r) for r in rows]
-
-            rows = conn.execute(
-                text("""
-                SELECT * FROM claims
-                WHERE archived_at IS NULL
-                  AND status = :status
-                  AND created_at <= :cutoff
-                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
-                ORDER BY created_at ASC
-                """),
-                {
-                    "status": STATUS_CLOSED,
-                    "cutoff": coarse_cutoff,
-                    "include_hold": 1 if not exclude_litigation_hold else 0,
-                },
-            ).fetchall()
-
-        result = []
-        for r in rows:
-            row_d = row_to_dict(r)
-            if _is_claim_past_retention(row_d, now, retention_period_years, state_map):
-                result.append(row_d)
-        return result
+        """List closed claims older than retention period that are not yet archived."""
+        return self._retention_repo.list_claims_for_retention(retention_period_years, retention_by_state=retention_by_state, exclude_litigation_hold=exclude_litigation_hold)
 
     def set_litigation_hold(
         self,
@@ -3848,39 +2715,7 @@ class ClaimRepository:
         actor_id: str = ACTOR_WORKFLOW,
     ) -> None:
         """Set or clear litigation hold on a claim. Logs to audit."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT id, litigation_hold FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            row_d = row_to_dict(row)
-            current = 1 if row_d.get("litigation_hold") else 0
-            new_val = 1 if litigation_hold else 0
-            if current == new_val:
-                return
-            conn.execute(
-                text("""
-                UPDATE claims SET litigation_hold = :val, updated_at = CURRENT_TIMESTAMP
-                WHERE id = :claim_id
-                """),
-                {"claim_id": claim_id, "val": new_val},
-            )
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (:claim_id, :action, :details, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_LITIGATION_HOLD,
-                    "details": "Litigation hold set"
-                    if litigation_hold
-                    else "Litigation hold cleared",
-                    "actor_id": actor_id,
-                },
-            )
+        return self._retention_repo.set_litigation_hold(claim_id, litigation_hold, actor_id=actor_id)
 
     def retention_report(
         self,
@@ -3893,148 +2728,7 @@ class ClaimRepository:
         exclude_litigation_hold_from_audit_eligibility: bool = True,
     ) -> dict[str, Any]:
         """Produce retention audit report: counts by tier, litigation hold, pending archive/purge."""
-        state_map = retention_by_state or {}
-        purge_state_map = purge_by_state or {}
-        now = datetime.now(timezone.utc)
-
-        with get_connection(self._db_path) as conn:
-            status_rows = conn.execute(
-                text("""
-                SELECT status, COUNT(*) as cnt FROM claims GROUP BY status
-                """)
-            ).fetchall()
-            status_counts = {r[0]: r[1] for r in status_rows}
-
-            tier_rows = conn.execute(
-                text("""
-                SELECT retention_tier, COUNT(*) as cnt FROM claims GROUP BY retention_tier
-                """)
-            ).fetchall()
-            claims_by_retention_tier = {r[0]: r[1] for r in tier_rows}
-
-            litigation_hold_count = (
-                conn.execute(
-                    text("SELECT COUNT(*) FROM claims WHERE COALESCE(litigation_hold, 0) = 1")
-                ).scalar()
-                or 0
-            )
-
-            audit_count = conn.execute(text("SELECT COUNT(*) FROM claim_audit_log")).scalar() or 0
-
-            audit_rows_for_purged_claims = (
-                conn.execute(
-                    text("""
-                    SELECT COUNT(*) FROM claim_audit_log AS a
-                    INNER JOIN claims AS c ON c.id = a.claim_id
-                    WHERE c.status = :st
-                    """),
-                    {"st": STATUS_PURGED},
-                ).scalar()
-                or 0
-            )
-            audit_rows_for_non_purged_claims = max(0, audit_count - audit_rows_for_purged_claims)
-
-            audit_rows_eligible_for_retention: int | None = None
-            if audit_log_retention_years_after_purge is not None:
-                purged_claim_rows = conn.execute(
-                    text("""
-                    SELECT id, purged_at, litigation_hold
-                    FROM claims
-                    WHERE status = :st AND purged_at IS NOT NULL
-                    """),
-                    {"st": STATUS_PURGED},
-                ).fetchall()
-                eligible_ids: list[str] = []
-                for r in purged_claim_rows:
-                    row_d = row_to_dict(r)
-                    if exclude_litigation_hold_from_audit_eligibility and row_d.get(
-                        "litigation_hold"
-                    ):
-                        continue
-                    if _is_purged_past_audit_retention_period(
-                        row_d, now, audit_log_retention_years_after_purge
-                    ):
-                        eligible_ids.append(str(row_d["id"]))
-                audit_rows_eligible_for_retention = 0
-                chunk_size = 400
-                for i in range(0, len(eligible_ids), chunk_size):
-                    chunk = eligible_ids[i : i + chunk_size]
-                    placeholders, in_params = _sql_in_params("ac_", chunk)
-                    audit_rows_eligible_for_retention += (
-                        conn.execute(
-                            text(
-                                f"SELECT COUNT(*) FROM claim_audit_log WHERE claim_id IN ({placeholders})"
-                            ),
-                            in_params,
-                        ).scalar()
-                        or 0
-                    )
-
-            closed_rows = conn.execute(
-                text("""
-                SELECT id, created_at, loss_state, litigation_hold
-                FROM claims WHERE status = :status AND archived_at IS NULL
-                """),
-                {"status": STATUS_CLOSED},
-            ).fetchall()
-
-            archived_rows = conn.execute(
-                text("""
-                SELECT id, archived_at, loss_state, litigation_hold FROM claims
-                WHERE status = :st AND archived_at IS NOT NULL
-                """),
-                {"st": STATUS_ARCHIVED},
-            ).fetchall()
-
-        pending_archive = 0
-        for r in closed_rows:
-            row_d = row_to_dict(r)
-            if row_d.get("litigation_hold"):
-                continue
-            if _is_claim_past_retention(row_d, now, retention_period_years, state_map):
-                pending_archive += 1
-
-        closed_with_hold = sum(1 for r in closed_rows if row_to_dict(r).get("litigation_hold"))
-
-        pending_purge = 0
-        for r in archived_rows:
-            row_d = row_to_dict(r)
-            if row_d.get("litigation_hold"):
-                continue
-            if _is_archived_past_purge_period(
-                row_d, now, purge_after_archive_years, purge_state_map
-            ):
-                pending_purge += 1
-
-        return {
-            "retention_period_years": retention_period_years,
-            "purge_after_archive_years": purge_after_archive_years,
-            "retention_by_state": state_map,
-            "purge_by_state": purge_state_map,
-            "claims_by_status": status_counts,
-            "claims_by_retention_tier": claims_by_retention_tier,
-            "active_count": sum(
-                status_counts.get(s, 0)
-                for s in (
-                    STATUS_PENDING,
-                    STATUS_PROCESSING,
-                    STATUS_NEEDS_REVIEW,
-                    STATUS_PENDING_INFO,
-                )
-            ),
-            "closed_count": status_counts.get(STATUS_CLOSED, 0),
-            "archived_count": status_counts.get(STATUS_ARCHIVED, 0),
-            "purged_count": status_counts.get(STATUS_PURGED, 0),
-            "litigation_hold_count": litigation_hold_count,
-            "closed_with_litigation_hold": closed_with_hold,
-            "pending_archive_count": pending_archive,
-            "pending_purge_count": pending_purge,
-            "audit_log_rows": audit_count,
-            "audit_log_rows_for_purged_claims": audit_rows_for_purged_claims,
-            "audit_log_rows_for_non_purged_claims": audit_rows_for_non_purged_claims,
-            "audit_log_retention_years_after_purge": audit_log_retention_years_after_purge,
-            "audit_log_rows_eligible_for_retention": audit_rows_eligible_for_retention,
-        }
+        return self._retention_repo.retention_report(retention_period_years, retention_by_state=retention_by_state, purge_after_archive_years=purge_after_archive_years, purge_by_state=purge_by_state, audit_log_retention_years_after_purge=audit_log_retention_years_after_purge, exclude_litigation_hold_from_audit_eligibility=exclude_litigation_hold_from_audit_eligibility)
 
     def archive_claim(
         self,
@@ -4043,62 +2737,7 @@ class ClaimRepository:
         actor_id: str = ACTOR_RETENTION,
     ) -> None:
         """Archive a claim (soft delete for retention). Sets archived_at and status=archived."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            row_d = row_to_dict(row)
-            old_status = row_d["status"]
-            if old_status == STATUS_ARCHIVED:
-                return
-            if old_status == STATUS_PURGED:
-                return
-            validate_transition(
-                claim_id,
-                old_status,
-                STATUS_ARCHIVED,
-                claim=row_d,
-                actor_id=actor_id,
-            )
-            conn.execute(
-                text("""
-                UPDATE claims SET status = :status, archived_at = CURRENT_TIMESTAMP,
-                retention_tier = :rtier, updated_at = CURRENT_TIMESTAMP
-                WHERE id = :claim_id
-                """),
-                {
-                    "status": STATUS_ARCHIVED,
-                    "rtier": RETENTION_TIER_ARCHIVED,
-                    "claim_id": claim_id,
-                },
-            )
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id)
-                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_RETENTION,
-                    "old_status": old_status,
-                    "new_status": STATUS_ARCHIVED,
-                    "details": "Archived for retention (claim older than retention period)",
-                    "actor_id": actor_id,
-                },
-            )
-
-        emit_claim_event(
-            ClaimEvent(
-                claim_id=claim_id,
-                status=STATUS_ARCHIVED,
-                summary="Archived for retention",
-                claim_type=row_d["claim_type"],
-                payout_amount=row_d["payout_amount"],
-            )
-        )
+        return self._retention_repo.archive_claim(claim_id, actor_id=actor_id)
 
     def list_claims_for_purge(
         self,
@@ -4108,31 +2747,7 @@ class ClaimRepository:
         exclude_litigation_hold: bool = True,
     ) -> list[dict[str, Any]]:
         """List archived claims past purge horizon (archived_at + N calendar years)."""
-        if purge_after_archive_years < 0:
-            raise ValueError("purge_after_archive_years must be non-negative")
-        now = datetime.now(timezone.utc)
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT * FROM claims
-                WHERE status = :st
-                  AND archived_at IS NOT NULL
-                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
-                ORDER BY archived_at ASC
-                """),
-                {
-                    "st": STATUS_ARCHIVED,
-                    "include_hold": 1 if not exclude_litigation_hold else 0,
-                },
-            ).fetchall()
-        result = []
-        for r in rows:
-            row_d = row_to_dict(r)
-            if _is_archived_past_purge_period(
-                row_d, now, purge_after_archive_years, purge_by_state
-            ):
-                result.append(row_d)
-        return result
+        return self._retention_repo.list_claims_for_purge(purge_after_archive_years, purge_by_state=purge_by_state, exclude_litigation_hold=exclude_litigation_hold)
 
     def purge_claim(
         self,
@@ -4141,68 +2756,7 @@ class ClaimRepository:
         actor_id: str = ACTOR_RETENTION,
     ) -> None:
         """Purge for retention: anonymize PII, status purged, retention_tier purged."""
-        now_iso = datetime.now(timezone.utc).isoformat()
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT status, claim_type, payout_amount FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            row_d = row_to_dict(row)
-            old_status = row_d["status"]
-            if old_status == STATUS_PURGED:
-                return
-            validate_transition(
-                claim_id,
-                old_status,
-                STATUS_PURGED,
-                claim=row_d,
-                actor_id=actor_id,
-            )
-            anonymize_claim_pii(
-                conn,
-                claim_id,
-                now_iso=now_iso,
-                notes_redaction_text="[REDACTED - retention purge]",
-                redact_audit_log=get_settings().privacy.audit_log_state_redaction_enabled,
-            )
-            conn.execute(
-                text("""
-                UPDATE claims SET status = :status, retention_tier = :rtier,
-                purged_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-                WHERE id = :claim_id
-                """),
-                {
-                    "status": STATUS_PURGED,
-                    "rtier": RETENTION_TIER_PURGED,
-                    "claim_id": claim_id,
-                },
-            )
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, old_status, new_status, details, actor_id)
-                VALUES (:claim_id, :action, :old_status, :new_status, :details, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_RETENTION_PURGED,
-                    "old_status": old_status,
-                    "new_status": STATUS_PURGED,
-                    "details": "Purged for retention (PII anonymized; audit trail retained)",
-                    "actor_id": actor_id,
-                },
-            )
-
-        emit_claim_event(
-            ClaimEvent(
-                claim_id=claim_id,
-                status=STATUS_PURGED,
-                summary="Purged for retention",
-                claim_type=row_d["claim_type"],
-                payout_amount=row_d["payout_amount"],
-            )
-        )
+        return self._retention_repo.purge_claim(claim_id, actor_id=actor_id)
 
     # ------------------------------------------------------------------
     # Cold-storage export helpers
@@ -4210,17 +2764,7 @@ class ClaimRepository:
 
     def get_cold_storage_export_key(self, claim_id: str) -> str | None:
         """Return the S3 key if this claim has already been exported, else None."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text(
-                    "SELECT cold_storage_export_key FROM claims WHERE id = :claim_id"
-                    " AND cold_storage_exported_at IS NOT NULL"
-                ),
-                {"claim_id": claim_id},
-            ).fetchone()
-        if row is None:
-            return None
-        return row_to_dict(row).get("cold_storage_export_key")
+        return self._retention_repo.get_cold_storage_export_key(claim_id)
 
     def list_claims_for_export(
         self,
@@ -4229,48 +2773,8 @@ class ClaimRepository:
         purge_by_state: dict[str, int] | None = None,
         exclude_litigation_hold: bool = True,
     ) -> list[dict[str, Any]]:
-        """List archived claims eligible for cold-storage export.
-
-        Eligible claims are those that:
-        - have ``status = 'archived'`` and ``archived_at`` set,
-        - are past the purge horizon (same logic as :meth:`list_claims_for_purge`), and
-        - have **not** yet been exported (``cold_storage_exported_at IS NULL``).
-
-        Args:
-            purge_after_archive_years: Years after ``archived_at`` before export is due.
-            purge_by_state: Optional per-state override map (state name → years).
-            exclude_litigation_hold: When True (default), claims with a litigation hold
-                are excluded.
-
-        Returns:
-            List of claim dicts eligible for export.
-        """
-        if purge_after_archive_years < 0:
-            raise ValueError("purge_after_archive_years must be non-negative")
-        now = datetime.now(timezone.utc)
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT * FROM claims
-                WHERE status = :st
-                  AND archived_at IS NOT NULL
-                  AND cold_storage_exported_at IS NULL
-                  AND (COALESCE(litigation_hold, 0) = 0 OR :include_hold = 1)
-                ORDER BY archived_at ASC
-                """),
-                {
-                    "st": STATUS_ARCHIVED,
-                    "include_hold": 1 if not exclude_litigation_hold else 0,
-                },
-            ).fetchall()
-        result = []
-        for r in rows:
-            row_d = row_to_dict(r)
-            if _is_archived_past_purge_period(
-                row_d, now, purge_after_archive_years, purge_by_state
-            ):
-                result.append(row_d)
-        return result
+        """List archived claims eligible for cold-storage export."""
+        return self._retention_repo.list_claims_for_export(purge_after_archive_years, purge_by_state=purge_by_state, exclude_litigation_hold=exclude_litigation_hold)
 
     def mark_claim_exported(
         self,
@@ -4278,51 +2782,8 @@ class ClaimRepository:
         export_key: str,
         actor_id: str = ACTOR_RETENTION,
     ) -> None:
-        """Record that a claim has been exported to cold storage.
-
-        Sets ``cold_storage_exported_at`` and ``cold_storage_export_key`` on the
-        claim row and appends a ``cold_storage_exported`` audit log entry.
-
-        Args:
-            claim_id: Claim to mark as exported.
-            export_key: S3 object key of the uploaded manifest.
-            actor_id: Actor identifier for the audit log.
-
-        Raises:
-            ClaimNotFoundError: If the claim does not exist.
-        """
-        from claim_agent.db.audit_events import AUDIT_EVENT_COLD_STORAGE_EXPORTED
-
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT status FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            conn.execute(
-                text("""
-                UPDATE claims
-                SET cold_storage_exported_at = CURRENT_TIMESTAMP,
-                    cold_storage_export_key = :export_key,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = :claim_id
-                """),
-                {"export_key": export_key, "claim_id": claim_id},
-            )
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log
-                    (claim_id, action, details, actor_id)
-                VALUES (:claim_id, :action, :details, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_COLD_STORAGE_EXPORTED,
-                    "details": f"Exported to cold storage: {export_key}",
-                    "actor_id": actor_id,
-                },
-            )
+        """Record that a claim has been exported to cold storage."""
+        return self._retention_repo.mark_claim_exported(claim_id, export_key, actor_id=actor_id)
 
     def list_claim_ids_eligible_for_audit_log_retention(
         self,
@@ -4331,75 +2792,19 @@ class ClaimRepository:
         exclude_litigation_hold: bool = True,
     ) -> list[str]:
         """Claim IDs (status purged) past purged_at + N calendar years for audit export/purge."""
-        if audit_retention_years_after_purge < 0:
-            raise ValueError("audit_retention_years_after_purge must be non-negative")
-        now = datetime.now(timezone.utc)
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("""
-                SELECT id, purged_at, litigation_hold
-                FROM claims
-                WHERE status = :st AND purged_at IS NOT NULL
-                ORDER BY id ASC
-                """),
-                {"st": STATUS_PURGED},
-            ).fetchall()
-        eligible: list[str] = []
-        for r in rows:
-            row_d = row_to_dict(r)
-            if exclude_litigation_hold and row_d.get("litigation_hold"):
-                continue
-            if _is_purged_past_audit_retention_period(
-                row_d, now, audit_retention_years_after_purge
-            ):
-                eligible.append(str(row_d["id"]))
-        return eligible
+        return self._retention_repo.list_claim_ids_eligible_for_audit_log_retention(audit_retention_years_after_purge, exclude_litigation_hold=exclude_litigation_hold)
 
     def fetch_audit_log_rows_for_claim_ids(
         self, claim_ids: list[str], *, chunk_size: int = 400
     ) -> list[dict[str, Any]]:
         """Return audit log rows for the given claim IDs (ordered by claim_id, id)."""
-        if not claim_ids:
-            return []
-        out: list[dict[str, Any]] = []
-        with get_connection(self._db_path) as conn:
-            for i in range(0, len(claim_ids), chunk_size):
-                chunk = claim_ids[i : i + chunk_size]
-                placeholders, in_params = _sql_in_params("ex_", chunk)
-                rows = conn.execute(
-                    text(
-                        f"""
-                        SELECT * FROM claim_audit_log
-                        WHERE claim_id IN ({placeholders})
-                        ORDER BY claim_id ASC, id ASC
-                        """
-                    ),
-                    in_params,
-                ).fetchall()
-                out.extend(row_to_dict(r) for r in rows)
-        return out
+        return self._retention_repo.fetch_audit_log_rows_for_claim_ids(claim_ids, chunk_size=chunk_size)
 
     def count_audit_log_rows_for_claim_ids(
         self, claim_ids: list[str], *, chunk_size: int = 400
     ) -> int:
         """Count claim_audit_log rows whose claim_id is in claim_ids."""
-        if not claim_ids:
-            return 0
-        total = 0
-        with get_connection(self._db_path) as conn:
-            for i in range(0, len(claim_ids), chunk_size):
-                chunk = claim_ids[i : i + chunk_size]
-                placeholders, in_params = _sql_in_params("cn_", chunk)
-                total += (
-                    conn.execute(
-                        text(
-                            f"SELECT COUNT(*) FROM claim_audit_log WHERE claim_id IN ({placeholders})"
-                        ),
-                        in_params,
-                    ).scalar()
-                    or 0
-                )
-        return total
+        return self._retention_repo.count_audit_log_rows_for_claim_ids(claim_ids, chunk_size=chunk_size)
 
     def purge_audit_log_for_claim_ids(
         self,
@@ -4409,24 +2814,7 @@ class ClaimRepository:
         chunk_size: int = 400,
     ) -> int:
         """Delete claim_audit_log rows for claim_ids. Requires AUDIT_LOG_PURGE_ENABLED."""
-        if not audit_purge_enabled:
-            raise DomainValidationError(
-                "Audit log purge is disabled; set AUDIT_LOG_PURGE_ENABLED=true after compliance approval"
-            )
-        if not claim_ids:
-            return 0
-        deleted = 0
-        with get_connection(self._db_path) as conn:
-            for i in range(0, len(claim_ids), chunk_size):
-                chunk = claim_ids[i : i + chunk_size]
-                placeholders, in_params = _sql_in_params("dl_", chunk)
-                result = conn.execute(
-                    text(f"DELETE FROM claim_audit_log WHERE claim_id IN ({placeholders})"),
-                    in_params,
-                )
-                raw = result.rowcount
-                deleted += int(raw) if raw is not None else 0
-        return deleted
+        return self._retention_repo.purge_audit_log_for_claim_ids(claim_ids, audit_purge_enabled=audit_purge_enabled, chunk_size=chunk_size)
 
     # ------------------------------------------------------------------
     # Task management
@@ -4451,118 +2839,12 @@ class ClaimRepository:
         parent_task_id: int | None = None,
         auto_created_from: str | None = None,
     ) -> int:
-        """Create a task for a claim. Returns the task id. Raises ClaimNotFoundError if claim does not exist.
-
-        When task_type is request_documents or obtain_police_report and document_type is provided,
-        creates a document_request and links it to the task.
-        """
-        title = sanitize_task_title(title)
-        description = sanitize_task_description(description)
-        created_by = sanitize_actor_id(created_by)
-        if not title:
-            raise ValueError("Task title must not be empty after sanitization")
-        # Normalize and validate recurrence fields
-        if recurrence_rule is None and recurrence_interval is not None:
-            recurrence_interval = None
-        if recurrence_rule is not None:
-            from claim_agent.diary.recurrence import (
-                VALID_RECURRENCE_RULES,
-                RECURRENCE_INTERVAL_DAYS,
-            )
-
-            if recurrence_rule not in VALID_RECURRENCE_RULES:
-                raise ValueError(
-                    f"Invalid recurrence_rule '{recurrence_rule}'. "
-                    f"Must be one of: {', '.join(sorted(VALID_RECURRENCE_RULES))}"
-                )
-            if recurrence_rule == RECURRENCE_INTERVAL_DAYS:
-                if recurrence_interval is None:
-                    raise ValueError(
-                        "recurrence_interval is required when recurrence_rule is 'interval_days'"
-                    )
-                if recurrence_interval < 1:
-                    raise ValueError("recurrence_interval must be >= 1")
-            else:
-                # daily/weekly: default interval to 1
-                if recurrence_interval is None:
-                    recurrence_interval = 1
-                elif recurrence_interval < 1:
-                    raise ValueError("recurrence_interval must be >= 1")
-        doc_req_id = document_request_id
-        if (
-            doc_req_id is None
-            and document_type
-            and task_type in ("request_documents", "obtain_police_report")
-        ):
-            from claim_agent.db.document_repository import DocumentRepository
-
-            doc_repo = DocumentRepository(db_path=self._db_path)
-            doc_req_id = doc_repo.create_document_request(
-                claim_id, document_type, requested_from=requested_from
-            )
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT id FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if row is None:
-                raise ClaimNotFoundError(f"Claim not found: {claim_id}")
-            result = conn.execute(
-                text("""
-                INSERT INTO claim_tasks
-                    (claim_id, title, task_type, description, status, priority, assigned_to, created_by, due_date, document_request_id, recurrence_rule, recurrence_interval, parent_task_id, auto_created_from)
-                VALUES (:claim_id, :title, :task_type, :description, 'pending', :priority, :assigned_to, :created_by, :due_date, :document_request_id, :recurrence_rule, :recurrence_interval, :parent_task_id, :auto_created_from)
-                RETURNING id
-                """),
-                {
-                    "claim_id": claim_id,
-                    "title": title,
-                    "task_type": task_type,
-                    "description": description,
-                    "priority": priority,
-                    "assigned_to": assigned_to,
-                    "created_by": created_by,
-                    "due_date": due_date,
-                    "document_request_id": doc_req_id,
-                    "recurrence_rule": recurrence_rule,
-                    "recurrence_interval": recurrence_interval,
-                    "parent_task_id": parent_task_id,
-                    "auto_created_from": auto_created_from,
-                },
-            )
-            row = result.fetchone()
-            task_id = row[0] if row else 0
-            details = json.dumps(
-                {
-                    "task_id": task_id,
-                    "title": title,
-                    "task_type": task_type,
-                    "priority": priority,
-                    "assigned_to": assigned_to,
-                }
-            )
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (:claim_id, :action, :details, :actor_id)
-                """),
-                {
-                    "claim_id": claim_id,
-                    "action": AUDIT_EVENT_TASK_CREATED,
-                    "details": details,
-                    "actor_id": created_by,
-                },
-            )
-        return int(task_id)
+        """Create a task for a claim. Returns the task id. Raises ClaimNotFoundError if claim does not exist."""
+        return self._task_repo.create_task(claim_id, title, task_type, description=description, priority=priority, assigned_to=assigned_to, created_by=created_by, due_date=due_date, document_request_id=document_request_id, document_type=document_type, requested_from=requested_from, recurrence_rule=recurrence_rule, recurrence_interval=recurrence_interval, parent_task_id=parent_task_id, auto_created_from=auto_created_from)
 
     def get_task(self, task_id: int) -> dict[str, Any] | None:
         """Fetch a single task by ID."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT * FROM claim_tasks WHERE id = :task_id"),
-                {"task_id": task_id},
-            ).fetchone()
-        return row_to_dict(row) if row else None
+        return self._task_repo.get_task(task_id)
 
     def get_tasks_for_claim(
         self,
@@ -4573,28 +2855,7 @@ class ClaimRepository:
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         """List tasks for a claim with optional status filter. Returns (tasks, total)."""
-        conditions = ["claim_id = :claim_id"]
-        params: dict[str, Any] = {"claim_id": claim_id, "limit": limit, "offset": offset}
-        if status is not None:
-            conditions.append("status = :status")
-            params["status"] = status
-        where = " AND ".join(conditions)
-        with get_connection(self._db_path) as conn:
-            count_row = conn.execute(
-                text(f"SELECT COUNT(*) as cnt FROM claim_tasks WHERE {where}"),
-                {k: v for k, v in params.items() if k not in ("limit", "offset")},
-            ).fetchone()
-            total = count_row[0] if count_row else 0
-            rows = conn.execute(
-                text(f"""SELECT * FROM claim_tasks WHERE {where}
-                    ORDER BY
-                        CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
-                        CASE status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END,
-                        created_at DESC
-                    LIMIT :limit OFFSET :offset"""),
-                params,
-            ).fetchall()
-        return [row_to_dict(r) for r in rows], total
+        return self._task_repo.get_tasks_for_claim(claim_id, status=status, limit=limit, offset=offset)
 
     def list_overdue_tasks(
         self,
@@ -4603,65 +2864,16 @@ class ClaimRepository:
         min_escalation_level: int | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """List overdue tasks (due_date < today, status not completed/cancelled).
-
-        Args:
-            max_escalation_level: If set, only include tasks with escalation_level <= this.
-            min_escalation_level: If set, only include tasks with escalation_level >= this.
-            limit: Max tasks to return.
-        """
-        today = datetime.now(timezone.utc).date().isoformat()
-        conditions = [
-            "due_date IS NOT NULL",
-            "substr(due_date, 1, 10) < :today",
-            "status NOT IN ('completed', 'cancelled')",
-        ]
-        params: dict[str, Any] = {"today": today, "limit": limit}
-        if max_escalation_level is not None:
-            conditions.append("COALESCE(escalation_level, 0) <= :max_escalation_level")
-            params["max_escalation_level"] = max_escalation_level
-        if min_escalation_level is not None:
-            conditions.append("COALESCE(escalation_level, 0) >= :min_escalation_level")
-            params["min_escalation_level"] = min_escalation_level
-        where = " AND ".join(conditions)
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text(f"""
-                SELECT * FROM claim_tasks WHERE {where}
-                ORDER BY due_date ASC
-                LIMIT :limit
-                """),
-                params,
-            ).fetchall()
-        return [row_to_dict(r) for r in rows]
+        """List overdue tasks (due_date < today, status not completed/cancelled)."""
+        return self._task_repo.list_overdue_tasks(max_escalation_level=max_escalation_level, min_escalation_level=min_escalation_level, limit=limit)
 
     def mark_task_overdue_notified(self, task_id: int) -> None:
         """Mark task as overdue notification sent (escalation_level=1)."""
-        with get_connection(self._db_path) as conn:
-            conn.execute(
-                text("""
-                UPDATE claim_tasks SET
-                    escalation_level = 1,
-                    escalation_notified_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = :task_id
-                """),
-                {"task_id": task_id},
-            )
+        return self._task_repo.mark_task_overdue_notified(task_id)
 
     def mark_task_supervisor_escalated(self, task_id: int) -> None:
         """Mark task as escalated to supervisor (escalation_level=2)."""
-        with get_connection(self._db_path) as conn:
-            conn.execute(
-                text("""
-                UPDATE claim_tasks SET
-                    escalation_level = 2,
-                    escalation_escalated_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = :task_id
-                """),
-                {"task_id": task_id},
-            )
+        return self._task_repo.mark_task_supervisor_escalated(task_id)
 
     def update_task(
         self,
@@ -4677,67 +2889,7 @@ class ClaimRepository:
         actor_id: str = ACTOR_WORKFLOW,
     ) -> dict[str, Any]:
         """Update a task. Returns the updated task dict. Raises ValueError if task not found."""
-        if title is not None:
-            title = sanitize_task_title(title)
-            if not title:
-                raise ValueError("Task title must not be empty after sanitization")
-        if description is not None:
-            description = sanitize_task_description(description)
-        if resolution_notes is not None:
-            resolution_notes = sanitize_resolution_notes(resolution_notes)
-        actor_id = sanitize_actor_id(actor_id)
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT * FROM claim_tasks WHERE id = :task_id"),
-                {"task_id": task_id},
-            ).fetchone()
-            if row is None:
-                raise ValueError(f"Task not found: {task_id}")
-
-            row_d = row_to_dict(row)
-            updates: list[str] = ["updated_at = CURRENT_TIMESTAMP"]
-            params: dict[str, Any] = {"task_id": task_id}
-            changes: dict[str, Any] = {}
-
-            for field, value in [
-                ("title", title),
-                ("description", description),
-                ("status", status),
-                ("priority", priority),
-                ("assigned_to", assigned_to),
-                ("due_date", due_date),
-                ("resolution_notes", resolution_notes),
-            ]:
-                if value is not None:
-                    updates.append(f"{field} = :{field}")
-                    params[field] = value
-                    changes[field] = value
-
-            if not changes:
-                return row_d
-
-            conn.execute(
-                text(f"UPDATE claim_tasks SET {', '.join(updates)} WHERE id = :task_id"),
-                params,
-            )
-            details = json.dumps({"task_id": task_id, **changes})
-            conn.execute(
-                text("""
-                INSERT INTO claim_audit_log (claim_id, action, details, actor_id)
-                VALUES (:claim_id, :action, :details, :actor_id)
-                """),
-                {
-                    "claim_id": row_d["claim_id"],
-                    "action": AUDIT_EVENT_TASK_UPDATED,
-                    "details": details,
-                    "actor_id": actor_id,
-                },
-            )
-            updated = conn.execute(
-                text("SELECT * FROM claim_tasks WHERE id = :task_id"),
-                {"task_id": task_id},
-            ).fetchone()
-        return row_to_dict(updated)
+        return self._task_repo.update_task(task_id, title=title, description=description, status=status, priority=priority, assigned_to=assigned_to, due_date=due_date, resolution_notes=resolution_notes, actor_id=actor_id)
 
     def list_all_tasks(
         self,
@@ -4751,85 +2903,8 @@ class ClaimRepository:
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         """List tasks across all claims with optional filters. Returns (tasks, total)."""
-        conditions: list[str] = []
-        params: dict[str, Any] = {"limit": limit, "offset": offset}
-        if status is not None:
-            conditions.append("ct.status = :status")
-            params["status"] = status
-        if task_type is not None:
-            conditions.append("ct.task_type = :task_type")
-            params["task_type"] = task_type
-        if assigned_to is not None:
-            conditions.append("ct.assigned_to = :assigned_to")
-            params["assigned_to"] = assigned_to
-        if due_date_from is not None:
-            conditions.append("ct.due_date >= :due_date_from")
-            params["due_date_from"] = due_date_from
-        if due_date_to is not None:
-            conditions.append("ct.due_date <= :due_date_to")
-            params["due_date_to"] = due_date_to
-        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        with get_connection(self._db_path) as conn:
-            count_row = conn.execute(
-                text(f"SELECT COUNT(*) as cnt FROM claim_tasks ct {where}"),
-                params,
-            ).fetchone()
-            total = count_row[0]
-            rows = conn.execute(
-                text(
-                    f"""SELECT ct.* FROM claim_tasks ct {where}
-                    ORDER BY
-                        CASE ct.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
-                        CASE ct.status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'blocked' THEN 3 ELSE 4 END,
-                        ct.created_at DESC
-                    LIMIT :limit OFFSET :offset"""
-                ),
-                params,
-            ).fetchall()
-        return [row_to_dict(r) for r in rows], total
+        return self._task_repo.list_all_tasks(status=status, task_type=task_type, assigned_to=assigned_to, due_date_from=due_date_from, due_date_to=due_date_to, limit=limit, offset=offset)
 
     def get_task_stats(self) -> dict[str, Any]:
         """Get aggregate task statistics."""
-        with get_connection(self._db_path) as conn:
-            total = conn.execute(text("SELECT COUNT(*) as cnt FROM claim_tasks")).fetchone()[0]
-            by_status = {
-                (d := row_to_dict(r))["status"]: d["cnt"]
-                for r in conn.execute(
-                    text(
-                        "SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt "
-                        "FROM claim_tasks GROUP BY status"
-                    )
-                ).fetchall()
-            }
-            by_type = {
-                (d := row_to_dict(r))["task_type"]: d["cnt"]
-                for r in conn.execute(
-                    text(
-                        "SELECT COALESCE(task_type, 'unknown') as task_type, COUNT(*) as cnt "
-                        "FROM claim_tasks GROUP BY task_type"
-                    )
-                ).fetchall()
-            }
-            by_priority = {
-                (d := row_to_dict(r))["priority"]: d["cnt"]
-                for r in conn.execute(
-                    text(
-                        "SELECT COALESCE(priority, 'unknown') as priority, COUNT(*) as cnt "
-                        "FROM claim_tasks GROUP BY priority"
-                    )
-                ).fetchall()
-            }
-            overdue = conn.execute(
-                text(
-                    "SELECT COUNT(*) as cnt FROM claim_tasks "
-                    "WHERE due_date IS NOT NULL AND date(due_date) < CURRENT_DATE "
-                    "AND status NOT IN ('completed', 'cancelled')"
-                )
-            ).fetchone()[0]
-        return {
-            "total": total,
-            "by_status": by_status,
-            "by_type": by_type,
-            "by_priority": by_priority,
-            "overdue": overdue,
-        }
+        return self._task_repo.get_task_stats()
