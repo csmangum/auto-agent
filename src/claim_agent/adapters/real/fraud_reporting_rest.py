@@ -40,12 +40,16 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
         nicb_path: str = "/fraud/nicb",
         niss_path: str = "/fraud/niss",
         response_key: str | None = None,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         self._state_bureau_path = state_bureau_path
         self._nicb_path = nicb_path
@@ -158,4 +162,6 @@ def create_rest_fraud_reporting_adapter() -> RestFraudReportingAdapter:
         nicb_path=cfg.nicb_path,
         niss_path=cfg.niss_path,
         response_key=cfg.response_key or None,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )

@@ -128,6 +128,8 @@ class RestValuationAdapter(ValuationAdapter):
         path_template: str,
         response_key: str | None = None,
         timeout: float = 15.0,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._provider = provider
         self._response_key = (response_key or "").strip() or None
@@ -136,6 +138,8 @@ class RestValuationAdapter(ValuationAdapter):
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         _required = ("{vin}", "{year}")
         for _placeholder in _required:
@@ -229,4 +233,6 @@ def create_valuation_rest_adapter(provider: str) -> RestValuationAdapter:
         path_template=tmpl,
         response_key=rk,
         timeout=cfg.timeout,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )

@@ -57,12 +57,16 @@ class RestSIUAdapter(SIUAdapter):
         status_path_template: str = "/siu/cases/{case_id}/status",
         response_key: str | None = None,
         timeout: float = 15.0,
+        circuit_failure_threshold: int = 5,
+        circuit_recovery_timeout: float = 60.0,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
             auth_header=auth_header,
             auth_value=auth_value,
             timeout=timeout,
+            circuit_failure_threshold=circuit_failure_threshold,
+            circuit_recovery_timeout=circuit_recovery_timeout,
         )
         self._cases_path = cases_path
         self._notes_path_template = notes_path_template.strip()
@@ -157,4 +161,6 @@ def create_rest_siu_adapter() -> RestSIUAdapter:
         status_path_template=cfg.status_path_template,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,
+        circuit_failure_threshold=cfg.circuit_failure_threshold,
+        circuit_recovery_timeout=cfg.circuit_recovery_timeout,
     )
