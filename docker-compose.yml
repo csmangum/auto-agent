@@ -1,9 +1,10 @@
 # Reproducible deployment for claim-agent
-# Usage (HTTP / dev):    docker compose up
-# Usage (HTTPS / prod):  docker compose --profile tls up
+# Usage (HTTP / dev):      docker compose up
+# Usage (dev + postgres):  docker compose --profile postgres up
+# Usage (HTTPS / dev):     docker compose --profile tls up
 #
-# claim-agent publishes port 8000 for local dev. When using --profile tls, comment out
-# the ``ports:`` block below so the API is only reachable via nginx (443), not directly on :8000.
+# For production deployments use docker-compose.prod.yml, which includes PostgreSQL
+# as a required service and nginx TLS termination by default.
 #
 # For HTTPS, mount TLS certificates into the nginx service:
 #   Set NGINX_CERT_PATH and NGINX_KEY_PATH in .env or the environment.
@@ -20,6 +21,9 @@ services:
     restart: unless-stopped
     environment:
       - CLAIMS_DB_PATH=/app/data/claims.db
+      # Set DATABASE_URL to switch from SQLite to PostgreSQL (e.g. when using --profile postgres).
+      # Example: DATABASE_URL=postgresql://claimuser:secret@postgres:5432/claims
+      - DATABASE_URL=${DATABASE_URL:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-}
       - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME:-gpt-4o-mini}
@@ -43,6 +47,31 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Optional PostgreSQL service for local development with a real database.
+  # Start with: docker compose --profile postgres up
+  # Also set in .env:
+  #   POSTGRES_PASSWORD=your-dev-password
+  #   DATABASE_URL=postgresql://claimuser:your-dev-password@postgres:5432/claims
+  postgres:
+    image: postgres:16
+    profiles: ["postgres"]
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-claimuser}
+      # POSTGRES_PASSWORD is required when using --profile postgres; set it in .env.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - POSTGRES_DB=${POSTGRES_DB:-claims}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-claimuser} -d ${POSTGRES_DB:-claims}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   # Optional TLS-terminating nginx reverse proxy.
   # Start with: docker compose --profile tls up
@@ -137,6 +166,7 @@ services:
 
 volumes:
   claim-data:
+  postgres-data:
   nginx-acme:
   prometheus-data:
   alertmanager-data:
