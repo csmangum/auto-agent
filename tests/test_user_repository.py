@@ -64,12 +64,12 @@ def test_auth_login_and_refresh_http(user_db, monkeypatch):
     repo.create_user("http@example.com", "password123", "adjuster")
     client = TestClient(app)
     r = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         json={"email": "http@example.com", "password": "password123"},
     )
     assert r.status_code == 200
     data = r.json()
     assert "access_token" in data and "refresh_token" in data
-    r2 = client.post("/api/auth/refresh", json={"refresh_token": data["refresh_token"]})
+    r2 = client.post("/api/v1/auth/refresh", json={"refresh_token": data["refresh_token"]})
     assert r2.status_code == 200
     assert "access_token" in r2.json()

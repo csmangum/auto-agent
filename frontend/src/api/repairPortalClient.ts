@@ -3,9 +3,10 @@
  * Sends X-Repair-Shop-Access-Token on each request; claim id is in the URL path.
  */
 
+import { API_VERSION } from './config';
 import { parseApiError } from './apiUtils';
 
-const BASE = '/api/repair-portal';
+const BASE = `${API_VERSION}/repair-portal`;
 
 export interface RepairPortalSession {
   token: string;

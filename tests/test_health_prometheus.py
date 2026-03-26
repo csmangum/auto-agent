@@ -247,7 +247,7 @@ class TestHealthEndpoints:
         from claim_agent.api.server import app
 
         client = TestClient(app)
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
@@ -270,7 +270,7 @@ class TestHealthEndpoints:
         from claim_agent.api.server import app
 
         client = TestClient(app)
-        for path in ("/api/health/", "/health/"):
+        for path in ("/api/v1/health/", "/health/"):
             resp = client.get(path)
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"
@@ -295,7 +295,7 @@ class TestHealthEndpoints:
         with patch("claim_agent.observability.health.get_connection") as m:
             m.side_effect = Exception("connection refused")
             client = TestClient(app)
-            resp = client.get("/api/health")
+            resp = client.get("/api/v1/health")
         assert resp.status_code == 503
         data = resp.json()
         assert data["status"] == "degraded"

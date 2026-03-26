@@ -75,7 +75,7 @@ PORTAL_CLAIM_FIELDS = [
 def _resolve_portal_attachment_urls(
     claim: dict[str, Any],
     *,
-    attachments_api_base: str = "/api/portal",
+    attachments_api_base: str = "/api/v1/portal",
 ) -> dict[str, Any]:
     """Rewrite attachment paths to portal-accessible download URLs.
 

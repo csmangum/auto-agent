@@ -56,7 +56,7 @@ describe('repairPortalClient', () => {
       const result = await repairPortalApi.getClaim('CLM-1');
 
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/repair-portal/claims/CLM-1',
+        '/api/v1/repair-portal/claims/CLM-1',
         expect.objectContaining({
           headers: expect.objectContaining({
             'X-Repair-Shop-Access-Token': 'test-token',
@@ -74,7 +74,7 @@ describe('repairPortalClient', () => {
 
       const result = await repairPortalApi.getClaimHistory('CLM-1');
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/repair-portal/claims/CLM-1/history',
+        '/api/v1/repair-portal/claims/CLM-1/history',
         expect.any(Object)
       );
       expect(result.history_total).toBe(0);
@@ -88,7 +88,7 @@ describe('repairPortalClient', () => {
 
       const result = await repairPortalApi.getRepairStatus('CLM-1');
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/repair-portal/claims/CLM-1/repair-status',
+        '/api/v1/repair-portal/claims/CLM-1/repair-status',
         expect.any(Object)
       );
       expect(result.latest).toBeNull();
@@ -103,7 +103,7 @@ describe('repairPortalClient', () => {
       await repairPortalApi.postRepairStatus('CLM-1', { status: 'received' });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/repair-portal/claims/CLM-1/repair-status',
+        '/api/v1/repair-portal/claims/CLM-1/repair-status',
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ status: 'received' }),
@@ -137,7 +137,7 @@ describe('repairPortalClient', () => {
       const result = await repairPortalApi.recordFollowUpResponse('CLM-1', 42, 'got it');
       expect(result.success).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/repair-portal/claims/CLM-1/follow-up/record-response',
+        '/api/v1/repair-portal/claims/CLM-1/follow-up/record-response',
         expect.objectContaining({ method: 'POST' })
       );
     });

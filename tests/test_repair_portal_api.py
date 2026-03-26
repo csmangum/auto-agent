@@ -40,19 +40,19 @@ class TestRepairShopPortal:
     def test_mint_token_disabled_returns_503(self, client, monkeypatch):
         monkeypatch.delenv("REPAIR_SHOP_PORTAL_ENABLED", raising=False)
         reload_settings()
-        resp = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        resp = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={})
         assert resp.status_code == 503
         monkeypatch.setenv("REPAIR_SHOP_PORTAL_ENABLED", "true")
         reload_settings()
 
     def test_mint_token_non_partial_loss_returns_400(self, client):
-        resp = client.post("/api/claims/CLM-TEST001/repair-shop-portal-token", json={})
+        resp = client.post("/api/v1/claims/CLM-TEST001/repair-shop-portal-token", json={})
         assert resp.status_code == 400
         assert "partial_loss" in resp.json()["detail"].lower()
 
     def test_mint_token_success(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST005/repair-shop-portal-token",
+            "/api/v1/claims/CLM-TEST005/repair-shop-portal-token",
             json={"shop_id": "SHOP-E2E"},
         )
         assert resp.status_code == 200
@@ -62,21 +62,21 @@ class TestRepairShopPortal:
         assert len(data["token"]) > 20
 
     def test_portal_get_claim_without_token_401(self, client):
-        resp = client.get("/api/repair-portal/claims/CLM-TEST005")
+        resp = client.get("/api/v1/repair-portal/claims/CLM-TEST005")
         assert resp.status_code == 401
 
     def test_portal_get_claim_invalid_token_401(self, client):
         resp = client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"X-Repair-Shop-Access-Token": "not-a-valid-token"},
         )
         assert resp.status_code == 401
 
     def test_portal_get_claim_success(self, client):
-        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        mint = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={})
         token = mint.json()["token"]
         resp = client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"X-Repair-Shop-Access-Token": token},
         )
         assert resp.status_code == 200
@@ -102,10 +102,10 @@ class TestRepairShopPortal:
             message_content="Shop thread",
             actor_id="workflow",
         )
-        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        mint = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={})
         token = mint.json()["token"]
         resp = client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"X-Repair-Shop-Access-Token": token},
         )
         assert resp.status_code == 200
@@ -121,10 +121,10 @@ class TestRepairShopPortal:
         assert not ids.intersection(claimant_ids)
 
     def test_portal_claim_history_shape_and_redaction(self, client):
-        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        mint = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={})
         token = mint.json()["token"]
         h = {"X-Repair-Shop-Access-Token": token}
-        resp = client.get("/api/repair-portal/claims/CLM-TEST005/history", headers=h)
+        resp = client.get("/api/v1/repair-portal/claims/CLM-TEST005/history", headers=h)
         assert resp.status_code == 200
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST005"
@@ -138,27 +138,27 @@ class TestRepairShopPortal:
             assert "actor_id" not in row
 
     def test_portal_repair_status_post_and_get(self, client):
-        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={"shop_id": "S1"})
+        mint = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={"shop_id": "S1"})
         token = mint.json()["token"]
         h = {"X-Repair-Shop-Access-Token": token}
         post = client.post(
-            "/api/repair-portal/claims/CLM-TEST005/repair-status",
+            "/api/v1/repair-portal/claims/CLM-TEST005/repair-status",
             headers=h,
             json={"status": "received", "notes": "Dropped off"},
         )
         assert post.status_code == 200
-        get = client.get("/api/repair-portal/claims/CLM-TEST005/repair-status", headers=h)
+        get = client.get("/api/v1/repair-portal/claims/CLM-TEST005/repair-status", headers=h)
         assert get.status_code == 200
         assert get.json()["latest"]["status"] == "received"
         assert get.json()["latest"]["shop_id"] == "S1"
 
     def test_portal_disabled_returns_503(self, client, monkeypatch):
-        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        mint = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={})
         token = mint.json()["token"]
         monkeypatch.delenv("REPAIR_SHOP_PORTAL_ENABLED", raising=False)
         reload_settings()
         resp = client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"X-Repair-Shop-Access-Token": token},
         )
         assert resp.status_code == 503
@@ -174,11 +174,11 @@ class TestRepairShopPortal:
             actor_id="workflow",
         )
         repo.mark_follow_up_sent(msg_id)
-        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={"shop_id": "S1"})
+        mint = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={"shop_id": "S1"})
         tok = mint.json()["token"]
         h = {"X-Repair-Shop-Access-Token": tok}
         resp = client.post(
-            "/api/repair-portal/claims/CLM-TEST005/follow-up/record-response",
+            "/api/v1/repair-portal/claims/CLM-TEST005/follow-up/record-response",
             headers=h,
             json={"message_id": msg_id, "response_content": "Dropped off this morning."},
         )
@@ -196,11 +196,11 @@ class TestRepairShopPortal:
             actor_id="workflow",
         )
         repo.mark_follow_up_sent(msg_id)
-        mint = client.post("/api/claims/CLM-TEST005/repair-shop-portal-token", json={})
+        mint = client.post("/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={})
         tok = mint.json()["token"]
         h = {"X-Repair-Shop-Access-Token": tok}
         resp = client.post(
-            "/api/repair-portal/claims/CLM-TEST005/follow-up/record-response",
+            "/api/v1/repair-portal/claims/CLM-TEST005/follow-up/record-response",
             headers=h,
             json={"message_id": msg_id, "response_content": "Trying to reply as shop."},
         )

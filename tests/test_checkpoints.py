@@ -783,7 +783,7 @@ class TestReprocessAPIFromStage:
 
         try:
             resp = client.post(
-                "/api/claims/CLM-001/reprocess?from_stage=bogus",
+                "/api/v1/claims/CLM-001/reprocess?from_stage=bogus",
                 headers={"X-API-Key": "sk-sup"},
             )
             assert resp.status_code == 400
@@ -808,7 +808,7 @@ class TestReprocessAPIFromStage:
             with patch("claim_agent.api.routes.claims.run_claim_workflow") as mock_wf:
                 mock_wf.return_value = {"claim_id": claim_id, "status": "open"}
                 resp = client.post(
-                    f"/api/claims/{claim_id}/reprocess?from_stage=workflow",
+                    f"/api/v1/claims/{claim_id}/reprocess?from_stage=workflow",
                     headers={"X-API-Key": "sk-sup"},
                 )
             assert resp.status_code == 200

@@ -67,7 +67,7 @@ def test_adjuster_can_read_own_claim(temp_db, monkeypatch, client):
     reload_settings()
     _insert_scoped_claims(temp_db)
 
-    r = client.get("/api/claims/CLM-SCOPE-A", headers={"X-API-Key": "k1"})
+    r = client.get("/api/v1/claims/CLM-SCOPE-A", headers={"X-API-Key": "k1"})
     assert r.status_code == 200
     assert r.json()["id"] == "CLM-SCOPE-A"
 
@@ -79,7 +79,7 @@ def test_adjuster_get_other_assignee_claim_404(temp_db, monkeypatch, client):
     reload_settings()
     _insert_scoped_claims(temp_db)
 
-    r = client.get("/api/claims/CLM-SCOPE-B", headers={"X-API-Key": "k1"})
+    r = client.get("/api/v1/claims/CLM-SCOPE-B", headers={"X-API-Key": "k1"})
     assert r.status_code == 404
 
 
@@ -91,7 +91,7 @@ def test_adjuster_patch_reserve_other_assignee_404(temp_db, monkeypatch, client)
     _insert_scoped_claims(temp_db)
 
     r = client.patch(
-        "/api/claims/CLM-SCOPE-B/reserve",
+        "/api/v1/claims/CLM-SCOPE-B/reserve",
         headers={"X-API-Key": "k1"},
         json={"reserve_amount": 5000.0, "reason": "test"},
     )
@@ -139,7 +139,7 @@ def test_review_queue_adjuster_cannot_target_other_assignee_param(temp_db, monke
     reload_settings()
 
     r = client.get(
-        "/api/claims/review-queue?assignee=user-b",
+        "/api/v1/claims/review-queue?assignee=user-b",
         headers={"X-API-Key": "k1"},
     )
     assert r.status_code == 200
@@ -155,5 +155,5 @@ def test_supervisor_still_sees_other_assignee_claim(temp_db, monkeypatch, client
     reload_settings()
     _insert_scoped_claims(temp_db)
 
-    r = client.get("/api/claims/CLM-SCOPE-B", headers={"X-API-Key": "ks"})
+    r = client.get("/api/v1/claims/CLM-SCOPE-B", headers={"X-API-Key": "ks"})
     assert r.status_code == 200

@@ -93,14 +93,14 @@ def client(temp_db, monkeypatch):
 
 
 def test_api_list_empty(client):
-    r = client.get("/api/note-templates")
+    r = client.get("/api/v1/note-templates")
     assert r.status_code == 200
     assert r.json()["templates"] == []
 
 
 def test_api_create_and_list(client):
     r = client.post(
-        "/api/note-templates",
+        "/api/v1/note-templates",
         json={"label": "Test", "body": "Test body", "sort_order": 0},
     )
     assert r.status_code == 201
@@ -108,44 +108,44 @@ def test_api_create_and_list(client):
     assert data["label"] == "Test"
     assert data["body"] == "Test body"
 
-    r2 = client.get("/api/note-templates")
+    r2 = client.get("/api/v1/note-templates")
     assert r2.status_code == 200
     assert len(r2.json()["templates"]) == 1
 
 
 def test_api_update(client):
     r = client.post(
-        "/api/note-templates",
+        "/api/v1/note-templates",
         json={"label": "Before", "body": "Before body"},
     )
     tid = r.json()["id"]
 
-    r2 = client.patch(f"/api/note-templates/{tid}", json={"label": "After"})
+    r2 = client.patch(f"/api/v1/note-templates/{tid}", json={"label": "After"})
     assert r2.status_code == 200
     assert r2.json()["label"] == "After"
 
 
 def test_api_update_not_found(client):
-    r = client.patch("/api/note-templates/99999", json={"label": "X"})
+    r = client.patch("/api/v1/note-templates/99999", json={"label": "X"})
     assert r.status_code == 404
 
 
 def test_api_delete(client):
     r = client.post(
-        "/api/note-templates",
+        "/api/v1/note-templates",
         json={"label": "D", "body": "D body"},
     )
     tid = r.json()["id"]
 
-    r2 = client.delete(f"/api/note-templates/{tid}")
+    r2 = client.delete(f"/api/v1/note-templates/{tid}")
     assert r2.status_code == 204
 
-    r3 = client.get("/api/note-templates")
+    r3 = client.get("/api/v1/note-templates")
     assert len(r3.json()["templates"]) == 0
 
 
 def test_api_delete_not_found(client):
-    r = client.delete("/api/note-templates/99999")
+    r = client.delete("/api/v1/note-templates/99999")
     assert r.status_code == 404
 
 
@@ -157,26 +157,26 @@ def test_api_deactivate_hides_from_adjuster(temp_db, monkeypatch):
     client_auth = TestClient(app)
 
     r = client_auth.post(
-        "/api/note-templates",
+        "/api/v1/note-templates",
         json={"label": "T1", "body": "body1"},
         headers={"X-API-Key": "sk-sup"},
     )
     assert r.status_code == 201, r.text
     tid = r.json()["id"]
     client_auth.patch(
-        f"/api/note-templates/{tid}",
+        f"/api/v1/note-templates/{tid}",
         json={"is_active": False},
         headers={"X-API-Key": "sk-sup"},
     )
 
     client_auth.post(
-        "/api/note-templates",
+        "/api/v1/note-templates",
         json={"label": "T2", "body": "body2"},
         headers={"X-API-Key": "sk-sup"},
     )
 
     # Adjuster should only see the active template
-    r3 = client_auth.get("/api/note-templates", headers={"X-API-Key": "sk-adj"})
+    r3 = client_auth.get("/api/v1/note-templates", headers={"X-API-Key": "sk-adj"})
     assert r3.status_code == 200
     templates = r3.json()["templates"]
     assert len(templates) == 1
@@ -184,26 +184,26 @@ def test_api_deactivate_hides_from_adjuster(temp_db, monkeypatch):
 
 
 def test_api_create_validation(client):
-    r = client.post("/api/note-templates", json={"label": "", "body": "body"})
+    r = client.post("/api/v1/note-templates", json={"label": "", "body": "body"})
     assert r.status_code == 422
 
-    r2 = client.post("/api/note-templates", json={"label": "L", "body": ""})
+    r2 = client.post("/api/v1/note-templates", json={"label": "L", "body": ""})
     assert r2.status_code == 422
 
 
 def test_api_create_whitespace_only_rejected(client):
     """Whitespace-only label or body should be rejected with 422."""
-    r = client.post("/api/note-templates", json={"label": "   ", "body": "body"})
+    r = client.post("/api/v1/note-templates", json={"label": "   ", "body": "body"})
     assert r.status_code == 422
 
-    r2 = client.post("/api/note-templates", json={"label": "Label", "body": "   "})
+    r2 = client.post("/api/v1/note-templates", json={"label": "Label", "body": "   "})
     assert r2.status_code == 422
 
 
 def test_api_create_category_normalized(client):
     """Empty-string category should be stored as None."""
     r = client.post(
-        "/api/note-templates",
+        "/api/v1/note-templates",
         json={"label": "L", "body": "Body", "category": "  "},
     )
     assert r.status_code == 201

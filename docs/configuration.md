@@ -42,7 +42,7 @@ cp .env.example .env
 | `LLM_CALL_TIMEOUT_SECONDS` | `120` | Per-LLM-call timeout passed to the LLM client (seconds). |
 | `IDEMPOTENCY_TTL_SECONDS` | `86400` | Time-to-live (seconds) for API idempotency keys (default 24h). Expired rows are purged periodically while the API server runs. |
 | `REDIS_URL` | (unset) | Redis URL for **shared API rate limiting** across multiple app instances or workers (e.g. `redis://localhost:6379/0`). Requires `pip install -e '.[redis]'`. When unset, rate limits use an in-process store (not shared). |
-| `SCHEDULER_ENABLED` | `false` | Enable optional in-process scheduler for recurring operational jobs |
+| `SCHEDULER_ENABLED` | `false` | Enable the dedicated scheduler process (`claim-agent run-scheduler`). Not used by the API server. |
 | `SCHEDULER_TIMEZONE` | `UTC` | Timezone for scheduler cron expressions |
 | `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` | `0 9 * * *` | Daily UCSPA deadline alert sweep schedule (cron) |
 | `SCHEDULER_DIARY_ESCALATE_CRON` | `0 * * * *` | Diary overdue/escalation sweep schedule (cron) |
@@ -99,20 +99,21 @@ The HTTP API applies a **per-client-IP sliding window** (100 requests per 60 sec
 
 ### Scheduler vs. external cron
 
-You can run recurring compliance/operations jobs either with the built-in in-process scheduler **or** external cron.
+Recurring compliance/operations jobs run in a **dedicated single-instance process** or via external cron. The API server (`claim-agent serve`) does **not** start the scheduler — scheduling is intentionally decoupled to prevent duplicate job execution when multiple API workers or replicas are deployed.
 
-- **Built-in scheduler (optional):** set `SCHEDULER_ENABLED=true` and run the API (`claim-agent serve`) or foreground scheduler (`claim-agent run-scheduler`).
-  - `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` controls automatic `ucspa-deadlines` behavior (with webhook dispatch).
-  - `SCHEDULER_DIARY_ESCALATE_CRON` controls automatic `diary-escalate` behavior.
-  - `SCHEDULER_ERP_POLL_CRON` controls inbound ERP event polling when ERP integration is enabled (default every 15 minutes in `.env.example`).
-- **External cron (fallback / preferred in some deployments):** leave `SCHEDULER_ENABLED=false` and schedule CLI commands externally.
+**Option 1 — Dedicated scheduler process (recommended for pilot):**
 
-**Multi-worker and multi-replica deployments:** The scheduler is **in-process**. Each API process (each Uvicorn/Gunicorn **worker**, or each replica pod) that starts with `SCHEDULER_ENABLED=true` runs its **own** copy of the same cron jobs. That duplicates diary escalations, UCSPA sweeps, and webhook volume. Recommended patterns:
+```bash
+SCHEDULER_ENABLED=true claim-agent run-scheduler
+```
 
-- Run the HTTP API with **`SCHEDULER_ENABLED=false`** and use **external cron** or a **single dedicated** `claim-agent run-scheduler` process (with `SCHEDULER_ENABLED=true`) for scheduled work; or
-- Use **a single API worker** only if you enable the scheduler on the API process.
+- Runs as a single foreground process (wrap in systemd, a Kubernetes `Deployment` with `replicas: 1`, or Docker Compose service).
+- `SCHEDULER_UCSPA_DEADLINE_CHECK_CRON` controls automatic `ucspa-deadlines` behavior (with webhook dispatch).
+- `SCHEDULER_DIARY_ESCALATE_CRON` controls automatic `diary-escalate` behavior.
+- `SCHEDULER_ERP_POLL_CRON` controls inbound ERP event polling when ERP integration is enabled (default every 15 minutes).
+- Keep the API server at `SCHEDULER_ENABLED=false` (default); the API ignores this flag and will emit a warning if it is set to `true`.
 
-Example external cron:
+**Option 2 — External cron (alternative / cloud-native):** leave `SCHEDULER_ENABLED=false` and schedule CLI commands externally.
 
 ```cron
 # Daily UCSPA approaching-deadline alerts at 09:00
@@ -121,6 +122,9 @@ Example external cron:
 # Hourly diary escalation sweep
 0 * * * * /path/to/claim-agent diary-escalate
 ```
+
+> **Why not run the scheduler inside the API server?**
+> APScheduler runs in-process. Each Uvicorn/Gunicorn worker or Kubernetes replica pod that started the scheduler would execute every cron job independently, duplicating diary escalations, UCSPA sweeps, and ERP polls proportional to the replica count. Running it as a single external process eliminates this hazard entirely.
 
 ### Adapter Backends
 
@@ -423,6 +427,196 @@ Escalation variables: `ESCALATION_CONFIDENCE_THRESHOLD`, `ESCALATION_HIGH_VALUE_
 Fraud variables: `FRAUD_MULTIPLE_CLAIMS_DAYS`, `FRAUD_MULTIPLE_CLAIMS_THRESHOLD`, `FRAUD_*_SCORE`, `FRAUD_*_THRESHOLD`, `FRAUD_CRITICAL_INDICATOR_COUNT`.
 
 Valuation/partial loss: `VALUATION_*`, `PARTIAL_LOSS_*`. See `.env.example` for all variable names and defaults.
+
+## Secret Management
+
+### Overview
+
+By default, all secrets (API keys, JWT secret, database passwords, webhook
+secrets, etc.) are read from environment variables / the `.env` file.  For
+pilot and production deployments, **integrate with a centralized secret store**
+to enable rotation, audit trails, and access control without redeploying the
+application.
+
+The backend is selected by the `SECRET_PROVIDER` environment variable
+(default: `env`).  Secrets fetched from the external store are injected into
+the process environment **before** Pydantic Settings initialises, so the rest
+of the application is unaware of the source.  An existing environment variable
+always takes precedence over the value from the store (hard-wired overrides
+win).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRET_PROVIDER` | `env` | Secret backend: `env`, `aws_secrets_manager`, or `hashicorp_vault` |
+
+### Secrets managed by the provider
+
+The following application variables are expected as keys in the external secret
+store's JSON object.  Variables that are absent from the fetched secret fall
+back to the environment (or their Pydantic default):
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | LLM provider API key |
+| `JWT_SECRET` | JWT signing secret (≥ 32 chars) |
+| `API_KEYS` | Comma-separated `key:role[:user_id]` entries |
+| `CLAIMS_API_KEY` | Single legacy API key |
+| `WEBHOOK_SECRET` | HMAC-SHA256 signing secret for outbound webhooks |
+| `SENDGRID_API_KEY` | SendGrid email API key |
+| `TWILIO_AUTH_TOKEN` | Twilio SMS auth token |
+| `LANGSMITH_API_KEY` | LangSmith tracing key |
+| `OTP_PEPPER` | Server-side HMAC pepper for OTP codes |
+| `DATABASE_URL` | PostgreSQL primary connection URL |
+| `READ_REPLICA_DATABASE_URL` | PostgreSQL read-replica URL |
+
+Only these keys are copied from an external store into the process environment;
+extra keys in the JSON or Vault payload are skipped with a log warning.
+
+### AWS Secrets Manager
+
+Store all secrets as a single JSON-valued secret:
+
+```json
+{
+  "OPENAI_API_KEY": "sk-or-v1-...",
+  "JWT_SECRET": "change-me-to-a-long-random-string-in-production",
+  "WEBHOOK_SECRET": "...",
+  "DATABASE_URL": "postgresql://user:pass@rds.example.com:5432/claims"
+}
+```
+
+Required configuration:
+
+```bash
+SECRET_PROVIDER=aws_secrets_manager
+AWS_SECRET_NAME=claim-agent/production   # ARN or friendly name
+AWS_REGION=us-east-1                    # Falls back to SDK region chain
+```
+
+Optional:
+
+```bash
+AWS_SECRET_VERSION_ID=        # Pin to a specific version UUID
+AWS_SECRET_VERSION_STAGE=     # Pin to a staging label (default: AWSCURRENT)
+```
+
+The AWS SDK authenticates via the standard credential chain (instance role,
+`~/.aws/credentials`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars).
+Install `boto3` with `pip install -e '.[s3]'`.
+
+#### IAM policy (least privilege)
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue"],
+      "Resource": "arn:aws:secretsmanager:us-east-1:ACCOUNT:secret:claim-agent/*"
+    }
+  ]
+}
+```
+
+### HashiCorp Vault
+
+Store secrets as a KV v2 (or v1) secret whose keys match the variable names above.
+
+```bash
+SECRET_PROVIDER=hashicorp_vault
+VAULT_ADDR=https://vault.example.com:8200
+VAULT_PATH=claim-agent/production        # Path relative to the KV mount (not secret/data/...)
+VAULT_MOUNT_POINT=secret                 # KV engine mount (default: secret); use e.g. kv if needed
+VAULT_KV_VERSION=2                       # default: 2
+```
+
+**Token auth (dev / CI):**
+
+```bash
+VAULT_TOKEN=s.XXXXXXXXXXXX
+```
+
+**AppRole auth (production — recommended):**
+
+```bash
+VAULT_ROLE_ID=<role-id>
+VAULT_SECRET_ID=<secret-id>
+```
+
+**TLS options:**
+
+```bash
+VAULT_CA_CERT=/etc/ssl/certs/vault-ca.pem   # Custom CA bundle
+VAULT_NAMESPACE=admin/                        # Vault Enterprise namespace
+VAULT_SKIP_VERIFY=false                       # Never true in production
+```
+
+Install the `hvac` client with `pip install hvac`.
+
+### Secret rotation procedures
+
+**Principle:** rotate secrets regularly and avoid downtime by staging a new
+secret value alongside the old one until all consumers have picked it up.
+
+#### API keys (`API_KEYS` / `CLAIMS_API_KEY`)
+
+1. Add the new key to `API_KEYS` alongside the old one (comma-separated).
+2. Distribute the new key to all consumers.
+3. After confirming consumers use the new key, remove the old entry from
+   `API_KEYS`.
+4. For AWS Secrets Manager: update the secret value and let the next pod
+   restart (or a SIGHUP / rolling deploy) pick it up.  For zero-downtime,
+   keep both keys in `API_KEYS` during the transition.
+
+#### JWT secret (`JWT_SECRET`)
+
+Changing `JWT_SECRET` immediately invalidates **all** existing access tokens
+(users must re-authenticate).  Rotate during a maintenance window, or
+implement a two-key verification window (verify with old key if new fails)
+outside of this codebase.
+
+1. Generate a new secret: `python -c "import secrets; print(secrets.token_hex(32))"`.
+2. Update the secret store with the new value.
+3. Trigger a rolling restart (Kubernetes: `kubectl rollout restart deployment/claim-agent`).
+
+#### Database password (`DATABASE_URL`)
+
+1. Create a new database user / rotate the existing password in your RDS /
+   Cloud SQL console or Vault database secrets engine.
+2. Update the secret in the store.
+3. Restart the application (rolling deploy); the new pool will use the new URL.
+4. Revoke or drop the old credentials after the rollout completes.
+
+#### Webhook secret (`WEBHOOK_SECRET`)
+
+1. Update the secret in the store.
+2. Coordinate with the receiving endpoint to accept the new signature (if
+   possible, keep the old secret active briefly for in-flight requests).
+3. Restart the application.
+
+#### SendGrid / Twilio keys
+
+1. Generate a new key in the provider's dashboard.
+2. Update the secret in the store.
+3. Restart the application.
+4. Revoke the old key in the provider's dashboard.
+
+#### Rotation schedule recommendations
+
+| Secret | Recommended cadence |
+|--------|---------------------|
+| API keys | 90 days or on personnel change |
+| JWT secret | 180 days |
+| Database password | 90 days |
+| Webhook secret | 180 days |
+| LLM provider key | On compromise or annually |
+
+#### Audit trail
+
+AWS Secrets Manager emits CloudTrail events for every `GetSecretValue` call.
+HashiCorp Vault's audit device logs every request.  Enable these in production
+to maintain a full access audit trail.
 
 ## LLM Configuration Code
 

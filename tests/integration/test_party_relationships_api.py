@@ -52,7 +52,7 @@ class TestPartyRelationshipsAPI:
     ):
         claim_id, claimant_id, attorney_id = claim_with_two_parties
         create = api_client.post(
-            f"/api/claims/{claim_id}/party-relationships",
+            f"/api/v1/claims/{claim_id}/party-relationships",
             json={
                 "from_party_id": claimant_id,
                 "to_party_id": attorney_id,
@@ -67,7 +67,7 @@ class TestPartyRelationshipsAPI:
         assert body["relationship_type"] == PartyRelationshipType.REPRESENTED_BY.value
         rel_id = body["id"]
 
-        detail = api_client.get(f"/api/claims/{claim_id}")
+        detail = api_client.get(f"/api/v1/claims/{claim_id}")
         assert detail.status_code == 200
         parties = detail.json()["parties"]
         claimant = next(p for p in parties if p["id"] == claimant_id)
@@ -77,11 +77,11 @@ class TestPartyRelationshipsAPI:
         assert rels[0]["to_party_id"] == attorney_id
 
         delete = api_client.delete(
-            f"/api/claims/{claim_id}/party-relationships/{rel_id}",
+            f"/api/v1/claims/{claim_id}/party-relationships/{rel_id}",
         )
         assert delete.status_code == 204
 
-        detail2 = api_client.get(f"/api/claims/{claim_id}")
+        detail2 = api_client.get(f"/api/v1/claims/{claim_id}")
         claimant2 = next(p for p in detail2.json()["parties"] if p["id"] == claimant_id)
         assert (claimant2.get("relationships") or []) == []
 
@@ -96,10 +96,10 @@ class TestPartyRelationshipsAPI:
             "relationship_type": PartyRelationshipType.LIENHOLDER_FOR.value,
         }
         assert api_client.post(
-            f"/api/claims/{claim_id}/party-relationships", json=payload
+            f"/api/v1/claims/{claim_id}/party-relationships", json=payload
         ).status_code == 201
         dup = api_client.post(
-            f"/api/claims/{claim_id}/party-relationships", json=payload
+            f"/api/v1/claims/{claim_id}/party-relationships", json=payload
         )
         assert dup.status_code == 400
         assert "Duplicate" in dup.json()["detail"]
@@ -109,13 +109,13 @@ class TestPartyRelationshipsAPI:
         self, api_client, claim_with_two_parties: tuple[str, int, int]
     ):
         claim_id, _, _ = claim_with_two_parties
-        resp = api_client.delete(f"/api/claims/{claim_id}/party-relationships/999999")
+        resp = api_client.delete(f"/api/v1/claims/{claim_id}/party-relationships/999999")
         assert resp.status_code == 404
 
     @pytest.mark.integration
     def test_create_on_missing_claim_returns_404(self, api_client):
         resp = api_client.post(
-            "/api/claims/CLM-NONEXIST/party-relationships",
+            "/api/v1/claims/CLM-NONEXIST/party-relationships",
             json={
                 "from_party_id": 1,
                 "to_party_id": 2,

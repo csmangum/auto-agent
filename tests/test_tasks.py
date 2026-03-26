@@ -242,7 +242,7 @@ class TestTaskRepository:
 class TestCreateTask:
     def test_create_task_success(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "Request documents", "task_type": "request_documents", "priority": "high"},
         )
         assert resp.status_code == 200
@@ -254,28 +254,28 @@ class TestCreateTask:
 
     def test_create_task_invalid_type(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "invalid_type"},
         )
         assert resp.status_code == 400
 
     def test_create_task_invalid_priority(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other", "priority": "critical"},
         )
         assert resp.status_code == 400
 
     def test_create_task_claim_not_found(self, client):
         resp = client.post(
-            "/api/claims/CLM-NOTEXIST/tasks",
+            "/api/v1/claims/CLM-NOTEXIST/tasks",
             json={"title": "T", "task_type": "other"},
         )
         assert resp.status_code == 404
 
     def test_create_task_empty_title_rejected(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "", "task_type": "other"},
         )
         assert resp.status_code == 422
@@ -283,7 +283,7 @@ class TestCreateTask:
     def test_create_task_title_sanitizes_to_empty_returns_400(self, client):
         """Title that sanitizes to empty (e.g. whitespace only) returns 400, not 500."""
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "   ", "task_type": "other"},
         )
         assert resp.status_code == 400
@@ -291,28 +291,28 @@ class TestCreateTask:
 
     def test_create_task_title_too_long_rejected(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "A" * 501, "task_type": "other"},
         )
         assert resp.status_code == 422
 
     def test_create_task_invalid_due_date_rejected(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other", "due_date": "tomorrow"},
         )
         assert resp.status_code == 422
 
     def test_create_task_invalid_due_date_format_rejected(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other", "due_date": "2024-02-30"},
         )
         assert resp.status_code == 422
 
     def test_create_task_valid_due_date_accepted(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other", "due_date": "2025-12-31"},
         )
         assert resp.status_code == 200
@@ -321,7 +321,7 @@ class TestCreateTask:
 
 class TestListClaimTasks:
     def test_list_tasks_empty(self, client):
-        resp = client.get("/api/claims/CLM-TEST001/tasks")
+        resp = client.get("/api/v1/claims/CLM-TEST001/tasks")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 0
@@ -330,14 +330,14 @@ class TestListClaimTasks:
 
     def test_list_tasks_with_data(self, client):
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T1", "task_type": "other"},
         )
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T2", "task_type": "gather_information"},
         )
-        resp = client.get("/api/claims/CLM-TEST001/tasks")
+        resp = client.get("/api/v1/claims/CLM-TEST001/tasks")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 2
@@ -345,31 +345,31 @@ class TestListClaimTasks:
 
     def test_list_tasks_filter_by_status(self, client):
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "Pending", "task_type": "other"},
         )
         task_id = r.json()["id"]
-        client.patch(f"/api/tasks/{task_id}", json={"status": "in_progress"})
+        client.patch(f"/api/v1/tasks/{task_id}", json={"status": "in_progress"})
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "Another", "task_type": "other"},
         )
-        resp = client.get("/api/claims/CLM-TEST001/tasks?status=in_progress")
+        resp = client.get("/api/v1/claims/CLM-TEST001/tasks?status=in_progress")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
 
     def test_list_tasks_invalid_status(self, client):
-        resp = client.get("/api/claims/CLM-TEST001/tasks?status=invalid")
+        resp = client.get("/api/v1/claims/CLM-TEST001/tasks?status=invalid")
         assert resp.status_code == 400
 
     def test_list_tasks_pagination(self, client):
         for i in range(5):
             client.post(
-                "/api/claims/CLM-TEST001/tasks",
+                "/api/v1/claims/CLM-TEST001/tasks",
                 json={"title": f"Task {i}", "task_type": "other"},
             )
-        resp = client.get("/api/claims/CLM-TEST001/tasks?limit=2&offset=0")
+        resp = client.get("/api/v1/claims/CLM-TEST001/tasks?limit=2&offset=0")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 5
@@ -378,45 +378,45 @@ class TestListClaimTasks:
         assert data["offset"] == 0
 
     def test_list_tasks_claim_not_found(self, client):
-        resp = client.get("/api/claims/CLM-NOTEXIST/tasks")
+        resp = client.get("/api/v1/claims/CLM-NOTEXIST/tasks")
         assert resp.status_code == 404
 
 
 class TestGetTask:
     def test_get_task_success(self, client):
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "Single task", "task_type": "other"},
         )
         task_id = r.json()["id"]
-        resp = client.get(f"/api/tasks/{task_id}")
+        resp = client.get(f"/api/v1/tasks/{task_id}")
         assert resp.status_code == 200
         assert resp.json()["id"] == task_id
 
     def test_get_task_not_found(self, client):
-        resp = client.get("/api/tasks/99999")
+        resp = client.get("/api/v1/tasks/99999")
         assert resp.status_code == 404
 
 
 class TestUpdateTask:
     def test_update_status(self, client):
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other"},
         )
         task_id = r.json()["id"]
-        resp = client.patch(f"/api/tasks/{task_id}", json={"status": "in_progress"})
+        resp = client.patch(f"/api/v1/tasks/{task_id}", json={"status": "in_progress"})
         assert resp.status_code == 200
         assert resp.json()["status"] == "in_progress"
 
     def test_update_with_resolution_notes(self, client):
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other"},
         )
         task_id = r.json()["id"]
         resp = client.patch(
-            f"/api/tasks/{task_id}",
+            f"/api/v1/tasks/{task_id}",
             json={"status": "completed", "resolution_notes": "Done and done"},
         )
         assert resp.status_code == 200
@@ -426,45 +426,45 @@ class TestUpdateTask:
 
     def test_update_invalid_status(self, client):
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other"},
         )
         task_id = r.json()["id"]
-        resp = client.patch(f"/api/tasks/{task_id}", json={"status": "flying"})
+        resp = client.patch(f"/api/v1/tasks/{task_id}", json={"status": "flying"})
         assert resp.status_code == 400
 
     def test_update_invalid_priority(self, client):
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other"},
         )
         task_id = r.json()["id"]
-        resp = client.patch(f"/api/tasks/{task_id}", json={"priority": "apocalyptic"})
+        resp = client.patch(f"/api/v1/tasks/{task_id}", json={"priority": "apocalyptic"})
         assert resp.status_code == 400
 
     def test_update_not_found(self, client):
-        resp = client.patch("/api/tasks/99999", json={"status": "completed"})
+        resp = client.patch("/api/v1/tasks/99999", json={"status": "completed"})
         assert resp.status_code == 404
 
     def test_update_task_empty_title_rejected(self, client):
         """Title that sanitizes to empty returns 400."""
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other"},
         )
         task_id = r.json()["id"]
-        resp = client.patch(f"/api/tasks/{task_id}", json={"title": "   "})
+        resp = client.patch(f"/api/v1/tasks/{task_id}", json={"title": "   "})
         assert resp.status_code == 400
         assert "empty" in resp.json().get("detail", "").lower()
 
     def test_update_invalid_due_date_rejected(self, client):
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T", "task_type": "other"},
         )
         task_id = r.json()["id"]
         resp = client.patch(
-            f"/api/tasks/{task_id}",
+            f"/api/v1/tasks/{task_id}",
             json={"due_date": "not-a-date"},
         )
         assert resp.status_code == 422
@@ -472,49 +472,49 @@ class TestUpdateTask:
 
 class TestListAllTasks:
     def test_list_all_tasks_empty(self, client):
-        resp = client.get("/api/tasks")
+        resp = client.get("/api/v1/tasks")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 0
 
     def test_list_all_tasks_multiple_claims(self, client):
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T1", "task_type": "other"},
         )
         client.post(
-            "/api/claims/CLM-TEST002/tasks",
+            "/api/v1/claims/CLM-TEST002/tasks",
             json={"title": "T2", "task_type": "gather_information"},
         )
-        resp = client.get("/api/tasks")
+        resp = client.get("/api/v1/tasks")
         assert resp.status_code == 200
         assert resp.json()["total"] == 2
 
     def test_list_all_tasks_filter_by_type(self, client):
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T1", "task_type": "other"},
         )
         client.post(
-            "/api/claims/CLM-TEST002/tasks",
+            "/api/v1/claims/CLM-TEST002/tasks",
             json={"title": "T2", "task_type": "gather_information"},
         )
-        resp = client.get("/api/tasks?task_type=gather_information")
+        resp = client.get("/api/v1/tasks?task_type=gather_information")
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
     def test_list_all_tasks_invalid_status(self, client):
-        resp = client.get("/api/tasks?status=bad")
+        resp = client.get("/api/v1/tasks?status=bad")
         assert resp.status_code == 400
 
     def test_list_all_tasks_invalid_type(self, client):
-        resp = client.get("/api/tasks?task_type=bogus")
+        resp = client.get("/api/v1/tasks?task_type=bogus")
         assert resp.status_code == 400
 
 
 class TestTaskStats:
     def test_stats_empty(self, client):
-        resp = client.get("/api/tasks/stats")
+        resp = client.get("/api/v1/tasks/stats")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 0
@@ -522,16 +522,16 @@ class TestTaskStats:
 
     def test_stats_counts_by_status(self, client):
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T1", "task_type": "other"},
         )
         r = client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "T2", "task_type": "other"},
         )
         task_id = r.json()["id"]
-        client.patch(f"/api/tasks/{task_id}", json={"status": "completed"})
-        resp = client.get("/api/tasks/stats")
+        client.patch(f"/api/v1/tasks/{task_id}", json={"status": "completed"})
+        resp = client.get("/api/v1/tasks/stats")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 2
@@ -543,10 +543,10 @@ class TestTaskStats:
         with get_connection(get_settings().paths.claims_db_path) as conn:
             today = conn.execute(text("SELECT date('now')")).scalar_one()
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "Due today", "task_type": "other", "due_date": today},
         )
-        resp = client.get("/api/tasks/stats")
+        resp = client.get("/api/v1/tasks/stats")
         assert resp.status_code == 200
         assert resp.json()["overdue"] == 0
 
@@ -555,10 +555,10 @@ class TestTaskStats:
         with get_connection(get_settings().paths.claims_db_path) as conn:
             yesterday = conn.execute(text("SELECT date('now', '-1 day')")).scalar_one()
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "Overdue", "task_type": "other", "due_date": yesterday},
         )
-        resp = client.get("/api/tasks/stats")
+        resp = client.get("/api/v1/tasks/stats")
         assert resp.status_code == 200
         assert resp.json()["overdue"] == 1
 
@@ -567,10 +567,10 @@ class TestClaimDetailIncludesTasks:
     def test_claim_detail_has_tasks_and_total(self, client):
         """GET /claims/{id} should include both 'tasks' list and 'tasks_total' count."""
         client.post(
-            "/api/claims/CLM-TEST001/tasks",
+            "/api/v1/claims/CLM-TEST001/tasks",
             json={"title": "Task A", "task_type": "other"},
         )
-        resp = client.get("/api/claims/CLM-TEST001")
+        resp = client.get("/api/v1/claims/CLM-TEST001")
         assert resp.status_code == 200
         data = resp.json()
         assert "tasks" in data
@@ -579,7 +579,7 @@ class TestClaimDetailIncludesTasks:
         assert len(data["tasks"]) == 1
 
     def test_claim_detail_tasks_empty(self, client):
-        resp = client.get("/api/claims/CLM-TEST001")
+        resp = client.get("/api/v1/claims/CLM-TEST001")
         assert resp.status_code == 200
         data = resp.json()
         assert data["tasks"] == []
@@ -591,7 +591,7 @@ class TestClaimDetailIncludesTasks:
         repo = ClaimRepository()
         for i in range(101):
             repo.create_task("CLM-TEST001", f"Task {i}", "other")
-        resp = client.get("/api/claims/CLM-TEST001")
+        resp = client.get("/api/v1/claims/CLM-TEST001")
         assert resp.status_code == 200
         data = resp.json()
         assert data["tasks_total"] == 101

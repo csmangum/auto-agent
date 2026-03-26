@@ -43,7 +43,7 @@ from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 
 router = APIRouter(prefix="/third-party-portal", tags=["third-party-portal"])
 
-_ATTACH_BASE = "/api/third-party-portal"
+_ATTACH_BASE = "/api/v1/third-party-portal"
 
 # Subset of claimant portal fields: no policy_number or vin (minimal PII).
 # Includes payout_amount and liability_percentage for subrogation / demand context; deployers

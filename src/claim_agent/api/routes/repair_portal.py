@@ -47,7 +47,7 @@ from claim_agent.utils import attachment_type_to_document_type, infer_attachment
 
 router = APIRouter(prefix="/repair-portal", tags=["repair-portal"])
 
-_ATTACH_BASE = "/api/repair-portal"
+_ATTACH_BASE = "/api/v1/repair-portal"
 
 
 def _repair_shop_ctx_dep(claim_id: str, request: Request) -> RepairShopPortalContext:

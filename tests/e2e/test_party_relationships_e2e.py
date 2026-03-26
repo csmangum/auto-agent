@@ -40,7 +40,7 @@ def test_e2e_create_and_delete_party_relationship(e2e_client, integration_db: st
     parties = repo.get_claim_parties(claim_id)
     ids = {p["party_type"]: p["id"] for p in parties}
     resp = e2e_client.post(
-        f"/api/claims/{claim_id}/party-relationships",
+        f"/api/v1/claims/{claim_id}/party-relationships",
         json={
             "from_party_id": ids["claimant"],
             "to_party_id": ids["attorney"],
@@ -50,5 +50,5 @@ def test_e2e_create_and_delete_party_relationship(e2e_client, integration_db: st
     assert resp.status_code == 201
     rel_id = resp.json()["id"]
     assert e2e_client.delete(
-        f"/api/claims/{claim_id}/party-relationships/{rel_id}"
+        f"/api/v1/claims/{claim_id}/party-relationships/{rel_id}"
     ).status_code == 204

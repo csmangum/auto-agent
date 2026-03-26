@@ -55,7 +55,7 @@ describe('thirdPartyPortalClient', () => {
 
       const result = await thirdPartyPortalApi.getClaim('CLM-2');
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/third-party-portal/claims/CLM-2',
+        '/api/v1/third-party-portal/claims/CLM-2',
         expect.objectContaining({
           headers: expect.objectContaining({
             'X-Third-Party-Access-Token': 'tp-token',
@@ -83,7 +83,7 @@ describe('thirdPartyPortalClient', () => {
 
       await thirdPartyPortalApi.recordFollowUpResponse('CLM-2', 10, 'reply');
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/third-party-portal/claims/CLM-2/follow-up/record-response',
+        '/api/v1/third-party-portal/claims/CLM-2/follow-up/record-response',
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -111,7 +111,7 @@ describe('thirdPartyPortalClient', () => {
       await thirdPartyPortalApi.uploadDocument('CLM-2', file);
 
       const [url, init] = mockFetch.mock.calls[0];
-      expect(url).toBe('/api/third-party-portal/claims/CLM-2/documents');
+      expect(url).toBe('/api/v1/third-party-portal/claims/CLM-2/documents');
       expect(init.method).toBe('POST');
       expect(init.body).toBeInstanceOf(FormData);
     });

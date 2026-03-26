@@ -41,7 +41,7 @@ describe('API client', () => {
     await getClaimsStats();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/claims/stats',
+      '/api/v1/claims/stats',
       expect.objectContaining({
         headers: expect.any(Object),
       })
@@ -124,7 +124,7 @@ describe('API client', () => {
     await getClaims({ status: 'open', limit: 10, offset: 5 });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/claims?status=open&limit=10&offset=5',
+      '/api/v1/claims?status=open&limit=10&offset=5',
       expect.any(Object)
     );
   });
@@ -139,7 +139,7 @@ describe('API client', () => {
     const result = await getClaim('CLM-001');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/claims/CLM-001',
+      '/api/v1/claims/CLM-001',
       expect.any(Object)
     );
     expect(result).toEqual(mockClaim);
@@ -166,7 +166,7 @@ describe('API client', () => {
     await processClaimAsync(payload, [file]);
 
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/claims/process/async',
+      '/api/v1/claims/process/async',
       expect.objectContaining({
         method: 'POST',
         body: expect.any(FormData),
@@ -200,7 +200,7 @@ describe('API client', () => {
     await processClaimAsync(payload);
 
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/claims/process/async',
+      '/api/v1/claims/process/async',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer sk-claim-token',
@@ -218,7 +218,7 @@ describe('API client', () => {
 
     const result = await getClaimHistory('CLM-001');
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-001/history', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-001/history', expect.any(Object));
     expect(result).toEqual(mockHistory);
   });
 
@@ -231,7 +231,7 @@ describe('API client', () => {
 
     const result = await getClaimWorkflows('CLM-001');
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-001/workflows', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-001/workflows', expect.any(Object));
     expect(result).toEqual(mockWorkflows);
   });
 
@@ -242,7 +242,7 @@ describe('API client', () => {
     } as Response);
 
     await getDocs();
-    expect(mockFetch).toHaveBeenCalledWith('/api/docs', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/docs', expect.any(Object));
   });
 
   it('getDoc fetches doc by slug', async () => {
@@ -252,7 +252,7 @@ describe('API client', () => {
     } as Response);
 
     await getDoc('intro');
-    expect(mockFetch).toHaveBeenCalledWith('/api/docs/intro', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/docs/intro', expect.any(Object));
   });
 
   it('getSkills fetches skills list', async () => {
@@ -262,7 +262,7 @@ describe('API client', () => {
     } as Response);
 
     await getSkills();
-    expect(mockFetch).toHaveBeenCalledWith('/api/skills', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/skills', expect.any(Object));
   });
 
   it('getSkill fetches skill by name', async () => {
@@ -272,7 +272,7 @@ describe('API client', () => {
     } as Response);
 
     await getSkill('adjuster');
-    expect(mockFetch).toHaveBeenCalledWith('/api/skills/adjuster', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/skills/adjuster', expect.any(Object));
   });
 
   it('getSystemConfig fetches config', async () => {
@@ -282,7 +282,7 @@ describe('API client', () => {
     } as Response);
 
     await getSystemConfig();
-    expect(mockFetch).toHaveBeenCalledWith('/api/system/config', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/system/config', expect.any(Object));
   });
 
   it('getSystemHealth fetches health', async () => {
@@ -292,7 +292,7 @@ describe('API client', () => {
     } as Response);
 
     await getSystemHealth();
-    expect(mockFetch).toHaveBeenCalledWith('/api/system/health', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/system/health', expect.any(Object));
   });
 
   it('getAgentsCatalog fetches agents', async () => {
@@ -302,7 +302,7 @@ describe('API client', () => {
     } as Response);
 
     await getAgentsCatalog();
-    expect(mockFetch).toHaveBeenCalledWith('/api/system/agents', expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/system/agents', expect.any(Object));
   });
 
   it('processClaimAsync sends multiple files', async () => {
@@ -423,7 +423,7 @@ describe('API client', () => {
     });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/claims/CLM-1/stream',
+      '/api/v1/claims/CLM-1/stream',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer stream-token',
@@ -475,175 +475,175 @@ describe('API client', () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ history: [] }) } as Response);
       const { getClaimReserveHistory } = await import('./client');
       await getClaimReserveHistory('CLM-1', 25);
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/reserve-history?limit=25', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/reserve-history?limit=25', expect.any(Object));
     });
 
     it('getClaimReserveAdequacy', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ adequate: true, warnings: [] }) } as Response);
       const { getClaimReserveAdequacy } = await import('./client');
       await getClaimReserveAdequacy('CLM-1');
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/reserve/adequacy', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/reserve/adequacy', expect.any(Object));
     });
 
     it('patchClaimReserve', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ claim_id: 'CLM-1', reserve_amount: 5000 }) } as Response);
       const { patchClaimReserve } = await import('./client');
       await patchClaimReserve('CLM-1', { reserve_amount: 5000 });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/reserve', expect.objectContaining({ method: 'PATCH' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/reserve', expect.objectContaining({ method: 'PATCH' }));
     });
 
     it('getCostBreakdown', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ total_cost_usd: 0 }) } as Response);
       const { getCostBreakdown } = await import('./client');
       await getCostBreakdown();
-      expect(mockFetch).toHaveBeenCalledWith('/api/metrics/cost', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/metrics/cost', expect.any(Object));
     });
 
     it('getPolicies', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ policies: [] }) } as Response);
       const { getPolicies } = await import('./client');
       await getPolicies();
-      expect(mockFetch).toHaveBeenCalledWith('/api/system/policies', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/system/policies', expect.any(Object));
     });
 
     it('generateIncidentDetails', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ incident_date: '2025-01-01' }) } as Response);
       const { generateIncidentDetails } = await import('./client');
       await generateIncidentDetails({ vehicle_year: 2022, vehicle_make: 'Honda', vehicle_model: 'Accord' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/generate-incident-details', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/generate-incident-details', expect.objectContaining({ method: 'POST' }));
     });
 
     it('postClaimDispute', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ resolution_type: 'pending' }) } as Response);
       const { postClaimDispute } = await import('./client');
       await postClaimDispute('CLM-1', { dispute_type: 'liability', dispute_description: 'disagree' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/dispute', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/dispute', expect.objectContaining({ method: 'POST' }));
     });
 
     it('postClaimSupplemental', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ supplemental_amount: 500 }) } as Response);
       const { postClaimSupplemental } = await import('./client');
       await postClaimSupplemental('CLM-1', { supplemental_damage_description: 'hidden rust', reported_by: 'shop' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/supplemental', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/supplemental', expect.objectContaining({ method: 'POST' }));
     });
 
     it('getClaimRepairStatus', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ latest: null, history: [] }) } as Response);
       const { getClaimRepairStatus } = await import('./client');
       await getClaimRepairStatus('CLM-1');
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/repair-status', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/repair-status', expect.any(Object));
     });
 
     it('postClaimRepairStatus', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, repair_status_id: 1 }) } as Response);
       const { postClaimRepairStatus } = await import('./client');
       await postClaimRepairStatus('CLM-1', { status: 'received' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/repair-status', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/repair-status', expect.objectContaining({ method: 'POST' }));
     });
 
     it('postClaimFollowUpResponse', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) } as Response);
       const { postClaimFollowUpResponse } = await import('./client');
       await postClaimFollowUpResponse('CLM-1', { message_id: 1, response_content: 'got it' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/follow-up/record-response', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/follow-up/record-response', expect.objectContaining({ method: 'POST' }));
     });
 
     it('getClaimTasks', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tasks: [] }) } as Response);
       const { getClaimTasks } = await import('./client');
       await getClaimTasks('CLM-1');
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/tasks', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/tasks', expect.any(Object));
     });
 
     it('createClaimTask', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { createClaimTask } = await import('./client');
       await createClaimTask('CLM-1', { title: 'Review', task_type: 'review' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/tasks', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/tasks', expect.objectContaining({ method: 'POST' }));
     });
 
     it('getAllTasks with params', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tasks: [], total: 0 }) } as Response);
       const { getAllTasks } = await import('./client');
       await getAllTasks({ status: 'open', limit: 10 });
-      expect(mockFetch).toHaveBeenCalledWith('/api/tasks?status=open&limit=10', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/tasks?status=open&limit=10', expect.any(Object));
     });
 
     it('getTaskStats', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ total: 0, by_status: {} }) } as Response);
       const { getTaskStats } = await import('./client');
       await getTaskStats();
-      expect(mockFetch).toHaveBeenCalledWith('/api/tasks/stats', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/tasks/stats', expect.any(Object));
     });
 
     it('getTask', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { getTask } = await import('./client');
       await getTask(1);
-      expect(mockFetch).toHaveBeenCalledWith('/api/tasks/1', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/tasks/1', expect.any(Object));
     });
 
     it('updateTask', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { updateTask } = await import('./client');
       await updateTask(1, { status: 'completed' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/tasks/1', expect.objectContaining({ method: 'PATCH' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/tasks/1', expect.objectContaining({ method: 'PATCH' }));
     });
 
     it('getReviewQueue with params', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ claims: [], total: 0 }) } as Response);
       const { getReviewQueue } = await import('./client');
       await getReviewQueue({ assignee: 'admin', limit: 5 });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/review-queue?assignee=admin&limit=5', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/review-queue?assignee=admin&limit=5', expect.any(Object));
     });
 
     it('assignClaim', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ claim_id: 'CLM-1', assignee: 'admin' }) } as Response);
       const { assignClaim } = await import('./client');
       await assignClaim('CLM-1', 'admin');
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/assign', expect.objectContaining({ method: 'PATCH' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/assign', expect.objectContaining({ method: 'PATCH' }));
     });
 
     it('getClaimPayments', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ payments: [] }) } as Response);
       const { getClaimPayments } = await import('./client');
       await getClaimPayments('CLM-1');
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/payments', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/payments', expect.any(Object));
     });
 
     it('createPayment', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { createPayment } = await import('./client');
       await createPayment('CLM-1', { claim_id: 'CLM-1', amount: 1000, payee: 'John', payee_type: 'claimant', payment_method: 'check' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/payments', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/payments', expect.objectContaining({ method: 'POST' }));
     });
 
     it('issuePayment', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { issuePayment } = await import('./client');
       await issuePayment('CLM-1', 1);
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/payments/1/issue', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/payments/1/issue', expect.objectContaining({ method: 'POST' }));
     });
 
     it('clearPayment', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { clearPayment } = await import('./client');
       await clearPayment('CLM-1', 1);
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/payments/1/clear', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/payments/1/clear', expect.objectContaining({ method: 'POST' }));
     });
 
     it('voidPayment', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { voidPayment } = await import('./client');
       await voidPayment('CLM-1', 1, { reason: 'duplicate' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/payments/1/void', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/payments/1/void', expect.objectContaining({ method: 'POST' }));
     });
 
     it('getClaimDocuments with params', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ documents: [] }) } as Response);
       const { getClaimDocuments } = await import('./client');
       await getClaimDocuments('CLM-1', { document_type: 'estimate', group_by: 'storage_key' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/documents?document_type=estimate&group_by=storage_key', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/documents?document_type=estimate&group_by=storage_key', expect.any(Object));
     });
 
     it('uploadClaimDocument', async () => {
@@ -652,7 +652,7 @@ describe('API client', () => {
       const file = new File(['data'], 'test.pdf', { type: 'application/pdf' });
       await uploadClaimDocument('CLM-1', file, { document_type: 'estimate', received_from: 'claimant' });
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/claims/CLM-1/documents?document_type=estimate&received_from=claimant',
+        '/api/v1/claims/CLM-1/documents?document_type=estimate&received_from=claimant',
         expect.objectContaining({ method: 'POST' })
       );
     });
@@ -674,63 +674,63 @@ describe('API client', () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ document_id: 1 }) } as Response);
       const { updateClaimDocument } = await import('./client');
       await updateClaimDocument('CLM-1', 1, { review_status: 'approved' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/documents/1', expect.objectContaining({ method: 'PATCH' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/documents/1', expect.objectContaining({ method: 'PATCH' }));
     });
 
     it('getDocumentRequests', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ requests: [] }) } as Response);
       const { getDocumentRequests } = await import('./client');
       await getDocumentRequests('CLM-1');
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/document-requests', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/document-requests', expect.any(Object));
     });
 
     it('createDocumentRequest', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ request_id: 1 }) } as Response);
       const { createDocumentRequest } = await import('./client');
       await createDocumentRequest('CLM-1', { document_type: 'police_report' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/document-requests', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/document-requests', expect.objectContaining({ method: 'POST' }));
     });
 
     it('addClaimNote', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ claim_id: 'CLM-1' }) } as Response);
       const { addClaimNote } = await import('./client');
       await addClaimNote('CLM-1', 'Test note', 'adjuster');
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/notes', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/notes', expect.objectContaining({ method: 'POST' }));
     });
 
     it('getOverdueTasks', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tasks: [] }) } as Response);
       const { getOverdueTasks } = await import('./client');
       await getOverdueTasks(50);
-      expect(mockFetch).toHaveBeenCalledWith('/api/tasks/overdue?limit=50', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/tasks/overdue?limit=50', expect.any(Object));
     });
 
     it('getComplianceTemplates', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ templates: [] }) } as Response);
       const { getComplianceTemplates } = await import('./client');
       await getComplianceTemplates('CA');
-      expect(mockFetch).toHaveBeenCalledWith('/api/diary/compliance-templates?state=CA', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/diary/compliance-templates?state=CA', expect.any(Object));
     });
 
     it('createPartyRelationship', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { createPartyRelationship } = await import('./client');
       await createPartyRelationship('CLM-1', { from_party_id: 1, to_party_id: 2, relationship_type: 'represented_by' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/party-relationships', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/party-relationships', expect.objectContaining({ method: 'POST' }));
     });
 
     it('deletePartyRelationship', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true } as Response);
       const { deletePartyRelationship } = await import('./client');
       await deletePartyRelationship('CLM-1', 10);
-      expect(mockFetch).toHaveBeenCalledWith('/api/claims/CLM-1/party-relationships/10', expect.objectContaining({ method: 'DELETE' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/claims/CLM-1/party-relationships/10', expect.objectContaining({ method: 'DELETE' }));
     });
 
     it('getFraudReportingCompliance', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ reports: [] }) } as Response);
       const { getFraudReportingCompliance } = await import('./client');
       await getFraudReportingCompliance({ state: 'CA', limit: 10 });
-      expect(mockFetch).toHaveBeenCalledWith('/api/compliance/fraud-reporting?state=CA&limit=10', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/compliance/fraud-reporting?state=CA&limit=10', expect.any(Object));
     });
 
     it('getCurrentUser', async () => {
@@ -744,42 +744,42 @@ describe('API client', () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ templates: [] }) } as Response);
       const { getNoteTemplates } = await import('./client');
       await getNoteTemplates({ activeOnly: true });
-      expect(mockFetch).toHaveBeenCalledWith('/api/note-templates?active_only=true', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/note-templates?active_only=true', expect.any(Object));
     });
 
     it('createNoteTemplate', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1, label: 'Test' }) } as Response);
       const { createNoteTemplate } = await import('./client');
       await createNoteTemplate({ label: 'Test', body: 'Template body' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/note-templates', expect.objectContaining({ method: 'POST' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/note-templates', expect.objectContaining({ method: 'POST' }));
     });
 
     it('updateNoteTemplate', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) } as Response);
       const { updateNoteTemplate } = await import('./client');
       await updateNoteTemplate(1, { label: 'Updated' });
-      expect(mockFetch).toHaveBeenCalledWith('/api/note-templates/1', expect.objectContaining({ method: 'PATCH' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/note-templates/1', expect.objectContaining({ method: 'PATCH' }));
     });
 
     it('deleteNoteTemplate', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true } as Response);
       const { deleteNoteTemplate } = await import('./client');
       await deleteNoteTemplate(1);
-      expect(mockFetch).toHaveBeenCalledWith('/api/note-templates/1', expect.objectContaining({ method: 'DELETE' }));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/note-templates/1', expect.objectContaining({ method: 'DELETE' }));
     });
 
     it('getMetrics', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response);
       const { getMetrics } = await import('./client');
       await getMetrics();
-      expect(mockFetch).toHaveBeenCalledWith('/api/metrics', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/metrics', expect.any(Object));
     });
 
     it('getClaimMetrics', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response);
       const { getClaimMetrics } = await import('./client');
       await getClaimMetrics('CLM-1');
-      expect(mockFetch).toHaveBeenCalledWith('/api/metrics/CLM-1', expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/metrics/CLM-1', expect.any(Object));
     });
 
     it('postJSON retries on 5xx', async () => {

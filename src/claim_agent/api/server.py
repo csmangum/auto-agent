@@ -6,9 +6,10 @@ Provides REST API endpoints for:
 - Documentation browsing (markdown docs and agent skills)
 - System configuration and health
 
-Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/* endpoints
-require auth except /api/health, /api/portal/*, /api/repair-portal/*, /api/third-party-portal/*, /api/auth/login,
-and /api/auth/refresh.
+Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/v1/* endpoints
+require auth except /api/v1/health, /api/v1/portal/*, /api/v1/repair-portal/*,
+/api/v1/third-party-portal/*, /api/v1/auth/login, and /api/v1/auth/refresh.
+Legacy /api/* paths are permanently redirected (308) to /api/v1/*.
 Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
 Non-dev deployments (CLAIM_AGENT_ENVIRONMENT) require at least one auth mechanism at startup.
 """
@@ -31,6 +32,7 @@ from claim_agent.api.rate_limit import get_client_ip, is_auth_rate_limited, is_r
 from claim_agent.api.routes.claims import router as claims_router
 from claim_agent.api.routes.compliance import router as compliance_router
 from claim_agent.api.routes.claims import _background_tasks as claim_background_tasks
+from claim_agent.api.routes.claims import _task_claim_ids as claim_task_claim_ids
 from claim_agent.api.routes.metrics import router as metrics_router
 from claim_agent.api.routes.docs import router as docs_router
 from claim_agent.api.routes.system import router as system_router
@@ -59,7 +61,7 @@ from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
 from claim_agent.events import ensure_webhook_listener_registered
 from claim_agent.exceptions import InvalidClaimTransitionError
-from claim_agent.scheduler import ensure_scheduler_running, stop_scheduler
+from claim_agent.config.settings_model import SchedulerConfig
 
 import logging
 
@@ -173,6 +175,84 @@ def _recover_stuck_processing_claims() -> None:
             )
 
 
+def _warn_if_scheduler_enabled_on_api() -> None:
+    """Warn when SCHEDULER_ENABLED=true is set on the API server.
+
+    The in-process APScheduler is not safe for multi-worker deployments:
+    each Uvicorn/Gunicorn worker or replica pod would run its own copy of
+    every cron job, duplicating diary escalations, UCSPA sweeps, and ERP
+    polls.  The scheduler should run as a single dedicated process via
+    ``claim-agent run-scheduler``.  The API server no longer auto-starts the
+    scheduler.
+    """
+    scheduler_cfg = SchedulerConfig()
+    if scheduler_cfg.enabled:
+        _server_logger.warning(
+            "SCHEDULER_ENABLED=true is set but the API server no longer starts the "
+            "in-process scheduler. Run 'claim-agent run-scheduler' as a separate "
+            "single-instance process instead. This prevents cron jobs from running "
+            "once per API worker in multi-worker deployments. "
+            "See docs/configuration.md for details."
+        )
+
+async def _shutdown_background_tasks_with_grace(grace_seconds: int) -> None:
+    """Wait up to *grace_seconds* for in-flight claim tasks, then cancel the rest.
+
+    Any task still running after the grace period is cancelled. The associated claim
+    remains in ``processing`` status so the startup recovery scan will detect it and
+    mark it ``needs_review`` on the next server boot.
+
+    Args:
+        grace_seconds: Maximum wall-clock seconds to wait before cancellation.
+            When 0 the tasks are cancelled immediately without waiting.
+    """
+    if not claim_background_tasks:
+        return
+
+    pending = set(claim_background_tasks)
+    _server_logger.info(
+        "Graceful shutdown: waiting up to %d s for %d in-flight claim task(s).",
+        grace_seconds,
+        len(pending),
+    )
+
+    if grace_seconds > 0:
+        done, pending = await asyncio.wait(pending, timeout=grace_seconds)
+        # Log (but do not re-raise) exceptions from tasks that finished during the
+        # grace window.  Re-raising would abort the rest of the shutdown sequence,
+        # leaving other tasks uncancel-led and their claims in 'processing'.
+        for t in done:
+            if not t.cancelled():
+                exc = t.exception()
+                if exc is not None:
+                    _server_logger.warning(
+                        "Graceful shutdown: task finished with error: %s", exc
+                    )
+
+    if not pending:
+        _server_logger.info("Graceful shutdown: all claim tasks finished within grace period.")
+        return
+
+    _server_logger.warning(
+        "Graceful shutdown: %d claim task(s) did not finish within %d s grace period; "
+        "cancelling and marking claims as failed (recoverable).",
+        len(pending),
+        grace_seconds,
+    )
+
+    for task in pending:
+        claim_id = claim_task_claim_ids.get(task)
+        task.cancel()
+        if claim_id:
+            _server_logger.warning(
+                "Graceful shutdown: claim %s interrupted (will be recovered on next startup).",
+                claim_id,
+            )
+
+    # Await cancelled tasks so their CancelledError is consumed
+    await asyncio.gather(*pending, return_exceptions=True)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _check_auth_configuration()
@@ -210,7 +290,7 @@ async def lifespan(_app: FastAPI):
     _recover_stuck_processing_claims()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
-    ensure_scheduler_running()
+    _warn_if_scheduler_enabled_on_api()
     _check_rate_limit_configuration()
 
     _idempotency_cleanup_task: asyncio.Task | None = None
@@ -253,9 +333,9 @@ async def lifespan(_app: FastAPI):
             pass
 
     if claim_background_tasks:
-        await asyncio.gather(*claim_background_tasks)
-
-    await stop_scheduler()
+        await _shutdown_background_tasks_with_grace(
+            get_settings().shutdown_grace_period_seconds
+        )
 
     if _otel_enabled:
         try:
@@ -281,9 +361,9 @@ def create_app() -> FastAPI:
         description="API for the Agentic Claims Processing System dashboard",
         version="1.0.0",
         lifespan=lifespan,
-        docs_url="/api/openapi/docs",
-        redoc_url="/api/openapi/redoc",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/v1/openapi/docs",
+        redoc_url="/api/v1/openapi/redoc",
+        openapi_url="/api/v1/openapi.json",
     )
 
     _app.add_middleware(
@@ -328,37 +408,37 @@ def _get_token(request: Request) -> str | None:
     return None
 
 
-_PUBLIC_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
+_PUBLIC_PATHS = ("/api/v1/health", "/health", "/healthz", "/metrics")
 
 
 def _is_portal_path(path: str) -> bool:
-    """True if path is under /api/portal (uses portal-specific auth, not bearer auth).
+    """True if path is under /api/v1/portal (uses portal-specific auth, not bearer auth).
 
-    The ``/api/portal/auth/issue-token`` admin endpoint is excluded so it
+    The ``/api/v1/portal/auth/issue-token`` admin endpoint is excluded so it
     falls through to the normal API-key / Bearer-token auth middleware.
     """
-    if path.startswith("/api/portal/auth/issue-token"):
+    if path.startswith("/api/v1/portal/auth/issue-token"):
         return False
-    return path.startswith("/api/portal")
+    return path.startswith("/api/v1/portal")
 
 
 def _is_repair_portal_path(path: str) -> bool:
-    """True if path is under /api/repair-portal (repair shop token, not bearer auth)."""
-    return path.startswith("/api/repair-portal")
+    """True if path is under /api/v1/repair-portal (repair shop token, not bearer auth)."""
+    return path.startswith("/api/v1/repair-portal")
 
 
 def _is_third_party_portal_path(path: str) -> bool:
-    """True if path is under /api/third-party-portal (third-party token, not bearer auth)."""
-    return path.startswith("/api/third-party-portal")
+    """True if path is under /api/v1/third-party-portal (third-party token, not bearer auth)."""
+    return path.startswith("/api/v1/third-party-portal")
 
 
 def _is_auth_public_path(path: str) -> bool:
     """Login and refresh do not require a bearer token."""
     return path in (
-        "/api/auth/login",
-        "/api/auth/refresh",
-        "/api/repair-portal/auth/login",
-        "/api/portal/auth/login",
+        "/api/v1/auth/login",
+        "/api/v1/auth/refresh",
+        "/api/v1/repair-portal/auth/login",
+        "/api/v1/portal/auth/login",
     )
 
 
@@ -428,7 +508,7 @@ def _secured_api_json_response(request: Request, status_code: int, content: dict
 def _maybe_cache_control_no_store(path: str) -> str | None:
     """Return Cache-Control value for API routes except health (see plan)."""
     norm = _normalize_path(path)
-    if norm.startswith("/api/") and norm != "/api/health":
+    if norm.startswith("/api/v1/") and norm != "/api/v1/health":
         return "no-store"
     return None
 
@@ -438,7 +518,7 @@ async def auth_middleware(request: Request, call_next):
     """Verify auth when configured. Set request.state.auth on success."""
     path = _normalize_path(request.url.path)
     if (
-        not path.startswith("/api/")
+        not path.startswith("/api/v1/")
         or path in _PUBLIC_PATHS
         or _is_portal_path(path)
         or _is_repair_portal_path(path)
@@ -474,7 +554,7 @@ async def auth_middleware(request: Request, call_next):
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limit API routes: 100 req/min per IP; login/refresh use 20 req/min per IP."""
     path = _normalize_path(request.url.path)
-    if path.startswith("/api/") and path not in _PUBLIC_PATHS:
+    if path.startswith("/api/v1/") and path not in _PUBLIC_PATHS:
         settings = get_settings()
         ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
         limited = (
@@ -503,12 +583,12 @@ async def request_body_size_limit_middleware(request: Request, call_next):
     rejected before the body is read into memory.  Route handlers that accept
     file uploads enforce additional per-file limits independently.
 
-    POST/PUT/PATCH under ``/api/`` must send ``Content-Length`` (not chunked
+    POST/PUT/PATCH under ``/api/v1/`` must send ``Content-Length`` (not chunked
     without a length) so limits cannot be bypassed via ``Transfer-Encoding:
     chunked``.
     """
     path = _normalize_path(request.url.path)
-    if not path.startswith("/api/"):
+    if not path.startswith("/api/v1/"):
         return await call_next(request)
 
     method = request.method.upper()
@@ -599,6 +679,27 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def api_version_redirect_middleware(request: Request, call_next):
+    """Redirect unversioned /api/* requests to /api/v1/* for backward compatibility.
+
+    Clients that still use the legacy /api/ prefix receive a 308 Permanent Redirect
+    so they can update their URLs. HTTP 308 preserves the request method (POST, PUT,
+    PATCH, DELETE), unlike 301 which causes clients to downgrade to GET. The
+    versioned /api/v1/ paths are the canonical API; the legacy paths are kept only
+    to avoid silent breakage.
+    """
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith("/api/v1/"):
+        versioned = "/api/v1" + path[len("/api"):]
+        new_url = request.url.replace(path=versioned)
+        return Response(status_code=308, headers={"Location": str(new_url)})
+    if path == "/api":
+        new_url = request.url.replace(path="/api/v1")
+        return Response(status_code=308, headers={"Location": str(new_url)})
+    return await call_next(request)
+
+
 def _health_response():
     """Return health check response with appropriate status code."""
     result = check_health()
@@ -606,8 +707,8 @@ def _health_response():
     return JSONResponse(content=result, status_code=status_code)
 
 
-@app.get("/api/health")
-@app.get("/api/health/")
+@app.get("/api/v1/health")
+@app.get("/api/v1/health/")
 async def health():
     """Production health check: DB (required), optional LLM and notifications. Returns 503 if down."""
     return _health_response()
@@ -632,29 +733,29 @@ def metrics():
     )
 
 
-# Register API routes
-app.include_router(claims_router, prefix="/api")
-app.include_router(compliance_router, prefix="/api")
-app.include_router(metrics_router, prefix="/api")
-app.include_router(docs_router, prefix="/api")
-app.include_router(system_router, prefix="/api")
-app.include_router(simulation_router, prefix="/api")
-app.include_router(chat_router, prefix="/api")
-app.include_router(tasks_router, prefix="/api")
-app.include_router(payments_router, prefix="/api")
-app.include_router(webhooks_router, prefix="/api")
-app.include_router(dsar_router, prefix="/api")
-app.include_router(portal_router, prefix="/api")
-app.include_router(unified_portal_router, prefix="/api")
-app.include_router(repair_portal_router, prefix="/api")
-app.include_router(third_party_portal_router, prefix="/api")
-app.include_router(reserve_reports_router, prefix="/api")
-app.include_router(retention_router, prefix="/api")
-app.include_router(privacy_router, prefix="/api")
-app.include_router(auth_login_router, prefix="/api")
-app.include_router(users_admin_router, prefix="/api")
-app.include_router(repair_shop_users_router, prefix="/api")
-app.include_router(note_templates_router, prefix="/api")
+# Register API routes (versioned under /api/v1)
+app.include_router(claims_router, prefix="/api/v1")
+app.include_router(compliance_router, prefix="/api/v1")
+app.include_router(metrics_router, prefix="/api/v1")
+app.include_router(docs_router, prefix="/api/v1")
+app.include_router(system_router, prefix="/api/v1")
+app.include_router(simulation_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
+app.include_router(tasks_router, prefix="/api/v1")
+app.include_router(payments_router, prefix="/api/v1")
+app.include_router(webhooks_router, prefix="/api/v1")
+app.include_router(dsar_router, prefix="/api/v1")
+app.include_router(portal_router, prefix="/api/v1")
+app.include_router(unified_portal_router, prefix="/api/v1")
+app.include_router(repair_portal_router, prefix="/api/v1")
+app.include_router(third_party_portal_router, prefix="/api/v1")
+app.include_router(reserve_reports_router, prefix="/api/v1")
+app.include_router(retention_router, prefix="/api/v1")
+app.include_router(privacy_router, prefix="/api/v1")
+app.include_router(auth_login_router, prefix="/api/v1")
+app.include_router(users_admin_router, prefix="/api/v1")
+app.include_router(repair_shop_users_router, prefix="/api/v1")
+app.include_router(note_templates_router, prefix="/api/v1")
 
 
 # Serve frontend static files in production (when built)
