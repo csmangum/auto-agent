@@ -5,7 +5,7 @@
 
 import { parseApiError } from './apiUtils';
 
-const BASE = '/api/third-party-portal';
+const BASE = '/api/v1/third-party-portal';
 
 export interface ThirdPartyPortalSession {
   token: string;

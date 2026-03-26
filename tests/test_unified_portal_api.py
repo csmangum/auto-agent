@@ -61,13 +61,13 @@ def client():
 
 class TestDetectPortalRole:
     def test_role_returns_401_without_credentials(self, client):
-        resp = client.get("/api/portal/auth/role")
+        resp = client.get("/api/v1/portal/auth/role")
         assert resp.status_code == 401
 
     def test_role_claimant_via_policy_vin(self, client):
         """Policy + VIN → role=claimant."""
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Policy-Number": "POL-001", "X-Vin": "1HGBH41JXMN109186"},
         )
         assert resp.status_code == 200
@@ -82,7 +82,7 @@ class TestDetectPortalRole:
         reload_settings()
         raw_token = create_claim_access_token("CLM-TEST001")
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Claim-Access-Token": raw_token},
         )
         assert resp.status_code == 200
@@ -94,7 +94,7 @@ class TestDetectPortalRole:
         """Repair shop per-claim token → role=repair_shop."""
         shop_token = create_repair_shop_access_token("CLM-TEST005", shop_id="SHOP-UNIT")
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={
                 "X-Repair-Shop-Access-Token": shop_token,
                 "X-Claim-Id": "CLM-TEST005",
@@ -115,7 +115,7 @@ class TestDetectPortalRole:
             claim_id="CLM-TEST001",
         )
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Portal-Token": raw},
         )
         assert resp.status_code == 200
@@ -133,7 +133,7 @@ class TestDetectPortalRole:
             shop_id="SHOP-UNIFIED",
         )
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Portal-Token": raw},
         )
         assert resp.status_code == 200
@@ -145,7 +145,7 @@ class TestDetectPortalRole:
     def test_role_unified_token_invalid(self, client):
         """Tampered/invalid unified token → 401."""
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Portal-Token": "not-a-valid-token"},
         )
         assert resp.status_code == 401
@@ -154,7 +154,7 @@ class TestDetectPortalRole:
         monkeypatch.setenv("CLAIMANT_PORTAL_ENABLED", "false")
         reload_settings()
         raw = create_unified_portal_token("claimant", scopes=["read_claim"], claim_id="CLM-TEST001")
-        resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
+        resp = client.get("/api/v1/portal/auth/role", headers={"X-Portal-Token": raw})
         assert resp.status_code == 503
 
     def test_unified_token_503_when_repair_portal_disabled(self, client, monkeypatch):
@@ -166,20 +166,20 @@ class TestDetectPortalRole:
             claim_id="CLM-TEST005",
             shop_id="SHOP-X",
         )
-        resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
+        resp = client.get("/api/v1/portal/auth/role", headers={"X-Portal-Token": raw})
         assert resp.status_code == 503
 
     def test_unified_token_503_when_third_party_portal_disabled(self, client, monkeypatch):
         monkeypatch.setenv("THIRD_PARTY_PORTAL_ENABLED", "false")
         reload_settings()
         raw = create_unified_portal_token("tpa", scopes=["read_claim"], claim_id="CLM-TEST001")
-        resp = client.get("/api/portal/auth/role", headers={"X-Portal-Token": raw})
+        resp = client.get("/api/v1/portal/auth/role", headers={"X-Portal-Token": raw})
         assert resp.status_code == 503
 
     def test_role_repair_shop_invalid_token(self, client):
         """Invalid repair shop token → 401."""
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={
                 "X-Repair-Shop-Access-Token": "bad-token",
                 "X-Claim-Id": "CLM-TEST005",
@@ -202,7 +202,7 @@ class TestCrossPrivilegeIsolation:
         raw_token = create_claim_access_token("CLM-TEST005")
         # Repair portal requires X-Repair-Shop-Access-Token, not claimant token.
         resp = client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"X-Claim-Access-Token": raw_token},
         )
         assert resp.status_code == 401
@@ -211,7 +211,7 @@ class TestCrossPrivilegeIsolation:
         """A valid repair-shop access token should NOT grant access to /api/portal/claims/."""
         shop_token = create_repair_shop_access_token("CLM-TEST005", shop_id="SHOP-X")
         resp = client.get(
-            "/api/portal/claims",
+            "/api/v1/portal/claims",
             headers={"X-Repair-Shop-Access-Token": shop_token},
         )
         # Claimant portal does not recognise X-Repair-Shop-Access-Token → 401
@@ -220,7 +220,7 @@ class TestCrossPrivilegeIsolation:
     def test_claimant_policy_vin_cannot_access_repair_portal(self, client):
         """Policy+VIN claimant credentials should NOT grant access to repair-portal."""
         resp = client.get(
-            "/api/repair-portal/claims/CLM-TEST001",
+            "/api/v1/repair-portal/claims/CLM-TEST001",
             headers={"X-Policy-Number": "POL-001", "X-Vin": "1HGBH41JXMN109186"},
         )
         assert resp.status_code == 401
@@ -233,7 +233,7 @@ class TestCrossPrivilegeIsolation:
             claim_id="CLM-TEST005",
         )
         resp = client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"X-Claim-Access-Token": raw},
         )
         # Repair portal checks X-Repair-Shop-Access-Token, not X-Claim-Access-Token
@@ -249,7 +249,7 @@ class TestCrossPrivilegeIsolation:
             shop_id="SHOP-X",
         )
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Portal-Token": raw},
         )
         assert resp.status_code == 200
@@ -269,14 +269,14 @@ class TestUnifiedShopLogin:
         monkeypatch.delenv("REPAIR_SHOP_PORTAL_ENABLED", raising=False)
         reload_settings()
         resp = client.post(
-            "/api/portal/auth/login",
+            "/api/v1/portal/auth/login",
             json={"email": "shop@example.com", "password": "pw"},
         )
         assert resp.status_code == 503
 
     def test_login_invalid_credentials_returns_401(self, client):
         resp = client.post(
-            "/api/portal/auth/login",
+            "/api/v1/portal/auth/login",
             json={"email": "noone@example.com", "password": "wrong"},
         )
         assert resp.status_code == 401
@@ -301,7 +301,7 @@ class TestUnifiedShopLogin:
         except ValueError:
             pass  # already exists
         resp = client.post(
-            "/api/portal/auth/login",
+            "/api/v1/portal/auth/login",
             json={"email": "logintest@example.com", "password": "testpassword123"},
         )
         assert resp.status_code == 200
@@ -350,7 +350,7 @@ class TestTokenRevocation:
             shop_id="SHOP-REV",
         )
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Portal-Token": raw},
         )
         assert resp.status_code == 200
@@ -358,7 +358,7 @@ class TestTokenRevocation:
         revoke_unified_portal_token(raw)
 
         resp2 = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Portal-Token": raw},
         )
         assert resp2.status_code == 401
@@ -388,7 +388,7 @@ class TestTpaRole:
             claim_id="CLM-TEST001",
         )
         resp = client.get(
-            "/api/portal/auth/role",
+            "/api/v1/portal/auth/role",
             headers={"X-Portal-Token": raw},
         )
         assert resp.status_code == 200
@@ -440,10 +440,10 @@ class TestScopeValidation:
             "scopes": ["read_claim", "delete_everything"],
             "claim_id": "CLM-TEST001",
         }
-        assert client.post("/api/portal/auth/issue-token", json=payload).status_code == 401
+        assert client.post("/api/v1/portal/auth/issue-token", json=payload).status_code == 401
         assert (
             client.post(
-                "/api/portal/auth/issue-token",
+                "/api/v1/portal/auth/issue-token",
                 json=payload,
                 headers={"Authorization": "Bearer wrong"},
             ).status_code
@@ -451,7 +451,7 @@ class TestScopeValidation:
         )
         assert (
             client.post(
-                "/api/portal/auth/issue-token",
+                "/api/v1/portal/auth/issue-token",
                 json=payload,
                 headers={"Authorization": "Bearer issuer-key"},
             ).status_code
@@ -464,7 +464,7 @@ class TestScopeValidation:
         monkeypatch.setenv("JWT_SECRET", "")
         reload_settings()
         resp = client.post(
-            "/api/portal/auth/issue-token",
+            "/api/v1/portal/auth/issue-token",
             json={"role": "claimant", "claim_id": "CLM-TEST001", "scopes": ["read_claim"]},
             headers={"Authorization": "Bearer lowpriv"},
         )
@@ -476,7 +476,7 @@ class TestScopeValidation:
         monkeypatch.setenv("JWT_SECRET", "")
         reload_settings()
         resp = client.post(
-            "/api/portal/auth/issue-token",
+            "/api/v1/portal/auth/issue-token",
             json={"role": "claimant", "claim_id": "CLM-TEST001", "scopes": []},
             headers={"Authorization": "Bearer issuer-key"},
         )

@@ -342,7 +342,7 @@ def _resolve_attachment_urls(
                 continue
             if isinstance(storage, LocalStorageAdapter):
                 stored_name = url.split("/")[-1] if "/" in url else url
-                attachment["url"] = f"/api/claims/{claim_id}/attachments/{stored_name}"
+                attachment["url"] = f"/api/v1/claims/{claim_id}/attachments/{stored_name}"
             else:
                 storage_key = url
                 attachment["url"] = storage.get_url(claim_id, url)

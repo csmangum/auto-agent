@@ -43,7 +43,7 @@ def test_e2e_submit_new_claim_via_api(
             "Claim processed successfully."
         )
 
-        resp = e2e_client.post("/api/claims", json=sample_new_claim)
+        resp = e2e_client.post("/api/v1/claims", json=sample_new_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -52,7 +52,7 @@ def test_e2e_submit_new_claim_via_api(
     assert data.get("status") == STATUS_OPEN
     assert data.get("claim_type") == "new"
 
-    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    history_resp = e2e_client.get(f"/api/v1/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200
     history = history_resp.json()["history"]
     assert len(history) >= 2
@@ -82,7 +82,7 @@ def test_e2e_submit_duplicate_claim_via_api(
             "Duplicate confirmed. Original claim: CLM-001."
         )
 
-        resp = e2e_client.post("/api/claims", json=sample_duplicate_claim)
+        resp = e2e_client.post("/api/v1/claims", json=sample_duplicate_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -91,7 +91,7 @@ def test_e2e_submit_duplicate_claim_via_api(
     assert data.get("status") == STATUS_DUPLICATE
     assert data.get("claim_type") == "duplicate"
 
-    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    history_resp = e2e_client.get(f"/api/v1/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200
     history = history_resp.json()["history"]
     assert len(history) >= 2
@@ -150,7 +150,7 @@ def test_e2e_submit_total_loss_claim_via_api(
             "Salvage disposition complete."
         )
 
-        resp = e2e_client.post("/api/claims", json=low_value_claim)
+        resp = e2e_client.post("/api/v1/claims", json=low_value_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -159,7 +159,7 @@ def test_e2e_submit_total_loss_claim_via_api(
     assert data.get("status") == STATUS_SETTLED
     assert data.get("claim_type") == "total_loss"
 
-    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    history_resp = e2e_client.get(f"/api/v1/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200
     history = history_resp.json()["history"]
     assert len(history) >= 2
@@ -186,7 +186,7 @@ def test_e2e_submit_fraud_claim_via_api(
             "Fraud indicators detected."
         )
 
-        resp = e2e_client.post("/api/claims", json=sample_fraud_claim)
+        resp = e2e_client.post("/api/v1/claims", json=sample_fraud_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -195,7 +195,7 @@ def test_e2e_submit_fraud_claim_via_api(
     assert data.get("status") == STATUS_FRAUD_SUSPECTED
     assert data.get("claim_type") == "fraud"
 
-    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    history_resp = e2e_client.get(f"/api/v1/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200
     history = history_resp.json()["history"]
     assert len(history) >= 2
@@ -251,7 +251,7 @@ def test_e2e_submit_partial_loss_claim_via_api(
             "Subrogation assessment complete. No recovery opportunity."
         )
 
-        resp = e2e_client.post("/api/claims", json=sample_partial_loss_claim)
+        resp = e2e_client.post("/api/v1/claims", json=sample_partial_loss_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -260,7 +260,7 @@ def test_e2e_submit_partial_loss_claim_via_api(
     assert data.get("status") == STATUS_SETTLED
     assert data.get("claim_type") == "partial_loss"
 
-    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    history_resp = e2e_client.get(f"/api/v1/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200
     history = history_resp.json()["history"]
     assert len(history) >= 2
@@ -314,7 +314,7 @@ def test_e2e_submit_bodily_injury_claim_via_api(
             "Subrogation assessment complete. No recovery opportunity."
         )
 
-        resp = e2e_client.post("/api/claims", json=sample_bodily_injury_claim)
+        resp = e2e_client.post("/api/v1/claims", json=sample_bodily_injury_claim)
 
     assert resp.status_code == 200
     data = resp.json()
@@ -323,7 +323,7 @@ def test_e2e_submit_bodily_injury_claim_via_api(
     assert data.get("status") == STATUS_SETTLED
     assert data.get("claim_type") == "bodily_injury"
 
-    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    history_resp = e2e_client.get(f"/api/v1/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200
     history = history_resp.json()["history"]
     assert len(history) >= 2

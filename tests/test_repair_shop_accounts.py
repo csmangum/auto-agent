@@ -85,7 +85,7 @@ class TestRepairShopUserAccounts:
 
     def test_create_shop_user_admin_only(self, admin_client):
         resp = admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-A", "email": "shop@example.com", "password": "secure123"},
         )
         assert resp.status_code == 201
@@ -96,22 +96,22 @@ class TestRepairShopUserAccounts:
 
     def test_duplicate_email_returns_409(self, admin_client):
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-A", "email": "dup@example.com", "password": "secure123"},
         )
         resp = admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-B", "email": "dup@example.com", "password": "secure456"},
         )
         assert resp.status_code == 409
 
     def test_login_returns_jwt(self, admin_client, anon_client):
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-A", "email": "login@example.com", "password": "secure123"},
         )
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "login@example.com", "password": "secure123"},
         )
         assert resp.status_code == 200
@@ -122,31 +122,31 @@ class TestRepairShopUserAccounts:
 
     def test_login_wrong_password_401(self, admin_client, anon_client):
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-A", "email": "wrong@example.com", "password": "secure123"},
         )
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "wrong@example.com", "password": "badpass"},
         )
         assert resp.status_code == 401
 
     def test_login_unknown_email_401(self, anon_client):
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "nobody@example.com", "password": "any"},
         )
         assert resp.status_code == 401
 
     def test_login_disabled_returns_503(self, admin_client, anon_client, monkeypatch):
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-A", "email": "dis@example.com", "password": "secure123"},
         )
         monkeypatch.delenv("REPAIR_SHOP_PORTAL_ENABLED", raising=False)
         reload_settings()
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "dis@example.com", "password": "secure123"},
         )
         assert resp.status_code == 503
@@ -158,7 +158,7 @@ class TestClaimAssignment:
 
     def test_assign_shop_to_claim(self, adjuster_client):
         resp = adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-X"},
         )
         assert resp.status_code == 201
@@ -168,25 +168,25 @@ class TestClaimAssignment:
 
     def test_duplicate_assignment_returns_409(self, adjuster_client):
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-DUP"},
         )
         resp = adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-DUP"},
         )
         assert resp.status_code == 409
 
     def test_list_assignments_for_claim(self, adjuster_client):
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-LIST1"},
         )
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-LIST2"},
         )
-        resp = adjuster_client.get("/api/claims/CLM-TEST005/repair-shop-assignments")
+        resp = adjuster_client.get("/api/v1/claims/CLM-TEST005/repair-shop-assignments")
         assert resp.status_code == 200
         data = resp.json()
         shop_ids = {a["shop_id"] for a in data["assignments"]}
@@ -195,18 +195,18 @@ class TestClaimAssignment:
 
     def test_delete_assignment(self, adjuster_client):
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-DEL"},
         )
         resp = adjuster_client.delete(
-            "/api/claims/CLM-TEST005/repair-shop-assignment/SHOP-DEL"
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment/SHOP-DEL"
         )
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
     def test_delete_nonexistent_assignment_404(self, adjuster_client):
         resp = adjuster_client.delete(
-            "/api/claims/CLM-TEST005/repair-shop-assignment/SHOP-DOESNOTEXIST"
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment/SHOP-DOESNOTEXIST"
         )
         assert resp.status_code == 404
 
@@ -218,24 +218,24 @@ class TestMultiClaimInbox:
     def _create_and_login(self, admin_client, anon_client, shop_id: str, email: str) -> str:
         """Create a shop user and return a bearer token."""
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": shop_id, "email": email, "password": "secure123"},
         )
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": email, "password": "secure123"},
         )
         assert resp.status_code == 200, resp.json()
         return resp.json()["access_token"]
 
     def test_list_claims_requires_jwt(self, anon_client):
-        resp = anon_client.get("/api/repair-portal/claims")
+        resp = anon_client.get("/api/v1/repair-portal/claims")
         assert resp.status_code == 401
 
     def test_list_claims_empty_when_none_assigned(self, admin_client, anon_client):
         token = self._create_and_login(admin_client, anon_client, "SHOP-EMPTY", "empty@example.com")
         resp = anon_client.get(
-            "/api/repair-portal/claims",
+            "/api/v1/repair-portal/claims",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -246,15 +246,15 @@ class TestMultiClaimInbox:
     def test_list_claims_shows_assigned(self, admin_client, adjuster_client, anon_client):
         token = self._create_and_login(admin_client, anon_client, "SHOP-MULTI", "multi@example.com")
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-MULTI"},
         )
         adjuster_client.post(
-            "/api/claims/CLM-TEST001/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST001/repair-shop-assignment",
             json={"shop_id": "SHOP-MULTI"},
         )
         resp = anon_client.get(
-            "/api/repair-portal/claims",
+            "/api/v1/repair-portal/claims",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -268,20 +268,20 @@ class TestMultiClaimInbox:
         token_a = self._create_and_login(admin_client, anon_client, "SHOP-AA", "aa@example.com")
         token_b = self._create_and_login(admin_client, anon_client, "SHOP-BB", "bb@example.com")
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-AA"},
         )
         adjuster_client.post(
-            "/api/claims/CLM-TEST001/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST001/repair-shop-assignment",
             json={"shop_id": "SHOP-BB"},
         )
 
         resp_a = anon_client.get(
-            "/api/repair-portal/claims",
+            "/api/v1/repair-portal/claims",
             headers={"Authorization": f"Bearer {token_a}"},
         )
         resp_b = anon_client.get(
-            "/api/repair-portal/claims",
+            "/api/v1/repair-portal/claims",
             headers={"Authorization": f"Bearer {token_b}"},
         )
 
@@ -300,11 +300,11 @@ class TestJWTSingleClaimAccess:
 
     def _create_and_login(self, admin_client, anon_client, shop_id: str, email: str) -> str:
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": shop_id, "email": email, "password": "secure123"},
         )
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": email, "password": "secure123"},
         )
         assert resp.status_code == 200, resp.json()
@@ -313,11 +313,11 @@ class TestJWTSingleClaimAccess:
     def test_jwt_accesses_assigned_claim(self, admin_client, adjuster_client, anon_client):
         token = self._create_and_login(admin_client, anon_client, "SHOP-JWT1", "jwt1@example.com")
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-JWT1"},
         )
         resp = anon_client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -328,7 +328,7 @@ class TestJWTSingleClaimAccess:
         token = self._create_and_login(admin_client, anon_client, "SHOP-JWT2", "jwt2@example.com")
         # CLM-TEST005 is NOT assigned to SHOP-JWT2
         resp = anon_client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403
@@ -341,11 +341,11 @@ class TestJWTSingleClaimAccess:
         self._create_and_login(admin_client, anon_client, "SHOP-DD", "dd@example.com")
         # Assign CLM-TEST005 only to SHOP-DD
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-DD"},
         )
         resp = anon_client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"Authorization": f"Bearer {token_c}"},
         )
         assert resp.status_code == 403
@@ -353,12 +353,12 @@ class TestJWTSingleClaimAccess:
     def test_per_claim_token_still_works(self, adjuster_client, anon_client):
         """Backward-compat: per-claim X-Repair-Shop-Access-Token still grants access."""
         mint = adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-portal-token", json={}
+            "/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={}
         )
         assert mint.status_code == 200, mint.json()
         token = mint.json()["token"]
         resp = anon_client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"X-Repair-Shop-Access-Token": token},
         )
         assert resp.status_code == 200
@@ -369,12 +369,12 @@ class TestJWTSingleClaimAccess:
     ):
         """X-Repair-Shop-Access-Token works when Authorization is a non-shop Bearer."""
         mint = adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-portal-token", json={}
+            "/api/v1/claims/CLM-TEST005/repair-shop-portal-token", json={}
         )
         assert mint.status_code == 200, mint.json()
         portal_token = mint.json()["token"]
         resp = anon_client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={
                 "Authorization": "Bearer totally-invalid-not-a-shop-jwt",
                 "X-Repair-Shop-Access-Token": portal_token,
@@ -390,16 +390,16 @@ class TestDeactivatedUserRejection:
 
     def test_deactivated_user_cannot_login(self, admin_client, anon_client):
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-DEACT", "email": "deact@example.com", "password": "secure123"},
         )
         # Deactivate the user
-        users_resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-DEACT")
+        users_resp = admin_client.get("/api/v1/repair-shop-users?shop_id=SHOP-DEACT")
         user_id = users_resp.json()["users"][0]["id"]
-        admin_client.delete(f"/api/repair-shop-users/{user_id}")
+        admin_client.delete(f"/api/v1/repair-shop-users/{user_id}")
 
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "deact@example.com", "password": "secure123"},
         )
         assert resp.status_code == 401
@@ -407,11 +407,11 @@ class TestDeactivatedUserRejection:
     def test_deactivated_user_jwt_rejected(self, admin_client, adjuster_client, anon_client):
         """A JWT obtained before deactivation must be rejected after deactivation."""
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-DEACT2", "email": "deact2@example.com", "password": "secure123"},
         )
         login_resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "deact2@example.com", "password": "secure123"},
         )
         assert login_resp.status_code == 200
@@ -419,25 +419,25 @@ class TestDeactivatedUserRejection:
 
         # Assign a claim so the token would normally work
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-DEACT2"},
         )
 
         # Verify the token works before deactivation
         resp = anon_client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
 
         # Deactivate the user
-        users_resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-DEACT2")
+        users_resp = admin_client.get("/api/v1/repair-shop-users?shop_id=SHOP-DEACT2")
         user_id = users_resp.json()["users"][0]["id"]
-        admin_client.delete(f"/api/repair-shop-users/{user_id}")
+        admin_client.delete(f"/api/v1/repair-shop-users/{user_id}")
 
         # JWT should now be rejected
         resp = anon_client.get(
-            "/api/repair-portal/claims/CLM-TEST005",
+            "/api/v1/repair-portal/claims/CLM-TEST005",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 401
@@ -449,10 +449,10 @@ class TestExpiredJWT:
 
     def test_expired_jwt_is_rejected(self, admin_client, anon_client):
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-EXP", "email": "exp@example.com", "password": "secure123"},
         )
-        users_resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-EXP")
+        users_resp = admin_client.get("/api/v1/repair-shop-users?shop_id=SHOP-EXP")
         user_id = users_resp.json()["users"][0]["id"]
 
         now = datetime.now(timezone.utc)
@@ -466,7 +466,7 @@ class TestExpiredJWT:
         }
         expired_token = pyjwt.encode(expired_payload, _JWT_SECRET, algorithm="HS256")
         resp = anon_client.get(
-            "/api/repair-portal/claims",
+            "/api/v1/repair-portal/claims",
             headers={"Authorization": f"Bearer {expired_token}"},
         )
         assert resp.status_code == 401
@@ -479,18 +479,18 @@ class TestShopJWTCannotAccessInternalEndpoints:
     def test_shop_jwt_rejected_by_claims_list(self, admin_client, anon_client):
         """A shop-user JWT must not work for GET /api/claims (adjuster endpoint)."""
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-INTL", "email": "intl@example.com", "password": "secure123"},
         )
         login_resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "intl@example.com", "password": "secure123"},
         )
         assert login_resp.status_code == 200
         token = login_resp.json()["access_token"]
 
         resp = anon_client.get(
-            "/api/claims",
+            "/api/v1/claims",
             headers={"Authorization": f"Bearer {token}"},
         )
         # shop_user role is not in KNOWN_ROLES, so the main auth pipeline rejects it
@@ -499,18 +499,18 @@ class TestShopJWTCannotAccessInternalEndpoints:
     def test_shop_jwt_rejected_by_admin_users_endpoint(self, admin_client, anon_client):
         """A shop-user JWT must not work for GET /api/repair-shop-users (admin endpoint)."""
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": "SHOP-INTL2", "email": "intl2@example.com", "password": "secure123"},
         )
         login_resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": "intl2@example.com", "password": "secure123"},
         )
         assert login_resp.status_code == 200
         token = login_resp.json()["access_token"]
 
         resp = anon_client.get(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code in (401, 403)
@@ -522,11 +522,11 @@ class TestPagination:
 
     def _create_and_login(self, admin_client, anon_client, shop_id: str, email: str) -> str:
         admin_client.post(
-            "/api/repair-shop-users",
+            "/api/v1/repair-shop-users",
             json={"shop_id": shop_id, "email": email, "password": "secure123"},
         )
         resp = anon_client.post(
-            "/api/repair-portal/auth/login",
+            "/api/v1/repair-portal/auth/login",
             json={"email": email, "password": "secure123"},
         )
         assert resp.status_code == 200, resp.json()
@@ -540,17 +540,17 @@ class TestPagination:
             admin_client, anon_client, "SHOP-PAG", "pag@example.com"
         )
         adjuster_client.post(
-            "/api/claims/CLM-TEST005/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST005/repair-shop-assignment",
             json={"shop_id": "SHOP-PAG"},
         )
         adjuster_client.post(
-            "/api/claims/CLM-TEST001/repair-shop-assignment",
+            "/api/v1/claims/CLM-TEST001/repair-shop-assignment",
             json={"shop_id": "SHOP-PAG"},
         )
 
         # Fetch page with limit=1
         resp = anon_client.get(
-            "/api/repair-portal/claims?limit=1&offset=0",
+            "/api/v1/repair-portal/claims?limit=1&offset=0",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -560,7 +560,7 @@ class TestPagination:
 
         # Fetch second page
         resp2 = anon_client.get(
-            "/api/repair-portal/claims?limit=1&offset=1",
+            "/api/v1/repair-portal/claims?limit=1&offset=1",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp2.status_code == 200
@@ -575,14 +575,14 @@ class TestPagination:
         """total must be the true count for shop user listing."""
         for i in range(3):
             admin_client.post(
-                "/api/repair-shop-users",
+                "/api/v1/repair-shop-users",
                 json={
                     "shop_id": "SHOP-PAGUSERS",
                     "email": f"paguser{i}@example.com",
                     "password": "secure123",
                 },
             )
-        resp = admin_client.get("/api/repair-shop-users?shop_id=SHOP-PAGUSERS&limit=1&offset=0")
+        resp = admin_client.get("/api/v1/repair-shop-users?shop_id=SHOP-PAGUSERS&limit=1&offset=0")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["users"]) == 1

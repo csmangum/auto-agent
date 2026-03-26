@@ -18,7 +18,7 @@ from claim_agent.api.idempotency import (
 def _fake_request(
     idempotency_key: str | None = None,
     method: str = "POST",
-    path: str = "/api/claims",
+    path: str = "/api/v1/claims",
 ):
     """Build a minimal mock request with method and path for scoped idempotency keys."""
     request = MagicMock()

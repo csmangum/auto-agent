@@ -28,7 +28,7 @@ def _submit_one(client, index: int) -> tuple[float, bool, int]:
     payload = {**VALID_CLAIM_PAYLOAD, "policy_number": f"POL-{index:05d}"}
     start = time.perf_counter()
     try:
-        resp = client.post("/api/claims", json=payload)
+        resp = client.post("/api/v1/claims", json=payload)
         elapsed = time.perf_counter() - start
         return elapsed, resp.status_code == 200, resp.status_code
     except Exception:

@@ -41,7 +41,7 @@ import type {
   NoteTemplatesResponse,
 } from './types';
 
-const BASE = '/api';
+const BASE = '/api/v1';
 
 let _authToken: string | null = null;
 

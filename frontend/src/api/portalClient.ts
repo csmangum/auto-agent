@@ -3,7 +3,7 @@
  * Sends verification headers (token, or policy+vin, or email) on each request.
  */
 
-const BASE = '/api/portal';
+const BASE = '/api/v1/portal';
 
 export interface PortalSession {
   token?: string;

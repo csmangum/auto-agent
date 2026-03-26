@@ -52,19 +52,19 @@ class TestUnconditionalSecurityHeaders:
     """Security headers that must be present on every response regardless of HTTPS setting."""
 
     def test_x_content_type_options(self, client):
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         assert resp.headers.get("x-content-type-options") == "nosniff"
 
     def test_x_frame_options(self, client):
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         assert resp.headers.get("x-frame-options") == "DENY"
 
     def test_referrer_policy(self, client):
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
 
     def test_permissions_policy(self, client):
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         value = resp.headers.get("permissions-policy", "")
         assert "geolocation=()" in value
         assert "microphone=()" in value
@@ -72,7 +72,7 @@ class TestUnconditionalSecurityHeaders:
         assert "payment=()" in value
 
     def test_content_security_policy(self, client):
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         csp = resp.headers.get("content-security-policy", "")
         assert "default-src 'self'" in csp
         # unsafe-inline removed from script-src; theme script is served as a static file
@@ -86,18 +86,18 @@ class TestUnconditionalSecurityHeaders:
 
     def test_no_hsts_without_enforce_https(self, client):
         """HSTS must NOT be set when ENFORCE_HTTPS is false (avoid breaking HTTP-only dev)."""
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         assert "strict-transport-security" not in resp.headers
 
     def test_headers_present_on_non_health_endpoints(self, client):
-        resp = client.get("/api/claims/stats")
+        resp = client.get("/api/v1/claims/stats")
         assert resp.headers.get("x-content-type-options") == "nosniff"
         assert resp.headers.get("x-frame-options") == "DENY"
 
     def test_cache_control_no_store_on_api_except_health(self, client):
-        stats = client.get("/api/claims/stats")
+        stats = client.get("/api/v1/claims/stats")
         assert stats.headers.get("cache-control") == "no-store"
-        health = client.get("/api/health")
+        health = client.get("/api/v1/health")
         assert "cache-control" not in health.headers
 
 
@@ -105,17 +105,17 @@ class TestHSTSWithEnforceHttps:
     """HSTS header is present when ENFORCE_HTTPS=true."""
 
     def test_hsts_header_present(self, https_client):
-        resp = https_client.get("/api/health")
+        resp = https_client.get("/api/v1/health")
         hsts = resp.headers.get("strict-transport-security", "")
         assert "max-age=63072000" in hsts
 
     def test_hsts_includes_subdomains(self, https_client):
-        resp = https_client.get("/api/health")
+        resp = https_client.get("/api/v1/health")
         hsts = resp.headers.get("strict-transport-security", "")
         assert "includeSubDomains" in hsts
 
     def test_hsts_omits_preload_by_default(self, https_client):
-        resp = https_client.get("/api/health")
+        resp = https_client.get("/api/v1/health")
         hsts = resp.headers.get("strict-transport-security", "")
         assert "preload" not in hsts
 
@@ -129,7 +129,7 @@ class TestHSTSWithEnforceHttps:
         from claim_agent.api.server import app
 
         with TestClient(app, raise_server_exceptions=True) as tc:
-            resp = tc.get("/api/health")
+            resp = tc.get("/api/v1/health")
         hsts = resp.headers.get("strict-transport-security", "")
         assert "preload" in hsts
 
@@ -143,7 +143,7 @@ class TestHSTSWithEnforceHttps:
         from claim_agent.api.server import app
 
         with TestClient(app, raise_server_exceptions=True) as tc:
-            resp = tc.get("/api/health")
+            resp = tc.get("/api/v1/health")
         hsts = resp.headers.get("strict-transport-security", "")
         assert "includeSubDomains" not in hsts
 
@@ -157,12 +157,12 @@ class TestHSTSWithEnforceHttps:
         from claim_agent.api.server import app
 
         with TestClient(app, raise_server_exceptions=True) as tc:
-            resp = tc.get("/api/health")
+            resp = tc.get("/api/v1/health")
         hsts = resp.headers.get("strict-transport-security", "")
         assert "max-age=0" in hsts
 
     def test_unconditional_headers_still_present(self, https_client):
-        resp = https_client.get("/api/health")
+        resp = https_client.get("/api/v1/health")
         assert resp.headers.get("x-content-type-options") == "nosniff"
         assert resp.headers.get("x-frame-options") == "DENY"
 
@@ -172,7 +172,7 @@ class TestHttpsRedirectMiddleware:
 
     def test_redirects_http_to_https(self, https_client):
         resp = https_client.get(
-            "/api/health",
+            "/api/v1/health",
             headers={"X-Forwarded-Proto": "http", "Host": "example.com"},
             follow_redirects=False,
         )
@@ -182,19 +182,19 @@ class TestHttpsRedirectMiddleware:
 
     def test_redirect_preserves_path_and_query(self, https_client):
         resp = https_client.get(
-            "/api/health?check=1",
+            "/api/v1/health?check=1",
             headers={"X-Forwarded-Proto": "http", "Host": "example.com"},
             follow_redirects=False,
         )
         assert resp.status_code == 307
         location = resp.headers.get("location", "")
         assert "https://" in location
-        assert "/api/health" in location
+        assert "/api/v1/health" in location
         assert "check=1" in location
 
     def test_redirect_includes_security_headers(self, https_client):
         resp = https_client.get(
-            "/api/health",
+            "/api/v1/health",
             headers={"X-Forwarded-Proto": "http", "Host": "example.com"},
             follow_redirects=False,
         )
@@ -207,7 +207,7 @@ class TestHttpsRedirectMiddleware:
     def test_post_redirect_is_307(self, https_client):
         """307 preserves method; ensure redirect applies to POST."""
         resp = https_client.post(
-            "/api/health",
+            "/api/v1/health",
             headers={"X-Forwarded-Proto": "http", "Host": "example.com"},
             follow_redirects=False,
         )
@@ -216,7 +216,7 @@ class TestHttpsRedirectMiddleware:
 
     def test_no_redirect_when_https(self, https_client):
         resp = https_client.get(
-            "/api/health",
+            "/api/v1/health",
             headers={"X-Forwarded-Proto": "https"},
             follow_redirects=False,
         )
@@ -224,7 +224,7 @@ class TestHttpsRedirectMiddleware:
 
     def test_no_redirect_without_forwarded_proto(self, https_client):
         """Requests without X-Forwarded-Proto (direct uvicorn) are never redirected."""
-        resp = https_client.get("/api/health", follow_redirects=False)
+        resp = https_client.get("/api/v1/health", follow_redirects=False)
         assert resp.status_code == 200
 
     def test_no_redirect_without_trust_forwarded_for(self, monkeypatch):
@@ -237,7 +237,7 @@ class TestHttpsRedirectMiddleware:
 
         with TestClient(app, raise_server_exceptions=True) as tc:
             resp = tc.get(
-                "/api/health",
+                "/api/v1/health",
                 headers={"X-Forwarded-Proto": "http", "Host": "example.com"},
                 follow_redirects=False,
             )
@@ -246,7 +246,7 @@ class TestHttpsRedirectMiddleware:
     def test_no_redirect_when_enforce_https_false(self, client):
         """HTTP requests are never redirected when ENFORCE_HTTPS is false."""
         resp = client.get(
-            "/api/health",
+            "/api/v1/health",
             headers={"X-Forwarded-Proto": "http"},
             follow_redirects=False,
         )
@@ -268,7 +268,7 @@ class TestSecurityHeadersOnShortCircuitResponses:
         from claim_agent.api.server import app
 
         with TestClient(app, raise_server_exceptions=True) as tc:
-            resp = tc.get("/api/claims/stats")  # protected endpoint, no auth header
+            resp = tc.get("/api/v1/claims/stats")  # protected endpoint, no auth header
         assert resp.status_code == 401
         assert resp.headers.get("x-content-type-options") == "nosniff"
         assert resp.headers.get("x-frame-options") == "DENY"
@@ -301,7 +301,7 @@ class TestSecurityHeadersOnShortCircuitResponses:
 
         with TestClient(app, raise_server_exceptions=True) as tc:
             resp = tc.get(
-                "/api/claims/stats",
+                "/api/v1/claims/stats",
                 headers={"X-Forwarded-For": test_ip},
             )
         assert resp.status_code == 429
@@ -320,7 +320,7 @@ class TestRequestBodySizeLimitMiddleware:
         """A small JSON payload under the 10 MB limit is accepted."""
         payload = b'{"claim_id": "test"}'
         resp = client.post(
-            "/api/claims/process",
+            "/api/v1/claims/process",
             content=payload,
             headers={"Content-Type": "application/json", "Content-Length": str(len(payload))},
         )
@@ -340,7 +340,7 @@ class TestRequestBodySizeLimitMiddleware:
             # The middleware checks the Content-Length header only (does not read the body),
             # so advertising an oversized Content-Length is sufficient to trigger the limit.
             resp = tc.post(
-                "/api/claims/process",
+                "/api/v1/claims/process",
                 content=b"x",
                 headers={
                     "Content-Type": "application/json",
@@ -362,7 +362,7 @@ class TestRequestBodySizeLimitMiddleware:
         with TestClient(app, raise_server_exceptions=True) as tc:
             # The middleware checks the Content-Length header only (does not read the body).
             resp = tc.post(
-                "/api/claims/process",
+                "/api/v1/claims/process",
                 content=b"x",
                 headers={
                     "Content-Type": "multipart/form-data; boundary=----boundary",
@@ -383,7 +383,7 @@ class TestRequestBodySizeLimitMiddleware:
 
         with TestClient(app, raise_server_exceptions=True) as tc:
             resp = tc.post(
-                "/api/claims/process",
+                "/api/v1/claims/process",
                 content=b"x",
                 headers={
                     "Content-Type": "Multipart/Form-Data; boundary=----boundary",
@@ -405,7 +405,7 @@ class TestRequestBodySizeLimitMiddleware:
         with TestClient(app, raise_server_exceptions=True) as tc:
             # The middleware only reads the Content-Length header; the actual body is tiny.
             resp = tc.post(
-                "/api/claims/process",
+                "/api/v1/claims/process",
                 content=b"x",
                 headers={
                     "Content-Type": "multipart/form-data; boundary=----boundary",
@@ -427,7 +427,7 @@ class TestRequestBodySizeLimitMiddleware:
         with TestClient(app, raise_server_exceptions=True) as tc:
             # The middleware checks the Content-Length header only (does not read the body).
             resp = tc.post(
-                "/api/claims/process",
+                "/api/v1/claims/process",
                 content=b"x",
                 headers={
                     "Content-Type": "application/json",
@@ -444,7 +444,7 @@ class TestRequestBodySizeLimitMiddleware:
     def test_invalid_content_length_returns_400(self, client):
         """A non-integer Content-Length header returns 400 Bad Request."""
         resp = client.post(
-            "/api/claims/process",
+            "/api/v1/claims/process",
             content=b"{}",
             headers={"Content-Type": "application/json", "Content-Length": "not-a-number"},
         )
@@ -453,7 +453,7 @@ class TestRequestBodySizeLimitMiddleware:
 
     def test_no_content_length_header_passes_through(self, client):
         """GET requests without Content-Length are not rejected by the size middleware."""
-        resp = client.get("/api/health")
+        resp = client.get("/api/v1/health")
         assert resp.status_code == 200
 
     def test_post_streaming_body_without_content_length_returns_411(self, client):
@@ -467,7 +467,7 @@ class TestRequestBodySizeLimitMiddleware:
                     yield b'{"claim_id": "x"}'
 
                 return await ac.post(
-                    "/api/claims/process",
+                    "/api/v1/claims/process",
                     headers={"Content-Type": "application/json"},
                     content=agen(),
                 )
@@ -479,7 +479,7 @@ class TestRequestBodySizeLimitMiddleware:
     def test_negative_content_length_returns_400(self, client):
         """Negative Content-Length is invalid HTTP and must return 400."""
         resp = client.post(
-            "/api/claims/process",
+            "/api/v1/claims/process",
             content=b"{}",
             headers={"Content-Type": "application/json", "Content-Length": "-1"},
         )
@@ -492,7 +492,7 @@ class TestCorsConfiguration:
 
     def test_preflight_allow_methods_includes_head(self, client):
         resp = client.options(
-            "/api/health",
+            "/api/v1/health",
             headers={
                 "Origin": "http://localhost:5173",
                 "Access-Control-Request-Method": "HEAD",
@@ -504,7 +504,7 @@ class TestCorsConfiguration:
 
     def test_preflight_allow_headers_reflects_defaults(self, client):
         resp = client.options(
-            "/api/health",
+            "/api/v1/health",
             headers={
                 "Origin": "http://localhost:5173",
                 "Access-Control-Request-Method": "GET",
@@ -525,7 +525,7 @@ class TestCorsConfiguration:
         reload_settings()
         with TestClient(create_app(), raise_server_exceptions=True) as tc:
             resp = tc.options(
-                "/api/health",
+                "/api/v1/health",
                 headers={
                     "Origin": "http://localhost:5173",
                     "Access-Control-Request-Method": "GET",
@@ -545,7 +545,7 @@ class TestCorsConfiguration:
         reload_settings()
         with TestClient(create_app(), raise_server_exceptions=True) as tc:
             resp = tc.options(
-                "/api/health",
+                "/api/v1/health",
                 headers={
                     "Origin": "http://localhost:5173",
                     "Access-Control-Request-Method": "GET",

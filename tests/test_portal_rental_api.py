@@ -59,7 +59,7 @@ class TestRentalSummaryEndpoint:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
         resp = client.get(
-            "/api/portal/claims/CLM-TEST001/rental-summary",
+            "/api/v1/portal/claims/CLM-TEST001/rental-summary",
             headers=_CLM001_HEADERS,
         )
         assert resp.status_code == 200
@@ -72,7 +72,7 @@ class TestRentalSummaryEndpoint:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
         resp = client.get(
-            "/api/portal/claims/CLM-DOES-NOT-EXIST/rental-summary",
+            "/api/v1/portal/claims/CLM-DOES-NOT-EXIST/rental-summary",
             headers=_CLM001_HEADERS,
         )
         assert resp.status_code == 404
@@ -83,7 +83,7 @@ class TestRentalSummaryEndpoint:
         reload_settings()
         # CLM-TEST002 belongs to POL-002; POL-001 cannot access it
         resp = client.get(
-            "/api/portal/claims/CLM-TEST002/rental-summary",
+            "/api/v1/portal/claims/CLM-TEST002/rental-summary",
             headers=_CLM001_HEADERS,
         )
         assert resp.status_code == 404
@@ -110,7 +110,7 @@ class TestRentalSummaryEndpoint:
         )
 
         resp = client.get(
-            "/api/portal/claims/CLM-TEST001/rental-summary",
+            "/api/v1/portal/claims/CLM-TEST001/rental-summary",
             headers=_CLM001_HEADERS,
         )
         assert resp.status_code == 200
@@ -153,7 +153,7 @@ class TestRentalSummaryEndpoint:
         )
 
         resp = client.get(
-            "/api/portal/claims/CLM-TEST001/rental-summary",
+            "/api/v1/portal/claims/CLM-TEST001/rental-summary",
             headers=_CLM001_HEADERS,
         )
         assert resp.status_code == 200
@@ -163,5 +163,5 @@ class TestRentalSummaryEndpoint:
         """Returns 401 when no authentication headers are provided."""
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
-        resp = client.get("/api/portal/claims/CLM-TEST001/rental-summary")
+        resp = client.get("/api/v1/portal/claims/CLM-TEST001/rental-summary")
         assert resp.status_code == 401

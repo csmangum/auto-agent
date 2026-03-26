@@ -451,7 +451,7 @@ def _post_erp(client, payload: dict, secret: str = _SECRET):
     body = json.dumps(payload).encode()
     sig = _sign(secret, body)
     return client.post(
-        "/api/webhooks/erp",
+        "/api/v1/webhooks/erp",
         content=body,
         headers={"Content-Type": "application/json", "X-Webhook-Signature": sig},
     )
@@ -495,7 +495,7 @@ class TestERPWebhook:
         reload_settings()
         body = json.dumps(_erp_payload()).encode()
         resp = client.post(
-            "/api/webhooks/erp",
+            "/api/v1/webhooks/erp",
             content=body,
             headers={
                 "Content-Type": "application/json",
@@ -509,7 +509,7 @@ class TestERPWebhook:
         reload_settings()
         body = json.dumps(_erp_payload()).encode()
         resp = client.post(
-            "/api/webhooks/erp",
+            "/api/v1/webhooks/erp",
             content=body,
             headers={"Content-Type": "application/json"},
         )
@@ -527,7 +527,7 @@ class TestERPWebhook:
         body = b"not-json"
         sig = _sign(_SECRET, body)
         resp = client.post(
-            "/api/webhooks/erp",
+            "/api/v1/webhooks/erp",
             content=body,
             headers={"Content-Type": "application/json", "X-Webhook-Signature": sig},
         )
