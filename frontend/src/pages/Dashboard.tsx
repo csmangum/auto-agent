@@ -5,6 +5,7 @@ import StatCard from '../components/StatCard';
 import ClaimTable from '../components/ClaimTable';
 import FraudComplianceSection from '../components/FraudComplianceSection';
 import { useClaimsStats, useClaims } from '../api/queries';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 const DashboardCharts = lazy(() => import('../components/DashboardCharts'));
 
@@ -43,6 +44,7 @@ const QUICK_ACTIONS = [
 ];
 
 export default function Dashboard() {
+  useDocumentTitle('Dashboard');
   const { data: stats, isLoading: statsLoading, error: statsError } = useClaimsStats();
   const { data: claimsData, isLoading: claimsLoading, error: claimsError } = useClaims({ limit: 10 });
   const loading = statsLoading || claimsLoading;

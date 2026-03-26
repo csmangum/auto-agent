@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import CostDashboard from './CostDashboard';
@@ -23,6 +23,8 @@ function createWrapper() {
     );
   };
 }
+
+const todayUtc = '2024-01-01';
 
 const mockCostBreakdown: CostBreakdown = {
   global_stats: {
@@ -48,7 +50,7 @@ const mockCostBreakdown: CostBreakdown = {
     },
   },
   daily: {
-    '2025-03-17': { total_cost_usd: 0.05, total_tokens: 12000, claims: 4 },
+    [todayUtc]: { total_cost_usd: 0.05, total_tokens: 12000, claims: 4 },
   },
   total_cost_usd: 0.0523,
   total_tokens: 12500,
@@ -58,11 +60,17 @@ describe('CostDashboard', () => {
   const Wrapper = createWrapper();
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${todayUtc}T12:00:00Z`));
     vi.mocked(useCostBreakdown).mockReturnValue({
       data: mockCostBreakdown,
       isLoading: false,
       error: null,
     } as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders cost dashboard with populated data', () => {
@@ -78,10 +86,11 @@ describe('CostDashboard', () => {
     expect(screen.getByText('5')).toBeInTheDocument();
     expect(screen.getByText('Cost by Crew')).toBeInTheDocument();
     expect(screen.getByText('Cost by Claim Type')).toBeInTheDocument();
-    expect(screen.getByText('Daily Spend (last 14 days)')).toBeInTheDocument();
+    expect(screen.getByText('Daily Spend')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Last 30 days/ })).toBeInTheDocument();
     expect(screen.getAllByText('partial loss').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('router')).toBeInTheDocument();
-    expect(screen.getByText('2025-03-17')).toBeInTheDocument();
+    expect(screen.getByText(todayUtc)).toBeInTheDocument();
   });
 
   it('shows loading skeleton', () => {
@@ -136,7 +145,7 @@ describe('CostDashboard', () => {
     );
     expect(screen.getByText('No crew usage data yet. Process claims to see cost attribution.')).toBeInTheDocument();
     expect(screen.getByText('No claim-type data yet.')).toBeInTheDocument();
-    expect(screen.getByText('No daily data yet.')).toBeInTheDocument();
+    expect(screen.getAllByText('No daily data in this range.').length).toBeGreaterThanOrEqual(1);
   });
 
   it('formats cost with 4 decimal places', () => {

@@ -276,10 +276,11 @@ export function useAllTasks(params: {
 }
 
 /** For future All Tasks dashboard; not yet used in UI. */
-export function useTaskStats() {
+export function useTaskStats(options?: { workbench?: boolean }) {
   return useQuery({
     queryKey: queryKeys.taskStats,
     queryFn: getTaskStats,
+    ...(options?.workbench ? WORKBENCH_QUERY_OPTS : {}),
   });
 }
 
@@ -295,10 +296,19 @@ export function useCostBreakdown() {
 // Review Queue
 // ---------------------------------------------------------------------------
 
-export function useReviewQueue(params: GetReviewQueueParams = {}) {
+const WORKBENCH_QUERY_OPTS = {
+  refetchInterval: 60_000,
+  refetchOnWindowFocus: true,
+} as const;
+
+export function useReviewQueue(
+  params: GetReviewQueueParams = {},
+  options?: { workbench?: boolean }
+) {
   return useQuery({
     queryKey: queryKeys.reviewQueue(params),
     queryFn: () => getReviewQueue(params),
+    ...(options?.workbench ? WORKBENCH_QUERY_OPTS : {}),
   });
 }
 
@@ -474,10 +484,11 @@ export function useAddClaimNote(claimId: string | undefined) {
 // Overdue Tasks & Compliance Templates
 // ---------------------------------------------------------------------------
 
-export function useOverdueTasks(limit = 100) {
+export function useOverdueTasks(limit = 100, options?: { workbench?: boolean }) {
   return useQuery({
     queryKey: queryKeys.overdueTasks(limit),
     queryFn: () => getOverdueTasks(limit),
+    ...(options?.workbench ? WORKBENCH_QUERY_OPTS : {}),
   });
 }
 
