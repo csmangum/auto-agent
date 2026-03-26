@@ -367,9 +367,11 @@ class TaskRepository:
             params["due_date_to"] = due_date_to
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         with get_connection(self._db_path) as conn:
+            # Exclude pagination parameters from the COUNT query to avoid unused bound params.
+            count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
             count_row = conn.execute(
                 text(f"SELECT COUNT(*) as cnt FROM claim_tasks ct {where}"),
-                params,
+                count_params,
             ).fetchone()
             total = count_row[0]
             rows = conn.execute(
