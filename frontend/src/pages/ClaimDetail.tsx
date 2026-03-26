@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ComponentType, type SVGProps } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTabs } from '../utils/useTabs';
 import type { UseMutationResult } from '@tanstack/react-query';
@@ -41,6 +41,18 @@ import type {
 } from '../api/types';
 import type { PatchClaimReserveBody } from '../api/client';
 import { getErrorMessage } from '../utils/errorMessage';
+import {
+  ClaimsIcon,
+  CurrencyIcon,
+  WorkflowIcon,
+  ClaimTabTasksIcon,
+  ClaimTabPaperclipIcon,
+  ClaimTabCardIcon,
+  ClaimTabNoteIcon,
+  ClaimTabMessageIcon,
+  ClaimTabShieldIcon,
+  ClaimTabAuditIcon,
+} from '../components/icons';
 
 interface ReserveTabProps {
   reserveAmount: number | undefined;
@@ -861,6 +873,15 @@ const CLAIM_DETAIL_TABS = [
 ] as const;
 type ClaimDetailTab = (typeof CLAIM_DETAIL_TABS)[number];
 
+type ClaimTabIcon = ComponentType<SVGProps<SVGSVGElement>>;
+
+type ClaimTabItem = {
+  key: ClaimDetailTab;
+  title: string;
+  Icon: ClaimTabIcon;
+  count?: number;
+};
+
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
   const [activeTab, setActiveTab] = useTabs<ClaimDetailTab>(CLAIM_DETAIL_TABS, 'overview');
@@ -937,17 +958,32 @@ export default function ClaimDetail() {
 
   if (!claim) return null;
 
-  const tabs = [
-    { key: 'overview' as ClaimDetailTab, label: 'Overview', icon: '📋' },
-    { key: 'tasks' as ClaimDetailTab, label: `Tasks (${claim?.tasks_total ?? tasks.length})`, icon: '☑️' },
-    { key: 'documents' as ClaimDetailTab, label: `Documents (${documents.length || attachments.length})`, icon: '📎' },
-    { key: 'reserve' as ClaimDetailTab, label: `Reserve (${reserveHistory.length})`, icon: '💰' },
-    { key: 'payments' as ClaimDetailTab, label: 'Payments', icon: '💳' },
-    { key: 'notes' as ClaimDetailTab, label: `Notes (${notesFollowUpsCount})`, icon: '📝' },
-    { key: 'comms' as ClaimDetailTab, label: 'Comms Log', icon: '💬' },
-    { key: 'coverage' as ClaimDetailTab, label: 'Coverage', icon: '🛡️' },
-    { key: 'audit' as ClaimDetailTab, label: `Audit (${history.length})`, icon: '📜' },
-    { key: 'workflows' as ClaimDetailTab, label: `Workflows (${workflows.length})`, icon: '🔄' },
+  const tabs: ClaimTabItem[] = [
+    { key: 'overview', title: 'Overview', Icon: ClaimsIcon },
+    {
+      key: 'tasks',
+      title: 'Tasks',
+      count: claim?.tasks_total ?? tasks.length,
+      Icon: ClaimTabTasksIcon,
+    },
+    {
+      key: 'documents',
+      title: 'Documents',
+      count: documents.length || attachments.length,
+      Icon: ClaimTabPaperclipIcon,
+    },
+    {
+      key: 'reserve',
+      title: 'Reserve',
+      count: reserveHistory.length,
+      Icon: CurrencyIcon,
+    },
+    { key: 'payments', title: 'Payments', Icon: ClaimTabCardIcon },
+    { key: 'notes', title: 'Notes', count: notesFollowUpsCount, Icon: ClaimTabNoteIcon },
+    { key: 'comms', title: 'Comms Log', Icon: ClaimTabMessageIcon },
+    { key: 'coverage', title: 'Coverage', Icon: ClaimTabShieldIcon },
+    { key: 'audit', title: 'Audit', count: history.length, Icon: ClaimTabAuditIcon },
+    { key: 'workflows', title: 'Workflows', count: workflows.length, Icon: WorkflowIcon },
   ];
 
   const handleTabKeyDown = (e: React.KeyboardEvent, idx: number) => {
@@ -996,28 +1032,60 @@ export default function ClaimDetail() {
 
       {/* Tabs */}
       <div className="border-b border-gray-700/50">
-        <nav role="tablist" aria-label="Claim sections" className="flex gap-1">
-          {tabs.map((tab, idx) => (
-            <button
-              key={tab.key}
-              id={`claim-tab-${tab.key}`}
-              role="tab"
-              aria-selected={activeTab === tab.key}
-              aria-controls={`claim-panel-${tab.key}`}
-              tabIndex={activeTab === tab.key ? 0 : -1}
-              ref={(el) => { tabsRef.current[idx] = el; }}
-              onClick={() => setActiveTab(tab.key)}
-              onKeyDown={(e) => handleTabKeyDown(e, idx)}
-              className={`flex items-center gap-2 px-4 pb-3 pt-1 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.key
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600'
-              }`}
-            >
-              <span className="text-sm">{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
+        <nav
+          role="tablist"
+          aria-label="Claim sections"
+          className="-mb-px flex gap-0.5 overflow-x-auto overscroll-x-contain"
+        >
+          {tabs.map((tab, idx) => {
+            const isActive = activeTab === tab.key;
+            const { Icon } = tab;
+            const ariaLabel =
+              tab.count !== undefined ? `${tab.title} (${tab.count})` : tab.title;
+            return (
+              <button
+                key={tab.key}
+                id={`claim-tab-${tab.key}`}
+                role="tab"
+                type="button"
+                aria-selected={isActive}
+                aria-controls={`claim-panel-${tab.key}`}
+                aria-label={ariaLabel}
+                tabIndex={isActive ? 0 : -1}
+                ref={(el) => {
+                  tabsRef.current[idx] = el;
+                }}
+                onClick={() => setActiveTab(tab.key)}
+                onKeyDown={(e) => handleTabKeyDown(e, idx)}
+                className={`group flex shrink-0 items-center gap-2 rounded-t-md px-3 pb-2.5 pt-2 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 ${
+                  isActive
+                    ? 'border-blue-500 bg-gray-800/50 text-blue-300'
+                    : 'border-transparent text-gray-500 hover:border-gray-600 hover:bg-gray-800/30 hover:text-gray-300'
+                }`}
+              >
+                <Icon
+                  className={`h-4 w-4 shrink-0 transition-colors ${
+                    isActive
+                      ? 'text-blue-400'
+                      : 'text-gray-500 group-hover:text-gray-400'
+                  }`}
+                  aria-hidden
+                />
+                <span className="whitespace-nowrap">{tab.title}</span>
+                {tab.count !== undefined && (
+                  <span
+                    className={`min-w-[1.375rem] rounded-md px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums ${
+                      isActive
+                        ? 'bg-blue-500/20 text-blue-200'
+                        : 'bg-gray-700/55 text-gray-400 group-hover:bg-gray-700 group-hover:text-gray-300'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </div>
 

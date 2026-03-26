@@ -333,3 +333,76 @@ export function SimulationIcon(props: SVGProps<SVGSVGElement>) {
     </IconWrapper>
   );
 }
+
+/** Claim detail tab — tasks / checklist */
+export function ClaimTabTasksIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M10 6H21" />
+      <path d="M10 12H21" />
+      <path d="M10 18H21" />
+      <path d="M3 6l2 2 4-4" />
+      <path d="M3 12l2 2 4-4" />
+      <path d="M3 18l2 2 4-4" />
+    </IconWrapper>
+  );
+}
+
+/** Claim detail tab — attachments / documents */
+export function ClaimTabPaperclipIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+    </IconWrapper>
+  );
+}
+
+/** Claim detail tab — payments / card */
+export function ClaimTabCardIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+    </IconWrapper>
+  );
+}
+
+/** Claim detail tab — notes */
+export function ClaimTabNoteIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M8 13h6" />
+      <path d="M8 17h4" />
+    </IconWrapper>
+  );
+}
+
+/** Claim detail tab — communications */
+export function ClaimTabMessageIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+    </IconWrapper>
+  );
+}
+
+/** Claim detail tab — coverage (shield, no alert glyph) */
+export function ClaimTabShieldIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </IconWrapper>
+  );
+}
+
+/** Claim detail tab — audit / history */
+export function ClaimTabAuditIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconWrapper {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </IconWrapper>
+  );
+}

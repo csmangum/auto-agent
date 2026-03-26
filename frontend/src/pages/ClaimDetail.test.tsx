@@ -304,10 +304,7 @@ describe('ClaimDetail', () => {
         <ClaimDetail />
       </Wrapper>
     );
-    // Tab button text: "📝 Notes (0)"
-    const notesTab = screen.getAllByRole('tab').find(b => b.textContent?.includes('Notes ('));
-    expect(notesTab).toBeTruthy();
-    fireEvent.click(notesTab!);
+    fireEvent.click(screen.getByRole('tab', { name: /notes/i }));
     expect(screen.getByText('Quick Templates')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter your note...')).toBeInTheDocument();
   });
@@ -708,9 +705,7 @@ describe('ClaimDetail', () => {
       </Wrapper>
     );
 
-    const notesTab = screen.getAllByRole('tab').find(b => b.textContent?.includes('Notes ('));
-    expect(notesTab).toBeTruthy();
-    fireEvent.click(notesTab!);
+    fireEvent.click(screen.getByRole('tab', { name: /notes/i }));
     expect(screen.getByText('Contacted claimant')).toBeInTheDocument();
     expect(screen.getByText('Please update me')).toBeInTheDocument();
   });
