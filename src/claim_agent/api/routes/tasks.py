@@ -18,7 +18,7 @@ from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.database import get_db_path
 from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES
 from claim_agent.diary.templates import get_compliance_deadline_templates
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,8 @@ def create_task(
         )
     except ClaimNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except DomainValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -293,6 +295,11 @@ def update_task(
             resolution_notes=body.resolution_notes,
             actor_id=actor_id,
         )
+    except DomainValidationError as e:
+        msg = str(e)
+        if "Task not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
     except ValueError as e:
         msg = str(e)
         if "Task not found" in msg:

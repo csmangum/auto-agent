@@ -11,7 +11,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_FOLLOW_UP_SENT,
 )
 from claim_agent.db.database import get_connection, row_to_dict
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.utils.sanitization import sanitize_note
 
 
@@ -69,7 +69,7 @@ class FollowUpRepository:
                 {"message_id": message_id},
             ).fetchone()
             if row is None:
-                raise ValueError(f"Follow-up message not found: {message_id}")
+                raise DomainValidationError(f"Follow-up message not found: {message_id}")
             row_d = row_to_dict(row)
             claim_id = row_d["claim_id"]
             user_type = row_d["user_type"]
@@ -106,8 +106,8 @@ class FollowUpRepository:
             message_id: The follow-up message ID.
             response_content: The user's response text.
             actor_id: Who recorded the response.
-            expected_claim_id: If provided, raises ValueError when the message belongs to a
-                different claim (prevents cross-claim response injection).
+            expected_claim_id: If provided, raises DomainValidationError when the message
+                belongs to a different claim (prevents cross-claim response injection).
         """
         with get_connection(self._db_path) as conn:
             row = conn.execute(
@@ -115,12 +115,12 @@ class FollowUpRepository:
                 {"message_id": message_id},
             ).fetchone()
             if row is None:
-                raise ValueError(f"Follow-up message not found: {message_id}")
+                raise DomainValidationError(f"Follow-up message not found: {message_id}")
             row_d = row_to_dict(row)
             claim_id = row_d["claim_id"]
             user_type = row_d["user_type"]
             if expected_claim_id is not None and claim_id != expected_claim_id:
-                raise ValueError(
+                raise DomainValidationError(
                     f"Follow-up message {message_id} does not belong to claim {expected_claim_id}"
                 )
             conn.execute(

@@ -2638,7 +2638,7 @@ class ClaimRepository:
         parties: list[dict[str, Any]],
     ) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
         """Extract (vins, addresses, provider_names, phones, emails) link keys from a claim."""
-        return self._search_repo._extract_graph_link_keys(claim, parties)
+        return self._search_repo.extract_graph_link_keys(claim, parties)
 
     def _query_related_ids_on_conn(
         self,
@@ -2653,7 +2653,7 @@ class ClaimRepository:
         limit: int,
     ) -> set[str]:
         """Batch-query claim IDs related by any shared link key on the given connection."""
-        return self._search_repo._query_related_ids_on_conn(
+        return self._search_repo.query_related_ids_on_conn(
             conn,
             vins=vins,
             addresses=addresses,

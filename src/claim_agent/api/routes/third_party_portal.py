@@ -30,6 +30,7 @@ from claim_agent.api.third_party_portal_deps import (
     require_third_party_portal_access,
 )
 from claim_agent.context import ClaimContext
+from claim_agent.exceptions import DomainValidationError
 from claim_agent.db.constants import DISPUTABLE_STATUSES
 from claim_agent.db.database import get_db_path
 from claim_agent.db.repository import ClaimRepository
@@ -255,6 +256,11 @@ def record_third_party_portal_follow_up_response(
             expected_claim_id=claim_id,
         )
         return {"success": True, "message": "Response recorded"}
+    except DomainValidationError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg) from e
+        raise HTTPException(status_code=400, detail=msg) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

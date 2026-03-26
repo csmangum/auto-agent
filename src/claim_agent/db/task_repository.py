@@ -12,7 +12,7 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_TASK_UPDATED,
 )
 from claim_agent.db.database import get_connection, row_to_dict
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.utils.sanitization import (
     sanitize_actor_id,
     sanitize_resolution_notes,
@@ -57,7 +57,7 @@ class TaskRepository:
         description = sanitize_task_description(description)
         created_by = sanitize_actor_id(created_by)
         if not title:
-            raise ValueError("Task title must not be empty after sanitization")
+            raise DomainValidationError("Task title must not be empty after sanitization")
         # Normalize and validate recurrence fields
         if recurrence_rule is None and recurrence_interval is not None:
             recurrence_interval = None
@@ -68,23 +68,23 @@ class TaskRepository:
             )
 
             if recurrence_rule not in VALID_RECURRENCE_RULES:
-                raise ValueError(
+                raise DomainValidationError(
                     f"Invalid recurrence_rule '{recurrence_rule}'. "
                     f"Must be one of: {', '.join(sorted(VALID_RECURRENCE_RULES))}"
                 )
             if recurrence_rule == RECURRENCE_INTERVAL_DAYS:
                 if recurrence_interval is None:
-                    raise ValueError(
+                    raise DomainValidationError(
                         "recurrence_interval is required when recurrence_rule is 'interval_days'"
                     )
                 if recurrence_interval < 1:
-                    raise ValueError("recurrence_interval must be >= 1")
+                    raise DomainValidationError("recurrence_interval must be >= 1")
             else:
                 # daily/weekly: default interval to 1
                 if recurrence_interval is None:
                     recurrence_interval = 1
                 elif recurrence_interval < 1:
-                    raise ValueError("recurrence_interval must be >= 1")
+                    raise DomainValidationError("recurrence_interval must be >= 1")
         doc_req_id = document_request_id
         if (
             doc_req_id is None
@@ -273,11 +273,14 @@ class TaskRepository:
         resolution_notes: str | None = None,
         actor_id: str = ACTOR_WORKFLOW,
     ) -> dict[str, Any]:
-        """Update a task. Returns the updated task dict. Raises ValueError if task not found."""
+        """Update a task. Returns the updated task dict.
+
+        Raises DomainValidationError if task not found or validation fails.
+        """
         if title is not None:
             title = sanitize_task_title(title)
             if not title:
-                raise ValueError("Task title must not be empty after sanitization")
+                raise DomainValidationError("Task title must not be empty after sanitization")
         if description is not None:
             description = sanitize_task_description(description)
         if resolution_notes is not None:
@@ -289,7 +292,7 @@ class TaskRepository:
                 {"task_id": task_id},
             ).fetchone()
             if row is None:
-                raise ValueError(f"Task not found: {task_id}")
+                raise DomainValidationError(f"Task not found: {task_id}")
 
             row_d = row_to_dict(row)
             updates: list[str] = ["updated_at = CURRENT_TIMESTAMP"]

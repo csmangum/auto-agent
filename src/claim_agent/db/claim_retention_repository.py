@@ -32,9 +32,10 @@ from claim_agent.db.constants import (
 from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.pii_redaction import anonymize_claim_pii
 from claim_agent.db.state_machine import validate_transition
+# Settings load is lazy: ``get_settings()`` builds ``Settings()`` on first call, not at import.
+from claim_agent.config import get_settings
 from claim_agent.events import ClaimEvent, emit_claim_event
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
-from claim_agent.config import get_settings
 from claim_agent.rag.constants import normalize_state
 
 

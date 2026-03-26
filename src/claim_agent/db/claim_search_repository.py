@@ -99,32 +99,44 @@ class ClaimSearchRepository:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_claim(self, claim_id: str) -> dict[str, Any] | None:
-        """Fetch a single claim row by ID."""
-        with get_connection(self._db_path) as conn:
-            row = conn.execute(
-                text("SELECT * FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
+    def _get_claim(self, claim_id: str, conn: Any | None = None) -> dict[str, Any] | None:
+        """Fetch a single claim row by ID.
+
+        When *conn* is provided, uses it and does not open a new connection.
+        """
+        if conn is None:
+            with get_connection(self._db_path) as inner:
+                return self._get_claim(claim_id, inner)
+        row = conn.execute(
+            text("SELECT * FROM claims WHERE id = :claim_id"),
+            {"claim_id": claim_id},
+        ).fetchone()
         return row_to_dict(row) if row else None
 
-    def _get_claim_parties(self, claim_id: str) -> list[dict[str, Any]]:
-        """Fetch parties for a claim."""
-        with get_connection(self._db_path) as conn:
-            rows = conn.execute(
-                text("SELECT * FROM claim_parties WHERE claim_id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchall()
+    def _get_claim_parties(
+        self, claim_id: str, conn: Any | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch parties for a claim.
+
+        When *conn* is provided, uses it and does not open a new connection.
+        """
+        if conn is None:
+            with get_connection(self._db_path) as inner:
+                return self._get_claim_parties(claim_id, inner)
+        rows = conn.execute(
+            text("SELECT * FROM claim_parties WHERE claim_id = :claim_id"),
+            {"claim_id": claim_id},
+        ).fetchall()
         return [row_to_dict(r) for r in rows]
 
-    def _extract_graph_link_keys(
+    def extract_graph_link_keys(
         self,
         claim: dict[str, Any],
         parties: list[dict[str, Any]],
     ) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
         """Extract (vins, addresses, provider_names, phones, emails) link keys from a claim.
 
-        Returns five lists suitable for passing directly to ``_query_related_ids_on_conn``.
+        Returns five lists suitable for passing directly to ``query_related_ids_on_conn``.
         Each list is de-duplicated and normalized.
         """
         vin = str(claim.get("vin") or "").strip()
@@ -161,7 +173,7 @@ class ClaimSearchRepository:
         )
         return vins, addresses, provider_names, phones, emails
 
-    def _query_related_ids_on_conn(
+    def query_related_ids_on_conn(
         self,
         conn: Any,
         *,
@@ -433,7 +445,7 @@ class ClaimSearchRepository:
 
             root_parties = self._get_claim_parties(claim_id, conn)
             root_vins, root_addresses, root_providers, root_phones, root_emails = (
-                self._extract_graph_link_keys(root_claim, root_parties)
+                self.extract_graph_link_keys(root_claim, root_parties)
             )
 
             hop1_ids: set[str] = set()
@@ -443,7 +455,7 @@ class ClaimSearchRepository:
             hop2_claims_by_id: dict[str, dict[str, Any]] = {}
             hop2_parties_by_id: dict[str, list[dict[str, Any]]] = {}
             # ── Hop 1: find claims directly related to the root ────────────────
-            hop1_ids = self._query_related_ids_on_conn(
+            hop1_ids = self.query_related_ids_on_conn(
                 conn,
                 vins=root_vins,
                 addresses=root_addresses,
@@ -493,7 +505,7 @@ class ClaimSearchRepository:
                         seen_em: set[str] = set()
                         for hid in sorted_hop1:
                             h_vins, h_addrs, h_provs, h_phones, h_emails = (
-                                self._extract_graph_link_keys(
+                                self.extract_graph_link_keys(
                                     hop1_claims_by_id.get(hid, {}),
                                     hop1_parties_by_id.get(hid, []),
                                 )
@@ -519,7 +531,7 @@ class ClaimSearchRepository:
                                     agg_emails.append(em)
                                     seen_em.add(em)
 
-                        hop2_ids = self._query_related_ids_on_conn(
+                        hop2_ids = self.query_related_ids_on_conn(
                             conn,
                             vins=agg_vins,
                             addresses=agg_addresses,
@@ -597,7 +609,7 @@ class ClaimSearchRepository:
                     if h1_claim is None:
                         continue
                     h1_vins, h1_addrs, h1_provs, h1_phones, h1_emails = (
-                        self._extract_graph_link_keys(
+                        self.extract_graph_link_keys(
                             h1_claim, hop1_parties_by_id.get(h1_id, [])
                         )
                     )

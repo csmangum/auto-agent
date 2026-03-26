@@ -14,7 +14,7 @@ from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.tools.document_logic import DOCUMENT_TYPE_OPTIONS
 from claim_agent.diary.recurrence import VALID_RECURRENCE_RULES
-from claim_agent.exceptions import ClaimNotFoundError
+from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.models.task import TaskPriority, TaskStatus, TaskType
 from claim_agent.utils.sanitization import (
     sanitize_actor_id,
@@ -162,6 +162,8 @@ def create_claim_task(
         })
     except ClaimNotFoundError:
         return json.dumps({"success": False, "task_id": None, "message": f"Claim not found: {claim_id}"})
+    except DomainValidationError as e:
+        return json.dumps({"success": False, "task_id": None, "message": str(e)})
     except Exception:
         logger.exception("Unexpected error creating task for claim %s", claim_id)
         return json.dumps({"success": False, "task_id": None, "message": "An unexpected error occurred while creating the task"})
@@ -221,6 +223,8 @@ def update_claim_task(
             "success": True,
             "message": f"Task {task_id} updated (status={updated.get('status')})",
         })
+    except DomainValidationError as e:
+        return json.dumps({"success": False, "message": str(e)})
     except ValueError as e:
         return json.dumps({"success": False, "message": str(e)})
     except Exception:
