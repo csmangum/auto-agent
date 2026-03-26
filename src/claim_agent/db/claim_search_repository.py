@@ -416,33 +416,32 @@ class ClaimSearchRepository:
         elif max_depth == 2:
             logger.debug("build_relationship_snapshot max_depth=2; performing 2-hop BFS")
 
-        root_claim = self._get_claim(claim_id)
-        if root_claim is None:
-            return {
-                "claim_id": claim_id,
-                "max_nodes": max_nodes,
-                "node_count": 0,
-                "edge_count": 0,
-                "high_risk_link_count": 0,
-                "dense_cluster_detected": False,
-                "signals": [],
-                "nodes": [],
-                "edges": [],
-            }
-
-        root_parties = self._get_claim_parties(claim_id)
-        root_vins, root_addresses, root_providers, root_phones, root_emails = (
-            self._extract_graph_link_keys(root_claim, root_parties)
-        )
-
-        hop1_ids: set[str] = set()
-        hop2_ids: set[str] = set()
-        hop1_claims_by_id: dict[str, dict[str, Any]] = {}
-        hop1_parties_by_id: dict[str, list[dict[str, Any]]] = {}
-        hop2_claims_by_id: dict[str, dict[str, Any]] = {}
-        hop2_parties_by_id: dict[str, list[dict[str, Any]]] = {}
-
         with get_connection(self._db_path) as conn:
+            root_claim = self._get_claim(claim_id, conn)
+            if root_claim is None:
+                return {
+                    "claim_id": claim_id,
+                    "max_nodes": max_nodes,
+                    "node_count": 0,
+                    "edge_count": 0,
+                    "high_risk_link_count": 0,
+                    "dense_cluster_detected": False,
+                    "signals": [],
+                    "nodes": [],
+                    "edges": [],
+                }
+
+            root_parties = self._get_claim_parties(claim_id, conn)
+            root_vins, root_addresses, root_providers, root_phones, root_emails = (
+                self._extract_graph_link_keys(root_claim, root_parties)
+            )
+
+            hop1_ids: set[str] = set()
+            hop2_ids: set[str] = set()
+            hop1_claims_by_id: dict[str, dict[str, Any]] = {}
+            hop1_parties_by_id: dict[str, list[dict[str, Any]]] = {}
+            hop2_claims_by_id: dict[str, dict[str, Any]] = {}
+            hop2_parties_by_id: dict[str, list[dict[str, Any]]] = {}
             # ── Hop 1: find claims directly related to the root ────────────────
             hop1_ids = self._query_related_ids_on_conn(
                 conn,
