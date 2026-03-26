@@ -6,9 +6,10 @@ Provides REST API endpoints for:
 - Documentation browsing (markdown docs and agent skills)
 - System configuration and health
 
-Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/* endpoints
-require auth except /api/health, /api/portal/*, /api/repair-portal/*, /api/third-party-portal/*, /api/auth/login,
-and /api/auth/refresh.
+Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/v1/* endpoints
+require auth except /api/v1/health, /api/v1/portal/*, /api/v1/repair-portal/*,
+/api/v1/third-party-portal/*, /api/v1/auth/login, and /api/v1/auth/refresh.
+Legacy /api/* paths are permanently redirected (301) to /api/v1/*.
 Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
 Non-dev deployments (CLAIM_AGENT_ENVIRONMENT) require at least one auth mechanism at startup.
 """
@@ -376,9 +377,9 @@ def create_app() -> FastAPI:
         description="API for the Agentic Claims Processing System dashboard",
         version="1.0.0",
         lifespan=lifespan,
-        docs_url="/api/openapi/docs",
-        redoc_url="/api/openapi/redoc",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/v1/openapi/docs",
+        redoc_url="/api/v1/openapi/redoc",
+        openapi_url="/api/v1/openapi.json",
     )
 
     _app.add_middleware(
@@ -423,37 +424,37 @@ def _get_token(request: Request) -> str | None:
     return None
 
 
-_PUBLIC_PATHS = ("/api/health", "/health", "/healthz", "/metrics")
+_PUBLIC_PATHS = ("/api/v1/health", "/health", "/healthz", "/metrics")
 
 
 def _is_portal_path(path: str) -> bool:
-    """True if path is under /api/portal (uses portal-specific auth, not bearer auth).
+    """True if path is under /api/v1/portal (uses portal-specific auth, not bearer auth).
 
-    The ``/api/portal/auth/issue-token`` admin endpoint is excluded so it
+    The ``/api/v1/portal/auth/issue-token`` admin endpoint is excluded so it
     falls through to the normal API-key / Bearer-token auth middleware.
     """
-    if path.startswith("/api/portal/auth/issue-token"):
+    if path.startswith("/api/v1/portal/auth/issue-token"):
         return False
-    return path.startswith("/api/portal")
+    return path.startswith("/api/v1/portal")
 
 
 def _is_repair_portal_path(path: str) -> bool:
-    """True if path is under /api/repair-portal (repair shop token, not bearer auth)."""
-    return path.startswith("/api/repair-portal")
+    """True if path is under /api/v1/repair-portal (repair shop token, not bearer auth)."""
+    return path.startswith("/api/v1/repair-portal")
 
 
 def _is_third_party_portal_path(path: str) -> bool:
-    """True if path is under /api/third-party-portal (third-party token, not bearer auth)."""
-    return path.startswith("/api/third-party-portal")
+    """True if path is under /api/v1/third-party-portal (third-party token, not bearer auth)."""
+    return path.startswith("/api/v1/third-party-portal")
 
 
 def _is_auth_public_path(path: str) -> bool:
     """Login and refresh do not require a bearer token."""
     return path in (
-        "/api/auth/login",
-        "/api/auth/refresh",
-        "/api/repair-portal/auth/login",
-        "/api/portal/auth/login",
+        "/api/v1/auth/login",
+        "/api/v1/auth/refresh",
+        "/api/v1/repair-portal/auth/login",
+        "/api/v1/portal/auth/login",
     )
 
 
@@ -523,7 +524,7 @@ def _secured_api_json_response(request: Request, status_code: int, content: dict
 def _maybe_cache_control_no_store(path: str) -> str | None:
     """Return Cache-Control value for API routes except health (see plan)."""
     norm = _normalize_path(path)
-    if norm.startswith("/api/") and norm != "/api/health":
+    if norm.startswith("/api/v1/") and norm != "/api/v1/health":
         return "no-store"
     return None
 
@@ -533,7 +534,7 @@ async def auth_middleware(request: Request, call_next):
     """Verify auth when configured. Set request.state.auth on success."""
     path = _normalize_path(request.url.path)
     if (
-        not path.startswith("/api/")
+        not path.startswith("/api/v1/")
         or path in _PUBLIC_PATHS
         or _is_portal_path(path)
         or _is_repair_portal_path(path)
@@ -569,7 +570,7 @@ async def auth_middleware(request: Request, call_next):
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limit API routes: 100 req/min per IP; login/refresh use 20 req/min per IP."""
     path = _normalize_path(request.url.path)
-    if path.startswith("/api/") and path not in _PUBLIC_PATHS:
+    if path.startswith("/api/v1/") and path not in _PUBLIC_PATHS:
         settings = get_settings()
         ip = get_client_ip(request, trust_forwarded_for=settings.auth.trust_forwarded_for)
         limited = (
@@ -598,12 +599,12 @@ async def request_body_size_limit_middleware(request: Request, call_next):
     rejected before the body is read into memory.  Route handlers that accept
     file uploads enforce additional per-file limits independently.
 
-    POST/PUT/PATCH under ``/api/`` must send ``Content-Length`` (not chunked
+    POST/PUT/PATCH under ``/api/v1/`` must send ``Content-Length`` (not chunked
     without a length) so limits cannot be bypassed via ``Transfer-Encoding:
     chunked``.
     """
     path = _normalize_path(request.url.path)
-    if not path.startswith("/api/"):
+    if not path.startswith("/api/v1/"):
         return await call_next(request)
 
     method = request.method.upper()
@@ -694,6 +695,22 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def api_version_redirect_middleware(request: Request, call_next):
+    """Redirect unversioned /api/* requests to /api/v1/* for backward compatibility.
+
+    Clients that still use the legacy /api/ prefix receive a 301 Moved Permanently
+    redirect so they can update their URLs. The versioned /api/v1/ paths are the
+    canonical API; the legacy paths are kept only to avoid silent breakage.
+    """
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith("/api/v1/"):
+        versioned = "/api/v1" + path[len("/api"):]
+        new_url = request.url.replace(path=versioned)
+        return Response(status_code=301, headers={"Location": str(new_url)})
+    return await call_next(request)
+
+
 def _health_response():
     """Return health check response with appropriate status code."""
     result = check_health()
@@ -701,8 +718,8 @@ def _health_response():
     return JSONResponse(content=result, status_code=status_code)
 
 
-@app.get("/api/health")
-@app.get("/api/health/")
+@app.get("/api/v1/health")
+@app.get("/api/v1/health/")
 async def health():
     """Production health check: DB (required), optional LLM and notifications. Returns 503 if down."""
     return _health_response()
@@ -727,29 +744,29 @@ def metrics():
     )
 
 
-# Register API routes
-app.include_router(claims_router, prefix="/api")
-app.include_router(compliance_router, prefix="/api")
-app.include_router(metrics_router, prefix="/api")
-app.include_router(docs_router, prefix="/api")
-app.include_router(system_router, prefix="/api")
-app.include_router(simulation_router, prefix="/api")
-app.include_router(chat_router, prefix="/api")
-app.include_router(tasks_router, prefix="/api")
-app.include_router(payments_router, prefix="/api")
-app.include_router(webhooks_router, prefix="/api")
-app.include_router(dsar_router, prefix="/api")
-app.include_router(portal_router, prefix="/api")
-app.include_router(unified_portal_router, prefix="/api")
-app.include_router(repair_portal_router, prefix="/api")
-app.include_router(third_party_portal_router, prefix="/api")
-app.include_router(reserve_reports_router, prefix="/api")
-app.include_router(retention_router, prefix="/api")
-app.include_router(privacy_router, prefix="/api")
-app.include_router(auth_login_router, prefix="/api")
-app.include_router(users_admin_router, prefix="/api")
-app.include_router(repair_shop_users_router, prefix="/api")
-app.include_router(note_templates_router, prefix="/api")
+# Register API routes (versioned under /api/v1)
+app.include_router(claims_router, prefix="/api/v1")
+app.include_router(compliance_router, prefix="/api/v1")
+app.include_router(metrics_router, prefix="/api/v1")
+app.include_router(docs_router, prefix="/api/v1")
+app.include_router(system_router, prefix="/api/v1")
+app.include_router(simulation_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
+app.include_router(tasks_router, prefix="/api/v1")
+app.include_router(payments_router, prefix="/api/v1")
+app.include_router(webhooks_router, prefix="/api/v1")
+app.include_router(dsar_router, prefix="/api/v1")
+app.include_router(portal_router, prefix="/api/v1")
+app.include_router(unified_portal_router, prefix="/api/v1")
+app.include_router(repair_portal_router, prefix="/api/v1")
+app.include_router(third_party_portal_router, prefix="/api/v1")
+app.include_router(reserve_reports_router, prefix="/api/v1")
+app.include_router(retention_router, prefix="/api/v1")
+app.include_router(privacy_router, prefix="/api/v1")
+app.include_router(auth_login_router, prefix="/api/v1")
+app.include_router(users_admin_router, prefix="/api/v1")
+app.include_router(repair_shop_users_router, prefix="/api/v1")
+app.include_router(note_templates_router, prefix="/api/v1")
 
 
 # Serve frontend static files in production (when built)

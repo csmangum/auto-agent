@@ -53,7 +53,7 @@ class TestThirdPartyPortal:
         monkeypatch.delenv("THIRD_PARTY_PORTAL_ENABLED", raising=False)
         reload_settings()
         resp = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         assert resp.status_code == 503
@@ -61,12 +61,12 @@ class TestThirdPartyPortal:
         reload_settings()
 
     def test_mint_token_requires_party_id(self, client):
-        resp = client.post("/api/claims/CLM-TEST005/third-party-portal-token", json={})
+        resp = client.post("/api/v1/claims/CLM-TEST005/third-party-portal-token", json={})
         assert resp.status_code == 422
 
     def test_mint_token_success(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         assert resp.status_code == 200
@@ -89,7 +89,7 @@ class TestThirdPartyPortal:
             ),
         )
         resp = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json={"party_id": bad_id},
         )
         assert resp.status_code == 400
@@ -97,38 +97,38 @@ class TestThirdPartyPortal:
 
     def test_mint_token_accepts_witness_party(self, client):
         resp = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         assert resp.status_code == 200
         assert resp.json()["claim_id"] == "CLM-TEST005"
 
     def test_portal_get_claim_without_token_401(self, client):
-        resp = client.get("/api/third-party-portal/claims/CLM-TEST005")
+        resp = client.get("/api/v1/third-party-portal/claims/CLM-TEST005")
         assert resp.status_code == 401
 
     def test_portal_get_claim_invalid_token_401(self, client):
         resp = client.get(
-            "/api/third-party-portal/claims/CLM-TEST005",
+            "/api/v1/third-party-portal/claims/CLM-TEST005",
             headers={"X-Third-Party-Access-Token": "not-a-valid-token"},
         )
         assert resp.status_code == 401
 
     def test_portal_get_claim_wrong_claim_id_for_token_returns_401(self, client):
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         token = mint.json()["token"]
         resp = client.get(
-            "/api/third-party-portal/claims/CLM-TEST001",
+            "/api/v1/third-party-portal/claims/CLM-TEST001",
             headers={"X-Third-Party-Access-Token": token},
         )
         assert resp.status_code == 401
 
     def test_portal_expired_token_returns_401(self, client, seeded_temp_db):
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         token = mint.json()["token"]
@@ -141,19 +141,19 @@ class TestThirdPartyPortal:
             )
             conn.commit()
         resp = client.get(
-            "/api/third-party-portal/claims/CLM-TEST005",
+            "/api/v1/third-party-portal/claims/CLM-TEST005",
             headers={"X-Third-Party-Access-Token": token},
         )
         assert resp.status_code == 401
 
     def test_portal_get_claim_excludes_policy_and_vin(self, client):
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         token = mint.json()["token"]
         resp = client.get(
-            "/api/third-party-portal/claims/CLM-TEST005",
+            "/api/v1/third-party-portal/claims/CLM-TEST005",
             headers={"X-Third-Party-Access-Token": token},
         )
         assert resp.status_code == 200
@@ -182,12 +182,12 @@ class TestThirdPartyPortal:
             actor_id="workflow",
         )
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         token = mint.json()["token"]
         resp = client.get(
-            "/api/third-party-portal/claims/CLM-TEST005",
+            "/api/v1/third-party-portal/claims/CLM-TEST005",
             headers={"X-Third-Party-Access-Token": token},
         )
         assert resp.status_code == 200
@@ -198,12 +198,12 @@ class TestThirdPartyPortal:
 
     def test_portal_claim_history_redaction(self, client):
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         token = mint.json()["token"]
         h = {"X-Third-Party-Access-Token": token}
-        resp = client.get("/api/third-party-portal/claims/CLM-TEST005/history", headers=h)
+        resp = client.get("/api/v1/third-party-portal/claims/CLM-TEST005/history", headers=h)
         assert resp.status_code == 200
         data = resp.json()
         assert data["claim_id"] == "CLM-TEST005"
@@ -213,14 +213,14 @@ class TestThirdPartyPortal:
 
     def test_portal_disabled_returns_503(self, client, monkeypatch):
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         token = mint.json()["token"]
         monkeypatch.delenv("THIRD_PARTY_PORTAL_ENABLED", raising=False)
         reload_settings()
         resp = client.get(
-            "/api/third-party-portal/claims/CLM-TEST005",
+            "/api/v1/third-party-portal/claims/CLM-TEST005",
             headers={"X-Third-Party-Access-Token": token},
         )
         assert resp.status_code == 503
@@ -232,13 +232,13 @@ class TestThirdPartyPortal:
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
 
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         tok = mint.json()["token"]
         h = {"X-Third-Party-Access-Token": tok}
         resp = client.post(
-            "/api/third-party-portal/claims/CLM-TEST005/documents",
+            "/api/v1/third-party-portal/claims/CLM-TEST005/documents",
             headers=h,
             files=[("file", ("statement.pdf", b"fake pdf content", "application/pdf"))],
         )
@@ -262,13 +262,13 @@ class TestThirdPartyPortal:
             content=b"third-party attachment bytes",
         )
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         tok = mint.json()["token"]
         h = {"X-Third-Party-Access-Token": tok}
         resp = client.get(
-            f"/api/third-party-portal/claims/CLM-TEST005/attachments/{stored_key}",
+            f"/api/v1/third-party-portal/claims/CLM-TEST005/attachments/{stored_key}",
             headers=h,
         )
         assert resp.status_code == 200
@@ -299,13 +299,13 @@ class TestThirdPartyPortal:
         )
         repo.mark_follow_up_sent(msg_id)
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         tok = mint.json()["token"]
         h = {"X-Third-Party-Access-Token": tok}
         resp = client.post(
-            "/api/third-party-portal/claims/CLM-TEST005/follow-up/record-response",
+            "/api/v1/third-party-portal/claims/CLM-TEST005/follow-up/record-response",
             headers=h,
             json={"message_id": msg_id, "response_content": "Statement attached."},
         )
@@ -324,13 +324,13 @@ class TestThirdPartyPortal:
         )
         repo.mark_follow_up_sent(msg_id)
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         tok = mint.json()["token"]
         h = {"X-Third-Party-Access-Token": tok}
         resp = client.post(
-            "/api/third-party-portal/claims/CLM-TEST005/follow-up/record-response",
+            "/api/v1/third-party-portal/claims/CLM-TEST005/follow-up/record-response",
             headers=h,
             json={"message_id": msg_id, "response_content": "Trying to reply as third party."},
         )
@@ -339,13 +339,13 @@ class TestThirdPartyPortal:
 
     def test_portal_dispute_rejects_ineligible_status(self, client):
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         tok = mint.json()["token"]
         h = {"X-Third-Party-Access-Token": tok}
         resp = client.post(
-            "/api/third-party-portal/claims/CLM-TEST005/dispute",
+            "/api/v1/third-party-portal/claims/CLM-TEST005/dispute",
             headers=h,
             json={
                 "dispute_type": "liability_determination",
@@ -362,7 +362,7 @@ class TestThirdPartyPortal:
         repo = ClaimRepository(db_path=seeded_temp_db)
         repo.update_claim_status("CLM-TEST005", "open", details="test", actor_id="test")
         mint = client.post(
-            "/api/claims/CLM-TEST005/third-party-portal-token",
+            "/api/v1/claims/CLM-TEST005/third-party-portal-token",
             json=_mint_body(),
         )
         tok = mint.json()["token"]
@@ -377,7 +377,7 @@ class TestThirdPartyPortal:
             return_value=fake_result,
         ):
             resp = client.post(
-                "/api/third-party-portal/claims/CLM-TEST005/dispute",
+                "/api/v1/third-party-portal/claims/CLM-TEST005/dispute",
                 headers=h,
                 json={
                     "dispute_type": "liability_determination",

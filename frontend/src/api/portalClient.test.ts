@@ -84,7 +84,7 @@ describe('portalApi', () => {
     const result = await portalApi.getClaims();
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims',
+      '/api/v1/portal/claims',
       expect.objectContaining({
         headers: expect.objectContaining({ 'X-Claim-Access-Token': 'tok' }),
       }),
@@ -105,7 +105,7 @@ describe('portalApi', () => {
     const result = await portalApi.getClaim('CLM-1');
     expect(result).toEqual(claim);
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-1',
+      '/api/v1/portal/claims/CLM-1',
       expect.any(Object),
     );
   });
@@ -116,7 +116,7 @@ describe('portalApi', () => {
     const result = await portalApi.getClaimHistory('CLM-2');
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-2/history',
+      '/api/v1/portal/claims/CLM-2/history',
       expect.any(Object),
     );
   });
@@ -127,7 +127,7 @@ describe('portalApi', () => {
     const result = await portalApi.getDocuments('CLM-3');
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-3/documents',
+      '/api/v1/portal/claims/CLM-3/documents',
       expect.any(Object),
     );
   });
@@ -149,7 +149,7 @@ describe('portalApi', () => {
     const result = await portalApi.uploadDocument('CLM-4', file, 'photo');
     expect(result).toEqual(mockResult);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/portal/claims/CLM-4/documents'),
+      expect.stringContaining('/api/v1/portal/claims/CLM-4/documents'),
       expect.objectContaining({
         method: 'POST',
         body: expect.any(FormData),
@@ -167,7 +167,7 @@ describe('portalApi', () => {
     const file = new File(['data'], 'scan.png', { type: 'image/png' });
     await portalApi.uploadDocument('CLM-4', file);
     const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toBe('/api/portal/claims/CLM-4/documents');
+    expect(url).toBe('/api/v1/portal/claims/CLM-4/documents');
   });
 
   it('getDocumentRequests', async () => {
@@ -176,7 +176,7 @@ describe('portalApi', () => {
     const result = await portalApi.getDocumentRequests('CLM-5');
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-5/document-requests',
+      '/api/v1/portal/claims/CLM-5/document-requests',
       expect.any(Object),
     );
   });
@@ -187,7 +187,7 @@ describe('portalApi', () => {
     const result = await portalApi.getRepairStatus('CLM-6');
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-6/repair-status',
+      '/api/v1/portal/claims/CLM-6/repair-status',
       expect.any(Object),
     );
   });
@@ -198,7 +198,7 @@ describe('portalApi', () => {
     const result = await portalApi.getPayments('CLM-7');
     expect(result).toEqual(data);
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-7/payments',
+      '/api/v1/portal/claims/CLM-7/payments',
       expect.any(Object),
     );
   });
@@ -208,7 +208,7 @@ describe('portalApi', () => {
     const result = await portalApi.recordFollowUpResponse('CLM-8', 42, 'My response');
     expect(result).toEqual({ success: true });
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-8/follow-up/record-response',
+      '/api/v1/portal/claims/CLM-8/follow-up/record-response',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
@@ -226,7 +226,7 @@ describe('portalApi', () => {
     const result = await portalApi.fileDispute('CLM-9', body);
     expect(result).toEqual({ resolution: 'pending' });
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/portal/claims/CLM-9/dispute',
+      '/api/v1/portal/claims/CLM-9/dispute',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify(body),

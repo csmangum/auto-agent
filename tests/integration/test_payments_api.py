@@ -35,7 +35,7 @@ class TestPaymentsAPI:
     ):
         """Create payment returns 201 with payment record."""
         resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": claim_for_payments,
                 "amount": 1500.0,
@@ -60,7 +60,7 @@ class TestPaymentsAPI:
         """List payments returns 200 with paginated results."""
         # Create a payment first
         api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": claim_for_payments,
                 "amount": 500.0,
@@ -69,7 +69,7 @@ class TestPaymentsAPI:
                 "payment_method": "check",
             },
         )
-        resp = api_client.get(f"/api/claims/{claim_for_payments}/payments")
+        resp = api_client.get(f"/api/v1/claims/{claim_for_payments}/payments")
         assert resp.status_code == 200
         data = resp.json()
         assert "payments" in data
@@ -81,7 +81,7 @@ class TestPaymentsAPI:
     @pytest.mark.integration
     def test_list_payments_nonexistent_claim_returns_404(self, api_client):
         """List payments for non-existent claim returns 404."""
-        resp = api_client.get("/api/claims/CLM-NONEXISTENT/payments")
+        resp = api_client.get("/api/v1/claims/CLM-NONEXISTENT/payments")
         assert resp.status_code == 404
         assert "Claim not found" in resp.json().get("detail", "")
 
@@ -91,7 +91,7 @@ class TestPaymentsAPI:
     ):
         """Get single payment returns 200."""
         create_resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": claim_for_payments,
                 "amount": 750.0,
@@ -102,7 +102,7 @@ class TestPaymentsAPI:
         )
         payment_id = create_resp.json()["id"]
         resp = api_client.get(
-            f"/api/claims/{claim_for_payments}/payments/{payment_id}"
+            f"/api/v1/claims/{claim_for_payments}/payments/{payment_id}"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -115,7 +115,7 @@ class TestPaymentsAPI:
     ):
         """Get non-existent payment returns 404."""
         resp = api_client.get(
-            f"/api/claims/{claim_for_payments}/payments/99999"
+            f"/api/v1/claims/{claim_for_payments}/payments/99999"
         )
         assert resp.status_code == 404
 
@@ -125,7 +125,7 @@ class TestPaymentsAPI:
     ):
         """Issue payment transitions authorized -> issued."""
         create_resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": claim_for_payments,
                 "amount": 300.0,
@@ -136,7 +136,7 @@ class TestPaymentsAPI:
         )
         payment_id = create_resp.json()["id"]
         resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments/{payment_id}/issue",
+            f"/api/v1/claims/{claim_for_payments}/payments/{payment_id}/issue",
             json={"check_number": "CHK-12345"},
         )
         assert resp.status_code == 200
@@ -151,7 +151,7 @@ class TestPaymentsAPI:
     ):
         """Clear payment transitions issued -> cleared."""
         create_resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": claim_for_payments,
                 "amount": 200.0,
@@ -162,10 +162,10 @@ class TestPaymentsAPI:
         )
         payment_id = create_resp.json()["id"]
         api_client.post(
-            f"/api/claims/{claim_for_payments}/payments/{payment_id}/issue"
+            f"/api/v1/claims/{claim_for_payments}/payments/{payment_id}/issue"
         )
         resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments/{payment_id}/clear"
+            f"/api/v1/claims/{claim_for_payments}/payments/{payment_id}/clear"
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -178,7 +178,7 @@ class TestPaymentsAPI:
     ):
         """Void payment from authorized status."""
         create_resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": claim_for_payments,
                 "amount": 100.0,
@@ -189,7 +189,7 @@ class TestPaymentsAPI:
         )
         payment_id = create_resp.json()["id"]
         resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments/{payment_id}/void",
+            f"/api/v1/claims/{claim_for_payments}/payments/{payment_id}/void",
             json={"reason": "Duplicate payment"},
         )
         assert resp.status_code == 200
@@ -204,7 +204,7 @@ class TestPaymentsAPI:
     ):
         """Create payment with mismatched claim_id in body returns 400."""
         resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": "CLM-WRONG",
                 "amount": 100.0,
@@ -219,7 +219,7 @@ class TestPaymentsAPI:
     def test_create_payment_nonexistent_claim_returns_404(self, api_client):
         """Create payment for non-existent claim returns 404."""
         resp = api_client.post(
-            "/api/claims/CLM-NONEXISTENT/payments",
+            "/api/v1/claims/CLM-NONEXISTENT/payments",
             json={
                 "claim_id": "CLM-NONEXISTENT",
                 "amount": 100.0,
@@ -243,7 +243,7 @@ class TestPaymentsAPI:
 
         _cfg._settings = None
         resp = api_client.post(
-            f"/api/claims/{claim_for_payments}/payments",
+            f"/api/v1/claims/{claim_for_payments}/payments",
             json={
                 "claim_id": claim_for_payments,
                 "amount": 500.0,

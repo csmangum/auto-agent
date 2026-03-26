@@ -55,7 +55,7 @@ def test_e2e_mock_crew_submit_and_process(
             "Claim processed with mock crew."
         )
 
-        resp = e2e_client.post("/api/claims", json=sample_new_claim)
+        resp = e2e_client.post("/api/v1/claims", json=sample_new_claim)
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -63,7 +63,7 @@ def test_e2e_mock_crew_submit_and_process(
     assert data["status"] == STATUS_OPEN
     assert data["claim_type"] == "new"
 
-    history_resp = e2e_client.get(f"/api/claims/{data['claim_id']}/history")
+    history_resp = e2e_client.get(f"/api/v1/claims/{data['claim_id']}/history")
     assert history_resp.status_code == 200
     actions = [h["action"] for h in history_resp.json()["history"]]
     assert "created" in actions
@@ -124,7 +124,7 @@ def test_e2e_mock_crew_follow_up_flow(
             crew = mocks.add_patch(f"{_STAGES}.create_new_claim_crew")
             crew.return_value.kickoff.return_value = mock_crew_response("OK")
 
-            resp = e2e_client.post("/api/claims", json=sample_new_claim)
+            resp = e2e_client.post("/api/v1/claims", json=sample_new_claim)
 
         assert resp.status_code == 200
         claim_id = resp.json()["claim_id"]
@@ -141,7 +141,7 @@ def test_e2e_mock_crew_follow_up_flow(
                 "Follow-up outreach sent to claimant."
             )
             follow_resp = e2e_client.post(
-                f"/api/claims/{claim_id}/follow-up/run",
+                f"/api/v1/claims/{claim_id}/follow-up/run",
                 json={"task": "Request damage photos from claimant."},
             )
 
@@ -156,14 +156,14 @@ def test_e2e_mock_crew_follow_up_flow(
 
         # Step 4: record first response (would execute if step 3 passes)
         first_response = pending[0]
-        messages_resp = e2e_client.get(f"/api/claims/{claim_id}/follow-up")
+        messages_resp = e2e_client.get(f"/api/v1/claims/{claim_id}/follow-up")
         assert messages_resp.status_code == 200
         messages = messages_resp.json()["messages"]
         assert len(messages) > 0
         message_id = messages[0]["id"]
 
         record_resp = e2e_client.post(
-            f"/api/claims/{claim_id}/follow-up/record-response",
+            f"/api/v1/claims/{claim_id}/follow-up/record-response",
             json={"message_id": message_id, "response_content": first_response["response_text"]},
         )
         assert record_resp.status_code == 200

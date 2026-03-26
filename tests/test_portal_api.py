@@ -67,7 +67,7 @@ class TestPortalSession401:
         """GET /portal/claims returns 401 when no verification headers provided."""
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
-        resp = client.get("/api/portal/claims")
+        resp = client.get("/api/v1/portal/claims")
         assert resp.status_code == 401
         assert "Invalid" in resp.json().get("detail", "")
 
@@ -76,7 +76,7 @@ class TestPortalSession401:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
         resp = client.get(
-            "/api/portal/claims",
+            "/api/v1/portal/claims",
             headers=_portal_policy_vin_headers("POL-BAD", "VIN-BAD"),
         )
         assert resp.status_code == 401
@@ -87,7 +87,7 @@ class TestPortalSession401:
         reload_settings()
         # POL-001 + VIN for CLM-TEST001 exist in seeded DB, but token mode ignores them
         resp = client.get(
-            "/api/portal/claims",
+            "/api/v1/portal/claims",
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
         assert resp.status_code == 401
@@ -97,7 +97,7 @@ class TestPortalSession401:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "token")
         reload_settings()
         resp = client.get(
-            "/api/portal/claims",
+            "/api/v1/portal/claims",
             headers=_portal_token_headers("invalid-or-expired-token-xyz"),
         )
         assert resp.status_code == 401
@@ -116,7 +116,7 @@ class TestPortalListClaims:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
         resp = client.get(
-            "/api/portal/claims",
+            "/api/v1/portal/claims",
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
         assert resp.status_code == 200
@@ -130,7 +130,7 @@ class TestPortalListClaims:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "token")
         reload_settings()
         token = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
-        resp = client.get("/api/portal/claims", headers=_portal_token_headers(token))
+        resp = client.get("/api/v1/portal/claims", headers=_portal_token_headers(token))
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
@@ -143,7 +143,7 @@ class TestPortalListClaims:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "token")
         reload_settings()
         token = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
-        resp = client.get("/api/portal/claims", headers=_portal_token_headers(token))
+        resp = client.get("/api/v1/portal/claims", headers=_portal_token_headers(token))
         assert resp.status_code == 200
         claim_ids = [c["id"] for c in resp.json()["claims"]]
         assert "CLM-TEST001" in claim_ids
@@ -164,7 +164,7 @@ class TestPortalClaimantAccess404:
         reload_settings()
         # POL-001 has access to CLM-TEST001 only; CLM-TEST002 has POL-002
         resp = client.get(
-            "/api/portal/claims/CLM-TEST002",
+            "/api/v1/portal/claims/CLM-TEST002",
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
         assert resp.status_code == 404
@@ -175,7 +175,7 @@ class TestPortalClaimantAccess404:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
         resp = client.get(
-            "/api/portal/claims/CLM-TEST002/history",
+            "/api/v1/portal/claims/CLM-TEST002/history",
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
         assert resp.status_code == 404
@@ -194,7 +194,7 @@ class TestPortalTokenCreation:
         monkeypatch.setenv("API_KEYS", "sk-adj:adjuster")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
-        resp = client.post("/api/claims/CLM-TEST001/portal-token", json={})
+        resp = client.post("/api/v1/claims/CLM-TEST001/portal-token", json={})
         assert resp.status_code == 401
 
     def test_create_portal_token_returns_token(self, client, monkeypatch, seeded_temp_db):
@@ -206,7 +206,7 @@ class TestPortalTokenCreation:
         reload_settings()
 
         create_resp = client.post(
-            "/api/claims/CLM-TEST001/portal-token",
+            "/api/v1/claims/CLM-TEST001/portal-token",
             json={},
             headers={"X-API-Key": "sk-adj"},
         )
@@ -218,7 +218,7 @@ class TestPortalTokenCreation:
         assert len(token) > 20
 
         list_resp = client.get(
-            "/api/portal/claims",
+            "/api/v1/portal/claims",
             headers=_portal_token_headers(token),
         )
         assert list_resp.status_code == 200
@@ -230,7 +230,7 @@ class TestPortalTokenCreation:
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
         resp = client.post(
-            "/api/claims/CLM-NONEXISTENT/portal-token",
+            "/api/v1/claims/CLM-NONEXISTENT/portal-token",
             json={},
             headers={"X-API-Key": "sk-adj"},
         )
@@ -250,7 +250,7 @@ class TestPortalDocumentUpload:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
         resp = client.post(
-            "/api/portal/claims/CLM-TEST001/documents",
+            "/api/v1/portal/claims/CLM-TEST001/documents",
             files=[("file", ("report.pdf", b"fake pdf content", "application/pdf"))],
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
@@ -272,7 +272,7 @@ class TestPortalDocumentUpload:
         monkeypatch.setenv("CLAIMANT_VERIFICATION_MODE", "policy_vin")
         reload_settings()
         resp = client.post(
-            "/api/portal/claims/CLM-TEST001/documents",
+            "/api/v1/portal/claims/CLM-TEST001/documents",
             files=[("file", ("malware.exe", b"fake exe", "application/octet-stream"))],
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
@@ -299,7 +299,7 @@ class TestPortalAttachmentDownload:
             content=b"portal attachment bytes",
         )
         resp = client.get(
-            f"/api/portal/claims/CLM-TEST001/attachments/{stored_key}",
+            f"/api/v1/portal/claims/CLM-TEST001/attachments/{stored_key}",
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
         assert resp.status_code == 200
@@ -343,7 +343,7 @@ class TestPortalAttachmentDownload:
         monkeypatch.setattr(ClaimRepository, "insert_audit_entry", fail_audit)
         with TestClient(app, raise_server_exceptions=False) as tc:
             resp = tc.get(
-                f"/api/portal/claims/CLM-TEST001/attachments/{stored_key}",
+                f"/api/v1/portal/claims/CLM-TEST001/attachments/{stored_key}",
                 headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
             )
         assert resp.status_code == 500
@@ -371,7 +371,7 @@ class TestPortalFollowUpResponse:
         repo.mark_follow_up_sent(msg_id)
 
         resp = client.post(
-            "/api/portal/claims/CLM-TEST001/follow-up/record-response",
+            "/api/v1/portal/claims/CLM-TEST001/follow-up/record-response",
             json={"message_id": msg_id, "response_content": "I uploaded 3 photos."},
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
@@ -392,7 +392,7 @@ class TestPortalDisabled:
         monkeypatch.setenv("CLAIMANT_PORTAL_ENABLED", "false")
         reload_settings()
         resp = client.get(
-            "/api/portal/claims",
+            "/api/v1/portal/claims",
             headers=_portal_policy_vin_headers("POL-001", "1HGBH41JXMN109186"),
         )
         assert resp.status_code == 503

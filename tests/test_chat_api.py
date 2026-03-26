@@ -77,7 +77,7 @@ class TestChatEndpoint:
         mock_resp = _make_llm_response("I can help you with claims!")
         with patch("claim_agent.chat.agent.litellm.completion", return_value=mock_resp):
             resp = client.post(
-                "/api/chat",
+                "/api/v1/chat",
                 json={"messages": [{"role": "user", "content": "Hello"}]},
             )
         assert resp.status_code == 200
@@ -116,7 +116,7 @@ class TestChatEndpoint:
             side_effect=[tool_response, text_response],
         ):
             resp = client.post(
-                "/api/chat",
+                "/api/v1/chat",
                 json={"messages": [{"role": "user", "content": "How many claims?"}]},
             )
         assert resp.status_code == 200
@@ -135,13 +135,13 @@ class TestChatEndpoint:
 
     def test_empty_messages_rejected(self, client):
         """Chat with no messages returns 422."""
-        resp = client.post("/api/chat", json={"messages": []})
+        resp = client.post("/api/v1/chat", json={"messages": []})
         assert resp.status_code == 422
 
     def test_invalid_role_rejected(self, client):
         """Message with invalid role returns 422."""
         resp = client.post(
-            "/api/chat",
+            "/api/v1/chat",
             json={"messages": [{"role": "system", "content": "test"}]},
         )
         assert resp.status_code == 422
@@ -149,7 +149,7 @@ class TestChatEndpoint:
     def test_empty_content_rejected(self, client):
         """Message with empty content returns 422."""
         resp = client.post(
-            "/api/chat",
+            "/api/v1/chat",
             json={"messages": [{"role": "user", "content": ""}]},
         )
         assert resp.status_code == 422
@@ -178,7 +178,7 @@ class TestChatEndpoint:
             return_value=tool_response,
         ):
             resp = client.post(
-                "/api/chat",
+                "/api/v1/chat",
                 json={"messages": [{"role": "user", "content": "test"}]},
             )
         assert resp.status_code == 200
@@ -196,7 +196,7 @@ class TestChatEndpoint:
             side_effect=Exception("API unavailable"),
         ):
             resp = client.post(
-                "/api/chat",
+                "/api/v1/chat",
                 json={"messages": [{"role": "user", "content": "test"}]},
             )
         assert resp.status_code == 200  # SSE stream still returns 200
@@ -235,7 +235,7 @@ class TestChatEndpoint:
                 side_effect=transition_exc,
             ):
                 resp = client.post(
-                    "/api/chat",
+                    "/api/v1/chat",
                     json={"messages": [{"role": "user", "content": "trigger tool"}]},
                 )
         assert resp.status_code == 200
@@ -255,7 +255,7 @@ class TestChatEndpoint:
         mock_resp = _make_llm_response("The claim is open.")
         with patch("claim_agent.chat.agent.litellm.completion", return_value=mock_resp):
             resp = client.post(
-                "/api/chat",
+                "/api/v1/chat",
                 json={
                     "messages": [
                         {"role": "user", "content": "What is the status of CLM-TEST001?"},

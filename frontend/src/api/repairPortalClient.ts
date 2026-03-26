@@ -5,7 +5,7 @@
 
 import { parseApiError } from './apiUtils';
 
-const BASE = '/api/repair-portal';
+const BASE = '/api/v1/repair-portal';
 
 export interface RepairPortalSession {
   token: string;
