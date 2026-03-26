@@ -373,12 +373,20 @@ def _base_security_response_headers() -> dict[str, str]:
         "Permissions-Policy": (
             "geolocation=(), microphone=(), camera=(), payment=()"
         ),
-        # Note: 'unsafe-inline' for script/style is a pragmatic SPA trade-off; tightening
-        # to nonces hashes would improve XSS resistance but needs frontend build support.
+        # 'unsafe-inline' is removed from script-src; the theme-init script is served
+        # as a static file (/theme-init.js) to avoid inline scripts.
+        # 'unsafe-inline' is retained for style-src because React components may apply
+        # inline style attributes and Tailwind v4 injects CSS in dev mode.
         "Content-Security-Policy": (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'"
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
         ),
     }
 

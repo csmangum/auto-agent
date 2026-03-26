@@ -75,8 +75,14 @@ class TestUnconditionalSecurityHeaders:
         resp = client.get("/api/health")
         csp = resp.headers.get("content-security-policy", "")
         assert "default-src 'self'" in csp
-        assert "script-src 'self' 'unsafe-inline'" in csp
+        # unsafe-inline removed from script-src; theme script is served as a static file
+        assert "script-src 'self'" in csp
+        script_src_value = next((p for p in csp.split(";") if "script-src" in p), "")
+        assert "unsafe-inline" not in script_src_value
         assert "style-src 'self' 'unsafe-inline'" in csp
+        assert "object-src 'none'" in csp
+        assert "base-uri 'self'" in csp
+        assert "frame-ancestors 'none'" in csp
 
     def test_no_hsts_without_enforce_https(self, client):
         """HSTS must NOT be set when ENFORCE_HTTPS is false (avoid breaking HTTP-only dev)."""
