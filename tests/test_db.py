@@ -858,3 +858,78 @@ def test_repository_add_note_sanitizes_actor_id(temp_db):
     assert notes[0]["note"] == "Legitimate note content."
     assert "[redacted]" in notes[0]["actor_id"]
     assert "Ignore" not in notes[0]["actor_id"]
+
+
+# ---------------------------------------------------------------------------
+# Foreign key enforcement tests
+# ---------------------------------------------------------------------------
+
+
+def test_sqlite_fk_enforcement_active_in_get_connection(tmp_path):
+    """PRAGMA foreign_keys is ON for every connection yielded by get_connection().
+
+    SQLite does not enforce FK constraints unless PRAGMA foreign_keys = ON is
+    executed per-connection.  get_connection() must set this pragma so that FK
+    violations are caught at the database layer regardless of which code path
+    executes the insert.
+    """
+    db_path = str(tmp_path / "fk_check.db")
+    with get_connection(db_path) as conn:
+        result = conn.execute(text("PRAGMA foreign_keys")).fetchone()
+    assert result[0] == 1, "SQLite foreign_keys pragma must be 1 (ON) via get_connection()"
+
+
+def test_sqlite_fk_claim_audit_log_rejects_orphaned_claim_id(tmp_path):
+    """claim_audit_log.claim_id → claims.id FK rejects inserts without a parent claim.
+
+    Verifies that the foreign key constraint defined in the schema (and carried
+    through Alembic migrations for both SQLite and PostgreSQL) is actively
+    enforced at runtime.
+    """
+    db_path = str(tmp_path / "fk_audit.db")
+    with pytest.raises(IntegrityError):
+        with get_connection(db_path) as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO claim_audit_log (claim_id, action) "
+                    "VALUES ('no-such-claim', 'test_action')"
+                )
+            )
+
+
+def test_sqlite_fk_workflow_runs_rejects_orphaned_claim_id(tmp_path):
+    """workflow_runs.claim_id → claims.id FK rejects inserts without a parent claim.
+
+    Verifies that the foreign key constraint defined in the schema (and carried
+    through Alembic migrations for both SQLite and PostgreSQL) is actively
+    enforced at runtime.
+    """
+    db_path = str(tmp_path / "fk_wf.db")
+    with pytest.raises(IntegrityError):
+        with get_connection(db_path) as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO workflow_runs (claim_id, claim_type) "
+                    "VALUES ('no-such-claim', 'new')"
+                )
+            )
+
+
+def test_sqlite_fk_rental_authorizations_rejects_orphaned_claim_id(tmp_path):
+    """rental_authorizations.claim_id → claims.id FK (migration 056) rejects orphaned inserts.
+
+    Verifies that the FK constraint introduced by Alembic migration 056 is
+    enforced for SQLite.  The equivalent PostgreSQL migration uses an inline
+    REFERENCES clause which PostgreSQL enforces natively without requiring any
+    PRAGMA-like session setting.
+    """
+    db_path = str(tmp_path / "fk_rental.db")
+    with pytest.raises(IntegrityError):
+        with get_connection(db_path) as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO rental_authorizations "
+                    "(claim_id, authorized_days, daily_cap) "
+                    "VALUES ('no-such-claim', 7, 40.0)"
+                )
+            )
