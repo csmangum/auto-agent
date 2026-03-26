@@ -31,6 +31,7 @@ from claim_agent.api.rate_limit import get_client_ip, is_auth_rate_limited, is_r
 from claim_agent.api.routes.claims import router as claims_router
 from claim_agent.api.routes.compliance import router as compliance_router
 from claim_agent.api.routes.claims import _background_tasks as claim_background_tasks
+from claim_agent.api.routes.claims import _task_claim_ids as claim_task_claim_ids
 from claim_agent.api.routes.metrics import router as metrics_router
 from claim_agent.api.routes.docs import router as docs_router
 from claim_agent.api.routes.system import router as system_router
@@ -53,7 +54,7 @@ from claim_agent.api.routes.repair_shop_users import router as repair_shop_users
 from claim_agent.api.routes.note_templates import router as note_templates_router
 from claim_agent.config import get_settings
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
-from claim_agent.db.constants import STATUS_NEEDS_REVIEW
+from claim_agent.db.constants import STATUS_FAILED, STATUS_NEEDS_REVIEW
 from claim_agent.db.database import ensure_fresh_db_on_startup, get_db_path, is_postgres_backend
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
@@ -173,6 +174,81 @@ def _recover_stuck_processing_claims() -> None:
             )
 
 
+
+async def _shutdown_background_tasks_with_grace(grace_seconds: int) -> None:
+    """Wait up to *grace_seconds* for in-flight claim tasks, then cancel the rest.
+
+    Any task still running after the grace period is cancelled and its associated
+    claim is marked ``failed`` with a recoverable message so the startup recovery
+    scan can re-queue it on the next server boot.
+
+    Args:
+        grace_seconds: Maximum wall-clock seconds to wait before cancellation.
+            When 0 the tasks are cancelled immediately without waiting.
+    """
+    if not claim_background_tasks:
+        return
+
+    pending = set(claim_background_tasks)
+    _server_logger.info(
+        "Graceful shutdown: waiting up to %d s for %d in-flight claim task(s).",
+        grace_seconds,
+        len(pending),
+    )
+
+    if grace_seconds > 0:
+        done, pending = await asyncio.wait(pending, timeout=grace_seconds)
+        # Log (but do not re-raise) exceptions from tasks that finished during the
+        # grace window.  Re-raising would abort the rest of the shutdown sequence,
+        # leaving other tasks uncancel-led and their claims in 'processing'.
+        for t in done:
+            if not t.cancelled():
+                exc = t.exception()
+                if exc is not None:
+                    _server_logger.warning(
+                        "Graceful shutdown: task finished with error: %s", exc
+                    )
+
+    if not pending:
+        _server_logger.info("Graceful shutdown: all claim tasks finished within grace period.")
+        return
+
+    _server_logger.warning(
+        "Graceful shutdown: %d claim task(s) did not finish within %d s grace period; "
+        "cancelling and marking claims as failed (recoverable).",
+        len(pending),
+        grace_seconds,
+    )
+
+    for task in pending:
+        claim_id = claim_task_claim_ids.get(task)
+        task.cancel()
+        if claim_id:
+            try:
+                repo = ClaimRepository(db_path=get_db_path())
+                repo.update_claim_status(
+                    claim_id,
+                    STATUS_FAILED,
+                    details=(
+                        "Claim processing was interrupted by server shutdown "
+                        "(recoverable). The claim will be re-queued automatically "
+                        "on the next startup if it remains in 'processing' status."
+                    ),
+                    actor_id=ACTOR_WORKFLOW,
+                    skip_validation=True,
+                )
+                _server_logger.warning(
+                    "Graceful shutdown: claim %s marked 'failed' (recoverable).", claim_id
+                )
+            except Exception:
+                _server_logger.exception(
+                    "Graceful shutdown: failed to mark claim %s as failed.", claim_id
+                )
+
+    # Await cancelled tasks so their CancelledError is consumed
+    await asyncio.gather(*pending, return_exceptions=True)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _check_auth_configuration()
@@ -253,7 +329,9 @@ async def lifespan(_app: FastAPI):
             pass
 
     if claim_background_tasks:
-        await asyncio.gather(*claim_background_tasks)
+        await _shutdown_background_tasks_with_grace(
+            get_settings().shutdown_grace_period_seconds
+        )
 
     await stop_scheduler()
 
