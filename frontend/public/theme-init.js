@@ -3,7 +3,10 @@
 /* global localStorage, window, document */
 (function () {
   try {
-    var t = localStorage.getItem('claims_theme') || 'system';
+    var t = localStorage.getItem('claims_theme');
+    if (t !== 'dark' && t !== 'light' && t !== 'system') {
+      t = 'system';
+    }
     if (t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       document.documentElement.classList.add('dark');
     }
