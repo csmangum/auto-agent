@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import FileDropZone from '../components/FileDropZone';
+import { toast } from 'sonner';
 import { SparkleIcon } from '../components/icons';
 import PolicySelect from '../components/PolicySelect';
 import StatusBadge from '../components/StatusBadge';
@@ -669,31 +671,44 @@ export default function NewClaimForm() {
           <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
             <span>📎</span> Attachments
           </h3>
-          <label
-            htmlFor="attachments"
-            className="flex flex-col items-center justify-center py-8 px-4 border-2 border-dashed border-gray-700 rounded-xl bg-gray-800/30 hover:bg-gray-800/50 hover:border-gray-600 transition-colors cursor-pointer"
+          <FileDropZone
+            accept="image/*,.pdf"
+            multiple
+            disabled={submitting}
+            maxBytes={50 * 1024 * 1024}
+            maxBytesLabel="50 MB"
+            onFilesSelected={(picked) =>
+              setFiles((prev) => {
+                const next = [...prev];
+                const seen = new Set(next.map((f) => `${f.name}-${f.size}`));
+                for (const f of picked) {
+                  const k = `${f.name}-${f.size}`;
+                  if (!seen.has(k)) {
+                    seen.add(k);
+                    next.push(f);
+                  }
+                }
+                return next;
+              })
+            }
+            onValidationError={(msg) => toast.error(msg)}
+            inputId="attachments"
           >
-            <span className="text-3xl mb-2 opacity-40">📂</span>
-            <span className="text-sm text-gray-400 mb-1">
+            <span className="text-3xl mb-2 opacity-40" aria-hidden>
+              📂
+            </span>
+            <span className="text-sm text-gray-400 mb-1 text-center">
               Drop files here or <span className="text-blue-400">browse</span>
             </span>
-            <span className="text-xs text-gray-600">
-              Photos, PDFs, estimates (optional)
+            <span className="text-xs text-gray-600 text-center">
+              Photos, PDFs, estimates (optional) — max 50 MB per file
             </span>
-            <input
-              id="attachments"
-              type="file"
-              multiple
-              accept="image/*,.pdf"
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-              className="hidden"
-            />
-          </label>
+          </FileDropZone>
           {files.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {files.map((f, i) => (
                 <span
-                  key={i}
+                  key={`${f.name}-${i}`}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-800 text-xs text-gray-300 ring-1 ring-gray-700"
                 >
                   📄 {f.name}

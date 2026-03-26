@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, type ComponentType, type SVGProps } from 'react';
 import { useParams } from 'react-router-dom';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useClaimDetailTitleSetter } from '../hooks/useClaimDetailTitle';
 import { useTabs } from '../utils/useTabs';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -14,6 +16,7 @@ import PaymentPanel from '../components/PaymentPanel';
 import CommunicationLog from '../components/CommunicationLog';
 import CoverageSummary from '../components/CoverageSummary';
 import DocumentVersionCompare from '../components/DocumentVersionCompare';
+import FileDropZone from '../components/FileDropZone';
 import {
   useClaim,
   useClaimHistory,
@@ -417,8 +420,6 @@ function DocumentsTab({
 }: DocumentsTabProps) {
   const [uploadType, setUploadType] = useState('other');
   const [uploadFrom, setUploadFrom] = useState('claimant');
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [reqDocType, setReqDocType] = useState('police_report');
   const [reqFrom, setReqFrom] = useState('');
 
@@ -426,45 +427,33 @@ function DocumentsTab({
     if (!files || files.length === 0) return;
     const list = Array.from(files);
     void (async () => {
-      try {
-        const outcomes = await Promise.allSettled(
-          list.map((file) =>
-            uploadMutation.mutateAsync({
-              file,
-              documentType: uploadType,
-              receivedFrom: uploadFrom,
-            })
-          )
+      const outcomes = await Promise.allSettled(
+        list.map((file) =>
+          uploadMutation.mutateAsync({
+            file,
+            documentType: uploadType,
+            receivedFrom: uploadFrom,
+          })
+        )
+      );
+      const ok = outcomes.filter((o) => o.status === 'fulfilled').length;
+      const failed = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
+      if (ok > 0) {
+        toast.success(
+          ok === 1 && list.length === 1
+            ? `Uploaded ${list[0].name}`
+            : `Uploaded ${ok} of ${list.length} file${list.length === 1 ? '' : 's'}`
         );
-        const ok = outcomes.filter((o) => o.status === 'fulfilled').length;
-        const failed = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
-        if (ok > 0) {
-          toast.success(
-            ok === 1 && list.length === 1
-              ? `Uploaded ${list[0].name}`
-              : `Uploaded ${ok} of ${list.length} file${list.length === 1 ? '' : 's'}`
-          );
-        }
-        if (failed.length > 0) {
-          const first = failed[0].reason;
-          toast.error(
-            failed.length === 1
-              ? getErrorMessage(first, 'Upload failed')
-              : `${failed.length} uploads failed: ${getErrorMessage(first, 'Upload failed')}`
-          );
-        }
-      } finally {
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+      }
+      if (failed.length > 0) {
+        const first = failed[0].reason;
+        toast.error(
+          failed.length === 1
+            ? getErrorMessage(first, 'Upload failed')
+            : `${failed.length} uploads failed: ${getErrorMessage(first, 'Upload failed')}`
+        );
       }
     })();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    handleFiles(e.dataTransfer.files);
   };
 
   const handleCreateRequest = (e: React.FormEvent) => {
@@ -521,33 +510,30 @@ function DocumentsTab({
             />
           </div>
         </div>
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            dragOver
-              ? 'border-blue-500 bg-blue-500/10'
-              : 'border-gray-700 hover:border-gray-600 hover:bg-gray-800/30'
-          }`}
+        <FileDropZone
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx"
+          multiple
+          disabled={uploadMutation.isPending}
+          maxBytes={50 * 1024 * 1024}
+          maxBytesLabel="50 MB"
+          onFilesSelected={(picked) => {
+            const dt = new DataTransfer();
+            picked.forEach((f) => dt.items.add(f));
+            handleFiles(dt.files);
+          }}
+          onValidationError={(msg) => toast.error(msg)}
+          inputId={`claim-doc-upload-${uploadType}`}
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx"
-            onChange={(e) => handleFiles(e.target.files)}
-          />
-          <span className="text-3xl mb-2 block">📄</span>
+          <span className="text-3xl mb-2 block" aria-hidden>
+            📄
+          </span>
           <p className="text-sm text-gray-400">
-            {dragOver ? 'Drop files here' : 'Click or drag files to upload'}
+            Drop files here or <span className="text-blue-400">browse</span>
           </p>
           <p className="text-xs text-gray-600 mt-1">
-            PDF, images, Word, Excel — max 50 MB
+            PDF, images, Word, Excel — max 50 MB per file. Press Enter on this area to open the file picker.
           </p>
-        </div>
+        </FileDropZone>
         {uploadMutation.isPending && (
           <p className="text-xs text-blue-400 mt-2">Uploading…</p>
         )}
@@ -884,6 +870,7 @@ type ClaimTabItem = {
 
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
+  const setClaimDetailTitle = useClaimDetailTitleSetter();
   const [activeTab, setActiveTab] = useTabs<ClaimDetailTab>(CLAIM_DETAIL_TABS, 'overview');
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const { data: claim, isLoading: claimLoading, error: claimError } = useClaim(claimId);
@@ -930,6 +917,12 @@ export default function ClaimDetail() {
   const reserveHistory = reserveHistoryData?.history ?? [];
   const loading = claimLoading || historyLoading || workflowsLoading;
   const error = claimError ?? historyError ?? workflowsError;
+
+  useDocumentTitle(claimId ? `Claim ${claimId}` : 'Claim');
+  useEffect(() => {
+    if (claim?.id) setClaimDetailTitle(claim.id);
+    return () => setClaimDetailTitle(null);
+  }, [claim?.id, setClaimDetailTitle]);
 
   if (loading) {
     return (

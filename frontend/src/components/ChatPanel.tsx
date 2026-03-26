@@ -17,6 +17,21 @@ export default function ChatPanel() {
   const isSendingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const closePanel = useCallback(() => {
+    setOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closePanel();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, closePanel]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -228,7 +243,12 @@ export default function ChatPanel() {
 
   // Expanded panel
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[420px] h-[560px] bg-gray-900 border border-gray-700/60 rounded-2xl shadow-2xl shadow-black/40 flex flex-col overflow-hidden animate-fade-in">
+    <div
+      role="dialog"
+      aria-modal="false"
+      aria-label="Claims assistant chat"
+      className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[min(100vw-2rem,420px)] max-h-[min(100dvh-2rem,560px)] h-[min(100dvh-2rem,560px)] bg-gray-900 border border-gray-700/60 rounded-2xl shadow-2xl shadow-black/40 flex flex-col overflow-hidden animate-fade-in"
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-800/80 border-b border-gray-700/50">
         <div className="flex items-center gap-2.5">
@@ -258,7 +278,7 @@ export default function ChatPanel() {
           )}
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={closePanel}
             aria-label="Close chat"
             className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-lg transition-colors"
           >
