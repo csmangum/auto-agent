@@ -84,6 +84,35 @@ class TestUnconditionalSecurityHeaders:
         assert "base-uri 'self'" in csp
         assert "frame-ancestors 'none'" in csp
 
+    def test_csp_connect_src_self_only_without_sentry_dsn(self, client, monkeypatch, request):
+        """Sentry ingest is omitted from CSP when no dashboard DSN is configured."""
+        from claim_agent.config import reload_settings
+
+        request.addfinalizer(reload_settings)
+        monkeypatch.delenv("VITE_SENTRY_DSN", raising=False)
+        monkeypatch.delenv("DASHBOARD_SENTRY_DSN", raising=False)
+        reload_settings()
+        resp = client.get("/api/v1/health")
+        csp = resp.headers.get("content-security-policy", "")
+        assert "connect-src 'self'" in csp
+        assert "ingest.sentry.io" not in csp
+
+    def test_csp_connect_src_includes_parsed_sentry_origin(self, monkeypatch, request):
+        """When VITE_SENTRY_DSN is set, CSP allows that ingest origin (not a blanket wildcard)."""
+        from claim_agent.api.server import app
+        from claim_agent.config import reload_settings
+
+        request.addfinalizer(reload_settings)
+        monkeypatch.delenv("DASHBOARD_SENTRY_DSN", raising=False)
+        monkeypatch.setenv(
+            "VITE_SENTRY_DSN",
+            "https://public@o12345.ingest.sentry.io/42",
+        )
+        reload_settings()
+        resp = TestClient(app, raise_server_exceptions=True).get("/api/v1/health")
+        csp = resp.headers.get("content-security-policy", "")
+        assert "connect-src 'self' https://o12345.ingest.sentry.io" in csp
+
     def test_no_hsts_without_enforce_https(self, client):
         """HSTS must NOT be set when ENFORCE_HTTPS is false (avoid breaking HTTP-only dev)."""
         resp = client.get("/api/v1/health")

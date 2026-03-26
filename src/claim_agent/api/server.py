@@ -17,6 +17,7 @@ Non-dev deployments (CLAIM_AGENT_ENVIRONMENT) require at least one auth mechanis
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -465,6 +466,21 @@ def _normalize_path(path: str) -> str:
     return path.rstrip("/") or "/"
 
 
+def _sentry_connect_src_allowance(dsn: str | None) -> str:
+    """Space-prefixed connect-src token(s) for Sentry ingest, or empty when unset/invalid."""
+    if not dsn:
+        return ""
+    parsed = urlparse(dsn)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return ""
+    host = parsed.hostname
+    if parsed.port:
+        origin = f"{parsed.scheme}://{host}:{parsed.port}"
+    else:
+        origin = f"{parsed.scheme}://{host}"
+    return f" {origin}"
+
+
 def _base_security_response_headers() -> dict[str, str]:
     """Headers applied to normal and redirect responses (browser hardening)."""
     return {
@@ -479,13 +495,14 @@ def _base_security_response_headers() -> dict[str, str]:
         # 'unsafe-inline' is retained for style-src because React components may apply
         # inline style attributes and Tailwind v4 injects CSS in dev mode.
         # Keep this policy string in sync with frontend/vite.config.ts (document CSP).
+        # connect-src allows Sentry ingest only when dashboard_sentry_dsn is set (see Settings).
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "font-src 'self' data:; "
-            "connect-src 'self'; "
+            f"connect-src 'self'{_sentry_connect_src_allowance(get_settings().dashboard_sentry_dsn)}; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "frame-ancestors 'none'"

@@ -14,7 +14,6 @@ avoid that class of ambiguity.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import secrets
@@ -26,6 +25,10 @@ from sqlalchemy import text
 
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, is_postgres_backend, row_to_dict
+from claim_agent.services.portal_token_utils import (
+    hash_portal_token,
+    portal_token_last_used_rejects,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +46,6 @@ VALID_PORTAL_SCOPES: frozenset[str] = frozenset(
         "respond_followup",
     }
 )
-
-
-def _hash_token(token: str) -> str:
-    """SHA-256 hash of token for storage comparison."""
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def _ts(dt: datetime) -> str:
@@ -106,7 +104,7 @@ def create_unified_portal_token(
     if role == "repair_shop" and not (shop_id and str(shop_id).strip()):
         raise ValueError("shop_id is required when role is repair_shop")
     raw = secrets.token_urlsafe(32)
-    token_hash = _hash_token(raw)
+    token_hash = hash_portal_token(raw)
     settings = get_settings()
     if role == "repair_shop":
         expiry_days = settings.repair_shop_portal.token_expiry_days
@@ -147,17 +145,22 @@ def verify_unified_portal_token(
     *,
     db_path: str | None = None,
 ) -> UnifiedTokenRecord | None:
-    """Return record if token is valid and not expired/revoked; None otherwise."""
+    """Return record if token is valid, not expired/revoked, and not inactive; None otherwise.
+
+    On success the token's ``last_used_at`` timestamp is updated to enforce the
+    inactivity timeout on subsequent calls.
+    """
     if not raw_token or not raw_token.strip():
         return None
-    token_hash = _hash_token(raw_token.strip())
+    token_hash = hash_portal_token(raw_token.strip())
     now = datetime.now(timezone.utc)
+    settings = get_settings()
     path = db_path or get_db_path()
     now_param: datetime | str = now if is_postgres_backend() else _ts(now)
     with get_connection(path) as conn:
         row = conn.execute(
             text("""
-                SELECT id, role, scopes, claim_id, shop_id
+                SELECT id, role, scopes, claim_id, shop_id, last_used_at
                 FROM external_portal_tokens
                 WHERE token_hash = :token_hash
                   AND expires_at > :now
@@ -165,31 +168,60 @@ def verify_unified_portal_token(
             """),
             {"token_hash": token_hash, "now": now_param},
         ).fetchone()
-    if row is None:
-        return None
-    rec = row_to_dict(row)
-    role_str = str(rec.get("role") or "").strip()
-    if role_str not in KNOWN_PORTAL_ROLES:
-        logger.warning(
-            "Rejecting unified portal token with unknown role from database: %r",
-            role_str,
+        if row is None:
+            return None
+        rec = row_to_dict(row)
+        role_str = str(rec.get("role") or "").strip()
+        if role_str not in KNOWN_PORTAL_ROLES:
+            logger.warning(
+                "Rejecting unified portal token with unknown role from database: %r",
+                role_str,
+            )
+            return None
+        # Determine inactivity timeout based on role
+        if role_str == "repair_shop":
+            inactivity_days = settings.repair_shop_portal.inactivity_timeout_days
+        elif role_str == "tpa":
+            inactivity_days = settings.third_party_portal.inactivity_timeout_days
+        else:
+            inactivity_days = settings.portal.inactivity_timeout_days
+        inactivity_cutoff = now - timedelta(days=inactivity_days)
+        if portal_token_last_used_rejects(
+            rec.get("last_used_at"),
+            inactivity_cutoff,
+            logger=logger,
+            inactive_log=(
+                "Rejecting inactive unified portal token id=%s role=%s"
+            ),
+            inactive_args=(rec.get("id"), role_str),
+            token_id=rec.get("id"),
+        ):
+            return None
+        raw_scopes = rec.get("scopes")
+        try:
+            scopes = json.loads(raw_scopes or "[]")
+        except (ValueError, TypeError):
+            logger.warning(
+                "Rejecting unified portal token id=%s: invalid scopes JSON in database",
+                rec.get("id"),
+            )
+            return None
+        if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
+            logger.warning(
+                "Rejecting unified portal token id=%s: scopes must be a JSON array of strings",
+                rec.get("id"),
+            )
+            return None
+        # Update last_used_at
+        conn.execute(
+            text("""
+                UPDATE external_portal_tokens
+                SET last_used_at = :now
+                WHERE id = :token_id
+            """),
+            {"now": now_param, "token_id": rec["id"]},
         )
-        return None
-    raw_scopes = rec.get("scopes")
-    try:
-        scopes = json.loads(raw_scopes or "[]")
-    except (ValueError, TypeError):
-        logger.warning(
-            "Rejecting unified portal token id=%s: invalid scopes JSON in database",
-            rec.get("id"),
-        )
-        return None
-    if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
-        logger.warning(
-            "Rejecting unified portal token id=%s: scopes must be a JSON array of strings",
-            rec.get("id"),
-        )
-        return None
+        conn.commit()
     return UnifiedTokenRecord(
         token_id=int(rec["id"]),
         role=role_str,  # type: ignore[arg-type]
@@ -207,7 +239,7 @@ def revoke_unified_portal_token(
     """Mark a token as revoked. Returns True if a token was found and revoked."""
     if not raw_token or not raw_token.strip():
         return False
-    token_hash = _hash_token(raw_token.strip())
+    token_hash = hash_portal_token(raw_token.strip())
     now = datetime.now(timezone.utc)
     path = db_path or get_db_path()
     now_param: datetime | str = now if is_postgres_backend() else _ts(now)

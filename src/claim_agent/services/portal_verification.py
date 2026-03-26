@@ -8,16 +8,19 @@ Verifies that a claimant has access to a claim via:
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.services.portal_token_utils import (
+    hash_portal_token,
+    portal_token_last_used_rejects,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +31,6 @@ class ClaimantContext:
 
     claim_id: str
     identity: str  # email, party_id, or token prefix for audit
-
-
-def _hash_token(token: str) -> str:
-    """SHA-256 hash of token for storage comparison."""
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def verify_claimant_access(
@@ -47,6 +45,8 @@ def verify_claimant_access(
     """Verify claimant has access to the claim. Returns ClaimantContext or None.
 
     Uses CLAIMANT_VERIFICATION_MODE to determine which verification to apply.
+    Token-based verification also enforces an inactivity timeout: tokens not
+    used within ``CLAIM_PORTAL_INACTIVITY_TIMEOUT_DAYS`` days are rejected.
     """
     settings = get_settings()
     if not settings.portal.enabled:
@@ -68,11 +68,15 @@ def verify_claimant_access(
         if mode == "token":
             if not token or not token.strip():
                 return None
-            token_hash = _hash_token(token.strip())
+            token_hash = hash_portal_token(token.strip())
             now = datetime.now(timezone.utc)
+            inactivity_cutoff = now - timedelta(
+                days=settings.portal.inactivity_timeout_days
+            )
             row = conn.execute(
                 text("""
-                    SELECT claim_id, party_id, email FROM claim_access_tokens
+                    SELECT id, claim_id, party_id, email, last_used_at
+                    FROM claim_access_tokens
                     WHERE claim_id = :claim_id AND token_hash = :token_hash
                     AND expires_at > :now
                 """),
@@ -85,6 +89,25 @@ def verify_claimant_access(
             if row is None:
                 return None
             rec = row_to_dict(row)
+            if portal_token_last_used_rejects(
+                rec.get("last_used_at"),
+                inactivity_cutoff,
+                logger=logger,
+                inactive_log="Rejecting inactive claimant token for claim_id=%s",
+                inactive_args=(claim_id,),
+                token_id=rec.get("id"),
+            ):
+                return None
+            # Update last_used_at
+            conn.execute(
+                text("""
+                    UPDATE claim_access_tokens
+                    SET last_used_at = :now
+                    WHERE id = :token_id
+                """),
+                {"now": now, "token_id": rec["id"]},
+            )
+            conn.commit()
             party_id = rec.get("party_id")
             identity = (
                 rec.get("email")
@@ -135,7 +158,7 @@ def create_claim_access_token(
     Caller must store/send the returned token; it is not stored in plaintext.
     """
     raw_token = secrets.token_urlsafe(32)
-    token_hash = _hash_token(raw_token)
+    token_hash = hash_portal_token(raw_token)
     settings = get_settings()
     expiry_days = settings.portal.token_expiry_days
     expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
@@ -174,6 +197,7 @@ def get_claim_ids_for_claimant(
 
     Uses CLAIMANT_VERIFICATION_MODE to determine which verification method(s) to accept.
     Only the configured mode is honored; other credentials are ignored.
+    Token-based lookups also enforce an inactivity timeout and update last_used_at.
     """
     settings = get_settings()
     if not settings.portal.enabled:
@@ -185,18 +209,47 @@ def get_claim_ids_for_claimant(
 
     with get_connection(path) as conn:
         if mode == "token" and token and token.strip():
-            token_hash = _hash_token(token.strip())
+            token_hash = hash_portal_token(token.strip())
             now = datetime.now(timezone.utc)
+            inactivity_cutoff = now - timedelta(
+                days=settings.portal.inactivity_timeout_days
+            )
             rows = conn.execute(
                 text("""
-                    SELECT claim_id FROM claim_access_tokens
+                    SELECT id, claim_id, last_used_at FROM claim_access_tokens
                     WHERE token_hash = :token_hash AND expires_at > :now
                 """),
                 {"token_hash": token_hash, "now": now},
             ).fetchall()
+            active_ids: list[int] = []
             for r in rows:
-                cid = str(r[0]) if hasattr(r, "__getitem__") else str(r["claim_id"])
+                rec = row_to_dict(r)
+                if portal_token_last_used_rejects(
+                    rec.get("last_used_at"),
+                    inactivity_cutoff,
+                    logger=logger,
+                    inactive_log=None,
+                    inactive_args=(),
+                    token_id=rec.get("id"),
+                ):
+                    continue
+                cid = str(rec["claim_id"])
                 seen.add(cid)
+                active_ids.append(int(rec["id"]))
+            # Bulk-update last_used_at for all active matching rows
+            if active_ids:
+                id_placeholders = ", ".join(f":id_{i}" for i in range(len(active_ids)))
+                params: dict[str, object] = {"now": now}
+                for i, tid in enumerate(active_ids):
+                    params[f"id_{i}"] = tid
+                conn.execute(
+                    text(
+                        "UPDATE claim_access_tokens SET last_used_at = :now "
+                        f"WHERE id IN ({id_placeholders})"
+                    ),
+                    params,
+                )
+                conn.commit()
 
         if mode == "policy_vin" and policy_number and vin:
             pn = str(policy_number).strip()
