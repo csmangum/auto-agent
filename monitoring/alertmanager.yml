@@ -1,0 +1,37 @@
+route:
+  receiver: default
+  group_by:
+    - alertname
+    - job
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - job="claim-agent"
+      receiver: claims-team
+      continue: true
+
+receivers:
+  - name: default
+    # Configure your default receiver here (e.g., PagerDuty, Slack, email).
+    # Example — Slack:
+    # slack_configs:
+    #   - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+    #     channel: '#ops-alerts'
+
+  - name: claims-team
+    # Configure the claims team receiver here.
+    # Example — webhook:
+    # webhook_configs:
+    #   - url: 'https://your-webhook.example.com/claims-alerts'
+    #     send_resolved: true
+
+inhibit_rules:
+  # Suppress lower-severity alerts when the service is completely down.
+  - source_matchers:
+      - alertname="ClaimAgentDown"
+    target_matchers:
+      - job="claim-agent"
+    equal:
+      - job
