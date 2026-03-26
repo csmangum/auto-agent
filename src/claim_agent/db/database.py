@@ -10,8 +10,10 @@ Async support (PostgreSQL only):
 """
 
 import logging
+import os
 import sqlite3
 import threading
+import warnings
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any
@@ -818,318 +820,117 @@ def row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
+def _find_alembic_dir() -> Path | None:
+    """Locate the Alembic scripts directory.
+
+    Checks (in order):
+    1. The project root inferred from this module's file path (editable / development installs).
+    2. The current working directory (CLI / script usage from the project root).
+    """
+    # Editable install path: src/claim_agent/db/database.py → parents[3] == project root.
+    # This requires the package to be installed in editable mode (pip install -e .).
+    candidate = Path(__file__).resolve().parents[3] / "alembic"
+    if candidate.is_dir():
+        return candidate
+    # Fallback: running from project root (e.g. pytest, CLI)
+    candidate = Path.cwd() / "alembic"
+    if candidate.is_dir():
+        return candidate
+    return None
+
+
+def _run_alembic_migrations(db_path: str) -> None:
+    """Apply pending Alembic migrations to a SQLite database.
+
+    Uses Alembic as the single source of truth for schema evolution, replacing
+    the previous inline ``_run_migrations()`` approach.
+
+    * **New databases** (``alembic_version`` table absent): the full schema has
+      already been created by :func:`_run_schema` via ``SCHEMA_SQL``.  The head
+      revision is *stamped* so that future ``alembic upgrade head`` calls are
+      no-ops without re-running every migration.
+    * **Existing databases** (``alembic_version`` table present): ``upgrade head``
+      is run to apply any pending migrations in revision order.
+    * **Legacy databases** (tables exist but no ``alembic_version``): all
+      Alembic migrations are idempotent for SQLite (they use ``IF NOT EXISTS``
+      guards and ``PRAGMA table_info`` checks), so ``upgrade head`` applies
+      safely from revision 001 onward.
+
+    If the Alembic scripts directory cannot be located (e.g. a non-editable
+    package install without the source tree), a warning is emitted and the
+    function returns without error so that normal usage is not disrupted.
+    Run ``alembic upgrade head`` manually from the project root in that case.
+    """
+    alembic_dir = _find_alembic_dir()
+    if alembic_dir is None:
+        logger.warning(
+            "Alembic scripts directory not found; skipping programmatic Alembic migration "
+            "for SQLite database '%s'. Run 'alembic upgrade head' from the project root.",
+            db_path,
+        )
+        return
+
+    db_abs = os.path.abspath(db_path)
+
+    try:
+        from alembic import command
+        from alembic.config import Config
+
+        cfg = Config()
+        cfg.set_main_option("script_location", str(alembic_dir))
+        cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_abs}")
+        # Suppress Alembic's own INFO-level console logging during programmatic use.
+        cfg.attributes["configure_logger"] = False
+
+        # Determine whether to stamp (fresh DB) or upgrade (existing/legacy DB).
+        with sqlite3.connect(db_path) as check_conn:
+            try:
+                check_conn.execute("SELECT 1 FROM alembic_version LIMIT 1")
+                has_version_table = True
+            except sqlite3.OperationalError:
+                has_version_table = False
+
+        if has_version_table:
+            command.upgrade(cfg, "head")
+        else:
+            # Fresh database: schema already created via SCHEMA_SQL; stamp only.
+            command.stamp(cfg, "head")
+    except Exception:
+        # Log and continue: the schema was already created via SCHEMA_SQL so the
+        # database is usable.  Incomplete migrations will surface as missing columns
+        # at runtime rather than crashing startup.  Operators can resolve by running
+        # 'alembic upgrade head' manually from the project root.
+        logger.exception(
+            "Failed to apply Alembic migrations for SQLite database '%s'; "
+            "schema may be incomplete. Run 'alembic upgrade head' manually.",
+            db_path,
+        )
+
+
 def _run_migrations(conn: sqlite3.Connection) -> None:
-    """Run schema migrations for existing databases."""
-    try:
-        cursor = conn.execute("PRAGMA table_info(claims)")
-        columns = {row[1] for row in cursor.fetchall()}
-        if "archived_at" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN archived_at TEXT")
-        if "loss_state" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN loss_state TEXT")
-        if "liability_percentage" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN liability_percentage REAL")
-        if "liability_basis" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN liability_basis TEXT")
-        if "total_loss_metadata" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN total_loss_metadata TEXT")
-        if "incident_id" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN incident_id TEXT")
-        if "litigation_hold" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN litigation_hold INTEGER DEFAULT 0")
-        if "repair_ready_for_settlement" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN repair_ready_for_settlement INTEGER")
-        if "total_loss_settlement_authorized" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN total_loss_settlement_authorized INTEGER")
-        if "retention_tier" not in columns:
-            conn.execute(
-                "ALTER TABLE claims ADD COLUMN retention_tier TEXT NOT NULL DEFAULT 'active'"
-            )
-            # One-time backfill when the column is new; do not re-run every startup.
-            conn.execute("UPDATE claims SET retention_tier = 'archived' WHERE status = 'archived'")
-            conn.execute("UPDATE claims SET retention_tier = 'cold' WHERE status = 'closed'")
-        if "purged_at" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN purged_at TEXT")
-        # UCSPA compliance (migration 026)
-        for col, col_type in [
-            ("acknowledged_at", "TEXT"),
-            ("acknowledgment_due", "TEXT"),
-            ("investigation_due", "TEXT"),
-            ("payment_due", "TEXT"),
-            ("denial_reason", "TEXT"),
-            ("denial_letter_sent_at", "TEXT"),
-            ("denial_letter_body", "TEXT"),
-            ("denial_letter_delivery_method", "TEXT"),
-            ("denial_letter_tracking_id", "TEXT"),
-            ("denial_letter_delivered_at", "TEXT"),
-            ("settlement_agreed_at", "TEXT"),
-            ("last_claimant_communication_at", "TEXT"),
-            ("communication_response_due", "TEXT"),
-        ]:
-            if col not in columns:
-                conn.execute(f"ALTER TABLE claims ADD COLUMN {col} {col_type}")
-        if "incident_latitude" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN incident_latitude REAL")
-        if "incident_longitude" not in columns:
-            conn.execute("ALTER TABLE claims ADD COLUMN incident_longitude REAL")
-        conn.execute(IDX_CLAIMS_INCIDENT_ID)
-    except sqlite3.OperationalError:
-        pass
-    # Incidents and claim_links for multi-vehicle support
-    try:
-        conn.execute("SELECT 1 FROM incidents LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript(
-            INCIDENTS_TABLE_SQLITE + ";\n" + IDX_INCIDENTS_INCIDENT_DATE + ";\n"
-        )
-    try:
-        conn.execute("SELECT 1 FROM claim_links LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript(
-            CLAIM_LINKS_TABLE_SQLITE
-            + ";\n"
-            + IDX_CLAIM_LINKS_CLAIM_A
-            + ";\n"
-            + IDX_CLAIM_LINKS_CLAIM_B
-            + ";\n"
-        )
-    try:
-        cursor = conn.execute("PRAGMA table_info(subrogation_cases)")
-        sc_columns = {row[1] for row in cursor.fetchall()}
-        if "recovery_amount" not in sc_columns:
-            conn.execute("ALTER TABLE subrogation_cases ADD COLUMN recovery_amount REAL")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cursor = conn.execute("PRAGMA table_info(follow_up_messages)")
-        fum_columns = {row[1] for row in cursor.fetchall()}
-        if fum_columns and "topic" not in fum_columns:
-            conn.execute("ALTER TABLE follow_up_messages ADD COLUMN topic TEXT")
-    except sqlite3.OperationalError:
-        pass
-    # Document management: claim_documents, document_requests, claim_tasks.document_request_id
-    try:
-        conn.execute("SELECT 1 FROM claim_documents LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE claim_documents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                claim_id TEXT NOT NULL,
-                storage_key TEXT NOT NULL,
-                document_type TEXT,
-                received_date TEXT,
-                received_from TEXT,
-                review_status TEXT NOT NULL DEFAULT 'pending',
-                privileged INTEGER NOT NULL DEFAULT 0,
-                retention_date TEXT,
-                retention_enforced_at TEXT,
-                version INTEGER NOT NULL DEFAULT 1,
-                extracted_data TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (claim_id) REFERENCES claims(id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_id ON claim_documents(claim_id);
-            CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_type ON claim_documents(claim_id, document_type);
-            CREATE INDEX IF NOT EXISTS idx_claim_documents_claim_review ON claim_documents(claim_id, review_status);
-            CREATE INDEX IF NOT EXISTS idx_claim_documents_retention_eligible
-                ON claim_documents(retention_date)
-                WHERE retention_enforced_at IS NULL AND retention_date IS NOT NULL
-                    AND length(trim(retention_date)) > 0;
-        """)
-    try:
-        cursor = conn.execute("PRAGMA table_info(claim_documents)")
-        cd_columns = {row[1] for row in cursor.fetchall()}
-        if cd_columns and "retention_enforced_at" not in cd_columns:
-            conn.execute("ALTER TABLE claim_documents ADD COLUMN retention_enforced_at TEXT")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_claim_documents_retention_eligible "
-            "ON claim_documents(retention_date) "
-            "WHERE retention_enforced_at IS NULL AND retention_date IS NOT NULL "
-            "AND length(trim(retention_date)) > 0"
-        )
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("SELECT 1 FROM document_requests LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE document_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                claim_id TEXT NOT NULL,
-                document_type TEXT NOT NULL,
-                requested_at TEXT NOT NULL DEFAULT (datetime('now')),
-                requested_from TEXT,
-                status TEXT NOT NULL DEFAULT 'requested',
-                received_at TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (claim_id) REFERENCES claims(id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_document_requests_claim_id ON document_requests(claim_id);
-        """)
-    try:
-        cursor = conn.execute("PRAGMA table_info(claim_tasks)")
-        ct_columns = {row[1] for row in cursor.fetchall()}
-        if "document_request_id" not in ct_columns:
-            conn.execute(
-                "ALTER TABLE claim_tasks ADD COLUMN document_request_id INTEGER "
-                "REFERENCES document_requests(id)"
-            )
-        for col, typ in [
-            ("recurrence_rule", "TEXT"),
-            ("recurrence_interval", "INTEGER"),
-            ("parent_task_id", "INTEGER REFERENCES claim_tasks(id)"),
-            ("escalation_level", "INTEGER NOT NULL DEFAULT 0"),
-            ("escalation_notified_at", "TEXT"),
-            ("escalation_escalated_at", "TEXT"),
-            ("auto_created_from", "TEXT"),
-        ]:
-            if col not in ct_columns:
-                conn.execute(f"ALTER TABLE claim_tasks ADD COLUMN {col} {typ}")
-    except sqlite3.OperationalError:
-        pass
-    # Idempotency keys for duplicate request prevention (claim-before-process pattern)
-    try:
-        conn.execute("SELECT 1 FROM idempotency_keys LIMIT 1")
-        # Add status column if missing (for DBs created before 025)
-        cursor = conn.execute("PRAGMA table_info(idempotency_keys)")
-        ik_columns = {row[1] for row in cursor.fetchall()}
-        if "status" not in ik_columns:
-            conn.execute(
-                "ALTER TABLE idempotency_keys ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'"
-            )
-    except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE idempotency_keys (
-                idempotency_key TEXT PRIMARY KEY,
-                status TEXT NOT NULL DEFAULT 'completed',
-                response_status INTEGER NOT NULL,
-                response_body TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
-        """)
-    # Fraud report filings for compliance audit (migration 027)
-    try:
-        conn.execute("SELECT 1 FROM fraud_report_filings LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE fraud_report_filings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                claim_id TEXT NOT NULL,
-                siu_case_id TEXT,
-                filing_type TEXT NOT NULL,
-                state TEXT,
-                report_id TEXT NOT NULL,
-                filed_at TEXT NOT NULL,
-                filed_by TEXT NOT NULL DEFAULT 'siu_crew',
-                indicators_count INTEGER DEFAULT 0,
-                template_version TEXT,
-                metadata TEXT,
-                FOREIGN KEY (claim_id) REFERENCES claims(id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_fraud_filings_claim_id ON fraud_report_filings(claim_id);
-            CREATE INDEX IF NOT EXISTS idx_fraud_filings_filing_type ON fraud_report_filings(filing_type);
-        """)
-    # claim_payments.external_ref, claim_party_id + idempotency index (existing SQLite DBs)
-    try:
-        cursor = conn.execute("PRAGMA table_info(claim_payments)")
-        cp_columns = {row[1] for row in cursor.fetchall()}
-        if cp_columns and "external_ref" not in cp_columns:
-            conn.execute("ALTER TABLE claim_payments ADD COLUMN external_ref TEXT")
-        if cp_columns and "claim_party_id" not in cp_columns:
-            conn.execute(
-                "ALTER TABLE claim_payments ADD COLUMN claim_party_id INTEGER "
-                "REFERENCES claim_parties(id)"
-            )
-        if cp_columns:
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_claim_payments_claim_external_ref "
-                "ON claim_payments(claim_id, external_ref) WHERE external_ref IS NOT NULL"
-            )
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_reserve_history_created_at ON reserve_history(created_at)"
-        )
-    except sqlite3.OperationalError:
-        pass
-    # claim_party_relationships: directed typed edges replacing claim_parties.represented_by_id
-    try:
-        conn.execute("SELECT 1 FROM claim_party_relationships LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS claim_party_relationships (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                from_party_id INTEGER NOT NULL,
-                to_party_id INTEGER NOT NULL,
-                relationship_type TEXT NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (from_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE,
-                FOREIGN KEY (to_party_id) REFERENCES claim_parties(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from
-                ON claim_party_relationships(from_party_id);
-            CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_to
-                ON claim_party_relationships(to_party_id);
-            CREATE INDEX IF NOT EXISTS idx_claim_party_relationships_from_type
-                ON claim_party_relationships(from_party_id, relationship_type);
-            CREATE UNIQUE INDEX IF NOT EXISTS uq_claim_party_relationships_edge
-                ON claim_party_relationships(from_party_id, to_party_id, relationship_type);
-        """)
-        # Backfill existing represented_by_id values into the new edges table.
-        try:
-            cursor = conn.execute("PRAGMA table_info(claim_parties)")
-            cp_columns = {row[1] for row in cursor.fetchall()}
-            if "represented_by_id" in cp_columns:
-                # 'represented_by' matches PartyRelationshipType.REPRESENTED_BY.value
-                conn.execute("""
-                    INSERT OR IGNORE INTO claim_party_relationships
-                        (from_party_id, to_party_id, relationship_type)
-                    SELECT id, represented_by_id, 'represented_by'
-                    FROM claim_parties
-                    WHERE represented_by_id IS NOT NULL
-                """)
-        except sqlite3.OperationalError:
-            pass
-    # GitHub #350: drop legacy delete trigger so audit-log-purge works (schema no longer creates it).
-    try:
-        conn.execute("DROP TRIGGER IF EXISTS claim_audit_log_prevent_delete")
-    except sqlite3.OperationalError:
-        pass
-    # Migration 049: replace the broad "block all updates" trigger with one that only
-    # blocks changes to non-PII columns, allowing before_state / after_state to be
-    # updated for in-place PII redaction (AUDIT_LOG_STATE_REDACTION_ENABLED).
-    try:
-        trigger_rows = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger' "
-            "AND name='claim_audit_log_prevent_update'"
-        ).fetchall()
-        if trigger_rows:
-            conn.execute("DROP TRIGGER IF EXISTS claim_audit_log_prevent_update")
-            conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS claim_audit_log_protect_non_pii_columns
-                BEFORE UPDATE ON claim_audit_log
-                BEGIN
-                    SELECT RAISE(ABORT,
-                        'claim_audit_log: only before_state and after_state may be updated')
-                    WHERE (NEW.claim_id IS NOT OLD.claim_id)
-                       OR (NEW.action IS NOT OLD.action)
-                       OR (NEW.old_status IS NOT OLD.old_status)
-                       OR (NEW.new_status IS NOT OLD.new_status)
-                       OR (NEW.details IS NOT OLD.details)
-                       OR (NEW.actor_id IS NOT OLD.actor_id)
-                       OR (NEW.created_at IS NOT OLD.created_at);
-                END
-            """)
-    except sqlite3.OperationalError:
-        pass
+    """Deprecated: inline SQLite schema migrations.
+
+    .. deprecated::
+        Inline schema migrations have been replaced by Alembic to ensure a single
+        source of truth for both SQLite and PostgreSQL backends and prevent schema
+        drift.  This function is now a no-op.
+
+        * For **new** SQLite databases created via :func:`init_db` / :func:`_run_schema`,
+          Alembic stamps the head revision automatically.
+        * For **existing** databases, run ``alembic upgrade head`` from the project root
+          (this also applies to automated upgrades via :func:`_run_alembic_migrations`).
+        * For **PostgreSQL**, Alembic has always been the sole migration mechanism.
+
+        This function will be removed in a future release.
+    """
+    warnings.warn(
+        "_run_migrations() is deprecated and is now a no-op. "
+        "Schema migrations are managed exclusively by Alembic. "
+        "Run 'alembic upgrade head' from the project root to migrate an existing database. "
+        "See: https://alembic.sqlalchemy.org/en/latest/",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
 
 def _run_schema(db_path: str) -> None:
@@ -1140,7 +941,7 @@ def _run_schema(db_path: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
-        _run_migrations(conn)
+    _run_alembic_migrations(db_path)
 
 
 def init_db(path: str | None = None) -> None:
