@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import StatCard from '../components/StatCard';
 import EmptyState from '../components/EmptyState';
 import { useAllTasks, useTaskStats, useComplianceTemplates } from '../api/queries';
@@ -65,9 +66,10 @@ interface CalendarViewProps {
   month: number;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  tasksLoading?: boolean;
 }
 
-function CalendarView({ tasks, year, month, onPrevMonth, onNextMonth }: CalendarViewProps) {
+function CalendarView({ tasks, year, month, onPrevMonth, onNextMonth, tasksLoading }: CalendarViewProps) {
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfWeek(year, month);
   const today = new Date();
@@ -91,11 +93,34 @@ function CalendarView({ tasks, year, month, onPrevMonth, onNextMonth }: Calendar
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
+    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 relative">
+      {tasksLoading && (
+        <div
+          className="absolute inset-0 z-10 bg-gray-950/35 backdrop-blur-[1px] rounded-xl flex items-center justify-center pointer-events-none"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <span className="text-sm text-gray-400">Loading tasks…</span>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-4">
-        <button onClick={onPrevMonth} className="px-2 py-1 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors">←</button>
+        <button
+          type="button"
+          onClick={onPrevMonth}
+          aria-label={`Previous month, ${MONTH_NAMES[month === 0 ? 11 : month - 1]} ${month === 0 ? year - 1 : year}`}
+          className="px-2 py-1 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+        >
+          ←
+        </button>
         <h3 className="text-sm font-semibold text-gray-200">{MONTH_NAMES[month]} {year}</h3>
-        <button onClick={onNextMonth} className="px-2 py-1 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors">→</button>
+        <button
+          type="button"
+          onClick={onNextMonth}
+          aria-label={`Next month, ${MONTH_NAMES[month === 11 ? 0 : month + 1]} ${month === 11 ? year + 1 : year}`}
+          className="px-2 py-1 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+        >
+          →
+        </button>
       </div>
       <div className="grid grid-cols-7 gap-px">
         {DAY_NAMES.map((d) => (
@@ -151,6 +176,7 @@ function CalendarView({ tasks, year, month, onPrevMonth, onNextMonth }: Calendar
 }
 
 export default function DiaryCalendar() {
+  useDocumentTitle('Diary / Calendar');
   const [view, setView] = useState<ViewMode>('list');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -331,6 +357,7 @@ export default function DiaryCalendar() {
           month={calMonth}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
+          tasksLoading={tasksLoading}
         />
       ) : (
         <>

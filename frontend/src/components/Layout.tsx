@@ -1,13 +1,17 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { useState } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import AuthControl from './AuthControl';
 import ChatPanel from './ChatPanel';
 import RoleSwitcher from './RoleSwitcher';
 import SimulationBanner from './SimulationBanner';
 import ThemeToggle from './ThemeToggle';
+import Breadcrumbs from './Breadcrumbs';
+import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { DocumentIcon } from './icons';
 import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
 import { useRoleSimulation } from '../context/RoleSimulationContext';
+import ClaimDetailTitleProvider from '../context/ClaimDetailTitleProvider';
+import { useClaimDetailTitleForBreadcrumb } from '../hooks/useClaimDetailTitle';
 
 interface NavItem {
   to: string;
@@ -76,27 +80,104 @@ function NavSection({ label, items, onLinkClick }: { label: string; items: NavIt
   );
 }
 
-export default function Layout() {
+function LayoutShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const closeSidebar = () => setSidebarOpen(false);
+  const closeSidebar = () => {
+    setSidebarOpen(false);
+    window.setTimeout(() => menuButtonRef.current?.focus(), 0);
+  };
+  const openSidebar = () => setSidebarOpen(true);
   const { roleDef, isSimulating } = useRoleSimulation();
+  const { pathname } = useLocation();
+  const claimDetailTitle = useClaimDetailTitleForBreadcrumb();
+  const breadcrumbItems = useBreadcrumbs(claimDetailTitle);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    setIsNarrowViewport(mq.matches);
+    const onChange = () => setIsNarrowViewport(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   const brandBg = isSimulating ? roleDef.accentBg : 'bg-blue-600';
   const brandShadow = isSimulating ? '' : 'shadow-lg shadow-blue-600/20';
 
+  const trapFocus = useCallback(
+    (e: KeyboardEvent) => {
+      if (!sidebarOpen) return;
+      if (e.key !== 'Tab') return;
+      const root = sidebarRef.current;
+      if (!root) return;
+      const focusables = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      const list = Array.from(focusables).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (list.length === 0) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [sidebarOpen]
+  );
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    previouslyFocusedRef.current = (document.activeElement as HTMLElement) ?? null;
+    const t = window.setTimeout(() => {
+      sidebarRef.current?.querySelector<HTMLElement>('a[href], button')?.focus();
+    }, 0);
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('keydown', trapFocus);
+      previouslyFocusedRef.current?.focus?.();
+    };
+  }, [sidebarOpen, trapFocus]);
+
+  const showBreadcrumbs =
+    breadcrumbItems.length > 1 &&
+    pathname !== '/' &&
+    pathname !== '/dashboard' &&
+    pathname !== '/workbench';
+
   return (
     <div className="min-h-screen bg-gray-950 flex">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[100] focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-lg focus:shadow-lg focus:outline-none"
+      >
+        Skip to main content
+      </a>
+
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           data-testid="sidebar-overlay"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 lg:hidden"
           onClick={closeSidebar}
+          aria-hidden
         />
       )}
 
       {/* Sidebar */}
       <aside
+        ref={sidebarRef}
+        id="app-sidebar"
+        // When drawer is closed on mobile, remove from tab order / AT (desktop sidebar stays usable)
+        inert={isNarrowViewport && !sidebarOpen ? true : undefined}
         className={`fixed lg:static inset-y-0 left-0 z-30 w-64 bg-gray-900 border-r border-gray-800 transform transition-transform duration-200 lg:translate-x-0 flex flex-col ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
@@ -145,10 +226,12 @@ export default function Layout() {
         <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between gap-4 lg:hidden">
           <div className="flex items-center gap-3">
             <button
+              ref={menuButtonRef}
               type="button"
-              onClick={() => setSidebarOpen(true)}
+              onClick={openSidebar}
               aria-label="Open menu"
               aria-expanded={sidebarOpen}
+              aria-controls="app-sidebar"
               className="text-gray-400 hover:text-gray-200 transition-colors"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,7 +246,8 @@ export default function Layout() {
           <AuthControl />
         </header>
 
-        <main className="flex-1 p-6 overflow-auto">
+        <main id="main-content" tabIndex={-1} className="flex-1 p-6 overflow-auto outline-none">
+          {showBreadcrumbs ? <Breadcrumbs items={breadcrumbItems} /> : null}
           <Outlet />
         </main>
       </div>
@@ -171,5 +255,13 @@ export default function Layout() {
       {/* Chat assistant (floating panel) */}
       <ChatPanel />
     </div>
+  );
+}
+
+export default function Layout() {
+  return (
+    <ClaimDetailTitleProvider>
+      <LayoutShell />
+    </ClaimDetailTitleProvider>
   );
 }
