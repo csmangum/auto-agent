@@ -39,7 +39,7 @@ describe('initSentry', () => {
     expect(mockInit).toHaveBeenCalledWith(
       expect.objectContaining({
         dsn: 'https://key@o1.ingest.sentry.io/1',
-        sendDefaultPii: false,
+        environment: 'test',
       }),
     );
   });
