@@ -193,7 +193,7 @@ export default function WorkbenchDashboard() {
                 Retry
               </button>
             </div>
-          ) : loading ? (
+          ) : queueLoading ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="h-8 bg-gray-700/30 rounded skeleton-shimmer" />
@@ -250,7 +250,7 @@ export default function WorkbenchDashboard() {
                 Retry
               </button>
             </div>
-          ) : loading ? (
+          ) : overdueLoading ? (
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="h-12 bg-gray-700/30 rounded skeleton-shimmer" />
@@ -307,7 +307,7 @@ export default function WorkbenchDashboard() {
               Retry
             </button>
           </div>
-        ) : loading ? (
+        ) : queueLoading ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="h-10 bg-gray-700/30 rounded skeleton-shimmer" />

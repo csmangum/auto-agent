@@ -82,7 +82,7 @@ export default function PortalClaimsList() {
     return [...set].sort();
   }, [rawClaims]);
 
-  const showLoadMore = !!hasNextPage && !search && !statusFilter;
+  const showLoadMore = !!hasNextPage && !search.trim() && !statusFilter;
 
   return (
     <div className="min-h-screen bg-gray-950">
