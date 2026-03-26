@@ -245,11 +245,17 @@ async def claim_agent_error_handler(request: Request, exc: Exception) -> JSONRes
 def register_exception_handlers(app: Any) -> None:  # noqa: ANN401
     """Register all structured error handlers on *app*.
 
-    Call this inside :func:`create_app` **after** middleware is added so that
-    domain exceptions propagate through middleware unchanged and are caught here.
-    Ordering matters: more-specific subclasses must be registered before their
-    base classes (FastAPI / Starlette searches handlers in registration order
-    for exact type matches, but we add them by type so each is exact).
+    Call this during application setup (for example inside :func:`create_app`)
+    **after** middleware is added so that domain exceptions propagate through
+    middleware unchanged and are caught here.
+
+    FastAPI / Starlette resolve exception handlers by looking up the exception
+    type and walking its method resolution order (MRO) to find a registered
+    handler whose key is a superclass of the raised exception. Registration
+    order between different exception classes does **not** affect which handler
+    is chosen, as long as each exception type is only registered once. We still
+    register more-specific domain exceptions before their shared base class here
+    for clarity of intent and readability.
     """
     # Override default FastAPI handlers
     app.add_exception_handler(HTTPException, http_exception_handler)

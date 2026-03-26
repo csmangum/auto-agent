@@ -157,7 +157,8 @@ def _update_gauges() -> None:
             _claims_in_progress.set(in_progress)
             _review_queue_size.set(review)
     except Exception:
-        logger.warning("Failed to update Prometheus gauges from DB", exc_info=True)
+        # DEBUG: frequent Prometheus scrapes would spam logs if DB is unavailable
+        logger.debug("Failed to update Prometheus gauges from DB", exc_info=True)
         _claims_in_progress.set(-1)
         _review_queue_size.set(-1)
 

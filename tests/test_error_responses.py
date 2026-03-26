@@ -123,6 +123,10 @@ class TestConflictErrors:
             assert "error_code" in body
         elif resp2.status_code in {404, 405}:
             pytest.skip("resolve-review endpoint not applicable for this claim state")
+        else:
+            pytest.fail(
+                f"Expected 409 (conflict), or 404/405 to skip; got {resp2.status_code}: {resp2.text!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -175,10 +179,11 @@ class TestBadRequestErrors:
                 "priority": "INVALID_PRIORITY_VALUE_XYZ",
             },
         )
-        # Pydantic rejects invalid enum values as 422 before route logic runs
-        if resp.status_code == 422:
-            body = resp.json()
-            _assert_error_schema(body, error_code="VALIDATION_ERROR")
+        assert resp.status_code == 422, (
+            f"Invalid enum should yield 422; got {resp.status_code}: {resp.text!r}"
+        )
+        body = resp.json()
+        _assert_error_schema(body, error_code="VALIDATION_ERROR")
 
 
 # ---------------------------------------------------------------------------
