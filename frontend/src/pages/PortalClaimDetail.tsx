@@ -87,7 +87,7 @@ export default function PortalClaimDetail() {
   const claimTypeForQueries = (claimData as Record<string, unknown> | undefined)
     ?.claim_type as string | undefined;
 
-  const { data: repairData } = useQuery({
+  const { data: repairData, isFetching: repairFetching } = useQuery({
     queryKey: ['portal', 'claim', claimId, 'repair-status'],
     queryFn: () => portalApi.getRepairStatus(claimId!),
     enabled:
@@ -378,6 +378,7 @@ export default function PortalClaimDetail() {
             <RepairTab
               claimType={claim.claim_type as string}
               repairData={repairData}
+              repairLoading={repairFetching}
             />
           )}
           {activeTab === 'payments' && <PaymentsTab payments={payments} />}
@@ -569,6 +570,7 @@ function DocumentsTab({
 function RepairTab({
   claimType,
   repairData,
+  repairLoading,
 }: {
   claimType: string;
   repairData?: {
@@ -576,6 +578,7 @@ function RepairTab({
     history: unknown[];
     cycle_time_days: number | null;
   };
+  repairLoading?: boolean;
 }) {
   if (claimType !== 'partial_loss') {
     return (
@@ -586,19 +589,41 @@ function RepairTab({
       />
     );
   }
+  if (repairLoading && !repairData) {
+    return (
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-8 space-y-3 animate-pulse">
+        <div className="h-4 bg-gray-700/40 rounded w-40" />
+        <div className="h-20 bg-gray-700/30 rounded-lg" />
+        <div className="h-20 bg-gray-700/30 rounded-lg" />
+      </div>
+    );
+  }
   const history = (repairData?.history ?? []) as Array<{
     status: string;
     status_updated_at?: string;
     notes?: string;
   }>;
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {repairLoading && (
+        <div
+          className="absolute inset-0 z-10 bg-gray-950/40 backdrop-blur-[1px] rounded-xl flex items-center justify-center pointer-events-none"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <span className="text-sm text-gray-400">Updating repair status…</span>
+        </div>
+      )}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-4">
           Repair Progress
         </h3>
         {history.length === 0 ? (
-          <p className="text-sm text-gray-500">No repair status updates yet.</p>
+          repairLoading ? (
+            <p className="text-sm text-gray-500 animate-pulse">Loading repair timeline…</p>
+          ) : (
+            <p className="text-sm text-gray-500">No repair status updates yet.</p>
+          )
         ) : (
           <div className="space-y-0">
             {history.map((h, i) => (
@@ -1088,20 +1113,20 @@ function DocumentDownloadLink({
   storageKey?: string;
 }) {
   const [loading, setLoading] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
   const isExternalUrl =
     docUrl.startsWith('http://') || docUrl.startsWith('https://');
   const handleClick = async () => {
     setLoading(true);
+    setLastError(null);
     try {
       if (isExternalUrl) {
-        // For presigned/external URLs (e.g. S3), open directly.
         const a = document.createElement('a');
         a.href = docUrl;
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
         a.click();
       } else {
-        // Fall back to portal attachment endpoint for local storage keys.
         const key = storageKey || docUrl;
         const session = getPortalSession();
         const headers: Record<string, string> = {};
@@ -1113,7 +1138,7 @@ function DocumentDownloadLink({
           `/api/portal/claims/${claimId}/attachments/${encodeURIComponent(key)}`,
           { headers }
         );
-        if (!res.ok) throw new Error('Download failed');
+        if (!res.ok) throw new Error(`Download failed (${res.status})`);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1122,21 +1147,34 @@ function DocumentDownloadLink({
         a.click();
         URL.revokeObjectURL(url);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      const msg = getErrorMessage(err, 'Could not download document');
+      setLastError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={loading}
-      className="text-sm text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
-    >
-      {loading ? '...' : 'View'}
-    </button>
+    <span className="inline-flex flex-col items-end gap-0.5 shrink-0">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading}
+        className="text-sm text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+      >
+        {loading ? '...' : 'View'}
+      </button>
+      {lastError && (
+        <button
+          type="button"
+          onClick={handleClick}
+          className="text-[10px] text-red-400 hover:text-red-300 underline"
+        >
+          Retry
+        </button>
+      )}
+    </span>
   );
 }
 

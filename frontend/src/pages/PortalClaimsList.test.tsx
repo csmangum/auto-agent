@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -84,12 +84,13 @@ describe('PortalClaimsList', () => {
         <PortalClaimsList />
       </Wrapper>
     );
-    await screen.findByText('Claim CLM-001...');
-    expect(screen.getByText('open')).toBeInTheDocument();
-    expect(screen.getByText(/Honda/)).toBeInTheDocument();
-    expect(screen.getByText(/Accord/)).toBeInTheDocument();
+    await screen.findByText('CLM-001');
+    const claimRow = screen.getByRole('button', { name: /CLM-001/i });
+    expect(within(claimRow).getByText('open')).toBeInTheDocument();
+    expect(within(claimRow).getByText(/Honda/)).toBeInTheDocument();
+    expect(within(claimRow).getByText(/Accord/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Claim CLM-001...'));
+    fireEvent.click(claimRow);
   });
 
   it('shows error display on API failure', async () => {
