@@ -220,10 +220,10 @@ def record_repair_portal_follow_up_response(
         )
         return {"success": True, "message": "Response recorded"}
     except DomainValidationError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            raise HTTPException(status_code=404, detail=msg) from e
-        raise HTTPException(status_code=400, detail=msg) from e
+        detail_msg = str(e)
+        if "not found" in detail_msg.lower():
+            raise HTTPException(status_code=404, detail=detail_msg) from e
+        raise HTTPException(status_code=400, detail=detail_msg) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
