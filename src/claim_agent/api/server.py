@@ -76,6 +76,11 @@ _BODY_LENGTH_REQUIRED_METHODS = frozenset({"POST", "PUT", "PATCH"})
 _DEV_ENVIRONMENTS = frozenset({"dev", "development", "test", "testing"})
 
 
+def _is_dev_environment() -> bool:
+    """True when the configured CLAIM_AGENT_ENVIRONMENT is a development/testing value."""
+    return get_settings().auth.environment.strip().lower() in _DEV_ENVIRONMENTS
+
+
 def _check_auth_configuration() -> None:
     """Refuse to start in non-development environments when no auth is configured.
 
@@ -86,8 +91,7 @@ def _check_auth_configuration() -> None:
     """
     if is_auth_required():
         return
-    env = get_settings().auth.environment.strip().lower()
-    if env not in _DEV_ENVIRONMENTS:
+    if not _is_dev_environment():
         raise RuntimeError(
             f"Authentication is not configured (API_KEYS, CLAIMS_API_KEY, and JWT_SECRET "
             f"are all unset) but CLAIM_AGENT_ENVIRONMENT is set to "
@@ -108,8 +112,7 @@ def _check_rate_limit_configuration() -> None:
     """
     if get_settings().paths.redis_url:
         return
-    env = get_settings().auth.environment.strip().lower()
-    if env not in _DEV_ENVIRONMENTS:
+    if not _is_dev_environment():
         _server_logger.warning(
             "Rate limiting uses in-memory storage (REDIS_URL not set). "
             "Not shared across workers — each uvicorn worker enforces its own limit, "
@@ -129,8 +132,7 @@ def _check_fresh_db_configuration() -> None:
     """
     if not get_settings().paths.fresh_claims_db_on_startup:
         return
-    env = get_settings().auth.environment.strip().lower()
-    if env in _DEV_ENVIRONMENTS:
+    if _is_dev_environment():
         return
     if get_settings().paths.fresh_claims_db_non_dev_override:
         _server_logger.warning(
@@ -266,7 +268,7 @@ async def _shutdown_background_tasks_with_grace(grace_seconds: int) -> None:
 
     _server_logger.warning(
         "Graceful shutdown: %d claim task(s) did not finish within %d s grace period; "
-        "cancelling and marking claims as failed (recoverable).",
+        "cancelling — claims will remain in 'processing' for recovery on next startup.",
         len(pending),
         grace_seconds,
     )
@@ -303,8 +305,7 @@ async def lifespan(_app: FastAPI):
         alembic_cfg = Config(Path(__file__).resolve().parent.parent.parent.parent / "alembic.ini")
         command.upgrade(alembic_cfg, "head")
     elif not is_postgres_backend():
-        env = get_settings().auth.environment.strip().lower()
-        if env not in _DEV_ENVIRONMENTS:
+        if not _is_dev_environment():
             _server_logger.warning(
                 "SQLite is configured as the database backend "
                 "(DATABASE_URL is not set). SQLite does not support concurrent writes "
@@ -710,10 +711,12 @@ async def api_version_redirect_middleware(request: Request, call_next):
     if path.startswith("/api/") and not path.startswith("/api/v1/"):
         versioned = "/api/v1" + path[len("/api"):]
         new_url = request.url.replace(path=versioned)
-        return Response(status_code=308, headers={"Location": str(new_url)})
+        headers = {"Location": str(new_url), **_base_security_response_headers()}
+        return Response(status_code=308, headers=headers)
     if path == "/api":
         new_url = request.url.replace(path="/api/v1")
-        return Response(status_code=308, headers={"Location": str(new_url)})
+        headers = {"Location": str(new_url), **_base_security_response_headers()}
+        return Response(status_code=308, headers=headers)
     return await call_next(request)
 
 

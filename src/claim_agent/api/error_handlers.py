@@ -88,7 +88,8 @@ def _json(
 
 async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Override the default HTTPException handler to include ``error_code``."""
-    assert isinstance(exc, HTTPException)
+    if not isinstance(exc, HTTPException):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     error_code = _error_code_for_status(exc.status_code)
     headers = dict(exc.headers) if exc.headers else None
@@ -97,9 +98,8 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
 
 async def request_validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Override the default RequestValidationError handler to include ``error_code``."""
-    assert isinstance(exc, RequestValidationError)
-    # exc.errors() may contain non-JSON-serializable objects (e.g. ValueError);
-    # convert each error to a plain dict with only string-safe values.
+    if not isinstance(exc, RequestValidationError):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     raw_errors = exc.errors()
     safe_errors = [
         {
@@ -139,7 +139,8 @@ async def domain_validation_handler(request: Request, exc: Exception) -> JSONRes
 
 
 async def invalid_claim_transition_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, InvalidClaimTransitionError)
+    if not isinstance(exc, InvalidClaimTransitionError):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     return _json(
         status.HTTP_409_CONFLICT,
         "INVALID_CLAIM_TRANSITION",
@@ -154,7 +155,8 @@ async def invalid_claim_transition_handler(request: Request, exc: Exception) -> 
 
 
 async def claim_already_processing_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, ClaimAlreadyProcessingError)
+    if not isinstance(exc, ClaimAlreadyProcessingError):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     return _json(
         status.HTTP_409_CONFLICT,
         "CLAIM_ALREADY_PROCESSING",
@@ -164,7 +166,8 @@ async def claim_already_processing_handler(request: Request, exc: Exception) -> 
 
 
 async def reserve_authority_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, ReserveAuthorityError)
+    if not isinstance(exc, ReserveAuthorityError):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     return _json(
         status.HTTP_403_FORBIDDEN,
         "RESERVE_AUTHORITY_EXCEEDED",
@@ -179,7 +182,8 @@ async def reserve_authority_handler(request: Request, exc: Exception) -> JSONRes
 
 
 async def payment_authority_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, PaymentAuthorityError)
+    if not isinstance(exc, PaymentAuthorityError):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     return _json(
         status.HTTP_403_FORBIDDEN,
         "PAYMENT_AUTHORITY_EXCEEDED",
@@ -194,7 +198,8 @@ async def payment_authority_handler(request: Request, exc: Exception) -> JSONRes
 
 
 async def token_budget_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, TokenBudgetExceeded)
+    if not isinstance(exc, TokenBudgetExceeded):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     return _json(
         status.HTTP_503_SERVICE_UNAVAILABLE,
         "TOKEN_BUDGET_EXCEEDED",
@@ -208,7 +213,8 @@ async def token_budget_exceeded_handler(request: Request, exc: Exception) -> JSO
 
 
 async def claim_workflow_timeout_handler(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, ClaimWorkflowTimeoutError)
+    if not isinstance(exc, ClaimWorkflowTimeoutError):
+        return _json(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
     return _json(
         status.HTTP_504_GATEWAY_TIMEOUT,
         "WORKFLOW_TIMEOUT",
