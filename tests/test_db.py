@@ -68,7 +68,7 @@ def test_init_db_follow_up_messages_has_topic_column(temp_db):
 
 
 def test_alembic_migrations_stamps_head_on_fresh_db():
-    """_run_alembic_migrations runs upgrade on a fresh database (idempotent migrations)."""
+    """_run_alembic_migrations stamps Alembic head on a fresh database (no alembic_version)."""
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
@@ -77,12 +77,12 @@ def test_alembic_migrations_stamps_head_on_fresh_db():
         conn.executescript(SCHEMA_SQL)
         conn.commit()
         conn.close()
-        # No alembic_version table yet — expect upgrade to run (safe due to idempotent migrations).
+        # No alembic_version table yet — expect stamp head (migrations are not run on fresh DBs).
         _run_alembic_migrations(path)
         conn = sqlite3.connect(path)
         rows = conn.execute("SELECT version_num FROM alembic_version").fetchall()
         conn.close()
-        assert len(rows) == 1, "Expected exactly one alembic_version row after upgrade"
+        assert len(rows) == 1, "Expected exactly one alembic_version row after stamp"
     finally:
         os.unlink(path)
 

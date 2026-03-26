@@ -8,7 +8,7 @@ For configuration details, see [Configuration](configuration.md). For MCP observ
 
 The observability module (`claim_agent.observability`) provides:
 
-- **Health checks** – Production health endpoint with DB connectivity (and optional LLM) checks. Returns 200 when healthy, 503 when critical dependencies are down.
+- **Health checks** – Production health endpoint with DB connectivity, optional LLM and claimant-notification readiness, and adapter probes. Returns 200 when healthy, 503 when critical dependencies are down.
 - **Structured logging** – Logs tagged with `claim_id`, `claim_type`, and optional policy/context. Output can be human-readable or JSON for log aggregators. PII (policy_number, vin) is masked when `CLAIM_AGENT_MASK_PII=true` (default).
 - **Tracing** – LangSmith integration for LLM traces and a LiteLLM callback so all LLM calls (via CrewAI) report real token usage and cost.
 - **Metrics** – Per-claim and global aggregates: LLM call count, tokens, estimated cost (USD), and latency (total, average, p50/p95/p99). Prometheus export at `/metrics` for production monitoring.
@@ -62,12 +62,16 @@ When running the API server (`claim-agent serve`), production health checks are 
 | `GET /health` | Alias for k8s/load balancers |
 | `GET /healthz` | Alias for k8s/load balancers |
 
-**Response:** `{"status": "ok"|"degraded", "checks": {"database": "ok"|"error", "llm": "ok"|"degraded"|"skipped"}}`
+**Response:** `checks` includes `database`, `database_replica`, `llm`, `notifications`, and `adapter_*` keys (see [Configuration](configuration.md)).
 
-- **200** when database is connected
-- **503** when database is unreachable (critical dependency down)
+- **200** when the database is connected and no other **critical** optional check forces degradation
+- **503** when the database is unreachable, or when `HEALTH_CHECK_NOTIFICATIONS=true` and **no** notification channel is ready (email or SMS)
 
-Set `HEALTH_CHECK_LLM=true` to include an optional LLM configuration/client initialization check. LLM failure marks `llm: degraded` but does not change the overall status (DB is the only critical dependency).
+Set `HEALTH_CHECK_LLM=true` to include an optional LLM configuration/client initialization check. LLM failure marks `llm: degraded` but does not change the overall status.
+
+Set `HEALTH_CHECK_NOTIFICATIONS=true` to require at least one of email or SMS to be **enabled and fully configured** (API keys and sender/from set). Otherwise `notifications` is `degraded:...` and the top-level `status` becomes `degraded` (503). When unset, `notifications` is `skipped`.
+
+On API startup, claimant notification readiness is evaluated once and misconfiguration is logged at WARNING (independent of `HEALTH_CHECK_NOTIFICATIONS`).
 
 ## Prometheus Metrics
 

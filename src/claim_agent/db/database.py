@@ -820,15 +820,29 @@ def row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
-def _find_alembic_dir() -> Path | None:
+def _find_alembic_dir() -> Path:
     """Locate the Alembic scripts directory.
 
     Checks (in order):
-    1. The project root inferred from this module's file path (editable / development installs).
-    2. The current working directory (CLI / script usage from the project root).
+    1. ``ALEMBIC_SCRIPT_LOCATION`` from settings (explicit path for wheel / non-repo layouts).
+    2. The project root inferred from this module's file path (editable / development installs).
+    3. The current working directory (CLI / script usage from the project root).
+
+    Raises:
+        RuntimeError: If no valid Alembic scripts directory exists.
     """
+    from claim_agent.config import get_settings
+
+    override = (get_settings().paths.alembic_script_location or "").strip()
+    if override:
+        candidate = Path(override).expanduser().resolve()
+        if candidate.is_dir():
+            return candidate
+        raise RuntimeError(
+            f"ALEMBIC_SCRIPT_LOCATION is set but is not a directory: {candidate}"
+        )
+
     # Editable install path: src/claim_agent/db/database.py → parents[3] == project root.
-    # This requires the package to be installed in editable mode (pip install -e .).
     candidate = Path(__file__).resolve().parents[3] / "alembic"
     if candidate.is_dir():
         return candidate
@@ -836,7 +850,11 @@ def _find_alembic_dir() -> Path | None:
     candidate = Path.cwd() / "alembic"
     if candidate.is_dir():
         return candidate
-    return None
+    raise RuntimeError(
+        "Alembic scripts directory not found. Set ALEMBIC_SCRIPT_LOCATION to the path of "
+        "the `alembic` folder (repository root), or install editable from the repo "
+        "(`pip install -e .`) and run from the project root."
+    )
 
 
 def _run_alembic_migrations(db_path: str, is_legacy: bool = False) -> None:
@@ -861,40 +879,34 @@ def _run_alembic_migrations(db_path: str, is_legacy: bool = False) -> None:
         is_legacy: If True, indicates this is a legacy database (tables existed
             before _run_schema was called). If False, indicates a fresh database.
 
-    If the Alembic scripts directory cannot be located (e.g. a non-editable
-    package install without the source tree), a warning is emitted and the
-    function returns without error so that normal usage is not disrupted.
-    Run ``alembic upgrade head`` manually from the project root in that case.
+    Raises:
+        RuntimeError: If the Alembic scripts directory cannot be resolved (see
+            :func:`_find_alembic_dir`).
+        Exception: Propagates Alembic command failures so startup does not continue with a
+            partially migrated or unstamped database.
     """
     alembic_dir = _find_alembic_dir()
-    if alembic_dir is None:
-        logger.warning(
-            "Alembic scripts directory not found; skipping programmatic Alembic migration "
-            "for SQLite database '%s'. Run 'alembic upgrade head' from the project root.",
-            db_path,
-        )
-        return
 
     db_abs = os.path.abspath(db_path)
 
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(alembic_dir))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_abs}")
+    # Suppress Alembic's own INFO-level console logging during programmatic use.
+    cfg.attributes["configure_logger"] = False
+
+    # Determine whether to stamp (fresh DB) or upgrade (existing/legacy DB).
+    with sqlite3.connect(db_path) as check_conn:
+        try:
+            check_conn.execute("SELECT 1 FROM alembic_version LIMIT 1")
+            has_version_table = True
+        except sqlite3.OperationalError:
+            has_version_table = False
+
     try:
-        from alembic import command
-        from alembic.config import Config
-
-        cfg = Config()
-        cfg.set_main_option("script_location", str(alembic_dir))
-        cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_abs}")
-        # Suppress Alembic's own INFO-level console logging during programmatic use.
-        cfg.attributes["configure_logger"] = False
-
-        # Determine whether to stamp (fresh DB) or upgrade (existing/legacy DB).
-        with sqlite3.connect(db_path) as check_conn:
-            try:
-                check_conn.execute("SELECT 1 FROM alembic_version LIMIT 1")
-                has_version_table = True
-            except sqlite3.OperationalError:
-                has_version_table = False
-
         if has_version_table:
             # Database already has Alembic version tracking: run pending migrations.
             command.upgrade(cfg, "head")
@@ -908,15 +920,11 @@ def _run_alembic_migrations(db_path: str, is_legacy: bool = False) -> None:
             # IF NOT EXISTS), so we must avoid running them on fresh databases.
             command.stamp(cfg, "head")
     except Exception:
-        # Log and continue: the schema was already created via SCHEMA_SQL so the
-        # database is usable.  Incomplete migrations will surface as missing columns
-        # at runtime rather than crashing startup.  Operators can resolve by running
-        # 'alembic upgrade head' manually from the project root.
         logger.exception(
-            "Failed to apply Alembic migrations for SQLite database '%s'; "
-            "schema may be incomplete. Run 'alembic upgrade head' manually.",
+            "Failed to apply Alembic migrations for SQLite database '%s'.",
             db_path,
         )
+        raise
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
@@ -951,7 +959,7 @@ def _run_schema(db_path: str) -> None:
         return  # PostgreSQL uses Alembic only
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Check if claims table exists BEFORE running SCHEMA_SQL to distinguish
     # fresh databases from legacy (pre-Alembic) databases.
     had_claims_table = False
@@ -962,7 +970,7 @@ def _run_schema(db_path: str) -> None:
                 had_claims_table = True
             except sqlite3.OperationalError:
                 had_claims_table = False
-    
+
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
     _run_alembic_migrations(db_path, is_legacy=had_claims_table)

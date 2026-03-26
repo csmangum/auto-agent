@@ -595,6 +595,15 @@ class PathsConfig(BaseSettings):
         validation_alias="RUN_MIGRATIONS_ON_STARTUP",
         description="Run alembic upgrade head on API startup when using PostgreSQL. Set to false to run migrations as a separate deploy step.",
     )
+    alembic_script_location: str = Field(
+        default="",
+        validation_alias="ALEMBIC_SCRIPT_LOCATION",
+        description=(
+            "Absolute or relative path to the Alembic `alembic` scripts directory. "
+            "Required for SQLite when the package is not installed editable from the repo root "
+            "(e.g. wheel installs). If empty, auto-detect from repo layout or current working directory."
+        ),
+    )
     db_pool_size: int = Field(
         default=5,
         ge=1,

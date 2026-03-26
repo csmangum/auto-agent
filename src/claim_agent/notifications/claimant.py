@@ -1,6 +1,7 @@
 """Claimant notifications (email/SMS)."""
 
 import atexit
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -44,12 +45,16 @@ UCSPA_REQUIRED_EVENTS = (
 HTTP_TIMEOUT_SECONDS = 30.0
 
 
-def check_notification_readiness() -> dict[str, Any]:
+def check_notification_readiness(*, log_warnings: bool = True) -> dict[str, Any]:
     """Validate that notification provider credentials are configured.
 
     Returns a summary dict with ``email_ready``, ``sms_ready``, and
     ``warnings`` keys.  Intended for use during startup health checks and
     pilot readiness validation.
+
+    Args:
+        log_warnings: When False (e.g. periodic ``/api/health`` polls), skip emitting
+            duplicate warning log lines; callers should interpret the returned dict.
     """
     config = get_notification_config()
     warnings: list[str] = []
@@ -84,8 +89,9 @@ def check_notification_readiness() -> dict[str, Any]:
             "Claimants will not receive UCSPA-required SMS communications."
         )
 
-    for warning in warnings:
-        logger.warning("Notification readiness: %s", warning)
+    if log_warnings:
+        for warning in warnings:
+            logger.warning("Notification readiness: %s", warning)
 
     return {"email_ready": email_ready, "sms_ready": sms_ready, "warnings": warnings}
 
@@ -109,8 +115,6 @@ def _report_delivery_failure(
     if not failure_url:
         return
 
-    import json as _json
-
     payload: dict[str, Any] = {
         "channel": channel,
         "event": event,
@@ -124,11 +128,16 @@ def _report_delivery_failure(
 
     try:
         with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS) as client:
-            client.post(
+            response = client.post(
                 failure_url,
-                content=_json.dumps(payload).encode(),
+                content=json.dumps(payload).encode(),
                 headers={"Content-Type": "application/json"},
             )
+            if response.status_code < 200 or response.status_code >= 300:
+                logger.warning(
+                    "Delivery-failure webhook returned non-success status: %s",
+                    response.status_code,
+                )
     except Exception as exc:  # noqa: BLE001
         logger.debug("Failed to dispatch delivery-failure webhook: %s", exc)
 

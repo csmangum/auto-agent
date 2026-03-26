@@ -1,6 +1,6 @@
 """SQLite DDL for incidents, claim_links, and claims.incident_id (shared bootstrap).
 
-Used by ``database.py`` (``SCHEMA_SQL``, ``_run_migrations``) and Alembic revision 022
+Used by ``database.py`` (``SCHEMA_SQL``) and Alembic revision 022
 so these definitions stay in one place.
 
 PostgreSQL equivalents live in ``alembic/versions/023_postgres_full_schema.py``; keep
@@ -42,7 +42,7 @@ IDX_CLAIM_LINKS_CLAIM_B = (
 
 IDX_CLAIMS_INCIDENT_ID = "CREATE INDEX IF NOT EXISTS idx_claims_incident_id ON claims(incident_id)"
 
-# For Alembic 022 after ``incidents`` exists; do not use in _run_migrations before incidents table.
+# For Alembic 022 after ``incidents`` exists.
 ALTER_CLAIMS_ADD_INCIDENT_ID_FK = (
     "ALTER TABLE claims ADD COLUMN incident_id TEXT REFERENCES incidents(id)"
 )

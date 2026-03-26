@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from claim_agent.observability.health import check_health, is_healthy
 from claim_agent.observability.prometheus import (
     record_claim_outcome,
@@ -11,6 +13,10 @@ from claim_agent.observability.prometheus import (
 
 
 class TestHealth:
+    @pytest.fixture(autouse=True)
+    def _clear_health_check_notifications_env(self, monkeypatch):
+        monkeypatch.delenv("HEALTH_CHECK_NOTIFICATIONS", raising=False)
+
     def test_check_health_db_ok(self):
         """When DB is connected, status is ok and database check passes."""
         result = check_health()
@@ -150,6 +156,39 @@ class TestHealth:
             assert key in result["checks"], f"missing {key}"
             assert result["checks"][key] == "skipped"
 
+    def test_health_check_notifications_skipped_by_default(self, monkeypatch):
+        monkeypatch.delenv("HEALTH_CHECK_NOTIFICATIONS", raising=False)
+        result = check_health()
+        assert result["checks"]["notifications"] == "skipped"
+
+    def test_health_check_notifications_ok_when_channel_ready(self, monkeypatch):
+        monkeypatch.setenv("HEALTH_CHECK_NOTIFICATIONS", "true")
+        with patch(
+            "claim_agent.notifications.claimant.check_notification_readiness",
+            return_value={
+                "email_ready": True,
+                "sms_ready": False,
+                "warnings": [],
+            },
+        ):
+            result = check_health()
+        assert result["checks"]["notifications"] == "ok"
+        assert result["status"] == "ok"
+
+    def test_health_check_notifications_degraded_when_none_ready(self, monkeypatch):
+        monkeypatch.setenv("HEALTH_CHECK_NOTIFICATIONS", "true")
+        with patch(
+            "claim_agent.notifications.claimant.check_notification_readiness",
+            return_value={
+                "email_ready": False,
+                "sms_ready": False,
+                "warnings": ["both off"],
+            },
+        ):
+            result = check_health()
+        assert result["checks"]["notifications"] == "degraded:no notification channel ready"
+        assert result["status"] == "degraded"
+
 
 class TestPrometheus:
     def test_record_claim_outcome_escalated(self):
@@ -197,6 +236,10 @@ class TestPrometheus:
 
 class TestHealthEndpoints:
     """Integration tests for health and metrics endpoints."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_health_check_notifications_env(self, monkeypatch):
+        monkeypatch.delenv("HEALTH_CHECK_NOTIFICATIONS", raising=False)
 
     def test_health_returns_200_when_db_ok(self):
         """GET /api/health returns 200 when database is connected."""
