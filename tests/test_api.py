@@ -4106,11 +4106,18 @@ class TestRetentionEligibleForPurge:
 class TestLegacyApiVersionRedirect:
     def test_exact_api_path_redirects_to_api_v1(self, client):
         resp = client.get("/api", follow_redirects=False)
-        assert resp.status_code == 301
+        assert resp.status_code == 308
         assert resp.headers["location"].rstrip("/").endswith("/api/v1")
 
     def test_legacy_prefix_redirects_to_v1(self, client):
         resp = client.get("/api/claims/stats", follow_redirects=False)
-        assert resp.status_code == 301
+        assert resp.status_code == 308
         loc = resp.headers.get("location", "")
         assert "/api/v1/claims/stats" in loc.replace("\\", "/")
+
+    def test_post_redirect_uses_308_to_preserve_method(self, client):
+        """308 (not 301) ensures POST/PUT/PATCH methods are preserved across redirects."""
+        resp = client.post("/api/claims", json={}, follow_redirects=False)
+        assert resp.status_code == 308
+        loc = resp.headers.get("location", "")
+        assert "/api/v1/claims" in loc.replace("\\", "/")

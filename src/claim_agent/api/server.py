@@ -9,7 +9,7 @@ Provides REST API endpoints for:
 Security: When API_KEYS, CLAIMS_API_KEY, or JWT_SECRET is set, all /api/v1/* endpoints
 require auth except /api/v1/health, /api/v1/portal/*, /api/v1/repair-portal/*,
 /api/v1/third-party-portal/*, /api/v1/auth/login, and /api/v1/auth/refresh.
-Legacy /api/* paths are permanently redirected (301) to /api/v1/*.
+Legacy /api/* paths are permanently redirected (308) to /api/v1/*.
 Pass via X-API-Key header or Authorization: Bearer <key>. Leave unset for local/dev.
 Non-dev deployments (CLAIM_AGENT_ENVIRONMENT) require at least one auth mechanism at startup.
 """
@@ -55,7 +55,7 @@ from claim_agent.api.routes.repair_shop_users import router as repair_shop_users
 from claim_agent.api.routes.note_templates import router as note_templates_router
 from claim_agent.config import get_settings
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
-from claim_agent.db.constants import STATUS_FAILED, STATUS_NEEDS_REVIEW
+from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.db.database import ensure_fresh_db_on_startup, get_db_path, is_postgres_backend
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.diary.auto_create import ensure_diary_listener_registered
@@ -198,9 +198,9 @@ def _warn_if_scheduler_enabled_on_api() -> None:
 async def _shutdown_background_tasks_with_grace(grace_seconds: int) -> None:
     """Wait up to *grace_seconds* for in-flight claim tasks, then cancel the rest.
 
-    Any task still running after the grace period is cancelled and its associated
-    claim is marked ``failed`` with a recoverable message so the startup recovery
-    scan can re-queue it on the next server boot.
+    Any task still running after the grace period is cancelled. The associated claim
+    remains in ``processing`` status so the startup recovery scan will detect it and
+    mark it ``needs_review`` on the next server boot.
 
     Args:
         grace_seconds: Maximum wall-clock seconds to wait before cancellation.
@@ -244,26 +244,10 @@ async def _shutdown_background_tasks_with_grace(grace_seconds: int) -> None:
         claim_id = claim_task_claim_ids.get(task)
         task.cancel()
         if claim_id:
-            try:
-                repo = ClaimRepository(db_path=get_db_path())
-                repo.update_claim_status(
-                    claim_id,
-                    STATUS_FAILED,
-                    details=(
-                        "Claim processing was interrupted by server shutdown "
-                        "(recoverable). The claim will be re-queued automatically "
-                        "on the next startup if it remains in 'processing' status."
-                    ),
-                    actor_id=ACTOR_WORKFLOW,
-                    skip_validation=True,
-                )
-                _server_logger.warning(
-                    "Graceful shutdown: claim %s marked 'failed' (recoverable).", claim_id
-                )
-            except Exception:
-                _server_logger.exception(
-                    "Graceful shutdown: failed to mark claim %s as failed.", claim_id
-                )
+            _server_logger.warning(
+                "Graceful shutdown: claim %s interrupted (will be recovered on next startup).",
+                claim_id,
+            )
 
     # Await cancelled tasks so their CancelledError is consumed
     await asyncio.gather(*pending, return_exceptions=True)
@@ -699,18 +683,20 @@ async def security_headers_middleware(request: Request, call_next):
 async def api_version_redirect_middleware(request: Request, call_next):
     """Redirect unversioned /api/* requests to /api/v1/* for backward compatibility.
 
-    Clients that still use the legacy /api/ prefix receive a 301 Moved Permanently
-    redirect so they can update their URLs. The versioned /api/v1/ paths are the
-    canonical API; the legacy paths are kept only to avoid silent breakage.
+    Clients that still use the legacy /api/ prefix receive a 308 Permanent Redirect
+    so they can update their URLs. HTTP 308 preserves the request method (POST, PUT,
+    PATCH, DELETE), unlike 301 which causes clients to downgrade to GET. The
+    versioned /api/v1/ paths are the canonical API; the legacy paths are kept only
+    to avoid silent breakage.
     """
     path = request.url.path
     if path.startswith("/api/") and not path.startswith("/api/v1/"):
         versioned = "/api/v1" + path[len("/api"):]
         new_url = request.url.replace(path=versioned)
-        return Response(status_code=301, headers={"Location": str(new_url)})
+        return Response(status_code=308, headers={"Location": str(new_url)})
     if path == "/api":
         new_url = request.url.replace(path="/api/v1")
-        return Response(status_code=301, headers={"Location": str(new_url)})
+        return Response(status_code=308, headers={"Location": str(new_url)})
     return await call_next(request)
 
 

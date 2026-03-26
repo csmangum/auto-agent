@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import text
 
 from claim_agent.config import reload_settings
-from claim_agent.db.constants import STATUS_FAILED, STATUS_PROCESSING
+from claim_agent.db.constants import STATUS_PROCESSING
 from claim_agent.db.database import get_connection, init_db
 from claim_agent.db.repository import ClaimRepository
 
@@ -151,8 +151,8 @@ class TestShutdownBackgroundTasksWithGrace:
         assert task.cancelled()
 
     @pytest.mark.asyncio
-    async def test_interrupted_claim_marked_failed_with_recoverable_message(self, grace_db):
-        """A claim whose task is cancelled is marked 'failed' with a recoverable message."""
+    async def test_interrupted_claim_remains_in_processing(self, grace_db):
+        """A claim whose task is cancelled remains in 'processing' for startup recovery."""
         claim_id = "CLM-INTERRUPTED"
         _insert_processing_claim(grace_db, claim_id)
 
@@ -178,16 +178,7 @@ class TestShutdownBackgroundTasksWithGrace:
         repo = ClaimRepository(db_path=grace_db)
         claim = repo.get_claim(claim_id)
         assert claim is not None
-        assert claim["status"] == STATUS_FAILED
-
-        # Audit trail should include the recoverable detail message
-        events, _ = repo.get_claim_history(claim_id)
-        recoverable_events = [
-            e for e in events
-            if e.get("new_status") == STATUS_FAILED
-            and "recoverable" in (e.get("details") or "").lower()
-        ]
-        assert recoverable_events, "Expected a 'failed' audit event with 'recoverable' in details"
+        assert claim["status"] == STATUS_PROCESSING
 
     @pytest.mark.asyncio
     async def test_grace_period_zero_cancels_immediately(self):
@@ -217,8 +208,8 @@ class TestShutdownBackgroundTasksWithGrace:
         assert task.cancelled()
 
     @pytest.mark.asyncio
-    async def test_db_error_during_marking_is_caught(self, grace_db, caplog):
-        """DB errors when marking a claim as failed are logged and do not raise."""
+    async def test_cancelled_task_is_awaited(self, grace_db, caplog):
+        """Cancelled tasks are properly awaited and logged."""
         import logging
 
         async def slow_task():
@@ -228,25 +219,20 @@ class TestShutdownBackgroundTasksWithGrace:
         await asyncio.sleep(0)
 
         tasks_set = {task}
-        task_ids = {task: "CLM-DB-ERR"}
+        task_ids = {task: "CLM-CANCEL"}
 
         from claim_agent.api.server import _shutdown_background_tasks_with_grace
 
         with (
             patch("claim_agent.api.server.claim_background_tasks", tasks_set),
             patch("claim_agent.api.server.claim_task_claim_ids", task_ids),
-            patch(
-                "claim_agent.api.server.ClaimRepository.update_claim_status",
-                side_effect=RuntimeError("DB error"),
-            ),
-            caplog.at_level(logging.ERROR, logger="claim_agent.api.server"),
+            caplog.at_level(logging.WARNING, logger="claim_agent.api.server"),
         ):
-            # Must not raise despite the DB error
             await _shutdown_background_tasks_with_grace(grace_seconds=0)
 
         assert task.done()
         assert task.cancelled()
-        assert any("failed to mark claim" in m.lower() for m in caplog.messages)
+        assert any("interrupted" in m.lower() for m in caplog.messages)
 
 
 # ---------------------------------------------------------------------------
