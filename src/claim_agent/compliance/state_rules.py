@@ -1,6 +1,7 @@
 """State-specific compliance rules engine.
 
-Loads applicable regulations per state (California, Florida, New York, Texas) for:
+Loads applicable regulations per state (California, Florida, New York, Texas,
+Georgia, New Jersey, Pennsylvania, Illinois) for:
 - Prompt payment deadlines (days)
 - Total loss thresholds (% of ACV)
 - Diminished value requirements
@@ -57,7 +58,8 @@ class StateRules:
     None = no state-specific requirement; falls back to 30."""
 
 
-# State-specific rules (California, Florida, New York, Texas)
+# State-specific rules (California, Florida, New York, Texas, Georgia, New Jersey,
+# Pennsylvania, Illinois)
 # Based on typical regulatory requirements; RAG corpus provides detailed guidance.
 _STATE_RULES: dict[str, StateRules] = {
     "California": StateRules(
@@ -162,6 +164,49 @@ _STATE_RULES: dict[str, StateRules] = {
         mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
         # NJSA 17:33A-15: vehicle theft must be reported to NICB within 2 working days
         nicb_deadline_days_theft=3,   # 2 working days ≈ 3 calendar days
+        nicb_deadline_days_salvage=30,
+    ),
+    "Pennsylvania": StateRules(
+        state="Pennsylvania",
+        # 31 Pa. Code § 146.7: payment within 15 working days of settlement ≈ 30 calendar days
+        prompt_payment_days=30,
+        total_loss_threshold=0.75,
+        diminished_value_required=False,
+        diminished_value_formula=None,
+        siu_referral_threshold=75,
+        # 31 Pa. Code § 146.5(a)(4): acknowledge within 10 working days ≈ 14 calendar days
+        acknowledgment_days=14,
+        investigation_days=30,
+        communication_response_days=15,
+        appraisal_rights=True,
+        # 42 Pa. C.S. § 7102: modified comparative – plaintiff barred if >50% at fault
+        comparative_fault_type="modified_comparative_51",
+        comparative_fault_bar=51.0,
+        mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging", "prior_siu_on_claimant"],
+        nicb_deadline_days_theft=30,
+        nicb_deadline_days_salvage=30,
+    ),
+    "Illinois": StateRules(
+        state="Illinois",
+        # 50 Ill. Adm. Code 919: prompt payment 30 days after settlement agreement
+        prompt_payment_days=30,
+        # IL uses 80% ACV as the standard total-loss threshold
+        total_loss_threshold=0.80,
+        diminished_value_required=False,
+        diminished_value_formula=None,
+        siu_referral_threshold=75,
+        # 50 Ill. Adm. Code 919.50(a): acknowledge within 10 working days ≈ 14 calendar days
+        acknowledgment_days=14,
+        # 50 Ill. Adm. Code 919.60: complete investigation within 45 days
+        investigation_days=45,
+        # 50 Ill. Adm. Code 919.50: respond to communications within 10 working days ≈ 14 calendar days
+        communication_response_days=14,
+        appraisal_rights=True,
+        # 735 ILCS 5/2-1116: modified comparative – plaintiff barred if >50% at fault
+        comparative_fault_type="modified_comparative_51",
+        comparative_fault_bar=51.0,
+        mandatory_indicators=["organized_fraud_ring", "bodily_injury_staging"],
+        nicb_deadline_days_theft=30,
         nicb_deadline_days_salvage=30,
     ),
 }
