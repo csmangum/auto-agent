@@ -23,9 +23,9 @@ spec:
         app.kubernetes.io/name: claim-agent
         app.kubernetes.io/component: backend
       annotations:
-        # Trigger a rollout when the ConfigMap or Secret changes (replace with a
-        # real checksum annotation in production, e.g. via Helm or Kustomize).
-        kubectl.kubernetes.io/last-applied-configuration: ""
+        # Bump this value after editing claim-agent-config or claim-agent-secret so
+        # pods roll out, or run: kubectl rollout restart deployment/claim-agent -n claim-agent
+        redeploy.claim-agent/config-trigger: "1"
     spec:
       serviceAccountName: claim-agent
       automountServiceAccountToken: false
@@ -44,8 +44,9 @@ spec:
 
       containers:
         - name: claim-agent
-          image: ghcr.io/csmangum/auto-agent:latest  # replace with your registry/tag
-          imagePullPolicy: Always
+          # Pin an explicit tag (e.g. 0.1.0); do not use :latest in production.
+          image: ghcr.io/csmangum/auto-agent:0.1.0
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8000
@@ -114,11 +115,13 @@ spec:
 
       volumes:
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 100Mi
         # Persistent claim data volume.  In production, back this with a PVC (see below)
         # or — preferably — use PostgreSQL and object storage (S3) so the pod is stateless.
         - name: app-data
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 1Gi
           # To use a PVC instead of emptyDir, replace the block above with:
           # persistentVolumeClaim:
           #   claimName: claim-agent-data

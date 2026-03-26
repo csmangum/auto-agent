@@ -148,7 +148,7 @@ def create_rest_gap_insurance_adapter() -> RestGapInsuranceAdapter:
     return RestGapInsuranceAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         submit_path=cfg.submit_path,
         status_path_template=cfg.status_path_template,
         response_key=cfg.response_key or None,

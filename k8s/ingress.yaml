@@ -15,7 +15,6 @@ metadata:
     app.kubernetes.io/name: claim-agent
     app.kubernetes.io/component: backend
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
@@ -24,6 +23,7 @@ metadata:
     # cert-manager: automatically provision a TLS cert from Let's Encrypt.
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - your-domain.example.com  # replace with your actual domain

@@ -162,7 +162,7 @@ def create_rest_repair_shop_adapter() -> RestRepairShopAdapter:
     return RestRepairShopAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         shops_path=cfg.shops_path,
         shop_path_template=cfg.shop_path_template,
         labor_path=cfg.labor_path,

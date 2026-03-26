@@ -8,7 +8,7 @@ image:
   # -- Container image repository.
   repository: ghcr.io/csmangum/auto-agent
   # -- Image pull policy.
-  pullPolicy: Always
+  pullPolicy: IfNotPresent
   # -- Image tag. Defaults to the chart appVersion.
   tag: ""
 
@@ -58,6 +58,8 @@ config:
   otelExporterOtlpEndpoint: ""
   # -- Secret provider backend: env | aws_secrets_manager | hashicorp_vault.
   secretProvider: "env"
+  # -- Comma-separated CORS allowed origins (non-secret; stored in ConfigMap).
+  corsOrigins: "https://your-domain.example.com"
 
 # ── Secrets ──────────────────────────────────────────────────────────────────
 # These values are stored in a Kubernetes Secret.
@@ -76,8 +78,6 @@ secrets:
   jwtSecret: "CHANGE_ME"
   # -- Webhook HMAC signing secret.
   webhookSecret: "CHANGE_ME"
-  # -- Comma-separated CORS allowed origins.
-  corsOrigins: "https://your-domain.example.com"
 
 # -- Reference an existing Secret instead of creating one from values above.
 existingSecret: ""
@@ -135,6 +135,16 @@ networkPolicy:
   enabled: false
   # -- Namespace label for the ingress controller (used to scope ingress traffic).
   ingressControllerNamespace: "ingress-nginx"
+  # -- Egress destination CIDRs (0.0.0.0/0 allows any; tighten for production).
+  egress:
+    databaseCidrs:
+      - 0.0.0.0/0
+    httpsCidrs:
+      - 0.0.0.0/0
+    otlpCidrs:
+      - 0.0.0.0/0
+    dnsNamespaceLabels:
+      kubernetes.io/metadata.name: kube-system
 
 # ── Pod-level settings ────────────────────────────────────────────────────────
 podAnnotations: {}

@@ -11,6 +11,7 @@ Validates that all four portal token verification functions:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -85,11 +86,6 @@ def _enable_portals(monkeypatch):
     reload_settings()
 
 
-@pytest.fixture(autouse=True)
-def _use_seeded_db(seeded_temp_db):
-    yield
-
-
 # ---------------------------------------------------------------------------
 # Claimant portal – verify_claimant_access
 # ---------------------------------------------------------------------------
@@ -113,6 +109,40 @@ class TestClaimantInactivityVerifyAccess:
         )
         assert result is not None
 
+    def test_inactivity_boundary_strictly_before_cutoff_rejected(self, seeded_temp_db):
+        """last_used_at one second older than the cutoff is rejected (strict <)."""
+        raw = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=3)
+        stale = cutoff - timedelta(seconds=1)
+        with sqlite3.connect(seeded_temp_db) as conn:
+            conn.execute(
+                "UPDATE claim_access_tokens SET last_used_at = ?",  # noqa: S608
+                (stale.strftime("%Y-%m-%d %H:%M:%S"),),
+            )
+            conn.commit()
+        result = verify_claimant_access(
+            "CLM-TEST001", token=raw, db_path=seeded_temp_db
+        )
+        assert result is None
+
+    def test_inactivity_boundary_just_newer_than_cutoff_accepted(self, seeded_temp_db):
+        """last_used_at one second newer than the cutoff is accepted."""
+        raw = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=3)
+        fresh = cutoff + timedelta(seconds=1)
+        with sqlite3.connect(seeded_temp_db) as conn:
+            conn.execute(
+                "UPDATE claim_access_tokens SET last_used_at = ?",  # noqa: S608
+                (fresh.strftime("%Y-%m-%d %H:%M:%S"),),
+            )
+            conn.commit()
+        result = verify_claimant_access(
+            "CLM-TEST001", token=raw, db_path=seeded_temp_db
+        )
+        assert result is not None
+
     def test_inactive_token_is_rejected(self, seeded_temp_db):
         """Tokens not used for more than the inactivity timeout should be rejected."""
         raw = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
@@ -121,6 +151,17 @@ class TestClaimantInactivityVerifyAccess:
             "CLM-TEST001", token=raw, db_path=seeded_temp_db
         )
         assert result is None
+
+    def test_rejected_inactive_token_does_not_update_last_used(self, seeded_temp_db):
+        """Failed verification must not refresh ``last_used_at``."""
+        raw = create_claim_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        _set_last_used(seeded_temp_db, "claim_access_tokens", days_ago=5)
+        before = _get_last_used(seeded_temp_db, "claim_access_tokens")
+        assert (
+            verify_claimant_access("CLM-TEST001", token=raw, db_path=seeded_temp_db)
+            is None
+        )
+        assert _get_last_used(seeded_temp_db, "claim_access_tokens") == before
 
     def test_last_used_at_is_updated_on_success(self, seeded_temp_db):
         """Successful verification must update last_used_at."""
@@ -184,6 +225,13 @@ class TestRepairShopInactivity:
         _set_last_used(seeded_temp_db, "repair_shop_access_tokens", days_ago=7)
         result = verify_repair_shop_token("CLM-TEST001", raw, db_path=seeded_temp_db)
         assert result is None
+
+    def test_rejected_inactive_does_not_update_last_used(self, seeded_temp_db):
+        raw = create_repair_shop_access_token("CLM-TEST001", db_path=seeded_temp_db)
+        _set_last_used(seeded_temp_db, "repair_shop_access_tokens", days_ago=7)
+        before = _get_last_used(seeded_temp_db, "repair_shop_access_tokens")
+        assert verify_repair_shop_token("CLM-TEST001", raw, db_path=seeded_temp_db) is None
+        assert _get_last_used(seeded_temp_db, "repair_shop_access_tokens") == before
 
     def test_last_used_at_updated_on_success(self, seeded_temp_db):
         raw = create_repair_shop_access_token("CLM-TEST001", db_path=seeded_temp_db)
@@ -294,6 +342,25 @@ class TestUnifiedPortalInactivity:
         _set_last_used(seeded_temp_db, "external_portal_tokens", days_ago=4)
         result = verify_unified_portal_token(raw, db_path=seeded_temp_db)
         assert result is None
+
+    def test_invalid_stored_scopes_rejected(self, seeded_temp_db):
+        """Verification rejects rows whose JSON scopes are not a subset of VALID_PORTAL_SCOPES."""
+        raw = create_unified_portal_token(
+            "claimant",
+            scopes=["read_claim"],
+            claim_id="CLM-TEST001",
+            db_path=seeded_temp_db,
+        )
+        bad = json.dumps(["read_claim", "not_a_valid_scope"])
+        with sqlite3.connect(seeded_temp_db) as conn:
+            conn.execute(
+                "UPDATE external_portal_tokens SET scopes = ?",  # noqa: S608
+                (bad,),
+            )
+            conn.commit()
+        before = _get_last_used(seeded_temp_db, "external_portal_tokens")
+        assert verify_unified_portal_token(raw, db_path=seeded_temp_db) is None
+        assert _get_last_used(seeded_temp_db, "external_portal_tokens") == before
 
 
 # ---------------------------------------------------------------------------

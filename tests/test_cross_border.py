@@ -78,6 +78,7 @@ class TestClassifyJurisdiction:
 
     def test_empty_string(self):
         assert classify_jurisdiction("") == JurisdictionZone.OTHER
+        assert classify_jurisdiction(None) == JurisdictionZone.OTHER  # type: ignore[arg-type]
 
     def test_data_region_eu_shorthand(self):
         assert classify_jurisdiction("eu") == JurisdictionZone.EU_EEA

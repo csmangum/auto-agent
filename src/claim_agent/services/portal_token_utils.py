@@ -7,6 +7,23 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import text
+
+_PORTAL_TOKEN_LAST_USED_SQL: dict[str, str] = {
+    "claim_access_tokens": (
+        "UPDATE claim_access_tokens SET last_used_at = :now WHERE id = :token_id"
+    ),
+    "repair_shop_access_tokens": (
+        "UPDATE repair_shop_access_tokens SET last_used_at = :now WHERE id = :token_id"
+    ),
+    "third_party_access_tokens": (
+        "UPDATE third_party_access_tokens SET last_used_at = :now WHERE id = :token_id"
+    ),
+    "external_portal_tokens": (
+        "UPDATE external_portal_tokens SET last_used_at = :now WHERE id = :token_id"
+    ),
+}
+
 
 def hash_portal_token(token: str) -> str:
     """SHA-256 hash of token for storage comparison."""
@@ -45,3 +62,36 @@ def portal_token_last_used_rejects(
             token_id,
         )
         return True
+
+
+def refresh_portal_token_last_used(conn: Any, table: str, token_id: int, now: Any) -> None:
+    """Set ``last_used_at`` for a portal token row (table name allowlisted)."""
+    sql = _PORTAL_TOKEN_LAST_USED_SQL.get(table)
+    if not sql:
+        raise ValueError(f"Unknown portal token table: {table!r}")
+    conn.execute(text(sql), {"now": now, "token_id": token_id})
+
+
+def verify_inactivity_then_touch_last_used(
+    conn: Any,
+    *,
+    row: dict[str, Any],
+    table: str,
+    now: Any,
+    inactivity_cutoff: datetime,
+    logger: logging.Logger,
+    inactive_log: str,
+    inactive_args: tuple[Any, ...] = (),
+) -> bool:
+    """If ``last_used_at`` is stale or invalid, return False; else update DB and return True."""
+    if portal_token_last_used_rejects(
+        row.get("last_used_at"),
+        inactivity_cutoff,
+        logger=logger,
+        inactive_log=inactive_log,
+        inactive_args=inactive_args,
+        token_id=row.get("id"),
+    ):
+        return False
+    refresh_portal_token_last_used(conn, table, int(row["id"]), now)
+    return True

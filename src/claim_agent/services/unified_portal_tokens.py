@@ -28,6 +28,7 @@ from claim_agent.db.database import get_connection, get_db_path, is_postgres_bac
 from claim_agent.services.portal_token_utils import (
     hash_portal_token,
     portal_token_last_used_rejects,
+    refresh_portal_token_last_used,
 )
 
 logger = logging.getLogger(__name__)
@@ -212,14 +213,16 @@ def verify_unified_portal_token(
                 rec.get("id"),
             )
             return None
-        # Update last_used_at
-        conn.execute(
-            text("""
-                UPDATE external_portal_tokens
-                SET last_used_at = :now
-                WHERE id = :token_id
-            """),
-            {"now": now_param, "token_id": rec["id"]},
+        unknown_scopes = set(scopes) - VALID_PORTAL_SCOPES
+        if unknown_scopes:
+            logger.warning(
+                "Rejecting unified portal token id=%s: unknown scopes in database: %s",
+                rec.get("id"),
+                sorted(unknown_scopes),
+            )
+            return None
+        refresh_portal_token_last_used(
+            conn, "external_portal_tokens", int(rec["id"]), now_param
         )
         conn.commit()
     return UnifiedTokenRecord(

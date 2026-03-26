@@ -37,3 +37,6 @@ data:
   # Secret provider — use aws_secrets_manager or hashicorp_vault instead of "env"
   # when running in a cloud environment.  See .env.example for full options.
   SECRET_PROVIDER: "env"
+
+  # CORS — comma-separated allowed origins for the dashboard / frontend (non-secret).
+  CORS_ORIGINS: "https://your-domain.example.com"

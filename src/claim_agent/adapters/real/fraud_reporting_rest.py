@@ -156,7 +156,7 @@ def create_rest_fraud_reporting_adapter() -> RestFraudReportingAdapter:
     return RestFraudReportingAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         timeout=cfg.timeout,
         state_bureau_path=cfg.state_bureau_path,
         nicb_path=cfg.nicb_path,

@@ -122,7 +122,7 @@ def create_rest_claim_search_adapter() -> RestClaimSearchAdapter:
     return RestClaimSearchAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         search_path=cfg.search_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,

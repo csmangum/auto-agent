@@ -279,9 +279,11 @@ def test_create_rest_claim_search_adapter_builds_correctly(monkeypatch):
     """Factory produces a RestClaimSearchAdapter with correct config."""
     from claim_agent.config.settings_model import ClaimSearchRestConfig
 
+    from pydantic import SecretStr
+
     cfg = ClaimSearchRestConfig()
     cfg.base_url = "https://cs.example.com/v1"
-    cfg.auth_value = "Bearer tok"
+    cfg.auth_value = SecretStr("Bearer tok")
     cfg.search_path = "/search"
     cfg.timeout = 30.0
 

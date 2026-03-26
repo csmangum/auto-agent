@@ -47,6 +47,8 @@ vim k8s/secret.yaml
 kubectl apply -f k8s/secret.yaml
 ```
 
+`CORS_ORIGINS` is **not** a secret: it lives in `k8s/configmap.yaml` as `CORS_ORIGINS`.
+
 For production, prefer one of the following instead of storing secrets in Git:
 
 | Approach | Tool |
@@ -121,6 +123,10 @@ The Helm chart wraps all of the above manifests and makes them configurable thro
 
 ### 3.1 Install with default values (dev/staging)
 
+The chart **refuses to render** if `secrets.*` still contain placeholder `CHANGE_ME` values (unless you set `existingSecret`). Override every secret below with real values.
+
+`CORS_ORIGINS` is non-secret and is set via `config.corsOrigins` (ConfigMap).
+
 ```bash
 helm install claim-agent ./helm/claim-agent \
   --namespace claim-agent \
@@ -129,7 +135,8 @@ helm install claim-agent ./helm/claim-agent \
   --set secrets.openaiApiKey="sk-..." \
   --set secrets.apiKeys="mykey:admin" \
   --set secrets.jwtSecret="$(openssl rand -hex 32)" \
-  --set secrets.webhookSecret="$(openssl rand -hex 32)"
+  --set secrets.webhookSecret="$(openssl rand -hex 32)" \
+  --set config.corsOrigins="https://your-frontend.example.com"
 ```
 
 ### 3.2 Production values file
@@ -187,7 +194,9 @@ helm upgrade --install claim-agent ./helm/claim-agent \
 |-----------|---------|-------------|
 | `replicaCount` | `2` | Number of pod replicas (overridden by HPA when enabled) |
 | `image.repository` | `ghcr.io/csmangum/auto-agent` | Container image repository |
-| `image.tag` | chart `appVersion` | Image tag |
+| `image.tag` | chart `appVersion` | Image tag (pin explicitly in production) |
+| `image.pullPolicy` | `IfNotPresent` | Kubernetes image pull policy |
+| `config.corsOrigins` | placeholder URL | Allowed frontend origins (ConfigMap) |
 | `config.logFormat` | `json` | Log format (`json` or `human`) |
 | `config.runMigrationsOnStartup` | `true` | Run Alembic migrations at startup |
 | `config.otelTracing` | `false` | Enable OTEL tracing |
@@ -199,6 +208,7 @@ helm upgrade --install claim-agent ./helm/claim-agent \
 | `autoscaling.enabled` | `false` | Enable HorizontalPodAutoscaler |
 | `podDisruptionBudget.enabled` | `true` | Enable PodDisruptionBudget |
 | `networkPolicy.enabled` | `false` | Enable NetworkPolicy |
+| `networkPolicy.egress.*` | `0.0.0.0/0` CIDRs | Egress `to:` scoping (tighten for production) |
 | `existingSecret` | `""` | Use a pre-existing Secret instead of creating one |
 
 ---
@@ -346,6 +356,6 @@ See `.env.example` for the full list of supported environment variables. The mos
 - [ ] Set `readOnlyRootFilesystem: true` — the manifests already include ephemeral `emptyDir` volumes for `/tmp` and `/app/data`.
 - [ ] Pin image tags — avoid `latest` in production; use explicit version tags.
 - [ ] Configure IRSA (EKS) or Workload Identity (GKE) on the ServiceAccount instead of long-lived AWS credentials.
-- [ ] Set `ENFORCE_HTTPS=false` and `TRUST_FORWARDED_FOR=true` when TLS is terminated at the ingress/ALB.
+- [ ] When TLS terminates at the ingress/ALB, pods see plain HTTP from the proxy: set `ENFORCE_HTTPS=false` (no in-app redirect loop) and `TRUST_FORWARDED_FOR=true` so the app trusts `X-Forwarded-Proto` for HTTPS/HSTS behavior.
 - [ ] Review CORS origins (`CORS_ORIGINS`) — restrict to your actual frontend domain(s).
 - [ ] Enable audit logging (`AUDIT_LOG_PURGE_ENABLED`, `AUDIT_LOG_RETENTION_YEARS_AFTER_PURGE`) per your data-retention policy.

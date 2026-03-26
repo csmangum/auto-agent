@@ -9,8 +9,12 @@ export function initSentry(): void {
     return;
   }
 
+  const release = import.meta.env.VITE_SENTRY_RELEASE?.trim();
+
   Sentry.init({
     dsn,
     environment: import.meta.env.MODE,
+    tracesSampleRate: 0,
+    ...(release ? { release } : {}),
   });
 }

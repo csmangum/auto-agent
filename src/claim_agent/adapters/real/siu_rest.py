@@ -155,7 +155,7 @@ def create_rest_siu_adapter() -> RestSIUAdapter:
     return RestSIUAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         cases_path=cfg.cases_path,
         notes_path_template=cfg.notes_path_template,
         status_path_template=cfg.status_path_template,

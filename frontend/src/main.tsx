@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext';
 import { RoleSimulationProvider } from './context/RoleSimulationContext';
 import { ThemeProvider } from './context/ThemeContext';
 import AppToaster from './components/AppToaster';
+import ErrorBoundary from './components/ErrorBoundary';
 import { initSentry } from './lib/sentry';
 import './index.css';
 import App from './App';
@@ -28,8 +29,10 @@ createRoot(root).render(
         <AuthProvider>
           <RoleSimulationProvider>
             <BrowserRouter>
-              <App />
-              <AppToaster />
+              <ErrorBoundary>
+                <App />
+                <AppToaster />
+              </ErrorBoundary>
             </BrowserRouter>
           </RoleSimulationProvider>
         </AuthProvider>

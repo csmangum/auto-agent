@@ -27,26 +27,38 @@ spec:
           port: 8000
 
   egress:
-    # Allow DNS resolution.
-    - ports:
+    # DNS — scope to kube-system (CoreDNS). Adjust labels if your cluster differs.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
           port: 53
 
-    # Allow outbound to PostgreSQL (default port 5432).
-    # Adjust the namespaceSelector / ipBlock to match your database location.
-    - ports:
+    # PostgreSQL — replace 0.0.0.0/0 with your DB subnet (e.g. RDS).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
         - protocol: TCP
           port: 5432
 
-    # Allow outbound HTTPS for LLM APIs (OpenAI / OpenRouter), webhooks, and other external calls.
-    - ports:
+    # HTTPS — LLM APIs, webhooks, etc. Tighten cidr in production.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
         - protocol: TCP
           port: 443
 
-    # Allow outbound to OTEL collector (gRPC 4317 / HTTP 4318).
-    - ports:
+    # OTLP — replace cidr with your collector subnet if possible.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
         - protocol: TCP
           port: 4317
         - protocol: TCP

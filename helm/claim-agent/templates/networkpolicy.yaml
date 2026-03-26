@@ -22,20 +22,39 @@ spec:
         - protocol: TCP
           port: {{ .Values.service.targetPort }}
   egress:
-    - ports:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+{{- toYaml .Values.networkPolicy.egress.dnsNamespaceLabels | nindent 14 }}
+      ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
           port: 53
-    - ports:
+    {{- range .Values.networkPolicy.egress.databaseCidrs }}
+    - to:
+        - ipBlock:
+            cidr: {{ . | quote }}
+      ports:
         - protocol: TCP
           port: 5432
-    - ports:
+    {{- end }}
+    {{- range .Values.networkPolicy.egress.httpsCidrs }}
+    - to:
+        - ipBlock:
+            cidr: {{ . | quote }}
+      ports:
         - protocol: TCP
           port: 443
-    - ports:
+    {{- end }}
+    {{- range .Values.networkPolicy.egress.otlpCidrs }}
+    - to:
+        - ipBlock:
+            cidr: {{ . | quote }}
+      ports:
         - protocol: TCP
           port: 4317
         - protocol: TCP
           port: 4318
+    {{- end }}
 {{- end }}
