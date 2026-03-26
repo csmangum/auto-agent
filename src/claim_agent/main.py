@@ -1186,18 +1186,25 @@ def ucspa_deadlines(
 
 @app.command("run-scheduler")
 def run_scheduler() -> None:
-    """Run in-process scheduler in foreground (for dedicated scheduler process)."""
+    """Run scheduler as a dedicated single-instance foreground process.
+
+    This is the recommended way to run recurring operational jobs (UCSPA
+    deadline sweeps, diary escalations, ERP polling).  Start exactly one
+    instance of this command; do NOT set SCHEDULER_ENABLED=true on the API
+    server (claim-agent serve) — the API server intentionally does not start
+    the scheduler to prevent duplicate job execution across workers.
+    """
     from claim_agent.scheduler import ensure_scheduler_running, stop_scheduler
 
     if not get_settings().scheduler.enabled:
         typer.echo(
-            "SCHEDULER_ENABLED is false. Set SCHEDULER_ENABLED=true to run in-process scheduler.",
+            "SCHEDULER_ENABLED is false. Set SCHEDULER_ENABLED=true to run the scheduler.",
             err=True,
         )
         raise typer.Exit(1)
 
     ensure_scheduler_running()
-    typer.echo("In-process scheduler started. Press Ctrl+C to stop.")
+    typer.echo("Scheduler started. Press Ctrl+C to stop.")
     try:
         while True:
             time.sleep(1)

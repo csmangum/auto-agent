@@ -109,7 +109,7 @@ The first run may download embedding models used for RAG (~tens of MB); subseque
 | `claim-agent dsar-deletion --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR deletion request (right-to-delete) |
 | `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
 | `claim-agent ucspa-deadlines [--days N] [--webhooks / --no-webhooks]` | Check UCSPA deadlines; webhooks on by default (`--no-webhooks` to suppress) |
-| `claim-agent run-scheduler` | Run optional in-process scheduler in foreground (requires `SCHEDULER_ENABLED=true`) |
+| `claim-agent run-scheduler` | Run scheduler as a dedicated single-instance foreground process (requires `SCHEDULER_ENABLED=true`; do not run with the API server) |
 
 ## Sample Claims
 
