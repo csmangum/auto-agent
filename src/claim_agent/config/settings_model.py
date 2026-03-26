@@ -403,6 +403,9 @@ class NotificationConfig(BaseSettings):
         validation_alias="TWILIO_AUTH_TOKEN",
     )
     twilio_from_phone: str = Field(default="", validation_alias="TWILIO_FROM_PHONE")
+    # URL to POST delivery-failure payloads for bounce/failure monitoring.
+    # Leave empty to disable failure webhook dispatch.
+    failure_webhook_url: str = Field(default="", validation_alias="NOTIFICATION_FAILURE_WEBHOOK_URL")
 
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod
