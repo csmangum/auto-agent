@@ -13,7 +13,7 @@ from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.services.portal_token_utils import (
     hash_portal_token,
-    portal_token_last_used_rejects,
+    verify_inactivity_then_touch_last_used,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,24 +88,17 @@ def verify_third_party_token(
         if row is None:
             return None
         rec = row_to_dict(row)
-        if portal_token_last_used_rejects(
-            rec.get("last_used_at"),
-            inactivity_cutoff,
+        if not verify_inactivity_then_touch_last_used(
+            conn,
+            row=rec,
+            table="third_party_access_tokens",
+            now=now,
+            inactivity_cutoff=inactivity_cutoff,
             logger=logger,
             inactive_log="Rejecting inactive third-party token for claim_id=%s",
             inactive_args=(claim_id,),
-            token_id=rec.get("id"),
         ):
             return None
-        # Update last_used_at
-        conn.execute(
-            text("""
-                UPDATE third_party_access_tokens
-                SET last_used_at = :now
-                WHERE id = :token_id
-            """),
-            {"now": now, "token_id": rec["id"]},
-        )
         conn.commit()
     pid = rec.get("party_id")
     return ThirdPartyTokenRecord(

@@ -126,7 +126,7 @@ def create_rest_nmvtis_adapter() -> RestNMVTISAdapter:
     return RestNMVTISAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         report_path=cfg.report_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,

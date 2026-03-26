@@ -205,7 +205,7 @@ def create_rest_erp_adapter() -> RestERPAdapter:
     return RestERPAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         timeout=cfg.timeout,
         shop_id_map=cfg.shop_id_map,
         assignment_path=cfg.assignment_path,

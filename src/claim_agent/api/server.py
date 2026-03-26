@@ -71,6 +71,9 @@ _server_logger = logging.getLogger(__name__)
 # Bytes per MB for request body size checks (see request_body_size_limit_middleware).
 _MB = 1024 * 1024
 
+# Populated in lifespan from current settings (avoids rebuilding CSP on every request).
+_BASE_SECURITY_RESPONSE_HEADERS: dict[str, str] | None = None
+
 _BODY_LENGTH_REQUIRED_METHODS = frozenset({"POST", "PUT", "PATCH"})
 
 
@@ -326,6 +329,7 @@ async def lifespan(_app: FastAPI):
     ensure_diary_listener_registered()
     _warn_if_scheduler_enabled_on_api()
     _check_rate_limit_configuration()
+    _refresh_cached_base_security_headers()
 
     _idempotency_cleanup_task: asyncio.Task | None = None
     _idempotency_cleanup_stop = asyncio.Event()
@@ -481,8 +485,8 @@ def _sentry_connect_src_allowance(dsn: str | None) -> str:
     return f" {origin}"
 
 
-def _base_security_response_headers() -> dict[str, str]:
-    """Headers applied to normal and redirect responses (browser hardening)."""
+def _compute_base_security_response_headers() -> dict[str, str]:
+    """Build browser hardening headers from current settings (call during lifespan)."""
     return {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
@@ -508,6 +512,22 @@ def _base_security_response_headers() -> dict[str, str]:
             "frame-ancestors 'none'"
         ),
     }
+
+
+def _refresh_cached_base_security_headers() -> None:
+    """Recompute cached security headers (lifespan startup; tests may call via reload)."""
+    global _BASE_SECURITY_RESPONSE_HEADERS
+    _BASE_SECURITY_RESPONSE_HEADERS = _compute_base_security_response_headers()
+
+
+def _base_security_response_headers() -> dict[str, str]:
+    """Headers applied to normal and redirect responses (browser hardening)."""
+    global _BASE_SECURITY_RESPONSE_HEADERS
+    if _BASE_SECURITY_RESPONSE_HEADERS is None:
+        _refresh_cached_base_security_headers()
+    headers = _BASE_SECURITY_RESPONSE_HEADERS
+    assert headers is not None  # set by _refresh_cached_base_security_headers
+    return dict(headers)
 
 
 def _hsts_header_value() -> str | None:

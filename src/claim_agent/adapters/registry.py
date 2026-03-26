@@ -105,7 +105,7 @@ def _policy_rest_factory() -> PolicyAdapter:
     return RestPolicyAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         path_template=cfg.path_template or None,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,
@@ -127,7 +127,7 @@ def _state_bureau_rest_factory() -> StateBureauAdapter:
         )
     return RestStateBureauAdapter(
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         timeout=cfg.timeout,
         state_endpoints=endpoints,
         circuit_failure_threshold=cfg.circuit_failure_threshold,

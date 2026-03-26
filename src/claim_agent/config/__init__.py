@@ -1,5 +1,6 @@
 """Configuration for claim agent."""
 
+import logging
 import threading
 
 from claim_agent.config.secret_provider import load_secrets_into_env
@@ -24,6 +25,8 @@ from claim_agent.config.settings_model import (
     ValuationConfig,
     WebhookConfig,
 )
+
+_logger = logging.getLogger(__name__)
 
 __all__ = [
     "ADAPTER_ENV_KEYS",
@@ -81,4 +84,17 @@ def reload_settings() -> Settings:
         load_secrets_into_env()
         _secrets_loaded = True
         _settings = Settings()
+    # Keep API CSP / security headers aligned with reloaded settings (tests, secret rotation).
+    try:
+        from claim_agent.api.server import _refresh_cached_base_security_headers
+
+        _refresh_cached_base_security_headers()
+    except ImportError:
+        # API stack not loaded (CLI, tests, or minimal imports).
+        pass
+    except Exception:
+        _logger.warning(
+            "Could not refresh cached API security headers after settings reload",
+            exc_info=True,
+        )
     return _settings

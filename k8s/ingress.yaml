@@ -1,0 +1,41 @@
+# Ingress for claim-agent
+#
+# Assumes nginx-ingress-controller is installed (https://kubernetes.github.io/ingress-nginx/).
+# For other controllers (AWS ALB, GKE GCL, Traefik), adjust annotations accordingly.
+#
+# TLS: cert-manager is used here to issue a Let's Encrypt certificate automatically.
+# Install cert-manager: https://cert-manager.io/docs/installation/
+# Then create a ClusterIssuer (see docs/deployment.md for instructions).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: claim-agent
+  namespace: claim-agent
+  labels:
+    app.kubernetes.io/name: claim-agent
+    app.kubernetes.io/component: backend
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # Uncomment to enable rate limiting (requests per minute per IP).
+    # nginx.ingress.kubernetes.io/limit-rps: "30"
+    # cert-manager: automatically provision a TLS cert from Let's Encrypt.
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - your-domain.example.com  # replace with your actual domain
+      secretName: claim-agent-tls
+  rules:
+    - host: your-domain.example.com  # replace with your actual domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: claim-agent
+                port:
+                  name: http

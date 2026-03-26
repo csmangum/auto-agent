@@ -107,7 +107,7 @@ def create_rest_parts_adapter() -> RestPartsAdapter:
     return RestPartsAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         catalog_path=cfg.catalog_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,

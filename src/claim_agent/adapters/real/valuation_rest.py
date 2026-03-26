@@ -229,7 +229,7 @@ def create_valuation_rest_adapter(provider: str) -> RestValuationAdapter:
         provider=p,
         base_url=base,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         path_template=tmpl,
         response_key=rk,
         timeout=cfg.timeout,

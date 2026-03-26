@@ -24,7 +24,12 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('ErrorBoundary caught:', error, errorInfo);
-    captureException(error, { extra: { componentStack: errorInfo.componentStack } });
+    captureException(error, {
+      extra: {
+        componentStack: errorInfo.componentStack,
+        message: error.message,
+      },
+    });
   }
 
   handleRetry = (): void => {
@@ -41,7 +46,8 @@ export default class ErrorBoundary extends Component<Props, State> {
           <span className="text-5xl mb-4 opacity-30">💥</span>
           <h2 className="text-xl font-semibold text-gray-200 mb-2">Something went wrong</h2>
           <p className="text-sm text-gray-400 mb-6 max-w-md text-center">
-            {this.state.error.message}
+            An unexpected error occurred. If the problem persists, contact support. Details were
+            reported automatically when error tracking is enabled.
           </p>
           <button
             type="button"

@@ -37,25 +37,20 @@ def _sqlite_alembic_head_revision() -> str:
     return heads[0]
 
 
-def test_get_db_path_default():
+def test_get_db_path_default(monkeypatch):
     """Default path is data/claims.db when env unset."""
-    for key in ("CLAIMS_DB_PATH", "DATABASE_URL"):
-        if key in os.environ:
-            del os.environ[key]
+    monkeypatch.delenv("CLAIMS_DB_PATH", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     reload_settings()
     assert get_db_path() == "data/claims.db"
 
 
-def test_get_db_path_env():
+def test_get_db_path_env(monkeypatch):
     """CLAIMS_DB_PATH env overrides default."""
-    if "DATABASE_URL" in os.environ:
-        del os.environ["DATABASE_URL"]
-    os.environ["CLAIMS_DB_PATH"] = "/tmp/custom.db"
-    try:
-        reload_settings()
-        assert get_db_path() == "/tmp/custom.db"
-    finally:
-        del os.environ["CLAIMS_DB_PATH"]
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("CLAIMS_DB_PATH", "/tmp/custom.db")
+    reload_settings()
+    assert get_db_path() == "/tmp/custom.db"
 
 
 def test_init_db_creates_tables(temp_db):

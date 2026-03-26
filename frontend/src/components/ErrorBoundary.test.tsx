@@ -40,7 +40,10 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText('Test error')).toBeInTheDocument();
+    expect(
+      screen.getByText(/An unexpected error occurred/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Test error')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
   });
 
@@ -53,7 +56,12 @@ describe('ErrorBoundary', () => {
     expect(mockCaptureException).toHaveBeenCalledOnce();
     expect(mockCaptureException).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Test error' }),
-      expect.objectContaining({ extra: expect.objectContaining({ componentStack: expect.any(String) }) })
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          componentStack: expect.any(String),
+          message: 'Test error',
+        }),
+      })
     );
   });
 
@@ -87,5 +95,23 @@ describe('ErrorBoundary', () => {
     // Retry resets state and remounts children with a new key. ThrowError throws again
     // on mount, so we expect the error UI to reappear (not child content).
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+  });
+
+  it('retry succeeds when the underlying error condition is cleared', () => {
+    let shouldThrow = true;
+    const Child = () => {
+      if (shouldThrow) throw new Error('recoverable');
+      return <div>Recovered</div>;
+    };
+    render(
+      <ErrorBoundary>
+        <Child />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    shouldThrow = false;
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(screen.getByText('Recovered')).toBeInTheDocument();
+    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
   });
 });

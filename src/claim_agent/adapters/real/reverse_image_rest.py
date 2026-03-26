@@ -129,7 +129,7 @@ def create_rest_reverse_image_adapter() -> RestReverseImageAdapter:
     return RestReverseImageAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         match_path=cfg.match_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,

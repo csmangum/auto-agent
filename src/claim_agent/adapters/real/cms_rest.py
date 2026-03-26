@@ -130,7 +130,7 @@ def create_rest_cms_reporting_adapter() -> RestCMSReportingAdapter:
     return RestCMSReportingAdapter(
         base_url=cfg.base_url,
         auth_header=cfg.auth_header,
-        auth_value=cfg.auth_value,
+        auth_value=cfg.auth_value.get_secret_value(),
         evaluate_path=cfg.evaluate_path,
         response_key=cfg.response_key or None,
         timeout=cfg.timeout,

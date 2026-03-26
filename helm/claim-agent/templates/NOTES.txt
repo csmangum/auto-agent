@@ -1,0 +1,22 @@
+claim-agent has been deployed.
+
+Release: {{ .Release.Name }}  Namespace: {{ .Release.Namespace }}
+
+- Service: {{ include "claim-agent.fullname" . }} ({{ .Values.service.type }})
+- Config: ConfigMap `{{ include "claim-agent.fullname" . }}-config` (includes CORS_ORIGINS)
+- Secrets: Secret `{{ include "claim-agent.secretName" . }}`{{ if .Values.existingSecret }} (existingSecret){{ end }}
+
+Health check (from inside the cluster):
+
+  kubectl run curl --rm -it --restart=Never --image=curlimages/curl -- \
+    curl -sS http://{{ include "claim-agent.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/health
+
+{{- if .Values.ingress.enabled }}
+Ingress is enabled. Update hosts in values to your real domain and ensure DNS/TLS are configured.
+{{- else }}
+For local access: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "claim-agent.fullname" . }} 8080:{{ .Values.service.port }}
+Then open http://127.0.0.1:8080/health
+{{- end }}
+
+If you use existingSecret, run a rollout restart after the external secret changes:
+  kubectl rollout restart deployment/{{ include "claim-agent.fullname" . }} -n {{ .Release.Namespace }}

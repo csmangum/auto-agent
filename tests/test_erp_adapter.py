@@ -990,9 +990,11 @@ class TestCreateRestERPAdapterFactory:
         from claim_agent.config.settings_model import ERPRestConfig
         from claim_agent.adapters.real.erp_rest import RestERPAdapter
 
+        from pydantic import SecretStr
+
         cfg = ERPRestConfig()
         cfg.base_url = "https://erp.example.com/v2"
-        cfg.auth_value = "Bearer tok"
+        cfg.auth_value = SecretStr("Bearer tok")
         cfg.assignment_path = "/v2/repairs/assignment"
         cfg.timeout = 30.0
 
