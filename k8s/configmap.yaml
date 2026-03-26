@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claim-agent-config
+  namespace: claim-agent
+  labels:
+    app.kubernetes.io/name: claim-agent
+    app.kubernetes.io/component: backend
+data:
+  # LLM settings — override the model and base URL to use OpenRouter or another provider.
+  OPENAI_MODEL_NAME: "gpt-4o-mini"
+  # OPENAI_API_BASE: "https://openrouter.ai/api/v1"
+
+  # Database — PostgreSQL is required for production; SQLite is single-process only.
+  # DATABASE_URL is kept in the Secret. Set RUN_MIGRATIONS_ON_STARTUP to run Alembic on startup.
+  RUN_MIGRATIONS_ON_STARTUP: "true"
+
+  # Logging — use "json" format for structured logging in production.
+  CLAIM_AGENT_LOG_FORMAT: "json"
+  CLAIM_AGENT_LOG_LEVEL: "INFO"
+  CLAIM_AGENT_ENVIRONMENT: "production"
+
+  # HTTPS / proxy settings — set TRUST_FORWARDED_FOR=true when running behind an ingress/LB
+  # that injects X-Forwarded-Proto so HTTPS enforcement and HSTS work correctly.
+  ENFORCE_HTTPS: "false"
+  TRUST_FORWARDED_FOR: "true"
+  HSTS_MAX_AGE: "31536000"
+
+  # OpenTelemetry tracing — set OTEL_TRACING=true and point to your collector.
+  OTEL_TRACING: "false"
+  OTEL_SERVICE_NAME: "claim-agent"
+  # OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
+
+  # Webhooks
+  WEBHOOK_ENABLED: "true"
+
+  # Secret provider — use aws_secrets_manager or hashicorp_vault instead of "env"
+  # when running in a cloud environment.  See .env.example for full options.
+  SECRET_PROVIDER: "env"
