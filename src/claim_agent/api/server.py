@@ -198,7 +198,9 @@ async def _shutdown_background_tasks_with_grace(grace_seconds: int) -> None:
 
     if grace_seconds > 0:
         done, pending = await asyncio.wait(pending, timeout=grace_seconds)
-        # Propagate any exceptions from tasks that finished within the grace window
+        # Log (but do not re-raise) exceptions from tasks that finished during the
+        # grace window.  Re-raising would abort the rest of the shutdown sequence,
+        # leaving other tasks uncancel-led and their claims in 'processing'.
         for t in done:
             if not t.cancelled():
                 exc = t.exception()

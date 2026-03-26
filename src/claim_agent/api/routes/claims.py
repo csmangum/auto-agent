@@ -283,6 +283,9 @@ def _run_workflow_background(
     _task_claim_ids[task] = claim_id
 
     def _on_done(t: asyncio.Task) -> None:
+        # asyncio is single-threaded; callbacks run between coroutine awaits, so
+        # there is no concurrent modification risk with the shutdown handler which
+        # snapshots `claim_background_tasks` before iterating.
         _background_tasks.discard(t)
         _task_claim_ids.pop(t, None)
 

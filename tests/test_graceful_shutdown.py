@@ -59,8 +59,10 @@ def grace_db():
         ):
             try:
                 conn.execute(text(stmt))
-            except Exception:
-                pass  # already exists
+            except Exception as _exc:  # noqa: BLE001
+                # Column may already exist; safe to ignore
+                if "duplicate column" not in str(_exc).lower() and "already exists" not in str(_exc).lower():
+                    raise
     prev = os.environ.get("CLAIMS_DB_PATH")
     os.environ["CLAIMS_DB_PATH"] = path
     reload_settings()
