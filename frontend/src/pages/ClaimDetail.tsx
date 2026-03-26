@@ -424,9 +424,9 @@ function DocumentsTab({
   const [reqDocType, setReqDocType] = useState('police_report');
   const [reqFrom, setReqFrom] = useState('');
 
-  const handleFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const list = Array.from(files);
+  const handleFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    const list = files;
     void (async () => {
       const outcomes = await Promise.allSettled(
         list.map((file) =>
@@ -517,11 +517,7 @@ function DocumentsTab({
           disabled={uploadMutation.isPending}
           maxBytes={50 * 1024 * 1024}
           maxBytesLabel="50 MB"
-          onFilesSelected={(picked) => {
-            const dt = new DataTransfer();
-            picked.forEach((f) => dt.items.add(f));
-            handleFiles(dt.files);
-          }}
+          onFilesSelected={handleFiles}
           onValidationError={(msg) => toast.error(msg)}
           inputId={`claim-doc-upload-${uploadType}`}
         >

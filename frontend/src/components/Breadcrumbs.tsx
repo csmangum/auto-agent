@@ -19,7 +19,7 @@ export default function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
               {isLast || !item.to ? (
                 <span
                   className="truncate text-gray-400 font-medium"
-                  aria-current="page"
+                  {...(isLast && { 'aria-current': 'page' })}
                 >
                   {item.label}
                 </span>
