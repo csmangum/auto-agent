@@ -6,17 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claims System</title>
     <!-- Prevent flash of wrong theme: apply .dark class before first paint.
-         Logic must match frontend/src/context/ThemeContext.tsx (STORAGE_KEY + dark resolution). -->
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem('claims_theme') || 'system';
-          if (t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-          }
-        } catch (e) {}
-      })();
-    </script>
+         Logic must match frontend/src/context/ThemeContext.tsx (STORAGE_KEY + dark resolution).
+         Kept as a synchronous external script (not deferred) so the class is applied before
+         the first paint; avoids 'unsafe-inline' in the Content-Security-Policy. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>
