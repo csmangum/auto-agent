@@ -4096,3 +4096,21 @@ class TestRetentionEligibleForPurge:
         """include_litigation_hold=true is accepted without error."""
         resp = client.get("/api/v1/retention/eligible-for-purge?include_litigation_hold=true")
         assert resp.status_code == 200
+
+
+# -------------------------------------------------------------------
+# Legacy /api → /api/v1 redirect
+# -------------------------------------------------------------------
+
+
+class TestLegacyApiVersionRedirect:
+    def test_exact_api_path_redirects_to_api_v1(self, client):
+        resp = client.get("/api", follow_redirects=False)
+        assert resp.status_code == 301
+        assert resp.headers["location"].rstrip("/").endswith("/api/v1")
+
+    def test_legacy_prefix_redirects_to_v1(self, client):
+        resp = client.get("/api/claims/stats", follow_redirects=False)
+        assert resp.status_code == 301
+        loc = resp.headers.get("location", "")
+        assert "/api/v1/claims/stats" in loc.replace("\\", "/")

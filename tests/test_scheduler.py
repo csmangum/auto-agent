@@ -1,5 +1,6 @@
 """Tests for optional in-process scheduler."""
 
+import asyncio
 import logging
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -83,15 +84,17 @@ def test_run_ucspa_deadline_job_dispatches_webhooks():
                 )
 
 
-def test_api_server_does_not_auto_start_scheduler():
-    """API server module must not expose ensure_scheduler_running in its namespace."""
-    import claim_agent.api.server as server_mod
+def test_api_lifespan_does_not_start_in_process_scheduler():
+    """Starting the API lifespan must never call ensure_scheduler_running."""
+    from claim_agent.api.server import app, lifespan
 
-    # ensure_scheduler_running must not have been imported into server.py's namespace
-    assert not hasattr(server_mod, "ensure_scheduler_running"), (
-        "server.py must not import ensure_scheduler_running; "
-        "the API server no longer auto-starts the scheduler."
-    )
+    async def _run_lifespan() -> None:
+        async with lifespan(app):
+            pass
+
+    with patch("claim_agent.scheduler.ensure_scheduler_running") as mock_ensure:
+        asyncio.run(_run_lifespan())
+    mock_ensure.assert_not_called()
 
 
 def test_api_server_warns_when_scheduler_enabled(caplog):

@@ -708,6 +708,9 @@ async def api_version_redirect_middleware(request: Request, call_next):
         versioned = "/api/v1" + path[len("/api"):]
         new_url = request.url.replace(path=versioned)
         return Response(status_code=301, headers={"Location": str(new_url)})
+    if path == "/api":
+        new_url = request.url.replace(path="/api/v1")
+        return Response(status_code=301, headers={"Location": str(new_url)})
     return await call_next(request)
 
 

@@ -469,6 +469,9 @@ back to the environment (or their Pydantic default):
 | `DATABASE_URL` | PostgreSQL primary connection URL |
 | `READ_REPLICA_DATABASE_URL` | PostgreSQL read-replica URL |
 
+Only these keys are copied from an external store into the process environment;
+extra keys in the JSON or Vault payload are skipped with a log warning.
+
 ### AWS Secrets Manager
 
 Store all secrets as a single JSON-valued secret:
@@ -523,7 +526,8 @@ Store secrets as a KV v2 (or v1) secret whose keys match the variable names abov
 ```bash
 SECRET_PROVIDER=hashicorp_vault
 VAULT_ADDR=https://vault.example.com:8200
-VAULT_PATH=claim-agent/production        # KV path (no kv/data prefix)
+VAULT_PATH=claim-agent/production        # Path relative to the KV mount (not secret/data/...)
+VAULT_MOUNT_POINT=secret                 # KV engine mount (default: secret); use e.g. kv if needed
 VAULT_KV_VERSION=2                       # default: 2
 ```
 

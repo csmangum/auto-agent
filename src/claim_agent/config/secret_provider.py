@@ -18,10 +18,12 @@ Supports three backends, selected by the ``SECRET_PROVIDER`` environment variabl
 
 Merging behaviour
 -----------------
-Values fetched from the external provider are injected into ``os.environ``
-*only when the key is not already present*.  This means a hard-coded env var
-always wins, which lets developers override individual secrets during testing
-without touching the secret store.
+Only keys listed in the internal allowlist (well-known application env-var
+names such as ``JWT_SECRET``, ``OPENAI_API_KEY``, etc.) are injected.  Other
+keys in the JSON or Vault payload are ignored with a warning.  Values are
+injected into ``os.environ`` *only when the key is not already present*.  This
+means a hard-coded env var always wins, which lets developers override
+individual secrets during testing without touching the secret store.
 
 Provider configuration variables
 ---------------------------------
@@ -39,10 +41,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Mapping from well-known application env-var names to the key names that the
-# secret store is expected to expose.  By default the two are identical, but
-# this table allows the store to use different casing or namespacing without
-# requiring changes to downstream code.
+# Allowlist: only these keys may be copied from an external store into
+# ``os.environ``.  Prevents arbitrary keys in the secret JSON from polluting
+# the process environment.
 # ---------------------------------------------------------------------------
 _SECRET_ENV_KEYS: tuple[str, ...] = (
     "OPENAI_API_KEY",
@@ -57,6 +58,31 @@ _SECRET_ENV_KEYS: tuple[str, ...] = (
     "DATABASE_URL",
     "READ_REPLICA_DATABASE_URL",
 )
+
+_SECRET_ENV_KEYS_FROZEN: frozenset[str] = frozenset(_SECRET_ENV_KEYS)
+
+
+def _scalar_entries_from_mapping(data: dict[str, Any]) -> dict[str, str]:
+    """Keep only string/numeric secret values; log a warning for unsupported types."""
+    out: dict[str, str] = {}
+    for key, value in data.items():
+        # ``bool`` is a subclass of ``int`` — exclude it explicitly.
+        if isinstance(value, bool):
+            logger.warning(
+                "[secret_provider] Skipping secret key %r (unsupported type bool); "
+                "store strings, integers, or floats only.",
+                key,
+            )
+        elif isinstance(value, (str, int, float)):
+            out[key] = str(value)
+        else:
+            logger.warning(
+                "[secret_provider] Skipping secret key %r (unsupported type %s); "
+                "store strings, integers, or floats only.",
+                key,
+                type(value).__name__,
+            )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +115,13 @@ class SecretProvider(ABC):
 
         injected: list[str] = []
         for key, value in secrets.items():
+            if key not in _SECRET_ENV_KEYS_FROZEN:
+                logger.warning(
+                    "[secret_provider] Skipping secret key %r: not in the application "
+                    "secret allowlist (see docs/configuration.md — Secret Management).",
+                    key,
+                )
+                continue
             if key not in os.environ:
                 os.environ[key] = value
                 injected.append(key)
@@ -167,7 +200,7 @@ class AwsSecretsManagerProvider(SecretProvider):
 
         import json
 
-        kwargs: dict = {"SecretId": self.secret_name}
+        kwargs: dict[str, Any] = {"SecretId": self.secret_name}
         if self.region:
             client = boto3.client("secretsmanager", region_name=self.region)
         else:
@@ -193,13 +226,19 @@ class AwsSecretsManagerProvider(SecretProvider):
             )
 
         try:
-            data: dict = json.loads(secret_string)
+            parsed: Any = json.loads(secret_string)
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"AWS Secrets Manager secret '{self.secret_name}' is not valid JSON: {exc}"
             ) from exc
 
-        return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float))}
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"AWS Secrets Manager secret '{self.secret_name}' must be a JSON object, "
+                f"not {type(parsed).__name__}."
+            )
+
+        return _scalar_entries_from_mapping(parsed)
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +254,9 @@ class HashiCorpVaultProvider(SecretProvider):
     ``VAULT_ADDR``
         Vault server address, e.g. ``https://vault.example.com:8200``.
     ``VAULT_PATH``
-        KV secret path, e.g. ``secret/data/claim-agent`` (KV v2) or
-        ``secret/claim-agent`` (KV v1).
+        Secret path **relative to the KV mount** (not the full API path).  For
+        example with the default mount ``secret`` and KV v2, use
+        ``claim-agent/production`` — *not* ``secret/data/claim-agent``.
 
     Authentication (one of)
     -----------------------
@@ -227,6 +267,9 @@ class HashiCorpVaultProvider(SecretProvider):
 
     Optional variables
     ------------------
+    ``VAULT_MOUNT_POINT``
+        KV engine mount name (default: ``secret``).  Use when secrets live under
+        a non-default mount such as ``kv``.
     ``VAULT_KV_VERSION``
         ``2`` (default) or ``1``.
     ``VAULT_NAMESPACE``
@@ -239,12 +282,24 @@ class HashiCorpVaultProvider(SecretProvider):
     def __init__(self) -> None:
         self.addr: str = os.environ.get("VAULT_ADDR", "").strip()
         self.path: str = os.environ.get("VAULT_PATH", "").strip()
+        self.mount_point: str = (
+            os.environ.get("VAULT_MOUNT_POINT", "secret").strip() or "secret"
+        )
         self.token: str | None = os.environ.get("VAULT_TOKEN", "").strip() or None
         self.role_id: str | None = os.environ.get("VAULT_ROLE_ID", "").strip() or None
         self.secret_id: str | None = (
             os.environ.get("VAULT_SECRET_ID", "").strip() or None
         )
-        self.kv_version: int = int(os.environ.get("VAULT_KV_VERSION", "2"))
+        raw_kv = os.environ.get("VAULT_KV_VERSION", "2").strip()
+        try:
+            kv_parsed = int(raw_kv)
+        except ValueError as exc:
+            raise ValueError(
+                f"VAULT_KV_VERSION must be the integer 1 or 2, got {raw_kv!r}"
+            ) from exc
+        if kv_parsed not in (1, 2):
+            raise ValueError(f"VAULT_KV_VERSION must be 1 or 2, got {kv_parsed}")
+        self.kv_version: int = kv_parsed
         self.namespace: str | None = (
             os.environ.get("VAULT_NAMESPACE", "").strip() or None
         )
@@ -273,7 +328,7 @@ class HashiCorpVaultProvider(SecretProvider):
                 "Install it with: pip install hvac"
             ) from exc
 
-        tls_config: dict = {}
+        tls_config: dict[str, Any] = {}
         if self.ca_cert:
             tls_config["verify"] = self.ca_cert
         elif self.skip_verify:
@@ -306,17 +361,24 @@ class HashiCorpVaultProvider(SecretProvider):
 
         try:
             if self.kv_version == 2:
-                response = client.secrets.kv.v2.read_secret_version(path=self.path)
-                data: dict = response["data"]["data"]
+                response = client.secrets.kv.v2.read_secret_version(
+                    path=self.path,
+                    mount_point=self.mount_point,
+                )
+                data: dict[str, Any] = response["data"]["data"]
             else:
-                response = client.secrets.kv.v1.read_secret(path=self.path)
+                response = client.secrets.kv.v1.read_secret(
+                    path=self.path,
+                    mount_point=self.mount_point,
+                )
                 data = response["data"]
         except Exception as exc:
             raise RuntimeError(
-                f"Failed to read Vault secret at path '{self.path}': {exc}"
+                f"Failed to read Vault secret at mount={self.mount_point!r} path="
+                f"{self.path!r}: {exc}"
             ) from exc
 
-        return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float))}
+        return _scalar_entries_from_mapping(data)
 
 
 # ---------------------------------------------------------------------------

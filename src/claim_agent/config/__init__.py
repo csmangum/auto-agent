@@ -68,7 +68,14 @@ def get_settings() -> Settings:
 
 
 def reload_settings() -> Settings:
-    """Reload settings from environment. For tests that need fresh config."""
+    """Reload settings from environment. For tests that need fresh config.
+
+    Calls :func:`load_secrets_into_env` on every reload. With
+    ``SECRET_PROVIDER=aws_secrets_manager`` or ``hashicorp_vault``, that
+    re-fetches from the external store each time (intentional for picking up
+    rotated secrets in long-lived processes). Tests typically use the default
+    ``env`` provider, which performs no network I/O.
+    """
     global _settings, _secrets_loaded
     with _settings_lock:
         load_secrets_into_env()

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +18,29 @@ from claim_agent.config.secret_provider import (
     get_secret_provider,
     load_secrets_into_env,
 )
+
+
+def _install_fake_boto3_stack(monkeypatch: pytest.MonkeyPatch, mock_client: MagicMock) -> None:
+    """Stub boto3/botocore so AWS provider tests run without optional ``boto3`` installed."""
+    boto3_mod = types.ModuleType("boto3")
+    boto3_mod.client = MagicMock(return_value=mock_client)
+    monkeypatch.setitem(sys.modules, "boto3", boto3_mod)
+
+    exc_mod = types.ModuleType("botocore.exceptions")
+
+    class ClientError(Exception):
+        """Minimal stub matching ``botocore.exceptions.ClientError`` shape."""
+
+        def __init__(self, error_response: object, operation_name: str) -> None:
+            self.response = error_response
+            self.operation_name = operation_name
+            super().__init__(str(error_response))
+
+    exc_mod.ClientError = ClientError
+    monkeypatch.setitem(sys.modules, "botocore.exceptions", exc_mod)
+    botocore_pkg = types.ModuleType("botocore")
+    botocore_pkg.exceptions = exc_mod
+    monkeypatch.setitem(sys.modules, "botocore", botocore_pkg)
 
 
 # ---------------------------------------------------------------------------
@@ -58,18 +83,32 @@ class _FixedProvider(SecretProvider):
 
 class TestProviderInject:
     def test_injects_missing_keys(self, monkeypatch):
-        """inject() sets keys that are absent from os.environ."""
-        monkeypatch.delenv("CLAIM_AGENT_NEW_SECRET", raising=False)
-        provider = _FixedProvider({"CLAIM_AGENT_NEW_SECRET": "supersecret"})
-        provider.inject()
-        assert os.environ.get("CLAIM_AGENT_NEW_SECRET") == "supersecret"
+        """inject() sets allowlisted keys that are absent from os.environ."""
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        try:
+            provider = _FixedProvider({"JWT_SECRET": "supersecret"})
+            provider.inject()
+            assert os.environ.get("JWT_SECRET") == "supersecret"
+        finally:
+            os.environ.pop("JWT_SECRET", None)
 
     def test_does_not_overwrite_existing_keys(self, monkeypatch):
         """inject() never overwrites env vars that are already set."""
-        monkeypatch.setenv("CLAIM_AGENT_EXISTING", "original")
-        provider = _FixedProvider({"CLAIM_AGENT_EXISTING": "from_store"})
+        monkeypatch.setenv("JWT_SECRET", "original")
+        provider = _FixedProvider({"JWT_SECRET": "from_store"})
         provider.inject()
-        assert os.environ["CLAIM_AGENT_EXISTING"] == "original"
+        assert os.environ["JWT_SECRET"] == "original"
+
+    def test_skips_keys_not_in_allowlist(self, monkeypatch, caplog):
+        """inject() ignores unknown keys from the secret store."""
+        import logging
+
+        monkeypatch.delenv("CLAIM_AGENT_UNKNOWN_FROM_STORE", raising=False)
+        provider = _FixedProvider({"CLAIM_AGENT_UNKNOWN_FROM_STORE": "x"})
+        with caplog.at_level(logging.WARNING, logger="claim_agent.config.secret_provider"):
+            provider.inject()
+        assert os.environ.get("CLAIM_AGENT_UNKNOWN_FROM_STORE") is None
+        assert any("Skipping secret key" in r.message for r in caplog.records)
 
     def test_raises_runtime_error_on_provider_failure(self):
         """inject() wraps provider exceptions in RuntimeError."""
@@ -134,13 +173,16 @@ class TestLoadSecretsIntoEnv:
 
     def test_injects_via_fixed_provider(self, monkeypatch):
         """load_secrets_into_env() delegates to the configured provider."""
-        monkeypatch.delenv("CLAIM_AGENT_INJECT_TEST", raising=False)
-        with patch(
-            "claim_agent.config.secret_provider.get_secret_provider",
-            return_value=_FixedProvider({"CLAIM_AGENT_INJECT_TEST": "value123"}),
-        ):
-            load_secrets_into_env()
-        assert os.environ.get("CLAIM_AGENT_INJECT_TEST") == "value123"
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        try:
+            with patch(
+                "claim_agent.config.secret_provider.get_secret_provider",
+                return_value=_FixedProvider({"OPENAI_API_KEY": "value123"}),
+            ):
+                load_secrets_into_env()
+            assert os.environ.get("OPENAI_API_KEY") == "value123"
+        finally:
+            os.environ.pop("OPENAI_API_KEY", None)
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +206,9 @@ class TestAwsSecretsManagerProvider:
             "SecretString": json.dumps(secret_data)
         }
 
-        with patch("boto3.client", return_value=mock_client):
-            provider = AwsSecretsManagerProvider()
-            result = provider.get_secrets()
+        _install_fake_boto3_stack(monkeypatch, mock_client)
+        provider = AwsSecretsManagerProvider()
+        result = provider.get_secrets()
 
         assert result == secret_data
 
@@ -192,40 +234,36 @@ class TestAwsSecretsManagerProvider:
         mock_client = MagicMock()
         mock_client.get_secret_value.return_value = {"SecretString": "not-json"}
 
-        with patch("boto3.client", return_value=mock_client):
-            provider = AwsSecretsManagerProvider()
-            with pytest.raises(ValueError, match="not valid JSON"):
-                provider.get_secrets()
+        _install_fake_boto3_stack(monkeypatch, mock_client)
+        provider = AwsSecretsManagerProvider()
+        with pytest.raises(ValueError, match="not valid JSON"):
+            provider.get_secrets()
 
     def test_empty_secret_string_raises(self, monkeypatch):
         monkeypatch.setenv("AWS_SECRET_NAME", "my-secret")
         mock_client = MagicMock()
         mock_client.get_secret_value.return_value = {"SecretString": ""}
 
-        with patch("boto3.client", return_value=mock_client):
-            provider = AwsSecretsManagerProvider()
-            with pytest.raises(ValueError, match="no SecretString"):
-                provider.get_secrets()
+        _install_fake_boto3_stack(monkeypatch, mock_client)
+        provider = AwsSecretsManagerProvider()
+        with pytest.raises(ValueError, match="no SecretString"):
+            provider.get_secrets()
 
     def test_client_error_raises_runtime_error(self, monkeypatch):
         monkeypatch.setenv("AWS_SECRET_NAME", "my-secret")
         monkeypatch.setenv("AWS_REGION", "us-east-1")
 
-        try:
-            from botocore.exceptions import ClientError
-        except ImportError:
-            pytest.skip("botocore not installed")
-
         mock_client = MagicMock()
-        mock_client.get_secret_value.side_effect = ClientError(
+        _install_fake_boto3_stack(monkeypatch, mock_client)
+        client_err = sys.modules["botocore.exceptions"].ClientError
+        mock_client.get_secret_value.side_effect = client_err(
             {"Error": {"Code": "ResourceNotFoundException", "Message": "Not found"}},
             "GetSecretValue",
         )
 
-        with patch("boto3.client", return_value=mock_client):
-            provider = AwsSecretsManagerProvider()
-            with pytest.raises(RuntimeError, match="Failed to retrieve secret"):
-                provider.get_secrets()
+        provider = AwsSecretsManagerProvider()
+        with pytest.raises(RuntimeError, match="Failed to retrieve secret"):
+            provider.get_secrets()
 
     def test_optional_version_id_passed_to_client(self, monkeypatch):
         monkeypatch.setenv("AWS_SECRET_NAME", "my-secret")
@@ -234,14 +272,41 @@ class TestAwsSecretsManagerProvider:
 
         mock_client = MagicMock()
         mock_client.get_secret_value.return_value = {
-            "SecretString": json.dumps({"KEY": "val"})
+            "SecretString": json.dumps({"JWT_SECRET": "val"})
         }
 
-        with patch("boto3.client", return_value=mock_client):
-            provider = AwsSecretsManagerProvider()
+        _install_fake_boto3_stack(monkeypatch, mock_client)
+        provider = AwsSecretsManagerProvider()
+        provider.get_secrets()
+        call_kwargs = mock_client.get_secret_value.call_args[1]
+        assert call_kwargs.get("VersionId") == "abc-123"
+
+    def test_non_object_json_raises(self, monkeypatch):
+        monkeypatch.setenv("AWS_SECRET_NAME", "my-secret")
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {"SecretString": json.dumps([1, 2])}
+
+        _install_fake_boto3_stack(monkeypatch, mock_client)
+        provider = AwsSecretsManagerProvider()
+        with pytest.raises(ValueError, match="must be a JSON object"):
             provider.get_secrets()
-            call_kwargs = mock_client.get_secret_value.call_args[1]
-            assert call_kwargs.get("VersionId") == "abc-123"
+
+    def test_boolean_values_skipped_with_warning(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("AWS_SECRET_NAME", "my-secret")
+        secret_data = {"JWT_SECRET": "ok", "FEATURE_X": True}
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            "SecretString": json.dumps(secret_data)
+        }
+
+        _install_fake_boto3_stack(monkeypatch, mock_client)
+        provider = AwsSecretsManagerProvider()
+        with caplog.at_level(logging.WARNING, logger="claim_agent.config.secret_provider"):
+            result = provider.get_secrets()
+        assert result == {"JWT_SECRET": "ok"}
+        assert any("FEATURE_X" in r.message and "bool" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -367,5 +432,70 @@ class TestHashiCorpVaultProvider:
         self._mock_hvac(monkeypatch, mock_client)
 
         provider = HashiCorpVaultProvider()
-        with pytest.raises(RuntimeError, match="Failed to read Vault secret"):
+        with pytest.raises(RuntimeError, match="Failed to read Vault secret at mount"):
             provider.get_secrets()
+
+    def test_invalid_kv_version_raises(self, monkeypatch):
+        monkeypatch.setenv("VAULT_ADDR", "https://vault.example.com:8200")
+        monkeypatch.setenv("VAULT_PATH", "claim-agent")
+        monkeypatch.setenv("VAULT_TOKEN", "s.test")
+        monkeypatch.setenv("VAULT_KV_VERSION", "v2")
+        with pytest.raises(ValueError, match="VAULT_KV_VERSION"):
+            HashiCorpVaultProvider()
+
+    def test_kv_version_three_raises(self, monkeypatch):
+        monkeypatch.setenv("VAULT_ADDR", "https://vault.example.com:8200")
+        monkeypatch.setenv("VAULT_PATH", "claim-agent")
+        monkeypatch.setenv("VAULT_TOKEN", "s.test")
+        monkeypatch.setenv("VAULT_KV_VERSION", "3")
+        with pytest.raises(ValueError, match="VAULT_KV_VERSION"):
+            HashiCorpVaultProvider()
+
+    def test_mount_point_passed_to_kv2_read(self, monkeypatch):
+        monkeypatch.setenv("VAULT_ADDR", "https://vault.example.com:8200")
+        monkeypatch.setenv("VAULT_PATH", "claim-agent/prod")
+        monkeypatch.setenv("VAULT_TOKEN", "s.test")
+        monkeypatch.setenv("VAULT_KV_VERSION", "2")
+        monkeypatch.setenv("VAULT_MOUNT_POINT", "kv")
+
+        secret_data = {"JWT_SECRET": "vault-jwt"}
+
+        mock_client = MagicMock()
+        mock_client.is_authenticated.return_value = True
+        mock_client.secrets.kv.v2.read_secret_version.return_value = {
+            "data": {"data": secret_data}
+        }
+        self._mock_hvac(monkeypatch, mock_client)
+
+        provider = HashiCorpVaultProvider()
+        result = provider.get_secrets()
+
+        assert result == secret_data
+        mock_client.secrets.kv.v2.read_secret_version.assert_called_once_with(
+            path="claim-agent/prod",
+            mount_point="kv",
+        )
+
+    def test_get_secrets_kv2_approle(self, monkeypatch):
+        monkeypatch.setenv("VAULT_ADDR", "https://vault.example.com:8200")
+        monkeypatch.setenv("VAULT_PATH", "claim-agent")
+        monkeypatch.delenv("VAULT_TOKEN", raising=False)
+        monkeypatch.setenv("VAULT_ROLE_ID", "role-id-1")
+        monkeypatch.setenv("VAULT_SECRET_ID", "secret-id-1")
+        monkeypatch.setenv("VAULT_KV_VERSION", "2")
+
+        secret_data = {"JWT_SECRET": "from-approle"}
+
+        mock_client = MagicMock()
+        mock_client.is_authenticated.return_value = True
+        mock_client.secrets.kv.v2.read_secret_version.return_value = {
+            "data": {"data": secret_data}
+        }
+        self._mock_hvac(monkeypatch, mock_client)
+
+        provider = HashiCorpVaultProvider()
+        assert provider.get_secrets() == secret_data
+        mock_client.auth.approle.login.assert_called_once_with(
+            role_id="role-id-1",
+            secret_id="secret-id-1",
+        )

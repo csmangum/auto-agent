@@ -11,8 +11,9 @@ import json
 import logging
 import math
 import os
+import signal
 import sys
-import time
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Optional
@@ -1184,6 +1185,27 @@ def ucspa_deadlines(
     )
 
 
+def _register_scheduler_shutdown_signals(stop_event: threading.Event) -> None:
+    """Register SIGTERM/SIGINT handlers so container orchestrators can stop cleanly.
+
+    Kubernetes, Docker, and systemd send SIGTERM by default; without a handler the
+    process may exit before ``finally`` runs, skipping ``stop_scheduler()``.
+    """
+
+    def _request_stop(signum: int, _frame: object | None) -> None:
+        stop_event.set()
+
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _request_stop)
+    signal.signal(signal.SIGINT, _request_stop)
+
+
+def _run_scheduler_until_stopped(stop_event: threading.Event) -> None:
+    """Block until *stop_event* is set (interruptible 1s polling)."""
+    while not stop_event.is_set():
+        stop_event.wait(timeout=1.0)
+
+
 @app.command("run-scheduler")
 def run_scheduler() -> None:
     """Run scheduler as a dedicated single-instance foreground process.
@@ -1203,13 +1225,13 @@ def run_scheduler() -> None:
         )
         raise typer.Exit(1)
 
+    stop_event = threading.Event()
+    _register_scheduler_shutdown_signals(stop_event)
+
     ensure_scheduler_running()
     typer.echo("Scheduler started. Press Ctrl+C to stop.")
     try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass
+        _run_scheduler_until_stopped(stop_event)
     finally:
         asyncio.run(stop_scheduler())
         typer.echo("Scheduler stopped.")

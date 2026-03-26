@@ -3,9 +3,10 @@
  * Sends X-Third-Party-Access-Token; claim id is in the URL path.
  */
 
+import { API_VERSION } from './config';
 import { parseApiError } from './apiUtils';
 
-const BASE = '/api/v1/third-party-portal';
+const BASE = `${API_VERSION}/third-party-portal`;
 
 export interface ThirdPartyPortalSession {
   token: string;

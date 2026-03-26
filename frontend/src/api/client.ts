@@ -4,6 +4,7 @@
  * Retries once on 5xx (transient) errors.
  */
 
+import { API_VERSION } from './config';
 import { parseApiError } from './apiUtils';
 import type {
   ClaimsStats,
@@ -41,7 +42,7 @@ import type {
   NoteTemplatesResponse,
 } from './types';
 
-const BASE = '/api/v1';
+const BASE = API_VERSION;
 
 let _authToken: string | null = null;
 
