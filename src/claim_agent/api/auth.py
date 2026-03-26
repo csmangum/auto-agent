@@ -74,6 +74,8 @@ def verify_token(token: str) -> AuthContext | None:
             logger.debug("JWT decode/validation failed", exc_info=True)
             return None
 
+    return None
+
 
 def is_auth_required() -> bool:
     """True if any auth config is set (API_KEYS, CLAIMS_API_KEY, or JWT_SECRET)."""
