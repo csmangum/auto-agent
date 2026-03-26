@@ -10,8 +10,8 @@ import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { DocumentIcon } from './icons';
 import { NAV_ICONS, type NavIconKey } from './icons/icons-maps';
 import { useRoleSimulation } from '../context/RoleSimulationContext';
-import ClaimDetailTitleProvider from '../context/ClaimDetailTitleProvider';
-import { useClaimDetailTitleForBreadcrumb } from '../hooks/useClaimDetailTitle';
+import ClaimBreadcrumbLabelProvider from '../context/ClaimBreadcrumbLabelProvider';
+import { useClaimBreadcrumbLabel } from '../hooks/useClaimBreadcrumbLabel';
 
 interface NavItem {
   to: string;
@@ -89,8 +89,8 @@ function LayoutShell() {
   const openSidebar = () => setSidebarOpen(true);
   const { roleDef, isSimulating } = useRoleSimulation();
   const { pathname } = useLocation();
-  const claimDetailTitle = useClaimDetailTitleForBreadcrumb();
-  const breadcrumbItems = useBreadcrumbs(claimDetailTitle);
+  const claimBreadcrumbLabel = useClaimBreadcrumbLabel();
+  const breadcrumbItems = useBreadcrumbs(claimBreadcrumbLabel);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
@@ -260,8 +260,8 @@ function LayoutShell() {
 
 export default function Layout() {
   return (
-    <ClaimDetailTitleProvider>
+    <ClaimBreadcrumbLabelProvider>
       <LayoutShell />
-    </ClaimDetailTitleProvider>
+    </ClaimBreadcrumbLabelProvider>
   );
 }

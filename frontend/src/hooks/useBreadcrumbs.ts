@@ -34,7 +34,7 @@ function pathDepth(p: string): number {
 }
 
 /** Build hierarchical crumbs from pathname prefixes (e.g. Claims > Claim detail). */
-export function useBreadcrumbs(claimTitle?: string | null): BreadcrumbItem[] {
+export function useBreadcrumbs(claimBreadcrumbLabel?: string | null): BreadcrumbItem[] {
   const { pathname } = useLocation();
   const params = useParams();
 
@@ -58,7 +58,7 @@ export function useBreadcrumbs(claimTitle?: string | null): BreadcrumbItem[] {
       if (segDef.paramKey && params[segDef.paramKey]) {
         const v = params[segDef.paramKey] as string;
         if (segDef.paramKey === 'claimId') {
-          const t = claimTitle?.trim();
+          const t = claimBreadcrumbLabel?.trim();
           if (t) {
             label = t.length > 48 ? `${t.slice(0, 48)}…` : t;
           } else {
@@ -73,5 +73,5 @@ export function useBreadcrumbs(claimTitle?: string | null): BreadcrumbItem[] {
     }
 
     return items;
-  }, [pathname, params, claimTitle]);
+  }, [pathname, params, claimBreadcrumbLabel]);
 }

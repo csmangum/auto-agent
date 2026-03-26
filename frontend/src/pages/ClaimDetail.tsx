@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, type ComponentType, type SVGProps } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { useClaimDetailTitleSetter } from '../hooks/useClaimDetailTitle';
+import { useSetClaimBreadcrumbLabel } from '../hooks/useClaimBreadcrumbLabel';
+import { formatClaimBreadcrumbLabel } from '../utils/claimBreadcrumbLabel';
 import { useTabs } from '../utils/useTabs';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -870,7 +871,7 @@ type ClaimTabItem = {
 
 export default function ClaimDetail() {
   const { claimId } = useParams<{ claimId: string }>();
-  const setClaimDetailTitle = useClaimDetailTitleSetter();
+  const setClaimBreadcrumbLabel = useSetClaimBreadcrumbLabel();
   const [activeTab, setActiveTab] = useTabs<ClaimDetailTab>(CLAIM_DETAIL_TABS, 'overview');
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const { data: claim, isLoading: claimLoading, error: claimError } = useClaim(claimId);
@@ -918,11 +919,13 @@ export default function ClaimDetail() {
   const loading = claimLoading || historyLoading || workflowsLoading;
   const error = claimError ?? historyError ?? workflowsError;
 
-  useDocumentTitle(claimId ? `Claim ${claimId}` : 'Claim');
+  useDocumentTitle(
+    claim ? formatClaimBreadcrumbLabel(claim) : claimId ? `Claim ${claimId}` : 'Claim'
+  );
   useEffect(() => {
-    if (claim?.id) setClaimDetailTitle(claim.id);
-    return () => setClaimDetailTitle(null);
-  }, [claim?.id, setClaimDetailTitle]);
+    if (claim) setClaimBreadcrumbLabel(formatClaimBreadcrumbLabel(claim));
+    return () => setClaimBreadcrumbLabel(null);
+  }, [claim, setClaimBreadcrumbLabel]);
 
   if (loading) {
     return (
