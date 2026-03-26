@@ -39,7 +39,10 @@ describe('WorkbenchDashboard', () => {
         offset: 0,
       },
       isLoading: false,
+      isError: false,
       error: null,
+      refetch: vi.fn(),
+      dataUpdatedAt: Date.now(),
     } as ReturnType<typeof useReviewQueue>);
 
     vi.mocked(useOverdueTasks).mockReturnValue({
@@ -50,7 +53,10 @@ describe('WorkbenchDashboard', () => {
         total: 1,
       },
       isLoading: false,
+      isError: false,
       error: null,
+      refetch: vi.fn(),
+      dataUpdatedAt: Date.now(),
     } as ReturnType<typeof useOverdueTasks>);
 
     vi.mocked(useTaskStats).mockReturnValue({
@@ -62,7 +68,10 @@ describe('WorkbenchDashboard', () => {
         overdue: 1,
       },
       isLoading: false,
+      isError: false,
       error: null,
+      refetch: vi.fn(),
+      dataUpdatedAt: Date.now(),
     } as ReturnType<typeof useTaskStats>);
   });
 
@@ -101,17 +110,26 @@ describe('WorkbenchDashboard', () => {
     vi.mocked(useReviewQueue).mockReturnValue({
       data: undefined,
       isLoading: true,
+      isError: false,
       error: null,
+      refetch: vi.fn(),
+      dataUpdatedAt: 0,
     } as ReturnType<typeof useReviewQueue>);
     vi.mocked(useOverdueTasks).mockReturnValue({
       data: undefined,
       isLoading: true,
+      isError: false,
       error: null,
+      refetch: vi.fn(),
+      dataUpdatedAt: 0,
     } as ReturnType<typeof useOverdueTasks>);
     vi.mocked(useTaskStats).mockReturnValue({
       data: undefined,
       isLoading: true,
+      isError: false,
       error: null,
+      refetch: vi.fn(),
+      dataUpdatedAt: 0,
     } as ReturnType<typeof useTaskStats>);
 
     render(<WorkbenchDashboard />, { wrapper: createWrapper() });
