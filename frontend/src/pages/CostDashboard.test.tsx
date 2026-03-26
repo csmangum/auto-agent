@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import CostDashboard from './CostDashboard';
@@ -24,7 +24,7 @@ function createWrapper() {
   };
 }
 
-const todayUtc = new Date().toISOString().slice(0, 10);
+const todayUtc = '2024-01-01';
 
 const mockCostBreakdown: CostBreakdown = {
   global_stats: {
@@ -60,11 +60,17 @@ describe('CostDashboard', () => {
   const Wrapper = createWrapper();
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${todayUtc}T12:00:00Z`));
     vi.mocked(useCostBreakdown).mockReturnValue({
       data: mockCostBreakdown,
       isLoading: false,
       error: null,
     } as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders cost dashboard with populated data', () => {

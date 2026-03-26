@@ -708,7 +708,7 @@ export default function NewClaimForm() {
             <div className="mt-3 flex flex-wrap gap-2">
               {files.map((f, i) => (
                 <span
-                  key={`${f.name}-${i}`}
+                  key={`${f.name}-${f.size}`}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-800 text-xs text-gray-300 ring-1 ring-gray-700"
                 >
                   📄 {f.name}
