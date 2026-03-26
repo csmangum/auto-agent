@@ -37,6 +37,7 @@ _claims_failed_total: Counter | None = None
 _claims_escalated_total: Counter | None = None
 _claim_processing_duration_seconds: Histogram | None = None
 _llm_tokens_total: Counter | None = None
+_llm_cost_usd_total: Counter | None = None
 _claims_in_progress: Gauge | None = None
 _review_queue_size: Gauge | None = None
 _metrics_lock = threading.Lock()
@@ -48,7 +49,7 @@ def _ensure_metrics() -> None:
     Thread-safe: _metrics_lock protects the double-checked initialization.
     """
     global _claims_processed_total, _claims_failed_total, _claims_escalated_total
-    global _claim_processing_duration_seconds, _llm_tokens_total
+    global _claim_processing_duration_seconds, _llm_tokens_total, _llm_cost_usd_total
     global _claims_in_progress, _review_queue_size
 
     if _claims_processed_total is not None:
@@ -79,6 +80,10 @@ def _ensure_metrics() -> None:
             "llm_tokens_total",
             "Total LLM tokens used",
             ["type"],
+        )
+        _llm_cost_usd_total = Counter(
+            "llm_cost_usd_total",
+            "Total LLM spend in US dollars",
         )
         _claims_in_progress = Gauge(
             "claims_in_progress",
@@ -136,6 +141,25 @@ def record_llm_tokens(input_tokens: int, output_tokens: int) -> None:
         _llm_tokens_total.labels(type="input").inc(input_tokens)
     if output_tokens > 0:
         _llm_tokens_total.labels(type="output").inc(output_tokens)
+
+
+def record_llm_cost(cost_usd: float) -> None:
+    """Record LLM cost in USD for Prometheus.
+
+    Call from record_llm_call in metrics.py alongside record_llm_tokens.
+
+    Args:
+        cost_usd: Cost of this LLM call in US dollars
+    """
+    _ensure_metrics()
+    if _llm_cost_usd_total is None:
+        return
+
+    if cost_usd < 0:
+        logger.warning("record_llm_cost received negative cost_usd=%s; ignoring", cost_usd)
+        return
+    if cost_usd > 0:
+        _llm_cost_usd_total.inc(cost_usd)
 
 
 def _update_gauges() -> None:

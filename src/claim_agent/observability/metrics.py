@@ -18,7 +18,7 @@ from typing import Any
 import httpx
 
 from claim_agent.config.settings import get_llm_cost_alert_config
-from claim_agent.observability.prometheus import record_llm_tokens
+from claim_agent.observability.prometheus import record_llm_cost, record_llm_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -300,6 +300,7 @@ class ClaimMetrics:
                 self._claims[claim_id]["claim_type"] = claim_type
 
         record_llm_tokens(input_tokens, output_tokens)
+        record_llm_cost(cost_usd)
 
         # Log the metric
         logger.info(

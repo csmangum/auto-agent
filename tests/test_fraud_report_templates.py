@@ -1,6 +1,7 @@
 """Tests for fraud report templates."""
 
 import json
+from unittest.mock import patch
 
 from claim_agent.compliance.fraud_report_templates import get_fraud_report_template
 from claim_agent.tools.compliance_tools import get_fraud_report_template_tool
@@ -75,3 +76,12 @@ class TestGetFraudReportTemplate:
             template = get_fraud_report_template(abbrev)
             assert template is not None, f"Expected template for {abbrev}"
             assert template["state"] == expected
+
+    def test_returns_none_when_normalized_state_not_in_template_map(self):
+        """Guard branch when normalize_state succeeds but _TEMPLATES has no entry."""
+        with patch.dict(
+            "claim_agent.compliance.fraud_report_templates._TEMPLATES",
+            {},
+            clear=True,
+        ):
+            assert get_fraud_report_template("California") is None

@@ -33,7 +33,15 @@ jobs:
             --cov=claim_agent \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=70
+            --cov-fail-under=80
+
+      # Single --include: comma-separated patterns (coverage merges them). Repeated
+      # --include flags override each other; only the last pattern would apply.
+      - name: Check coverage for critical modules
+        run: |
+          coverage report \
+            --include="src/claim_agent/workflow/stages.py,src/claim_agent/tools/fraud_detectors.py,src/claim_agent/tools/fraud_logic.py,src/claim_agent/tools/fraud_utils.py,src/claim_agent/tools/payment_logic.py,src/claim_agent/compliance/*.py" \
+            --fail-under=85
 
   integration:
     runs-on: ubuntu-latest
@@ -212,7 +220,8 @@ jobs:
 
   load:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main'
+    needs: [unit, lint]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -231,6 +240,9 @@ jobs:
         env:
           LOAD_TEST_CONCURRENCY: "2"
           LOAD_TEST_OUTPUT: load_test_report.json
+          LOAD_TEST_SLA_P50_SEC: "2.0"
+          LOAD_TEST_SLA_P99_SEC: "5.0"
+          LOAD_TEST_SLA_ERROR_RATE: "0.01"
         run: |
           pytest tests/load/ -v -m load
 

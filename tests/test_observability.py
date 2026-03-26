@@ -204,6 +204,26 @@ class TestMetrics:
         assert summary.total_cost_usd == pytest.approx(0.001)
         assert summary.total_latency_ms == pytest.approx(500.0)
 
+    def test_claim_metrics_record_llm_call_invokes_prometheus_cost(self):
+        """record_llm_call should forward cost to record_llm_cost for Prometheus."""
+        from unittest.mock import patch
+
+        from claim_agent.observability.metrics import ClaimMetrics
+
+        metrics = ClaimMetrics()
+        with (
+            patch("claim_agent.observability.metrics.record_llm_cost") as mock_cost,
+            patch("claim_agent.observability.metrics.record_llm_tokens"),
+        ):
+            metrics.record_llm_call(
+                claim_id="CLM-PROM",
+                model="gpt-4o-mini",
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.02,
+            )
+        mock_cost.assert_called_once_with(0.02)
+
     def test_claim_metrics_calculate_cost(self):
         """calculate_cost should estimate costs based on model."""
         from claim_agent.observability.metrics import calculate_cost
