@@ -33,7 +33,13 @@ jobs:
             --cov=claim_agent \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=70
+            --cov-fail-under=80
+
+      - name: Check coverage for critical modules
+        run: |
+          coverage report \
+            --include="src/claim_agent/workflow/stages.py,src/claim_agent/tools/fraud_detectors.py,src/claim_agent/tools/fraud_logic.py,src/claim_agent/tools/fraud_utils.py,src/claim_agent/tools/payment_logic.py,src/claim_agent/compliance/*.py" \
+            --fail-under=85
 
   integration:
     runs-on: ubuntu-latest
