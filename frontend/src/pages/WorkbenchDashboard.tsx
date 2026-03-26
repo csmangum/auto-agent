@@ -42,7 +42,6 @@ export default function WorkbenchDashboard() {
     dataUpdatedAt: statsUpdatedAt,
   } = useTaskStats({ workbench: true });
 
-  const loading = queueLoading || overdueLoading || statsLoading;
   const anyError = queueError || overdueError || statsError;
   const lastUpdatedAt = Math.max(queueUpdatedAt, overdueUpdatedAt, statsUpdatedAt);
 

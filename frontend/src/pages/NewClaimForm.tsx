@@ -706,7 +706,7 @@ export default function NewClaimForm() {
           </FileDropZone>
           {files.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {files.map((f, i) => (
+              {files.map((f) => (
                 <span
                   key={`${f.name}-${f.size}`}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-800 text-xs text-gray-300 ring-1 ring-gray-700"
