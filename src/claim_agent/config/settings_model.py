@@ -1152,6 +1152,17 @@ class PortalConfig(BaseSettings):
         validation_alias="CLAIM_ACCESS_TOKEN_EXPIRY_DAYS",
         description="Token validity in days.",
     )
+    inactivity_timeout_days: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        validation_alias="CLAIM_PORTAL_INACTIVITY_TIMEOUT_DAYS",
+        description=(
+            "Number of days of inactivity after which a claimant portal token is "
+            "considered expired regardless of its absolute expiry date. "
+            "Set to the same value as token_expiry_days to disable the check."
+        ),
+    )
 
     @field_validator("enabled", mode="before")
     @classmethod
@@ -1189,6 +1200,17 @@ class RepairShopPortalConfig(BaseSettings):
         le=365,
         description="Repair shop access token validity in days.",
     )
+    inactivity_timeout_days: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        validation_alias="REPAIR_SHOP_PORTAL_INACTIVITY_TIMEOUT_DAYS",
+        description=(
+            "Number of days of inactivity after which a repair shop portal token is "
+            "considered expired regardless of its absolute expiry date. "
+            "Set to the same value as token_expiry_days to disable the check."
+        ),
+    )
 
     @field_validator("enabled", mode="before")
     @classmethod
@@ -1217,6 +1239,17 @@ class ThirdPartyPortalConfig(BaseSettings):
         ge=1,
         le=365,
         description="Third-party access token validity in days.",
+    )
+    inactivity_timeout_days: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        validation_alias="THIRD_PARTY_PORTAL_INACTIVITY_TIMEOUT_DAYS",
+        description=(
+            "Number of days of inactivity after which a third-party portal token is "
+            "considered expired regardless of its absolute expiry date. "
+            "Set to the same value as token_expiry_days to disable the check."
+        ),
     )
 
     @field_validator("enabled", mode="before")

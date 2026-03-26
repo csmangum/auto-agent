@@ -47,6 +47,8 @@ def verify_claimant_access(
     """Verify claimant has access to the claim. Returns ClaimantContext or None.
 
     Uses CLAIMANT_VERIFICATION_MODE to determine which verification to apply.
+    Token-based verification also enforces an inactivity timeout: tokens not
+    used within ``CLAIM_PORTAL_INACTIVITY_TIMEOUT_DAYS`` days are rejected.
     """
     settings = get_settings()
     if not settings.portal.enabled:
@@ -70,9 +72,13 @@ def verify_claimant_access(
                 return None
             token_hash = _hash_token(token.strip())
             now = datetime.now(timezone.utc)
+            inactivity_cutoff = now - timedelta(
+                days=settings.portal.inactivity_timeout_days
+            )
             row = conn.execute(
                 text("""
-                    SELECT claim_id, party_id, email FROM claim_access_tokens
+                    SELECT id, claim_id, party_id, email, last_used_at
+                    FROM claim_access_tokens
                     WHERE claim_id = :claim_id AND token_hash = :token_hash
                     AND expires_at > :now
                 """),
@@ -85,6 +91,32 @@ def verify_claimant_access(
             if row is None:
                 return None
             rec = row_to_dict(row)
+            # Enforce inactivity timeout
+            last_used = rec.get("last_used_at")
+            if last_used is not None:
+                try:
+                    last_used_dt = datetime.fromisoformat(
+                        str(last_used).replace("Z", "+00:00")
+                    )
+                    if last_used_dt.tzinfo is None:
+                        last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
+                    if last_used_dt < inactivity_cutoff:
+                        logger.info(
+                            "Rejecting inactive claimant token for claim_id=%s", claim_id
+                        )
+                        return None
+                except (ValueError, TypeError):
+                    pass
+            # Update last_used_at
+            conn.execute(
+                text("""
+                    UPDATE claim_access_tokens
+                    SET last_used_at = :now
+                    WHERE id = :token_id
+                """),
+                {"now": now, "token_id": rec["id"]},
+            )
+            conn.commit()
             party_id = rec.get("party_id")
             identity = (
                 rec.get("email")
@@ -174,6 +206,7 @@ def get_claim_ids_for_claimant(
 
     Uses CLAIMANT_VERIFICATION_MODE to determine which verification method(s) to accept.
     Only the configured mode is honored; other credentials are ignored.
+    Token-based lookups also enforce an inactivity timeout and update last_used_at.
     """
     settings = get_settings()
     if not settings.portal.enabled:
@@ -187,16 +220,45 @@ def get_claim_ids_for_claimant(
         if mode == "token" and token and token.strip():
             token_hash = _hash_token(token.strip())
             now = datetime.now(timezone.utc)
+            inactivity_cutoff = now - timedelta(
+                days=settings.portal.inactivity_timeout_days
+            )
             rows = conn.execute(
                 text("""
-                    SELECT claim_id FROM claim_access_tokens
+                    SELECT id, claim_id, last_used_at FROM claim_access_tokens
                     WHERE token_hash = :token_hash AND expires_at > :now
                 """),
                 {"token_hash": token_hash, "now": now},
             ).fetchall()
+            active_ids: list[int] = []
             for r in rows:
-                cid = str(r[0]) if hasattr(r, "__getitem__") else str(r["claim_id"])
+                rec = row_to_dict(r)
+                last_used = rec.get("last_used_at")
+                if last_used is not None:
+                    try:
+                        last_used_dt = datetime.fromisoformat(
+                            str(last_used).replace("Z", "+00:00")
+                        )
+                        if last_used_dt.tzinfo is None:
+                            last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
+                        if last_used_dt < inactivity_cutoff:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+                cid = str(rec["claim_id"])
                 seen.add(cid)
+                active_ids.append(int(rec["id"]))
+            # Bulk-update last_used_at for all active matching rows
+            if active_ids:
+                placeholders = ",".join(str(tid) for tid in active_ids)
+                conn.execute(
+                    text(
+                        f"UPDATE claim_access_tokens SET last_used_at = :now"  # noqa: S608
+                        f" WHERE id IN ({placeholders})"
+                    ),
+                    {"now": now},
+                )
+                conn.commit()
 
         if mode == "policy_vin" and policy_number and vin:
             pn = str(policy_number).strip()

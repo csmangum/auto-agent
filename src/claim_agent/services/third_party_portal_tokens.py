@@ -67,24 +67,54 @@ def verify_third_party_token(
     *,
     db_path: str | None = None,
 ) -> ThirdPartyTokenRecord | None:
-    """Return record if token is valid for this claim and not expired."""
+    """Return record if token is valid for this claim, not expired, and not inactive."""
     if not raw_token or not raw_token.strip():
         return None
     token_hash = _hash_token(raw_token.strip())
     now = datetime.now(timezone.utc)
+    settings = get_settings()
+    inactivity_cutoff = now - timedelta(
+        days=settings.third_party_portal.inactivity_timeout_days
+    )
     path = db_path or get_db_path()
     with get_connection(path) as conn:
         row = conn.execute(
             text("""
-                SELECT id, claim_id, party_id FROM third_party_access_tokens
+                SELECT id, claim_id, party_id, last_used_at FROM third_party_access_tokens
                 WHERE claim_id = :claim_id AND token_hash = :token_hash
                 AND expires_at > :now
             """),
             {"claim_id": claim_id, "token_hash": token_hash, "now": now},
         ).fetchone()
-    if row is None:
-        return None
-    rec = row_to_dict(row)
+        if row is None:
+            return None
+        rec = row_to_dict(row)
+        # Enforce inactivity timeout
+        last_used = rec.get("last_used_at")
+        if last_used is not None:
+            try:
+                last_used_dt = datetime.fromisoformat(
+                    str(last_used).replace("Z", "+00:00")
+                )
+                if last_used_dt.tzinfo is None:
+                    last_used_dt = last_used_dt.replace(tzinfo=timezone.utc)
+                if last_used_dt < inactivity_cutoff:
+                    logger.info(
+                        "Rejecting inactive third-party token for claim_id=%s", claim_id
+                    )
+                    return None
+            except (ValueError, TypeError):
+                pass
+        # Update last_used_at
+        conn.execute(
+            text("""
+                UPDATE third_party_access_tokens
+                SET last_used_at = :now
+                WHERE id = :token_id
+            """),
+            {"now": now, "token_id": rec["id"]},
+        )
+        conn.commit()
     pid = rec.get("party_id")
     return ThirdPartyTokenRecord(
         token_id=int(rec["id"]),
