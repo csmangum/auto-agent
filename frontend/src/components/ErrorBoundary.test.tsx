@@ -2,6 +2,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ErrorBoundary from './ErrorBoundary';
 
+const mockCaptureException = vi.hoisted(() => vi.fn());
+
+vi.mock('@sentry/react', () => ({
+  captureException: mockCaptureException,
+  init: vi.fn(),
+}));
+
 const ThrowError = ({ shouldThrow = true }: { shouldThrow?: boolean }) => {
   if (shouldThrow) throw new Error('Test error');
   return <div>Child content</div>;
@@ -10,6 +17,7 @@ const ThrowError = ({ shouldThrow = true }: { shouldThrow?: boolean }) => {
 describe('ErrorBoundary', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockCaptureException.mockClear();
   });
 
   afterEach(() => {
@@ -34,6 +42,19 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
     expect(screen.getByText('Test error')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it('reports caught error to Sentry', () => {
+    render(
+      <ErrorBoundary>
+        <ThrowError />
+      </ErrorBoundary>
+    );
+    expect(mockCaptureException).toHaveBeenCalledOnce();
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Test error' }),
+      expect.objectContaining({ extra: expect.objectContaining({ componentStack: expect.any(String) }) })
+    );
   });
 
   it('uses custom fallback when provided', () => {

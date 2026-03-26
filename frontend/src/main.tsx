@@ -6,8 +6,11 @@ import { AuthProvider } from './context/AuthContext';
 import { RoleSimulationProvider } from './context/RoleSimulationContext';
 import { ThemeProvider } from './context/ThemeContext';
 import AppToaster from './components/AppToaster';
+import { initSentry } from './lib/sentry';
 import './index.css';
 import App from './App';
+
+initSentry();
 
 const queryClient = new QueryClient({
   defaultOptions: {
