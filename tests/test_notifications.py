@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import os
 import tempfile
@@ -13,7 +14,11 @@ from sqlalchemy import text
 from claim_agent.config import reload_settings
 from claim_agent.config.settings import get_notification_config, get_webhook_config
 from tests.conftest import LogCaptureHandler
-from claim_agent.notifications.claimant import notify_claimant
+from claim_agent.notifications.claimant import (
+    UCSPA_REQUIRED_EVENTS,
+    check_notification_readiness,
+    notify_claimant,
+)
 from claim_agent.notifications.webhook import (
     _sign_payload,
     dispatch_claim_event,
@@ -435,6 +440,328 @@ class TestNotifyClaimant:
         finally:
             claimant_logger.removeHandler(cap)
         assert any("provider credentials missing" in m for m in cap.messages)
+
+
+class TestUcspaRequiredEvents:
+    """Tests for UCSPA_REQUIRED_EVENTS constant and failure logging severity."""
+
+    def test_ucspa_required_events_contains_mandatory_events(self):
+        assert "receipt_acknowledged" in UCSPA_REQUIRED_EVENTS
+        assert "denial_letter" in UCSPA_REQUIRED_EVENTS
+        assert "follow_up_request" in UCSPA_REQUIRED_EVENTS
+
+    def test_non_ucspa_events_not_in_required(self):
+        assert "estimate_ready" not in UCSPA_REQUIRED_EVENTS
+        assert "repair_authorized" not in UCSPA_REQUIRED_EVENTS
+        assert "claim_closed" not in UCSPA_REQUIRED_EVENTS
+
+    def test_email_failure_ucspa_event_logged_at_error(self):
+        from claim_agent.notifications.claimant import _log_delivery_failure
+
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.ERROR)
+        try:
+            _log_delivery_failure(
+                channel="email",
+                event="receipt_acknowledged",
+                claim_id="CLM-999",
+                detail="status=400",
+            )
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("UCSPA-required" in m for m in cap.messages)
+        assert any("CLM-999" in m for m in cap.messages)
+
+    def test_email_failure_non_ucspa_event_logged_at_warning(self):
+        from claim_agent.notifications.claimant import _log_delivery_failure
+
+        claimant_logger = logging.getLogger("claim_agent.notifications.claimant")
+        cap = LogCaptureHandler()
+        claimant_logger.addHandler(cap)
+        claimant_logger.setLevel(logging.WARNING)
+        try:
+            _log_delivery_failure(
+                channel="email",
+                event="estimate_ready",
+                claim_id="CLM-888",
+                detail="status=500",
+            )
+        finally:
+            claimant_logger.removeHandler(cap)
+        assert any("CLM-888" in m for m in cap.messages)
+        assert not any("UCSPA-required" in m for m in cap.messages)
+
+    def test_send_email_failure_dispatches_failure_webhook(self):
+        """_send_email calls _report_delivery_failure on non-2xx response."""
+        from claim_agent.notifications.claimant import _send_email
+
+        with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+            mock_client = mock_client_cls.return_value.__enter__.return_value
+            mock_client.post.return_value.status_code = 400
+            with patch(
+                "claim_agent.notifications.claimant._report_delivery_failure"
+            ) as mock_report:
+                _send_email(
+                    api_key="sg-key",
+                    from_email="noreply@example.com",
+                    to_email="claimant@example.com",
+                    subject="Test",
+                    message="Test body",
+                    event="denial_letter",
+                    claim_id="CLM-001",
+                )
+                mock_report.assert_called_once_with(
+                    channel="email",
+                    event="denial_letter",
+                    claim_id="CLM-001",
+                    status_code=400,
+                )
+
+    def test_send_sms_failure_dispatches_failure_webhook(self):
+        """_send_sms calls _report_delivery_failure on non-2xx response."""
+        from claim_agent.notifications.claimant import _send_sms
+
+        with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+            mock_client = mock_client_cls.return_value.__enter__.return_value
+            mock_client.post.return_value.status_code = 500
+            with patch(
+                "claim_agent.notifications.claimant._report_delivery_failure"
+            ) as mock_report:
+                _send_sms(
+                    account_sid="sid",
+                    auth_token="token",
+                    from_phone="+15550000000",
+                    to_phone="+15551111111",
+                    message="Test",
+                    event="receipt_acknowledged",
+                    claim_id="CLM-002",
+                )
+                mock_report.assert_called_once_with(
+                    channel="sms",
+                    event="receipt_acknowledged",
+                    claim_id="CLM-002",
+                    status_code=500,
+                )
+
+
+class TestReportDeliveryFailure:
+    """Tests for _report_delivery_failure webhook dispatch."""
+
+    def test_no_op_when_failure_webhook_url_not_set(self):
+        from claim_agent.notifications.claimant import _report_delivery_failure
+
+        with patch(
+            "claim_agent.notifications.claimant.get_notification_config",
+            return_value={"failure_webhook_url": ""},
+        ):
+            with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                _report_delivery_failure(
+                    channel="email",
+                    event="denial_letter",
+                    claim_id="CLM-001",
+                    status_code=400,
+                )
+                mock_client_cls.assert_not_called()
+
+    def test_posts_to_failure_webhook_url_when_set(self):
+        from claim_agent.notifications.claimant import _report_delivery_failure
+
+        with patch(
+            "claim_agent.notifications.claimant.get_notification_config",
+            return_value={"failure_webhook_url": "https://monitor.example.com/failures"},
+        ):
+            with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                mock_client = mock_client_cls.return_value.__enter__.return_value
+                _report_delivery_failure(
+                    channel="sms",
+                    event="denial_letter",
+                    claim_id="CLM-002",
+                    status_code=503,
+                )
+                mock_client.post.assert_called_once()
+                call_args = mock_client.post.call_args
+                assert call_args[0][0] == "https://monitor.example.com/failures"
+
+    def test_failure_payload_includes_ucspa_flag(self):
+        from claim_agent.notifications.claimant import _report_delivery_failure
+
+        captured_payloads: list[dict] = []
+
+        def fake_post(url, *, content, headers):
+            captured_payloads.append(json.loads(content))
+
+        with patch(
+            "claim_agent.notifications.claimant.get_notification_config",
+            return_value={"failure_webhook_url": "https://monitor.example.com/failures"},
+        ):
+            with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                mock_client = mock_client_cls.return_value.__enter__.return_value
+                mock_client.post.side_effect = fake_post
+                _report_delivery_failure(
+                    channel="email",
+                    event="receipt_acknowledged",
+                    claim_id="CLM-003",
+                    status_code=400,
+                )
+
+        assert len(captured_payloads) == 1
+        payload = captured_payloads[0]
+        assert payload["ucspa_required"] is True
+        assert payload["channel"] == "email"
+        assert payload["event"] == "receipt_acknowledged"
+        assert payload["claim_id"] == "CLM-003"
+        assert payload["status_code"] == 400
+
+    def test_failure_payload_ucspa_false_for_non_required_event(self):
+        from claim_agent.notifications.claimant import _report_delivery_failure
+
+        captured_payloads: list[dict] = []
+
+        def fake_post(url, *, content, headers):
+            captured_payloads.append(json.loads(content))
+
+        with patch(
+            "claim_agent.notifications.claimant.get_notification_config",
+            return_value={"failure_webhook_url": "https://monitor.example.com/failures"},
+        ):
+            with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                mock_client = mock_client_cls.return_value.__enter__.return_value
+                mock_client.post.side_effect = fake_post
+                _report_delivery_failure(
+                    channel="sms",
+                    event="estimate_ready",
+                    claim_id="CLM-004",
+                    error="connection refused",
+                )
+
+        assert captured_payloads[0]["ucspa_required"] is False
+        assert captured_payloads[0]["error"] == "connection refused"
+
+    def test_swallows_exception_during_webhook_dispatch(self):
+        """_report_delivery_failure must not raise even if the webhook POST fails."""
+        from claim_agent.notifications.claimant import _report_delivery_failure
+
+        with patch(
+            "claim_agent.notifications.claimant.get_notification_config",
+            return_value={"failure_webhook_url": "https://monitor.example.com/failures"},
+        ):
+            with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                mock_client = mock_client_cls.return_value.__enter__.return_value
+                mock_client.post.side_effect = Exception("network error")
+                # Should not raise
+                _report_delivery_failure(
+                    channel="email",
+                    event="denial_letter",
+                    claim_id="CLM-005",
+                    status_code=503,
+                )
+
+
+class TestCheckNotificationReadiness:
+    """Tests for check_notification_readiness."""
+
+    def test_returns_dict_with_expected_keys(self):
+        result = check_notification_readiness()
+        assert "email_ready" in result
+        assert "sms_ready" in result
+        assert "warnings" in result
+        assert isinstance(result["warnings"], list)
+
+    def test_both_disabled_by_default(self):
+        with patch.dict(
+            os.environ,
+            {"NOTIFICATION_EMAIL_ENABLED": "false", "NOTIFICATION_SMS_ENABLED": "false"},
+        ):
+            reload_settings()
+            result = check_notification_readiness()
+        assert result["email_ready"] is False
+        assert result["sms_ready"] is False
+        assert len(result["warnings"]) == 2
+
+    def test_email_ready_when_enabled_with_credentials(self):
+        with patch.dict(
+            os.environ,
+            {
+                "NOTIFICATION_EMAIL_ENABLED": "true",
+                "SENDGRID_API_KEY": "sg-key",
+                "SENDGRID_FROM_EMAIL": "noreply@example.com",
+                "NOTIFICATION_SMS_ENABLED": "false",
+            },
+        ):
+            reload_settings()
+            result = check_notification_readiness()
+        assert result["email_ready"] is True
+        # Only SMS disabled warning should appear
+        assert any("SMS" in w for w in result["warnings"])
+        assert not any("SENDGRID" in w for w in result["warnings"])
+
+    def test_email_not_ready_when_enabled_without_credentials(self):
+        with patch.dict(
+            os.environ,
+            {
+                "NOTIFICATION_EMAIL_ENABLED": "true",
+                "SENDGRID_API_KEY": "",
+                "SENDGRID_FROM_EMAIL": "",
+                "NOTIFICATION_SMS_ENABLED": "false",
+            },
+        ):
+            reload_settings()
+            result = check_notification_readiness()
+        assert result["email_ready"] is False
+        assert any("SENDGRID_API_KEY" in w for w in result["warnings"])
+
+    def test_sms_ready_when_enabled_with_credentials(self):
+        with patch.dict(
+            os.environ,
+            {
+                "NOTIFICATION_SMS_ENABLED": "true",
+                "TWILIO_ACCOUNT_SID": "sid",
+                "TWILIO_AUTH_TOKEN": "token",
+                "TWILIO_FROM_PHONE": "+15550000000",
+                "NOTIFICATION_EMAIL_ENABLED": "false",
+            },
+        ):
+            reload_settings()
+            result = check_notification_readiness()
+        assert result["sms_ready"] is True
+        assert not any("TWILIO" in w for w in result["warnings"])
+
+    def test_sms_not_ready_when_enabled_without_credentials(self):
+        with patch.dict(
+            os.environ,
+            {
+                "NOTIFICATION_SMS_ENABLED": "true",
+                "TWILIO_ACCOUNT_SID": "",
+                "TWILIO_AUTH_TOKEN": "",
+                "TWILIO_FROM_PHONE": "",
+                "NOTIFICATION_EMAIL_ENABLED": "false",
+            },
+        ):
+            reload_settings()
+            result = check_notification_readiness()
+        assert result["sms_ready"] is False
+        assert any("TWILIO_ACCOUNT_SID" in w for w in result["warnings"])
+
+
+class TestNotificationConfigFailureWebhookUrl:
+    """Tests that failure_webhook_url is exposed in get_notification_config."""
+
+    def test_failure_webhook_url_default_empty(self):
+        with patch.dict(os.environ, {"NOTIFICATION_FAILURE_WEBHOOK_URL": ""}):
+            reload_settings()
+            config = get_notification_config()
+        assert config["failure_webhook_url"] == ""
+
+    def test_failure_webhook_url_from_env(self):
+        with patch.dict(
+            os.environ,
+            {"NOTIFICATION_FAILURE_WEBHOOK_URL": "https://monitor.example.com/failures"},
+        ):
+            reload_settings()
+            config = get_notification_config()
+        assert config["failure_webhook_url"] == "https://monitor.example.com/failures"
 
 
 class TestRepositoryWebhookIntegration:

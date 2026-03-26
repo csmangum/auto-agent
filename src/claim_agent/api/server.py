@@ -204,6 +204,9 @@ async def lifespan(_app: FastAPI):
                 "See docs/database.md for details."
             )
         ensure_fresh_db_on_startup()
+    from claim_agent.notifications.claimant import check_notification_readiness
+
+    check_notification_readiness()
     _recover_stuck_processing_claims()
     ensure_webhook_listener_registered()
     ensure_diary_listener_registered()
@@ -373,12 +376,21 @@ def _base_security_response_headers() -> dict[str, str]:
         "Permissions-Policy": (
             "geolocation=(), microphone=(), camera=(), payment=()"
         ),
-        # Note: 'unsafe-inline' for script/style is a pragmatic SPA trade-off; tightening
-        # to nonces hashes would improve XSS resistance but needs frontend build support.
+        # 'unsafe-inline' is removed from script-src; the theme-init script is served
+        # as a static file (/theme-init.js) to avoid inline scripts.
+        # 'unsafe-inline' is retained for style-src because React components may apply
+        # inline style attributes and Tailwind v4 injects CSS in dev mode.
+        # Keep this policy string in sync with frontend/vite.config.ts (document CSP).
         "Content-Security-Policy": (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'"
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
         ),
     }
 
@@ -597,7 +609,7 @@ def _health_response():
 @app.get("/api/health")
 @app.get("/api/health/")
 async def health():
-    """Production health check: DB (required), optional LLM. Returns 503 if DB down."""
+    """Production health check: DB (required), optional LLM and notifications. Returns 503 if down."""
     return _health_response()
 
 

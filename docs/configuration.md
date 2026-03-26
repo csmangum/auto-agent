@@ -32,6 +32,8 @@ cp .env.example .env
 | `READ_REPLICA_DATABASE_URL` | (unset) | PostgreSQL read-replica URL; when set with `DATABASE_URL`, read-heavy queries use the replica (writes stay on the primary). |
 | `RUN_MIGRATIONS_ON_STARTUP` | `true` | When using PostgreSQL, run `alembic upgrade head` on API startup. Set `false` if migrations are a separate deploy step. |
 | `FRESH_CLAIMS_DB_ON_STARTUP` | `false` | **Dev only:** if `true`, deletes and recreates the claims database on every server start. |
+| `ALEMBIC_SCRIPT_LOCATION` | (unset) | Path to the `alembic` revision directory. Required for SQLite when the app is not run from the repo root and the package is not installed editable; see [Database](database.md). |
+| `HEALTH_CHECK_NOTIFICATIONS` | `false` | When `true`, `/api/health` includes claimant notification readiness and returns **503** if no email/SMS channel is ready. See [Observability](observability.md#health-endpoint). |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
@@ -72,6 +74,10 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
 
 **Email/password login**: `POST /api/auth/login` with JSON `email` and `password` returns `access_token` and `refresh_token`. `POST /api/auth/refresh` with `refresh_token` rotates credentials. Requires `JWT_SECRET` and users in the `users` table (manage via `POST /api/users` as admin).
+
+### Content Security Policy (dashboard)
+
+The API attaches a `Content-Security-Policy` to responses (see `claim_agent.api.server`). **Browser CSP applies to the document that loaded the page**, so JSON API responses alone do not define policy for the SPA. For local development, **`frontend/vite.config.ts` sends the same CSP** on the Vite dev and preview servers; keep that string in sync with the server module when you change either. For production, set an equivalent header (or meta policy) where the built `index.html` is served—typically the static host or reverse proxy in front of the dashboard.
 
 ### API idempotency (`Idempotency-Key`)
 

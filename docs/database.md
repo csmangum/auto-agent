@@ -246,13 +246,15 @@ When using PostgreSQL:
 
 **Alembic is the source of truth** for schema evolution on databases that are upgraded with `alembic upgrade head` (typical production and PostgreSQL setups).
 
-SQLite also supports **non-Alembic** bootstrap and legacy repair paths in the same codebase; those must stay aligned with migrations:
+SQLite uses **the same Alembic revision chain** as PostgreSQL, plus a bootstrap DDL script. Both must stay aligned:
 
 1. **`alembic/versions/`** – Incremental migrations for existing databases. Add a revision for each schema change (e.g. `alembic revision -m "description"`).
 
-2. **`src/claim_agent/db/database.py` – `SCHEMA_SQL`** – Full `CREATE TABLE IF NOT EXISTS` script for **new** SQLite files when the app calls `init_db()` without having run Alembic. New installs and many tests rely on this.
+2. **`src/claim_agent/db/database.py` – `SCHEMA_SQL`** – Full `CREATE TABLE IF NOT EXISTS` script for **new** SQLite files when the app calls `init_db()`. New installs and many tests rely on this. After applying `SCHEMA_SQL`, `_run_alembic_migrations()` **stamps** the database at Alembic **head** (it does not replay every migration on a fresh file, because some historical revisions use non-idempotent `CREATE TABLE`).
 
-3. **Same file – `_run_migrations()`** – Best-effort `ALTER TABLE` / `CREATE TABLE` steps for **older** SQLite databases that already existed before the current `SCHEMA_SQL` shape (deployments that never use Alembic on SQLite). This path is not a substitute for Alembic on long-lived DBs when you expect full migration history.
+3. **`_run_alembic_migrations()`** (same file) – For SQLite only: if `alembic_version` already exists, runs `alembic upgrade head`; if the DB is **legacy** (tables existed before bootstrap, no version table), runs `upgrade head` once to catch up; otherwise stamps head after `SCHEMA_SQL`. Failures **raise** (startup/init_db does not continue with a half-applied or unstamped database). The Alembic scripts directory is resolved from, in order: `ALEMBIC_SCRIPT_LOCATION`, the repo layout next to an editable install, or the current working directory’s `alembic/` folder.
+
+4. **`_run_migrations()`** – **Deprecated no-op.** Inline SQLite repairs were removed in favor of Alembic only; the symbol remains temporarily and emits `DeprecationWarning` if called.
 
 **PostgreSQL:** schema comes from Alembic only (`init_db()` does not apply DDL). New Postgres databases use the combined migration **`023_postgres_full_schema.py`**, which duplicates the logical shape of SQLite with dialect-specific types (`SERIAL`, `TIMESTAMP`, etc.). When you change **`incidents`**, **`claim_links`**, or **`claims.incident_id`**, update both **`src/claim_agent/db/schema_incidents_sqlite.py`** (shared SQLite DDL used by `database.py` and revision **022**) and the matching sections in **`023_postgres_full_schema.py`**.
 
@@ -278,7 +280,7 @@ Every migration that **creates a new SQLite table** (or that changes a table who
 
 CI enforces this alignment via **`tests/test_schema_core_parity.py`**, **`tests/test_schema_sqlite_parity.py`**, and **`tests/test_schema_incidents_parity.py`**, which compare column names between shared SQLite constants and the PostgreSQL equivalents in each migration.
 
-For **`schema_core_sqlite.py`** (`claims`, `claim_audit_log`), `test_schema_core_parity.py` builds the expected PostgreSQL `claims` column set from revision **023** plus PostgreSQL `ALTER TABLE claims ADD COLUMN` statements in **029, 033, 034, and 050** only. Later migrations that add `claims` columns without changing the bootstrap `CREATE TABLE` are intentionally excluded (those columns are often applied on SQLite via `_run_migrations()` instead). If you add a column to **`CLAIMS_TABLE_SQLITE`** to mirror a **new** PostgreSQL `ALTER TABLE claims` migration, append that revision file to the tuple in `_postgres_claims_columns()` in **`tests/test_schema_core_parity.py`** so the parity test keeps enforcing alignment.
+For **`schema_core_sqlite.py`** (`claims`, `claim_audit_log`), `test_schema_core_parity.py` builds the expected PostgreSQL `claims` column set from revision **023** plus PostgreSQL `ALTER TABLE claims ADD COLUMN` statements in **029, 033, 034, and 050** only. Later migrations that add `claims` columns without changing the bootstrap `CREATE TABLE` are intentionally excluded until **`CLAIMS_TABLE_SQLITE`** is updated to match head (fresh SQLite DBs rely on bootstrap + stamp, not on replaying those revisions). If you add a column to **`CLAIMS_TABLE_SQLITE`** to mirror a **new** PostgreSQL `ALTER TABLE claims` migration, append that revision file to the tuple in `_postgres_claims_columns()` in **`tests/test_schema_core_parity.py`** so the parity test keeps enforcing alignment.
 
 **When changing the schema:**
 

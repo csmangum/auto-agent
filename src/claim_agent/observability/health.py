@@ -98,11 +98,11 @@ def check_health() -> dict:
     Returns:
         Dict with keys:
         - status: "ok" | "degraded"
-        - checks: database, database_replica, llm, and per-adapter keys
-          ``adapter_<name>`` for policy, valuation, repair_shop, parts, siu,
-          fraud_reporting, state_bureau, claim_search, erp, nmvtis, gap_insurance,
-          ocr, cms, reverse_image. Each adapter value is "ok", "degraded:msg",
-          "skipped", or "error:...".
+        - checks: database, database_replica, llm, notifications (optional), and
+          per-adapter keys ``adapter_<name>`` for policy, valuation, repair_shop,
+          parts, siu, fraud_reporting, state_bureau, claim_search, erp, nmvtis,
+          gap_insurance, ocr, cms, reverse_image. Each adapter value is "ok",
+          "degraded:msg", "skipped", or "error:...".
     """
     checks: dict[str, str] = {}
     db_ok = _check_database()
@@ -119,10 +119,30 @@ def check_health() -> dict:
     else:
         checks["llm"] = "skipped"
 
+    if os.environ.get("HEALTH_CHECK_NOTIFICATIONS", "").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    ):
+        from claim_agent.notifications.claimant import check_notification_readiness
+
+        nr = check_notification_readiness(log_warnings=False)
+        if nr["email_ready"] or nr["sms_ready"]:
+            checks["notifications"] = "ok"
+        else:
+            checks["notifications"] = "degraded:no notification channel ready"
+    else:
+        checks["notifications"] = "skipped"
+
     adapter_checks = _check_adapters()
     checks.update(adapter_checks)
 
     overall = "ok" if db_ok else "degraded"
+    if (
+        overall == "ok"
+        and checks.get("notifications") == "degraded:no notification channel ready"
+    ):
+        overall = "degraded"
     return {"status": overall, "checks": checks}
 
 

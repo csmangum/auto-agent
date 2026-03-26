@@ -403,6 +403,9 @@ class NotificationConfig(BaseSettings):
         validation_alias="TWILIO_AUTH_TOKEN",
     )
     twilio_from_phone: str = Field(default="", validation_alias="TWILIO_FROM_PHONE")
+    # URL to POST delivery-failure payloads for bounce/failure monitoring.
+    # Leave empty to disable failure webhook dispatch.
+    failure_webhook_url: str = Field(default="", validation_alias="NOTIFICATION_FAILURE_WEBHOOK_URL")
 
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod
@@ -591,6 +594,15 @@ class PathsConfig(BaseSettings):
         default=True,
         validation_alias="RUN_MIGRATIONS_ON_STARTUP",
         description="Run alembic upgrade head on API startup when using PostgreSQL. Set to false to run migrations as a separate deploy step.",
+    )
+    alembic_script_location: str = Field(
+        default="",
+        validation_alias="ALEMBIC_SCRIPT_LOCATION",
+        description=(
+            "Absolute or relative path to the Alembic `alembic` scripts directory. "
+            "Required for SQLite when the package is not installed editable from the repo root "
+            "(e.g. wheel installs). If empty, auto-detect from repo layout or current working directory."
+        ),
     )
     db_pool_size: int = Field(
         default=5,

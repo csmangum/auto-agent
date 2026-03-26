@@ -1,6 +1,7 @@
 """Claimant notifications (email/SMS)."""
 
 import atexit
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -30,7 +31,121 @@ CLAIMANT_EVENTS = (
     "claim_closed",
     "follow_up_request",
 )
+
+# Events mandated by UCSPA (Unfair Claims Settlement Practices Act).
+# Delivery failures for these events are logged at ERROR level and dispatched
+# to the failure monitoring webhook (when configured) to ensure regulatory
+# compliance tracking.
+UCSPA_REQUIRED_EVENTS = (
+    "receipt_acknowledged",
+    "denial_letter",
+    "follow_up_request",
+)
+
 HTTP_TIMEOUT_SECONDS = 30.0
+
+
+def check_notification_readiness(*, log_warnings: bool = True) -> dict[str, Any]:
+    """Validate that notification provider credentials are configured.
+
+    Returns a summary dict with ``email_ready``, ``sms_ready``, and
+    ``warnings`` keys.  Intended for use during startup health checks and
+    pilot readiness validation.
+
+    Args:
+        log_warnings: When False (e.g. periodic ``/api/health`` polls), skip emitting
+            duplicate warning log lines; callers should interpret the returned dict.
+    """
+    config = get_notification_config()
+    warnings: list[str] = []
+    email_ready = False
+    sms_ready = False
+
+    if config["email_enabled"]:
+        if not config["sendgrid_api_key"] or not config["sendgrid_from_email"]:
+            warnings.append(
+                "NOTIFICATION_EMAIL_ENABLED=true but SENDGRID_API_KEY / "
+                "SENDGRID_FROM_EMAIL are not set. Email delivery will fail."
+            )
+        else:
+            email_ready = True
+    else:
+        warnings.append(
+            "Email notifications are disabled (NOTIFICATION_EMAIL_ENABLED=false). "
+            "Claimants will not receive UCSPA-required email communications."
+        )
+
+    if config["sms_enabled"]:
+        if not config["twilio_account_sid"] or not config["twilio_auth_token"] or not config["twilio_from_phone"]:
+            warnings.append(
+                "NOTIFICATION_SMS_ENABLED=true but TWILIO_ACCOUNT_SID / "
+                "TWILIO_AUTH_TOKEN / TWILIO_FROM_PHONE are not set. SMS delivery will fail."
+            )
+        else:
+            sms_ready = True
+    else:
+        warnings.append(
+            "SMS notifications are disabled (NOTIFICATION_SMS_ENABLED=false). "
+            "Claimants will not receive UCSPA-required SMS communications."
+        )
+
+    if log_warnings:
+        for warning in warnings:
+            logger.warning("Notification readiness: %s", warning)
+
+    return {"email_ready": email_ready, "sms_ready": sms_ready, "warnings": warnings}
+
+
+def _report_delivery_failure(
+    *,
+    channel: str,
+    event: str,
+    claim_id: str,
+    status_code: int | None = None,
+    error: str | None = None,
+) -> None:
+    """Report a delivery failure to the configured monitoring webhook.
+
+    Fires a best-effort POST to ``NOTIFICATION_FAILURE_WEBHOOK_URL`` (when set)
+    so that an external alerting system can track bounce/failure rates.  Errors
+    during the dispatch are swallowed to avoid masking the original failure.
+    """
+    config = get_notification_config()
+    failure_url = config.get("failure_webhook_url", "")
+    if not failure_url:
+        return
+
+    payload: dict[str, Any] = {
+        "channel": channel,
+        "event": event,
+        "claim_id": claim_id,
+        "ucspa_required": event in UCSPA_REQUIRED_EVENTS,
+    }
+    if status_code is not None:
+        payload["status_code"] = status_code
+    if error is not None:
+        payload["error"] = error
+
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS) as client:
+            response = client.post(
+                failure_url,
+                content=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            if response.status_code < 200 or response.status_code >= 300:
+                logger.warning(
+                    "Delivery-failure webhook returned non-success status: %s",
+                    response.status_code,
+                )
+    except Exception as exc:  # noqa: BLE001
+        if event in UCSPA_REQUIRED_EVENTS:
+            logger.error(
+                "Failed to dispatch delivery-failure webhook (UCSPA-related event): %s",
+                exc,
+            )
+        else:
+            logger.warning("Failed to dispatch delivery-failure webhook: %s", exc)
 
 
 def send_otp_notification(
@@ -241,19 +356,21 @@ def _send_email(
         if 200 <= response.status_code < 300:
             logger.info("Sent claimant email: event=%s claim_id=%s", event, claim_id)
         else:
-            logger.warning(
-                "Failed claimant email delivery: event=%s claim_id=%s status=%s",
-                event,
-                claim_id,
-                response.status_code,
+            _log_delivery_failure(
+                channel="email",
+                event=event,
+                claim_id=claim_id,
+                detail=f"status={response.status_code}",
+            )
+            _report_delivery_failure(
+                channel="email",
+                event=event,
+                claim_id=claim_id,
+                status_code=response.status_code,
             )
     except httpx.HTTPError as e:
-        logger.warning(
-            "Error sending claimant email: event=%s claim_id=%s error=%s",
-            event,
-            claim_id,
-            e,
-        )
+        _log_delivery_failure(channel="email", event=event, claim_id=claim_id, detail=str(e))
+        _report_delivery_failure(channel="email", event=event, claim_id=claim_id, error=str(e))
 
 
 def _send_sms(
@@ -287,16 +404,38 @@ def _send_sms(
         if 200 <= response.status_code < 300:
             logger.info("Sent claimant SMS: event=%s claim_id=%s", event, claim_id)
         else:
-            logger.warning(
-                "Failed claimant SMS delivery: event=%s claim_id=%s status=%s",
-                event,
-                claim_id,
-                response.status_code,
+            _log_delivery_failure(
+                channel="sms",
+                event=event,
+                claim_id=claim_id,
+                detail=f"status={response.status_code}",
+            )
+            _report_delivery_failure(
+                channel="sms",
+                event=event,
+                claim_id=claim_id,
+                status_code=response.status_code,
             )
     except httpx.HTTPError as e:
-        logger.warning(
-            "Error sending claimant SMS: event=%s claim_id=%s error=%s",
+        _log_delivery_failure(channel="sms", event=event, claim_id=claim_id, detail=str(e))
+        _report_delivery_failure(channel="sms", event=event, claim_id=claim_id, error=str(e))
+
+
+def _log_delivery_failure(*, channel: str, event: str, claim_id: str, detail: str) -> None:
+    """Log a delivery failure at ERROR for UCSPA-required events, WARNING otherwise."""
+    if event in UCSPA_REQUIRED_EVENTS:
+        logger.error(
+            "Failed claimant %s delivery (UCSPA-required): event=%s claim_id=%s %s",
+            channel,
             event,
             claim_id,
-            e,
+            detail,
+        )
+    else:
+        logger.warning(
+            "Failed claimant %s delivery: event=%s claim_id=%s %s",
+            channel,
+            event,
+            claim_id,
+            detail,
         )

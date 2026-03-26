@@ -5,6 +5,7 @@ pytest_plugins = ["tests.conftest_shared", "tests.conftest_embedding_mocks"]
 import json
 import logging
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -36,10 +37,24 @@ os.environ.setdefault(
     "MOCK_DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "mock_db.json")
 )
 
+import claim_agent.config as _cfg_test
+import claim_agent.api.deps as _deps_test
+import claim_agent.diary.auto_create as diary_auto_create_module
 from sqlalchemy import text
 
+from claim_agent.adapters.registry import reset_adapters as reset_adapters_registry
 from claim_agent.config import reload_settings
-from claim_agent.db.database import get_connection, init_db
+from claim_agent.db.database import get_connection, init_db, reset_engine_cache
+from claim_agent.events import unregister_claim_event_listener
+from claim_agent.mock_crew.erp import clear_captured_erp_events
+from claim_agent.mock_crew.notifier import clear_all_pending_mock_responses
+from claim_agent.mock_crew.repair_shop import clear_all_pending_repair_shop_responses
+from claim_agent.mock_crew.webhook import clear_captured_webhooks
+
+try:
+    from claim_agent.observability.metrics import reset_metrics as reset_claim_metrics
+except ImportError:
+    reset_claim_metrics = None  # type: ignore[misc, assignment]
 
 
 def _seed_test_data(db_path: str) -> None:
@@ -375,15 +390,19 @@ def _reset_sticky_logger_levels():
         logging.getLogger(name).setLevel(logging.NOTSET)
 
 
+@pytest.fixture(scope="session")
+def _db_template(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """Run init_db once per session (per xdist worker); tests copy this file."""
+    path = str(tmp_path_factory.mktemp("db") / "template.db")
+    init_db(path)
+    return path
+
+
 @pytest.fixture(autouse=True)
 def _reset_settings(request):
     """Reset the settings singleton so each test gets fresh config from env."""
-    import claim_agent.config as _cfg
-    import claim_agent.api.deps as _deps
-    from claim_agent.db.database import reset_engine_cache
-
-    _cfg._settings = None
-    _deps._auth_warning_logged = False
+    _cfg_test._settings = None
+    _deps_test._auth_warning_logged = False
     # Unit tests use SQLite; unset DATABASE_URL so we don't connect to PostgreSQL.
     # Preserve DATABASE_URL for PostgreSQL integration tests (test_postgres module).
     is_postgres_test = request.module is not None and "test_postgres" in getattr(
@@ -392,19 +411,19 @@ def _reset_settings(request):
     _prev_db_url = os.environ.pop("DATABASE_URL", None) if not is_postgres_test else None
     reset_engine_cache()
     yield
-    _cfg._settings = None
-    _deps._auth_warning_logged = False
+    _cfg_test._settings = None
+    _deps_test._auth_warning_logged = False
     reset_engine_cache()
     if _prev_db_url is not None:
         os.environ["DATABASE_URL"] = _prev_db_url
 
 
 @pytest.fixture(autouse=True)
-def temp_db():
-    """Use a temporary SQLite DB for tests."""
+def temp_db(_db_template: str):
+    """Use a temporary SQLite DB for tests (copy of session template; avoids per-test DDL)."""
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    init_db(path)
+    shutil.copy2(_db_template, path)
     prev = os.environ.get("CLAIMS_DB_PATH")
     os.environ["CLAIMS_DB_PATH"] = path
     reload_settings()  # Ensure settings pick up CLAIMS_DB_PATH for API routes
@@ -432,67 +451,46 @@ def seeded_temp_db(temp_db):
 @pytest.fixture(autouse=True)
 def reset_adapters():
     """Clear adapter singletons so each test gets a fresh instance."""
-    from claim_agent.adapters.registry import reset_adapters as _reset
-
-    _reset()
+    reset_adapters_registry()
     yield
-    _reset()
+    reset_adapters_registry()
 
 
 @pytest.fixture(autouse=True)
 def reset_diary_listener():
     """Reset diary listener registration state between tests."""
-    import claim_agent.diary.auto_create as diary_module
-    from claim_agent.events import unregister_claim_event_listener
+    original_state = diary_auto_create_module._diary_listener_registered
 
-    # Store original state
-    original_state = diary_module._diary_listener_registered
-
-    # Reset to initial state
-    if diary_module._diary_listener_registered:
+    if diary_auto_create_module._diary_listener_registered:
         try:
-            unregister_claim_event_listener(diary_module._on_claim_status_change)
+            unregister_claim_event_listener(diary_auto_create_module._on_claim_status_change)
         except Exception:
             pass
-    diary_module._diary_listener_registered = False
+    diary_auto_create_module._diary_listener_registered = False
 
     yield
 
-    # Clean up after test
-    if diary_module._diary_listener_registered:
+    if diary_auto_create_module._diary_listener_registered:
         try:
-            unregister_claim_event_listener(diary_module._on_claim_status_change)
+            unregister_claim_event_listener(diary_auto_create_module._on_claim_status_change)
         except Exception:
             pass
-    diary_module._diary_listener_registered = original_state
+    diary_auto_create_module._diary_listener_registered = original_state
 
 
 @pytest.fixture(autouse=True)
 def reset_global_metrics():
     """Reset the global ClaimMetrics singleton before and after each test."""
-    try:
-        from claim_agent.observability.metrics import reset_metrics
-
-        reset_metrics()
-    except ImportError:
-        pass
+    if reset_claim_metrics is not None:
+        reset_claim_metrics()
     yield
-    try:
-        from claim_agent.observability.metrics import reset_metrics
-
-        reset_metrics()
-    except ImportError:
-        pass
+    if reset_claim_metrics is not None:
+        reset_claim_metrics()
 
 
 @pytest.fixture(autouse=True)
 def _reset_mock_crew_stores():
     """Clear all in-memory mock crew stores between tests."""
-    from claim_agent.mock_crew.notifier import clear_all_pending_mock_responses
-    from claim_agent.mock_crew.repair_shop import clear_all_pending_repair_shop_responses
-    from claim_agent.mock_crew.webhook import clear_captured_webhooks
-    from claim_agent.mock_crew.erp import clear_captured_erp_events
-
     clear_all_pending_mock_responses()
     clear_all_pending_repair_shop_responses()
     clear_captured_webhooks()
