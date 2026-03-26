@@ -867,7 +867,7 @@ def validate_scc_configuration(*, db_path: str | None = None) -> dict[str, Any]:
     try:
         from claim_agent.privacy.dpa_registry import list_dpas
 
-        llm_dpas, dpa_count = list_dpas(
+        _, dpa_count = list_dpas(
             active_only=True,
             service_type="llm",
             mechanism=TransferMechanism.SCC.value,
