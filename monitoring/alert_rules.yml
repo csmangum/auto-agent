@@ -1,0 +1,78 @@
+groups:
+  - name: claim-agent
+    rules:
+      # Service down
+      - alert: ClaimAgentDown
+        expr: up{job="claim-agent"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Claim agent is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for 1 minute."
+
+      # High error rate
+      - alert: ClaimAgentHighErrorRate
+        expr: |
+          (
+            rate(claims_failed_total[5m])
+            /
+            (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]) + 1e-9)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Claim agent error rate above 5%"
+          description: "More than 5% of claims are failing over the last 5 minutes."
+
+      # P99 latency SLO breach
+      - alert: ClaimAgentHighLatency
+        expr: |
+          histogram_quantile(0.99, rate(claim_processing_duration_seconds_bucket[5m])) > 120
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Claim agent P99 latency above 2 minutes"
+          description: "99th percentile claim processing time exceeds 120 seconds."
+
+      # Escalation spike (fraud or review queue buildup)
+      - alert: ClaimAgentEscalationSpike
+        expr: increase(claims_escalated_total[1h]) > 10
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "Elevated claim escalations in the last hour"
+          description: "More than 10 claims escalated to human review in the past hour."
+
+      # Review queue backlog
+      - alert: ClaimAgentReviewQueueBacklog
+        expr: review_queue_size > 50
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Review queue backlog"
+          description: "More than 50 claims awaiting human review for 30+ minutes."
+
+      # Database connection failure (gauges set to -1 when DB is unreachable)
+      - alert: ClaimAgentDBConnectionFailure
+        expr: claims_in_progress == -1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Claim agent cannot reach the database"
+          description: "The claim agent has been unable to query the database for 1 minute."
+
+      # LLM cost anomaly — hourly spend rate exceeds $10
+      - alert: ClaimAgentLLMCostAnomaly
+        expr: increase(llm_cost_usd_total[1h]) > 10
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unusually high LLM spend in the last hour"
+          description: "LLM costs exceeded $10 in the past hour (actual: ${{ $value | printf \"%.2f\" }})."

@@ -1,10 +1,37 @@
 # Alerting
 
-Recommended Prometheus alert rules and configuration for the claim agent. Use with [Prometheus](https://prometheus.io) and [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/).
+Prometheus alert rules and configuration for the claim agent. Use with [Prometheus](https://prometheus.io) and [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/).
+
+Ready-to-use configuration files live in the `monitoring/` directory:
+
+| File | Purpose |
+|------|---------|
+| `monitoring/prometheus.yml` | Prometheus scrape config and rule file reference |
+| `monitoring/alert_rules.yml` | All alert rules (7 rules) |
+| `monitoring/alertmanager.yml` | Alertmanager routing skeleton |
+| `monitoring/grafana/provisioning/` | Grafana auto-provisioning (datasource + dashboard provider) |
+| `monitoring/grafana/dashboards/claim-agent.json` | Pre-built Grafana dashboard |
+
+## Quick Start (Docker Compose)
+
+Start the full monitoring stack alongside the claim agent:
+
+```bash
+docker compose --profile monitoring up
+```
+
+| Service | URL |
+|---------|-----|
+| Claim agent | http://localhost:8000 |
+| Prometheus | http://localhost:9090 |
+| Alertmanager | http://localhost:9093 |
+| Grafana | http://localhost:3000 (admin / admin) |
+
+The Grafana dashboard is provisioned automatically on startup.
 
 ## Scrape Configuration
 
-Add the claim agent to your `prometheus.yml`:
+`monitoring/prometheus.yml` is pre-configured to scrape the claim agent inside Docker Compose. If you run Prometheus externally, add this to your own `prometheus.yml`:
 
 ```yaml
 scrape_configs:
@@ -17,92 +44,37 @@ scrape_configs:
 
 If the agent runs behind a reverse proxy or on a different port, adjust `targets` accordingly.
 
-## Recommended Alert Rules
+## Alert Rules
 
-Save as `claim-agent-alerts.yml` and include in your Prometheus config:
+`monitoring/alert_rules.yml` contains the following rules:
 
-```yaml
-groups:
-  - name: claim-agent
-    rules:
-      # Service down
-      - alert: ClaimAgentDown
-        expr: up{job="claim-agent"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Claim agent is down"
-          description: "Prometheus cannot scrape {{ $labels.instance }} for 1 minute."
-
-      # High error rate
-      - alert: ClaimAgentHighErrorRate
-        expr: |
-          (
-            rate(claims_failed_total[5m])
-            /
-            (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]) + 1e-9)
-          ) > 0.05
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Claim agent error rate above 5%"
-          description: "More than 5% of claims are failing over the last 5 minutes."
-
-      # P99 latency SLO breach
-      - alert: ClaimAgentHighLatency
-        expr: |
-          histogram_quantile(0.99, rate(claim_processing_duration_seconds_bucket[5m])) > 120
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Claim agent P99 latency above 2 minutes"
-          description: "99th percentile claim processing time exceeds 120 seconds."
-
-      # Escalation spike (fraud or review queue buildup)
-      - alert: ClaimAgentEscalationSpike
-        expr: increase(claims_escalated_total[1h]) > 10
-        for: 0m
-        labels:
-          severity: info
-        annotations:
-          summary: "Elevated claim escalations in the last hour"
-          description: "More than 10 claims escalated to human review in the past hour."
-
-      # Review queue backlog
-      - alert: ClaimAgentReviewQueueBacklog
-        expr: review_queue_size > 50
-        for: 30m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Review queue backlog"
-          description: "More than 50 claims awaiting human review for 30+ minutes."
-```
+| Alert | Severity | Condition |
+|-------|----------|-----------|
+| `ClaimAgentDown` | critical | Service unreachable for 1 min |
+| `ClaimAgentHighErrorRate` | warning | Error rate > 5% over 5 min |
+| `ClaimAgentHighLatency` | warning | P99 latency > 120 s |
+| `ClaimAgentEscalationSpike` | info | > 10 escalations in 1 h |
+| `ClaimAgentReviewQueueBacklog` | warning | Queue > 50 for 30+ min |
+| `ClaimAgentDBConnectionFailure` | critical | Database unreachable for 1 min |
+| `ClaimAgentLLMCostAnomaly` | warning | LLM spend > $10 in 1 h |
 
 ## Alertmanager Integration
 
-Route claim-agent alerts to your team. Example `alertmanager.yml`:
+Edit `monitoring/alertmanager.yml` to add your receivers. Example for a Slack webhook:
 
 ```yaml
-route:
-  receiver: default
-  group_by: ['alertname', 'job']
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
-  routes:
-    - match:
-        job: claim-agent
-      receiver: claims-team
-      continue: true
-
 receivers:
-  - name: default
-    # ... your default receiver config
+  - name: claims-team
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#claims-alerts'
+        send_resolved: true
+```
 
+Example for a generic webhook:
+
+```yaml
+receivers:
   - name: claims-team
     webhook_configs:
       - url: 'https://your-webhook.example.com/claims-alerts'
@@ -136,11 +108,12 @@ readinessProbe:
 
 ## Tuning Thresholds
 
-Adjust the alert thresholds to match your SLOs:
+Adjust the alert thresholds in `monitoring/alert_rules.yml` to match your SLOs:
 
 | Alert | Default | Tune for |
 |-------|--------|----------|
 | High error rate | 5% | Expected failure rate; increase for noisier environments |
-| P99 latency | 120s | Typical claim processing time; lower for faster workflows |
+| P99 latency | 120 s | Typical claim processing time; lower for faster workflows |
 | Escalation spike | 10/hour | Normal escalation volume; raise for high-throughput deployments |
 | Review queue | 50 | Adjuster capacity; lower if team is small |
+| LLM cost anomaly | $10/hour | Expected LLM spend; raise for high-traffic deployments |

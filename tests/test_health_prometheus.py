@@ -7,6 +7,7 @@ import pytest
 from claim_agent.observability.health import check_health, is_healthy
 from claim_agent.observability.prometheus import (
     record_claim_outcome,
+    record_llm_cost,
     record_llm_tokens,
     generate_metrics,
 )
@@ -216,6 +217,28 @@ class TestPrometheus:
         assert "llm_tokens_total" in output
         assert 'type="input"' in output or "type=\"input\"" in output
         assert 'type="output"' in output or "type=\"output\"" in output
+
+    def test_record_llm_cost(self):
+        """record_llm_cost increments llm_cost_usd_total."""
+        record_llm_cost(0.005)
+        output = generate_metrics().decode()
+        assert "llm_cost_usd_total" in output
+
+    def test_record_llm_cost_zero_is_ignored(self):
+        """record_llm_cost does not increment for zero cost."""
+
+        def _extract_cost(text: str) -> str | None:
+            # Extract the llm_cost_usd_total sample line value
+            for line in text.splitlines():
+                if line.startswith("llm_cost_usd_total") and not line.startswith("#"):
+                    return line.split()[-1]
+            return None
+
+        before = generate_metrics().decode()
+        record_llm_cost(0.0)
+        after = generate_metrics().decode()
+        # Counter value must be unchanged
+        assert _extract_cost(before) == _extract_cost(after)
 
     def test_generate_metrics_includes_gauges(self):
         """generate_metrics includes claims_in_progress and review_queue_size."""
