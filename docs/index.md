@@ -48,6 +48,7 @@ flowchart LR
 - **[Review Queue](review-queue.md)** - Workbench assignment queue vs. remaining UI notes
 - **[Alerting](alerting.md)** - Prometheus alert rules and configuration
 - **[Compliance Corpus Requirements](compliance-corpus-requirements.md)** - RAG corpus requirements
+- **[Disaster Recovery](disaster-recovery.md)** - RTO/RPO targets, database recovery, service failover, data export/import, and communication plan
 
 ### Additional reference
 
