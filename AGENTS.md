@@ -81,7 +81,7 @@ pytest tests/e2e/ -v -m e2e
 LOAD_TEST_CONCURRENCY=20 pytest tests/load/ -v -m load -s
 ```
 
-Use `.venv` for running tests. `pyproject.toml` sets default pytest `addopts` to `-m "not llm"`, so a plain `pytest` run also skips LLM tests unless you override markers. Use `-m llm` only when an API key is available.
+Use `.venv` for running tests. `pyproject.toml` sets default pytest `addopts` to `-m "not llm and not slow"`, so a plain `pytest` run skips LLM and slow tests unless you override markers (e.g. `-m "not llm"` to include slow). Use `-m llm` only when an API key is available. For faster local runs, use `pytest -n auto` (requires `pytest-xdist` from `.[dev]`); CI uses `-n auto` for the unit job.
 
 ## Conventions
 

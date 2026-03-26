@@ -7,5 +7,6 @@ alwaysApply: false
 # claim-agent Test Environment
 
 - Use `.venv/bin/pytest` (or `python -m pytest` with `.venv` activated) for running tests.
-- Bootstrap runs on agent start via `scripts/bootstrap.sh`; `.venv` has claim-agent + dev deps (pytest, pytest-cov, PyJWT).
-- Unit tests: `pytest tests/ -v --ignore=tests/integration -m "not slow and not integration and not llm and not e2e"`
+- Bootstrap runs on agent start via `scripts/bootstrap.sh`; `.venv` has claim-agent + dev deps (pytest, pytest-cov, pytest-xdist, PyJWT).
+- Default `addopts` in `pyproject.toml` exclude `llm` and `slow`; override with `-m` as needed.
+- Unit tests: `pytest tests/ -v --ignore=tests/integration -m "not slow and not integration and not llm and not e2e"`; add `-n auto` to parallelize (CI unit job uses this).
