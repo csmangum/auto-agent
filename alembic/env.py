@@ -1,6 +1,12 @@
 """Alembic environment for claims database migrations.
 
 Uses settings (CLAIMS_DB_PATH env or default data/claims.db).
+
+When invoked programmatically (e.g. from :func:`claim_agent.db.database._run_alembic_migrations`),
+the caller may set ``sqlalchemy.url`` in the :class:`alembic.config.Config` object to supply the
+database URL directly.  When that option contains a real URL (not the ini-file placeholder
+``driver://user:pass@localhost/dbname``), this environment uses it as-is, avoiding the import of
+``claim_agent.db.database`` (and its heavy dependency chain) at migration time.
 """
 from logging.config import fileConfig
 
@@ -16,9 +22,20 @@ if config.config_file_name is not None:
 
 target_metadata = None
 
+# Alembic ini placeholder – used when no real URL has been configured.
+_INI_PLACEHOLDER = "driver://user:pass@localhost/dbname"
+
 
 def get_url() -> str:
-    """Database URL from settings. Uses DATABASE_URL if set, else sqlite:///path."""
+    """Return the database URL.
+
+    Preference order:
+    1. ``sqlalchemy.url`` already set in the Alembic config (e.g. by programmatic callers).
+    2. ``_get_database_url()`` from :mod:`claim_agent.db.database` (CLI / env-var path).
+    """
+    configured = config.get_main_option("sqlalchemy.url", default=None)
+    if configured and configured != _INI_PLACEHOLDER:
+        return configured
     from claim_agent.db.database import _get_database_url
 
     return _get_database_url()
