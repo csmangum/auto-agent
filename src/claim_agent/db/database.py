@@ -390,6 +390,7 @@ CREATE TABLE IF NOT EXISTS subrogation_cases (
     claim_id TEXT NOT NULL,
     case_id TEXT NOT NULL UNIQUE,
     amount_sought REAL NOT NULL,
+    recovery_amount REAL,
     opposing_carrier TEXT,
     status TEXT DEFAULT 'pending',
     arbitration_status TEXT,
@@ -402,6 +403,17 @@ CREATE TABLE IF NOT EXISTS subrogation_cases (
     FOREIGN KEY (claim_id) REFERENCES claims(id)
 );
 CREATE INDEX IF NOT EXISTS idx_subrogation_cases_claim_id ON subrogation_cases(claim_id);
+
+-- Idempotency: duplicate request prevention for claim submission (revisions 024–025)
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    idempotency_key TEXT PRIMARY KEY,
+    response_status INTEGER NOT NULL,
+    response_body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed'
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
 
 -- Repair status: partial loss repair progress (received -> disassembly -> ... -> ready)
 CREATE TABLE IF NOT EXISTS repair_status (

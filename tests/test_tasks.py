@@ -4,6 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
+from claim_agent.config import get_settings
+from claim_agent.db.database import get_connection
+
 
 @pytest.fixture(autouse=True)
 def _use_seeded_db(seeded_temp_db):
@@ -128,9 +131,10 @@ class TestTaskRepository:
     def test_get_task_stats_overdue_uses_date_comparison(self, seeded_temp_db):
         """Tasks due today should NOT be counted as overdue (date comparison, not datetime)."""
         from claim_agent.db.repository import ClaimRepository
-        import datetime
-        today = datetime.date.today().isoformat()
+
         repo = ClaimRepository()
+        with get_connection(repo._db_path) as conn:
+            today = conn.execute(text("SELECT date('now')")).scalar_one()
         repo.create_task("CLM-TEST001", "Due today", "other", due_date=today)
         stats = repo.get_task_stats()
         # Task due today must not be flagged as overdue
@@ -139,9 +143,10 @@ class TestTaskRepository:
     def test_get_task_stats_overdue_yesterday(self, seeded_temp_db):
         """Tasks due yesterday should be counted as overdue."""
         from claim_agent.db.repository import ClaimRepository
-        import datetime
-        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+
         repo = ClaimRepository()
+        with get_connection(repo._db_path) as conn:
+            yesterday = conn.execute(text("SELECT date('now', '-1 day')")).scalar_one()
         repo.create_task("CLM-TEST001", "Due yesterday", "other", due_date=yesterday)
         stats = repo.get_task_stats()
         assert stats["overdue"] == 1
@@ -535,8 +540,8 @@ class TestTaskStats:
 
     def test_stats_overdue_today_not_counted(self, client):
         """Tasks due today should not be counted as overdue."""
-        import datetime
-        today = datetime.date.today().isoformat()
+        with get_connection(get_settings().paths.claims_db_path) as conn:
+            today = conn.execute(text("SELECT date('now')")).scalar_one()
         client.post(
             "/api/claims/CLM-TEST001/tasks",
             json={"title": "Due today", "task_type": "other", "due_date": today},
@@ -547,8 +552,8 @@ class TestTaskStats:
 
     def test_stats_overdue_yesterday_counted(self, client):
         """Tasks due yesterday should be counted as overdue."""
-        import datetime
-        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        with get_connection(get_settings().paths.claims_db_path) as conn:
+            yesterday = conn.execute(text("SELECT date('now', '-1 day')")).scalar_one()
         client.post(
             "/api/claims/CLM-TEST001/tasks",
             json={"title": "Overdue", "task_type": "other", "due_date": yesterday},

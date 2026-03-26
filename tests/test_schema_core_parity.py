@@ -13,6 +13,8 @@ Verifies that ``CLAIMS_TABLE_SQLITE`` and ``CLAIM_AUDIT_LOG_TABLE_SQLITE`` in
   - ``043_incident_coordinates.py`` – adds ``incident_latitude``, ``incident_longitude``
   - ``044_communication_response_deadline.py`` – adds ``last_claimant_communication_at``,
     ``communication_response_due``
+  - ``045_denial_letter_delivery_tracking.py`` – adds ``denial_letter_delivery_method``,
+    ``denial_letter_tracking_id``, ``denial_letter_delivered_at``
   - ``050_cold_storage_export.py`` – adds ``cold_storage_exported_at``,
     ``cold_storage_export_key``
 
@@ -142,7 +144,7 @@ def _postgres_claims_columns() -> set[str]:
 
     Combines the initial CREATE TABLE from revision 023 with the ADD COLUMN
     statements from later migrations that have a postgres-specific path
-    (026, 029, 033, 034, 042, 043, 044, 050).  Migrations 014 and 016 return early for postgres
+    (026, 029, 033, 034, 042, 043, 044, 045, 050).  Migrations 014 and 016 return early for postgres
     because those columns were already included in 023.
     """
     pg023 = _migration_text("023_postgres_full_schema.py")
@@ -158,6 +160,7 @@ def _postgres_claims_columns() -> set[str]:
         "042_settlement_agreed_at.py",
         "043_incident_coordinates.py",
         "044_communication_response_deadline.py",
+        "045_denial_letter_delivery_tracking.py",
         "050_cold_storage_export.py",
     ):
         raw = _migration_text(filename)
