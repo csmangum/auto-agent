@@ -525,7 +525,9 @@ def _base_security_response_headers() -> dict[str, str]:
     global _BASE_SECURITY_RESPONSE_HEADERS
     if _BASE_SECURITY_RESPONSE_HEADERS is None:
         _refresh_cached_base_security_headers()
-    return dict(_BASE_SECURITY_RESPONSE_HEADERS)
+    headers = _BASE_SECURITY_RESPONSE_HEADERS
+    assert headers is not None  # set by _refresh_cached_base_security_headers
+    return dict(headers)
 
 
 def _hsts_header_value() -> str | None:
