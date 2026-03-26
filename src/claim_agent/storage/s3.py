@@ -1,9 +1,12 @@
 """S3-compatible storage for claim attachments."""
 
+import logging
 import uuid
 from typing import BinaryIO, cast
 
 from claim_agent.storage.base import StorageAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class S3StorageAdapter(StorageAdapter):
@@ -78,4 +81,10 @@ class S3StorageAdapter(StorageAdapter):
             client.head_object(Bucket=self._bucket, Key=stored_path_or_key)
             return True
         except Exception:
+            logger.debug(
+                "S3 exists check failed for key %r (bucket %r)",
+                stored_path_or_key,
+                self._bucket,
+                exc_info=True,
+            )
             return False

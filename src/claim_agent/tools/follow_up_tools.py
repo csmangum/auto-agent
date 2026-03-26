@@ -89,7 +89,12 @@ def send_user_message(
                     email = contact.get("email") or email
                     phone = contact.get("phone") or phone
             except Exception:
-                pass
+                logger.debug(
+                    "Could not resolve contact for claim %s user_type %s; using provided values",
+                    claim_id,
+                    user_type,
+                    exc_info=True,
+                )
 
         msg_id = repo.create_follow_up_message(
             claim_id,
