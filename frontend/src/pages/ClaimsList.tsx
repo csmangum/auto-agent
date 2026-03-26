@@ -44,8 +44,10 @@ export default function ClaimsList() {
   const search = searchParams.get('search') ?? '';
   const sortBy = searchParams.get('sort_by') ?? DEFAULT_SORT_BY;
   const sortOrder = searchParams.get('sort_order') ?? DEFAULT_SORT_ORDER;
-  const page = Math.max(1, Number(searchParams.get('page') ?? '1'));
-  const pageSize = Number(searchParams.get('page_size') ?? '25');
+  const rawPage = parseInt(searchParams.get('page') ?? '1', 10);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const rawPageSize = parseInt(searchParams.get('page_size') ?? String(PAGE_SIZES[0]), 10);
+  const pageSize = PAGE_SIZES.includes(rawPageSize) ? rawPageSize : PAGE_SIZES[0];
 
   // Local search input state so we can debounce URL updates
   const [searchInput, setSearchInput] = useState(search);
@@ -73,13 +75,15 @@ export default function ClaimsList() {
   // Generic helper: update a single URL param and reset page
   const updateParam = useCallback(
     (key: string, value: string | null) => {
-      const params = new URLSearchParams(searchParams);
-      if (value) params.set(key, value);
-      else params.delete(key);
-      params.delete('page');
-      setSearchParams(params, { replace: true });
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (value) params.set(key, value);
+        else params.delete(key);
+        params.delete('page');
+        return params;
+      }, { replace: true });
     },
-    [searchParams, setSearchParams],
+    [setSearchParams],
   );
 
   const setFilter = useCallback(
@@ -99,12 +103,14 @@ export default function ClaimsList() {
 
   const setPage = useCallback(
     (p: number) => {
-      const params = new URLSearchParams(searchParams);
-      if (p <= 1) params.delete('page');
-      else params.set('page', String(p));
-      setSearchParams(params, { replace: true });
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (p <= 1) params.delete('page');
+        else params.set('page', String(p));
+        return params;
+      }, { replace: true });
     },
-    [searchParams, setSearchParams],
+    [setSearchParams],
   );
 
   const hasDataFilters =

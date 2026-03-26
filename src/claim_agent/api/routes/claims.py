@@ -496,7 +496,7 @@ def list_claims(
         params["claim_type"] = claim_type
     if search:
         conditions.append(
-            "(id LIKE :search OR policy_number LIKE :search OR vin LIKE :search)"
+            "(LOWER(id) LIKE LOWER(:search) OR LOWER(policy_number) LIKE LOWER(:search) OR LOWER(vin) LIKE LOWER(:search))"
         )
         params["search"] = f"%{search}%"
 

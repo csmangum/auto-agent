@@ -392,7 +392,7 @@ describe('ClaimsList', () => {
     expect(searchInput).toHaveValue('CLM-001');
   });
 
-  it('sort order dropdown changes sort_order param', () => {
+  it('sort order dropdown changes sort_order param', async () => {
     render(
       <Wrapper>
         <ClaimsList />
@@ -402,8 +402,10 @@ describe('ClaimsList', () => {
     const sortOrderSelect = screen.getByRole('combobox', { name: /sort order/i });
     fireEvent.change(sortOrderSelect, { target: { value: 'asc' } });
 
-    expect(useClaims).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort_order: 'asc' })
+    await waitFor(() =>
+      expect(useClaims).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort_order: 'asc' })
+      )
     );
   });
 });
