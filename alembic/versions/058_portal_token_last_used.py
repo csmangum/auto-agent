@@ -34,8 +34,30 @@ _TABLES = [
 ]
 
 
+def _table_exists(conn, table: str) -> bool:
+    """True if *table* exists in the current schema (legacy DBs may lack portal tables)."""
+    if conn.dialect.name == "postgresql":
+        row = conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = current_schema() AND table_name = :name"
+            ),
+            {"name": table},
+        ).fetchone()
+        return row is not None
+    row = conn.execute(
+        text(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :name"
+        ),
+        {"name": table},
+    ).fetchone()
+    return row is not None
+
+
 def _add_column_sqlite(conn, table: str) -> None:
     """Add last_used_at to *table* on SQLite (check first to be idempotent)."""
+    if not _table_exists(conn, table):
+        return
     columns = {
         row[1]
         for row in conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
@@ -48,6 +70,8 @@ def upgrade() -> None:
     conn = op.get_bind()
     if conn.dialect.name == "postgresql":
         for table in _TABLES:
+            if not _table_exists(conn, table):
+                continue
             conn.execute(
                 text(
                     f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS"
@@ -63,6 +87,8 @@ def downgrade() -> None:
     conn = op.get_bind()
     if conn.dialect.name == "postgresql":
         for table in _TABLES:
+            if not _table_exists(conn, table):
+                continue
             conn.execute(
                 text(f"ALTER TABLE {table} DROP COLUMN IF EXISTS last_used_at")
             )

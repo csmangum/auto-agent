@@ -2320,6 +2320,23 @@ class Settings(BaseSettings):
     reverse_image_adapter: str = Field(default="mock", validation_alias="REVERSE_IMAGE_ADAPTER")
     erp_adapter: str = Field(default="mock", validation_alias="ERP_ADAPTER")
     medical_records_adapter: str = Field(default="mock", validation_alias="MEDICAL_RECORDS_ADAPTER")
+    dashboard_sentry_dsn: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("VITE_SENTRY_DSN", "DASHBOARD_SENTRY_DSN"),
+        description=(
+            "When set, dashboard/API Content-Security-Policy connect-src includes the "
+            "ingest origin parsed from this URL (same value as frontend VITE_SENTRY_DSN "
+            "in typical deployments). Omit for a stricter default (connect-src 'self' only)."
+        ),
+    )
+
+    @field_validator("dashboard_sentry_dsn", mode="before")
+    @classmethod
+    def _strip_dashboard_sentry_dsn(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
 
     @field_validator("siu_default_state", mode="before")
     @classmethod
