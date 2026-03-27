@@ -18,13 +18,13 @@ from claim_agent.api.portal_deps import (
     require_claimant_access,
     require_portal_session,
 )
-from claim_agent.api.routes.claims import (
-    _ALLOWED_DOCUMENT_EXTENSIONS,
-    _VALID_DOCUMENT_TYPES,
-    _get_doc_repo,
-    _max_upload_file_size_bytes,
-    _maybe_update_document_request_on_receipt,
-    _upload_file_size_exceeded_detail,
+from claim_agent.api.routes._claims_helpers import (
+    ALLOWED_DOCUMENT_EXTENSIONS,
+    VALID_DOCUMENT_TYPES,
+    get_doc_repo,
+    max_upload_file_size_bytes,
+    maybe_update_document_request_on_receipt,
+    upload_file_size_exceeded_detail,
 )
 from claim_agent.context import ClaimContext
 from claim_agent.exceptions import DomainValidationError
@@ -232,7 +232,7 @@ def list_portal_documents(
     repo = _get_claim_repo()
     if repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    doc_repo = _get_doc_repo()
+    doc_repo = get_doc_repo()
     documents, total = doc_repo.list_documents(
         claim_id, document_type=document_type, review_status=None, limit=limit, offset=offset
     )
@@ -266,7 +266,7 @@ def list_portal_document_requests(
     repo = _get_claim_repo()
     if repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    doc_repo = _get_doc_repo()
+    doc_repo = get_doc_repo()
     requests, total = doc_repo.list_document_requests(
         claim_id, status=status, limit=limit, offset=offset
     )
@@ -352,10 +352,10 @@ async def upload_portal_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename required")
     ext = (file.filename.rsplit(".", 1)[-1] or "").lower()
-    if ext not in _ALLOWED_DOCUMENT_EXTENSIONS:
+    if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"File type not allowed. Allowed: {', '.join(sorted(_ALLOWED_DOCUMENT_EXTENSIONS))}",
+            detail=f"File type not allowed. Allowed: {', '.join(sorted(ALLOWED_DOCUMENT_EXTENSIONS))}",
         )
     chunks: list[bytes] = []
     total_size = 0
@@ -365,30 +365,30 @@ async def upload_portal_document(
         if not chunk:
             break
         total_size += len(chunk)
-        if total_size > _max_upload_file_size_bytes():
-            raise HTTPException(status_code=413, detail=_upload_file_size_exceeded_detail())
+        if total_size > max_upload_file_size_bytes():
+            raise HTTPException(status_code=413, detail=upload_file_size_exceeded_detail())
         chunks.append(chunk)
     content = b"".join(chunks)
-    if document_type is not None and document_type not in _VALID_DOCUMENT_TYPES:
+    if document_type is not None and document_type not in VALID_DOCUMENT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid document_type. Must be one of: {sorted(_VALID_DOCUMENT_TYPES)}",
+            detail=f"Invalid document_type. Must be one of: {sorted(VALID_DOCUMENT_TYPES)}",
         )
     storage = get_storage_adapter()
     stored_key = storage.save(claim_id=claim_id, filename=file.filename, content=content)
     doc_type = document_type or attachment_type_to_document_type(
         infer_attachment_type(file.filename)
     ).value
-    if doc_type not in _VALID_DOCUMENT_TYPES:
+    if doc_type not in VALID_DOCUMENT_TYPES:
         doc_type = DocumentType.OTHER.value
-    doc_repo = _get_doc_repo()
+    doc_repo = get_doc_repo()
     doc_id = doc_repo.add_document(
         claim_id,
         stored_key,
         document_type=doc_type,
         received_from="claimant",
     )
-    _maybe_update_document_request_on_receipt(doc_repo, repo, claim_id, doc_type)
+    maybe_update_document_request_on_receipt(doc_repo, repo, claim_id, doc_type)
     doc = doc_repo.get_document(doc_id)
     if doc:
         doc["url"] = storage.get_url(claim_id, stored_key)
