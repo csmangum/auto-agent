@@ -139,7 +139,7 @@ The adapter is **never called automatically when `REVERSE_IMAGE_ADAPTER=stub`** 
 
 **Privacy and API-key posture:**
 
-* Images may contain PII (licence plates, faces, GPS EXIF data). Scrub EXIF metadata before submission to a third-party provider where required by policy.
+* Images may contain PII (licence plates, faces, GPS EXIF data). The **REST** implementation (`RestReverseImageAdapter`) strips EXIF from JPEG, PNG, and WebP bytes before `post_multipart` by default (`REVERSE_IMAGE_REST_SCRUB_EXIF_BEFORE_UPLOAD`, default `true`). Set `REVERSE_IMAGE_REST_SCRUB_EXIF_BEFORE_UPLOAD=false` only if your provider contract requires raw metadata. Other backends (mock/stub) do not upload externally.
 * Verify that the production provider's Data Processing Agreement (DPA) covers your jurisdiction (see cross-border transfer controls in `src/claim_agent/privacy/cross_border.py`).
 * API keys must be stored in secrets management (e.g. environment secrets, AWS Secrets Manager, Vault) and **never** committed to source code.
 * Disclose reverse-image lookups in the applicable privacy notice and include them in DSAR records where regulatorily required.
