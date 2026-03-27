@@ -68,6 +68,8 @@ services:
       - OTEL_TRACING=${OTEL_TRACING:-false}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-claim-agent}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
+      - CLAIM_AGENT_LOG_FORMAT=${CLAIM_AGENT_LOG_FORMAT:-json}
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-90}
       - WEBHOOK_ENABLED=${WEBHOOK_ENABLED:-true}
       # HTTPS enforcement is on; nginx acts as the TLS-terminating reverse proxy.
       - ENFORCE_HTTPS=${ENFORCE_HTTPS:-true}
@@ -103,10 +105,43 @@ services:
         condition: service_healthy
     restart: always
 
-  # Monitoring stack: Prometheus + Alertmanager + Grafana.
+  # Monitoring stack: Prometheus + Alertmanager + Grafana + Loki + Promtail.
   # Start with: docker compose -f docker-compose.prod.yml --profile monitoring up -d
   # Access Grafana at https://<host>/grafana or http://localhost:3000.
   # Access Prometheus at http://localhost:9090 (restrict access via firewall in production).
+  # Access Loki logs via Grafana → Explore → Loki datasource.
+  #
+  # Log retention is configured by LOG_RETENTION_DAYS (default: 90).
+  # Update retention_period in monitoring/loki-config.yml to match (1 day = 24h).
+  loki:
+    image: grafana/loki:3.3.2
+    profiles: ["monitoring"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: always
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    profiles: ["monitoring"]
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: always
+
   prometheus:
     image: prom/prometheus:v3.1.0
     profiles: ["monitoring"]
@@ -168,6 +203,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      loki:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health || exit 1"]
       interval: 10s
@@ -182,3 +219,4 @@ volumes:
   prometheus-data:
   alertmanager-data:
   grafana-data:
+  loki-data:

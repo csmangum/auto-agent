@@ -1,0 +1,58 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://alertmanager:9093
+
+limits_config:
+  # Log retention: controlled by LOG_RETENTION_DAYS (default 90 days).
+  # Update retention_period below whenever LOG_RETENTION_DAYS changes.
+  # Formula: LOG_RETENTION_DAYS × 24 = hours → append 'h'
+  # Examples: 30 days → 720h | 90 days → 2160h | 365 days → 8760h
+  # WARNING: mismatched values cause logs to be kept longer or deleted earlier than expected.
+  retention_period: 2160h  # 90 days — keep in sync with LOG_RETENTION_DAYS
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h  # 7 days
+  max_query_series: 5000
+  max_query_lookback: 2160h  # 90 days
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem

@@ -547,6 +547,16 @@ class LoggingConfig(BaseSettings):
     log_format: str = "human"
     log_level: str = "INFO"
     mask_pii: bool = True
+    log_retention_days: int = Field(
+        default=90,
+        description=(
+            "Number of days to retain log records in the aggregation backend (Loki). "
+            "Mirrors the retention_period in monitoring/loki-config.yml (1 day = 24h). "
+            "Update both values together when changing retention. "
+            "Set via LOG_RETENTION_DAYS env var."
+        ),
+        validation_alias=AliasChoices("LOG_RETENTION_DAYS", "CLAIM_AGENT_LOG_RETENTION_DAYS"),
+    )
 
 
 class PathsConfig(BaseSettings):

@@ -92,10 +92,43 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Monitoring stack: Prometheus + Alertmanager + Grafana.
+  # Monitoring stack: Prometheus + Alertmanager + Grafana + Loki + Promtail.
   # Start with: docker compose --profile monitoring up
   # Access Grafana at http://localhost:3000 (admin / admin — change on first login).
   # Access Prometheus at http://localhost:9090.
+  # Access Loki (log aggregation) via Grafana → Explore → Loki datasource.
+  #
+  # Log retention is configured by LOG_RETENTION_DAYS (default: 90).
+  # Update the retention_period in monitoring/loki-config.yml to match (1 day = 24h).
+  loki:
+    image: grafana/loki:3.3.2
+    profiles: ["monitoring"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    profiles: ["monitoring"]
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.1.0
     profiles: ["monitoring"]
@@ -156,6 +189,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      loki:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health || exit 1"]
       interval: 10s
@@ -171,3 +206,4 @@ volumes:
   prometheus-data:
   alertmanager-data:
   grafana-data:
+  loki-data:
