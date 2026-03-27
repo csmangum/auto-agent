@@ -1,0 +1,40 @@
+{{- if and (eq .Values.deploymentStrategy.type "BlueGreen") .Values.deploymentStrategy.blueGreen.dualDeployment }}
+# Active Service — rendered only when:
+#   deploymentStrategy.type=BlueGreen
+#   deploymentStrategy.blueGreen.dualDeployment=true
+#
+# Routes traffic to the currently-live slot (blue or green). The initial active
+# slot is set by deploymentStrategy.blueGreen.initialSlot.
+#
+# Switch the active slot without a Helm upgrade by using the helper script:
+#   scripts/blue_green_switch.sh blue|green -n <namespace>
+# or by patching the selector directly:
+#   kubectl patch service {{ include "claim-agent.fullname" . }}-active \
+#     -n {{ .Release.Namespace }} --type=json \
+#     -p '[{"op":"replace","path":"/spec/selector/deployment-slot","value":"green"}]'
+#
+# This service name (<fullname>-active) matches the claim-agent-active convention
+# used by k8s/blue-green/service.yaml, scripts/blue_green_switch.sh, and
+# .github/workflows/deploy.yml when the Helm release name is "claim-agent".
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "claim-agent.fullname" . }}-active
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "claim-agent.labels" . | nindent 4 }}
+  annotations:
+    # Fixed annotation key — must match the patch path used by blue_green_switch.sh
+    # (deployment.claim-agent~1active-slot in RFC 6901 JSON Pointer encoding).
+    deployment.claim-agent/active-slot: {{ .Values.deploymentStrategy.blueGreen.initialSlot | quote }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "claim-agent.selectorLabels" . | nindent 4 }}
+    deployment-slot: {{ .Values.deploymentStrategy.blueGreen.initialSlot | quote }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
