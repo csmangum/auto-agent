@@ -251,6 +251,17 @@ class AdapterHttpClient:
             if last_exc is not None:
                 raise last_exc from re
             raise RuntimeError("Retry loop exited without return or exception") from re
+        except Exception as exc:
+            self._record_failure()
+            elapsed = time.perf_counter() - t0
+            status_class = _status_class_from_exception(exc)
+            record_adapter_http_request(
+                adapter_name=self._adapter_name,
+                method=method,
+                duration_seconds=elapsed,
+                status_class=status_class,
+            )
+            raise
         raise RuntimeError("Retry loop exited without return or exception")
 
     def _request(
