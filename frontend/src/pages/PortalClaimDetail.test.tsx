@@ -357,6 +357,61 @@ describe('PortalClaimDetail', () => {
     await screen.findByText('Disputes not available');
   });
 
+  it('shows dispute filing form when claim status is open (DISPUTABLE_STATUSES parity)', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      status: 'open',
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    expect(screen.getByRole('tab', { name: 'Dispute' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Dispute'));
+    await screen.findByRole('heading', { name: 'File a Dispute' });
+    expect(screen.getByRole('button', { name: 'File Dispute' })).toBeInTheDocument();
+  });
+
+  it('shows disputes unavailable empty state when status is processing', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      status: 'processing',
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByRole('tab', { name: 'Dispute' }));
+    await screen.findByText('Disputes not available');
+    expect(
+      screen.getByText(/Disputes can only be filed when the claim is open or settled/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'File Dispute' })).not.toBeInTheDocument();
+  });
+
+  it('shows disputes unavailable empty state when status is needs_review', async () => {
+    mockGetClaim.mockResolvedValue({
+      ...mockClaim,
+      status: 'needs_review',
+    });
+    render(
+      <Wrapper>
+        <PortalClaimDetail />
+      </Wrapper>
+    );
+    await screen.findByText('Claim CLM-001...');
+    fireEvent.click(screen.getByRole('tab', { name: 'Dispute' }));
+    await screen.findByText('Disputes not available');
+    expect(
+      screen.getByText(/Disputes can only be filed when the claim is open or settled/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'File Dispute' })).not.toBeInTheDocument();
+  });
+
   it('shows repair status tab with progress and history', async () => {
     mockGetRepairStatus.mockResolvedValue({
       latest: { status: 'paint', status_updated_at: '2025-01-20T14:00:00Z', notes: 'Base coat applied' },
@@ -410,8 +465,9 @@ describe('PortalClaimDetail', () => {
       </Wrapper>
     );
     await screen.findByText('Claim CLM-001...');
+    expect(screen.getByRole('tab', { name: 'Dispute' })).toBeInTheDocument();
     fireEvent.click(screen.getByText('Dispute'));
-    await screen.findByText('File a Dispute');
+    await screen.findByRole('heading', { name: 'File a Dispute' });
     expect(screen.getByText(/Dispute Type/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'File Dispute' })).toBeInTheDocument();
   });
