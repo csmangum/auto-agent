@@ -30,7 +30,6 @@ from claim_agent.api.idempotency import cleanup_expired
 from claim_agent.observability.health import check_health
 from claim_agent.observability.prometheus import generate_metrics
 from claim_agent.api.rate_limit import get_client_ip, is_auth_rate_limited, is_rate_limited
-from claim_agent.api.routes.claims import router as claims_router
 from claim_agent.api.routes.claims_audit import router as claims_audit_router
 from claim_agent.api.routes.claims_crud import router as claims_crud_router
 from claim_agent.api.routes.claims_financial import router as claims_financial_router
@@ -805,7 +804,6 @@ def metrics():
 app.include_router(claims_crud_router, prefix="/api/v1")
 app.include_router(claims_audit_router, prefix="/api/v1")
 app.include_router(claims_review_router, prefix="/api/v1")
-app.include_router(claims_router, prefix="/api/v1")
 app.include_router(claims_financial_router, prefix="/api/v1")
 app.include_router(claims_parties_router, prefix="/api/v1")
 app.include_router(claims_documents_router, prefix="/api/v1")
