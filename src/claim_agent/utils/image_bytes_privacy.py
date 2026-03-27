@@ -14,7 +14,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional depend
     Image = None  # type: ignore[assignment]
 
 # Formats where we re-save without EXIF (JPEG explicit exif=b""; PNG/WEBP via clean save).
-_STRIP_FORMATS: Final[frozenset[str]] = frozenset({"JPEG", "PNG", "WEBP"})
+_STRIP_FORMATS: Final[frozenset[str]] = frozenset({"JPEG", "MPO", "PNG", "WEBP"})
 
 
 def scrub_exif_from_image_bytes(data: bytes) -> bytes:
