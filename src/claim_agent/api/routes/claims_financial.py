@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
@@ -16,8 +16,6 @@ from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_ou
 from claim_agent.api.routes._claims_helpers import get_claim_context
 
 router = APIRouter(tags=["claims"])
-
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 class ReserveBody(BaseModel):

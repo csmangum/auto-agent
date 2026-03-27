@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.context import ClaimContext
 from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
@@ -14,8 +14,6 @@ from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.api.routes._claims_helpers import get_claim_context
 
 router = APIRouter(tags=["claims"])
-
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 class AddNoteBody(BaseModel):

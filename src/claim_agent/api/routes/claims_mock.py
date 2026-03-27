@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 
 from claim_agent.api.auth import AuthContext
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -16,11 +16,11 @@ from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.exceptions import ClaimAlreadyProcessingError, InvalidClaimTransitionError
-import claim_agent.api.routes._claims_helpers as _claims_helpers
 from claim_agent.api.routes._claims_helpers import (
     BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     GenerateClaimRequest,
     GenerateIncidentDetailsRequest,
+    background_workflow_queue_full,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -35,10 +35,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
-
-@router.post("/claims/generate")
+@router.post("/claims/generate", dependencies=[RequireAdjuster])
 async def generate_and_submit_claim(
     request: Request,
     body: GenerateClaimRequest = Body(...),
@@ -77,7 +75,7 @@ async def generate_and_submit_claim(
 
     try:
         if async_mode:
-            if await _claims_helpers.background_workflow_queue_full():
+            if await background_workflow_queue_full():
                 release_idempotency_on_error(idem_key)
                 raise HTTPException(
                     status_code=503,
@@ -128,7 +126,7 @@ async def generate_and_submit_claim(
         raise
 
 
-@router.post("/claims/generate-incident-details")
+@router.post("/claims/generate-incident-details", dependencies=[RequireAdjuster])
 async def generate_incident_details(
     body: GenerateIncidentDetailsRequest = Body(...),
     _auth: AuthContext = RequireAdjuster,

@@ -11,7 +11,11 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_FOLLOW_UP_SENT,
 )
 from claim_agent.db.database import get_connection, row_to_dict
-from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
+from claim_agent.exceptions import (
+    ClaimNotFoundError,
+    DomainValidationError,
+    FollowUpMessageNotFoundError,
+)
 from claim_agent.utils.sanitization import sanitize_note
 
 
@@ -69,7 +73,7 @@ class FollowUpRepository:
                 {"message_id": message_id},
             ).fetchone()
             if row is None:
-                raise DomainValidationError(f"Follow-up message not found: {message_id}")
+                raise FollowUpMessageNotFoundError(f"Follow-up message not found: {message_id}")
             row_d = row_to_dict(row)
             claim_id = row_d["claim_id"]
             user_type = row_d["user_type"]
@@ -108,6 +112,11 @@ class FollowUpRepository:
             actor_id: Who recorded the response.
             expected_claim_id: If provided, raises DomainValidationError when the message
                 belongs to a different claim (prevents cross-claim response injection).
+
+        Raises:
+            FollowUpMessageNotFoundError: If ``message_id`` does not exist.
+            DomainValidationError: If ``expected_claim_id`` is set and the message belongs
+                to another claim.
         """
         with get_connection(self._db_path) as conn:
             row = conn.execute(
@@ -115,7 +124,7 @@ class FollowUpRepository:
                 {"message_id": message_id},
             ).fetchone()
             if row is None:
-                raise DomainValidationError(f"Follow-up message not found: {message_id}")
+                raise FollowUpMessageNotFoundError(f"Follow-up message not found: {message_id}")
             row_d = row_to_dict(row)
             claim_id = row_d["claim_id"]
             user_type = row_d["user_type"]

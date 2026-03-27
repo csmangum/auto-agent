@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -25,8 +25,6 @@ from claim_agent.services.third_party_portal_tokens import create_third_party_ac
 from claim_agent.api.routes._claims_helpers import get_claim_context
 
 router = APIRouter(tags=["claims"])
-
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 # ---------------------------------------------------------------------------

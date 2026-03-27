@@ -56,6 +56,10 @@ def require_role(*roles: str):
     return Depends(_check)
 
 
+RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
+RequireSupervisor = require_role("supervisor", "admin", "executive")
+
+
 async def get_async_db() -> AsyncGenerator[AsyncConnection, None]:
     """FastAPI dependency that yields an async SQLAlchemy connection (PostgreSQL only).
 

@@ -17,7 +17,7 @@ from claim_agent.api.idempotency import (
     release_idempotency_on_error,
     store_response_if_idempotent,
 )
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
@@ -45,10 +45,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
-
-@router.post("/incidents", response_model=IncidentOutput)
+@router.post("/incidents", response_model=IncidentOutput, dependencies=[RequireAdjuster])
 async def create_incident(
     request: Request,
     incident_input: IncidentInput = Body(..., description="Multi-vehicle incident data"),
@@ -117,7 +115,11 @@ async def create_incident(
         raise
 
 
-@router.get("/incidents/{incident_id}", response_model=IncidentDetailResponse)
+@router.get(
+    "/incidents/{incident_id}",
+    response_model=IncidentDetailResponse,
+    dependencies=[RequireAdjuster],
+)
 async def get_incident(
     incident_id: str,
     auth: AuthContext = RequireAdjuster,
@@ -139,7 +141,7 @@ async def get_incident(
     )
 
 
-@router.post("/claim-links")
+@router.post("/claim-links", dependencies=[RequireAdjuster])
 async def create_claim_link(
     request: Request,
     link_input: ClaimLinkInput = Body(..., description="Link between two claims"),
@@ -179,7 +181,11 @@ async def create_claim_link(
         raise
 
 
-@router.get("/claims/{claim_id}/related", response_model=RelatedClaimsResponse)
+@router.get(
+    "/claims/{claim_id}/related",
+    response_model=RelatedClaimsResponse,
+    dependencies=[RequireAdjuster],
+)
 async def get_related_claims(
     claim_id: str,
     link_type: Optional[str] = Query(None, description="Filter by link type"),
@@ -195,7 +201,7 @@ async def get_related_claims(
     return RelatedClaimsResponse(claim_id=claim_id, related_claim_ids=related)
 
 
-@router.post("/bi-allocation")
+@router.post("/bi-allocation", dependencies=[RequireAdjuster])
 async def allocate_bi(
     allocation_input: BIAllocationInput = Body(..., description="BI limit allocation request"),
     auth: AuthContext = RequireAdjuster,

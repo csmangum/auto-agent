@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.constants import (
@@ -17,7 +17,11 @@ from claim_agent.db.constants import (
     DISPUTABLE_STATUSES,
     SIU_INVESTIGATION_STATUSES,
 )
-from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
+from claim_agent.exceptions import (
+    ClaimNotFoundError,
+    DomainValidationError,
+    FollowUpMessageNotFoundError,
+)
 from claim_agent.models.dispute import DisputeType
 from claim_agent.rag.constants import normalize_state
 from claim_agent.services.supplemental_request import execute_supplemental_request
@@ -35,8 +39,6 @@ from claim_agent.api.routes._claims_helpers import get_claim_context
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
-
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 # ---------------------------------------------------------------------------
@@ -186,11 +188,10 @@ def record_follow_up_response(
             expected_claim_id=claim_id,
         )
         return {"success": True, "message": "Response recorded"}
+    except FollowUpMessageNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except DomainValidationError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            raise HTTPException(status_code=404, detail=msg) from e
-        raise HTTPException(status_code=400, detail=msg) from e
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -211,7 +212,7 @@ def get_follow_up_messages(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/claims/{claim_id}/siu-investigate")
+@router.post("/claims/{claim_id}/siu-investigate", dependencies=[RequireAdjuster])
 def run_siu_investigation(
     claim_id: str,
     auth: AuthContext = RequireAdjuster,
@@ -244,7 +245,7 @@ def run_siu_investigation(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/claims/{claim_id}/dispute", response_model=DisputeResponse)
+@router.post("/claims/{claim_id}/dispute", response_model=DisputeResponse, dependencies=[RequireAdjuster])
 async def file_dispute(
     claim_id: str,
     body: DisputeBody = Body(...),
@@ -298,7 +299,11 @@ async def file_dispute(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/claims/{claim_id}/denial-coverage", response_model=DenialCoverageResponse)
+@router.post(
+    "/claims/{claim_id}/denial-coverage",
+    response_model=DenialCoverageResponse,
+    dependencies=[RequireAdjuster],
+)
 async def run_denial_coverage(
     claim_id: str,
     body: DenialCoverageBody = Body(...),
@@ -346,7 +351,11 @@ async def run_denial_coverage(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/claims/{claim_id}/supplemental", response_model=SupplementalResponse)
+@router.post(
+    "/claims/{claim_id}/supplemental",
+    response_model=SupplementalResponse,
+    dependencies=[RequireAdjuster],
+)
 async def file_supplemental(
     claim_id: str,
     body: SupplementalBody = Body(...),

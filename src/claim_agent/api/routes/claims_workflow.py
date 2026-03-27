@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster, RequireSupervisor
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -22,9 +22,9 @@ from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.exceptions import ClaimAlreadyProcessingError
 from claim_agent.models.claim import ClaimInput
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
-import claim_agent.api.routes._claims_helpers as _claims_helpers
 from claim_agent.api.routes._claims_helpers import (
     BACKGROUND_QUEUE_FULL_RETRY_AFTER,
+    background_workflow_queue_full,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -34,11 +34,8 @@ from claim_agent.api.routes._claims_helpers import (
 
 router = APIRouter(tags=["claims"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
-RequireSupervisor = require_role("supervisor", "admin", "executive")
 
-
-@router.post("/claims/process")
+@router.post("/claims/process", dependencies=[RequireAdjuster])
 async def process_claim(
     request: Request,
     claim: str = Form(..., description="Claim data as JSON string"),
@@ -62,7 +59,7 @@ async def process_claim(
 
     try:
         if async_mode:
-            if await _claims_helpers.background_workflow_queue_full():
+            if await background_workflow_queue_full():
                 release_idempotency_on_error(idem_key)
                 raise HTTPException(
                     status_code=503,
@@ -106,7 +103,7 @@ async def process_claim(
         raise
 
 
-@router.post("/claims/process/async")
+@router.post("/claims/process/async", dependencies=[RequireAdjuster])
 async def process_claim_async(
     request: Request,
     claim: str = Form(..., description="Claim data as JSON string"),
@@ -121,7 +118,7 @@ async def process_claim_async(
         return cached
 
     try:
-        if await _claims_helpers.background_workflow_queue_full():
+        if await background_workflow_queue_full():
             release_idempotency_on_error(idem_key)
             raise HTTPException(
                 status_code=503,
@@ -151,7 +148,7 @@ async def process_claim_async(
         raise
 
 
-@router.get("/claims/{claim_id}/stream")
+@router.get("/claims/{claim_id}/stream", dependencies=[RequireAdjuster])
 async def stream_claim_updates(
     claim_id: str,
     auth: AuthContext = RequireAdjuster,
@@ -171,7 +168,7 @@ async def stream_claim_updates(
     )
 
 
-@router.post("/claims/{claim_id}/reprocess")
+@router.post("/claims/{claim_id}/reprocess", dependencies=[RequireSupervisor])
 async def reprocess_claim(
     claim_id: str,
     from_stage: Optional[str] = Query(
