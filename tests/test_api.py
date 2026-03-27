@@ -698,7 +698,7 @@ class TestReviewQueue:
 
     def test_siu_investigate(self, client, monkeypatch):
         """SIU investigate endpoint invokes SIU crew and returns result."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         mock_result = {
             "claim_id": "CLM-TEST002",
@@ -706,7 +706,7 @@ class TestReviewQueue:
             "summary": "Investigation complete.",
         }
         monkeypatch.setattr(
-            claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result
+            claims_spec_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result
         )
         with get_connection() as conn:
             conn.execute(
@@ -744,14 +744,14 @@ class TestReviewQueue:
 
     def test_follow_up_run(self, client, monkeypatch):
         """Follow-up run endpoint invokes workflow and returns result."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         mock_result = {
             "claim_id": "CLM-TEST001",
             "workflow_output": "Message sent.",
             "summary": "Message sent.",
         }
-        monkeypatch.setattr(claims_mod, "run_follow_up_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_spec_mod, "run_follow_up_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/follow-up/run",
             json={"task": "Gather photos from claimant"},
@@ -907,7 +907,7 @@ class TestReviewQueue:
 
     def test_file_dispute_success_returns_response_model(self, client, monkeypatch):
         """Filing a dispute on an open claim returns 200 and DisputeResponse shape."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         mock_result = {
             "claim_id": "CLM-TEST001",
@@ -918,7 +918,7 @@ class TestReviewQueue:
             "adjusted_amount": 15500.0,
             "summary": "Resolution: AUTO_RESOLVED. Adjusted amount: $15,500.",
         }
-        monkeypatch.setattr(claims_mod, "run_dispute_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_spec_mod, "run_dispute_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/dispute",
             json={
@@ -1194,7 +1194,7 @@ class TestDenialCoverage:
         assert "unsupported" in data["detail"].lower() or "supported" in data["detail"].lower()
 
     def test_denial_coverage_success_returns_response_model(self, client, monkeypatch):
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
         from claim_agent.db.repository import ClaimRepository
 
         # Put CLM-TEST001 in denied status
@@ -1209,7 +1209,7 @@ class TestDenialCoverage:
             "summary": "Denial upheld. Letter generated.",
         }
         monkeypatch.setattr(
-            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+            claims_spec_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
         )
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/denial-coverage",
@@ -1240,10 +1240,10 @@ class TestDenialCoverage:
             "workflow_output": "Escalated: ambiguous_policy_language",
             "summary": "Escalated for review: ambiguous_policy_language",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         monkeypatch.setattr(
-            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+            claims_spec_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
         )
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/denial-coverage",
@@ -2958,9 +2958,9 @@ class TestPostClaimsJson:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_crud as claims_crud_mod
 
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_crud_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
 
     def test_post_claims_valid_returns_result(self, client, monkeypatch, tmp_path):
