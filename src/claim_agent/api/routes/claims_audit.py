@@ -19,7 +19,7 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
 class AddNoteBody(BaseModel):
-    note: str = Field(..., min_length=1, description="Note content")
+    note: str = Field(..., min_length=1, max_length=2000, description="Note content")
 
     @field_validator("note", mode="after")
     @classmethod
