@@ -1,0 +1,161 @@
+# Promtail configuration for Kubernetes deployments of claim-agent.
+#
+# This is an EXAMPLE / TEMPLATE for operators running claim-agent on Kubernetes.
+# It is intentionally not referenced by docker-compose.yml; it is designed to be
+# deployed as a DaemonSet alongside Grafana Loki in your cluster.
+#
+# How to use
+# ----------
+# 1. Copy this file to your GitOps / Helm values repository, rename it to
+#    promtail-config.yml, and mount it into the Promtail DaemonSet at
+#    /etc/promtail/config.yml.
+#
+# 2. Set CLAIM_AGENT_LOG_FORMAT=json (via your ConfigMap / Secret) so structured
+#    fields (level, claim_type, logger, etc.) are present on each log line.
+#    Human-readable lines are still forwarded; the json pipeline stage is a no-op
+#    for non-JSON lines when `drop_malformed` is false (the default).
+#
+# 3. Adjust the `loki.url` below to point at your Loki service
+#    (e.g. http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push).
+#
+# 4. Apply the DaemonSet.  See the Helm quickstart in docs/observability.md for
+#    the recommended grafana/promtail Helm chart invocation.
+#
+# Relationship to monitoring/promtail-config.yml
+# -----------------------------------------------
+# The Docker Compose variant (monitoring/promtail-config.yml) uses docker_sd_configs
+# to read logs via the Docker daemon socket.  That mechanism does not exist on
+# Kubernetes.  This file uses kubernetes_sd_configs + role: pod to read the same
+# log files directly from /var/log/pods on each node, which is the standard k8s
+# approach.  The pipeline_stages block is identical so you get the same Loki label
+# set and LogQL query patterns.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  # Written to a hostPath volume so progress survives Promtail pod restarts.
+  filename: /run/promtail/positions.yaml
+
+clients:
+  - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+    # Optional: add a tenant ID when Loki runs in multi-tenant mode.
+    # tenant_id: claim-agent
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Scrape pod logs for all claim-agent containers in the claim-agent namespace.
+  #
+  # Kubernetes writes container logs to:
+  #   /var/log/pods/<namespace>_<pod-name>_<uid>/<container-name>/<n>.log
+  #
+  # Promtail reads those files from a hostPath volume (see DaemonSet notes below).
+  # ---------------------------------------------------------------------------
+  - job_name: claim-agent-pods
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - claim-agent  # Restrict discovery to the claim-agent namespace.
+
+    # Relabeling: keep only claim-agent containers, then enrich labels.
+    relabel_configs:
+      # Only scrape pods whose `app.kubernetes.io/name` label is "claim-agent".
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        action: keep
+        regex: claim-agent
+
+      # Only scrape the container named "claim-agent" (skip sidecars such as
+      # istio-proxy or cloud-sql-proxy).
+      - source_labels: [__meta_kubernetes_pod_container_name]
+        action: keep
+        regex: claim-agent
+
+      # Derive the log file path from pod metadata so Promtail knows where to
+      # read on the host filesystem.  With the default relabel regex (.*), $1 is
+      # the full "uid/container" string; the leading glob matches the
+      # namespace_pod_uid directory prefix (same pattern as grafana/promtail chart).
+      - source_labels:
+          - __meta_kubernetes_pod_uid
+          - __meta_kubernetes_pod_container_name
+        separator: /
+        target_label: __path__
+        replacement: /var/log/pods/*$1/*.log
+
+      # Surface well-known k8s identifiers as Loki labels (low-cardinality).
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: node
+      - source_labels: [__meta_kubernetes_pod_container_name]
+        target_label: container
+      - replacement: claim-agent
+        target_label: job
+
+    pipeline_stages:
+      # Container runtimes (containerd / CRI-O) wrap each log line in a CRI
+      # envelope: "<timestamp> stdout|stderr F <json-or-text-line>".
+      # Strip the CRI header so the downstream json stage sees the raw payload.
+      - cri: {}
+
+      # Parse JSON log lines produced when CLAIM_AGENT_LOG_FORMAT=json.
+      # Non-JSON lines (human-readable format) are forwarded as-is; the stage is
+      # a no-op when the line cannot be decoded as JSON.
+      #
+      # Do NOT promote claim_id / correlation_id to Loki labels — they are
+      # high-cardinality.  Query them with LogQL:
+      #   {job="claim-agent"} | json | claim_id="CLM-12345"
+      - json:
+          expressions:
+            level: level
+            claim_type: claim_type
+            logger: logger
+
+      - labels:
+          level:
+          claim_type:
+          logger:
+
+      # Drop DEBUG lines in non-debug deployments to reduce ingestion volume.
+      # Remove or comment out this stage when DEBUG logs are needed in Loki.
+      - drop:
+          drop_counter_reason: debug_drop
+          if: 'level == "DEBUG"'
+
+# ---------------------------------------------------------------------------
+# DaemonSet notes (abbreviated — production Helm chart is recommended)
+# ---------------------------------------------------------------------------
+#
+# To ship logs from every node, Promtail must run as a DaemonSet with:
+#
+#   hostPID: false      # not required
+#   volumes:
+#     - name: varlogpods
+#       hostPath:
+#         path: /var/log/pods
+#     - name: positions
+#       emptyDir: {}    # or a hostPath if you want persistence across pod restarts
+#
+#   volumeMounts:
+#     - name: varlogpods
+#       mountPath: /var/log/pods
+#       readOnly: true
+#     - name: positions
+#       mountPath: /run/promtail
+#
+# The Promtail pod also needs ClusterRole / ClusterRoleBinding permissions to
+# call the Kubernetes API for pod discovery:
+#
+#   rules:
+#     - apiGroups: [""]
+#       resources: ["nodes", "nodes/proxy", "pods"]
+#       verbs: ["get", "watch", "list"]
+#
+# Helm quickstart (grafana/promtail chart): use monitoring/promtail-helm-values-k8s.example.yaml
+# (this file is not valid Helm values — the chart expects config under config.*).
+#
+# See docs/observability.md § "Kubernetes log shipping" for the full guide.

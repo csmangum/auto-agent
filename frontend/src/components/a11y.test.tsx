@@ -4,6 +4,13 @@
  * These tests render key UI components and assert that axe finds no
  * accessibility violations. Color-contrast rules are disabled because
  * jsdom does not compute CSS custom properties / Tailwind styles.
+ *
+ * ## Known gap & mitigation
+ * Color-contrast (WCAG SC 1.4.3 / 1.4.11) cannot be verified here because
+ * jsdom does not process Tailwind CSS. This gap is covered by the companion
+ * Playwright-based audit in `e2e/a11y.spec.ts`, which runs against a real
+ * Vite dev server with full CSS support and has color-contrast enabled.
+ * Run those tests with: `npm run test:a11y`
  */
 import { render } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';

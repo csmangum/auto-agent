@@ -131,6 +131,192 @@ Loki compaction runs every 10 minutes and purges chunks older than the retention
   `loki-config.yml` with an S3-compatible store (`s3`, `gcs`, or `azure`).
 - Promtail requires read access to the Docker socket (`/var/run/docker.sock`). In environments
   where this is restricted, switch Promtail to scrape log files from a shared volume instead.
+- **Kubernetes deployments:** the Docker socket is not available in Kubernetes. See
+  [Kubernetes log shipping](#kubernetes-log-shipping) below for the Kubernetes-native Promtail
+  configuration.
+
+## Kubernetes log shipping
+
+Operators running claim-agent on Kubernetes (using the manifests in `k8s/` or the Helm chart in
+`helm/claim-agent/`) cannot use the Docker socket-based Promtail configuration from
+`monitoring/promtail-config.yml`. Instead, Promtail must run as a **DaemonSet** and read pod logs
+directly from the host filesystem (`/var/log/pods/`).
+
+**`monitoring/promtail-config-k8s.yml.example`** is a full Promtail document for operators who
+mount config directly (e.g. raw ConfigMap at `/etc/promtail/config.yml` or a custom DaemonSet).
+
+**`monitoring/promtail-helm-values-k8s.example.yaml`** is the matching fragment for the official
+**`grafana/promtail`** Helm chart: that chart assembles config from `config.*` values (not from a
+flat Promtail file), so use `-f` on this values file rather than pointing Helm at
+`promtail-config-k8s.yml.example`.
+
+Both provide the same JSON log pipeline (label extraction for `level`, `claim_type`, `logger`) and
+the same LogQL query patterns as the Docker Compose setup, adapted for Kubernetes:
+
+| Feature | Docker Compose | Kubernetes |
+|---------|---------------|-----------|
+| Discovery | `docker_sd_configs` (socket) | `kubernetes_sd_configs` (role: pod) |
+| Log path | Docker daemon buffer | `/var/log/pods/…` on each node |
+| Deployment | Single container in Compose | DaemonSet + RBAC |
+| CRI parsing | Not needed | `cri: {}` stage strips containerd/CRI-O envelope |
+
+### Quick start (Helm)
+
+The **`grafana/promtail`** chart renders Promtail’s `config.file` from Helm values (`config.clients`,
+`config.snippets.scrapeConfigs`, `config.snippets.extraScrapeConfigs`, etc.). Do **not** pass
+`monitoring/promtail-config-k8s.yml.example` as `--values` to that chart — it is a standalone Promtail
+document. Use **`monitoring/promtail-helm-values-k8s.example.yaml`** instead, which sets
+`config.clients` and appends the claim-agent scrape job via `extraScrapeConfigs`.
+
+```bash
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+# Deploy Loki (single-binary mode for a small cluster)
+helm upgrade --install loki grafana/loki \
+  --namespace monitoring --create-namespace \
+  --set loki.auth_enabled=false \
+  --set loki.commonConfig.replication_factor=1 \
+  --set loki.storage.type=filesystem
+
+# Deploy Promtail: chart defaults include hostPath /var/log/pods and RBAC; merge claim-agent job
+helm upgrade --install promtail grafana/promtail \
+  --namespace monitoring --create-namespace \
+  -f monitoring/promtail-helm-values-k8s.example.yaml
+```
+
+To supply the entire Promtail config yourself, use the chart’s pattern for a self-managed
+ConfigMap (see **`grafana/promtail`** README: disable the chart-generated config and mount your
+own file). For GitOps, copy and adapt `promtail-helm-values-k8s.example.yaml` into your values
+repository.
+
+### Required RBAC
+
+The Promtail ServiceAccount needs read access to pod metadata for discovery:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promtail
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "pods"]
+    verbs: ["get", "watch", "list"]
+```
+
+The `grafana/promtail` Helm chart creates this automatically.
+
+### DaemonSet volume mounts
+
+Promtail reads host log files via a `hostPath` volume:
+
+```yaml
+volumes:
+  - name: varlogpods
+    hostPath:
+      path: /var/log/pods
+  - name: positions
+    emptyDir: {}       # use hostPath for persistence across pod restarts
+
+volumeMounts:
+  - name: varlogpods
+    mountPath: /var/log/pods
+    readOnly: true
+  - name: positions
+    mountPath: /run/promtail
+```
+
+### Querying logs (same LogQL patterns)
+
+After deploying Promtail on Kubernetes the Loki labels and LogQL patterns are identical to the
+Docker Compose setup:
+
+| Query | Description |
+|-------|-------------|
+| `{job="claim-agent"}` | All claim-agent logs |
+| `{job="claim-agent", level="ERROR"}` | Errors only |
+| `{job="claim-agent"} \| json \| claim_id="CLM-12345"` | Single claim trace |
+| `{job="claim-agent"} \| json \| claim_type="fraud"` | All fraud-type claims |
+| `{job="claim-agent"} \|= "escalat"` | Escalation events |
+
+Additional labels available on Kubernetes (not present in the Docker Compose setup):
+
+| Label | Example value | Description |
+|-------|---------------|-------------|
+| `namespace` | `claim-agent` | Kubernetes namespace |
+| `pod` | `claim-agent-7d9c8b-xkpqz` | Pod name |
+| `node` | `ip-10-0-1-42` | Node name |
+| `container` | `claim-agent` | Container name |
+
+### Configuration file reference
+
+| File | Purpose |
+|------|---------|
+| `monitoring/promtail-config.yml` | Docker Compose / Docker socket log shipping |
+| `monitoring/promtail-config-k8s.yml.example` | Standalone Promtail YAML for K8s (ConfigMap / raw mount) |
+| `monitoring/promtail-helm-values-k8s.example.yaml` | `grafana/promtail` Helm values (claim-agent scrape job) |
+
+### Loki security: auth and tenant hardening
+
+`docker-compose.prod.yml` binds Loki to **127.0.0.1:3100** so it is only reachable from the host
+itself.  `auth_enabled: false` is acceptable in that configuration because all external access
+flows through Grafana (which requires a login) or an authenticated nginx reverse proxy.
+
+**If Loki becomes reachable from other hosts** (e.g. you change the port binding, deploy to
+Kubernetes, or put Loki on a shared network), apply one of the hardening options below.
+
+#### Hardening checklist
+
+- [ ] **Keep Loki localhost-only (current default)**
+  - `ports: ["127.0.0.1:3100:3100"]` in `docker-compose.prod.yml` — ✅ already set.
+  - `auth_enabled: false` is safe; all queries go through Grafana or nginx.
+  - Ensure no other service in the Docker network publishes Loki externally.
+
+- [ ] **Option A – Reverse-proxy auth (recommended when Loki must be remotely accessible)**
+  1. Do **not** expose port 3100 on a public or shared network interface.
+  2. Set `auth_enabled: true` in `monitoring/loki-config.yml`.
+  3. Add an nginx `location` block that authenticates requests and injects the tenant
+     header before proxying to Loki (add inside your `server {}` block):
+     ```nginx
+     location /loki/ {
+         auth_basic            "Loki";
+         auth_basic_user_file  /etc/nginx/.htpasswd;  # created with htpasswd(1)
+         proxy_pass            http://loki:3100/;
+         proxy_set_header      Host              $host;
+         proxy_set_header      X-Real-IP         $remote_addr;
+         proxy_set_header      X-Scope-OrgID     claimagent;
+     }
+     ```
+  4. Update Promtail to include the tenant header when pushing logs:
+     ```yaml
+     clients:
+       - url: http://loki:3100/loki/api/v1/push
+         tenant_id: claimagent
+     ```
+  5. Update the Grafana Loki datasource
+     (`monitoring/grafana/provisioning/datasources/loki.yml`) to send the header:
+     ```yaml
+     jsonData:
+       httpHeaderName1: "X-Scope-OrgID"
+     secureJsonData:
+       httpHeaderValue1: "claimagent"
+     ```
+
+- [ ] **Option B – Grafana-only access (simpler; no nginx auth layer needed)**
+  1. Keep `auth_enabled: false` and Loki bound to `127.0.0.1` (no change).
+  2. Enable Grafana authentication (`GF_AUTH_*` env vars or LDAP/OAuth); set
+     `GF_USERS_ALLOW_SIGN_UP=false` (already set in `docker-compose.prod.yml`).
+  3. All Loki queries must flow through Grafana **Explore** or dashboards — never
+     expose Loki's port publicly.
+  4. Do **not** grant Grafana the `Editor` or `Admin` role to untrusted users, as those
+     roles can modify datasource URLs.
+
+- [ ] **Verify no unintended exposure**
+  - Run `ss -tlnp | grep 3100` on the host to confirm Loki listens only on 127.0.0.1.
+  - Review firewall / security-group rules to block port 3100 from external traffic.
+  - In Kubernetes, ensure Loki's `Service` is `ClusterIP` (not `NodePort`/`LoadBalancer`)
+    and access is through an Ingress with auth annotations.
 
 ## Health Endpoint
 

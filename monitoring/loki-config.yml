@@ -1,3 +1,21 @@
+# auth_enabled controls Loki's multi-tenant authentication.
+#
+# false (default for single-host Docker deployments)
+#   Safe only when Loki is bound to 127.0.0.1 (as in docker-compose.prod.yml) and
+#   all access is through Grafana or an authenticated reverse proxy.  All logs are
+#   stored under the implicit tenant "fake".
+#
+# true (required when Loki is reachable from other hosts)
+#   Every push/query request must include an "X-Scope-OrgID" header that identifies
+#   the tenant.  Use one of the hardening patterns documented in docs/observability.md:
+#     Option A – reverse proxy (nginx/Traefik) enforces auth and injects the header.
+#     Option B – Grafana acts as the sole query path; configure the Loki datasource
+#                with "HTTP headers → X-Scope-OrgID: <tenant>" so end-users never
+#                reach Loki directly.
+#   When switching to true, update Promtail's config to send the tenant header:
+#     clients:
+#       - url: http://loki:3100/loki/api/v1/push
+#         tenant_id: claimagent
 auth_enabled: false
 
 server:

@@ -320,3 +320,9 @@ jobs:
 
       - name: Test
         run: cd frontend && npm run test:coverage
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install chromium --with-deps
+
+      - name: Accessibility tests (Playwright + axe)
+        run: cd frontend && npm run test:a11y
