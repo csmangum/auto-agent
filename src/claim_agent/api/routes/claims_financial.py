@@ -11,7 +11,6 @@ from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from claim_agent.db.database import get_db_path
 from claim_agent.db.repair_status_repository import RepairStatusRepository
-from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimNotFoundError, ReserveAuthorityError
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
 from claim_agent.api.routes._claims_helpers import get_claim_context
@@ -160,6 +159,7 @@ def update_claim_repair_status(
     claim_id: str,
     body: RepairStatusUpdateBody = Body(...),
     auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Update repair status (for simulation/dashboard). Infers shop_id from workflow if omitted."""
     if body.status not in VALID_REPAIR_STATUSES:
@@ -167,7 +167,7 @@ def update_claim_repair_status(
             status_code=400,
             detail=f"Invalid status. Must be one of: {sorted(VALID_REPAIR_STATUSES)}",
         )
-    claim_repo = ClaimRepository(db_path=get_db_path())
+    claim_repo = ctx.repo
     claim = ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
     if claim.get("claim_type") != "partial_loss":
         raise HTTPException(

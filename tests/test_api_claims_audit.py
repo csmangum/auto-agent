@@ -122,18 +122,21 @@ def test_get_claim_notes_not_found(client):
 
 
 def test_add_note(client):
-    """add_claim_note creates a note and returns claim_id and actor_id."""
-    payload = {"note": "Test note content", "actor_id": "adjuster_1"}
+    """add_claim_note creates a note and returns claim_id and authenticated actor_id."""
+    from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
+    payload = {"note": "Test note content"}
     resp = client.post("/api/v1/claims/CLM-TEST001/notes", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     assert data["claim_id"] == "CLM-TEST001"
-    assert data["actor_id"] == "adjuster_1"
+    # Unauthenticated test client uses anonymous identity -> workflow actor
+    assert data["actor_id"] == ACTOR_WORKFLOW
 
 
 def test_add_note_persisted(client):
     """add_claim_note note is retrievable via get_claim_notes after creation."""
-    payload = {"note": "Persisted note", "actor_id": "workflow"}
+    payload = {"note": "Persisted note"}
     client.post("/api/v1/claims/CLM-TEST001/notes", json=payload)
 
     resp = client.get("/api/v1/claims/CLM-TEST001/notes")
@@ -144,21 +147,24 @@ def test_add_note_persisted(client):
 
 def test_add_note_blank_content_returns_422(client):
     """add_claim_note rejects blank note content with 422."""
-    payload = {"note": "   ", "actor_id": "adjuster_1"}
+    payload = {"note": "   "}
     resp = client.post("/api/v1/claims/CLM-TEST001/notes", json=payload)
     assert resp.status_code == 422
 
 
-def test_add_note_blank_actor_id_returns_422(client):
-    """add_claim_note rejects blank actor_id with 422."""
-    payload = {"note": "Valid note", "actor_id": "   "}
+def test_add_note_ignores_client_supplied_actor_id(client):
+    """actor_id in the body is ignored; attribution comes from auth identity."""
+    from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
+    payload = {"note": "Attributed correctly", "actor_id": "malicious_impersonator"}
     resp = client.post("/api/v1/claims/CLM-TEST001/notes", json=payload)
-    assert resp.status_code == 422
+    assert resp.status_code == 200
+    assert resp.json()["actor_id"] == ACTOR_WORKFLOW
 
 
 def test_add_note_not_found(client):
     """add_claim_note returns 404 for unknown claim IDs."""
-    payload = {"note": "Some note", "actor_id": "workflow"}
+    payload = {"note": "Some note"}
     resp = client.post("/api/v1/claims/CLM-DOESNOTEXIST/notes", json=payload)
     assert resp.status_code == 404
 

@@ -378,26 +378,30 @@ class TestClaimNotes:
         assert data["notes"] == []
 
     def test_add_note_and_get(self, client):
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Fraud crew: No indicators found.", "actor_id": "Fraud Detection"},
+            json={"note": "Fraud crew: No indicators found."},
         )
         assert resp.status_code == 200
         assert resp.json()["claim_id"] == "CLM-TEST001"
-        assert resp.json()["actor_id"] == "Fraud Detection"
+        assert resp.json()["actor_id"] == ACTOR_WORKFLOW
 
         resp = client.get("/api/v1/claims/CLM-TEST001/notes")
         assert resp.status_code == 200
         notes = resp.json()["notes"]
         assert len(notes) == 1
         assert notes[0]["note"] == "Fraud crew: No indicators found."
-        assert notes[0]["actor_id"] == "Fraud Detection"
+        assert notes[0]["actor_id"] == ACTOR_WORKFLOW
         assert notes[0].get("created_at") is not None
 
     def test_get_claim_includes_notes(self, client):
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
         client.post(
             "/api/v1/claims/CLM-TEST002/notes",
-            json={"note": "Settlement crew: Payout approved.", "actor_id": "Settlement"},
+            json={"note": "Settlement crew: Payout approved."},
         )
         resp = client.get("/api/v1/claims/CLM-TEST002")
         assert resp.status_code == 200
@@ -405,7 +409,7 @@ class TestClaimNotes:
         assert "notes" in data
         assert len(data["notes"]) == 1
         assert data["notes"][0]["note"] == "Settlement crew: Payout approved."
-        assert data["notes"][0]["actor_id"] == "Settlement"
+        assert data["notes"][0]["actor_id"] == ACTOR_WORKFLOW
 
     def test_get_notes_not_found(self, client):
         resp = client.get("/api/v1/claims/CLM-NOTEXIST/notes")
@@ -414,27 +418,21 @@ class TestClaimNotes:
     def test_add_note_not_found(self, client):
         resp = client.post(
             "/api/v1/claims/CLM-NOTEXIST/notes",
-            json={"note": "Test", "actor_id": "workflow"},
+            json={"note": "Test"},
         )
         assert resp.status_code == 404
 
     def test_add_note_validation(self, client):
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "", "actor_id": "workflow"},
-        )
-        assert resp.status_code == 422
-
-        resp = client.post(
-            "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Valid note", "actor_id": ""},
+            json={"note": ""},
         )
         assert resp.status_code == 422
 
     def test_add_note_whitespace_only_rejected(self, client):
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "   ", "actor_id": "workflow"},
+            json={"note": "   "},
         )
         assert resp.status_code == 422
         body = resp.json()
@@ -442,26 +440,21 @@ class TestClaimNotes:
         assert isinstance(errors, list)
         assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
 
+    def test_add_note_extra_actor_id_field_ignored(self, client):
+        """Client-supplied actor_id is ignored; attribution uses auth identity."""
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Valid note", "actor_id": "   "},
+            json={"note": "Valid note", "actor_id": "A" * 200},
         )
-        assert resp.status_code == 422
-        body = resp.json()
-        errors = body.get("detail", [])
-        assert isinstance(errors, list)
-        assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
+        assert resp.status_code == 200
+        assert resp.json()["actor_id"] == ACTOR_WORKFLOW
 
-    def test_add_note_actor_id_max_length_rejected(self, client):
-        """actor_id longer than 128 chars is rejected with 422."""
-        resp = client.post(
-            "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Valid note", "actor_id": "A" * 129},
-        )
-        assert resp.status_code == 422
+    def test_add_note_client_cannot_impersonate_actor(self, client):
+        """Malicious actor_id in JSON does not change stored note attribution."""
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
 
-    def test_add_note_actor_id_injection_sanitized(self, client):
-        """Malicious actor_id is sanitized before storage."""
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
             json={
@@ -475,8 +468,7 @@ class TestClaimNotes:
         assert resp.status_code == 200
         notes = resp.json()["notes"]
         assert len(notes) == 1
-        assert "[redacted]" in notes[0]["actor_id"]
-        assert "Ignore" not in notes[0]["actor_id"]
+        assert notes[0]["actor_id"] == ACTOR_WORKFLOW
 
 
 class TestClaimFraudFilings:
@@ -3048,7 +3040,6 @@ class TestGenerateClaimEndpoint:
         from claim_agent.models.claim import ClaimInput
 
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
-        import claim_agent.api.routes.claims_specialized as claims_mod
         import claim_agent.api.routes.claims_mock as claims_mod
         import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings

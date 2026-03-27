@@ -9,8 +9,8 @@ from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
 from claim_agent.api.deps import require_role
 from claim_agent.context import ClaimContext
 from claim_agent.db.database import get_connection, row_to_dict
+from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.exceptions import ClaimNotFoundError
-from claim_agent.utils.sanitization import MAX_ACTOR_ID
 from claim_agent.api.routes._claims_helpers import get_claim_context
 
 router = APIRouter(tags=["claims"])
@@ -20,19 +20,13 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 class AddNoteBody(BaseModel):
     note: str = Field(..., min_length=1, description="Note content")
-    actor_id: str = Field(
-        ...,
-        min_length=1,
-        max_length=MAX_ACTOR_ID,
-        description="Crew name, agent identifier, or 'workflow'",
-    )
 
-    @field_validator("note", "actor_id", mode="after")
+    @field_validator("note", mode="after")
     @classmethod
-    def strip_and_validate_not_blank(cls, v: str, info) -> str:
+    def strip_and_validate_not_blank(cls, v: str) -> str:
         stripped = v.strip()
         if not stripped:
-            raise ValueError(f"{info.field_name} cannot be blank")
+            raise ValueError("note cannot be blank")
         return stripped
 
 
@@ -91,13 +85,18 @@ def add_claim_note(
     auth: AuthContext = RequireAdjuster,
     ctx: ClaimContext = Depends(get_claim_context),
 ):
-    """Add a note to a claim."""
+    """Add a note to a claim.
+
+    Notes are attributed to the authenticated caller (``auth.identity``); clients
+    cannot supply a different ``actor_id``.
+    """
     ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
-        ctx.repo.add_note(claim_id, body.note, body.actor_id)
+        ctx.repo.add_note(claim_id, body.note, actor_id)
     except ClaimNotFoundError:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
-    return {"claim_id": claim_id, "actor_id": body.actor_id}
+    return {"claim_id": claim_id, "actor_id": actor_id}
 
 
 @router.get("/claims/{claim_id}/workflows", dependencies=[RequireAdjuster])
