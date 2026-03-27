@@ -23,6 +23,7 @@ from claim_agent.rag.constants import normalize_state
 from claim_agent.services.supplemental_request import execute_supplemental_request
 from claim_agent.utils.sanitization import (
     MAX_DENIAL_REASON,
+    MAX_DISPUTE_DESCRIPTION,
     MAX_POLICYHOLDER_EVIDENCE,
 )
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
@@ -57,7 +58,7 @@ class DisputeBody(BaseModel):
     dispute_type: str = Field(..., description="Dispute type: liability_determination, valuation_disagreement, repair_estimate, or deductible_application")
     dispute_description: str = Field(
         ...,
-        max_length=MAX_DENIAL_REASON,
+        max_length=MAX_DISPUTE_DESCRIPTION,
         description="Policyholder's description of the dispute",
     )
     policyholder_evidence: Optional[str] = Field(default=None, description="Optional supporting evidence references")
