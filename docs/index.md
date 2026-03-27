@@ -55,6 +55,7 @@ flowchart LR
 ### Additional reference
 
 - **[Unified portal](unified_portal.md)** - Single login entry for claimant and repair shop portals
+- **[Performance Benchmarks](performance-benchmarks.md)** - Baseline targets for API latency, claim processing time, and throughput; how to run and tune the load tests
 - **[Adapter SLA](adapter_sla.md)** - Integration latency and availability targets
 - **[Actuarial reserve reporting](actuarial-reserve-reporting.md)** - Supervisor/admin reserve report APIs
 - **[Eval suite gaps](eval-suite-gaps.md)** - Evaluation suite status and known gaps
