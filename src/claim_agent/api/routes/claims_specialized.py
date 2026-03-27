@@ -1,6 +1,7 @@
 """Specialized workflow routes for claims: follow-up, SIU, disputes, denials, and supplemental."""
 
 import asyncio
+import logging
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -22,6 +23,7 @@ from claim_agent.rag.constants import normalize_state
 from claim_agent.services.supplemental_request import execute_supplemental_request
 from claim_agent.utils.sanitization import (
     MAX_DENIAL_REASON,
+    MAX_DISPUTE_DESCRIPTION,
     MAX_POLICYHOLDER_EVIDENCE,
 )
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
@@ -29,6 +31,8 @@ from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
 from claim_agent.workflow.siu_orchestrator import run_siu_investigation as run_siu_investigation_workflow
 from claim_agent.api.routes._claims_helpers import get_claim_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 
@@ -52,7 +56,11 @@ class RecordFollowUpResponseBody(BaseModel):
 
 class DisputeBody(BaseModel):
     dispute_type: str = Field(..., description="Dispute type: liability_determination, valuation_disagreement, repair_estimate, or deductible_application")
-    dispute_description: str = Field(..., description="Policyholder's description of the dispute")
+    dispute_description: str = Field(
+        ...,
+        max_length=MAX_DISPUTE_DESCRIPTION,
+        description="Policyholder's description of the dispute",
+    )
     policyholder_evidence: Optional[str] = Field(default=None, description="Optional supporting evidence references")
 
 

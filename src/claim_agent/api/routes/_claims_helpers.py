@@ -7,6 +7,7 @@ HTTP ``Retry-After`` hints: ``CLAIM_ALREADY_PROCESSING_RETRY_AFTER`` (409),
 import asyncio
 import json
 import logging
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, NoReturn
 
@@ -70,7 +71,7 @@ background_tasks: set[asyncio.Task] = set()
 background_tasks_lock = asyncio.Lock()
 task_claim_ids: dict[asyncio.Task, str] = {}
 
-approve_locks: dict[str, asyncio.Lock] = {}
+approve_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
 approve_locks_lock = asyncio.Lock()
 MAX_APPROVE_LOCKS = 10000
 
@@ -143,12 +144,35 @@ def apply_adjuster_claim_filter(
 
 
 async def get_approve_lock(claim_id: str) -> asyncio.Lock:
-    """Get or create a lock for the given claim_id."""
+    """Get or create a lock for the given claim_id.
+
+    Bounded LRU map: on access, the entry is moved to the MRU side. When at
+    capacity, only locks that are **not** currently held are evicted (FIFO among
+    unlocked entries), so an in-flight approve cannot lose mutual exclusion. If
+    every entry is locked, a warning is logged and a new lock is added anyway
+    (soft cap); use a distributed lock for multi-process correctness.
+    """
     async with approve_locks_lock:
-        if claim_id not in approve_locks:
-            if len(approve_locks) >= MAX_APPROVE_LOCKS:
-                approve_locks.pop(next(iter(approve_locks)))
-            approve_locks[claim_id] = asyncio.Lock()
+        if claim_id in approve_locks:
+            approve_locks.move_to_end(claim_id)
+            return approve_locks[claim_id]
+
+        while len(approve_locks) >= MAX_APPROVE_LOCKS:
+            evicted = False
+            for key in list(approve_locks.keys()):
+                if not approve_locks[key].locked():
+                    del approve_locks[key]
+                    evicted = True
+                    break
+            if not evicted:
+                logger.warning(
+                    "approve_locks at capacity (%d); all entries locked; adding new lock "
+                    "exceeds soft cap (use a distributed lock for multi-worker deployments)",
+                    MAX_APPROVE_LOCKS,
+                )
+                break
+
+        approve_locks[claim_id] = asyncio.Lock()
         return approve_locks[claim_id]
 
 

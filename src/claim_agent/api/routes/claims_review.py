@@ -16,7 +16,7 @@ from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
-from claim_agent.utils.sanitization import MAX_PAYOUT
+from claim_agent.utils.sanitization import MAX_NOTE, MAX_PAYOUT
 from claim_agent.workflow.claim_review_orchestrator import run_claim_review as run_claim_review_workflow
 from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 
@@ -41,11 +41,11 @@ class AssignBody(BaseModel):
 
 
 class RejectBody(BaseModel):
-    reason: str = ""
+    reason: str = Field(default="", max_length=MAX_NOTE)
 
 
 class RequestInfoBody(BaseModel):
-    note: str = ""
+    note: str = Field(default="", max_length=MAX_NOTE)
 
 
 class ReviewerDecisionBody(BaseModel):

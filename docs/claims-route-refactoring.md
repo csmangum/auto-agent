@@ -1,6 +1,6 @@
 # Claims route refactoring
 
-`src/claim_agent/api/routes/claims.py` previously held most adjuster claim endpoints. Focused routers and shared helpers now split that surface area; **`claims.py` now only registers Mock Crew routes** (`POST /claims/generate`, `POST /claims/generate-incident-details`). This document describes the layout.
+`src/claim_agent/api/routes/claims.py` previously held most adjuster claim endpoints. Focused routers and shared helpers now split that surface area; **Mock Crew generation** lives in [`claims_mock.py`](../src/claim_agent/api/routes/claims_mock.py) (`POST /claims/generate`, `POST /claims/generate-incident-details`). This document describes the layout.
 
 ## Shared helpers
 
@@ -22,7 +22,7 @@ These `APIRouter` instances are registered in [`server.py`](../src/claim_agent/a
 | `claims_crud_router` | [`claims_crud.py`](../src/claim_agent/api/routes/claims_crud.py) | Stats, list, review queue, status, detail, create |
 | `claims_audit_router` | [`claims_audit.py`](../src/claim_agent/api/routes/claims_audit.py) | History, fraud filings, notes, workflows |
 | `claims_review_router` | [`claims_review.py`](../src/claim_agent/api/routes/claims_review.py) | Assign, acknowledge, approve, reject, request-info, escalate, compliance review |
-| `claims_router` | [`claims.py`](../src/claim_agent/api/routes/claims.py) | Mock claim generation only (`MOCK_CREW_ENABLED`) |
+| `claims_mock_router` | [`claims_mock.py`](../src/claim_agent/api/routes/claims_mock.py) | Mock claim generation only (`MOCK_CREW_ENABLED`) |
 | `claims_financial_router` | [`claims_financial.py`](../src/claim_agent/api/routes/claims_financial.py) | Reserves, litigation hold, repair status |
 | `claims_parties_router` | [`claims_parties.py`](../src/claim_agent/api/routes/claims_parties.py) | Consent, relationships, portal tokens, repair shops |
 | `claims_documents_router` | [`claims_documents.py`](../src/claim_agent/api/routes/claims_documents.py) | Attachments, documents, document requests |
