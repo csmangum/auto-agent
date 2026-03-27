@@ -1,0 +1,9 @@
+# CI-only values used by helm-lint and helm-template jobs.
+# These are intentionally fake credentials used solely for template rendering.
+# Do NOT use these values in a real deployment.
+secrets:
+  databaseUrl: "postgresql://ci_user:ci_pass@localhost:5432/ci_db"
+  openaiApiKey: "sk-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  apiKeys: "ci-test-key:admin"
+  jwtSecret: "ci-test-jwt-secret-000000000000000000000000000000"
+  webhookSecret: "ci-test-webhook-secret"

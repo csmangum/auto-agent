@@ -253,6 +253,33 @@ jobs:
           name: load-test-report
           path: load_test_report.json
 
+  helm-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Helm chart
+        run: helm lint helm/claim-agent -f helm/claim-agent/ci-values.yaml
+
+  helm-template:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        strategy: [RollingUpdate, BlueGreen, Canary]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke-render Helm templates (strategy=${{ matrix.strategy }})
+        run: |
+          helm template claim-agent helm/claim-agent \
+            -f helm/claim-agent/ci-values.yaml \
+            --set deploymentStrategy.type=${{ matrix.strategy }} \
+            > /dev/null
+
   frontend:
     runs-on: ubuntu-latest
     steps:
