@@ -6,7 +6,7 @@
 
 [`src/claim_agent/api/routes/_claims_helpers.py`](../src/claim_agent/api/routes/_claims_helpers.py) holds cross-cutting logic used by the claims routers and portal routes:
 
-- Constants: `ALLOWED_DOCUMENT_EXTENSIONS`, `VALID_DOCUMENT_TYPES`, `STREAM_POLL_INTERVAL`, `STREAM_MAX_DURATION`, `PRIORITY_VALUES`, `ALLOWED_SORT_FIELDS`, `CLAIM_ALREADY_PROCESSING_RETRY_AFTER`, `BACKGROUND_QUEUE_FULL_RETRY_AFTER`
+- Constants: `ALLOWED_DOCUMENT_EXTENSIONS`, `VALID_DOCUMENT_TYPES`, `STREAM_POLL_INTERVAL`, `STREAM_MAX_DURATION`, `PRIORITY_VALUES`, `ALLOWED_SORT_FIELDS`, `CLAIM_ALREADY_PROCESSING_RETRY_AFTER`; `BACKGROUND_QUEUE_FULL_RETRY_AFTER` lives in [`http_constants.py`](../src/claim_agent/api/http_constants.py)
 - Process state: `background_tasks`, `background_tasks_lock`, `task_claim_ids`, `approve_locks`
 - Request models: `GenerateClaimRequest`, `GenerateIncidentDetailsRequest`
 - Helpers: `get_claim_context`, `http_already_processing`, upload size helpers, adjuster scoping, approve locks, background workflow scheduling (`run_workflow_background`, `try_run_workflow_background`, `background_workflow_queue_full`), attachment URL resolution, document repository helpers, incident sanitization, claim creation with attachments, SSE streaming
@@ -34,7 +34,7 @@ All use `tags=["claims"]` for OpenAPI grouping.
 
 ## Shared constants
 
-[`_claims_helpers.py`](../src/claim_agent/api/routes/_claims_helpers.py) also exports HTTP hint constants: `CLAIM_ALREADY_PROCESSING_RETRY_AFTER` (409), `BACKGROUND_QUEUE_FULL_RETRY_AFTER` (503 when the background workflow queue is full).
+[`http_constants.py`](../src/claim_agent/api/http_constants.py) defines `BACKGROUND_QUEUE_FULL_RETRY_AFTER` (503 when the background workflow queue is full). [`_claims_helpers.py`](../src/claim_agent/api/routes/_claims_helpers.py) re-exports `CLAIM_ALREADY_PROCESSING_RETRY_AFTER` (409).
 
 ## Testing
 

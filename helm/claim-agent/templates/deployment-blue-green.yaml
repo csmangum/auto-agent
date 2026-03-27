@@ -1,0 +1,149 @@
+{{- if and (eq .Values.deploymentStrategy.type "BlueGreen") .Values.deploymentStrategy.blueGreen.dualDeployment }}
+# Two-Deployment Blue/Green — rendered only when:
+#   deploymentStrategy.type=BlueGreen
+#   deploymentStrategy.blueGreen.dualDeployment=true
+#
+# This mode creates two named Deployments (<fullname>-blue and <fullname>-green)
+# that match the topology of k8s/blue-green/ and are compatible with
+# scripts/blue_green_switch.sh and .github/workflows/deploy.yml when the Helm
+# release name is "claim-agent".
+#
+# Traffic is routed to the active slot via the <fullname>-active Service
+# (see service-active.yaml). Switch the active slot with:
+#   scripts/blue_green_switch.sh blue|green -n <namespace>
+# or by patching the Service selector directly:
+#   kubectl patch service <fullname>-active -n <namespace> \
+#     --type=json \
+#     -p '[{"op":"replace","path":"/spec/selector/deployment-slot","value":"green"}]'
+#
+# Note: HPA is not rendered in this mode. Scale each slot independently via
+#       deploymentStrategy.blueGreen.replicasPerSlot.
+{{- range list "blue" "green" }}
+{{- $slot := . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "claim-agent.fullname" $ }}-{{ $slot }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "claim-agent.labels" $ | nindent 4 }}
+    deployment-slot: {{ $slot }}
+  {{- with $.Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $.Values.deploymentStrategy.blueGreen.replicasPerSlot }}
+  selector:
+    matchLabels:
+      {{- include "claim-agent.selectorLabels" $ | nindent 6 }}
+      deployment-slot: {{ $slot }}
+  # Blue/Green slots use Recreate so all old pods terminate before new ones
+  # start. Traffic is served only by the slot currently selected in the
+  # <fullname>-active Service.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "claim-agent.selectorLabels" $ | nindent 8 }}
+        deployment-slot: {{ $slot }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "claim-agent.serviceAccountName" $ }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ $.Chart.Name }}
+          image: {{ include "claim-agent.image" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $.Values.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "claim-agent.fullname" $ }}-config
+            - secretRef:
+                name: {{ include "claim-agent.secretName" $ }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 18
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-data
+              mountPath: /app/data
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: app-data
+          emptyDir:
+            sizeLimit: 1Gi
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $.Values.topologySpreadConstraints }}
+      # Each slot spreads its own pods independently — this matches the raw
+      # k8s/blue-green/ manifests and ensures the inactive slot is also evenly
+      # distributed (ready for instant traffic switch or rollback).
+      topologySpreadConstraints:
+        {{- range $.Values.topologySpreadConstraints }}
+        - maxSkew: {{ .maxSkew }}
+          topologyKey: {{ .topologyKey }}
+          whenUnsatisfiable: {{ .whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "claim-agent.selectorLabels" $ | nindent 14 }}
+              deployment-slot: {{ $slot }}
+        {{- end }}
+      {{- end }}
+{{- end }}
+{{- end }}

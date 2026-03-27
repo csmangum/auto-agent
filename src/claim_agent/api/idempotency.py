@@ -6,7 +6,8 @@ with the same key return the cached response without repeating the operation
 
 Uses claim-before-process pattern: first request inserts with status=in_progress,
 processes, then updates to completed. Duplicate requests see in_progress (409) or
-completed (cached). Only 200 responses are cached; 4xx/5xx are not.
+completed (cached). Successful 200 responses and 503 (e.g. background queue full)
+are cached; other 4xx/5xx are not.
 """
 
 import hashlib
@@ -21,6 +22,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+from claim_agent.api.http_constants import BACKGROUND_QUEUE_FULL_RETRY_AFTER
 from claim_agent.config import get_settings
 from claim_agent.db.database import get_connection, get_db_path, is_postgres_backend
 
@@ -217,6 +219,9 @@ def get_idempotency_key_and_cached(
     if result == "owned":
         return scoped_key, None
     if result == "cached" and status is not None and body is not None:
+        headers = (
+            {"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER} if status == 503 else None
+        )
         headers = {"Retry-After": "60"} if status == 503 else None
         return scoped_key, JSONResponse(status_code=status, content=body, headers=headers)
     if result == "in_progress":

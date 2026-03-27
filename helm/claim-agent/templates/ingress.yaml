@@ -28,7 +28,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "claim-agent.fullname" $ }}
+                name: {{ if and (eq $.Values.deploymentStrategy.type "BlueGreen") $.Values.deploymentStrategy.blueGreen.dualDeployment }}{{ include "claim-agent.fullname" $ }}-active{{ else }}{{ include "claim-agent.fullname" $ }}{{ end }}
                 port:
                   name: http
           {{- end }}

@@ -347,8 +347,9 @@ Use this matrix to avoid mixing incompatible tooling (especially for blue/green)
 | Tooling | Blue/green topology | Canary | Rolling | Notes |
 |---------|----------------------|--------|---------|-------|
 | **Raw manifests** (`k8s/`, `k8s/blue-green/`) | Two Deployments: `claim-agent-blue` and `claim-agent-green`, plus `claim-agent-active` Service | `deployment-canary.yaml` shares the stable Service | `k8s/deployment.yaml` | Matches `.github/workflows/deploy.yml`, `scripts/blue_green_switch.sh`, and `scripts/canary_deploy.sh` resource names. |
-| **Helm** (`helm/claim-agent/`) | **One** Deployment whose `deployment-slot` label is set via `deploymentStrategy.blueGreenSlot`; traffic switch = another `helm upgrade` with the other slot | Template `deployment-canary.yaml` when `deploymentStrategy.type=Canary` | Default single Deployment | **Not the same** as raw two-Deployment blue/green. Do **not** point `blue_green_switch.sh` or the Deploy workflow at a default Helm install unless you align resource names in templates. |
-| **GitHub Actions** (`.github/workflows/deploy.yml`) | `kubectl set image deployment/claim-agent-blue` / `…-green` | `claim-agent` + `claim-agent-canary` | `deployment/claim-agent` | Designed for clusters created from **raw** `k8s/` YAML (or equivalent names). |
+| **Helm — single-Deployment mode** (`deploymentStrategy.blueGreen.dualDeployment: false`, default) | **One** Deployment whose `deployment-slot` pod label is toggled via `helm upgrade`; Service selector follows the slot automatically | Template `deployment-canary.yaml` when `deploymentStrategy.type=Canary` | Default single Deployment | Simple; no downtime during slot flip. Incompatible with `blue_green_switch.sh` and the Deploy workflow (different resource names). |
+| **Helm — dual-Deployment mode** (`deploymentStrategy.blueGreen.dualDeployment: true`) | Two Deployments (`<release>-blue` / `<release>-green`) + `<release>-active` Service — same topology as raw manifests | Same as above | Default single Deployment | When release name is `claim-agent`, resource names match raw manifests exactly; compatible with `blue_green_switch.sh` and `.github/workflows/deploy.yml`. |
+| **GitHub Actions** (`.github/workflows/deploy.yml`) | `kubectl set image deployment/claim-agent-blue` / `…-green` | `claim-agent` + `claim-agent-canary` | `deployment/claim-agent` | Designed for clusters created from **raw** `k8s/` YAML or Helm with `dualDeployment: true` and release name `claim-agent`. |
 
 The default deployment strategy is `RollingUpdate` (zero-downtime, in-place). For production workloads that require a safe rollback mechanism or incremental traffic shifting, two additional strategies are provided:
 
@@ -358,7 +359,7 @@ The default deployment strategy is `RollingUpdate` (zero-downtime, in-place). Fo
 | **Canary** | `k8s/blue-green/deployment-canary.yaml`, `scripts/canary_deploy.sh` | Incremental traffic shifting to detect regressions |
 | **Rolling** | `k8s/deployment.yaml` (default) | Simple zero-downtime in-place update |
 
-Rolling, canary, and a **Helm-specific** blue/green mode are available via `deploymentStrategy.type` in the Helm chart — see the matrix above before combining Helm with the shell scripts or CI workflow.
+Rolling, canary, and **two Helm blue/green modes** (single- or dual-Deployment) are available via `deploymentStrategy.type` in the Helm chart — see the matrix above before combining Helm with the shell scripts or CI workflow.
 
 ---
 
@@ -404,9 +405,47 @@ bash scripts/blue_green_switch.sh green --scale-down-inactive
 bash scripts/blue_green_switch.sh blue
 ```
 
-#### Blue/Green with Helm
+#### Blue/Green with Helm — dual-Deployment mode (matches raw manifests)
 
-**Topology note:** Helm blue/green uses a **single** Deployment per release whose slot label you flip with `helm upgrade`. It does **not** create `claim-agent-blue` / `claim-agent-green` like raw manifests; use the commands below instead of `blue_green_switch.sh` unless you customize templates to match raw names.
+Set `deploymentStrategy.blueGreen.dualDeployment: true` to render two named Deployments
+(`<release>-blue` / `<release>-green`) and a `<release>-active` Service, matching the raw
+`k8s/blue-green/` topology exactly. When the Helm release name is `claim-agent` the resource
+names are identical to the raw manifests, so `scripts/blue_green_switch.sh` and
+`.github/workflows/deploy.yml` work without any changes.
+
+```bash
+# Initial install — both blue and green Deployments are created; blue receives traffic
+helm upgrade --install claim-agent ./helm/claim-agent \
+  --set deploymentStrategy.type=BlueGreen \
+  --set deploymentStrategy.blueGreen.dualDeployment=true \
+  --set deploymentStrategy.blueGreen.initialSlot=blue \
+  --set image.tag=1.0.0
+
+# Verify both slots are running
+kubectl rollout status deployment/claim-agent-blue  -n <namespace>
+kubectl rollout status deployment/claim-agent-green -n <namespace>
+
+# Deploy a new image to the inactive (green) slot without touching live traffic
+kubectl set image deployment/claim-agent-green \
+  claim-agent=ghcr.io/<your-org>/auto-agent:1.1.0 \
+  -n <namespace>
+kubectl rollout status deployment/claim-agent-green -n <namespace> --timeout=300s
+
+# Switch traffic to green (no Helm upgrade needed for the traffic cut-over)
+bash scripts/blue_green_switch.sh green -n <namespace>
+
+# Roll back instantly if needed
+bash scripts/blue_green_switch.sh blue -n <namespace>
+```
+
+> **Note:** HPA is disabled in dual-Deployment mode. Scale each slot independently
+> via `deploymentStrategy.blueGreen.replicasPerSlot` (default `2`).
+
+#### Blue/Green with Helm — single-Deployment mode
+
+The original single-Deployment approach toggles the `deployment-slot` pod label via
+`helm upgrade`. This is simpler but **incompatible** with `blue_green_switch.sh` and the
+Deploy workflow because the Deployment name never includes `-blue` or `-green`.
 
 ```bash
 # Initial install — deploy the blue slot
@@ -415,13 +454,12 @@ helm upgrade --install claim-agent ./helm/claim-agent \
   --set deploymentStrategy.blueGreenSlot=blue \
   --set image.tag=1.0.0
 
-# Deploy new version to the green slot
+# Deploy new version — helm upgrade atomically flips the slot and switches traffic
 helm upgrade claim-agent ./helm/claim-agent \
   --set deploymentStrategy.type=BlueGreen \
   --set deploymentStrategy.blueGreenSlot=green \
   --set image.tag=1.1.0
 
-# Switch traffic (the Service selector updates automatically with the Helm upgrade above)
 # Rollback: re-run helm upgrade with blueGreenSlot=blue
 ```
 

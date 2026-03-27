@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import RequireAdjuster
+from claim_agent.api.http_constants import BACKGROUND_QUEUE_FULL_RETRY_AFTER
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -18,9 +19,9 @@ from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.exceptions import ClaimAlreadyProcessingError, InvalidClaimTransitionError
 from claim_agent.api.routes._claims_helpers import (
-    BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     GenerateClaimRequest,
     GenerateIncidentDetailsRequest,
+    background_queue_full_json_body as _background_queue_full_json_body,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -90,7 +91,9 @@ async def generate_and_submit_claim(
                 ctx=ctx,
             )
             if task is None:
-                result = {"claim": claim_data, "submitted": True, "claim_id": claim_id}
+                result = _background_queue_full_json_body(
+                    claim_id, claim=claim_data, submitted=True
+                )
                 store_response_if_idempotent(idem_key, 503, result)
                 return JSONResponse(
                     status_code=503,

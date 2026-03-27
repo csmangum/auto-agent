@@ -3596,10 +3596,14 @@ class TestProcessClaimAsyncEndpoint:
         assert "claim_id" in data
         assert data["claim_id"].startswith("CLM-")
 
-    def test_process_claim_async_returns_503_without_creating_claim(
+    def test_process_claim_async_returns_503_when_at_capacity_creates_claim(
         self, client, monkeypatch, tmp_path
     ):
-        """POST /claims/process/async returns 503 when at capacity and does NOT create a claim."""
+        """POST /claims/process/async returns 503 when at capacity after persisting the claim.
+
+        The claim row exists so retries (e.g. with Idempotency-Key) do not create duplicates;
+        the background workflow is not started until capacity is available.
+        """
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
@@ -3628,12 +3632,14 @@ class TestProcessClaimAsyncEndpoint:
             data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
         )
         assert resp.status_code == 503
-        assert "Too many concurrent" in resp.json()["detail"]
+        data = resp.json()
+        assert "Too many concurrent" in data["detail"]
+        assert "claim_id" in data
         assert resp.headers.get("Retry-After") == "60"
 
         with get_connection() as conn:
             count_after = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
-        assert count_after == count_before, "No claim should be created when 503 is returned"
+        assert count_after == count_before + 1, "Claim should be persisted before queue check"
 
     def test_stream_returns_sse_events(self, client, monkeypatch, tmp_path):
         """Stream endpoint returns SSE-formatted events for existing claim."""
