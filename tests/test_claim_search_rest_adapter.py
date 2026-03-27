@@ -1,5 +1,7 @@
 """Tests for REST ClaimSearch adapter."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from claim_agent.adapters.real.claim_search_rest import RestClaimSearchAdapter
@@ -249,6 +251,18 @@ def test_rest_claim_search_list_response_without_envelope(monkeypatch):
     results = adapter.search_claims(vin="VIN-BARE")
     assert len(results) == 1
     assert results[0]["external_claim_id"] == "X-1"
+
+
+def test_rest_claim_search_health_check_delegates_to_http_client():
+    with patch(
+        "claim_agent.adapters.real.claim_search_rest.AdapterHttpClient"
+    ) as mock_cls:
+        mock_client = MagicMock()
+        mock_client.health_check_with_fallback.return_value = (False, "timeout")
+        mock_cls.return_value = mock_client
+        ad = RestClaimSearchAdapter(base_url="https://cs.example.com")
+        assert ad.health_check() == (False, "timeout")
+        mock_client.health_check_with_fallback.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------

@@ -145,6 +145,10 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
             "message": _to_string(payload.get("message"), "NISS report filed"),
         }
 
+    def health_check(self) -> tuple[bool, str]:
+        """Probe the fraud-reporting REST API for liveness."""
+        return self._client.health_check_with_fallback()
+
 
 def create_rest_fraud_reporting_adapter() -> RestFraudReportingAdapter:
     """Build REST fraud-reporting adapter from settings."""
