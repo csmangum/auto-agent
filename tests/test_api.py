@@ -3048,7 +3048,7 @@ class TestGenerateClaimEndpoint:
         from claim_agent.models.claim import ClaimInput
 
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_mock as claims_mod
         import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
 
