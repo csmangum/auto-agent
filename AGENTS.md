@@ -100,6 +100,7 @@ Use `.venv` for running tests. `pyproject.toml` sets default pytest `addopts` to
 | Start dashboard | `claim-agent serve` + `cd frontend && npm run dev` |
 | Run migrations | `alembic upgrade head` |
 | Create migration | `alembic revision -m "description"` |
+| Seed pilot data | `python scripts/seed_pilot_data.py [--count N] [--months M]` |
 | Seed mock data | `python scripts/seed_claims_from_mock_db.py` |
 | Run evaluation | `python scripts/evaluate_claim_processing.py --quick` |
 | Full CLI reference | `README.md` (CLI Commands table) |
