@@ -1,6 +1,5 @@
 """Party management and portal token routes for claims."""
 
-import logging
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -24,8 +23,6 @@ from claim_agent.services.portal_verification import create_claim_access_token
 from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_access_token
 from claim_agent.services.third_party_portal_tokens import create_third_party_access_token
 from claim_agent.api.routes._claims_helpers import get_claim_context
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 

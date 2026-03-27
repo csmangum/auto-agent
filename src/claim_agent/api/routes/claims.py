@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Literal, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -23,7 +23,6 @@ from claim_agent.config import get_settings
 from claim_agent.exceptions import (
     ClaimAlreadyProcessingError,
     ClaimNotFoundError,
-    DomainValidationError,
     InvalidClaimTransitionError,
     ReserveAuthorityError,
 )
@@ -31,28 +30,14 @@ from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
-from claim_agent.db.constants import (
-    STATUS_ARCHIVED,
-    STATUS_PURGED,
-    DENIAL_COVERAGE_STATUSES,
-    DISPUTABLE_STATUSES,
-    SIU_INVESTIGATION_STATUSES,
-    STATUS_ARCHIVED,
-    STATUS_PURGED,
-    THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES,
-    VALID_REPAIR_STATUSES,
-)
+from claim_agent.db.constants import VALID_REPAIR_STATUSES
 from sqlalchemy import text
 
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
-from claim_agent.workflow.helpers import WORKFLOW_STAGES
-from claim_agent.models.claim import ClaimInput, ClaimRecord
-from claim_agent.db.document_repository import build_document_version_groups
 from claim_agent.models.claim import ClaimRecord
-from claim_agent.models.party import PartyRelationshipType
 from claim_agent.models.incident import (
     BIAllocationInput,
     ClaimLinkInput,
@@ -62,44 +47,17 @@ from claim_agent.models.incident import (
     IncidentRecord,
     RelatedClaimsResponse,
 )
-from claim_agent.models.dispute import DisputeType
-from claim_agent.models.document import DocumentRequestStatus, DocumentType, ReviewStatus
-from claim_agent.storage import get_storage_adapter
-from claim_agent.storage.local import LocalStorageAdapter
-from claim_agent.storage.s3 import S3StorageAdapter
 from claim_agent.services.bi_allocation import allocate_bi_limits
-from claim_agent.services.supplemental_request import execute_supplemental_request
-from claim_agent.rag.constants import normalize_state
-from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
 from claim_agent.utils.sanitization import MAX_ACTOR_ID
-from claim_agent.utils.sanitization import (
-    MAX_ACTOR_ID,
-    MAX_DENIAL_REASON,
-    MAX_POLICYHOLDER_EVIDENCE,
-)
-from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
-from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
-from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
-from claim_agent.workflow.siu_orchestrator import (
-    run_siu_investigation as run_siu_investigation_workflow,
-)
 from claim_agent.mock_crew.claim_generator import (
     generate_claim_from_prompt,
     generate_incident_damage_from_vehicle,
 )
 import claim_agent.api.routes._claims_helpers as _claims_helpers
 from claim_agent.api.routes._claims_helpers import (
-    ALLOWED_SORT_FIELDS as _ALLOWED_SORT_FIELDS,
     GenerateClaimRequest,
     GenerateIncidentDetailsRequest,
-    PRIORITY_VALUES,
-    adjuster_scope_params as _adjuster_scope_params,
-    apply_adjuster_claim_filter as _apply_adjuster_claim_filter,
-    ALLOWED_DOCUMENT_EXTENSIONS as _ALLOWED_DOCUMENT_EXTENSIONS,
-    GenerateClaimRequest,
-    GenerateIncidentDetailsRequest,
-    VALID_DOCUMENT_TYPES as _VALID_DOCUMENT_TYPES,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -113,12 +71,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["claims"])
 
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
-
-
-
-
-
-
 
 
 class ReserveBody(BaseModel):
@@ -667,292 +619,3 @@ async def allocate_bi(
     )
     result = allocate_bi_limits(allocation_input)
     return result.model_dump()
-
-
-
-
-
-@router.post("/claims/{claim_id}/review")
-async def run_claim_review(
-    claim_id: str,
-    auth: AuthContext = RequireSupervisor,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Run supervisor/compliance review on the claim process. Requires supervisor role.
-
-    Returns a ClaimReviewReport with issues, compliance_checks, and recommendations.
-    The report is persisted to the audit log.
-    """
-    from claim_agent.workflow.claim_review_orchestrator import run_claim_review as _run_claim_review
-
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-
-    actor_id = auth.identity if auth.identity != "anonymous" else "claim_review_crew"
-    report = await asyncio.to_thread(
-        _run_claim_review,
-        claim_id,
-        actor_id=actor_id,
-        ctx=ctx,
-    )
-
-    report_json = report.model_dump_json()
-    ctx.repo.record_claim_review(claim_id, report_json, actor_id)
-
-    return report.model_dump(mode="json")
-@router.post("/claims/{claim_id}/reprocess")
-async def reprocess_claim(
-    claim_id: str,
-    from_stage: Optional[str] = Query(
-        None,
-        description=(
-            "Resume from this stage using checkpoints from the most recent workflow run. "
-            f"Must be one of: {', '.join(WORKFLOW_STAGES)}"
-        ),
-    ),
-    auth: AuthContext = RequireSupervisor,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Re-run workflow for an existing claim. Requires supervisor role.
-
-    Pass ``from_stage`` to resume from a specific stage using checkpoints from
-    the most recent workflow run.
-    """
-    if from_stage is not None and from_stage not in WORKFLOW_STAGES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"from_stage must be one of {', '.join(WORKFLOW_STAGES)}",
-        )
-
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-
-    claim_data = claim_data_from_row(claim)
-    try:
-        ClaimInput.model_validate(claim_data)
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
-
-    resume_run_id: str | None = None
-    if from_stage is not None:
-        resume_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
-        if resume_run_id is None:
-            from_stage = None
-
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        result = await asyncio.to_thread(
-            run_claim_workflow,
-            claim_data,
-            existing_claim_id=claim_id,
-            actor_id=actor_id,
-            resume_run_id=resume_run_id,
-            from_stage=from_stage,
-            ctx=ctx,
-        )
-    except ClaimAlreadyProcessingError as e:
-        _http_already_processing(e)
-    return result
-class DisputeBody(BaseModel):
-    dispute_type: str = Field(..., description="Dispute type: liability_determination, valuation_disagreement, repair_estimate, or deductible_application")
-    dispute_description: str = Field(..., description="Policyholder's description of the dispute")
-    policyholder_evidence: Optional[str] = Field(default=None, description="Optional supporting evidence references")
-
-
-class DisputeResponse(BaseModel):
-    """Response from filing a policyholder dispute."""
-
-    claim_id: str = Field(..., description="Claim ID")
-    dispute_type: str = Field(..., description="Dispute category")
-    resolution_type: str = Field(..., description="auto_resolved or escalated")
-    status: str = Field(..., description="Final claim status after dispute workflow")
-    workflow_output: str = Field(..., description="Raw workflow output from dispute crew")
-    adjusted_amount: Optional[float] = Field(default=None, description="Revised payout if auto-resolved and adjusted")
-    summary: str = Field(..., description="Short summary of the resolution")
-
-
-class SupplementalBody(BaseModel):
-    """Request body for filing a supplemental damage report."""
-
-    supplemental_damage_description: str = Field(
-        ...,
-        max_length=2000,
-        description="Description of the additional damage discovered during repair",
-    )
-    reported_by: Optional[Literal["shop", "adjuster", "policyholder"]] = Field(
-        default=None,
-        description="Who reported: shop, adjuster, or policyholder",
-    )
-
-
-class SupplementalResponse(BaseModel):
-    """Response from supplemental workflow."""
-
-    claim_id: str = Field(..., description="Claim ID")
-    status: str = Field(..., description="Claim status after supplemental workflow")
-    supplemental_amount: Optional[float] = Field(
-        default=None,
-        description="Supplemental estimate amount",
-    )
-    combined_insurance_pays: Optional[float] = Field(
-        default=None,
-        description="Combined original + supplemental insurance payment",
-    )
-    workflow_output: str = Field(..., description="Raw workflow output")
-    summary: str = Field(..., description="Short summary")
-
-
-@router.post("/claims/{claim_id}/dispute", response_model=DisputeResponse)
-async def file_dispute(
-    claim_id: str,
-    body: DisputeBody = Body(...),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """File a policyholder dispute on an existing claim.
-
-    Runs the dispute resolution workflow which auto-resolves simple disputes
-    (valuation, repair estimate, deductible) and escalates complex ones
-    (liability) to human adjusters.
-    """
-    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-
-    claim_status = claim.get("status")
-    if claim_status not in DISPUTABLE_STATUSES:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Claim cannot be disputed in status {claim_status!r}. "
-                f"Disputes are allowed only for claims with status: {', '.join(DISPUTABLE_STATUSES)}."
-            ),
-        )
-
-    try:
-        DisputeType(body.dispute_type)
-    except ValueError:
-        valid = [t.value for t in DisputeType]
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid dispute_type. Must be one of: {', '.join(valid)}",
-        )
-
-    dispute_data = {
-        "claim_id": claim_id,
-        "dispute_type": body.dispute_type,
-        "dispute_description": body.dispute_description,
-        "policyholder_evidence": body.policyholder_evidence,
-    }
-
-    result = await asyncio.to_thread(
-        run_dispute_workflow,
-        dispute_data,
-        ctx=ctx,
-    )
-    return result
-
-
-class DenialCoverageBody(BaseModel):
-    """Request body for denial/coverage dispute workflow."""
-
-    denial_reason: str = Field(
-        ...,
-        min_length=1,
-        max_length=MAX_DENIAL_REASON,
-        description="Stated reason for the denial",
-    )
-    policyholder_evidence: Optional[str] = Field(
-        default=None,
-        max_length=MAX_POLICYHOLDER_EVIDENCE,
-        description="Optional evidence or argument from policyholder",
-    )
-    state: Optional[str] = Field(
-        default="California",
-        description="State jurisdiction for compliance (California, Texas, Florida, New York)",
-    )
-
-
-class DenialCoverageResponse(BaseModel):
-    """Response from denial/coverage workflow."""
-
-    claim_id: str = Field(..., description="Claim ID")
-    outcome: str = Field(
-        ...,
-        description="outcome: uphold_denial, route_to_appeal, or escalated",
-    )
-    status: str = Field(..., description="Claim status after workflow")
-    workflow_output: str = Field(..., description="Raw workflow output")
-    summary: str = Field(..., description="Short summary")
-
-
-@router.post("/claims/{claim_id}/denial-coverage", response_model=DenialCoverageResponse)
-async def run_denial_coverage(
-    claim_id: str,
-    body: DenialCoverageBody = Body(...),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Run denial/coverage dispute workflow on a denied claim.
-
-    Reviews denial reason, verifies coverage/exclusions, and either generates
-    a denial letter (uphold) or routes to appeal.
-    """
-    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-
-    claim_status = claim.get("status")
-    if claim_status not in DENIAL_COVERAGE_STATUSES:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Claim cannot run denial/coverage workflow in status {claim_status!r}. "
-                f"Allowed statuses: {', '.join(DENIAL_COVERAGE_STATUSES)}."
-            ),
-        )
-
-    denial_data = {
-        "claim_id": claim_id,
-        "denial_reason": body.denial_reason,
-        "policyholder_evidence": body.policyholder_evidence,
-    }
-    try:
-        state = normalize_state(body.state or "California")
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-    result = await asyncio.to_thread(
-        run_denial_coverage_workflow,
-        denial_data,
-        ctx=ctx,
-        state=state,
-    )
-    return result
-
-
-@router.post("/claims/{claim_id}/supplemental", response_model=SupplementalResponse)
-async def file_supplemental(
-    claim_id: str,
-    body: SupplementalBody = Body(...),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """File a supplemental damage report on an existing partial loss claim.
-
-    Runs the supplemental workflow when additional damage is discovered during
-    repair. Validates the report, compares to original estimate, calculates
-    supplemental amount, and updates the repair authorization.
-    """
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-
-    try:
-        return await execute_supplemental_request(
-            claim_id=claim_id,
-            supplemental_damage_description=body.supplemental_damage_description,
-            reported_by=body.reported_by,
-            ctx=ctx,
-        )
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except ValueError as e:
-        msg = str(e)
-        code = 409 if "cannot receive supplemental" in msg else 400
-        raise HTTPException(status_code=code, detail=msg) from e
