@@ -1,10 +1,12 @@
 """Document and attachment routes for claims."""
 
+import re
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
@@ -30,6 +32,16 @@ from claim_agent.api.routes._claims_helpers import (
 router = APIRouter(tags=["claims"])
 
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
+
+_RETENTION_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _document_url_for_adjuster_api(claim_id: str, storage_key: str, storage: Any) -> str:
+    """Build a URL the observability UI can open (see ClaimDetail safeHref rules)."""
+    if isinstance(storage, LocalStorageAdapter):
+        stored_name = storage_key.split("/")[-1] if "/" in storage_key else storage_key
+        return f"/api/v1/claims/{claim_id}/attachments/{stored_name}"
+    return storage.get_url(claim_id, storage_key)
 
 
 @router.get("/claims/{claim_id}/attachments/{key}", dependencies=[RequireAdjuster])
@@ -105,7 +117,7 @@ def list_claim_documents(
         for doc in docs:
             sk = doc.get("storage_key", "")
             if sk:
-                doc["url"] = storage.get_url(claim_id, sk)
+                doc["url"] = _document_url_for_adjuster_api(claim_id, sk, storage)
                 if insert_audit and isinstance(storage, S3StorageAdapter):
                     ctx.repo.insert_document_accessed_audit(
                         claim_id,
@@ -189,7 +201,7 @@ async def upload_claim_document(
     _maybe_update_document_request_on_receipt(doc_repo, ctx.repo, claim_id, doc_type)
     doc = doc_repo.get_document(doc_id)
     if doc:
-        doc["url"] = storage.get_url(claim_id, stored_key)
+        doc["url"] = _document_url_for_adjuster_api(claim_id, stored_key, storage)
         if isinstance(storage, S3StorageAdapter):
             actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
             ctx.repo.insert_document_accessed_audit(
@@ -208,6 +220,21 @@ class DocumentUpdateBody(BaseModel):
     document_type: Optional[str] = None
     privileged: Optional[bool] = None
     retention_date: Optional[str] = None
+
+    @field_validator("retention_date", mode="before")
+    @classmethod
+    def _retention_date_yyyy_mm_dd(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError("retention_date must be a string or null")
+        s = v.strip()
+        if not s:
+            return None
+        if not _RETENTION_DATE_RE.match(s):
+            raise ValueError("retention_date must be YYYY-MM-DD")
+        date.fromisoformat(s)
+        return s
 
 
 @router.patch("/claims/{claim_id}/documents/{doc_id}", dependencies=[RequireAdjuster])
@@ -300,6 +327,27 @@ class DocumentRequestUpdateBody(BaseModel):
 
     status: Optional[str] = None
     received_at: Optional[str] = None
+
+    @field_validator("received_at", mode="before")
+    @classmethod
+    def _received_at_iso8601(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError("received_at must be a string or null")
+        s = v.strip()
+        if not s:
+            return None
+        normalized = s.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(normalized)
+        except ValueError as e:
+            raise ValueError("received_at must be an ISO 8601 datetime") from e
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @router.patch("/claims/{claim_id}/document-requests/{req_id}", dependencies=[RequireAdjuster])
