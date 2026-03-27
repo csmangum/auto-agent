@@ -2721,7 +2721,7 @@ class TestRBAC:
         self._set_api_keys(monkeypatch, "sk-ex:executive")
         resp = client.get("/api/v1/metrics", headers=_auth_headers("sk-ex"))
         assert resp.status_code == 200
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(
             claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
@@ -2755,7 +2755,7 @@ class TestRBAC:
     def test_adjuster_forbidden_reprocess(self, client, monkeypatch):
         """Adjuster gets 403 for reprocess (supervisor+ only)."""
         self._set_api_keys(monkeypatch, "sk-adj:adjuster")
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(
             claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
@@ -2790,7 +2790,7 @@ class TestRBAC:
     def test_supervisor_can_reprocess(self, client, monkeypatch):
         """Supervisor can call reprocess endpoint."""
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(
             claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
@@ -2804,7 +2804,7 @@ class TestRBAC:
     def test_reprocess_not_found_returns_404(self, client, monkeypatch):
         """Reprocess of non-existent claim returns 404."""
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "x"})
         resp = client.post(
@@ -3168,7 +3168,7 @@ class TestProcessClaimEndpoint:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
@@ -3181,7 +3181,7 @@ class TestProcessClaimEndpoint:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         # Ensure the storage singleton is reset to local (tmp) for each test
@@ -3257,10 +3257,10 @@ class TestProcessClaimEndpoint:
         """A file exceeding MAX_UPLOAD_FILE_SIZE_MB returns HTTP 413."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         self._mock_workflow(monkeypatch)
-        from claim_agent.api.routes import claims as claims_module
+        import claim_agent.api.routes._claims_helpers as helpers_module
 
         # Temporarily lower the limit to make the test fast
-        monkeypatch.setattr(claims_module, "_max_upload_file_size_bytes", lambda: 10)
+        monkeypatch.setattr(helpers_module, "max_upload_file_size_bytes", lambda: 10)
         resp = client.post(
             "/api/v1/claims/process",
             data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
@@ -3648,7 +3648,7 @@ class TestProcessClaimAsyncEndpoint:
             "status": "open",
             "summary": "Claim processed.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
@@ -3711,7 +3711,7 @@ class TestProcessClaimAsyncEndpoint:
         import claim_agent.storage.factory as factory_mod
 
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         # Mock workflow to return the actual claim_id (from existing_claim_id) and
         # update the DB to a terminal status so the SSE stream terminates promptly.
@@ -3754,7 +3754,7 @@ class TestProcessClaimAsyncEndpoint:
         import claim_agent.storage.factory as factory_mod
 
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         def mock_wf(
             claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **_kw
