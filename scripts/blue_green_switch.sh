@@ -130,10 +130,10 @@ fi
 
 # ── Step 3: Switch service selector ───────────────────────────────────────────
 log "Patching $SERVICE_NAME selector → deployment-slot=$TARGET_SLOT …"
+# ~1 encodes "/" in JSON Pointer (RFC 6901) — annotation key is deployment.claim-agent/active-slot
 run_kubectl patch service "$SERVICE_NAME" -n "$NAMESPACE" \
   --type=json \
-      # ~1 encodes "/" in JSON Pointer (RFC 6901) — annotation key is deployment.claim-agent/active-slot
-      -p "[
+  -p "[
     {\"op\":\"replace\",\"path\":\"/spec/selector/deployment-slot\",\"value\":\"${TARGET_SLOT}\"},
     {\"op\":\"replace\",\"path\":\"/metadata/annotations/deployment.claim-agent~1active-slot\",\"value\":\"${TARGET_SLOT}\"}
   ]"
