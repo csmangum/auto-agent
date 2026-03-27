@@ -1,6 +1,5 @@
 """Document and attachment routes for claims."""
 
-import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
@@ -27,8 +26,6 @@ from claim_agent.api.routes._claims_helpers import (
     maybe_update_document_request_on_receipt as _maybe_update_document_request_on_receipt,
     upload_file_size_exceeded_detail as _upload_file_size_exceeded_detail,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 

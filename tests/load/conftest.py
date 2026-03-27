@@ -24,7 +24,7 @@ def load_client(temp_db, monkeypatch):
 @pytest.fixture
 def mock_workflow_for_load(monkeypatch):
     """Mock run_claim_workflow to return quickly for load testing."""
-    import claim_agent.api.routes.claims as claims_mod
+    import claim_agent.api.routes.claims_crud as claims_crud_mod
 
     call_count = [0]
     lock = threading.Lock()
@@ -41,5 +41,5 @@ def mock_workflow_for_load(monkeypatch):
             "summary": "Load test mock.",
         }
 
-    monkeypatch.setattr(claims_mod, "run_claim_workflow", mock_wf)
+    monkeypatch.setattr(claims_crud_mod, "run_claim_workflow", mock_wf)
     yield

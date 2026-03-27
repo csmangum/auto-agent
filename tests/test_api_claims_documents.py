@@ -151,12 +151,12 @@ def test_update_document_review_status(client):
     doc_id = _upload_doc(client)
     resp = client.patch(
         f"/api/v1/claims/{_CLAIM_ID}/documents/{doc_id}",
-        json={"review_status": "approved"},
+        json={"review_status": "reviewed"},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["document_id"] == doc_id
-    assert data["document"]["review_status"] == "approved"
+    assert data["document"]["review_status"] == "reviewed"
 
 
 def test_update_document_invalid_review_status(client):
@@ -174,7 +174,7 @@ def test_update_document_not_found(client):
     """update_claim_document returns 404 for a missing document."""
     resp = client.patch(
         f"/api/v1/claims/{_CLAIM_ID}/documents/999999",
-        json={"review_status": "approved"},
+        json={"review_status": "reviewed"},
     )
     assert resp.status_code == 404
 
