@@ -142,8 +142,15 @@ Operators running claim-agent on Kubernetes (using the manifests in `k8s/` or th
 `monitoring/promtail-config.yml`. Instead, Promtail must run as a **DaemonSet** and read pod logs
 directly from the host filesystem (`/var/log/pods/`).
 
-The file **`monitoring/promtail-config-k8s.yml.example`** is a ready-to-use Promtail configuration
-that provides the same JSON log pipeline (label extraction for `level`, `claim_type`, `logger`) and
+**`monitoring/promtail-config-k8s.yml.example`** is a full Promtail document for operators who
+mount config directly (e.g. raw ConfigMap at `/etc/promtail/config.yml` or a custom DaemonSet).
+
+**`monitoring/promtail-helm-values-k8s.example.yaml`** is the matching fragment for the official
+**`grafana/promtail`** Helm chart: that chart assembles config from `config.*` values (not from a
+flat Promtail file), so use `-f` on this values file rather than pointing Helm at
+`promtail-config-k8s.yml.example`.
+
+Both provide the same JSON log pipeline (label extraction for `level`, `claim_type`, `logger`) and
 the same LogQL query patterns as the Docker Compose setup, adapted for Kubernetes:
 
 | Feature | Docker Compose | Kubernetes |
@@ -154,6 +161,12 @@ the same LogQL query patterns as the Docker Compose setup, adapted for Kubernete
 | CRI parsing | Not needed | `cri: {}` stage strips containerd/CRI-O envelope |
 
 ### Quick start (Helm)
+
+The **`grafana/promtail`** chart renders Promtail’s `config.file` from Helm values (`config.clients`,
+`config.snippets.scrapeConfigs`, `config.snippets.extraScrapeConfigs`, etc.). Do **not** pass
+`monitoring/promtail-config-k8s.yml.example` as `--values` to that chart — it is a standalone Promtail
+document. Use **`monitoring/promtail-helm-values-k8s.example.yaml`** instead, which sets
+`config.clients` and appends the claim-agent scrape job via `extraScrapeConfigs`.
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
@@ -166,12 +179,16 @@ helm upgrade --install loki grafana/loki \
   --set loki.commonConfig.replication_factor=1 \
   --set loki.storage.type=filesystem
 
-# Deploy Promtail as a DaemonSet using the claim-agent example config
+# Deploy Promtail: chart defaults include hostPath /var/log/pods and RBAC; merge claim-agent job
 helm upgrade --install promtail grafana/promtail \
-  --namespace monitoring \
-  --set "config.clients[0].url=http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push" \
-  --values monitoring/promtail-config-k8s.yml.example
+  --namespace monitoring --create-namespace \
+  -f monitoring/promtail-helm-values-k8s.example.yaml
 ```
+
+To supply the entire Promtail config yourself, use the chart’s pattern for a self-managed
+ConfigMap (see **`grafana/promtail`** README: disable the chart-generated config and mount your
+own file). For GitOps, copy and adapt `promtail-helm-values-k8s.example.yaml` into your values
+repository.
 
 ### Required RBAC
 
@@ -237,7 +254,8 @@ Additional labels available on Kubernetes (not present in the Docker Compose set
 | File | Purpose |
 |------|---------|
 | `monitoring/promtail-config.yml` | Docker Compose / Docker socket log shipping |
-| `monitoring/promtail-config-k8s.yml.example` | Kubernetes DaemonSet log shipping (this section) |
+| `monitoring/promtail-config-k8s.yml.example` | Standalone Promtail YAML for K8s (ConfigMap / raw mount) |
+| `monitoring/promtail-helm-values-k8s.example.yaml` | `grafana/promtail` Helm values (claim-agent scrape job) |
 
 ### Loki security: auth and tenant hardening
 

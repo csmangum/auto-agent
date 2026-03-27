@@ -74,14 +74,15 @@ scrape_configs:
         regex: claim-agent
 
       # Derive the log file path from pod metadata so Promtail knows where to
-      # read on the host filesystem.  This uses the standard k8s log path
-      # convention; most distributions (EKS, GKE, AKS, kubeadm) follow it.
+      # read on the host filesystem.  With the default relabel regex (.*), $1 is
+      # the full "uid/container" string; the leading glob matches the
+      # namespace_pod_uid directory prefix (same pattern as grafana/promtail chart).
       - source_labels:
           - __meta_kubernetes_pod_uid
           - __meta_kubernetes_pod_container_name
         separator: /
         target_label: __path__
-        replacement: /var/log/pods/*$1*/$2/*.log
+        replacement: /var/log/pods/*$1/*.log
 
       # Surface well-known k8s identifiers as Loki labels (low-cardinality).
       - source_labels: [__meta_kubernetes_namespace]
@@ -154,13 +155,7 @@ scrape_configs:
 #       resources: ["nodes", "nodes/proxy", "pods"]
 #       verbs: ["get", "watch", "list"]
 #
-# Helm quickstart (grafana/promtail chart):
-#
-#   helm repo add grafana https://grafana.github.io/helm-charts
-#   helm repo update
-#   helm upgrade --install promtail grafana/promtail \
-#     --namespace monitoring --create-namespace \
-#     --set "config.clients[0].url=http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push" \
-#     --values monitoring/promtail-config-k8s.yml.example
+# Helm quickstart (grafana/promtail chart): use monitoring/promtail-helm-values-k8s.example.yaml
+# (this file is not valid Helm values — the chart expects config under config.*).
 #
 # See docs/observability.md § "Kubernetes log shipping" for the full guide.
