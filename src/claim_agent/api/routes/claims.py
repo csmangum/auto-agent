@@ -33,6 +33,8 @@ from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import (
+    STATUS_ARCHIVED,
+    STATUS_PURGED,
     DENIAL_COVERAGE_STATUSES,
     DISPUTABLE_STATUSES,
     SIU_INVESTIGATION_STATUSES,
@@ -58,7 +60,6 @@ from claim_agent.models.incident import (
     RelatedClaimsResponse,
 )
 from claim_agent.models.document import DocumentRequestStatus, DocumentType, ReviewStatus
-from claim_agent.models.dispute import DisputeType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.storage.s3 import S3StorageAdapter
@@ -67,10 +68,9 @@ from claim_agent.services.portal_verification import create_claim_access_token
 from claim_agent.db.repair_shop_user_repository import RepairShopUserRepository
 from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_access_token
 from claim_agent.services.third_party_portal_tokens import create_third_party_access_token
-from claim_agent.services.supplemental_request import execute_supplemental_request
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
-from claim_agent.rag.constants import normalize_state
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
+from claim_agent.utils.sanitization import MAX_ACTOR_ID
 from claim_agent.utils.sanitization import (
     MAX_ACTOR_ID,
     MAX_DENIAL_REASON,
@@ -111,103 +111,7 @@ router = APIRouter(tags=["claims"])
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 
-class FollowUpRunBody(BaseModel):
-    task: str = Field(..., min_length=1, description="Follow-up task (e.g., 'Gather photos from claimant')")
-    user_response: Optional[str] = Field(default=None, description="Optional user response when recording in same run")
 
-
-class RecordFollowUpResponseBody(BaseModel):
-    message_id: int = Field(..., description="Follow-up message ID from send_user_message")
-    response_content: str = Field(..., min_length=1, description="User's response text")
-
-
-@router.post("/claims/{claim_id}/follow-up/run", dependencies=[RequireAdjuster])
-def run_follow_up(
-    claim_id: str,
-    body: FollowUpRunBody = Body(...),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Run the follow-up agent to send outreach or process a response."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    try:
-        result = run_follow_up_workflow(
-            claim_id,
-            body.task,
-            ctx=ctx,
-            user_response=body.user_response,
-        )
-        return result
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-
-@router.post("/claims/{claim_id}/follow-up/record-response", dependencies=[RequireAdjuster])
-def record_follow_up_response(
-    claim_id: str,
-    body: RecordFollowUpResponseBody = Body(...),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Record a user's response to a follow-up message (webhook or manual entry)."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        ctx.repo.record_follow_up_response(
-            body.message_id,
-            body.response_content,
-            actor_id=actor_id,
-            expected_claim_id=claim_id,
-        )
-        return {"success": True, "message": "Response recorded"}
-    except DomainValidationError as e:
-        msg = str(e)
-        if "not found" in msg.lower():
-            raise HTTPException(status_code=404, detail=msg) from e
-        raise HTTPException(status_code=400, detail=msg) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-
-@router.get("/claims/{claim_id}/follow-up", dependencies=[RequireAdjuster])
-def get_follow_up_messages(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Get all follow-up messages for a claim."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    return {"claim_id": claim_id, "messages": ctx.repo.get_follow_up_messages(claim_id)}
-
-
-@router.post("/claims/{claim_id}/siu-investigate")
-def run_siu_investigation(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Run SIU investigation crew on a claim under investigation.
-
-    Performs document verification, records investigation, and case management.
-    Claim must have status under_investigation or fraud_suspected.
-    Creates SIU case if not already present.
-    """
-    claim = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    status = claim.get("status")
-    if status not in SIU_INVESTIGATION_STATUSES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"SIU investigation requires status under_investigation or fraud_suspected; got {status!r}",
-        )
-    try:
-        result = run_siu_investigation_workflow(claim_id, ctx=ctx)
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 class PartyConsentUpdate(BaseModel):
@@ -1352,6 +1256,90 @@ async def allocate_bi(
 
 
 
+
+
+@router.post("/claims/{claim_id}/review")
+async def run_claim_review(
+    claim_id: str,
+    auth: AuthContext = RequireSupervisor,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Run supervisor/compliance review on the claim process. Requires supervisor role.
+
+    Returns a ClaimReviewReport with issues, compliance_checks, and recommendations.
+    The report is persisted to the audit log.
+    """
+    from claim_agent.workflow.claim_review_orchestrator import run_claim_review as _run_claim_review
+
+    if ctx.repo.get_claim(claim_id) is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    actor_id = auth.identity if auth.identity != "anonymous" else "claim_review_crew"
+    report = await asyncio.to_thread(
+        _run_claim_review,
+        claim_id,
+        actor_id=actor_id,
+        ctx=ctx,
+    )
+
+    report_json = report.model_dump_json()
+    ctx.repo.record_claim_review(claim_id, report_json, actor_id)
+
+    return report.model_dump(mode="json")
+@router.post("/claims/{claim_id}/reprocess")
+async def reprocess_claim(
+    claim_id: str,
+    from_stage: Optional[str] = Query(
+        None,
+        description=(
+            "Resume from this stage using checkpoints from the most recent workflow run. "
+            f"Must be one of: {', '.join(WORKFLOW_STAGES)}"
+        ),
+    ),
+    auth: AuthContext = RequireSupervisor,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Re-run workflow for an existing claim. Requires supervisor role.
+
+    Pass ``from_stage`` to resume from a specific stage using checkpoints from
+    the most recent workflow run.
+    """
+    if from_stage is not None and from_stage not in WORKFLOW_STAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"from_stage must be one of {', '.join(WORKFLOW_STAGES)}",
+        )
+
+    claim = ctx.repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
+
+    claim_data = claim_data_from_row(claim)
+    try:
+        ClaimInput.model_validate(claim_data)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
+
+    resume_run_id: str | None = None
+    if from_stage is not None:
+        resume_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
+        if resume_run_id is None:
+            from_stage = None
+
+    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
+    try:
+        result = await asyncio.to_thread(
+            run_claim_workflow,
+            claim_data,
+            existing_claim_id=claim_id,
+            actor_id=actor_id,
+            resume_run_id=resume_run_id,
+            from_stage=from_stage,
+            ctx=ctx,
+        )
+    except ClaimAlreadyProcessingError as e:
+        _http_already_processing(e)
+    return result
 class DisputeBody(BaseModel):
     dispute_type: str = Field(..., description="Dispute type: liability_determination, valuation_disagreement, repair_estimate, or deductible_application")
     dispute_description: str = Field(..., description="Policyholder's description of the dispute")
