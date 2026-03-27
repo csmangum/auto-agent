@@ -179,6 +179,126 @@ def test_rest_reverse_image_skips_scrub_when_disabled():
     assert kwargs["files"]["image"][1] is raw
 
 
+def test_rest_require_exif_scrub_blocks_on_unsupported_format():
+    """When require_exif_scrub=True and format is unsupported, upload is blocked."""
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    from claim_agent.adapters.real.reverse_image_rest import RestReverseImageAdapter
+
+    buf = BytesIO()
+    Image.new("RGB", (4, 4), (1, 2, 3)).save(buf, format="GIF")
+    gif_bytes = buf.getvalue()
+
+    mock_client = MagicMock()
+    adapter = RestReverseImageAdapter(
+        base_url="https://provider.example.com/api",
+        scrub_exif_before_upload=True,
+        require_exif_scrub=True,
+    )
+    adapter._client = mock_client  # type: ignore[method-assign]
+
+    result = adapter.match_web_occurrences(gif_bytes)
+
+    assert result == []
+    mock_client.post_multipart.assert_not_called()
+
+
+def test_rest_require_exif_scrub_blocks_on_failed_scrub(monkeypatch):
+    """When require_exif_scrub=True and scrub raises, upload is blocked."""
+    from claim_agent.adapters.real import reverse_image_rest
+    from claim_agent.adapters.real.reverse_image_rest import RestReverseImageAdapter
+    from claim_agent.utils.image_bytes_privacy import ScrubStatus
+
+    monkeypatch.setattr(
+        reverse_image_rest,
+        "scrub_exif_from_image_bytes",
+        lambda _data: (_data, ScrubStatus.FAILED),
+    )
+
+    mock_client = MagicMock()
+    adapter = RestReverseImageAdapter(
+        base_url="https://provider.example.com/api",
+        scrub_exif_before_upload=True,
+        require_exif_scrub=True,
+    )
+    adapter._client = mock_client  # type: ignore[method-assign]
+
+    result = adapter.match_web_occurrences(b"\xff\xd8\xff some-jpeg")
+
+    assert result == []
+    mock_client.post_multipart.assert_not_called()
+
+
+def test_rest_require_exif_scrub_allows_scrubbed_jpeg():
+    """When require_exif_scrub=True and scrub succeeds, upload proceeds."""
+    pytest.importorskip("PIL")
+    from PIL import Image
+    from PIL.ExifTags import Base
+
+    from claim_agent.adapters.real.reverse_image_rest import RestReverseImageAdapter
+
+    im = Image.new("RGB", (4, 4), (10, 20, 30))
+    exif = im.getexif()
+    exif[Base.Software] = "test-marker"
+    buf = BytesIO()
+    im.save(buf, format="JPEG", exif=exif.tobytes(), quality=90)
+    raw = buf.getvalue()
+
+    mock_client = MagicMock()
+    good = MagicMock()
+    good.json = MagicMock(return_value=[])
+    mock_client.post_multipart = MagicMock(return_value=good)
+
+    adapter = RestReverseImageAdapter(
+        base_url="https://provider.example.com/api",
+        scrub_exif_before_upload=True,
+        require_exif_scrub=True,
+    )
+    adapter._client = mock_client  # type: ignore[method-assign]
+
+    result = adapter.match_web_occurrences(raw)
+
+    mock_client.post_multipart.assert_called_once()
+    assert isinstance(result, list)
+
+
+def test_rest_warn_only_on_unsupported_format_without_require(caplog):
+    """Default (require_exif_scrub=False) warns but still uploads on unsupported format."""
+    import logging
+
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    from claim_agent.adapters.real.reverse_image_rest import RestReverseImageAdapter
+
+    buf = BytesIO()
+    Image.new("RGB", (4, 4), (1, 2, 3)).save(buf, format="GIF")
+    gif_bytes = buf.getvalue()
+
+    mock_client = MagicMock()
+    good = MagicMock()
+    good.json = MagicMock(return_value=[])
+    mock_client.post_multipart = MagicMock(return_value=good)
+
+    adapter = RestReverseImageAdapter(
+        base_url="https://provider.example.com/api",
+        scrub_exif_before_upload=True,
+        require_exif_scrub=False,
+    )
+    adapter._client = mock_client  # type: ignore[method-assign]
+
+    caplog.set_level(logging.WARNING)
+    result = adapter.match_web_occurrences(gif_bytes)
+
+    mock_client.post_multipart.assert_called_once()
+    assert isinstance(result, list)
+    assert any("skipped_unsupported" in r.message for r in caplog.records)
+    assert any(
+        getattr(r, "scrub_status", None) == "skipped_unsupported" for r in caplog.records
+    )
+
+
 # ---------------------------------------------------------------------------
 # Registry / get_reverse_image_adapter
 # ---------------------------------------------------------------------------

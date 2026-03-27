@@ -25,6 +25,9 @@ Configure via environment variables:
 - REVERSE_IMAGE_REST_TIMEOUT: Request timeout in seconds (default: 30)
 - REVERSE_IMAGE_REST_SCRUB_EXIF_BEFORE_UPLOAD: Strip EXIF from JPEG/PNG/WebP before
   multipart upload (default: true; set false only if the provider needs metadata)
+- REVERSE_IMAGE_REST_REQUIRE_EXIF_SCRUB: Block upload when scrub was required but not
+  achieved (status is SKIPPED_UNSUPPORTED, SKIPPED_NO_PILLOW, or FAILED); returns an
+  empty match list. Default: false (warn + upload for pilot availability).
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ import httpx
 
 from claim_agent.adapters.base import ReverseImageAdapter
 from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
-from claim_agent.utils.image_bytes_privacy import scrub_exif_from_image_bytes
+from claim_agent.utils.image_bytes_privacy import ScrubStatus, scrub_exif_from_image_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +69,7 @@ class RestReverseImageAdapter(ReverseImageAdapter):
         circuit_failure_threshold: int = 5,
         circuit_recovery_timeout: float = 60.0,
         scrub_exif_before_upload: bool = True,
+        require_exif_scrub: bool = False,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
@@ -79,6 +83,7 @@ class RestReverseImageAdapter(ReverseImageAdapter):
         self._match_path = match_path
         self._response_key = (response_key or "").strip() or None
         self._scrub_exif_before_upload = scrub_exif_before_upload
+        self._require_exif_scrub = require_exif_scrub
 
     def _extract_matches(self, raw: Any) -> list[dict[str, Any]]:
         """Normalise the API response to a list of match dicts."""
@@ -110,7 +115,20 @@ class RestReverseImageAdapter(ReverseImageAdapter):
                 filename = "image.jpg"
 
             if self._scrub_exif_before_upload:
-                raw_bytes = scrub_exif_from_image_bytes(raw_bytes)
+                raw_bytes, scrub_status = scrub_exif_from_image_bytes(raw_bytes)
+                if scrub_status is not ScrubStatus.SCRUBBED:
+                    logger.warning(
+                        "Reverse-image EXIF scrub outcome: %s",
+                        scrub_status.value,
+                        extra={"scrub_status": scrub_status.value},
+                    )
+                    if self._require_exif_scrub:
+                        logger.error(
+                            "Reverse-image upload blocked: require_exif_scrub=True but "
+                            "scrub status is %s",
+                            scrub_status.value,
+                        )
+                        return []
 
             files = {"image": (filename, raw_bytes)}
             resp = self._client.post_multipart(self._match_path, files=files)
@@ -147,4 +165,5 @@ def create_rest_reverse_image_adapter() -> RestReverseImageAdapter:
         circuit_failure_threshold=cfg.circuit_failure_threshold,
         circuit_recovery_timeout=cfg.circuit_recovery_timeout,
         scrub_exif_before_upload=cfg.scrub_exif_before_upload,
+        require_exif_scrub=cfg.require_exif_scrub,
     )
