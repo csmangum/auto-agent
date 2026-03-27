@@ -195,3 +195,121 @@ def test_get_claim_status_not_found(client):
     """get_claim_status returns 404 for unknown claim IDs."""
     resp = client.get("/api/v1/claims/CLM-DOESNOTEXIST/status")
     assert resp.status_code == 404
+
+
+# -------------------------------------------------------------------
+# POST /claims/generate - generate_and_submit_claim (claims_mock)
+# -------------------------------------------------------------------
+
+
+def test_generate_claim(client, monkeypatch, tmp_path):
+    """generate_and_submit_claim with submit=false returns generated claim without creating it."""
+    from claim_agent.models.claim import ClaimInput
+
+    monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+    import claim_agent.api.routes.claims_mock as claims_mock_mod
+
+    monkeypatch.setattr(
+        claims_mock_mod,
+        "generate_claim_from_prompt",
+        lambda _: ClaimInput.model_validate(
+            {
+                "policy_number": "POL-001",
+                "vin": "1HGBH41JXMN109186",
+                "vehicle_year": 2021,
+                "vehicle_make": "Honda",
+                "vehicle_model": "Accord",
+                "incident_date": "2025-01-15",
+                "incident_description": "Rear-ended at stoplight",
+                "damage_description": "Rear bumper damage",
+                "estimated_damage": 2500.0,
+            }
+        ),
+    )
+
+    resp = client.post(
+        "/api/v1/claims/generate",
+        json={"prompt": "parking lot fender bender", "submit": False},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["submitted"] is False
+    assert "claim" in data
+    assert data["claim"]["vehicle_make"] == "Honda"
+
+
+# -------------------------------------------------------------------
+# POST /claims/generate-incident-details - generate_incident_details (claims_mock)
+# -------------------------------------------------------------------
+
+
+def test_generate_incident_details(client, monkeypatch):
+    """generate_incident_details returns incident and damage fields for a vehicle."""
+    import claim_agent.api.routes.claims_mock as claims_mock_mod
+
+    monkeypatch.setattr(
+        claims_mock_mod,
+        "generate_incident_damage_from_vehicle",
+        lambda year, make, model, prompt: {
+            "incident_date": "2025-01-15",
+            "incident_description": "Minor fender bender in parking lot.",
+            "damage_description": "Scratches on front bumper.",
+            "estimated_damage": 800.0,
+        },
+    )
+
+    resp = client.post(
+        "/api/v1/claims/generate-incident-details",
+        json={
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "prompt": "parking lot fender bender",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["incident_date"] == "2025-01-15"
+    assert "incident_description" in data
+    assert "damage_description" in data
+    assert data["estimated_damage"] == 800.0
+
+
+def test_generate_claim_invalid_prompt_returns_400(client, monkeypatch, tmp_path):
+    """generate_and_submit_claim propagates ValueError from generator as 400."""
+    monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
+    import claim_agent.api.routes.claims_mock as claims_mock_mod
+
+    def _raise(_prompt):
+        raise ValueError("Mock Crew must be enabled (MOCK_CREW_ENABLED=true) to generate claims.")
+
+    monkeypatch.setattr(claims_mock_mod, "generate_claim_from_prompt", _raise)
+
+    resp = client.post(
+        "/api/v1/claims/generate",
+        json={"prompt": "bad prompt", "submit": False},
+    )
+    assert resp.status_code == 400
+    assert "MOCK_CREW_ENABLED" in resp.json()["detail"]
+
+
+def test_generate_incident_details_invalid_returns_400(client, monkeypatch):
+    """generate_incident_details propagates ValueError from generator as 400."""
+    import claim_agent.api.routes.claims_mock as claims_mock_mod
+
+    def _raise(*_args):
+        raise ValueError("Mock Crew must be enabled (MOCK_CREW_ENABLED=true) to generate claims.")
+
+    monkeypatch.setattr(claims_mock_mod, "generate_incident_damage_from_vehicle", _raise)
+
+    resp = client.post(
+        "/api/v1/claims/generate-incident-details",
+        json={
+            "vehicle_year": 2021,
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "prompt": "",
+        },
+    )
+    assert resp.status_code == 400
+    assert "MOCK_CREW_ENABLED" in resp.json()["detail"]

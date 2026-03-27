@@ -149,6 +149,7 @@ async def generate_incident_details(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except InvalidClaimTransitionError:
+        # Re-raise directly so the global error handler renders the proper response.
         raise
     except Exception as e:
         logger.exception("generate-incident-details failed: %s", e)
