@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import (
@@ -31,9 +31,8 @@ from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
-from sqlalchemy import text
 
-from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.db.database import get_db_path
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
@@ -49,7 +48,6 @@ from claim_agent.models.incident import (
 )
 from claim_agent.services.bi_allocation import allocate_bi_limits
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
-from claim_agent.utils.sanitization import MAX_ACTOR_ID
 from claim_agent.mock_crew.claim_generator import (
     generate_claim_from_prompt,
     generate_incident_damage_from_vehicle,
@@ -171,105 +169,6 @@ def get_claim_reserve_adequacy(
     except ClaimNotFoundError:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
     return result
-
-
-@router.get("/claims/{claim_id}/history", dependencies=[RequireAdjuster])
-def get_claim_history(
-    claim_id: str,
-    limit: int | None = Query(None, ge=1, le=500),
-    offset: int = Query(0, ge=0),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Get audit log entries for a claim with optional pagination.
-
-    Omit ``limit`` (or pass no query param) to return the full history,
-    preserving backwards-compatible behaviour for existing clients.
-    """
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    history, total = ctx.repo.get_claim_history(claim_id, limit=limit, offset=offset)
-    return {
-        "claim_id": claim_id,
-        "history": history,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
-
-
-@router.get("/claims/{claim_id}/fraud-filings", dependencies=[RequireAdjuster])
-def get_claim_fraud_filings(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Get fraud report filings for a claim (state bureau, NICB, NISS) for compliance audit."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    filings = ctx.repo.get_fraud_filings_for_claim(claim_id)
-    return {"claim_id": claim_id, "filings": filings}
-
-
-class AddNoteBody(BaseModel):
-    note: str = Field(..., min_length=1, description="Note content")
-    actor_id: str = Field(
-        ...,
-        min_length=1,
-        max_length=MAX_ACTOR_ID,
-        description="Crew name, agent identifier, or 'workflow'",
-    )
-
-    @field_validator("note", "actor_id", mode="after")
-    @classmethod
-    def strip_and_validate_not_blank(cls, v: str, info) -> str:
-        stripped = v.strip()
-        if not stripped:
-            raise ValueError(f"{info.field_name} cannot be blank")
-        return stripped
-
-
-@router.get("/claims/{claim_id}/notes", dependencies=[RequireAdjuster])
-def get_claim_notes(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """List notes for a claim, ordered by created_at."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    notes = ctx.repo.get_notes(claim_id)
-    return {"claim_id": claim_id, "notes": notes}
-
-
-@router.post("/claims/{claim_id}/notes", dependencies=[RequireAdjuster])
-def add_claim_note(
-    claim_id: str,
-    body: AddNoteBody = Body(...),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Add a note to a claim."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    try:
-        ctx.repo.add_note(claim_id, body.note, body.actor_id)
-    except ClaimNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from None
-    return {"claim_id": claim_id, "actor_id": body.actor_id}
-
-
-@router.get("/claims/{claim_id}/workflows", dependencies=[RequireAdjuster])
-def get_claim_workflows(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Get workflow runs for a claim."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    with get_connection() as conn:
-        rows = conn.execute(
-            text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
-            {"claim_id": claim_id},
-        ).fetchall()
-
-    return {"claim_id": claim_id, "workflows": [row_to_dict(r) for r in rows]}
 
 
 @router.get("/claims/{claim_id}/repair-status", dependencies=[RequireAdjuster])
