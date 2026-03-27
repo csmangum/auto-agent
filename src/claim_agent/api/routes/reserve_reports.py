@@ -7,7 +7,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 
 from claim_agent.api.deps import require_role
-from claim_agent.api.routes.claims import get_claim_context
+from claim_agent.api.routes._claims_helpers import get_claim_context
 from claim_agent.context import ClaimContext
 from claim_agent.db.reserve_reporting import (
     Granularity,

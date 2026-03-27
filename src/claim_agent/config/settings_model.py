@@ -12,14 +12,41 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Literal
+from string import Formatter
+from typing import Any, Literal, Self
 
-from pydantic import AliasChoices, Field, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    SecretStr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from claim_agent.config import notification_template_defaults as _tmpl_defaults
 
 _log = logging.getLogger(__name__)
+
+
+def _assert_notification_template_placeholders(
+    template: str, allowed: frozenset[str], field_label: str
+) -> None:
+    """Ensure ``template`` uses only simple ``str.format`` placeholders in ``allowed``."""
+    for _, field_name, _, _ in Formatter().parse(template):
+        if field_name is None:
+            continue
+        if "." in field_name or "[" in field_name:
+            raise ValueError(
+                f"{field_label}: invalid placeholder {field_name!r} "
+                "(use simple names only, no attributes or indexes)"
+            )
+        if field_name not in allowed:
+            raise ValueError(
+                f"{field_label}: unknown placeholder {{{field_name}}}; "
+                f"allowed: {', '.join(sorted(allowed))}"
+            )
 
 
 def _default_project_data_dir() -> Path:
@@ -433,6 +460,30 @@ class NotificationConfig(BaseSettings):
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in ("true", "1", "yes")
+
+    @model_validator(mode="after")
+    def _validate_notification_templates(self) -> Self:
+        claim_allowed = frozenset({"claim_id"})
+        otp_allowed = frozenset({"otp", "ttl_minutes", "verification_id"})
+        claim_tmpl_fields = (
+            "tmpl_receipt_acknowledged_subject",
+            "tmpl_receipt_acknowledged_body",
+            "tmpl_denial_letter_subject",
+            "tmpl_denial_letter_body",
+            "tmpl_follow_up_subject",
+            "tmpl_follow_up_body",
+            "tmpl_generic_subject",
+            "tmpl_generic_body",
+        )
+        for fname in claim_tmpl_fields:
+            _assert_notification_template_placeholders(
+                getattr(self, fname), claim_allowed, fname
+            )
+        for fname in ("tmpl_otp_email_subject", "tmpl_otp_email_body", "tmpl_otp_sms_body"):
+            _assert_notification_template_placeholders(
+                getattr(self, fname), otp_allowed, fname
+            )
+        return self
 
 
 class DiaryConfig(BaseSettings):

@@ -1,4 +1,8 @@
-"""Shared helper functions and constants for claims routes."""
+"""Shared helper functions and constants for claims routes.
+
+HTTP ``Retry-After`` hints: ``CLAIM_ALREADY_PROCESSING_RETRY_AFTER`` (409),
+``BACKGROUND_QUEUE_FULL_RETRY_AFTER`` (503 when the background workflow queue is full).
+"""
 
 import asyncio
 import json
@@ -37,7 +41,8 @@ from claim_agent.workflow.helpers import WORKFLOW_STAGES
 
 logger = logging.getLogger(__name__)
 
-_CLAIM_ALREADY_PROCESSING_RETRY_AFTER = "30"
+CLAIM_ALREADY_PROCESSING_RETRY_AFTER = "30"
+BACKGROUND_QUEUE_FULL_RETRY_AFTER = "60"
 
 ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
     {"pdf", "jpg", "jpeg", "png", "gif", "webp", "heic", "doc", "docx", "xls", "xlsx"}
@@ -107,7 +112,7 @@ def http_already_processing(exc: ClaimAlreadyProcessingError) -> NoReturn:
     raise HTTPException(
         status_code=409,
         detail=str(exc),
-        headers={"Retry-After": _CLAIM_ALREADY_PROCESSING_RETRY_AFTER},
+        headers={"Retry-After": CLAIM_ALREADY_PROCESSING_RETRY_AFTER},
     ) from exc
 
 
