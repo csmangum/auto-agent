@@ -99,10 +99,10 @@ class TestHealth:
             result = check_health()
         assert result["checks"]["adapter_nmvtis"] == "ok"
 
-    def test_health_check_fraud_reporting_rest_skipped_without_health_method(
-        self, monkeypatch
-    ):
-        """REST fraud adapter has no health_check; report skipped not error."""
+    def test_health_check_fraud_reporting_rest_includes_probe(self, monkeypatch):
+        """When FRAUD_REPORTING_ADAPTER=rest, adapter_fraud_reporting is probed."""
+        from unittest.mock import MagicMock, patch
+
         from claim_agent.adapters import reset_adapters
 
         reset_adapters()
@@ -113,8 +113,79 @@ class TestHealth:
         from claim_agent.config import reload_settings
 
         reload_settings()
-        result = check_health()
-        assert result["checks"]["adapter_fraud_reporting"] == "skipped"
+
+        with patch(
+            "claim_agent.adapters.real.fraud_reporting_rest.AdapterHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.health_check_with_fallback.return_value = (True, "ok")
+            mock_client_cls.return_value = mock_client
+            result = check_health()
+        assert result["checks"]["adapter_fraud_reporting"] == "ok"
+
+    def test_health_check_claim_search_rest_includes_probe(self, monkeypatch):
+        """When CLAIM_SEARCH_ADAPTER=rest, adapter_claim_search is probed."""
+        from unittest.mock import MagicMock, patch
+
+        from claim_agent.adapters import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("CLAIM_SEARCH_ADAPTER", "rest")
+        monkeypatch.setenv("CLAIM_SEARCH_REST_BASE_URL", "https://cs.example.com/api/v1")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+
+        with patch(
+            "claim_agent.adapters.real.claim_search_rest.AdapterHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.health_check_with_fallback.return_value = (True, "ok")
+            mock_client_cls.return_value = mock_client
+            result = check_health()
+        assert result["checks"]["adapter_claim_search"] == "ok"
+
+    def test_health_check_erp_rest_includes_probe(self, monkeypatch):
+        """When ERP_ADAPTER=rest, adapter_erp is probed."""
+        from unittest.mock import MagicMock, patch
+
+        from claim_agent.adapters import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("ERP_ADAPTER", "rest")
+        monkeypatch.setenv("ERP_REST_BASE_URL", "https://erp.example.com/api/v2")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+
+        with patch("claim_agent.adapters.real.erp_rest.AdapterHttpClient") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.health_check_with_fallback.return_value = (False, "connection refused")
+            mock_client_cls.return_value = mock_client
+            result = check_health()
+        assert result["checks"]["adapter_erp"] == "degraded:connection refused"
+
+    def test_health_check_state_bureau_rest_includes_probe(self, monkeypatch):
+        """When STATE_BUREAU_ADAPTER=rest, adapter_state_bureau is probed."""
+        from unittest.mock import MagicMock, patch
+
+        from claim_agent.adapters import reset_adapters
+
+        reset_adapters()
+        monkeypatch.setenv("STATE_BUREAU_ADAPTER", "rest")
+        monkeypatch.setenv("STATE_BUREAU_CA_ENDPOINT", "https://ca-bureau.example.com")
+        from claim_agent.config import reload_settings
+
+        reload_settings()
+
+        with patch(
+            "claim_agent.adapters.real.state_bureau_rest.AdapterHttpClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.health_check_with_fallback.return_value = (True, "ok")
+            mock_client_cls.return_value = mock_client
+            result = check_health()
+        assert result["checks"]["adapter_state_bureau"] == "ok"
 
     def test_health_check_malformed_adapter_health_check_return(self, monkeypatch):
         """Bad health_check return shape surfaces as error:* without crashing."""

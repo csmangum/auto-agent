@@ -170,6 +170,10 @@ class RestERPAdapter(ERPAdapter):
         items = raw if isinstance(raw, list) else raw.get("events") or []
         return [item for item in items if isinstance(item, dict)]
 
+    def health_check(self) -> tuple[bool, str]:
+        """Probe the ERP REST API for liveness."""
+        return self._client.health_check_with_fallback()
+
 
 # ---------------------------------------------------------------------------
 # Factory

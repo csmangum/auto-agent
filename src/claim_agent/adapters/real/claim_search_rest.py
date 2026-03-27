@@ -110,6 +110,10 @@ class RestClaimSearchAdapter(ClaimSearchAdapter):
             if m
         ]
 
+    def health_check(self) -> tuple[bool, str]:
+        """Probe the ClaimSearch REST API for liveness."""
+        return self._client.health_check_with_fallback()
+
 
 def create_rest_claim_search_adapter() -> RestClaimSearchAdapter:
     """Build a REST ClaimSearch adapter from environment settings."""

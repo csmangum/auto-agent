@@ -742,6 +742,23 @@ class _FakeHttpClient:
         return _FakeResponse(self._response_data)
 
 
+class TestRestERPAdapterHealth:
+    def test_health_check_delegates_to_http_client(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        mock_client = MagicMock()
+        mock_client.health_check_with_fallback.return_value = (True, "ok")
+        monkeypatch.setattr(
+            "claim_agent.adapters.real.erp_rest.AdapterHttpClient",
+            lambda **kw: mock_client,
+        )
+        from claim_agent.adapters.real.erp_rest import RestERPAdapter
+
+        adapter = RestERPAdapter(base_url="https://erp.example.com")
+        assert adapter.health_check() == (True, "ok")
+        mock_client.health_check_with_fallback.assert_called_once_with()
+
+
 class TestRestERPAdapterPushAssignment:
     def test_posts_to_assignment_path(self, monkeypatch):
         stub = _FakeHttpClient()
