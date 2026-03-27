@@ -132,6 +132,67 @@ Loki compaction runs every 10 minutes and purges chunks older than the retention
 - Promtail requires read access to the Docker socket (`/var/run/docker.sock`). In environments
   where this is restricted, switch Promtail to scrape log files from a shared volume instead.
 
+### Loki security: auth and tenant hardening
+
+`docker-compose.prod.yml` binds Loki to **127.0.0.1:3100** so it is only reachable from the host
+itself.  `auth_enabled: false` is acceptable in that configuration because all external access
+flows through Grafana (which requires a login) or an authenticated nginx reverse proxy.
+
+**If Loki becomes reachable from other hosts** (e.g. you change the port binding, deploy to
+Kubernetes, or put Loki on a shared network), apply one of the hardening options below.
+
+#### Hardening checklist
+
+- [ ] **Keep Loki localhost-only (current default)**
+  - `ports: ["127.0.0.1:3100:3100"]` in `docker-compose.prod.yml` — ✅ already set.
+  - `auth_enabled: false` is safe; all queries go through Grafana or nginx.
+  - Ensure no other service in the Docker network publishes Loki externally.
+
+- [ ] **Option A – Reverse-proxy auth (recommended when Loki must be remotely accessible)**
+  1. Do **not** expose port 3100 on a public or shared network interface.
+  2. Set `auth_enabled: true` in `monitoring/loki-config.yml`.
+  3. Add an nginx `location` block that authenticates requests and injects the tenant
+     header before proxying to Loki (add inside your `server {}` block):
+     ```nginx
+     location /loki/ {
+         auth_basic            "Loki";
+         auth_basic_user_file  /etc/nginx/.htpasswd;  # created with htpasswd(1)
+         proxy_pass            http://loki:3100/;
+         proxy_set_header      Host              $host;
+         proxy_set_header      X-Real-IP         $remote_addr;
+         proxy_set_header      X-Scope-OrgID     claimagent;
+     }
+     ```
+  4. Update Promtail to include the tenant header when pushing logs:
+     ```yaml
+     clients:
+       - url: http://loki:3100/loki/api/v1/push
+         tenant_id: claimagent
+     ```
+  5. Update the Grafana Loki datasource
+     (`monitoring/grafana/provisioning/datasources/loki.yml`) to send the header:
+     ```yaml
+     jsonData:
+       httpHeaderName1: "X-Scope-OrgID"
+     secureJsonData:
+       httpHeaderValue1: "claimagent"
+     ```
+
+- [ ] **Option B – Grafana-only access (simpler; no nginx auth layer needed)**
+  1. Keep `auth_enabled: false` and Loki bound to `127.0.0.1` (no change).
+  2. Enable Grafana authentication (`GF_AUTH_*` env vars or LDAP/OAuth); set
+     `GF_USERS_ALLOW_SIGN_UP=false` (already set in `docker-compose.prod.yml`).
+  3. All Loki queries must flow through Grafana **Explore** or dashboards — never
+     expose Loki's port publicly.
+  4. Do **not** grant Grafana the `Editor` or `Admin` role to untrusted users, as those
+     roles can modify datasource URLs.
+
+- [ ] **Verify no unintended exposure**
+  - Run `ss -tlnp | grep 3100` on the host to confirm Loki listens only on 127.0.0.1.
+  - Review firewall / security-group rules to block port 3100 from external traffic.
+  - In Kubernetes, ensure Loki's `Service` is `ClusterIP` (not `NodePort`/`LoadBalancer`)
+    and access is through an Ingress with auth annotations.
+
 ## Health Endpoint
 
 When running the API server (`claim-agent serve`), production health checks are available at:
