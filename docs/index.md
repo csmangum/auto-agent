@@ -49,6 +49,7 @@ flowchart LR
 - **[Alerting](alerting.md)** - Prometheus alert rules and configuration
 - **[Compliance Corpus Requirements](compliance-corpus-requirements.md)** - RAG corpus requirements
 - **[Disaster Recovery](disaster-recovery.md)** - RTO/RPO targets, database recovery, service failover, data export/import, and communication plan
+- **[Runbooks](runbooks.md)** - Step-by-step incident response procedures: claim stuck in processing, database recovery, adapter failure, LLM outage
 
 ### Additional reference
 
