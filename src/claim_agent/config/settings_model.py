@@ -17,6 +17,8 @@ from typing import Any, Literal
 from pydantic import AliasChoices, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from claim_agent.config import notification_template_defaults as _tmpl_defaults
+
 _log = logging.getLogger(__name__)
 
 
@@ -406,6 +408,24 @@ class NotificationConfig(BaseSettings):
     # URL to POST delivery-failure payloads for bounce/failure monitoring.
     # Leave empty to disable failure webhook dispatch.
     failure_webhook_url: str = Field(default="", validation_alias="NOTIFICATION_FAILURE_WEBHOOK_URL")
+
+    # ---------------------------------------------------------------------------
+    # Claimant message templates – configurable for regulatory / brand compliance.
+    # Each template supports named placeholders substituted at send time:
+    #   {claim_id}  — the claim identifier
+    # OTP templates additionally support: {otp}, {ttl_minutes}, {verification_id}
+    # ---------------------------------------------------------------------------
+    tmpl_receipt_acknowledged_subject: str = _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_SUBJECT
+    tmpl_receipt_acknowledged_body: str = _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_BODY
+    tmpl_denial_letter_subject: str = _tmpl_defaults.TMPL_DENIAL_LETTER_SUBJECT
+    tmpl_denial_letter_body: str = _tmpl_defaults.TMPL_DENIAL_LETTER_BODY
+    tmpl_follow_up_subject: str = _tmpl_defaults.TMPL_FOLLOW_UP_SUBJECT
+    tmpl_follow_up_body: str = _tmpl_defaults.TMPL_FOLLOW_UP_BODY
+    tmpl_generic_subject: str = _tmpl_defaults.TMPL_GENERIC_SUBJECT
+    tmpl_generic_body: str = _tmpl_defaults.TMPL_GENERIC_BODY
+    tmpl_otp_email_subject: str = _tmpl_defaults.TMPL_OTP_EMAIL_SUBJECT
+    tmpl_otp_email_body: str = _tmpl_defaults.TMPL_OTP_EMAIL_BODY
+    tmpl_otp_sms_body: str = _tmpl_defaults.TMPL_OTP_SMS_BODY
 
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod

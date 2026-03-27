@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from claim_agent.config import notification_template_defaults as _tmpl_defaults
 from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
 from claim_agent.mock_crew.notifier import mock_notify_claimant
 
@@ -178,14 +179,7 @@ def send_otp_notification(
         return
 
     config = get_notification_config()
-    subject = "Your DSAR verification code"
-    message = (
-        f"Your one-time verification code is: {otp}\n\n"
-        f"This code expires in {_otp_ttl_minutes()} minutes. "
-        "Do not share it with anyone.\n\n"
-        f"Reference: {verification_id}"
-    )
-
+    otp_tmpl_vars = {"otp": otp, "ttl_minutes": _otp_ttl_minutes(), "verification_id": verification_id}
     if channel == "email":
         if not config["email_enabled"]:
             logger.warning(
@@ -194,6 +188,17 @@ def send_otp_notification(
                 verification_id,
             )
             return
+        try:
+            subject = config["tmpl_otp_email_subject"].format(**otp_tmpl_vars)
+            message = config["tmpl_otp_email_body"].format(**otp_tmpl_vars)
+        except (KeyError, ValueError):
+            logger.error(
+                "OTP email template misconfigured; falling back to default. "
+                "verification_id=%s",
+                verification_id,
+            )
+            subject = _tmpl_defaults.TMPL_OTP_EMAIL_SUBJECT.format(**otp_tmpl_vars)
+            message = _tmpl_defaults.TMPL_OTP_EMAIL_BODY.format(**otp_tmpl_vars)
         _send_email(
             api_key=config["sendgrid_api_key"],
             from_email=config["sendgrid_from_email"],
@@ -211,12 +216,21 @@ def send_otp_notification(
                 verification_id,
             )
             return
+        try:
+            sms_message = config["tmpl_otp_sms_body"].format(**otp_tmpl_vars)
+        except (KeyError, ValueError):
+            logger.error(
+                "OTP SMS template misconfigured; falling back to default. "
+                "verification_id=%s",
+                verification_id,
+            )
+            sms_message = _tmpl_defaults.TMPL_OTP_SMS_BODY.format(**otp_tmpl_vars)
         _send_sms(
             account_sid=config["twilio_account_sid"],
             auth_token=config["twilio_auth_token"],
             from_phone=config["twilio_from_phone"],
             to_phone=claimant_identifier,
-            message=f"Your DSAR verification code: {otp}. Expires in {_otp_ttl_minutes()} min.",
+            message=sms_message,
             event="otp_verification",
             claim_id=verification_id,
         )
@@ -272,7 +286,7 @@ def notify_claimant(
         logger.warning("Unknown claimant event: %s", event)
         return
 
-    subject, message = _build_notification_message(event, claim_id, template_data)
+    subject, message = _build_notification_message(event, claim_id, template_data, config)
 
     if email and config["email_enabled"]:
         _email_kwargs = dict(
@@ -298,18 +312,68 @@ def notify_claimant(
         _EXECUTOR.submit(_send_sms, **_sms_kwargs)
 
 
+def _safe_format(
+    config: dict[str, Any],
+    key: str,
+    tmpl_vars: dict[str, Any],
+    default_tmpl: str,
+    event: str,
+) -> str:
+    """Retrieve config[key] (or *default_tmpl* if missing), then format with *tmpl_vars*.
+
+    On KeyError or ValueError during formatting (e.g. unknown placeholder in a
+    custom template), logs an error and falls back to formatting *default_tmpl*,
+    which is a known-good template controlled by this module.
+    """
+    template = config.get(key, default_tmpl)
+    try:
+        return template.format(**tmpl_vars)
+    except (KeyError, ValueError):
+        logger.error(
+            "Notification template misconfigured for event=%r (key=%r); falling back to default.",
+            event,
+            key,
+        )
+        return default_tmpl.format(**tmpl_vars)
+
+
 def _build_notification_message(
-    event: str, claim_id: str, template_data: dict[str, Any] | None
+    event: str, claim_id: str, template_data: dict[str, Any] | None, config: dict[str, Any]
 ) -> tuple[str, str]:
+    tmpl_vars = {"claim_id": claim_id}
     if event == "receipt_acknowledged":
         return (
-            f"Claim {claim_id} acknowledgment",
-            f"We received and acknowledged your claim {claim_id}.",
+            _safe_format(
+                config,
+                "tmpl_receipt_acknowledged_subject",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_SUBJECT,
+                event,
+            ),
+            _safe_format(
+                config,
+                "tmpl_receipt_acknowledged_body",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_BODY,
+                event,
+            ),
         )
     if event == "denial_letter":
         return (
-            f"Claim {claim_id} denial letter",
-            f"Your claim {claim_id} has been denied. Appeal rights are included in your denial letter.",
+            _safe_format(
+                config,
+                "tmpl_denial_letter_subject",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_DENIAL_LETTER_SUBJECT,
+                event,
+            ),
+            _safe_format(
+                config,
+                "tmpl_denial_letter_body",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_DENIAL_LETTER_BODY,
+                event,
+            ),
         )
     if event == "follow_up_request":
         message = ""
@@ -317,10 +381,41 @@ def _build_notification_message(
             raw_message = template_data.get("message")
             if raw_message is not None:
                 message = str(raw_message).strip()
+        subject = _safe_format(
+            config,
+            "tmpl_follow_up_subject",
+            tmpl_vars,
+            _tmpl_defaults.TMPL_FOLLOW_UP_SUBJECT,
+            event,
+        )
         if message:
-            return (f"Claim {claim_id} follow-up", message)
-        return (f"Claim {claim_id} follow-up", f"An update is available for your claim {claim_id}.")
-    return (f"Claim {claim_id} update", f"An update is available for your claim {claim_id}.")
+            return (subject, message)
+        return (
+            subject,
+            _safe_format(
+                config,
+                "tmpl_follow_up_body",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_FOLLOW_UP_BODY,
+                event,
+            ),
+        )
+    return (
+        _safe_format(
+            config,
+            "tmpl_generic_subject",
+            tmpl_vars,
+            _tmpl_defaults.TMPL_GENERIC_SUBJECT,
+            event,
+        ),
+        _safe_format(
+            config,
+            "tmpl_generic_body",
+            tmpl_vars,
+            _tmpl_defaults.TMPL_GENERIC_BODY,
+            event,
+        ),
+    )
 
 
 def _send_email(

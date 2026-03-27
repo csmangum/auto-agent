@@ -764,6 +764,142 @@ class TestNotificationConfigFailureWebhookUrl:
         assert config["failure_webhook_url"] == "https://monitor.example.com/failures"
 
 
+class TestConfigurableNotificationTemplates:
+    """Tests that message templates are configurable via env vars."""
+
+    def test_default_templates_exposed_in_config(self):
+        config = get_notification_config()
+        assert "tmpl_receipt_acknowledged_subject" in config
+        assert "tmpl_receipt_acknowledged_body" in config
+        assert "tmpl_denial_letter_subject" in config
+        assert "tmpl_denial_letter_body" in config
+        assert "tmpl_follow_up_subject" in config
+        assert "tmpl_follow_up_body" in config
+        assert "tmpl_generic_subject" in config
+        assert "tmpl_generic_body" in config
+        assert "tmpl_otp_email_subject" in config
+        assert "tmpl_otp_email_body" in config
+        assert "tmpl_otp_sms_body" in config
+
+    def test_default_templates_contain_claim_id_placeholder(self):
+        config = get_notification_config()
+        for key in (
+            "tmpl_receipt_acknowledged_subject",
+            "tmpl_receipt_acknowledged_body",
+            "tmpl_denial_letter_subject",
+            "tmpl_denial_letter_body",
+            "tmpl_follow_up_subject",
+            "tmpl_follow_up_body",
+            "tmpl_generic_subject",
+            "tmpl_generic_body",
+        ):
+            assert "{claim_id}" in config[key], f"{key} missing {{claim_id}} placeholder"
+
+    def test_custom_receipt_acknowledged_template(self):
+        from claim_agent.notifications.claimant import _build_notification_message
+
+        config = get_notification_config()
+        config["tmpl_receipt_acknowledged_subject"] = "Claim {claim_id} received"
+        config["tmpl_receipt_acknowledged_body"] = "Hello, your claim {claim_id} is confirmed."
+        subject, body = _build_notification_message("receipt_acknowledged", "CLM-001", None, config)
+        assert subject == "Claim CLM-001 received"
+        assert body == "Hello, your claim CLM-001 is confirmed."
+
+    def test_custom_denial_letter_template(self):
+        from claim_agent.notifications.claimant import _build_notification_message
+
+        config = get_notification_config()
+        config["tmpl_denial_letter_subject"] = "Decision on claim {claim_id}"
+        config["tmpl_denial_letter_body"] = (
+            "Claim {claim_id} was not approved. Please review your policy for appeal options."
+        )
+        subject, body = _build_notification_message("denial_letter", "CLM-002", None, config)
+        assert subject == "Decision on claim CLM-002"
+        assert "CLM-002" in body
+
+    def test_custom_follow_up_template(self):
+        from claim_agent.notifications.claimant import _build_notification_message
+
+        config = get_notification_config()
+        config["tmpl_follow_up_subject"] = "Action needed for claim {claim_id}"
+        config["tmpl_follow_up_body"] = "Please provide additional info for claim {claim_id}."
+        subject, body = _build_notification_message("follow_up_request", "CLM-003", None, config)
+        assert subject == "Action needed for claim CLM-003"
+        assert "CLM-003" in body
+
+    def test_custom_generic_template(self):
+        from claim_agent.notifications.claimant import _build_notification_message
+
+        config = get_notification_config()
+        config["tmpl_generic_subject"] = "Status update: {claim_id}"
+        config["tmpl_generic_body"] = "Your claim {claim_id} has a new status."
+        subject, body = _build_notification_message("estimate_ready", "CLM-004", None, config)
+        assert subject == "Status update: CLM-004"
+        assert "CLM-004" in body
+
+    def test_receipt_acknowledged_template_env_override(self):
+        with patch.dict(
+            os.environ,
+            {
+                "NOTIFICATION_TMPL_RECEIPT_ACKNOWLEDGED_SUBJECT": "Receipt for {claim_id}",
+                "NOTIFICATION_TMPL_RECEIPT_ACKNOWLEDGED_BODY": "We got claim {claim_id}.",
+            },
+        ):
+            reload_settings()
+            config = get_notification_config()
+        assert config["tmpl_receipt_acknowledged_subject"] == "Receipt for {claim_id}"
+        assert config["tmpl_receipt_acknowledged_body"] == "We got claim {claim_id}."
+
+    def test_otp_email_template_env_override(self):
+        with patch.dict(
+            os.environ,
+            {
+                "NOTIFICATION_TMPL_OTP_EMAIL_SUBJECT": "Verify your identity",
+                "NOTIFICATION_TMPL_OTP_EMAIL_BODY": "Code: {otp} (expires {ttl_minutes} min). Ref: {verification_id}",
+            },
+        ):
+            reload_settings()
+            config = get_notification_config()
+        assert config["tmpl_otp_email_subject"] == "Verify your identity"
+        assert config["tmpl_otp_email_body"] == (
+            "Code: {otp} (expires {ttl_minutes} min). Ref: {verification_id}"
+        )
+
+    def test_otp_sms_template_env_override(self):
+        with patch.dict(
+            os.environ,
+            {"NOTIFICATION_TMPL_OTP_SMS_BODY": "Code {otp}, valid {ttl_minutes} min."},
+        ):
+            reload_settings()
+            config = get_notification_config()
+        assert config["tmpl_otp_sms_body"] == "Code {otp}, valid {ttl_minutes} min."
+
+    def test_custom_templates_used_in_notify_claimant(self):
+        """notify_claimant uses custom templates when configured."""
+        from claim_agent.notifications.claimant import notify_claimant
+
+        with patch.dict(
+            os.environ,
+            {
+                "NOTIFICATION_EMAIL_ENABLED": "true",
+                "SENDGRID_API_KEY": "sg-key",
+                "SENDGRID_FROM_EMAIL": "noreply@example.com",
+                "NOTIFICATION_TMPL_RECEIPT_ACKNOWLEDGED_SUBJECT": "Custom subject {claim_id}",
+                "NOTIFICATION_TMPL_RECEIPT_ACKNOWLEDGED_BODY": "Custom body for {claim_id}.",
+            },
+        ):
+            reload_settings()
+            with patch("claim_agent.notifications.claimant._EXECUTOR") as mock_exec:
+                mock_exec.submit.side_effect = _claimant_executor_submit_inline
+                with patch("claim_agent.notifications.claimant.httpx.Client") as mock_client_cls:
+                    mock_client = mock_client_cls.return_value.__enter__.return_value
+                    mock_client.post.return_value.status_code = 202
+                    notify_claimant("receipt_acknowledged", "CLM-999", email="a@b.com")
+                    call_kwargs = mock_client.post.call_args[1]
+                    assert call_kwargs["json"]["subject"] == "Custom subject CLM-999"
+                    assert call_kwargs["json"]["content"][0]["value"] == "Custom body for CLM-999."
+
+
 class TestRepositoryWebhookIntegration:
     """Tests that repository emits claim events (which trigger webhooks via listener)."""
 

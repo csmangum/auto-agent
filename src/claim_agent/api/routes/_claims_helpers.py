@@ -222,6 +222,18 @@ def run_workflow_background(
     return task
 
 
+def _background_workflow_queue_at_capacity_unlocked() -> bool:
+    """Whether the background task set is full (caller must hold ``background_tasks_lock``)."""
+    max_tasks = get_settings().max_concurrent_background_tasks
+    return max_tasks > 0 and len(background_tasks) >= max_tasks
+
+
+async def background_workflow_queue_full() -> bool:
+    """True when starting another background workflow would exceed the configured limit."""
+    async with background_tasks_lock:
+        return _background_workflow_queue_at_capacity_unlocked()
+
+
 async def try_run_workflow_background(
     claim_id: str,
     claim_data_with_attachments: dict,
@@ -229,9 +241,8 @@ async def try_run_workflow_background(
     ctx: ClaimContext | None = None,
 ) -> asyncio.Task | None:
     """Run claim workflow in background if under concurrent limit. Returns None when at capacity."""
-    max_tasks = get_settings().max_concurrent_background_tasks
     async with background_tasks_lock:
-        if max_tasks > 0 and len(background_tasks) >= max_tasks:
+        if _background_workflow_queue_at_capacity_unlocked():
             return None
         return run_workflow_background(
             claim_id, claim_data_with_attachments, actor_id, ctx=ctx,

@@ -2,11 +2,10 @@
 
 import asyncio
 import logging
-import math
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from claim_agent.api.auth import AuthContext
@@ -31,16 +30,12 @@ from claim_agent.exceptions import (
 )
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
-from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
 from claim_agent.db.constants import (
     DENIAL_COVERAGE_STATUSES,
     DISPUTABLE_STATUSES,
     SIU_INVESTIGATION_STATUSES,
-    STATUS_ARCHIVED,
-    STATUS_PURGED,
-    STATUS_NEEDS_REVIEW,
     THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES,
     VALID_REPAIR_STATUSES,
 )
@@ -51,8 +46,7 @@ from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
 from claim_agent.db.document_repository import build_document_version_groups
-from claim_agent.workflow.helpers import WORKFLOW_STAGES
-from claim_agent.models.claim import ClaimInput, ClaimRecord
+from claim_agent.models.claim import ClaimRecord
 from claim_agent.models.party import PartyRelationshipType
 from claim_agent.models.incident import (
     BIAllocationInput,
@@ -80,13 +74,14 @@ from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_ou
 from claim_agent.utils.sanitization import (
     MAX_ACTOR_ID,
     MAX_DENIAL_REASON,
-    MAX_PAYOUT,
     MAX_POLICYHOLDER_EVIDENCE,
 )
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
-from claim_agent.workflow.siu_orchestrator import run_siu_investigation as run_siu_investigation_workflow
+from claim_agent.workflow.siu_orchestrator import (
+    run_siu_investigation as run_siu_investigation_workflow,
+)
 from claim_agent.mock_crew.claim_generator import (
     generate_claim_from_prompt,
     generate_incident_damage_from_vehicle,
@@ -94,24 +89,17 @@ from claim_agent.mock_crew.claim_generator import (
 import claim_agent.api.routes._claims_helpers as _claims_helpers
 from claim_agent.api.routes._claims_helpers import (
     ALLOWED_DOCUMENT_EXTENSIONS as _ALLOWED_DOCUMENT_EXTENSIONS,
-    ALLOWED_SORT_FIELDS as _ALLOWED_SORT_FIELDS,
     GenerateClaimRequest,
     GenerateIncidentDetailsRequest,
-    PRIORITY_VALUES,
     VALID_DOCUMENT_TYPES as _VALID_DOCUMENT_TYPES,
-    adjuster_scope_params as _adjuster_scope_params,
-    apply_adjuster_claim_filter as _apply_adjuster_claim_filter,
-    get_approve_lock as _get_approve_lock,
     get_claim_context,
     get_doc_repo as _get_doc_repo,
     http_already_processing as _http_already_processing,
     max_upload_file_size_bytes as _max_upload_file_size_bytes,
     maybe_update_document_request_on_receipt as _maybe_update_document_request_on_receipt,
     process_claim_with_attachments as _process_claim_with_attachments,
-    resolve_attachment_urls as _resolve_attachment_urls,
     run_workflow_background as _run_workflow_background,
     sanitize_incident_data as _sanitize_incident_data,
-    stream_claim_updates as _stream_claim_updates,
     try_run_workflow_background as _try_run_workflow_background,
     upload_file_size_exceeded_detail as _upload_file_size_exceeded_detail,
 )
@@ -121,210 +109,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["claims"])
 
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
-RequireSupervisor = require_role("supervisor", "admin", "executive")
-
-
-@router.get("/claims/stats")
-def get_claims_stats(auth: AuthContext = RequireAdjuster):
-    """Aggregate statistics: count by status, count by type, totals."""
-    scope = _adjuster_scope_params(auth)
-    adj = adjuster_identity_scopes_assignee(auth)
-    cwhere = " WHERE assignee = :_scope_assignee" if adj else ""
-    sub_claims = (
-        "SELECT id FROM claims WHERE assignee = :_scope_assignee" if adj else "SELECT id FROM claims"
-    )
-    with get_connection() as conn:
-        total = conn.execute(
-            text(f"SELECT COUNT(*) as cnt FROM claims{cwhere}"),
-            scope,
-        ).fetchone()[0]
-        status_rows = conn.execute(
-            text(
-                f"SELECT COALESCE(status, 'unknown') as status, COUNT(*) as cnt FROM claims{cwhere} "
-                "GROUP BY status ORDER BY cnt DESC"
-            ),
-            scope,
-        ).fetchall()
-        by_status = {row_to_dict(r)["status"]: row_to_dict(r)["cnt"] for r in status_rows}
-        type_rows = conn.execute(
-            text(
-                f"SELECT COALESCE(claim_type, 'unclassified') as claim_type, COUNT(*) as cnt FROM claims{cwhere} "
-                "GROUP BY claim_type ORDER BY cnt DESC"
-            ),
-            scope,
-        ).fetchall()
-        by_type = {row_to_dict(r)["claim_type"]: row_to_dict(r)["cnt"] for r in type_rows}
-        date_row = conn.execute(
-            text(f"SELECT MIN(created_at) as earliest, MAX(created_at) as latest FROM claims{cwhere}"),
-            scope,
-        ).fetchone()
-        date_d = row_to_dict(date_row) if date_row else {}
-        if adj:
-            audit_count = conn.execute(
-                text(
-                    f"SELECT COUNT(*) as cnt FROM claim_audit_log WHERE claim_id IN ({sub_claims})"
-                ),
-                scope,
-            ).fetchone()[0]
-            workflow_count = conn.execute(
-                text(
-                    f"SELECT COUNT(*) as cnt FROM workflow_runs WHERE claim_id IN ({sub_claims})"
-                ),
-                scope,
-            ).fetchone()[0]
-        else:
-            audit_count = conn.execute(text("SELECT COUNT(*) as cnt FROM claim_audit_log")).fetchone()[0]
-            workflow_count = conn.execute(text("SELECT COUNT(*) as cnt FROM workflow_runs")).fetchone()[0]
-
-    return {
-        "total_claims": total,
-        "by_status": by_status,
-        "by_type": by_type,
-        "earliest_claim": date_d.get("earliest"),
-        "latest_claim": date_d.get("latest"),
-        "total_audit_events": audit_count,
-        "total_workflow_runs": workflow_count,
-    }
-
-
-@router.get("/claims", dependencies=[RequireAdjuster])
-def list_claims(
-    status: Optional[str] = Query(None, description="Filter by status"),
-    claim_type: Optional[str] = Query(None, description="Filter by claim type"),
-    include_archived: bool = Query(False, description="Include archived claims (retention)"),
-    include_purged: bool = Query(False, description="Include purged claims (retention)"),
-    search: Optional[str] = Query(
-        None, description="Free-text search across claim id, policy_number, and vin", max_length=200
-    ),
-    sort_by: str = Query("created_at", description="Field to sort by"),
-    sort_order: str = Query("desc", description="Sort direction: asc or desc"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """List claims with optional filtering, search, and sorting. Archived and purged claims are excluded by default.
-
-    Search uses SQL LIKE with wildcards on id, policy_number, and vin; large tables may need FTS
-    or prefix-style matching for performance.
-    """
-    if sort_by not in _ALLOWED_SORT_FIELDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid sort_by '{sort_by}'. Must be one of: {sorted(_ALLOWED_SORT_FIELDS)}",
-        )
-    if sort_order not in ("asc", "desc"):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid sort_order. Must be 'asc' or 'desc'.",
-        )
-
-    conditions = []
-    params: dict[str, Any] = {}
-
-    if status:
-        conditions.append("status = :status")
-        params["status"] = status
-    if not include_archived and (status is None or status != STATUS_ARCHIVED):
-        conditions.append("status != :archived")
-        params["archived"] = STATUS_ARCHIVED
-    if not include_purged and (status is None or status != STATUS_PURGED):
-        conditions.append("status != :purged")
-        params["purged"] = STATUS_PURGED
-    if claim_type:
-        conditions.append("claim_type = :claim_type")
-        params["claim_type"] = claim_type
-    if search:
-        conditions.append(
-            "(LOWER(id) LIKE LOWER(:search) OR LOWER(policy_number) LIKE LOWER(:search) OR LOWER(vin) LIKE LOWER(:search))"
-        )
-        params["search"] = f"%{search}%"
-
-    _apply_adjuster_claim_filter(auth, conditions, params)
-
-    where = ""
-    if conditions:
-        where = "WHERE " + " AND ".join(conditions)
-
-    params["limit"] = limit
-    params["offset"] = offset
-    count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
-
-    # sort_by and sort_order are validated against the allowlist above; safe to interpolate
-    order_clause = f"{sort_by} {sort_order.upper()}"
-
-    with get_connection() as conn:
-        count_row = conn.execute(
-            text(f"SELECT COUNT(*) as cnt FROM claims {where}"),
-            count_params,
-        ).fetchone()
-        total = count_row[0] if count_row else 0
-
-        rows = conn.execute(
-            text(f"SELECT * FROM claims {where} ORDER BY {order_clause} LIMIT :limit OFFSET :offset"),
-            params,
-        ).fetchall()
-
-    return {
-        "claims": [
-            _resolve_attachment_urls(row_to_dict(r))
-            for r in rows
-        ],
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
-
-
-@router.get("/claims/review-queue", dependencies=[RequireAdjuster])
-def get_review_queue(
-    assignee: Optional[str] = Query(None, description="Filter by assignee"),
-    priority: Optional[str] = Query(None, description="Filter by priority"),
-    older_than_hours: Optional[float] = Query(None, ge=0, description="Claims older than N hours in queue"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """List claims with status needs_review for the adjuster workflow."""
-    if priority is not None and priority not in PRIORITY_VALUES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid priority: {priority}. Must be one of: {', '.join(PRIORITY_VALUES)}",
-        )
-    eff_assignee: str | None
-    if adjuster_identity_scopes_assignee(auth):
-        eff_assignee = auth.identity
-    else:
-        eff_assignee = assignee
-    claims, total = ctx.repo.list_claims_needing_review(
-        assignee=eff_assignee,
-        priority=priority,
-        older_than_hours=older_than_hours,
-        limit=limit,
-        offset=offset,
-    )
-    return {
-        "claims": [
-            _resolve_attachment_urls(c)
-            for c in claims
-        ],
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
-
-
-class AssignBody(BaseModel):
-    assignee: str = Field(..., min_length=1, description="Adjuster/user ID to assign")
-
-
-class RejectBody(BaseModel):
-    reason: str = ""
-
-
-class RequestInfoBody(BaseModel):
-    note: str = ""
 
 
 class FollowUpRunBody(BaseModel):
@@ -335,183 +119,6 @@ class FollowUpRunBody(BaseModel):
 class RecordFollowUpResponseBody(BaseModel):
     message_id: int = Field(..., description="Follow-up message ID from send_user_message")
     response_content: str = Field(..., min_length=1, description="User's response text")
-
-
-class ReviewerDecisionBody(BaseModel):
-    """Optional reviewer decision for handback when approving a claim."""
-
-    confirmed_claim_type: Optional[
-        Literal["new", "duplicate", "total_loss", "partial_loss", "bodily_injury", "fraud"]
-    ] = Field(
-        default=None,
-        description="Reviewer-confirmed claim type. Must be one of: new, duplicate, total_loss, partial_loss, bodily_injury, fraud.",
-    )
-    confirmed_payout: Optional[float] = Field(
-        default=None,
-        description="Reviewer-confirmed payout amount",
-    )
-    notes: Optional[str] = Field(default=None, description="Reviewer notes")
-
-    @field_validator("confirmed_payout")
-    @classmethod
-    def validate_payout(cls, v: Optional[float]) -> Optional[float]:
-        """Reject NaN, inf, negative, or excessive payout amounts."""
-        if v is None:
-            return v
-        if not math.isfinite(v):
-            raise ValueError("confirmed_payout cannot be NaN or infinite")
-        if v < 0:
-            raise ValueError("confirmed_payout must be non-negative")
-        if v > MAX_PAYOUT:
-            raise ValueError(f"confirmed_payout must be <= {MAX_PAYOUT:,.0f}")
-        return v
-
-
-class ApproveBody(BaseModel):
-    """Optional body for approve endpoint to pass reviewer decision for handback."""
-
-    reviewer_decision: Optional[ReviewerDecisionBody] = Field(
-        default=None,
-        description="Reviewer decision for handback processing",
-    )
-
-
-@router.patch("/claims/{claim_id}/assign")
-def assign_claim(
-    claim_id: str,
-    body: AssignBody = Body(...),
-    auth: AuthContext = RequireSupervisor,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Assign claim to an adjuster."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        ctx.adjuster_service.assign(claim_id, body.assignee, actor_id=actor_id)
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"claim_id": claim_id, "assignee": body.assignee}
-
-
-@router.post("/claims/{claim_id}/acknowledge")
-def acknowledge_claim(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Record UCSPA claim acknowledgment (receipt acknowledged within state deadline)."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        ctx.repo.record_acknowledgment(claim_id, actor_id=actor_id)
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
-    return {"claim_id": claim_id, "acknowledged": True}
-
-
-@router.post("/claims/{claim_id}/review/approve")
-async def approve_review(
-    claim_id: str,
-    body: ApproveBody = Body(default=ApproveBody()),
-    auth: AuthContext = RequireSupervisor,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Approve claim for continued processing. Runs Human Review Handback crew to parse
-    reviewer decision, update claim, then routes to next step (settlement, subrogation, etc).
-    Requires supervisor.
-
-    Uses a per-claim lock to prevent concurrent approve requests from racing. In multi-process
-    deployments, use a distributed lock (e.g. Redis) instead.
-    """
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-    if claim.get("status") != STATUS_NEEDS_REVIEW:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Claim {claim_id} is not in needs_review (status={claim.get('status')}); cannot approve.",
-        )
-
-    lock = await _get_approve_lock(claim_id)
-    async with lock:
-        claim = await asyncio.to_thread(ctx.repo.get_claim, claim_id)
-        if claim is None:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-        if claim.get("status") != STATUS_NEEDS_REVIEW:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Claim {claim_id} is not in needs_review (status={claim.get('status')}); already processed.",
-            )
-        claim_data = claim_data_from_row(claim)
-        try:
-            ClaimInput.model_validate(claim_data)
-        except ValidationError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
-        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-        try:
-            await asyncio.to_thread(ctx.adjuster_service.approve, claim_id, actor_id=actor_id)
-        except ClaimNotFoundError as e:
-            raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-        reviewer_decision = None
-        if body.reviewer_decision:
-            reviewer_decision = {
-                "confirmed_claim_type": body.reviewer_decision.confirmed_claim_type,
-                "confirmed_payout": body.reviewer_decision.confirmed_payout,
-                "notes": body.reviewer_decision.notes,
-            }
-
-        result = await asyncio.to_thread(
-            run_handback_workflow,
-            claim_id,
-            reviewer_decision=reviewer_decision,
-            actor_id=actor_id,
-            ctx=ctx,
-        )
-    return result
-
-
-@router.post("/claims/{claim_id}/review/reject")
-def reject_review(
-    claim_id: str,
-    body: RejectBody = Body(default=RejectBody()),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Reject claim with optional reason."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        ctx.adjuster_service.reject(claim_id, actor_id=actor_id, reason=body.reason)
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"claim_id": claim_id, "status": "denied"}
-
-
-@router.post("/claims/{claim_id}/review/request-info")
-def request_info_review(
-    claim_id: str,
-    body: RequestInfoBody = Body(default=RequestInfoBody()),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Request more information from claimant."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        ctx.adjuster_service.request_info(claim_id, actor_id=actor_id, note=body.note)
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"claim_id": claim_id, "status": "pending_info"}
 
 
 @router.post("/claims/{claim_id}/follow-up/run", dependencies=[RequireAdjuster])
@@ -575,24 +182,6 @@ def get_follow_up_messages(
     return {"claim_id": claim_id, "messages": ctx.repo.get_follow_up_messages(claim_id)}
 
 
-@router.post("/claims/{claim_id}/review/escalate-to-siu")
-def escalate_to_siu(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Escalate claim to Special Investigations Unit."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        ctx.adjuster_service.escalate_to_siu(claim_id, actor_id=actor_id)
-    except ClaimNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}") from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"claim_id": claim_id, "status": "under_investigation"}
-
-
 @router.post("/claims/{claim_id}/siu-investigate")
 def run_siu_investigation(
     claim_id: str,
@@ -619,87 +208,6 @@ def run_siu_investigation(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ClaimNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-
-
-@router.get("/claims/{claim_id}/status", dependencies=[RequireAdjuster])
-def get_claim_status(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Lightweight status polling endpoint for async claim processing.
-
-    Returns claim_id, status, claim_type, progress (completed workflow stages),
-    and workflow_run_id. Use for efficient polling when POST returned claim_id
-    immediately. For real-time updates, use GET /claims/{claim_id}/stream (SSE).
-    """
-    claim_dict = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-
-    status = claim_dict.get("status") or ""
-    claim_type = claim_dict.get("claim_type") or ""
-
-    completed_stages: list[str] = []
-    with get_connection() as conn:
-        cp_rows = conn.execute(
-            text("""
-            SELECT stage_key FROM task_checkpoints
-            WHERE claim_id = :claim_id AND workflow_run_id = (
-                SELECT workflow_run_id FROM task_checkpoints
-                WHERE claim_id = :claim_id ORDER BY id DESC LIMIT 1
-            )
-            """),
-            {"claim_id": claim_id},
-        ).fetchall()
-        for r in cp_rows:
-            d = row_to_dict(r)
-            sk = d.get("stage_key", "")
-            stage = sk.split(":")[0] if ":" in sk else sk
-            if stage in WORKFLOW_STAGES:
-                completed_stages.append(sk)
-        completed_stages.sort(
-            key=lambda s: (
-                WORKFLOW_STAGES.index(stg)
-                if (stg := (s.split(":")[0] if ":" in s else s)) in WORKFLOW_STAGES
-                else len(WORKFLOW_STAGES)
-            )
-        )
-
-    latest_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
-
-    return {
-        "claim_id": claim_id,
-        "status": status,
-        "claim_type": claim_type,
-        "progress": completed_stages,
-        "workflow_run_id": latest_run_id,
-        "created_at": claim_dict.get("created_at"),
-    }
-
-
-@router.get("/claims/{claim_id}", dependencies=[RequireAdjuster])
-def get_claim(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Get a single claim by ID. Includes claim notes and follow-up messages."""
-    row = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    result = _resolve_attachment_urls(
-        row,
-        repo=ctx.repo,
-        actor_id=actor_id,
-        audit_presigned=True,
-    )
-    result["notes"] = ctx.repo.get_notes(claim_id)
-    result["follow_up_messages"] = ctx.repo.get_follow_up_messages(claim_id)
-    result["parties"] = ctx.repo.get_claim_parties(claim_id)
-    tasks, tasks_total = ctx.repo.get_tasks_for_claim(claim_id)
-    result["tasks"] = tasks
-    result["tasks_total"] = tasks_total
-    result["subrogation_cases"] = ctx.repo.get_subrogation_cases_by_claim(claim_id)
-    return result
 
 
 class PartyConsentUpdate(BaseModel):
@@ -1678,64 +1186,6 @@ async def generate_incident_details(
     return result
 
 
-@router.post("/claims")
-async def create_claim(
-    request: Request,
-    claim_input: ClaimInput = Body(..., description="Claim data as JSON"),
-    async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Submit a new claim for processing. Accepts ClaimInput JSON body.
-
-    Use for programmatic access: portals, batch ingestion, third-party integrations.
-    For file uploads, use POST /api/claims/process with multipart form.
-    """
-    idem_key, cached = get_idempotency_key_and_cached(request)
-    if cached is not None:
-        return cached
-
-    try:
-        if async_mode:
-            max_tasks = get_settings().max_concurrent_background_tasks
-            async with _claims_helpers.background_tasks_lock:
-                if max_tasks > 0 and len(_claims_helpers.background_tasks) >= max_tasks:
-                    release_idempotency_on_error(idem_key)
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Too many concurrent background tasks. Retry later.",
-                        headers={"Retry-After": "60"},
-                    )
-
-        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-        claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-            claim_input, None, actor_id, ctx=ctx,
-        )
-
-        if async_mode:
-            _run_workflow_background(
-                claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
-            )
-            result = {"claim_id": claim_id}
-        else:
-            try:
-                result = await asyncio.to_thread(
-                    run_claim_workflow,
-                    claim_data_with_attachments,
-                    None,
-                    claim_id,
-                    actor_id=actor_id,
-                    ctx=ctx,
-                )
-            except ClaimAlreadyProcessingError as e:
-                _http_already_processing(e)
-        store_response_if_idempotent(idem_key, 200, result)
-        return result
-    except Exception:
-        release_idempotency_on_error(idem_key)
-        raise
-
-
 @router.post("/incidents", response_model=IncidentOutput)
 async def create_incident(
     request: Request,
@@ -1900,127 +1350,6 @@ async def allocate_bi(
     result = allocate_bi_limits(allocation_input)
     return result.model_dump()
 
-
-@router.post("/claims/process")
-async def process_claim(
-    request: Request,
-    claim: str = Form(..., description="Claim data as JSON string"),
-    files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
-    async_mode: bool = Query(False, alias="async", description="If true, return claim_id immediately and process in background"),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Submit a new claim for processing. Accepts claim JSON and optional file uploads.
-
-    - claim: JSON string with policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
-      incident_date, incident_description, damage_description, estimated_damage (optional),
-      attachments (optional list of {url, type, description}).
-    - files: Optional multipart files (photos, PDFs, estimates). Stored via configured backend.
-    - async: If true, returns claim_id immediately; workflow runs in background. Use
-      GET /claims/{claim_id}/status to poll or GET /claims/{claim_id}/stream for SSE updates.
-    """
-    idem_key, cached = get_idempotency_key_and_cached(request)
-    if cached is not None:
-        return cached
-
-    try:
-        if async_mode:
-            max_tasks = get_settings().max_concurrent_background_tasks
-            async with _claims_helpers.background_tasks_lock:
-                if max_tasks > 0 and len(_claims_helpers.background_tasks) >= max_tasks:
-                    release_idempotency_on_error(idem_key)
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Too many concurrent background tasks. Retry later.",
-                        headers={"Retry-After": "60"},
-                    )
-
-        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-        claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-            claim, files, actor_id, ctx=ctx,
-        )
-
-        if async_mode:
-            _run_workflow_background(
-                claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
-            )
-            result = {"claim_id": claim_id}
-        else:
-            try:
-                result = await asyncio.to_thread(
-                    run_claim_workflow,
-                    claim_data_with_attachments,
-                    None,  # llm
-                    claim_id,  # existing_claim_id
-                    actor_id=actor_id,
-                    ctx=ctx,
-                )
-            except ClaimAlreadyProcessingError as e:
-                _http_already_processing(e)
-        store_response_if_idempotent(idem_key, 200, result)
-        return result
-    except Exception:
-        release_idempotency_on_error(idem_key)
-        raise
-
-
-@router.post("/claims/process/async")
-async def process_claim_async(
-    request: Request,
-    claim: str = Form(..., description="Claim data as JSON string"),
-    files: Optional[list[UploadFile]] = File(default=None, description="Optional attachment files"),
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Submit a new claim for async processing. Returns claim_id immediately; workflow runs in background.
-    Use GET /claims/{claim_id}/stream to receive realtime updates."""
-    idem_key, cached = get_idempotency_key_and_cached(request)
-    if cached is not None:
-        return cached
-
-    try:
-        max_tasks = get_settings().max_concurrent_background_tasks
-        async with _claims_helpers.background_tasks_lock:
-            if max_tasks > 0 and len(_claims_helpers.background_tasks) >= max_tasks:
-                release_idempotency_on_error(idem_key)
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
-                )
-        actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-        claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
-            claim, files, actor_id, ctx=ctx,
-        )
-        _run_workflow_background(
-            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
-        )
-        result = {"claim_id": claim_id}
-        store_response_if_idempotent(idem_key, 200, result)
-        return result
-    except Exception:
-        release_idempotency_on_error(idem_key)
-        raise
-
-
-@router.get("/claims/{claim_id}/stream")
-async def stream_claim_updates(
-    claim_id: str,
-    auth: AuthContext = RequireAdjuster,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Server-Sent Events stream of claim status, audit log, and workflow runs.
-    Polls every second until claim status is no longer pending/processing."""
-    ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
-    return StreamingResponse(
-        _stream_claim_updates(claim_id),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 class DisputeBody(BaseModel):
@@ -2225,89 +1554,3 @@ async def file_supplemental(
         msg = str(e)
         code = 409 if "cannot receive supplemental" in msg else 400
         raise HTTPException(status_code=code, detail=msg) from e
-
-
-@router.post("/claims/{claim_id}/reprocess")
-async def reprocess_claim(
-    claim_id: str,
-    from_stage: Optional[str] = Query(
-        None,
-        description=(
-            "Resume from this stage using checkpoints from the most recent workflow run. "
-            f"Must be one of: {', '.join(WORKFLOW_STAGES)}"
-        ),
-    ),
-    auth: AuthContext = RequireSupervisor,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Re-run workflow for an existing claim. Requires supervisor role.
-
-    Pass ``from_stage`` to resume from a specific stage using checkpoints from
-    the most recent workflow run.
-    """
-    if from_stage is not None and from_stage not in WORKFLOW_STAGES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"from_stage must be one of {', '.join(WORKFLOW_STAGES)}",
-        )
-
-    claim = ctx.repo.get_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-
-    claim_data = claim_data_from_row(claim)
-    try:
-        ClaimInput.model_validate(claim_data)
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid claim data for reprocess: {e}") from e
-
-    resume_run_id: str | None = None
-    if from_stage is not None:
-        resume_run_id = ctx.repo.get_latest_checkpointed_run_id(claim_id)
-        if resume_run_id is None:
-            from_stage = None
-
-    actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
-    try:
-        result = await asyncio.to_thread(
-            run_claim_workflow,
-            claim_data,
-            existing_claim_id=claim_id,
-            actor_id=actor_id,
-            resume_run_id=resume_run_id,
-            from_stage=from_stage,
-            ctx=ctx,
-        )
-    except ClaimAlreadyProcessingError as e:
-        _http_already_processing(e)
-    return result
-
-
-@router.post("/claims/{claim_id}/review")
-async def run_claim_review(
-    claim_id: str,
-    auth: AuthContext = RequireSupervisor,
-    ctx: ClaimContext = Depends(get_claim_context),
-):
-    """Run supervisor/compliance review on the claim process. Requires supervisor role.
-
-    Returns a ClaimReviewReport with issues, compliance_checks, and recommendations.
-    The report is persisted to the audit log.
-    """
-    from claim_agent.workflow.claim_review_orchestrator import run_claim_review as _run_claim_review
-
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
-
-    actor_id = auth.identity if auth.identity != "anonymous" else "claim_review_crew"
-    report = await asyncio.to_thread(
-        _run_claim_review,
-        claim_id,
-        actor_id=actor_id,
-        ctx=ctx,
-    )
-
-    report_json = report.model_dump_json()
-    ctx.repo.record_claim_review(claim_id, report_json, actor_id)
-
-    return report.model_dump(mode="json")
