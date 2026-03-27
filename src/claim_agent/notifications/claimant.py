@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from claim_agent.config import notification_template_defaults as _tmpl_defaults
 from claim_agent.config.settings import get_mock_crew_config, get_mock_notifier_config, get_notification_config
 from claim_agent.mock_crew.notifier import mock_notify_claimant
 
@@ -196,8 +197,8 @@ def send_otp_notification(
                 "verification_id=%s",
                 verification_id,
             )
-            subject = "Your verification code"
-            message = f"Your OTP is {otp}. It expires in {otp_tmpl_vars['ttl_minutes']} minutes."
+            subject = _tmpl_defaults.TMPL_OTP_EMAIL_SUBJECT.format(**otp_tmpl_vars)
+            message = _tmpl_defaults.TMPL_OTP_EMAIL_BODY.format(**otp_tmpl_vars)
         _send_email(
             api_key=config["sendgrid_api_key"],
             from_email=config["sendgrid_from_email"],
@@ -223,7 +224,7 @@ def send_otp_notification(
                 "verification_id=%s",
                 verification_id,
             )
-            sms_message = f"Your OTP is {otp}. Valid for {otp_tmpl_vars['ttl_minutes']} minutes."
+            sms_message = _tmpl_defaults.TMPL_OTP_SMS_BODY.format(**otp_tmpl_vars)
         _send_sms(
             account_sid=config["twilio_account_sid"],
             auth_token=config["twilio_auth_token"],
@@ -342,13 +343,37 @@ def _build_notification_message(
     tmpl_vars = {"claim_id": claim_id}
     if event == "receipt_acknowledged":
         return (
-            _safe_format(config, "tmpl_receipt_acknowledged_subject", tmpl_vars, "Claim {claim_id} received", event),
-            _safe_format(config, "tmpl_receipt_acknowledged_body", tmpl_vars, "Your claim {claim_id} has been received.", event),
+            _safe_format(
+                config,
+                "tmpl_receipt_acknowledged_subject",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_SUBJECT,
+                event,
+            ),
+            _safe_format(
+                config,
+                "tmpl_receipt_acknowledged_body",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_BODY,
+                event,
+            ),
         )
     if event == "denial_letter":
         return (
-            _safe_format(config, "tmpl_denial_letter_subject", tmpl_vars, "Claim {claim_id} decision", event),
-            _safe_format(config, "tmpl_denial_letter_body", tmpl_vars, "A decision has been made on claim {claim_id}.", event),
+            _safe_format(
+                config,
+                "tmpl_denial_letter_subject",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_DENIAL_LETTER_SUBJECT,
+                event,
+            ),
+            _safe_format(
+                config,
+                "tmpl_denial_letter_body",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_DENIAL_LETTER_BODY,
+                event,
+            ),
         )
     if event == "follow_up_request":
         message = ""
@@ -356,16 +381,40 @@ def _build_notification_message(
             raw_message = template_data.get("message")
             if raw_message is not None:
                 message = str(raw_message).strip()
-        subject = _safe_format(config, "tmpl_follow_up_subject", tmpl_vars, "Follow-up on claim {claim_id}", event)
+        subject = _safe_format(
+            config,
+            "tmpl_follow_up_subject",
+            tmpl_vars,
+            _tmpl_defaults.TMPL_FOLLOW_UP_SUBJECT,
+            event,
+        )
         if message:
             return (subject, message)
         return (
             subject,
-            _safe_format(config, "tmpl_follow_up_body", tmpl_vars, "We need additional information for claim {claim_id}.", event),
+            _safe_format(
+                config,
+                "tmpl_follow_up_body",
+                tmpl_vars,
+                _tmpl_defaults.TMPL_FOLLOW_UP_BODY,
+                event,
+            ),
         )
     return (
-        _safe_format(config, "tmpl_generic_subject", tmpl_vars, "Update on claim {claim_id}", event),
-        _safe_format(config, "tmpl_generic_body", tmpl_vars, "There is an update on your claim {claim_id}.", event),
+        _safe_format(
+            config,
+            "tmpl_generic_subject",
+            tmpl_vars,
+            _tmpl_defaults.TMPL_GENERIC_SUBJECT,
+            event,
+        ),
+        _safe_format(
+            config,
+            "tmpl_generic_body",
+            tmpl_vars,
+            _tmpl_defaults.TMPL_GENERIC_BODY,
+            event,
+        ),
     )
 
 

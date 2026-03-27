@@ -109,7 +109,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["claims"])
 
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
-RequireSupervisor = require_role("supervisor", "admin", "executive")
 
 
 class FollowUpRunBody(BaseModel):

@@ -52,58 +52,8 @@ def client():
 # -------------------------------------------------------------------
 
 
-class TestClaimsStats:
-    def test_returns_stats(self, client):
-        resp = client.get("/api/v1/claims/stats")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total_claims"] == 7
-        assert "by_status" in data
-        assert "by_type" in data
-        assert data["by_status"]["open"] == 1
-        assert data["by_status"]["closed"] == 1
-        assert data["by_status"]["fraud_suspected"] == 1
-        assert data["by_status"]["archived"] == 1
-        assert data["by_status"]["purged"] == 1
-
-
 class TestClaimsList:
-    def test_list_all(self, client):
-        resp = client.get("/api/v1/claims")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 5
-        assert len(data["claims"]) == 5
-
-    def test_filter_by_status(self, client):
-        resp = client.get("/api/v1/claims?status=open")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["claims"][0]["id"] == "CLM-TEST001"
-
-    def test_filter_by_type(self, client):
-        resp = client.get("/api/v1/claims?claim_type=fraud")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["claims"][0]["id"] == "CLM-TEST003"
-
-    def test_list_claims_excludes_archived_by_default(self, client):
-        """Archived claims are excluded when include_archived is not set."""
-        resp = client.get("/api/v1/claims")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 5
-        claim_ids = [c["id"] for c in data["claims"]]
-        assert "CLM-ARCHIVED" not in claim_ids
-
-    def test_list_claims_includes_archived_when_requested(self, client):
-        """Archived claims are included when include_archived=true."""
-        resp = client.get("/api/v1/claims?include_archived=true")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 6
-        claim_ids = [c["id"] for c in data["claims"]]
-        assert "CLM-ARCHIVED" in claim_ids
+    """List edge cases not covered in tests/test_api_claims.py."""
 
     def test_list_claims_include_purged_query_ok(self, client):
         """include_purged=true includes purged rows in the default list."""
@@ -121,16 +71,6 @@ class TestClaimsList:
         data = resp.json()
         assert data["total"] == 1
         assert data["claims"][0]["id"] == "CLM-PURGED"
-
-    def test_pagination(self, client):
-        resp = client.get("/api/v1/claims?limit=1&offset=0")
-        data = resp.json()
-        assert len(data["claims"]) == 1
-        assert data["total"] == 5
-
-    def test_pagination_limit_zero_returns_422(self, client):
-        resp = client.get("/api/v1/claims?limit=0")
-        assert resp.status_code == 422
 
     def test_pagination_limit_negative_returns_422(self, client):
         resp = client.get("/api/v1/claims?limit=-1")
@@ -364,19 +304,7 @@ class TestIncidentsAndClaimLinks:
 
 
 class TestClaimDetail:
-    def test_get_existing(self, client):
-        resp = client.get("/api/v1/claims/CLM-TEST001")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["id"] == "CLM-TEST001"
-        assert data["policy_number"] == "POL-001"
-        assert data["status"] == "open"
-        assert "notes" in data
-        assert isinstance(data["notes"], list)
-
-    def test_not_found(self, client):
-        resp = client.get("/api/v1/claims/CLM-NOTEXIST")
-        assert resp.status_code == 404
+    """Detail edge cases not covered in tests/test_api_claims.py."""
 
     def test_get_claim_malformed_attachments_json_s3_returns_200(self, client, monkeypatch):
         """Invalid attachments JSON must not 500 when detail uses S3 presign + audit path."""
@@ -3168,9 +3096,14 @@ class TestProcessClaimEndpoint:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
+        import claim_agent.api.routes._claims_helpers as helpers_mod
         import claim_agent.api.routes.claims_workflow as claims_mod
 
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        def _mock_run(*_a, **_kw):
+            return mock_result
+
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", _mock_run)
+        monkeypatch.setattr(helpers_mod, "run_claim_workflow", _mock_run)
         yield
 
     def _mock_workflow(self, monkeypatch):
@@ -3181,9 +3114,14 @@ class TestProcessClaimEndpoint:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
+        import claim_agent.api.routes._claims_helpers as helpers_mod
         import claim_agent.api.routes.claims_workflow as claims_mod
 
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        def _mock_run(*_a, **_kw):
+            return mock_result
+
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", _mock_run)
+        monkeypatch.setattr(helpers_mod, "run_claim_workflow", _mock_run)
         # Ensure the storage singleton is reset to local (tmp) for each test
         import claim_agent.storage.factory as factory_mod
 
