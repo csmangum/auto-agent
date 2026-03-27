@@ -13,7 +13,7 @@ from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from string import Formatter
-from typing import Any, Literal, Self
+from typing import Any, Literal
 
 from pydantic import (
     AliasChoices,
@@ -24,6 +24,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing_extensions import Self
 
 from claim_agent.config import notification_template_defaults as _tmpl_defaults
 
@@ -34,9 +35,14 @@ def _assert_notification_template_placeholders(
     template: str, allowed: frozenset[str], field_label: str
 ) -> None:
     """Ensure ``template`` uses only simple ``str.format`` placeholders in ``allowed``."""
-    for _, field_name, _, _ in Formatter().parse(template):
+    for _, field_name, format_spec, _conversion in Formatter().parse(template):
         if field_name is None:
             continue
+        if format_spec and ("{" in format_spec or "}" in format_spec):
+            raise ValueError(
+                f"{field_label}: nested or dynamic format specs are not allowed "
+                f"(field {field_name!r})"
+            )
         if "." in field_name or "[" in field_name:
             raise ValueError(
                 f"{field_label}: invalid placeholder {field_name!r} "

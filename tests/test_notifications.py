@@ -914,6 +914,11 @@ class TestNotificationTemplatePlaceholderValidation:
         with pytest.raises(ValidationError, match="invalid placeholder"):
             NotificationConfig(tmpl_generic_body="Bad {obj.attr} and {claim_id}")
 
+    def test_rejects_nested_placeholder_in_format_spec(self):
+        """Dynamic width/precision in format_spec (e.g. {claim_id:{w}}) must not bypass checks."""
+        with pytest.raises(ValidationError, match="nested or dynamic format specs"):
+            NotificationConfig(tmpl_generic_body="ID {claim_id:{width}} end")
+
     def test_rejects_claim_id_in_otp_body(self):
         with pytest.raises(ValidationError, match="unknown placeholder"):
             NotificationConfig(
