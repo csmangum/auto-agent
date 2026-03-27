@@ -281,6 +281,10 @@ class AdapterHttpClient:
             )
             raise
 
+        raise RuntimeError(
+            "HTTP retry loop completed without response; this should be unreachable with tenacity"
+        )
+
     def _request(
         self,
         method: str,
