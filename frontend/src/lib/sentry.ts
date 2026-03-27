@@ -26,7 +26,7 @@ import * as Sentry from '@sentry/react';
 const REDACT_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   // Email addresses
   {
-    pattern: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g,
+    pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     replacement: '[REDACTED_EMAIL]',
   },
   // JWT / Bearer tokens (base64url header.payload.signature)
